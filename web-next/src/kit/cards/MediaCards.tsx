@@ -1,4 +1,4 @@
-import {useCallback, useState, type ReactNode, type CSSProperties} from 'react';
+import {useCallback, useRef, useState, type ReactNode, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {Icon} from '../Icon';
 import type {FactPart} from '@portico/client-core/kit-model';
@@ -17,21 +17,25 @@ export function CardArtwork({artwork, fallback, position, visible, arrivalDurati
 
 export function PosterCard({titleLines, progressPlacement = 'edge', ...props}: MediaCardProps & {titleLines?: 1 | 2; progressPlacement?: 'edge' | 'inset'}) {
   titleLines ??= props.context === 'grid' || props.density === 'grid' ? 2 : 1;
-  return <CardFrame {...props} className={cx(progressPlacement === 'inset' && styles.insetProgress, props.className)} kind="poster"><span className={styles.art}><CardArtwork {...props} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} titleLines={titleLines} /></CardFrame>;
+  const artworkRef = useRef<HTMLSpanElement>(null);
+  return <CardFrame {...props} artworkRef={artworkRef} playIconSize={20} className={cx(progressPlacement === 'inset' && styles.insetProgress, props.className)} kind="poster"><span ref={artworkRef} className={styles.art}><CardArtwork {...props} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} titleLines={titleLines} /></CardFrame>;
 }
 
 export function WideCard(props: MediaCardProps) {
-  return <CardFrame {...props} kind="wide"><span className={styles.art}><CardArtwork {...props} /><span className={styles.wideCopy}><span className={styles.wideTitle}>{props.model.title}</span><Facts parts={props.model.caption} className={styles.wideSubtitle} /><Progress value={props.model.progress} /></span></span><Facts parts={props.model.detail} className={styles.wideDetail} /></CardFrame>;
+  const artworkRef = useRef<HTMLSpanElement>(null);
+  return <CardFrame {...props} artworkRef={artworkRef} kind="wide"><span ref={artworkRef} className={styles.art}><CardArtwork {...props} /><span className={styles.wideCopy}><span className={styles.wideTitle}>{props.model.title}</span><Facts parts={props.model.caption} className={styles.wideSubtitle} /><Progress value={props.model.progress} /></span></span><Facts parts={props.model.detail} className={styles.wideDetail} /></CardFrame>;
 }
 
 export function SquareCard({variant = 'music', progressPlacement = 'edge', ...props}: MediaCardProps & {variant?: 'music' | 'audiobook'; progressPlacement?: 'edge' | 'below' | 'inset'}) {
-  return <CardFrame {...props} className={cx(progressPlacement === 'below' && styles.belowProgress, progressPlacement === 'inset' && styles.insetProgress, props.className)} kind="square"><CardAmbient {...props} /><span className={styles.art}><CardArtwork {...props} /><CardBadges watched={props.watched} completionLabel={variant === 'audiobook' ? defaultI18n.t('next.cards.finished') : undefined} isNew={props.isNew} progress={progressPlacement === 'below' ? undefined : props.model.progress} /></span>{progressPlacement === 'below' && <Progress value={props.model.progress} />}<CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} /></CardFrame>;
+  const artworkRef = useRef<HTMLSpanElement>(null);
+  return <CardFrame {...props} artworkRef={artworkRef} className={cx(progressPlacement === 'below' && styles.belowProgress, progressPlacement === 'inset' && styles.insetProgress, props.className)} kind="square"><CardAmbient {...props} /><span ref={artworkRef} className={styles.art}><CardArtwork {...props} /><CardBadges watched={props.watched} completionLabel={variant === 'audiobook' ? defaultI18n.t('next.cards.finished') : undefined} isNew={props.isNew} progress={progressPlacement === 'below' ? undefined : props.model.progress} /></span>{progressPlacement === 'below' && <Progress value={props.model.progress} />}<CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} /></CardFrame>;
 }
 
 export type CircleCardProps = Omit<MediaCardProps, 'artwork' | 'fallback' | 'ambient' | 'palette' | 'position' | 'arrivalDurationMs'> & {covers: readonly ArtworkSource[]; initials?: string; variant?: 'artist' | 'person'; coverZoom?: number; coverTransformOrigin?: CSSProperties['transformOrigin']};
 export function CircleCard({covers, initials, variant = initials ? 'person' : 'artist', coverZoom, coverTransformOrigin, ...props}: CircleCardProps) {
   const initialsSize = props.context === 'search' ? 34 : props.context === 'detail' ? 30 : undefined;
-  return <CardFrame {...props} kind="circle"><span className={styles.art}>{variant === 'person' ? <PersonCircle covers={covers} initials={initials ?? ''} alt="" initialsSize={initialsSize} visible={props.visible} /> : <CircleArt covers={covers} coverZoom={coverZoom} coverTransformOrigin={coverTransformOrigin} initials={initials} alt="" treatment={props.context === 'search' ? 'search' : 'artist'} initialsSize={initialsSize} visible={props.visible} />}</span><CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} /></CardFrame>;
+  const artworkRef = useRef<HTMLSpanElement>(null);
+  return <CardFrame {...props} artworkRef={artworkRef} kind="circle"><span ref={artworkRef} className={styles.art}>{variant === 'person' ? <PersonCircle covers={covers} initials={initials ?? ''} alt="" initialsSize={initialsSize} visible={props.visible} /> : <CircleArt covers={covers} coverZoom={coverZoom} coverTransformOrigin={coverTransformOrigin} initials={initials} alt="" treatment={props.context === 'search' ? 'search' : 'artist'} initialsSize={initialsSize} visible={props.visible} />}</span><CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} /></CardFrame>;
 }
 
 export type EpisodeTileProps = MediaCardProps & Readonly<{
@@ -46,7 +50,8 @@ export type EpisodeTileProps = MediaCardProps & Readonly<{
   playback?: readonly FactPart[];
 }>;
 export function EpisodeTile({artworkKind, length, status, airDate, cropOrigin, description, expanded, playing, playback, ...props}: EpisodeTileProps) {
-  return <CardFrame {...props} className={cx(expanded && styles.expanded, playing && styles.episodePlaying, props.className)} kind="episode"><span className={styles.art}><span className={cx(styles.episodePicture, artworkKind === 'backdrop' && styles.backdropCrop)} style={{transformOrigin: cropOrigin}}><CardArtwork {...props} /></span>{length && <span className={styles.length}>{length}</span>}<CardBadges watched={props.watched} progress={props.model.progress ?? (props.next ? 1 : undefined)} />{playing && <span className={styles.episodeMeter} aria-hidden="true"><span className={styles.episodeLevels}><i /><i /><i /></span></span>}</span>
+  const artworkRef = useRef<HTMLSpanElement>(null);
+  return <CardFrame {...props} artworkRef={artworkRef} className={cx(expanded && styles.expanded, playing && styles.episodePlaying, props.className)} kind="episode"><span ref={artworkRef} className={styles.art}><span className={cx(styles.episodePicture, artworkKind === 'backdrop' && styles.backdropCrop)} style={{transformOrigin: cropOrigin}}><CardArtwork {...props} /></span>{length && <span className={styles.length}>{length}</span>}<CardBadges watched={props.watched} progress={props.model.progress ?? (props.next ? 1 : undefined)} />{playing && <span className={styles.episodeMeter} aria-hidden="true"><span className={styles.episodeLevels}><i /><i /><i /></span></span>}</span>
     <span className={styles.episodeCopy}><span className={styles.episodeTitle}>{props.model.title}</span><span className={styles.episodeMeta}>{status && <Facts parts={status} className={styles.episodeStatus} />}<Facts parts={airDate ? [...props.model.caption, airDate] : props.model.caption} className={styles.episodeLabel} /></span>{playback && <Facts parts={playback} className={styles.episodePlayback} />}</span>{description && <span className={styles.description}>{description}</span>}
   </CardFrame>;
 }
@@ -58,8 +63,9 @@ export type CoverCardProps = MediaCardProps & Readonly<{
 }>;
 export function CoverCard({kind = 'book', generated, titleLines, ...props}: CoverCardProps) {
   const book = kind === 'book' || kind === 'comic';
-  return <CardFrame {...props} kind="cover" playIcon="i-book" className={cx(book && !generated && styles.spine, !book && styles.periodical, kind === 'newspaper' && styles.newspaper, props.className)}>
-    <span className={styles.art}><CardArtwork {...props} position={kind === 'newspaper' ? 'top' : props.position} fallback={generated ? <GeneratedCover {...generated} selectionClearance={props.selection?.active || props.selection?.checked} /> : props.fallback} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} titleLines={titleLines} />
+  const artworkRef = useRef<HTMLSpanElement>(null);
+  return <CardFrame {...props} artworkRef={artworkRef} playIconSize={20} kind="cover" playIcon="i-book" className={cx(book && !generated && styles.spine, !book && styles.periodical, kind === 'newspaper' && styles.newspaper, props.className)}>
+    <span ref={artworkRef} className={styles.art}><CardArtwork {...props} position={kind === 'newspaper' ? 'top' : props.position} fallback={generated ? <GeneratedCover {...generated} selectionClearance={props.selection?.active || props.selection?.checked} /> : props.fallback} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} titleLines={titleLines} />
   </CardFrame>;
 }
 
@@ -73,7 +79,7 @@ export function PlaylistMosaic({covers, ...props}: PlaylistMosaicProps) {
 }
 
 export function NewPlaylistCard({model, onCreate, className}: {model: MediaCardProps['model']; onCreate: () => void; className?: string}) {
-  return <SquareCard model={model} onNavigate={onCreate} className={cx(styles.newPlaylist, className)} fallback={<span className={styles.createGlyph}><Icon name="i-plus" size={28} /></span>} />;
+  return <SquareCard model={model} onNavigate={onCreate} className={cx(styles.newPlaylist, className)} fallback={<span className={styles.createGlyph}><Icon name="i-plus" size={30} /></span>} />;
 }
 
 export type CardCover = ArtworkSource | Readonly<{id: string; generated: NonNullable<CoverCardProps['generated']>}>;

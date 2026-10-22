@@ -75,7 +75,7 @@ export function SeriesTile({covers, segments, tint, ...props}: SeriesTileProps) 
 
 export type QuickTileProps = MediaCardProps & Readonly<{playing?: boolean; onPause?: () => void}>;
 export function QuickTile({playing, onPause, ...props}: QuickTileProps) {
-  return <CardFrame {...props} onPlay={playing ? onPause : props.onPlay} kind="quick" className={cx(playing && styles.playing, props.className)} playIcon={playing ? 'i-pause' : 'i-play'}><span className={styles.quickCover}><CardArtwork {...props} /></span><span className={styles.quickCopy}><span className={styles.quickTitle}>{props.model.title}</span><span className={styles.quickSubtitle}>{playing && <span className={styles.levelMeter} aria-hidden="true"><i /><i /><i /><i /></span>}<Facts parts={props.model.caption} /></span></span></CardFrame>;
+  return <CardFrame {...props} onPlay={playing ? onPause : props.onPlay} kind="quick" playIconSize={16} className={cx(playing && styles.playing, props.className)} playIcon={playing ? 'i-pause' : 'i-play'}><span className={styles.quickCover}><CardArtwork {...props} /></span><span className={styles.quickCopy}><span className={styles.quickTitle}>{props.model.title}</span><span className={styles.quickSubtitle}>{playing && <span className={styles.levelMeter} aria-hidden="true"><i /><i /><i /><i /></span>}<Facts parts={props.model.caption} /></span></span></CardFrame>;
 }
 
 export type SessionChannel = Readonly<{mark: ChannelMarkModel; logo?: ArtworkSource; tint?: string; facts: readonly FactPart[]}>;
