@@ -1,8 +1,6 @@
 import {playbackIdentity, type CardSubject, type PlaybackSubject, type TimeEnvironment} from '@core/presentation/kit-model/index.ts';
 import type {ActivitySummarySession, ActivitySummarySnapshot, OwnerActivitySummary} from '@core/admin/activity-summary/index.ts';
 import {jobName, jobStateName, scanStepName} from '@core/server-admin/console-catalogue.ts';
-import {deliveryId} from '@core/server-admin/now-playing.ts';
-import {parseAdminSession} from '@core/playback-v1/types.ts';
 import {heightText} from '@core/presentation/kit-model/technical.ts';
 import {defaultI18n} from '@i18n';
 import type {ActivityPanelView} from '../kit/shell';
@@ -27,18 +25,19 @@ export function activitySubject(stream: ActivitySummarySession): PlaybackSubject
 }
 export function activityView(document: OwnerActivitySummary, time: TimeEnvironment, actions: Pick<ActivityPanelView, 'onDashboard' | 'onRetry'> & {openUpdate: () => void}): ActivityPanelView {
   const {t} = defaultI18n;
-  return {serverName: document.serverName, health: document.health.degraded ? 'attention' : 'normal', streamCount: document.streams.count, taskCount: document.tasks.count,
-    streams: document.streams.items.flatMap(stream => {
-      const subject = activitySubject(stream); if (!subject) return [];
-      const delivery = deliveryId(parseAdminSession(stream).decision);
+  return {serverName: document.serverName, health: document.health.degraded ? 'attention' : 'normal', streamCount: document.streams.count, streamOverflow: document.streams.overflow, taskCount: document.tasks.count,
+    // This bounded set is already selected globally. Preserve its order and exact overflow facts.
+    streams: document.streams.items.map(stream => {
+      const subject = activitySubject(stream);
+      const video = stream.decision.video?.action === 'transcode' || stream.decision.video?.action === 'burn' || stream.decision.subtitles?.action === 'burn';
       const height = heightText(stream.videoHeight, time.t);
-      const conversion = delivery === 'web.nowPlaying.delivery.convertVideo' && height
+      const conversion = stream.converting && video && height
         ? {id: 'delivery', text: t('next.home.shell.convertingTo', {quality: height}), role: 'status' as const}
-        : delivery === 'web.nowPlaying.delivery.convertVideo' || delivery === 'web.nowPlaying.delivery.convertAudio'
-          ? {id: 'delivery', text: t(delivery), role: 'status' as const} : undefined;
-      return [{id: stream.id, identity: playbackIdentity(subject, 'dock', time), name: stream.profile.name, device: stream.device.name,
-        initial: Array.from(stream.profile.name.trim())[0] ?? '', positionMs: stream.positionMs, durationMs: stream.durationMs, paused: stream.state === 'paused',
-        conversion, onOpen: () => actions.onDashboard('streams')}];
+        : stream.converting ? {id: 'delivery', text: t(video ? 'web.nowPlaying.delivery.convertVideo' : 'web.nowPlaying.delivery.convertAudio'), role: 'status' as const} : undefined;
+      return {id: stream.id, identity: subject ? playbackIdentity(subject, 'dock', time) : undefined, title: stream.item?.title, username: stream.user.username, name: stream.profile.name, device: stream.device.name,
+        startedAt: stream.startedAt, initial: Array.from(stream.profile.name.trim())[0] ?? '', positionMs: stream.positionMs, durationMs: stream.durationMs, paused: stream.state === 'paused',
+        problem: stream.problem ? {id: 'problem', text: t('next.shell.activityProblem'), role: 'status' as const} : undefined,
+        conversion, onOpen: () => actions.onDashboard('streams')};
     }),
     scans: document.scans.map(scan => ({id: scan.libraryId, title: scan.libraryName, detail: scanStepName(t, defaultI18n.has, scan.phase), current: scan.current,
       icon: 'i-refresh', processed: scan.analyzed, discovered: scan.discovered, total: scan.total, onOpen: () => actions.onDashboard('activity')})),

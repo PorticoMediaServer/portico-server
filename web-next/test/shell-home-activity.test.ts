@@ -6,21 +6,21 @@ import {activityPanelView, activitySubject, activityView} from '../src/shell/act
 import {homeFixtures as f} from '../../packages/i18n/src/catalog/en-US/next/dev/home-fixtures.ts';
 
 const environment = {t: defaultI18n.t, locale: 'en-US', timeZone: 'UTC'};
-function stream(): ActivitySummarySession { return {id: 'session', kind: 'vod', state: 'playing', positionMs: 480000,
-  user: {id: 'account', name: f.account}, profile: {id: 'profile', name: f.profile}, device: {id: 'device', name: f.device},
-  decision: {video: {action: 'transcode', reasons: []}}, quality: {mode: 'fixed', id: '2160p', maxHeight: 2160}, videoHeight: 1080,
+function stream(): ActivitySummarySession { return {id: 'session', kind: 'vod', state: 'playing', positionMs: 480000, startedAt: '2026-10-22T10:00:00Z', problem: false, converting: true,
+  user: {id: 'account', username: f.account}, profile: {id: 'profile', name: f.profile}, device: {id: 'device', name: f.device},
+  decision: {video: {action: 'transcode', reasons: []}}, quality: {mode: 'fixed', id: '2160p'}, videoHeight: 1080,
   item: {id: 'episode', title: f.episode, kind: 'episode', showId: 'show', showTitle: f.show, seasonNumber: 2, episodeNumber: 3, art: []}, durationMs: 1800000}; }
 function summary(session = stream()): OwnerActivitySummary { return {scope: {serverId: 'server', viewerFence: 'viewer-fence'}, serverName: f.server, observedAt: '2026-10-22T12:00:00Z',
-  streams: {count: 9, items: [session]}, scans: [{libraryId: 'library', libraryName: f.libraryPrefix, kind: 'movies', phase: 'analyzing', analyzed: 12, discovered: 40}],
+  streams: {count: 9, convertingCount: 4, overflow: {count: 6, convertingCount: 3}, items: [session, {...session, id: 'second', converting: false, decision: {}}, {...session, id: 'third', converting: false, decision: {}}]}, scans: [{libraryId: 'library', libraryName: f.libraryPrefix, kind: 'movies', phase: 'analyzing', analyzed: 12, discovered: 40}],
   tasks: {count: 4, items: [{id: 'task', kind: 'metadata', state: 'running', phase: 'fetching', processed: 5}]},
   update: {available: true, state: 'available', current: '1.0', latest: '1.1'}, health: {degraded: false}, lastScanFinishedAt: '2026-10-22T11:55:00Z'}; }
 const actions = {onDashboard: () => {}, onRetry: () => {}, openUpdate: () => {}};
 
 test('Activity maps semantic episode identity while keeping the real profile and device separate', () => {
   const view = activityView(summary(), environment, actions), value = view.streams[0];
-  assert.equal(value.identity.title, f.show);
-  assert.equal(value.identity.subtitle.find(part => part.id === 'episode-title')?.text, f.episode);
-  assert.equal(value.name, f.profile); assert.equal(value.device, f.device);
+  assert.equal(value.identity!.title, f.show);
+  assert.equal(value.identity!.subtitle.find(part => part.id === 'episode-title')?.text, f.episode);
+  assert.equal(value.username, f.account); assert.equal(value.name, f.profile); assert.equal(value.device, f.device);
   assert.equal(value.positionMs, 480000); assert.equal(value.durationMs, 1800000);
   assert.equal(view.streamCount, 9); assert.equal(view.taskCount, 4);
 });
@@ -31,7 +31,7 @@ test('conversion names the delivered height and never substitutes the requested 
   assert.equal(activityView(summary({...stream(), videoHeight: undefined}), environment, actions).streams[0].conversion?.text, defaultI18n.t('web.nowPlaying.delivery.convertVideo'));
 });
 test('Activity decisions use canonical open-enum validation and conversion precedence', () => {
-  const view = (decision: ActivitySummarySession['decision']) => activityView(summary({...stream(), decision}), environment, actions).streams[0];
+  const view = (decision: ActivitySummarySession['decision']) => activityView(summary({...stream(), decision, converting: decision.video?.action === 'transcode' || decision.subtitles?.action === 'burn' || decision.audio?.action === 'transcode'}), environment, actions).streams[0];
   assert.equal(view({video: {action: 'future-video-mode', reasons: []}, audio: {action: 'transcode', reasons: []}}).conversion?.text,
     defaultI18n.t('web.nowPlaying.delivery.convertAudio'));
   assert.equal(view({video: {action: 'copy', reasons: []}, audio: {action: 'transcode', reasons: []}, subtitles: {action: 'burn', reasons: []}}).conversion?.text,
@@ -58,7 +58,28 @@ test('cold loading, refreshing and errors assert no health, counts or update fac
     for (const field of ['health', 'streamCount', 'taskCount', 'update']) assert.equal(Object.hasOwn(view, field), false);
     assert.deepEqual(view.streams, []); assert.deepEqual(view.scans, []); assert.deepEqual(view.tasks, []);
   }
-  const document = {...summary(), streams: {count: 0, items: []}, tasks: {count: 0, items: []}, scans: []};
+  const document = {...summary(), streams: {count: 0, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: []}, tasks: {count: 0, items: []}, scans: []};
   const ready = activityPanelView({phase: 'ready', document}, f.server, environment, actions);
   assert.equal(ready.streamCount, 0); assert.equal(ready.taskCount, 0); assert.equal(ready.health, 'normal');
+});
+
+test('Activity preserves returned priority order and authoritative full-set overflow without inferring recency', () => {
+  const document = summary();
+  const view = activityView(document, environment, actions);
+  assert.deepEqual(view.streams.map(row => row.id), document.streams.items.map(row => row.id));
+  assert.equal(view.streamOverflow, document.streams.overflow);
+  assert.equal(view.streams[0].startedAt, document.streams.items[0].startedAt);
+});
+test('missing usernames and missing subject facts stay absent and never drop a selected session', () => {
+  const document = summary({...stream(), user: {id: 'account'}, profile: {id: 'profile', name: ''}, device: {id: 'device', name: ''}, item: undefined, problem: true});
+  const row = activityView(document, environment, actions).streams[0];
+  assert.equal(row.username, undefined); assert.equal(row.name, ''); assert.equal(row.device, '');
+  assert.equal(row.identity, undefined); assert.equal(row.title, undefined); assert.ok(row.problem);
+  assert.equal(activityView(document, environment, actions).streams.length, 3);
+});
+test('row and overflow navigation use the existing genuine Dashboard callbacks', () => {
+  const calls: unknown[] = [];
+  const view = activityView(summary(), environment, {...actions, onDashboard: section => calls.push(section)});
+  view.streams[0].onOpen(); view.onDashboard('streams'); view.scans[0].onOpen(); view.tasks[0].onOpen();
+  assert.deepEqual(calls, ['streams', 'streams', 'activity', 'activity']);
 });

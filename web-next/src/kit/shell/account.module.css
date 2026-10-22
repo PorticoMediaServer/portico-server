@@ -52,6 +52,7 @@
 .who { display: flex; align-items: center; gap: 14px; padding: 20px 20px 16px; }
 .who > .avatar { font-size: 19px; }
 .who b { display: block; font-size: 17px; font-weight: 700; }
+.identityProfile { margin-left: 10px; font-size: .85em; font-weight: 600; color: var(--color-text-secondary); }
 .who small { display: block; font-size: 13px; color: var(--color-text-tertiary); margin-top: 2px; }
 .who .factParts { display: flex; flex-wrap: wrap; gap: 12px; }
 .switchProfiles { padding: 4px 20px 16px; }
@@ -86,7 +87,7 @@
 .notice[data-layout='phone'][data-unread]::before { left: 7px; top: 26px; }
 .notice[data-layout='phone'] .subject { width: 32px; height: 32px; border-radius: 9px; background: var(--color-raised-bright); }
 .notice[data-layout='phone'] .subject[data-kind='channel'] { background: var(--subject-tint); }
-.notice[data-layout='phone'] .subject[data-warning] { background: color-mix(in srgb, var(--color-amber) 15%, transparent); color: var(--color-amber); }
+.notice[data-layout='phone'] .subject[data-warning] { background: color-mix(in srgb, var(--color-danger) 12%, transparent); color: var(--color-danger); }
 .notice[data-layout='phone'] b { padding-right: 0; }
 .notice[data-layout='phone'] p { font-size: 13px; margin-top: 3px; }
 .notice[data-layout='phone'] .when { font-size: 12px; font-weight: 600; margin-top: 5px; }

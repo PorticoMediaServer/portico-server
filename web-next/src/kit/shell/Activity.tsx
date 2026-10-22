@@ -12,7 +12,8 @@ import styles from './activity.module.css';
 
 const tDefault = createI18n().t;
 export type ActivityStreamView = Readonly<{
-  id: string; identity: PlaybackIdentityModel; name: string; device: string; initial: string; art?: ProfileTone;
+  id: string; identity?: PlaybackIdentityModel; title?: string; name: string; device: string; initial: string; art?: ProfileTone;
+  username?: string; startedAt?: string; problem?: FactPart;
   positionMs?: number; durationMs?: number; paused: boolean; conversion?: FactPart; rate?: FactPart; onOpen: () => void;
 }>;
 export type ActivityWorkView = Readonly<{
@@ -20,7 +21,7 @@ export type ActivityWorkView = Readonly<{
   discovered?: number; progressText?: string; onOpen: () => void;
 }>;
 export type ActivityPanelView = Readonly<{
-  serverName: string; health?: 'normal' | 'attention'; streamCount?: number; taskCount?: number;
+  serverName: string; health?: 'normal' | 'attention'; streamCount?: number; taskCount?: number; streamOverflow?: Readonly<{count: number; convertingCount: number}>;
   streams: readonly ActivityStreamView[]; scans: readonly ActivityWorkView[]; tasks: readonly ActivityWorkView[];
   update?: Readonly<{available: boolean; latest?: string; current?: string; onOpen: () => void}>;
   lastScan?: string; phase: 'ready' | 'loading' | 'error'; onRetry: () => void; onDashboard: (section?: 'streams' | 'activity') => void;
@@ -46,7 +47,8 @@ function OwnerActivity({view, open, onOpenChange, t}: {view: ActivityPanelView; 
 
 export function ActivityPanel({viewerRole, view, t = tDefault}: {viewerRole: ServerRole; view: ActivityPanelView; t?: ShellTranslate}) {
   if (viewerRole !== 'owner') return null;
-  const streams = view.streams.slice(0, 4), tasks = view.tasks.slice(0, 3);
+  const streams = view.streams, tasks = view.tasks.slice(0, 3);
+  if (streams.length > 3) throw new RangeError('Activity requires the server-selected maximum of three sessions.');
   const known = view.phase === 'ready';
   const quiet = known && view.streamCount === 0 && view.scans.length === 0 && view.taskCount === 0;
   return <div className={styles.panel}>
@@ -55,7 +57,7 @@ export function ActivityPanel({viewerRole, view, t = tDefault}: {viewerRole: Ser
     <div className={styles.divider} />
     {view.phase === 'loading' ? <div className={styles.loading} role="status" aria-label={t('next.shell.loadingActivity')}><i /><i /><i /></div> : view.phase === 'error' ? <div className={styles.error}><p>{t('next.shell.activityError')}</p><button type="button" onClick={view.onRetry}>{t('next.shell.tryAgain')}</button></div> : <>
       {quiet ? <div className={styles.quiet}><span className={styles.quietLead}><Icon name="i-act" size={18} /></span><div><b>{t('next.shell.activityQuiet')}</b>{view.lastScan && <p>{t('next.shell.lastScan', {when: view.lastScan})}</p>}</div></div> : <>
-        {(view.streamCount ?? 0) > 0 && <section className={styles.group}><h4>{t('next.shell.nowPlaying')}</h4>{streams.map(stream => <ActivityStream key={stream.id} stream={stream} />)}{view.streamCount !== undefined && view.streamCount > streams.length && <More count={view.streamCount - streams.length} onClick={() => view.onDashboard('streams')} t={t} />}</section>}
+        {(view.streamCount ?? 0) > 0 && <section className={styles.group}><h4>{t('next.shell.nowPlaying')}</h4>{streams.map(stream => <ActivityStream key={stream.id} stream={stream} t={t} />)}{view.streamOverflow !== undefined && view.streamOverflow.count > 0 && <button type="button" className={styles.more} onClick={() => view.onDashboard('streams')}><span>{t('next.shell.moreStreaming', {count: view.streamOverflow.count})}</span>{view.streamOverflow.convertingCount > 0 && <span>{t('next.shell.moreConverting', {count: view.streamOverflow.convertingCount})}</span>}</button>}</section>}
         {view.scans.length > 0 && <section className={styles.group}><h4>{t('next.shell.libraryScans')}</h4>{view.scans.map(scan => <ActivityWork key={scan.id} work={scan} scan t={t} />)}</section>}
         {(view.taskCount ?? 0) > 0 && <section className={styles.group}><h4>{t('next.shell.backgroundTasks')}</h4>{tasks.map(task => <ActivityWork key={task.id} work={task} t={t} />)}{view.taskCount !== undefined && view.taskCount > tasks.length && <More count={view.taskCount - tasks.length} onClick={() => view.onDashboard('activity')} t={t} />}</section>}
       </>}
@@ -64,11 +66,11 @@ export function ActivityPanel({viewerRole, view, t = tDefault}: {viewerRole: Ser
   </div>;
 }
 function More({count, onClick, t}: {count: number; onClick: () => void; t: ShellTranslate}) { return <button type="button" className={styles.more} onClick={onClick}>{t('next.shell.moreDashboard', {count})}</button>; }
-function ActivityStream({stream}: {stream: ActivityStreamView}) {
+function ActivityStream({stream, t}: {stream: ActivityStreamView; t: ShellTranslate}) {
   const fraction = timelineFacts(stream.durationMs, stream.positionMs).progress;
-  return <button type="button" className={styles.work} data-stream="true" onClick={stream.onOpen}><ProfileAvatarFace initial={stream.initial} art={stream.art} size={32} appearance="session" /><span className={styles.workText}>
-    <span className={styles.line1}><b>{stream.identity.title}</b>{stream.identity.subtitle.map(part => <span key={part.id} data-code={part.id === 'episode-label' || undefined}>{part.text}</span>)}</span>
-    <span className={styles.line2}><em>{stream.name}</em><span className={styles.device}>{stream.device}</span>{stream.conversion && <span className={styles.conversion}><Icon name="i-swap" size={13} />{stream.conversion.text}</span>}{stream.rate && <span>{stream.rate.text}</span>}</span>
+  return <button type="button" className={styles.work} data-stream="true" data-session-id={stream.id} onClick={stream.onOpen}><ProfileAvatarFace initial={stream.initial} art={stream.art} size={32} appearance="session" /><span className={styles.workText}>
+    <span className={styles.line1}><b>{stream.identity?.title || stream.title || t('next.shell.playbackDetailsUnavailable')}</b>{stream.identity?.subtitle.map(part => <span key={part.id} data-code={part.id === 'episode-label' || undefined}>{part.text}</span>)}</span>
+    <span className={styles.line2}><em>{stream.username || t('next.shell.usernameUnavailable')}</em>{stream.name && stream.name !== stream.username && <span className={styles.profile}>{stream.name}</span>}<span className={styles.device}>{stream.device}</span>{stream.problem && <span className={styles.problem}>{stream.problem.text}</span>}{stream.conversion && <span className={styles.conversion}><Icon name="i-swap" size={13} />{stream.conversion.text}</span>}{stream.rate && <span>{stream.rate.text}</span>}</span>
     {fraction !== undefined && <span className={styles.progress} data-paused={stream.paused || undefined} aria-hidden="true"><span style={{transform: `scaleX(${fraction})`}} /></span>}
   </span></button>;
 }

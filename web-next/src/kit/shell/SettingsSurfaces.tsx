@@ -7,7 +7,7 @@ import type {BottomSheetProps} from '../overlays/BottomSheet';
 import {Artwork} from '../artwork/Artwork';
 import type {ArtworkSource} from '../artwork/types';
 import {OwnerTag, ServerMark, type ServerRole, type ShellTranslate} from './ServerIdentity';
-import {ProfileAvatarFace, type ProfileIdentity} from './AccountSurfaces';
+import {IdentityName, ProfileAvatarFace, type ProfileIdentity} from './AccountSurfaces';
 import styles from './settings.module.css';
 
 const tDefault = createI18n().t;
@@ -47,7 +47,7 @@ export type SettingsSheetProps = Omit<BottomSheetProps, 'title' | 'children'> & 
 export function SettingsSheet({profile, accountDescription, onProfile, query, onQueryChange, shortcuts, children, t = tDefault, ...props}: SettingsSheetProps) {
   return <BottomSheet {...props} title={t('next.shell.settings')} showCloseButton className={styles.settingsSheet} headerClassName={styles.sheetHeader} bodyClassName={styles.sheetBody}>
     <label className={styles.sheetFind}><Icon name="i-search" size={19} /><input type="search" value={query} onChange={event => onQueryChange(event.currentTarget.value)} aria-label={t('next.shell.searchSettings')} placeholder={t('next.shell.searchSettings')} /></label>
-    <button type="button" className={styles.profileCard} onClick={onProfile}><ProfileAvatarFace initial={profile.initial} art={profile.art} size={54} /><span><b>{profile.name}</b><small>{accountDescription}</small></span><Icon name="i-right" size={20} /></button>
+    <button type="button" className={styles.profileCard} onClick={onProfile}><ProfileAvatarFace initial={profile.initial} art={profile.art} size={54} /><span><b><IdentityName person={profile} /></b><small>{accountDescription}</small></span><Icon name="i-right" size={20} /></button>
     <ShortcutTiles items={shortcuts} compact />{children}
   </BottomSheet>;
 }
