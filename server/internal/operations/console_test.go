@@ -563,3 +563,17 @@ func TestActivityProgressHintsBoundCadenceAndNeverCarryPrivateJobData(t *testing
 		t.Fatal("unbounded progress or missing terminal hint", count, e)
 	}
 }
+
+func TestConsoleBackupAlertUsesExistingEmptyAdminHints(t *testing.T) {
+	s, _, _ := consoleFixture(t)
+	ctx := context.Background()
+	for _, active := range []bool{true, true, false, false} {
+		if err := s.Alert(ctx, "backup-failed", "warning", active); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var count int
+	if err := s.DB.QueryRow(`SELECT count(*) FROM api_events WHERE audience='admin' AND type='server.updated' AND resource_kind='alert' AND data=''`).Scan(&count); err != nil || count != 2 {
+		t.Fatal(count, err)
+	}
+}

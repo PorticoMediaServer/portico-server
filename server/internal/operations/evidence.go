@@ -434,6 +434,9 @@ func (s *Store) Alert(ctx context.Context, code, severity string, active bool, d
 		if _, e = tx.Exec(`UPDATE console_alerts SET status='resolved',revision=revision+1,last_ms=? WHERE code=? AND status!='resolved'`, s.now(), code); e != nil {
 			return e
 		}
+		if e = AppendActivityProgressTx(tx, "server.updated", "alert", id, strconv.FormatInt(revision+1, 10), true); e != nil {
+			return e
+		}
 		return gated2.Commit()
 	}
 	opened := e == sql.ErrNoRows || status == "resolved"
@@ -461,6 +464,9 @@ func (s *Store) Alert(ctx context.Context, code, severity string, active bool, d
 				return e
 			}
 		}
+	}
+	if e = AppendActivityProgressTx(tx, "server.updated", "alert", id, strconv.FormatInt(revision+1, 10), opened); e != nil {
+		return e
 	}
 	return gated2.Commit()
 }

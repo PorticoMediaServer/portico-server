@@ -378,6 +378,20 @@ func TestActivityMajorIssuesExcludeOrdinaryDiagnosticsAndResolve(t *testing.T) {
 	if out = read(); len(out.MajorIssues) != 0 {
 		t.Fatal("resolved issue retained", out.MajorIssues)
 	}
+	// The scheduled backup's actual producer raises this alert, not an operation.
+	for _, status := range []string{"open", "acknowledged", "resolved"} {
+		if _, e := d.DB.Exec(`INSERT INTO console_alerts VALUES('backup','backup-failed','warning',?,1,1,1,1) ON CONFLICT(code) DO UPDATE SET status=excluded.status`, status); e != nil {
+			t.Fatal(e)
+		}
+		out = read()
+		if status == "resolved" {
+			if len(out.MajorIssues) != 0 {
+				t.Fatal("successful backup retained warning", out.MajorIssues)
+			}
+		} else if len(out.MajorIssues) != 1 || out.MajorIssues[0].Code != "backup_failed" {
+			t.Fatal("actual backup failure missing", status, out.MajorIssues)
+		}
+	}
 }
 
 func TestActivityDashboardAdminOnlyProjectionAndCurrentCursorFence(t *testing.T) {

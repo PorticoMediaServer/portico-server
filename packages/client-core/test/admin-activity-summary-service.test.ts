@@ -135,7 +135,7 @@ test('settled quiet completion rechecks actual source after waiting for input', 
 });
 test('real administrative hint types coalesce at most once per second and resync rereads without opening a feed', async () => {
   const h = harness(); h.activate(); await h.service.load();
-  for (const type of ['admin.sessions', 'library.scan.updated', 'job.updated', 'operation.updated', 'server.updated']) h.feed.emit(type);
+  for (const type of ['admin.sessions', 'library.scan.updated', 'job.updated', 'operation.updated', 'server.updated', 'list.changed']) h.feed.emit(type);
   await h.clock.advance(999); assert.equal(h.requests.length, 1);
   await h.clock.advance(1); assert.equal(h.requests.length, 2);
   for (const fn of h.feed.resync) fn(); await h.clock.advance(999); assert.equal(h.requests.length, 2);

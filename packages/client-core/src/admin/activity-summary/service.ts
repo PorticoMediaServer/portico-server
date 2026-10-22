@@ -5,7 +5,7 @@ import type {EventsClient} from '../../playback-v1/events.ts';
 import {parseActivitySummary,parseDashboardSessions} from './parser.ts';
 import type {DashboardSessionsSnapshot, ActivitySummaryErrorCode, ActivitySummaryScope, ActivitySummarySnapshot, ActivitySummarySource, ActivitySummarySourceStore, ActivitySummaryTimers, OwnerActivitySummary} from './types.ts';
 
-const hintTypes = ['admin.sessions', 'library.scan.updated', 'job.updated', 'operation.updated', 'server.updated'] as const;
+const hintTypes = ['admin.sessions', 'library.scan.updated', 'job.updated', 'operation.updated', 'server.updated', 'list.changed'] as const;
 const scopeKeys = ['serverId', 'accountId', 'profileId', 'authority', 'role', 'sessionFamilyId', 'authorizationEpoch'] as const;
 const unavailable = Object.freeze({phase: 'unavailable'} as const);
 const defaults: ActivitySummaryTimers = {

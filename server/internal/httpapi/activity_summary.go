@@ -251,7 +251,7 @@ func (d Dependencies) activityMajorIssues(ctx context.Context, tx *sql.Tx, out *
 		return err
 	}
 	var backupFailed bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM console_operations WHERE kind='backup' AND state='failed' AND NOT EXISTS(SELECT 1 FROM console_operations newer WHERE newer.kind='backup' AND newer.state='succeeded' AND newer.updated_ms>console_operations.updated_ms))`).Scan(&backupFailed); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM console_alerts WHERE code='backup-failed' AND status!='resolved')`).Scan(&backupFailed); err != nil {
 		return err
 	}
 	nearlyFull := false
