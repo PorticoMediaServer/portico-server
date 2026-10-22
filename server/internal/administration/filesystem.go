@@ -2,29 +2,38 @@ package administration
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // FilesystemRoot is a place the picker can start from. Windows publishes drive
 // letters, macOS publishes the boot volume and /Volumes, Linux publishes / and
 // the mount table's real mount points.
 type FilesystemRoot struct {
-	Path        string `json:"path"`
-	Name        string `json:"name"`
-	Kind        string `json:"kind"`
-	Description string `json:"description"`
+	Path          string `json:"path"`
+	Name          string `json:"name"`
+	Kind          string `json:"kind"`
+	Description   string `json:"description"`
+	NetworkTarget string `json:"networkTarget,omitempty"`
+	DriveType     string `json:"driveType,omitempty"`
 }
 
 // FilesystemEntry is one directory (or, when files are requested, one file).
 type FilesystemEntry struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Kind string `json:"kind"`
+	Name   string `json:"name"`
+	Hidden bool   `json:"hidden"`
+	Reason string `json:"reason,omitempty"`
+	Path   string `json:"path"`
+	Kind   string `json:"kind"`
 	// Readable says the server could list it; an unreadable directory is still
 	// shown so the owner can see why the picker stops there.
 	Readable bool `json:"readable"`
@@ -45,7 +54,11 @@ type FilesystemPage struct {
 	NextCursor string            `json:"nextCursor"`
 	// Writable reports whether the server can create files here, which is what a
 	// recordings or backup folder actually needs.
-	Writable bool `json:"writable"`
+	Writable        bool     `json:"writable"`
+	WritableChecked bool     `json:"writableChecked"`
+	RunsAs          string   `json:"runsAs,omitempty"`
+	Reason          string   `json:"reason,omitempty"`
+	Suggestions     []string `json:"suggestions"`
 	// Truncated says the root list or directory scan was bounded.
 	Truncated bool `json:"truncated"`
 }
@@ -66,26 +79,42 @@ const maxDirectoryNames = 20000
 // hiddenName filters the names a folder picker should never offer: dotfiles on
 // every platform plus the system directories that are never media roots.
 func hiddenName(parent, name string) bool {
-	if name == "" || strings.HasPrefix(name, ".") {
-		return true
-	}
-	lower := strings.ToLower(name)
-	switch lower {
+	return name == "" || strings.HasPrefix(name, ".") || platformHidden(filepath.Join(parent, name))
+}
+
+func blockedName(parent, name string) bool {
+	switch strings.ToLower(name) {
 	case "$recycle.bin", "system volume information", "$winreagent", "recovery", "config.msi":
 		return true
 	}
-	clean := strings.ToLower(filepath.ToSlash(filepath.Clean(parent)))
-	// Kernel and device trees are never library roots and walking them is
-	// actively harmful.
-	for _, blocked := range []string{"/proc", "/sys", "/dev", "/run"} {
-		if clean == blocked || strings.HasPrefix(clean, blocked+"/") {
-			return true
+	return systemPath(filepath.Join(parent, name))
+}
+
+// BrowseOptions controls only the selected directory; it never inspects children.
+type BrowseOptions struct {
+	ShowHidden    bool
+	Prefix        string
+	CheckWritable bool
+}
+
+// filesystemReason preserves why the selected location could not be opened.
+func filesystemReason(err error, link bool) string {
+	if errors.Is(err, os.ErrPermission) {
+		return "permission"
+	}
+	if errors.Is(err, syscall.ELOOP) {
+		return "broken-link"
+	}
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+		if link {
+			return "broken-link"
 		}
+		return "missing"
 	}
-	if clean == "/" && (lower == "proc" || lower == "sys" || lower == "dev" || lower == "run") {
-		return true
+	if errors.Is(err, syscall.EIO) || errors.Is(err, syscall.ETIMEDOUT) {
+		return "offline"
 	}
-	return false
+	return "offline"
 }
 
 // systemPath refuses a browse into a tree that is not a media location and that
@@ -103,9 +132,20 @@ func systemPath(path string) bool {
 // Browse lists one directory, or the platform roots when path is empty. Entries
 // are directories unless includeFiles is set; files are offered for pickers that
 // choose a single file (a playlist, a guide) rather than a folder.
-func (s *Service) Browse(ctx context.Context, path, token string, limit int, includeFiles bool) (FilesystemPage, error) {
+func (s *Service) Browse(ctx context.Context, path, token string, limit int, includeFiles bool, options ...BrowseOptions) (FilesystemPage, error) {
 	policy := s.pickerPolicy()
-	out := FilesystemPage{Separator: string(os.PathSeparator), Platform: platformName(), Roots: []FilesystemRoot{}, Entries: []FilesystemEntry{}}
+	opt := BrowseOptions{}
+	if len(options) > 0 {
+		opt = options[0]
+	}
+	if !safeText(opt.Prefix, 255) || strings.ContainsAny(opt.Prefix, `/\`) {
+		return FilesystemPage{}, ErrInput
+	}
+	scope := fmt.Sprintf("filesystem:%x", sha256.Sum256([]byte(fmt.Sprintf("%s|%t|%t|%s", filepath.Clean(path), includeFiles, opt.ShowHidden, opt.Prefix))))
+	out := FilesystemPage{Separator: string(os.PathSeparator), Platform: platformName(), Roots: []FilesystemRoot{}, Entries: []FilesystemEntry{}, Suggestions: []string{}}
+	if account, e := user.Current(); e == nil {
+		out.RunsAs = account.Username
+	}
 	if len(policy.Roots) == 0 {
 		for _, root := range FilesystemRoots() {
 			if policy.CheckBrowse(root.Path) == nil {
@@ -124,7 +164,7 @@ func (s *Service) Browse(ctx context.Context, path, token string, limit int, inc
 	if err != nil {
 		return out, err
 	}
-	c, err := decodeCursor("filesystem", token)
+	c, err := decodeCursor(scope, token)
 	if err != nil {
 		return out, err
 	}
@@ -138,8 +178,36 @@ func (s *Service) Browse(ctx context.Context, path, token string, limit int, inc
 	if systemPath(clean) || policy.CheckBrowse(clean) != nil {
 		return out, ErrDenied
 	}
+	out.Path = clean
+	requested := clean
 	clean, err = filepath.EvalSymlinks(clean)
 	if err != nil {
+		linkInfo, _ := os.Lstat(requested)
+		out.Reason = filesystemReason(err, linkInfo != nil && linkInfo.Mode()&os.ModeSymlink != 0)
+		if out.Reason == "permission" {
+			return out, ErrDenied
+		}
+		// Suggestions examine only the requested parent, never its descendants.
+		parent := filepath.Dir(requested)
+		if policy.CheckBrowse(parent) == nil && !systemPath(parent) {
+			if resolved, e := filepath.EvalSymlinks(parent); e == nil && policy.CheckBrowse(resolved) == nil && !systemPath(resolved) {
+				if dir, e := os.Open(resolved); e == nil {
+					names, _ := dir.Readdirnames(maxDirectoryNames)
+					dir.Close()
+					for _, name := range names {
+						if strings.EqualFold(name, filepath.Base(requested)) && !blockedName(resolved, name) && (!hiddenName(resolved, name) || opt.ShowHidden) {
+							candidate := filepath.Join(resolved, name)
+							if info, e := os.Stat(candidate); e == nil && info.IsDir() && policy.CheckBrowse(candidate) == nil {
+								out.Suggestions = append(out.Suggestions, candidate)
+							}
+							if len(out.Suggestions) == 8 {
+								break
+							}
+						}
+					}
+				}
+			}
+		}
 		return out, ErrNotFound
 	}
 	// The checks above were made on the name that was asked for. A link inside
@@ -150,29 +218,73 @@ func (s *Service) Browse(ctx context.Context, path, token string, limit int, inc
 	}
 	info, err := os.Stat(clean)
 	if err != nil || !info.IsDir() {
+		out.Reason = filesystemReason(err, false)
+		if err == nil {
+			out.Reason = "missing"
+		}
 		return out, ErrNotFound
 	}
 	out.Path = clean
 	if parent := filepath.Dir(clean); parent != clean && policy.CheckBrowse(parent) == nil {
 		out.Parent = parent
 	}
-	// Listing is read-only. A browse must never update a media share's mtime.
+	if opt.CheckWritable {
+		out.WritableChecked = true
+		out.Writable = filesystemWritable(clean)
+	}
+	// Browsing and permission checks never create a file or change a share's mtime.
 	directory, err := os.Open(clean)
 	if err != nil {
+		out.Reason = filesystemReason(err, false)
 		return out, ErrDenied
 	}
 	defer directory.Close()
-	names, err := directory.Readdirnames(maxDirectoryNames + 1)
-	if err != nil && !errors.Is(err, io.EOF) && len(names) == 0 {
-		return out, ErrDenied
+	// Keep at most 20,000 matching names. Prefix mode streams through a bounded
+	// million names / two seconds, so matching folders beyond the ordinary cap
+	// can be reached without allocating or statting every nonmatching entry.
+	kept := []string{}
+	maximum := maxDirectoryNames + 1
+	if opt.Prefix != "" {
+		maximum = 1000000
 	}
-	if len(names) > maxDirectoryNames {
-		names, out.Truncated = names[:maxDirectoryNames], true
-	}
-	kept := make([]string, 0, len(names))
-	for _, name := range names {
-		if !hiddenName(clean, name) {
+	deadline := time.Now().Add(2 * time.Second)
+	for visited := 0; visited < maximum; {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+		if time.Now().After(deadline) {
+			out.Truncated = true
+			break
+		}
+		names, e := directory.Readdirnames(min(512, maximum-visited))
+		visited += len(names)
+		for _, name := range names {
+			match := strings.HasPrefix(name, opt.Prefix)
+			if platformName() != "linux" {
+				match = strings.HasPrefix(strings.ToLower(name), strings.ToLower(opt.Prefix))
+			}
+			if !match || blockedName(clean, name) || hiddenName(clean, name) && !opt.ShowHidden {
+				continue
+			}
 			kept = append(kept, name)
+			if len(kept) > maxDirectoryNames {
+				out.Truncated = true
+				break
+			}
+		}
+		if len(kept) > maxDirectoryNames {
+			kept = kept[:maxDirectoryNames]
+			break
+		}
+		if errors.Is(e, io.EOF) {
+			break
+		}
+		if e != nil {
+			out.Reason = filesystemReason(e, false)
+			return out, ErrDenied
+		}
+		if visited == maximum {
+			out.Truncated = true
 		}
 	}
 	// Case-insensitive order, with the exact name breaking ties, so "Films" and
@@ -187,26 +299,30 @@ func (s *Service) Browse(ctx context.Context, path, token string, limit int, inc
 		if policy.CheckBrowse(full) != nil {
 			continue
 		}
-		entry := FilesystemEntry{Name: name, Path: full, Kind: "directory", Readable: true}
+		entry := FilesystemEntry{Name: name, Path: full, Kind: "directory", Readable: true, Hidden: hiddenName(clean, name)}
 		link, err := os.Lstat(full)
 		if err != nil {
 			continue
 		}
 		entry.Symlink = link.Mode()&os.ModeSymlink != 0
+		if entry.Symlink {
+			if target, e := filepath.EvalSymlinks(full); e == nil && (systemPath(target) || policy.CheckBrowse(target) != nil) {
+				continue
+			}
+		}
 		resolved, err := os.Stat(full)
 		if err != nil {
 			// A broken link or an entry the server cannot stat is still shown, so
 			// the owner can see it exists and why it cannot be chosen.
 			entry.Readable = false
-			if !includeFiles {
-				continue
-			}
+			entry.Reason = filesystemReason(err, entry.Symlink)
 			entry.Kind = "unknown"
 		} else if resolved.IsDir() {
 			if handle, err := os.Open(full); err == nil {
 				handle.Close()
 			} else {
 				entry.Readable = false
+				entry.Reason = filesystemReason(err, false)
 			}
 		} else {
 			if !includeFiles {
@@ -217,7 +333,7 @@ func (s *Service) Browse(ctx context.Context, path, token string, limit int, inc
 		out.Entries = append(out.Entries, entry)
 		if len(out.Entries) > size {
 			out.Entries = out.Entries[:size]
-			out.NextCursor = encodeCursor("filesystem", 0, out.Entries[size-1].Name)
+			out.NextCursor = encodeCursor(scope, 0, out.Entries[size-1].Name)
 			break
 		}
 	}

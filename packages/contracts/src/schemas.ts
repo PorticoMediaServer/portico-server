@@ -18380,6 +18380,9 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "hidden": {
+                  "type": "boolean"
+                },
                 "kind": {
                   "type": "string"
                 },
@@ -18392,12 +18395,16 @@ export const schemas = {
                 "readable": {
                   "type": "boolean"
                 },
+                "reason": {
+                  "type": "string"
+                },
                 "symlink": {
                   "type": "boolean"
                 }
               },
               "required": [
                 "name",
+                "hidden",
                 "path",
                 "kind",
                 "readable",
@@ -18405,6 +18412,7 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "maxItems": 200,
             "type": "array"
           },
           "nextCursor": {
@@ -18419,16 +18427,25 @@ export const schemas = {
           "platform": {
             "type": "string"
           },
+          "reason": {
+            "type": "string"
+          },
           "roots": {
             "items": {
               "properties": {
                 "description": {
                   "type": "string"
                 },
+                "driveType": {
+                  "type": "string"
+                },
                 "kind": {
                   "type": "string"
                 },
                 "name": {
+                  "type": "string"
+                },
+                "networkTarget": {
                   "type": "string"
                 },
                 "path": {
@@ -18446,13 +18463,26 @@ export const schemas = {
             "maxItems": 64,
             "type": "array"
           },
+          "runsAs": {
+            "type": "string"
+          },
           "separator": {
             "type": "string"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "type": "array"
           },
           "truncated": {
             "type": "boolean"
           },
           "writable": {
+            "type": "boolean"
+          },
+          "writableChecked": {
             "type": "boolean"
           }
         },
@@ -18465,6 +18495,8 @@ export const schemas = {
           "entries",
           "nextCursor",
           "writable",
+          "writableChecked",
+          "suggestions",
           "truncated"
         ],
         "type": "object"
@@ -18861,6 +18893,28 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "audience": {
+            "properties": {
+              "accounts": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "everyone": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "everyone",
+              "accounts"
+            ],
+            "type": "object"
+          },
+          "filesSkipped": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "id": {
             "type": "string"
           },
@@ -18984,9 +19038,65 @@ export const schemas = {
               "basis"
             ],
             "type": "object"
+          },
+          "summary": {
+            "properties": {
+              "counts": {
+                "items": {
+                  "properties": {
+                    "atLeast": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "atLeast"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "coverUrls": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "empty": {
+                "type": "boolean"
+              },
+              "emptyKnown": {
+                "type": "boolean"
+              },
+              "firstScan": {
+                "type": "boolean"
+              },
+              "latestArtwork": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "counts",
+              "coverUrls",
+              "latestArtwork",
+              "firstScan",
+              "emptyKnown",
+              "empty"
+            ],
+            "type": "object"
           }
         },
         "required": [
+          "filesSkipped",
           "id",
           "name",
           "kind",
@@ -19050,6 +19160,28 @@ export const schemas = {
                 "files"
               ],
               "type": "object"
+            },
+            "audience": {
+              "properties": {
+                "accounts": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "everyone": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "everyone",
+                "accounts"
+              ],
+              "type": "object"
+            },
+            "filesSkipped": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
             "id": {
               "type": "string"
@@ -19174,9 +19306,65 @@ export const schemas = {
                 "basis"
               ],
               "type": "object"
+            },
+            "summary": {
+              "properties": {
+                "counts": {
+                  "items": {
+                    "properties": {
+                      "atLeast": {
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count",
+                      "atLeast"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "coverUrls": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "empty": {
+                  "type": "boolean"
+                },
+                "emptyKnown": {
+                  "type": "boolean"
+                },
+                "firstScan": {
+                  "type": "boolean"
+                },
+                "latestArtwork": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "counts",
+                "coverUrls",
+                "latestArtwork",
+                "firstScan",
+                "emptyKnown",
+                "empty"
+              ],
+              "type": "object"
             }
           },
           "required": [
+            "filesSkipped",
             "id",
             "name",
             "kind",
@@ -25011,6 +25199,61 @@ export const schemas = {
             },
             "pinned": {
               "type": "boolean"
+            },
+            "summary": {
+              "properties": {
+                "counts": {
+                  "items": {
+                    "properties": {
+                      "atLeast": {
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count",
+                      "atLeast"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "coverUrls": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "empty": {
+                  "type": "boolean"
+                },
+                "emptyKnown": {
+                  "type": "boolean"
+                },
+                "firstScan": {
+                  "type": "boolean"
+                },
+                "latestArtwork": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "counts",
+                "coverUrls",
+                "latestArtwork",
+                "firstScan",
+                "emptyKnown",
+                "empty"
+              ],
+              "type": "object"
             }
           },
           "required": [
@@ -25366,6 +25609,61 @@ export const schemas = {
           },
           "pinned": {
             "type": "boolean"
+          },
+          "summary": {
+            "properties": {
+              "counts": {
+                "items": {
+                  "properties": {
+                    "atLeast": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "atLeast"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "coverUrls": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "empty": {
+                "type": "boolean"
+              },
+              "emptyKnown": {
+                "type": "boolean"
+              },
+              "firstScan": {
+                "type": "boolean"
+              },
+              "latestArtwork": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "counts",
+              "coverUrls",
+              "latestArtwork",
+              "firstScan",
+              "emptyKnown",
+              "empty"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -69400,6 +69698,61 @@ export const schemas = {
           },
           "pinned": {
             "type": "boolean"
+          },
+          "summary": {
+            "properties": {
+              "counts": {
+                "items": {
+                  "properties": {
+                    "atLeast": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "atLeast"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "coverUrls": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "empty": {
+                "type": "boolean"
+              },
+              "emptyKnown": {
+                "type": "boolean"
+              },
+              "firstScan": {
+                "type": "boolean"
+              },
+              "latestArtwork": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "counts",
+              "coverUrls",
+              "latestArtwork",
+              "firstScan",
+              "emptyKnown",
+              "empty"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -72708,6 +73061,61 @@ export const schemas = {
           },
           "pinned": {
             "type": "boolean"
+          },
+          "summary": {
+            "properties": {
+              "counts": {
+                "items": {
+                  "properties": {
+                    "atLeast": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "atLeast"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "coverUrls": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "empty": {
+                "type": "boolean"
+              },
+              "emptyKnown": {
+                "type": "boolean"
+              },
+              "firstScan": {
+                "type": "boolean"
+              },
+              "latestArtwork": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "counts",
+              "coverUrls",
+              "latestArtwork",
+              "firstScan",
+              "emptyKnown",
+              "empty"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -78300,6 +78708,61 @@ export const schemas = {
             },
             "pinned": {
               "type": "boolean"
+            },
+            "summary": {
+              "properties": {
+                "counts": {
+                  "items": {
+                    "properties": {
+                      "atLeast": {
+                        "type": "boolean"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "count",
+                      "atLeast"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "coverUrls": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "empty": {
+                  "type": "boolean"
+                },
+                "emptyKnown": {
+                  "type": "boolean"
+                },
+                "firstScan": {
+                  "type": "boolean"
+                },
+                "latestArtwork": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "counts",
+                "coverUrls",
+                "latestArtwork",
+                "firstScan",
+                "emptyKnown",
+                "empty"
+              ],
+              "type": "object"
             }
           },
           "required": [
@@ -96140,12 +96603,20 @@ export const schemas = {
   },
   "GetScanIssuesResponse": {
     "properties": {
+      "count": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "hasMore": {
         "type": "boolean"
       },
       "items": {
         "items": {
           "properties": {
+            "category": {
+              "type": "string"
+            },
             "line": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -96170,6 +96641,7 @@ export const schemas = {
             }
           },
           "required": [
+            "category",
             "line",
             "sequence",
             "path",
@@ -96191,6 +96663,7 @@ export const schemas = {
       }
     },
     "required": [
+      "count",
       "jobId",
       "items",
       "nextSequence",
@@ -112229,6 +112702,28 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "audience": {
+            "properties": {
+              "accounts": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "everyone": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "everyone",
+              "accounts"
+            ],
+            "type": "object"
+          },
+          "filesSkipped": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "id": {
             "type": "string"
           },
@@ -112352,9 +112847,65 @@ export const schemas = {
               "basis"
             ],
             "type": "object"
+          },
+          "summary": {
+            "properties": {
+              "counts": {
+                "items": {
+                  "properties": {
+                    "atLeast": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "atLeast"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "coverUrls": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "empty": {
+                "type": "boolean"
+              },
+              "emptyKnown": {
+                "type": "boolean"
+              },
+              "firstScan": {
+                "type": "boolean"
+              },
+              "latestArtwork": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "counts",
+              "coverUrls",
+              "latestArtwork",
+              "firstScan",
+              "emptyKnown",
+              "empty"
+            ],
+            "type": "object"
           }
         },
         "required": [
+          "filesSkipped",
           "id",
           "name",
           "kind",
@@ -128624,13 +129175,23 @@ export const schemas = {
   },
   "PostLibrariesRequest": {
     "properties": {
+      "folders": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64,
+        "minItems": 1,
+        "type": "array"
+      },
       "kind": {
         "enum": [
           "movie",
           "tv",
           "anime",
           "music",
-          "audiobook"
+          "audiobook",
+          "book",
+          "comic"
         ],
         "type": "string"
       },
@@ -128649,8 +129210,7 @@ export const schemas = {
     },
     "required": [
       "name",
-      "kind",
-      "path"
+      "kind"
     ],
     "type": "object"
   },
@@ -128670,6 +129230,61 @@ export const schemas = {
       },
       "pinned": {
         "type": "boolean"
+      },
+      "summary": {
+        "properties": {
+          "counts": {
+            "items": {
+              "properties": {
+                "atLeast": {
+                  "type": "boolean"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "count",
+                "atLeast"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "coverUrls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "empty": {
+            "type": "boolean"
+          },
+          "emptyKnown": {
+            "type": "boolean"
+          },
+          "firstScan": {
+            "type": "boolean"
+          },
+          "latestArtwork": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "counts",
+          "coverUrls",
+          "latestArtwork",
+          "firstScan",
+          "emptyKnown",
+          "empty"
+        ],
+        "type": "object"
       }
     },
     "required": [

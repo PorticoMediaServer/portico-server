@@ -1962,6 +1962,15 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 0,
+    "query": [
+      "path",
+      "cursor",
+      "limit",
+      "includeFiles",
+      "showHidden",
+      "prefix",
+      "checkWritable"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",

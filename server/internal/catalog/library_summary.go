@@ -1,0 +1,181 @@
+package catalog
+
+import (
+	"context"
+	"database/sql"
+	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
+	"strings"
+)
+
+// LibrarySummary is a viewer-safe bounded catalogue projection. It contains no
+// paths, account details, scan percentages or current-file information.
+type LibrarySummary struct {
+	Counts        []LibraryKindCount `json:"counts"`
+	CoverURLs     []string           `json:"coverUrls"`
+	LatestArtwork string             `json:"latestArtwork"`
+	FirstScan     bool               `json:"firstScan"`
+	EmptyKnown    bool               `json:"emptyKnown"`
+	Empty         bool               `json:"empty"`
+}
+type LibraryKindCount struct {
+	Kind    string `json:"kind"`
+	Count   int    `json:"count"`
+	AtLeast bool   `json:"atLeast"`
+}
+type LibraryAudience struct {
+	Everyone bool `json:"everyone"`
+	Accounts int  `json:"accounts"`
+}
+
+const librarySummaryCap = 20000
+
+func summaryKinds(kind string) []string {
+	switch kind {
+	case "tv", "anime":
+		return []string{"show", "episode"}
+	case "music":
+		return []string{"artist", "album", "song"}
+	case "audiobook", "book", "comic":
+		return []string{"book", "author"}
+	default:
+		return []string{"movie"}
+	}
+}
+
+// SummarizeLibraries uses one bounded catalogue read per allowed library, rather
+// than issuing browse calls for each kind and artwork sample. Every title and
+// cover is checked against the viewer's live content restrictions.
+func (s *Service) SummarizeLibraries(ctx context.Context, viewer Viewer, libraries []Library) (map[string]LibrarySummary, error) {
+	out := map[string]LibrarySummary{}
+	err := dbwork.WithReadSnapshot(ctx, s.db, func(ctx context.Context) error {
+		reader := s.WithContext(ctx)
+		for _, library := range libraries {
+			if !viewer.AllowsLibrary(library.ID) {
+				continue
+			}
+			summary, err := reader.librarySummary(ctx, viewer, library)
+			if err != nil {
+				return err
+			}
+			out[library.ID] = summary
+		}
+		return nil
+	})
+	return out, err
+}
+func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Library) (LibrarySummary, error) {
+	out := LibrarySummary{Counts: []LibraryKindCount{}, CoverURLs: []string{}, Empty: true}
+	kinds := summaryKinds(library.Kind)
+	clause, args := EntityRestrictionSQL("e.id", viewer.Restrictions)
+	selections := []string{}
+	values := []any{}
+	for _, kind := range kinds {
+		code, err := compactcatalog.ParseKind(kind)
+		if err != nil {
+			return out, err
+		}
+		selections = append(selections, `SELECT * FROM (SELECT e.id,e.public_id,e.kind,e.added_ms FROM catalog_entities e INDEXED BY catalog_entities_summary_added WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND e.kind=? AND e.retired=0 ORDER BY e.added_ms DESC,e.id DESC LIMIT 20001)`)
+		values = append(values, library.ID, code)
+	}
+	values = append(values, args...)
+	// Each kind contributes at most 20,001 candidates through its ordered partial
+	// index. Sorting the union and applying live visibility is bounded even for
+	// a cold restriction class and a catalogue with millions of titles.
+	rows, err := s.read().QueryContext(ctx, `WITH candidates AS (`+strings.Join(selections, " UNION ALL ")+`)
+ SELECT pid(e.public_id),k.name,COALESCE(d.poster_url,''),COALESCE(d.backdrop_url,''),(`+clause+`) FROM candidates e JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_item_details d ON d.entity_id=e.id ORDER BY e.added_ms DESC,e.id DESC`, values...)
+	if err != nil {
+		return out, err
+	}
+	counts := map[string]int{}
+	visited := map[string]int{}
+	coverKind := kinds[0]
+	if library.Kind == "music" {
+		coverKind = "album"
+	}
+	targets := []artworkTarget{}
+	fallback := map[artworkTarget]resolvedArtwork{}
+	seen := map[string]bool{}
+	for rows.Next() {
+		var id, kind, poster, backdrop string
+		var visible bool
+		if err = rows.Scan(&id, &kind, &poster, &backdrop, &visible); err != nil {
+			rows.Close()
+			return out, err
+		}
+		visited[kind]++
+		if visited[kind] > librarySummaryCap {
+			continue
+		}
+		if !visible {
+			continue
+		}
+		counts[kind]++
+		for _, countKind := range kinds {
+			if kind == countKind {
+				out.Empty = false
+			}
+		}
+		if kind == coverKind {
+			if len(targets) < 64 {
+				targetKind := kind
+				if kind == "movie" {
+					targetKind = "item"
+				}
+				target := artworkTarget{targetKind, id}
+				targets = append(targets, target)
+				if kind == "movie" {
+					art := resolvedArtwork{}
+					if poster != "" {
+						art.PosterURL = "/v1/items/" + id + "/art/poster"
+					}
+					if backdrop != "" {
+						art.BackdropURL = "/v1/items/" + id + "/art/backdrop"
+					}
+					fallback[target] = art
+				}
+			}
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
+	}
+	art, err := s.resolveArtworkContext(ctx, targets)
+	if err != nil {
+		return out, err
+	}
+	for _, target := range targets {
+		a := art[target]
+		if a.PosterURL == "" {
+			a.PosterURL = fallback[target].PosterURL
+		}
+		if a.BackdropURL == "" {
+			a.BackdropURL = fallback[target].BackdropURL
+		}
+		if len(out.CoverURLs) < 3 && a.PosterURL != "" && !seen[a.PosterURL] {
+			out.CoverURLs = append(out.CoverURLs, a.PosterURL)
+			seen[a.PosterURL] = true
+		}
+		if out.LatestArtwork == "" {
+			out.LatestArtwork = a.BackdropURL
+		}
+	}
+	out.EmptyKnown = true
+	for _, n := range visited {
+		if n > librarySummaryCap {
+			out.EmptyKnown = false
+		}
+	}
+	for _, kind := range kinds {
+		out.Counts = append(out.Counts, LibraryKindCount{Kind: kind, Count: counts[kind], AtLeast: visited[kind] > librarySummaryCap})
+	}
+	err = s.read().QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE j.library_id=? AND j.status IN('complete','complete_with_warnings')) AND EXISTS(SELECT 1 FROM jobs WHERE library_id=? AND status IN('queued','running','paused'))`, library.ID, library.ID).Scan(&out.FirstScan)
+	return out, err
+}
+func libraryAudience(ctx context.Context, tx *sql.Tx, library string) (LibraryAudience, error) {
+	var out LibraryAudience
+	err := tx.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM direct_memberships m WHERE m.disabled=0 AND m.role<>'owner' AND json_array_length(m.allowed_libraries)>0 AND NOT EXISTS(SELECT 1 FROM json_each(m.allowed_libraries) WHERE value=?)),COUNT(*) FROM direct_memberships m WHERE m.disabled=0 AND (m.role='owner' OR json_array_length(m.allowed_libraries)=0 OR EXISTS(SELECT 1 FROM json_each(m.allowed_libraries) WHERE value=?))`, library, library).Scan(&out.Everyone, &out.Accounts)
+	return out, err
+}

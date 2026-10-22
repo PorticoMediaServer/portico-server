@@ -2036,3 +2036,8 @@ export * from './home-service.ts';
 export * from './scan-issues.ts';
 export * from './playback-controls.ts';
 export {sizeClassForWidth, type SizeClass} from './presentation/size-class.ts';
+
+export {readLibrarySummaries,parseLibrarySummary} from './library-summary.ts';
+export type {LibrarySummary} from './library-summary.ts';
+
+export {browseServerFilesystem} from './library-management.ts';

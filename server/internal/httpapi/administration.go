@@ -229,7 +229,7 @@ func (d Dependencies) deletionRoutes(mux *http.ServeMux) {
 
 func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
 	d.httpHandle(mux, "GET /v1/admin/filesystem", d.libraryAdministrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
-		query, err := administrationQuery(r, "path", "cursor", "limit", "includeFiles")
+		query, err := administrationQuery(r, "path", "cursor", "limit", "includeFiles", "showHidden", "prefix", "checkWritable")
 		if err != nil {
 			return nil, err
 		}
@@ -237,10 +237,17 @@ func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
 		if err != nil {
 			return nil, err
 		}
-		if query["includeFiles"] != "" && query["includeFiles"] != "true" && query["includeFiles"] != "false" {
-			return nil, administration.ErrInput
+		for _, key := range []string{"includeFiles", "showHidden", "checkWritable"} {
+			if v := query[key]; v != "" && v != "true" && v != "false" && v != "1" && v != "0" {
+				return nil, administration.ErrInput
+			}
 		}
-		return d.Administration.Browse(ctx, query["path"], query["cursor"], limit, query["includeFiles"] == "true")
+		flag := func(key string) bool { return query[key] == "true" || query[key] == "1" }
+		page, err := d.Administration.Browse(ctx, query["path"], query["cursor"], limit, flag("includeFiles"), administration.BrowseOptions{ShowHidden: flag("showHidden"), Prefix: query["prefix"], CheckWritable: flag("checkWritable")})
+		if page.Reason != "" && (errors.Is(err, administration.ErrDenied) || errors.Is(err, administration.ErrNotFound)) {
+			return page, nil
+		}
+		return page, err
 	}))
 	d.httpHandle(mux, "GET /v1/admin/library-settings", d.libraryAdministrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "cursor", "limit")

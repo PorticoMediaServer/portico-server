@@ -176,6 +176,7 @@ index catalog_entities_fact_gaps
 index catalog_entities_genreless
 index catalog_entities_library
 index catalog_entities_parent
+index catalog_entities_summary_added
 index catalog_entities_title
 index catalog_episodes_position
 index catalog_episodes_season

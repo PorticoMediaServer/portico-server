@@ -904,6 +904,54 @@ func New(d Dependencies) http.Handler {
 			failure(w, e)
 			return
 		}
+
+		ids := make([]string, 0, len(visible))
+		for _, library := range visible {
+			ids = append(ids, library.ID)
+		}
+		viewer, err := d.catalogViewer(r, p, ids, "")
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		summaries, err := d.Catalog.SummarizeLibraries(r.Context(), viewer, visible)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		for i := range visible {
+			summary, ok := summaries[visible[i].ID]
+			if ok {
+				visible[i].Summary = &summary
+			}
+		}
+		// Recheck authority after the composite read before any content escapes.
+		after, err := d.principal(r.WithContext(dbwork.WithClass(r.Context(), dbwork.ClassSecurityFence)))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		current, _, err := d.viewerRestrictions(r.WithContext(dbwork.WithClass(r.Context(), dbwork.ClassSecurityFence)), after)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		if catalog.RestrictionFence(current) != catalog.RestrictionFence(viewer.Restrictions) {
+			failure(w, identity.ErrForbidden)
+			return
+		}
+		allowed, err := d.allowedLibrarySet(r.Context(), after, ids)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		filtered := visible[:0]
+		for _, library := range visible {
+			if allowed[library.ID] {
+				filtered = append(filtered, library)
+			}
+		}
+		visible = filtered
 		write(w, 200, map[string]any{"items": visible})
 	})
 	d.httpHandle(mux, "POST /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
@@ -912,20 +960,23 @@ func New(d Dependencies) http.Handler {
 			failure(w, e)
 			return
 		}
-		var body struct {
-			Name string `json:"name"`
-			Kind string `json:"kind"`
-			Path string `json:"path"`
-			// MetadataAgent is the library's metadata source: "online" (the
-			// default when omitted) or "local" for local metadata only.
-			MetadataAgent string `json:"metadataAgent,omitempty"`
-			// MetadataLanguage is one of the chosen agent's Languages for
-			// Kind (see GET /v1/library-kinds/{kind}/metadata-agents).
-			// Omitted changes nothing.
-			MetadataLanguage string `json:"metadataLanguage,omitempty"`
-		}
+		var body libraryCreationRequest
 		if e := decode(w, r, &body); e != nil {
 			failure(w, e)
+			return
+		}
+		if body.Kind == "book" || body.Kind == "comic" || body.Kind == "audiobook" {
+			if body.MetadataAgent != "" && body.MetadataAgent != metadata.AgentLocal {
+				failure(w, catalog.ErrAdminQuery)
+				return
+			}
+			body.MetadataAgent = metadata.AgentLocal
+		}
+		folders := body.Folders
+		if len(folders) == 0 {
+			folders = []string{body.Path}
+		} else if body.Path != "" {
+			failure(w, catalog.ErrAdminQuery)
 			return
 		}
 		// The language is validated before creating anything: a rejected
@@ -965,7 +1016,7 @@ func New(d Dependencies) http.Handler {
 			_, err := d.Ingestion.QueueTx(r.Context(), tx, l.ID)
 			return err
 		}
-		l, e := d.Catalog.CreateAuthorizedThen(r.Context(), body.Name, body.Kind, body.Path, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, "") }, queue)
+		l, e := d.Catalog.CreateFoldersAuthorizedThen(r.Context(), body.Name, body.Kind, folders, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, "") }, queue)
 		if e != nil {
 			failure(w, e)
 			return
