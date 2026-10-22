@@ -116,6 +116,7 @@ export const typeScale: Readonly<Record<'desktop' | 'handheld' | 'tenFoot', Read
     display: type(62, 68, 700, -.029), title: type(44, 52, 700, -.027), heading: type(32, 40, 600, -.019), subheading: type(27, 34, 600, -.011),
     body: type(24, 33, 400), bodyStrong: type(24, 33, 600), caption: type(20, 27, 400), captionStrong: type(20, 27, 600), micro: type(17, 22, 500, .018), label: type(18, 24, 600),
     lockup: type(120, 112.8, 800, -.045), lockupLong: type(120, 112.8, 800, -.045), rowHeading: type(32, 'normal', 700, -.019),
+    rowSubtitle: type(20, 'normal', 400),
     nav: type(24, 'normal', 700), cardTitle: type(22, 'normal', 600), cardSubtitle: type(20, 'normal', 400), wideTitle: type(26, 'normal', 700),
     meta: type(24, 'normal', 400), eyebrow: type(24, 'normal', 600), synopsis: type(24, 34.8, 400), button: type(26, 'normal', 700), tab: type(26, 'normal', 700), chip: type(22, 'normal', 700),
     badge: type(18, 'normal', 800), tag: type(20, 'normal', 600), episodeTitle: type(24, 'normal', 700, -.01), episodeBody: type(22, 33, 400),
