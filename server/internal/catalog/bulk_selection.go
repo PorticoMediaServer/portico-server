@@ -148,7 +148,8 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 
 func (s *Service) BulkFailures(profile, id, cursor string, v Viewer) (JobFailures, error) {
 	out := JobFailures{Items: []JobFailure{}}
-	if _, e := s.BulkJob(profile, id); e != nil {
+	job, e := s.BulkJob(profile, id)
+	if e != nil {
 		return out, e
 	}
 	after := int64(0)
@@ -161,7 +162,13 @@ func (s *Service) BulkFailures(profile, id, cursor string, v Viewer) (JobFailure
 	}
 	visible, args := v.itemVisibilitySQL("i.id")
 	args = append([]any{id, after}, args...)
-	rows, e := s.read().Query(`SELECT f.ordinal,pid(i.public_id),f.code FROM personal_job_failures f JOIN catalog_entities i ON i.id=f.item_id JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1 WHERE f.job_id=? AND f.ordinal>? AND i.retired=0 AND `+visible+recordingsClause("i.id", v.EffectiveRestrictions())+` ORDER BY f.ordinal LIMIT 101`, args...)
+	query := `SELECT f.ordinal,pid(i.public_id),f.code FROM personal_job_failures f JOIN catalog_entities i ON i.id=f.item_id JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1 WHERE f.job_id=? AND f.ordinal>? AND i.retired=0 AND `+visible+recordingsClause("i.id", v.EffectiveRestrictions())+` ORDER BY f.ordinal LIMIT 101`
+	if job.Command == "playlist-add" || job.Command == "collection-add" {
+		// Membership failures retain their captured public identity after the
+		// ordinary captured item rows are purged or integer IDs are reused.
+		query = `SELECT f.rowid,pid(i.public_id),f.code FROM personal_job_membership_outcomes f JOIN catalog_entities i ON i.public_id=f.item_public_id JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1 WHERE f.job_id=? AND f.rowid>? AND f.outcome='failed' AND i.retired=0 AND `+visible+recordingsClause("i.id", v.EffectiveRestrictions())+` ORDER BY f.rowid LIMIT 101`
+	}
+	rows, e := s.read().Query(query, args...)
 	if e != nil {
 		return out, e
 	}
