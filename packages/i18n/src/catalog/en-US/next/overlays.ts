@@ -63,5 +63,5 @@ export const overlaysMessages = {
   'next.overlays.gallery.toastAction': 'Toast with Undo',
   'next.overlays.gallery.phoneToast': 'Phone toast',
   'next.overlays.gallery.banner': 'Banner',
-  'next.overlays.gallery.notice': 'Banner with Reload',
+  'next.overlays.gallery.notice': 'Update banner',
 } as const satisfies Record<`next.overlays.${string}`, string>;

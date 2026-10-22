@@ -4,12 +4,12 @@ import {readFileSync} from 'node:fs';
 import {registerHooks} from 'node:module';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import ts from 'typescript';
+import {transformTsx} from '../transform-tsx.mjs';
 
 // Exercise the actual renderer under Node, including its real Icon and CSS-module imports.
 registerHooks({load(url, context, next) {
   if (url.endsWith('.module.css')) return {format: 'module', source: 'export default new Proxy({}, {get: (_, key) => String(key)});', shortCircuit: true};
-  if (url.endsWith('.tsx')) return {format: 'module', source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), {compilerOptions: {module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022}}).outputText, shortCircuit: true};
+  if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
   return next(url, context);
 }});
 const {SelectionCircle} = await import('../../src/kit/selection/SelectionCircle.tsx');

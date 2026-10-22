@@ -17,7 +17,9 @@ export function SidePanel({open, onOpenChange, title, children, description, foo
   const ref = useCallback((element: HTMLElement | null) => { panel.current = element; motionRef(element); }, [motionRef]);
   useLayoutEffect(() => {
     if (!open) return;
+    const surface = panel.current;
     outside.current = false; opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const returnTarget = configuration.current.returnFocusRef?.current ?? opener.current;
     focusElement(configuration.current.initialFocusRef?.current ?? (panel.current ? focusable(panel.current)[0] ?? panel.current : null));
     const pointer = (event: PointerEvent) => {
       if (!configuration.current.isTop() || !configuration.current.closeOnOutsidePress || panel.current?.contains(event.target as Node)) return;
@@ -26,7 +28,7 @@ export function SidePanel({open, onOpenChange, title, children, description, foo
     document.addEventListener('pointerdown', pointer);
     return () => {
       document.removeEventListener('pointerdown', pointer);
-      if (!outside.current && (document.activeElement === document.body || panel.current?.contains(document.activeElement))) focusElement(configuration.current.returnFocusRef?.current ?? opener.current);
+      if (!outside.current && (document.activeElement === document.body || surface?.contains(document.activeElement))) focusElement(returnTarget);
     };
   }, [open]);
   if (!present || typeof document === 'undefined') return null;

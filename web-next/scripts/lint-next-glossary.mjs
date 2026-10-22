@@ -2,9 +2,17 @@ import {pathToFileURL} from 'node:url';
 import {resolve} from 'node:path';
 import {AVOIDS} from '../../packages/i18n/scripts/lint-glossary.mjs';
 import {nextMessages} from '../../packages/i18n/src/catalog/en-US/next/index.ts';
+// Exact approved state copy supersedes the legacy glossary for these messages only.
+// states.html:1136 (updated server), :1154 (player details), :1619 (crash recovery).
+const approvedStateCopy = {
+  'next.overlays.reloadHelp': 'Reload to use the new version.',
+  'next.overlays.reload': 'Reload',
+  'next.states.reload': 'Reload',
+  'next.states.playbackInfo': 'Playback info',
+};
 export function lintNextGlossary(messages) {
   const rules = [...AVOIDS, [/Portico Cloud/, 'Portico Services']];
-  return Object.entries(messages).flatMap(([key, value]) => rules.filter(([pattern]) => pattern.test(value)).map(([, expected]) => `${key}: use ${expected}`));
+  return Object.entries(messages).flatMap(([key, value]) => rules.filter(([pattern]) => pattern.test(value) && approvedStateCopy[key] !== value).map(([, expected]) => `${key}: use ${expected}`));
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const failures = lintNextGlossary(nextMessages);

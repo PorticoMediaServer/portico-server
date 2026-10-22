@@ -30,13 +30,13 @@ function RealAmbientCase() {
 }
 
 function useFixtureSources(state: ScenarioState) {
-  const [scheduler] = useState(() => new ArtworkScheduler<ArtworkImage>({
+  const [scheduler] = useState(() => { return new ArtworkScheduler<ArtworkImage>({
     load: async key => {
       if (state === 'error') throw new Error('Gallery artwork failure.');
       if (state === 'loading') return new Promise<ArtworkImage>(() => {});
       return {src: asset(key)};
     }, classify: () => ({retryable: false}), concurrency: 1, priorityExtra: 0, maxEntries: 16,
-  }));
+  }); });
   useEffect(() => () => scheduler.dispose(), [scheduler]);
   return (key: string): ArtworkSource | undefined => state === 'empty' ? undefined : {scheduler, key};
 }

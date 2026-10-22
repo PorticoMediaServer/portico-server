@@ -5,7 +5,7 @@ import {registerHooks} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import ts from 'typescript';
+import {transformTsx} from '../transform-tsx.mjs';
 import {defaultI18n, messageArguments, parseMessage} from '../../../packages/i18n/src/index.ts';
 import {statesMessages} from '../../../packages/i18n/src/catalog/en-US/next/states.ts';
 import {presentError} from '../../../packages/client-core/src/presentation/errors.ts';
@@ -16,7 +16,7 @@ import {keyboardShortcutSections} from '../../src/kit/states/shortcuts.ts';
 // this loader supplies class names only for server-rendered structural tests.
 const hooks = registerHooks({load(url, context, next) {
   if (url.endsWith('.module.css')) return {format:'module',shortCircuit:true,source:'export default new Proxy({}, {get: (_, key) => String(key)});'};
-  if (url.endsWith('.tsx')) return {format:'module',shortCircuit:true,source:ts.transpileModule(readFileSync(fileURLToPath(url),'utf8'),{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText};
+  if (url.endsWith('.tsx')) return {format:'module',shortCircuit:true,source:transformTsx(url)};
   return next(url,context);
 }});
 const {CountdownRing, DetailsPanel, StateView} = await import('../../src/kit/states/State.tsx');

@@ -15,10 +15,11 @@ export type TrackRowData = Readonly<{
 }>;
 export type TrackColumnId = 'number' | 'title' | 'artist' | 'album' | 'plays' | 'duration' | 'added' | 'actions';
 export type TrackColumn = Readonly<{id: TrackColumnId; label?: ReactNode; width?: string; sort?: string}>;
+type TrackRowAttributes = HTMLAttributes<HTMLDivElement>;
 export type TrackActions = Readonly<{
   onPlay: (id: string) => void; onMore: (id: string) => void; onFavorite?: (id: string, favorite: boolean) => void;
   onAddPlaylist?: (id: string) => void; renderSelection?: (row: TrackRowData) => ReactNode;
-  getRowProps?: (row: TrackRowData) => HTMLAttributes<HTMLDivElement>;
+  getRowProps?: (row: TrackRowData) => TrackRowAttributes;
 }>;
 export type TrackTableProps = TrackActions & Readonly<{
   rows: readonly TrackRowData[]; variant: 'album' | 'top-songs' | 'songs' | 'chapters'; label: string;

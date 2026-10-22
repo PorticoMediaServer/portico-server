@@ -1,3 +1,4 @@
+import {referenceArtworkColors} from '../../kit/artwork/dev-colors';
 import {useEffect, useMemo, useState, type ComponentType, type ReactNode} from 'react';
 import {defaultI18n, formatMessage} from '@i18n';
 import {artworkFixtures} from '../../../../packages/i18n/src/catalog/en-US/next/dev/artwork-fixtures';
@@ -17,9 +18,7 @@ import nonImage from '../../kit/fonts/OFL.txt?url';
 
 const t = defaultI18n.t;
 const fixture = (id: keyof typeof artworkFixtures) => formatMessage(artworkFixtures[id]);
-const palette = {first: '#2f86bb', second: '#1e5b52'};
-const gold = {first: '#a8892a', second: '#5a3a1a'};
-const teal = {first: '#2e6a6f', second: '#1f4f7a'};
+const {palette, gold, teal} = referenceArtworkColors;
 type ArtworkEvidence = Readonly<{foreground?: ArtworkSource; ambient?: AmbientArtSource; ambients?: readonly AmbientArtSource[]; palette?: ArtworkPalette; logo?: ArtworkSource; failedLogo?: ArtworkSource}>;
 declare global { var __porticoWebArtworkEvidence: ArtworkEvidence | undefined; }
 /** Dev-only injection of real authority-bound handles; never credentials or fabricated ambient metadata. */
@@ -59,7 +58,7 @@ function cover(size: 'large' | 'grid' | 'phone' | 'phone-book' | 'small' | 'long
 function artist(count: number): ComponentType { return function ArtistCase() { const refs = useReferenceArt(); return <Stage><ArtistCircle covers={[refs.afterHours, refs.abbey, refs.rumours, refs.taylor].slice(0, count)} alt={t('next.artwork.case.artist')} size={172} /></Stage>; }; }
 function person(covers: boolean): ComponentType { return function PersonCase() { const refs = useReferenceArt(); return <Stage><PersonCircle covers={covers ? [refs.harry, refs.martian] : []} initials={covers ? 'JR' : 'MF'} alt={t('next.artwork.case.person')} size={covers ? 172 : 96} /></Stage>; }; }
 function mosaic(count: number): ComponentType { return function MosaicCase() { const refs = useReferenceArt(); return <Stage><CoverMosaic covers={[refs.afterHours, refs.abbey, refs.rumours, refs.taylor].slice(0, count)} alt={t('next.artwork.case.mosaic')} /></Stage>; }; }
-function channel(mode: 'monogram' | 'logo' | 'error'): ComponentType { return function ChannelCase() { const refs = useReferenceArt(), evidence = useArtworkEvidence(); return <Stage><ChannelMark mark={{sourceId: 'reference-lineup', id: 'northwind-news-24', text: 'N24', seed: 'reference-lineup:northwind-news-24'}} source={mode === 'error' ? evidence?.failedLogo ?? refs.nonImage : mode === 'logo' ? evidence?.logo : undefined} tint="#286383" alt={t('next.artwork.case.channel')} /></Stage>; }; }
+function channel(mode: 'monogram' | 'logo' | 'error'): ComponentType { return function ChannelCase() { const refs = useReferenceArt(), evidence = useArtworkEvidence(); return <Stage><ChannelMark mark={{sourceId: 'reference-lineup', id: 'northwind-news-24', text: 'N24', seed: 'reference-lineup:northwind-news-24'}} source={mode === 'error' ? evidence?.failedLogo ?? refs.nonImage : mode === 'logo' ? evidence?.logo : undefined} tint={referenceArtworkColors.channel} alt={t('next.artwork.case.channel')} /></Stage>; }; }
 const profiles: readonly ProfilePickerProfile[] = [
   {id: 'demo', name: fixture('next.artwork.fixture.demo'), eligible: true, art: 'blue', primary: true},
   {id: 'alex', name: fixture('next.artwork.fixture.alex'), eligible: true, art: 'violet', pinRequired: true},

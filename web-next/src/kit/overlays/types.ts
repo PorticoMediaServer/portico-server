@@ -21,6 +21,8 @@ export type AnchoredOverlayProps = Omit<OverlaySurfaceProps, 'footer'> & {
   anchorRef?: RefObject<HTMLElement | null>;
   modal?: boolean;
   placement?: 'bottom-start' | 'bottom-end' | 'top-start' | 'top-end';
+  sideOffset?: number;
+  alignOffset?: number;
   width?: number;
 };
 export type OverlayStyle = CSSProperties & Record<`--overlay-${string}`, string | number>;

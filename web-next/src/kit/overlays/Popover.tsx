@@ -8,7 +8,7 @@ import styles from './overlays.module.css';
 
 export type PopoverProps = AnchoredOverlayProps & {role?: 'dialog' | 'menu'; onContentKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void};
 
-export function Popover({open, onOpenChange, title, children, description, trigger, anchorRef, modal = false, placement = 'bottom-end', width = 300, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, role = 'dialog', onContentKeyDown}: PopoverProps) {
+export function Popover({open, onOpenChange, title, children, description, trigger, anchorRef, modal = false, placement = 'bottom-end', sideOffset = 8, alignOffset = 0, width = 300, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, role = 'dialog', onContentKeyDown}: PopoverProps) {
   const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef ?? anchorRef);
   const present = usePresence(open, 160), motionRef = useSurfaceMotion(open, 'menu');
   const anchor = useMemo(() => ({current: {getBoundingClientRect: () => anchorRef?.current?.getBoundingClientRect() ?? new DOMRect()}}), [anchorRef]);
@@ -26,7 +26,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
   return <RadixPopover.Root open={open} onOpenChange={value => { onOpenChange(value, reason.current); reason.current = 'action'; }} modal={modal}>
     {trigger ? <RadixPopover.Trigger asChild>{trigger}</RadixPopover.Trigger> : <RadixPopover.Anchor virtualRef={anchor} />}
     {present && !superseded && <RadixPopover.Portal forceMount><RadixPopover.Content forceMount ref={motionRef}
-      side={placement.startsWith('top') ? 'top' : 'bottom'} align={placement.endsWith('start') ? 'start' : 'end'} sideOffset={8} collisionPadding={8}
+      side={placement.startsWith('top') ? 'top' : 'bottom'} align={placement.endsWith('start') ? 'start' : 'end'} sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={8}
       id={`${id}-content`} className={classes(styles.popover, className)} style={{'--overlay-width': `${width}px`} as OverlayStyle} role={role}
       aria-label={accessibilityLabel} aria-labelledby={accessibilityLabel ? undefined : `${id}-title`} aria-describedby={description === undefined ? undefined : `${id}-description`}
       data-state={open ? 'open' : 'closed'} data-testid={testID}
