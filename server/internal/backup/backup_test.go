@@ -370,7 +370,7 @@ func TestStageValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	handle.Close()
-	if _, err = svc.Stage(ctx, Source{Path: newer}); !errors.Is(err, persistence.ErrCandidateNewer) {
+	if _, err = svc.Stage(ctx, Source{Path: newer}); !errors.Is(err, persistence.ErrCandidatePreRelease) {
 		t.Fatalf("newer schema staged: %v", err)
 	}
 }
@@ -637,7 +637,7 @@ func TestRestorePreReleaseBackupIsRefused(t *testing.T) {
 	if _, err = svc.Stage(context.Background(), Source{Path: oldPath}); !errors.Is(err, persistence.ErrCandidatePreRelease) {
 		t.Fatalf("pre-release backup staged: %v", err)
 	}
-	if !strings.Contains(persistence.ErrSchemaResetRequired.Error(), "can't be upgraded") {
+	if !strings.Contains(persistence.ErrSchemaResetRequired.Error(), "state directory") {
 		t.Fatalf("refusal message: %q", persistence.ErrSchemaResetRequired)
 	}
 	var marker string

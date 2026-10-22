@@ -702,11 +702,8 @@ func installNetworkingClaimsForTest(t *testing.T, ctx context.Context, db *sql.D
 		return e
 	}
 	if existing == 0 {
-		baseline, e := persistence.MigrationSQL(1)
-		if e != nil {
-			return e
-		}
-		if _, e = db.ExecContext(ctx, baseline); e != nil {
+		baseline := persistence.BaselineSQL()
+		if _, e := db.ExecContext(ctx, baseline); e != nil {
 			return e
 		}
 	}

@@ -9,12 +9,11 @@ import (
 )
 
 // Restore-candidate validation errors. The admin API reports them as
-// restore_not_portico, restore_integrity_failed, restore_schema_newer and
+// restore_not_portico, restore_integrity_failed and
 // restore_pre_release.
 var (
 	ErrCandidateNotPortico = errors.New("this file is not a Portico database")
 	ErrCandidateIntegrity  = errors.New("this database copy failed its integrity check")
-	ErrCandidateNewer      = errors.New("this database was written by a newer version of Portico")
 	ErrCandidatePreRelease = ErrSchemaResetRequired
 )
 
@@ -23,9 +22,9 @@ var (
 const sqliteHeader = "SQLite format 3\x00"
 
 // InspectCandidate validates a restore candidate at path without changing the
-// live database and without running migrations on the candidate. It returns
-// the candidate's schema version: an older version is fine, because the
-// ordinary migrations run when the restored server starts.
+// live database or converting the candidate. It returns
+// the matching baseline's diagnostic format marker. A different baseline
+// is refused; restore never converts it.
 func InspectCandidate(ctx context.Context, path string) (int, error) {
 	head, err := os.Open(path)
 	if err != nil {
@@ -62,41 +61,14 @@ func InspectCandidate(ctx context.Context, path string) (int, error) {
 	if scanErr != nil || len(lines) != 1 || lines[0] != "ok" {
 		return 0, ErrCandidateIntegrity
 	}
-	var tables int
-	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN('configuration','schema_migrations')`).Scan(&tables); err != nil || tables != 2 {
+	var configuration int
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='configuration'`).Scan(&configuration); err != nil || configuration != 1 {
 		return 0, ErrCandidateNotPortico
 	}
-	steps, err := schemaMigrations()
-	if err != nil {
+	if err = verifyBaseline(ctx, db); err != nil {
 		return 0, err
 	}
-	latest := steps[len(steps)-1].version
-	stored, err := storedSchemaVersion(ctx, db)
-	if err != nil {
-		return 0, err
-	}
-	applied, err := appliedMigrations(ctx, db)
-	if err != nil {
-		return 0, err
-	}
-	// Pre-release first (see migrateWith): its schema version is above the
-	// baseline's too.
-	if applied[baselineSchemaVersion] == "" {
-		return 0, ErrCandidatePreRelease
-	}
-	if stored > latest {
-		return 0, ErrCandidateNewer
-	}
-	embedded := make(map[int]bool, len(steps))
-	for _, step := range steps {
-		embedded[step.version] = true
-	}
-	for version := range applied {
-		if !embedded[version] {
-			return 0, ErrCandidateNewer
-		}
-	}
-	return stored, nil
+	return SchemaVersion(), nil
 }
 
 func readFull(file *os.File, buf []byte) (int, error) {
