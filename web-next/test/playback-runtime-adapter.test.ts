@@ -498,3 +498,130 @@ test('runtime reports an expired live bookmark instead of claiming a clamped res
   assert.equal(f.runtime.getSnapshot().problem, 'channel_bookmark_expired');
   assert.equal(f.log.slice(before).some(r => r.method === 'PATCH' && (r.body as {seek?: {positionMs: number}}).seek?.positionMs === 30000), false);
 });
+
+test('runtime rejects missing or invalid action values before changing the mounted media', async t => {
+  const f = setup(t); await f.runtime.play('movie', 20); const engine = await f.arrive();
+  const fence = f.runtime.getSnapshot().fence;
+  assert.ok(fence);
+  const before = f.log.length, seeks = [...f.video.seeks], plays = f.video.plays;
+  await assert.rejects(f.runtime.onAction({kind: 'seek', fence}), /invalid_playback_position/);
+  for (const seconds of [NaN, Infinity, -1, 1e9 + 1]) await assert.rejects(f.runtime.onAction({kind: 'seek', fence, seconds}), /invalid_playback_position/);
+  await assert.rejects(f.runtime.onAction({kind: 'volume', fence}), /invalid_playback_volume/);
+  for (const volume of [NaN, Infinity, -0.1, 1.1]) await assert.rejects(f.runtime.onAction({kind: 'volume', fence, volume}), /invalid_playback_volume/);
+  assert.deepEqual(f.video.seeks, seeks);
+  assert.equal(f.video.volume, 1); assert.equal(f.video.plays, plays); assert.equal(engine.destroyed, false);
+  assert.equal(f.log.slice(before).some(request => request.method === 'POST' || request.method === 'PATCH' || request.method === 'DELETE'), false);
+  await f.runtime.onAction({kind: 'volume', fence, volume: 0});
+  assert.equal(f.video.volume, 0); assert.equal(f.runtime.getSnapshot().presentation?.volume, 0);
+  await f.runtime.onAction({kind: 'mute', fence}); assert.equal(f.video.muted, true);
+  await f.runtime.onAction({kind: 'mute', fence}); assert.equal(f.video.muted, false);
+});
+
+test('runtime queue-only commands cannot reinterpret a real live fence as a catalogue item', async t => {
+  const f = setup(t); await f.runtime.selectionPlayback(() => true).playChannel(homeChannel, selectionContext, new AbortController().signal);
+  const engine = await f.arriveLive(), fence = f.runtime.getSnapshot().fence;
+  assert.ok(fence); assert.equal(fence.kind, 'channel');
+  const before = f.log.length, plays = f.video.plays;
+  await assert.rejects(f.runtime.replay(fence), /playback_command_unavailable/);
+  await assert.rejects(f.runtime.previous(fence), /playback_command_unavailable/);
+  await assert.rejects(f.runtime.next(fence), /playback_command_unavailable/);
+  await assert.rejects(f.runtime.setQuality(fence, 'original'), /playback_quality_unavailable/);
+  await assert.rejects(f.runtime.selectAudio(fence, 'a1'), /playback_audio_unavailable/);
+  await assert.rejects(f.runtime.selectSubtitle(fence, null), /playback_subtitle_unavailable/);
+  await assert.rejects(f.runtime.restoreBookmark(fence, true), /stale_playback_command/);
+  assert.deepEqual(f.runtime.getSnapshot().fence, fence);
+  assert.equal(engine.destroyed, false); assert.equal(f.video.plays, plays);
+  assert.equal(f.log.slice(before).some(request => request.method !== 'GET'), false);
+  assert.equal(f.log.some(request => request.path.startsWith('/v1/items/') || request.path === '/v1/queues'), false);
+});
+
+test('runtime refuses restoring the current queue or a different expected bookmark without toggling playback', async t => {
+  const f = setup(t); await f.runtime.play('song_one', 10); await f.arrive();
+  const audio = f.runtime.getSnapshot().fence;
+  assert.ok(audio);
+  if (audio.kind !== 'queue') assert.fail('queue fence required');
+  await f.runtime.play('movie', 20); const engine = await f.arrive(), current = f.runtime.getSnapshot().fence;
+  assert.ok(current);
+  const before = f.log.length, plays = f.video.plays;
+  await assert.rejects(f.runtime.restoreBookmark(current, true), /stale_playback_command/);
+  await assert.rejects(f.runtime.restoreBookmark({...audio, sourceId: 'different_source'}, true), /stale_playback_command/);
+  await assert.rejects(f.runtime.restoreBookmark({...audio, entryId: 'different_entry'}, true), /stale_playback_command/);
+  await assert.rejects(f.runtime.restoreBookmark({...audio, generation: audio.generation + 1}, true), /stale_playback_command/);
+  assert.deepEqual(f.runtime.getSnapshot().fence, current);
+  assert.equal(f.runtime.getSnapshot().dock.parkedAudio?.fence.sessionId, audio.sessionId);
+  assert.equal(f.video.paused, false); assert.equal(f.video.plays, plays); assert.equal(engine.destroyed, false);
+  assert.equal(f.log.slice(before).some(request => request.method !== 'GET'), false);
+});
+
+test('runtime explicit Resume waits for the restored queue source and starts only its fresh paused session', async t => {
+  const f = setup(t); await f.runtime.play('song_one', 10); await f.arrive();
+  f.video.advance(35); await settle();
+  const audio = f.runtime.getSnapshot(), bookmark = audio.fence;
+  assert.ok(bookmark);
+  if (bookmark.kind !== 'queue') assert.fail('queue fence required');
+  assert.ok(audio.session?.queue);
+  await f.runtime.play('movie', 5); await f.arrive();
+  const gate = deferred(), before = f.log.length, plays = f.video.plays;
+  f.intercept(async (request, response) => { if (request.path.startsWith('/v1/items/song_one/playback-offers')) await gate.hold(); return response; });
+  const pending = f.runtime.restoreBookmark(bookmark, true);
+  await gate.started; await settle();
+  assert.equal(f.runtime.getSnapshot().playback.intent, 'paused');
+  assert.equal(f.runtime.getSnapshot().fence, undefined);
+  assert.equal(f.video.paused, true); assert.equal(f.video.plays, plays);
+  assert.equal(f.log.slice(before).some(request => request.path === '/v1/queues' && request.method === 'POST'), false);
+  const starts = f.log.slice(before).filter(request => request.path === '/v1/playback/sessions' && request.method === 'POST');
+  assert.equal(starts.length, 1);
+  assert.deepEqual(starts[0]?.body, {queue: {queueId: audio.session.queue.queueId, entryId: bookmark.entryId}, state: 'paused', startPositionMs: 35000});
+  gate.resolve();
+  const accepted = await pending; await f.arrive();
+  assert.equal(accepted.kind, 'queue');
+  if (accepted.kind !== 'queue') assert.fail('queue fence required');
+  assert.notEqual(accepted.sessionId, bookmark.sessionId);
+  assert.equal(accepted.itemId, bookmark.itemId); assert.equal(accepted.entryId, bookmark.entryId);
+  assert.equal(f.runtime.getSnapshot().session?.queue?.queueId, audio.session.queue.queueId);
+  assert.equal(f.runtime.getSnapshot().playback.intent, 'playing'); assert.equal(f.video.paused, false);
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 35);
+});
+
+test('runtime late explicit Resume cannot resume or replace a newer Play', async t => {
+  const f = setup(t); await f.runtime.play('song_one', 10); await f.arrive();
+  const bookmark = f.runtime.getSnapshot().fence;
+  assert.ok(bookmark);
+  await f.runtime.play('movie', 5); await f.arrive();
+  const gate = deferred();
+  f.intercept(async (request, response) => { if (request.path.startsWith('/v1/items/song_one/playback-offers')) await gate.hold(); return response; });
+  const rejected = assert.rejects(f.runtime.restoreBookmark(bookmark, true), /stale_playback_command/);
+  await gate.started;
+  await f.runtime.play('replacement', 20); const engine = await f.arrive();
+  const current = f.runtime.getSnapshot().fence, plays = f.video.plays;
+  assert.ok(current);
+  await f.runtime.pause(current); assert.equal(f.video.paused, true);
+  gate.resolve(); await rejected; await settle();
+  assert.deepEqual(f.runtime.getSnapshot().fence, current);
+  assert.equal(f.runtime.getSnapshot().playback.itemId, 'replacement');
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 20);
+  assert.equal(f.runtime.getSnapshot().playback.intent, 'paused'); assert.equal(f.video.paused, true);
+  assert.equal(f.video.plays, plays); assert.equal(engine.destroyed, false);
+});
+
+test('runtime quality changes require current options and an enabled rung on the actual source', async t => {
+  const f = setup(t), gate = deferred();
+  f.intercept(async (request, response) => { if (request.path === '/v1/items/movie/playback-options?versionId=v1') await gate.hold(); return response; });
+  await f.runtime.play('movie', 20); await gate.started; await f.arrive();
+  const fence = f.runtime.getSnapshot().fence;
+  assert.ok(fence);
+  assert.equal(f.runtime.getSnapshot().options, null);
+  const before = f.log.length;
+  await assert.rejects(f.runtime.setQuality(fence, '720'), /playback_quality_unavailable/);
+  assert.equal(f.log.slice(before).some(request => request.method === 'PATCH'), false);
+  gate.resolve(); await settle();
+  assert.ok(f.runtime.getSnapshot().options);
+  // The older options endpoint offers 1080p, but this source's current offer does not.
+  await assert.rejects(f.runtime.setQuality(fence, '1080'), /playback_quality_unavailable/);
+  assert.equal(f.log.slice(before).some(request => request.method === 'PATCH'), false);
+  await f.runtime.setQuality(fence, '720'); await settle();
+  assert.ok(f.log.slice(before).some(request => request.path === `/v1/playback/sessions/${fence.sessionId}` && request.method === 'PATCH'));
+  assert.equal(f.runtime.getSnapshot().playback.session?.id, fence.sessionId);
+  assert.ok((f.runtime.getSnapshot().playback.session?.generation ?? 0) > fence.generation);
+  await assert.rejects(f.runtime.setQuality(fence, '720'), /stale_playback_command/);
+});
