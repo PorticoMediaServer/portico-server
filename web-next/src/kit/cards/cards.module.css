@@ -58,7 +58,6 @@
 .holding .primary:active { transform:none; }
 .holding .art { transform:scale(1.07); box-shadow:0 0 0 3px var(--color-text),0 24px 40px -12px rgba(0,0,0,.9); }
 .selected .title, .selected .wideTitle, .selected .episodeTitle, .next .title { color:var(--color-accent-strong); }
-.next > .play { opacity:1; transform:none; }
 .square .art, .circle .art { aspect-ratio:1; }
 .square .play, .circle .play, .cover.periodical .play { top:calc(100cqw - 50px); }
 .circle { --cards-width:172px; text-align:center; }
@@ -97,6 +96,7 @@
 .wide .play { width:52px; height:52px; right:auto; left:50%; top:calc(28.125cqw - 26px); margin-left:-26px; transform:scale(.9); }
 .episode { --cards-width:316px; }
 .episode .art { aspect-ratio:16/9; }
+.episode.next .art { box-shadow:none; }
 .episode:hover .art, .episode:focus-within .art { transform:scale(1.03); }
 .episodePicture { position:absolute; inset:0; }
 .backdropCrop { transform:scale(2.6); filter:saturate(.55) brightness(.42); }
@@ -269,8 +269,13 @@
 .levelMeter i { width:3px; border-radius:1px; background:var(--color-accent-strong); }
 .levelMeter i:nth-child(1) { height:55%; } .levelMeter i:nth-child(2) { height:100%; } .levelMeter i:nth-child(3) { height:38%; } .levelMeter i:nth-child(4) { height:75%; }
 .episodePlaying .episodeTitle { color:var(--color-accent-strong); }
-.episodeMeter { position:absolute; right:6px; top:6px; padding:4px; border-radius:5px; background:rgba(7,16,24,.7); }
-.episodePlayback { margin-top:4px; gap:10px; font-size:12px; color:var(--color-text-tertiary); }
+.episodeMeter { position:absolute; right:7px; top:7px; width:26px; height:22px; display:grid; place-items:center; border-radius:6px; background:rgba(7,16,24,.7); }
+.episodeLevels { display:flex; align-items:flex-end; gap:2px; height:12px; }
+.episodeLevels i { width:3px; border-radius:1px; background:var(--color-accent-strong); }
+.episodeLevels i:nth-child(1) { height:60%; }
+.episodeLevels i:nth-child(2) { height:100%; }
+.episodeLevels i:nth-child(3) { height:40%; }
+.episodePlayback { margin-top:3px; gap:12px; font-size:12.5px; color:var(--color-text-tertiary); }
 .episodePlayback [data-role='status'] { color:var(--color-accent-strong); font-weight:700; }
 .session { --cards-width:488px; border-radius:14px; background:var(--color-raised); overflow:hidden; }
 .session .primary { display:grid; grid-template-columns:176px minmax(0,1fr); gap:18px; padding:14px 16px 18px 14px; }
