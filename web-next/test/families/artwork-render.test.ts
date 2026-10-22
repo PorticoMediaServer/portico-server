@@ -65,7 +65,7 @@ test('single-cover presentation inputs pass through CircleCard without changing 
   const {CircleCard} = await import('../../src/kit/cards/MediaCards.tsx');
   const runtime = createArtworkRuntime({scopeKey: 'circle-presentation', load: async () => { throw new Error('SSR must not request images'); }, classify: () => ({retryable: false})});
   const covers = [runtime.source({url: '/real-cover', cacheKey: 'cover'})];
-  const props = {covers, model: {title: 'Supplied artist', caption: []}, context: 'search' as const};
+  const props = {covers, model: {title: 'Supplied artist', caption: []}, context: 'search' as const, onNavigate() {}};
   const html = renderToStaticMarkup(createElement(CircleCard, {...props, coverZoom: 1.75, coverTransformOrigin: '52% 62%'}));
   assert.match(html, /--circle-cover-zoom:1.75/);
   assert.match(html, /--circle-cover-origin:52% 62%/);
@@ -96,7 +96,7 @@ test('CoverCard reserves generated copy only while the card selection overlay is
   const {GeneratedCover} = await import('../../src/kit/artwork/GeneratedArt.tsx');
   const generated = {title: 'Supplied title', glyph: 'S', tint: {first: '#3f8f6e', second: '#153749'}};
   const model = {title: generated.title, caption: []};
-  for (const selection of [undefined, {active: false, checked: false, onToggle() {}}, {active: true, checked: false, onToggle() {}}, {active: true, checked: true, onToggle() {}}, {active: false, checked: true, onToggle() {}}]) {
+  for (const selection of [undefined, {active: false, checked: false, onToggle() {}, onExit() {}}, {active: true, checked: false, onToggle() {}, onExit() {}}, {active: true, checked: true, onToggle() {}, onExit() {}}, {active: false, checked: true, onToggle() {}, onExit() {}}]) {
     const html = renderToStaticMarkup(createElement(CoverCard, {model, generated, selection}));
     assert.equal(html.includes('generatedCover selectionClearance'), !!(selection?.active || selection?.checked));
     assert.match(html, /aria-label="Supplied title"/);
