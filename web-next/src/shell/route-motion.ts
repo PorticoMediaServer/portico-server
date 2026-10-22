@@ -1,0 +1,25 @@
+import {browserOwnsBackTransition} from './model';
+
+type MotionRouter = {update(options: {defaultViewTransition: boolean}): void};
+type NavigationSignal = Event & {hasUAVisualTransition?: boolean; navigationType?: string};
+let ownedByBrowser = false;
+let reset: (() => void) | undefined;
+export const routeMotionOwnedByBrowser = () => ownedByBrowser;
+export function finishRouteMotion(): void { reset?.(); }
+
+/** Capture runs before the history listener. The actual content commit releases the fence. */
+export function bindShellRouteMotion(router: MotionRouter, browser: Window = window): () => void {
+  const iphoneSafari = /iPhone|iPod/.test(browser.navigator.userAgent) && /Safari/.test(browser.navigator.userAgent) && !/CriOS|FxiOS|EdgiOS/.test(browser.navigator.userAgent);
+  const suppress = (event: NavigationSignal, traversal: boolean) => {
+    if (!browserOwnsBackTransition(event, {iphoneSafari, traversal})) return;
+    ownedByBrowser = true; router.update({defaultViewTransition: false});
+  };
+  const pop = (event: PopStateEvent) => suppress(event, true);
+  const navigate = (event: Event) => { const signal = event as NavigationSignal; suppress(signal, signal.navigationType === 'traverse'); };
+  const navigation = (browser as Window & {navigation?: EventTarget}).navigation;
+  const release = () => { ownedByBrowser = false; router.update({defaultViewTransition: true}); };
+  reset = release;
+  browser.addEventListener('popstate', pop, {capture: true});
+  navigation?.addEventListener('navigate', navigate);
+  return () => { browser.removeEventListener('popstate', pop, {capture: true}); navigation?.removeEventListener('navigate', navigate); if (reset === release) { release(); reset = undefined; } };
+}

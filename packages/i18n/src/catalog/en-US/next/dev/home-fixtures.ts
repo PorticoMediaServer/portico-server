@@ -1,0 +1,19 @@
+/** Test/serve-only domain samples. Never register in the production catalogue. */
+export const homeFixtures = {
+  libraryPrefix: 'Library',
+  source: 'Source',
+  channel: 'Channel',
+  programme: 'Programme',
+  episode: 'An episode',
+  show: 'Actual show',
+  wrongSubtitle: 'Wrong show · S99 E99 · 999 minutes',
+  reason: 'Because of an actual server reason',
+  rankHeading: 'Ranked',
+  audioHeading: 'Audio',
+  movie: 'One',
+  genre: 'Drama',
+  server: 'Media server',
+  account: 'Account',
+  profile: 'Profile',
+  device: 'Browser',
+} as const;
