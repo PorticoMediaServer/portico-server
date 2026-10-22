@@ -177,6 +177,12 @@ test('host rerenders retain one media ref and presentations while actual authori
   assert.equal(element(tree, 'dock-host').props.presentations, presentations);
   assert.equal(element(tree, 'video').props.ref.current, media);
   assert.equal(element(tree, 'media-surface').type, surface.type); assert.equal(element(tree, 'media-surface').key, surface.key);
+  state = {...state, presentation: {...state.presentation!, finished: true, controls: ['replay']}}; tree = render();
+  const completed = element(tree, 'dock-host').props.presentations.find((p: any) => p.identity.title === 'Current movie');
+  assert.equal(completed.finished, true); assert.deepEqual(completed.controls, ['replay']);
+  assert.equal(element(tree, 'video').props.ref.current, media);
+  state = {...state, presentation: {...state.presentation!, finished: false, controls: ['pause']}}; tree = render();
+  assert.equal(element(tree, 'dock-host').props.presentations.find((p: any) => p.identity.title === 'Current movie').finished, false);
   dock.beginRemote({id: 'receiver', kind: 'cast', phase: 'playing', sequence: '1', playback: video, positionSeconds: 42}, 0);
   state = {...state, dock: dock.getSnapshot()}; tree = render();
   const remoteHost = element(tree, 'dock-host').props;

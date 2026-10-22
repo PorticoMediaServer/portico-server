@@ -46,6 +46,7 @@ type Stack = {
   itemId?: string; metadataItemId?: string; libraryId?: string; subject?: PlaybackSubject; showId?: string; seasonId?: string;
   posterUrl?: string; backdropUrl?: string; expanded: boolean; retired: boolean;
   channel?: HomeChannel;
+  confirmedEnd?: Readonly<{sessionId: string; generation: number; intentId: number; view: ReturnType<V1QueuePlayer['getSnapshot']>['view']}>;
 };
 const emptySubtitle: SubtitleSnapshot = {catalog: null, plan: null, busy: false, loading: false, suppressed: true, error: null, canRetry: false, candidates: []};
 function problem(code: string): never { throw new Error(code); }
@@ -134,7 +135,20 @@ export class WebShellPlaybackRuntime {
       deviceMemory: typeof navigator === 'undefined' ? undefined : (navigator as Navigator & {deviceMemory?: number}).deviceMemory,
       createRender: (service, element) => new DecodeAudioRender(service, path => this.source.api.mediaUrl(path), element as HTMLVideoElement, (current, next) => !!current && (service.getQueueController()?.sameAlbum?.(current, next) ?? false), this.audioCache),
     });
-    const service = new PlaybackService(web.transport, this.env.key, {...this.env.service, queueRequired: true, deferRecovery: true, pageVisibility: documentVisibility, beforeFreshPlayback: async () => {
+    const service = new PlaybackService({...web.transport, progressPlayback: async (id, payload) => {
+      const before = service.getSnapshot();
+      await web.transport.progressPlayback(id, payload);
+      const after = service.getSnapshot();
+      // A real ended report was acknowledged for this exact owner. Queue refresh/hold still
+      // decides whether it finished or is about to advance; an old acknowledgement cannot.
+      if (payload.state === 'ended' && this.current(stackReference) && before.phase === 'ended' && after.phase === 'ended' && !after.ended &&
+          before.intentId === after.intentId && before.playbackRun === after.playbackRun && before.session?.id === id && before.session.generation === payload.generation && after.session?.id === id && after.session.generation === payload.generation) {
+        const previous = stackReference.confirmedEnd;
+        if (previous?.sessionId !== id || previous.generation !== payload.generation || previous.intentId !== after.intentId) {
+          stackReference.confirmedEnd = {sessionId: id, generation: payload.generation, intentId: after.intentId, view: stackReference.queue.getSnapshot().view};
+        }
+      }
+    }}, this.env.key, {...this.env.service, queueRequired: true, deferRecovery: true, pageVisibility: documentVisibility, beforeFreshPlayback: async () => {
       // The copied real browser probe is the capability source. Node's media-port tests have
       // no browser; they exercise the actual server's baseline planning instead.
       if (typeof document === 'undefined' || typeof window === 'undefined') return;
@@ -213,6 +227,7 @@ export class WebShellPlaybackRuntime {
     this.trimRetiredFences();
     for (const off of stack.offs.splice(0)) off();
     stack.retired = true;
+    stack.confirmedEnd = undefined;
     this.clearSourceResources(stack);
     stack.service.leave(); stack.queue.dispose(); stack.unmount?.(); stack.unmount = undefined;
     stack.web.dispose(); stack.offers.dispose(); stack.life.abort();
@@ -423,7 +438,18 @@ export class WebShellPlaybackRuntime {
         // new session; externally requested transitions use onTransition below.
         if (transition.effects.some(effect => !this.retiredFences.has(this.key(effect.playback.fence)))) this.runtimeProblem = 'unapplied_dock_effect';
         if (fence.kind === 'queue') this.policy.begin(fence, offers?.markers?.markers ?? [], playback.duration || undefined);
-        const result = fence.kind === 'queue' ? this.policy.update({fence, nowMs: (this.env.timers?.now ?? Date.now)(), positionSeconds: Math.min(playback.duration || Infinity, playback.positionSeconds), durationSeconds: playback.duration, rate: speed, playing: local.playing, expanded: stack.expanded, ended: playback.phase === 'ended', kind: stack.subject.kind === 'video' ? stack.subject.item.kind : stack.subject.kind, modes: this.source.settings.skipModes(), postPlay: stack.queue.getSnapshot().view?.postPlay ?? null, ...(playback.phase === 'error' ? {attention: playback.ended?.reason === 'terminated' ? 'owner-stopped' as const : 'playback-error' as const} : {})}) : null;
+        const queueState = stack.queue.getSnapshot(), queue = queueState.view, receipt = stack.confirmedEnd;
+        const ended = fence.kind === 'queue' && playback.phase === 'ended' && !playback.ended && queueState.phase === 'ready' && !queueState.error;
+        const confirmed = ended && receipt?.sessionId === fence.sessionId && receipt.generation === fence.generation && receipt.intentId === playback.intentId &&
+          queue && queue !== receipt.view && queue.current?.id === fence.sessionId && queue.current.generation === fence.generation && queue.queue.currentEntryId === fence.entryId;
+        const completion = confirmed && queueState.completion?.sessionId === fence.sessionId && queueState.completion.intentId === playback.intentId ? queueState.completion : null;
+        const listening = stack.queue.listening.getSnapshot();
+        const listeningFinished = confirmed && stack.subject.kind !== 'video' &&
+          (!queue.next.available || listening.stopped || listening.preferences?.autoplayNext === false);
+        const finished = !!(completion && (!completion.nextAvailable || !completion.postPlay.autoplay) || listeningFinished);
+        // Start the end countdown only after the actual controller has published its hold.
+        // With a zero countdown, consuming an earlier raw media end loses the advance.
+        const result = fence.kind === 'queue' ? this.policy.update({fence, nowMs: (this.env.timers?.now ?? Date.now)(), positionSeconds: Math.min(playback.duration || Infinity, playback.positionSeconds), durationSeconds: playback.duration, rate: speed, playing: local.playing, expanded: stack.expanded, ended: !!completion, kind: stack.subject.kind === 'video' ? stack.subject.item.kind : stack.subject.kind, modes: this.source.settings.skipModes(), postPlay: queue?.postPlay ?? null, ...(playback.phase === 'error' ? {attention: playback.ended?.reason === 'terminated' ? 'owner-stopped' as const : 'playback-error' as const} : {})}) : null;
         this.policyView = result?.view ?? null;
         for (const command of result?.commands ?? []) {
           if (command.kind === 'expand') { stack.expanded = true; this.dock.expand(fence); }
@@ -433,20 +459,19 @@ export class WebShellPlaybackRuntime {
             queueMicrotask(() => { if (this.matches(captured)) void stack.queue.continueCompletion(command.mode).catch(() => { if (this.current(stack)) { this.runtimeProblem = 'playback_advance_failed'; this.sync(); } }); });
           }
         }
-        const ended = playback.phase === 'ended', controls: WebPlaybackPresentation['controls'][number][] = playback.phase === 'error' ? [] : [ended ? 'replay' : playback.intent === 'playing' ? 'pause' : 'play'];
-        if (!playback.ended && ['ready', 'starting', 'ended'].includes(playback.phase)) controls.push('seek');
-        const queue = stack.queue.getSnapshot().view;
+        const controls: WebPlaybackPresentation['controls'][number][] = finished ? ['replay'] : playback.phase === 'ended' || playback.phase === 'error' ? [] : [playback.intent === 'playing' ? 'pause' : 'play'];
+        if (!playback.ended && (finished || ['ready', 'starting'].includes(playback.phase))) controls.push('seek');
         if (fence.kind === 'queue' && queue?.next.available && !playback.ended) controls.push('next');
         if (fence.kind === 'queue' && queue && (queue.queue.entries.findIndex(entry => entry.id === fence.entryId) > 0 || playback.positionSeconds > 3) && !playback.ended) controls.push('previous');
         if (this.source.settings.webVolume() && this.video) controls.push('volume');
-        presentation = {fence, subject: stack.subject, kind: stack.subject.kind === 'channel' ? 'video' : stack.subject.kind, posterUrl: stack.posterUrl, backdropUrl: stack.backdropUrl, durationSeconds: playback.duration, positionSeconds: local.positionSeconds, playing: local.playing, expanded: stack.expanded, finished: ended, controls, volume: this.video?.volume ?? 1, muted: this.video?.muted ?? false, rate: speed, policy: this.policyView, ...(playback.channel && playback.linear ? {seekWindow: {startSeconds: Number(playback.linear.media.windowStartUs) / 1e6, endSeconds: Number(playback.linear.media.windowEndUs) / 1e6}} : {})};
+        presentation = {fence, subject: stack.subject, kind: stack.subject.kind === 'channel' ? 'video' : stack.subject.kind, posterUrl: stack.posterUrl, backdropUrl: stack.backdropUrl, durationSeconds: playback.duration, positionSeconds: local.positionSeconds, playing: local.playing, expanded: stack.expanded, finished, controls, volume: this.video?.volume ?? 1, muted: this.video?.muted ?? false, rate: speed, policy: this.policyView, ...(playback.channel && playback.linear ? {seekWindow: {startSeconds: Number(playback.linear.media.windowStartUs) / 1e6, endSeconds: Number(playback.linear.media.windowEndUs) / 1e6}} : {})};
         this.renderSubtitles(stack);
       }
       this.snapshot = Object.freeze({authority: this.authority, sequence: ++this.sequence, playback, dock: this.dock.getSnapshot(), fence, subject: stack.subject, presentation, presentations: this.presentations(presentation), queueView: stack.queue.getSnapshot().view, session, offers, options: stack.options, problem: this.runtimeProblem, disposed: false});
       this.rememberCurrent();
       for (const listener of [...this.listeners]) listener();
       this.schedulePolicy();
-      if (fence && playback.phase === 'ended' && this.dock.getSnapshot().parkedAudio && (!stack.queue.getSnapshot().view?.next.available || !stack.queue.getSnapshot().view?.postPlay.autoplay)) {
+      if (fence && presentation?.finished && this.dock.getSnapshot().parkedAudio && (!stack.queue.getSnapshot().view?.next.available || !stack.queue.getSnapshot().view?.postPlay.autoplay)) {
         const captured = fence;
         queueMicrotask(() => { if (this.matches(captured)) void this.stop(captured).catch(() => { if (this.current(stack)) { this.runtimeProblem = 'playback_restore_failed'; this.sync(); } }); });
       }
