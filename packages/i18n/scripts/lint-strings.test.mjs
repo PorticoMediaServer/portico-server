@@ -19,7 +19,7 @@ test('TS generics, intersections and comparisons never become JSX text', () => {
 
 test('actual JSX text still counts code-looking words and punctuation', () => {
   assert.deepEqual(texts(`const view = <><p>new ArtworkScheduler</p><p>new PlaybackMediaOwner</p><p>Pick a library</p><p>Ready (2); continue?</p><p>Save &amp; continue</p></>;`),
-    ['new ArtworkScheduler', 'new PlaybackMediaOwner', 'Pick a library', 'Ready (2); continue?', 'Save & continue']);
+    ['new ArtworkScheduler', 'new PlaybackMediaOwner', 'Pick a library', 'Ready (2); continue?', 'Save &amp; continue']); // Diagnostics retain JSX source spelling.
 });
 
 test('copy props, accessibility names, object values and assignment positions remain checked once', () => {
