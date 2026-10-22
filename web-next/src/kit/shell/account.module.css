@@ -126,3 +126,7 @@
 :global([data-reduce-motion='true']) .avatarButton:has(.avatar[data-size='168']):hover .avatar, :global([data-reduce-motion='true']) .avatarButton:has(.avatar[data-size='168']):focus-visible .avatar { transform: none; }
 
 .together[data-flush] { margin-left: 0; }
+
+.notificationAction { display: flex; align-items: center; gap: 10px; }
+.notificationCount { margin-left: auto; padding: 0 6px; min-width: 21px; height: 21px; border-radius: 11px; display: inline-grid; place-items: center; color: var(--color-action-ink); background: var(--color-accent-strong); font-size: 12px; font-weight: 800; }
+.notificationMenuDot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent-strong); }

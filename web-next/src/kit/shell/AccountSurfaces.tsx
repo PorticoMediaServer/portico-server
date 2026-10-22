@@ -34,15 +34,15 @@ export function ProfileAvatarFace({initial, art = 'blue', size = 34, appearance 
 
 export type AccountMenuActions = Readonly<{
   manageProfiles: () => void; addProfile?: () => void; switchProfile: (profile: ProfileIdentity) => void;
-  switchServer: () => void; settings: () => void; watchTogether: () => void; downloads?: () => void;
+  switchServer: () => void; settings: () => void; notifications?: () => void; watchTogether: () => void; downloads?: () => void;
   feedback: () => void; help: () => void; signOut: () => void;
 }>;
 export type AccountMenuProps = Readonly<{
   open: boolean; onOpenChange: OverlayChange; trigger: ReactElement; current: ProfileIdentity;
   primary: boolean; accountFacts: readonly FactPart[]; profiles: readonly ProfileIdentity[];
-  actions: AccountMenuActions; t?: ShellTranslate;
+  actions: AccountMenuActions; notificationCount?: number; notificationDot?: boolean; t?: ShellTranslate;
 }>;
-export function AccountMenu({open, onOpenChange, trigger, current, primary, accountFacts, profiles, actions, t = tDefault}: AccountMenuProps) {
+export function AccountMenu({open, onOpenChange, trigger, current, primary, accountFacts, profiles, actions, notificationCount, notificationDot = false, t = tDefault}: AccountMenuProps) {
   const choose = (profile: ProfileIdentity) => actions.switchProfile(profile);
   return <><ShellScrim open={open} context="account" /><Menu open={open} onOpenChange={onOpenChange} trigger={trigger} title={t('next.shell.profileMenu', {name: current.name})} width={340} sideOffset={17} alignOffset={-24} modal className={styles.accountMenu}>
     <div className={styles.who}><ProfileAvatarFace initial={current.initial} art={current.art} size={48} /><div><b>{current.name}</b>{primary && <small>{t('next.shell.mainProfile')}</small>}<small className={styles.factParts}>{accountFacts.map(fact => <span key={fact.id}>{fact.text}</span>)}</small></div></div>
@@ -54,6 +54,7 @@ export function AccountMenu({open, onOpenChange, trigger, current, primary, acco
     <MenuSeparator />
     <MenuItem className={styles.menuAction} icon="i-server" onSelect={actions.switchServer}>{t('next.shell.switchServerMenu')}</MenuItem>
     <MenuItem className={styles.menuAction} icon="i-gear" onSelect={actions.settings}>{t('next.shell.settings')}</MenuItem>
+    {actions.notifications && <MenuItem className={styles.menuAction} icon="i-bell" onSelect={actions.notifications} aria-label={notificationCount === undefined ? t('next.shell.notifications') : t('next.shell.notificationsUnread', {count: notificationCount})}><span className={styles.notificationAction}>{t('next.shell.notifications')}{notificationCount !== undefined && notificationCount > 0 ? <span className={styles.notificationCount}>{notificationCount}</span> : notificationDot ? <span className={styles.notificationMenuDot} aria-hidden="true" /> : undefined}</span></MenuItem>}
     <MenuSeparator />
     <MenuItem className={styles.menuAction} icon="i-together" onSelect={actions.watchTogether}>{t('next.shell.watchTogether')}</MenuItem>
     {actions.downloads && <MenuItem className={styles.menuAction} icon="i-download" onSelect={actions.downloads}>{t('next.shell.downloads')}</MenuItem>}

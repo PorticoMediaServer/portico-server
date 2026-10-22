@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {DeletePreview} from '../../../packages/client-core/src/administration.ts';
 import type {RepairFieldSpec} from '../../../packages/client-core/src/metadata-repair.ts';
-import {addListValue, bulkDraftValid, bulkEditorSchema, bulkSummary, deletePermission, missingPickerIds, toggleListRemoval} from '../../src/kit/selection/presentation.ts';
+import {addListValue, bulkDraftValid, bulkEditorSchema, bulkSummary, bulkReceiptView, pickerResultSucceeded, deletePermission, missingPickerIds, toggleListRemoval} from '../../src/kit/selection/presentation.ts';
 import type {BulkEditorDraft, BulkFieldValues} from '../../src/kit/selection/types.ts';
 
 const schema: readonly RepairFieldSpec[] = [
@@ -10,7 +10,7 @@ const schema: readonly RepairFieldSpec[] = [
   {field: 'title', label: 'Title', group: 'general', type: 'text', bulk: false},
   {field: 'tags', label: 'Tags', group: 'general', type: 'list', bulk: true},
 ];
-const values: Readonly<Record<string, BulkFieldValues>> = {year: {kind: 'scalar', values: [{value: '2019', count: 1}, {value: '2020', count: 3}]}, tags: {kind: 'list', entries: [{value: 'shared', count: 3}]}};
+const values: Readonly<Record<string, BulkFieldValues>> = {year: {state: 'mixed', distinctCount: 2, truncated: false, values: [{value: '2019', count: 1}, {value: '2020', count: 3}], entries: []}, tags: {state: 'mixed', distinctCount: 2, truncated: false, values: [{value: 'shared', count: 3}, {value: '', count: 1}], entries: [{value: 'shared', count: 3}]}};
 const empty: BulkEditorDraft = {fields: {}, lists: {}, lockEdited: true};
 
 test('only actual bulk fields can enter a save; untouched Mixed fields never become empty writes', () => {
@@ -34,11 +34,11 @@ test('the summary counts the actual aggregate difference instead of claiming all
   assert.equal(summary[0]!.text, 'Year becomes 2020 on all 4');
 });
 
-test('Genres appears only when the existing separate bulk capability is explicitly supplied', () => {
+test('Genres is retained only when present in the actual bulk registry', () => {
+  const actual = [...schema, {field: 'genres', label: 'Genres', group: 'general' as const, type: 'list' as const, bulk: true}];
+  assert.deepEqual(bulkEditorSchema(actual, 'movie').map(field => field.field), ['year', 'genres', 'tags']);
   assert.deepEqual(bulkEditorSchema(schema, 'movie').map(field => field.field), ['year', 'tags']);
-  const allowed = bulkEditorSchema(schema, 'movie', {allowed: true, values: {kind: 'list', entries: []}});
-  assert.deepEqual(allowed.map(field => field.field), ['year', 'genres', 'tags']);
-  assert.deepEqual(bulkEditorSchema(schema, 'movie', {allowed: false, values: {kind: 'list', entries: []}}).map(field => field.field), ['year', 'tags']);
+
 });
 
 test('list changes preserve shared and partial values and never replace a list', () => {
@@ -79,4 +79,42 @@ test('delete restrictions cannot be bypassed through a typed count or a whole-vi
   assert.equal(deletePermission(true, 1, {...preview, targets: [{...target, allowMediaDeletion: false}]}, 'title'), false);
   const mixed: DeletePreview = {...preview, confirmation: '2', confirmationKind: 'count', targets: [target, {...target, itemId: 'title-2', libraryId: 'library-2'}]};
   assert.equal(deletePermission(true, 2, mixed, '2'), false);
+});
+
+test('a truncated distribution cannot invent how many targets already have an omitted value', () => {
+  const limited: BulkFieldValues = {state: 'mixed', distinctCount: 80, truncated: true, values: Array.from({length: 64}, (_, i) => ({value: String(1900 + i), count: 1})), entries: []};
+  const omitted = bulkSummary(schema, {year: limited}, {...empty, fields: {year: '2000'}}, 80);
+  assert.equal(omitted[0]!.changedCount, undefined);
+  assert.equal(omitted[0]!.changedTitles, undefined);
+  assert.equal(bulkSummary(schema, {year: limited}, {...empty, fields: {year: '1900'}}, 80)[0]!.changedCount, 79);
+  assert.equal(limited.distinctCount, 80);
+  assert.equal(limited.values.length, 64);
+});
+
+test('latest receipt outcomes retain unrelated failures and count retried successes once', () => {
+  const first = {operationId: 'first', updated: 1, failed: 2, results: [{kind: 'item', id: 'a', ok: true}, {kind: 'item', id: 'b', ok: false, code: 'metadata_conflict'}, {kind: 'item', id: 'c', ok: false, code: 'not_found'}]};
+  const retry = {operationId: 'retry-b', updated: 1, failed: 0, results: [{kind: 'item', id: 'b', ok: true}]};
+  const view = bulkReceiptView([first, retry, retry]);
+  assert.equal(view.updated, 2); assert.equal(view.failed, 1);
+  assert.deepEqual(view.results.map(row => [row.id, row.ok]), [['a', true], ['b', true], ['c', false]]);
+  assert.equal('operationId' in view, false);
+  assert.equal(first.results[1]!.ok, false);
+  assert.deepEqual(bulkReceiptView([]), {results: [], updated: 0, failed: 0});
+});
+
+test('picker success requires supplied insertion and failure facts rather than processed counts', () => {
+  const result = {destination: {id: 'real-destination', name: 'Actual destination'}, complete: true, processed: 200, total: 200, failures: []};
+  assert.equal(pickerResultSucceeded(result), false);
+  assert.equal(pickerResultSucceeded({...result, inserted: 20}), false);
+  assert.equal(pickerResultSucceeded({...result, inserted: 20, failed: 0, alreadyIn: 180}), true);
+  assert.equal(pickerResultSucceeded({...result, inserted: 20, failed: 1}), false);
+  assert.equal(pickerResultSucceeded({...result, inserted: 20, failed: 0, unknown: 1}), false);
+  assert.equal(pickerResultSucceeded({...result, inserted: 20, failed: 0, pending: true}), false);
+  assert.equal(pickerResultSucceeded({...result, inserted: 20, failed: 0, complete: false}), false);
+  assert.equal(pickerResultSucceeded({...result, inserted: 20, failed: 0, failures: [{id: 'failure', title: 'Actual title', reason: 'Actual reason'}]}), false);
+});
+
+test('a shared preview with an absent value cannot claim a known prior difference count', () => {
+  const unknown: BulkFieldValues = {state: 'shared', distinctCount: 1, truncated: false, values: [], entries: []};
+  assert.equal(bulkSummary(schema, {year: unknown}, {...empty, fields: {year: '2020'}}, 4)[0]!.changedCount, undefined);
 });
