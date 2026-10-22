@@ -113,3 +113,9 @@ export const activityR7Reference = {
     dana: {id: 'dana', username: 'dana', name: 'dana', initial: 'D', art: 'slate', device: 'Fire TV', title: 'Reacher', subtitle: [{id: 'episode-label', text: 'S2 E5', role: 'context'}], progress: 12, conversion: 'Converting to 1080p'},
   },
 } as const;
+
+/** Drawn Activity frame 7 only; not a production status or API response. */
+export const activityR9Reference = {
+  title: 'Archive can’t be reached', description: 'Remote source', since: 'since 2:14 PM',
+  destination: 'Storage & backups', resolve: 'Resolve issue',
+} as const;

@@ -106,3 +106,29 @@ test('picker success binds its exact data and dismissal to the actual ToastHost'
   assert.equal(PickerAddedToast({...props, open: false}).props.toast, null);
   assert.equal(PickerAddedToast({...props, result: {...props.result, failed: 1}}).props.toast, null);
 });
+
+test('qualified Activity issue replaces normal health, preserves streams and updates, and is role/phase guarded', () => {
+  const majorIssue = {title: 'Qualified source issue', description: 'Remote source', onOpen() {}};
+  const view: ActivityPanelView = {...idle(), phase: 'ready', health: 'normal', streamCount: 24, majorIssue, update: {available: true, onOpen() {}}};
+  const html = renderToStaticMarkup(createElement(ActivityPanel, {viewerRole: 'owner', view}));
+  assert.match(html, /A problem to look at/); assert.doesNotMatch(html, /Running normally/);
+  assert.match(html, /data-major-issue="true"/); assert.match(html, /Qualified source issue/);
+  assert.match(html, /24 streams/); assert.match(html, /Server update available/);
+  const trigger = renderToStaticMarkup(createElement(TopBarActivity, {viewerRole: 'owner', view, open: false, onOpenChange() {}}));
+  assert.match(trigger, /class="majorDot"/); assert.doesNotMatch(trigger, /class="updateDot"/);
+  assert.match(trigger, /24 streams, update available, a major issue: Qualified source issue/);
+  assert.match(trigger, /Qualified source issue. Server update available/);
+  for (const phase of ['loading', 'error'] as const) {
+    const guarded = {...view, phase};
+    assert.doesNotMatch(renderToStaticMarkup(createElement(ActivityPanel, {viewerRole: 'owner', view: guarded})), /data-major-issue|A problem to look at|Qualified source issue/);
+    assert.doesNotMatch(renderToStaticMarkup(createElement(TopBarActivity, {viewerRole: 'owner', view: guarded, open: false, onOpenChange() {}})), /majorDot|Qualified source issue/);
+  }
+  for (const viewerRole of ['member', 'administrator'] as const) {
+    assert.equal(renderToStaticMarkup(createElement(ActivityPanel, {viewerRole, view})), '');
+    assert.equal(renderToStaticMarkup(createElement(TopBarActivity, {viewerRole, view, open: true, onOpenChange() {}})), '');
+  }
+  const resolved = renderToStaticMarkup(createElement(TopBarActivity, {viewerRole: 'owner', view: {...view, majorIssue: undefined}, open: false, onOpenChange() {}}));
+  assert.match(resolved, /updateDot/); assert.doesNotMatch(resolved, /majorDot|Qualified source issue/);
+  const attention = renderToStaticMarkup(createElement(TopBarActivity, {viewerRole: 'owner', view: {...view, majorIssue: undefined, update: undefined, health: 'attention'}, open: false, onOpenChange() {}}));
+  assert.doesNotMatch(attention, /majorDot|updateDot/);
+});

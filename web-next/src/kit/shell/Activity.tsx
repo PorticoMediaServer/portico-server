@@ -20,9 +20,12 @@ export type ActivityWorkView = Readonly<{
   id: string; title: string; detail?: string; current?: string; icon: IconName; processed?: number; total?: number;
   discovered?: number; progressText?: string; onOpen: () => void;
 }>;
+/** Supplied only for a qualified playback-stopping or data-risk issue, never a warning count. */
+export type ActivityMajorIssueView = Readonly<{title: string; description: string; since?: string; onOpen: () => void}>;
 export type ActivityPanelView = Readonly<{
   serverName: string; health?: 'normal' | 'attention'; streamCount?: number; taskCount?: number; streamOverflow?: Readonly<{count: number; convertingCount: number}>;
   streams: readonly ActivityStreamView[]; scans: readonly ActivityWorkView[]; tasks: readonly ActivityWorkView[];
+  majorIssue?: ActivityMajorIssueView;
   update?: Readonly<{available: boolean; latest?: string; current?: string; onOpen: () => void}>;
   lastScan?: string; phase: 'ready' | 'loading' | 'error'; onRetry: () => void; onDashboard: (section?: 'streams' | 'activity') => void;
 }>;
@@ -35,14 +38,17 @@ export function TopBarActivity({viewerRole, view, open, onOpenChange, t = tDefau
 function OwnerActivity({view, open, onOpenChange, t}: {view: ActivityPanelView; open: boolean; onOpenChange: OverlayChange; t: ShellTranslate}) {
   const tip = useId(), known = view.phase === 'ready';
   const streamCount = known ? view.streamCount : undefined, update = known && view.update?.available;
+  const majorIssue = known ? view.majorIssue : undefined;
   const busy = known && ((streamCount ?? 0) > 0 || view.scans.length > 0 || (view.taskCount ?? 0) > 0);
-  const label = streamCount === undefined ? t('next.shell.activity') : t(update ? 'next.shell.activityLabelUpdate' : 'next.shell.activityLabel', {count: streamCount});
-  const trigger = <button type="button" className={styles.trigger} data-busy={busy || undefined} data-open={open || undefined} data-streams={(streamCount ?? 0) > 0 || undefined} aria-label={label} aria-haspopup="dialog" aria-expanded={open} aria-describedby={update && !open ? tip : undefined}>
-    <Icon name="i-act" size={22} />{(streamCount ?? 0) > 0 && <span className={styles.streamCount}>{streamCount}</span>}{update && <span className={styles.updateDot} aria-hidden="true" />}
+  const activityLabel = streamCount === undefined ? t('next.shell.activity') : t(update ? 'next.shell.activityLabelUpdate' : 'next.shell.activityLabel', {count: streamCount});
+  const label = majorIssue ? t('next.shell.activityLabelMajor', {activity: activityLabel, title: majorIssue.title}) : activityLabel;
+  const tooltip = majorIssue ? update ? t('next.shell.activityIssueUpdateHint', {title: majorIssue.title}) : majorIssue.title : update ? t('next.shell.updateAvailable') : undefined;
+  const trigger = <button type="button" className={styles.trigger} data-busy={busy || undefined} data-open={open || undefined} data-streams={(streamCount ?? 0) > 0 || undefined} aria-label={label} aria-haspopup="dialog" aria-expanded={open} aria-describedby={tooltip && !open ? tip : undefined}>
+    <Icon name="i-act" size={22} />{(streamCount ?? 0) > 0 && <span className={styles.streamCount}>{streamCount}</span>}{/* Both facts survive; the major issue owns their overlapping visual slot. */}{majorIssue ? <span className={styles.majorDot} aria-hidden="true" /> : update && <span className={styles.updateDot} aria-hidden="true" />}
   </button>;
   return <span className={styles.triggerWrap}><ShellScrim open={open} context="activity" /><Popover open={open} onOpenChange={onOpenChange} trigger={trigger} title={t('next.shell.activity')} width={420} sideOffset={14} alignOffset={-72} className={styles.popover} modal>
     <ActivityPanel viewerRole="owner" view={view} t={t} />
-  </Popover>{update && !open && <span id={tip} role="tooltip" className={styles.tooltip}>{t('next.shell.updateAvailable')}</span>}</span>;
+  </Popover>{tooltip && !open && <span id={tip} role="tooltip" className={styles.tooltip}>{tooltip}</span>}</span>;
 }
 
 export function ActivityPanel({viewerRole, view, t = tDefault}: {viewerRole: ServerRole; view: ActivityPanelView; t?: ShellTranslate}) {
@@ -50,12 +56,14 @@ export function ActivityPanel({viewerRole, view, t = tDefault}: {viewerRole: Ser
   const streams = view.streams, tasks = view.tasks.slice(0, 3);
   if (streams.length > 3) throw new RangeError('Activity requires the server-selected maximum of three sessions.');
   const known = view.phase === 'ready';
+  const majorIssue = known ? view.majorIssue : undefined;
   const quiet = known && view.streamCount === 0 && view.scans.length === 0 && view.taskCount === 0;
   return <div className={styles.panel}>
-    <header className={styles.header}><ServerMark size={38} /><div><b>{view.serverName}</b>{known && view.health !== undefined && <span className={styles.health} data-health={view.health}>{t(view.health === 'normal' ? 'next.shell.health.normal' : 'next.shell.health.attention')}</span>}</div></header>
+    <header className={styles.header}><ServerMark size={38} /><div><b>{view.serverName}</b>{known && (majorIssue || view.health !== undefined) && <span className={styles.health} data-health={majorIssue ? 'major' : view.health}>{t(majorIssue ? 'next.shell.health.major' : view.health === 'normal' ? 'next.shell.health.normal' : 'next.shell.health.attention')}</span>}</div></header>
     <button type="button" className={styles.dashboard} onClick={() => view.onDashboard()}><Icon name="i-pulse" size={20} />{t('next.shell.dashboard')}<span>{known && view.streamCount !== undefined ? t('next.shell.streams', {count: view.streamCount}) : null}</span><Icon name="i-right" size={18} /></button>
     <div className={styles.divider} />
     {view.phase === 'loading' ? <div className={styles.loading} role="status" aria-label={t('next.shell.loadingActivity')}><i /><i /><i /></div> : view.phase === 'error' ? <div className={styles.error}><p>{t('next.shell.activityError')}</p><button type="button" onClick={view.onRetry}>{t('next.shell.tryAgain')}</button></div> : <>
+      {majorIssue && <button type="button" className={styles.work} data-major-issue="true" onClick={majorIssue.onOpen} aria-label={t('next.shell.activityOpenIssue', {title: majorIssue.title})}><span className={styles.majorLead}><Icon name="i-warn" size={18} /></span><span className={styles.workText}><span className={styles.line1}><b>{majorIssue.title}</b></span><span className={styles.line2}><span>{majorIssue.description}</span>{majorIssue.since && <span>{majorIssue.since}</span>}</span></span><span className={styles.issueOpen}>{t('next.shell.open')}</span></button>}
       {quiet ? <div className={styles.quiet}><span className={styles.quietLead}><Icon name="i-act" size={18} /></span><div><b>{t('next.shell.activityQuiet')}</b>{view.lastScan && <p>{t('next.shell.lastScan', {when: view.lastScan})}</p>}</div></div> : <>
         {(view.streamCount ?? 0) > 0 && <section className={styles.group}><h4>{t('next.shell.nowPlaying')}</h4>{streams.map(stream => <ActivityStream key={stream.id} stream={stream} t={t} />)}{view.streamOverflow !== undefined && view.streamOverflow.count > 0 && <button type="button" className={styles.work} data-streams-more="true" aria-label={[t('next.shell.moreStreaming', {count: view.streamOverflow.count}), ...(view.streamOverflow.convertingCount > 0 ? [t('next.shell.moreConverting', {count: view.streamOverflow.convertingCount})] : []), t('next.shell.dashboard')].join(', ')} onClick={() => view.onDashboard('streams')}><span className={styles.moreLead}><Icon name="i-people" size={16} /></span><span className={styles.workText}><span className={styles.line1}><b>{t('next.shell.moreStreaming', {count: ` ${view.streamOverflow.count}`})}</b>{view.streamOverflow.convertingCount > 0 && <span className={styles.moreConverting}><Icon name="i-swap" size={14} />{t('next.shell.moreConverting', {count: view.streamOverflow.convertingCount})}</span>}</span></span><Icon name="i-right" size={18} className={styles.chevron} /></button>}</section>}
         {view.scans.length > 0 && <section className={styles.group}><h4>{t('next.shell.libraryScans')}</h4>{view.scans.map(scan => <ActivityWork key={scan.id} work={scan} scan t={t} />)}</section>}
