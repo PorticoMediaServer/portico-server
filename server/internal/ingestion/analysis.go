@@ -264,6 +264,8 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		r, _, e2 := catalog.ObservationRevision(source, v)
 		return e2 == nil && r == revision
 	}
+	clearActivityFile := s.activityFile(ctx, job, relative)
+	defer clearActivityFile()
 	before, err := stat()
 	if err != nil || !matches(before) {
 		if ctx.Err() != nil {

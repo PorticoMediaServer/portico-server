@@ -119,20 +119,20 @@ func TestScanEventsStartedProgressFinished(t *testing.T) {
 	if events[0].data["state"] != "started" || int64(events[0].data["found"].(float64)) != 100 || len(events[0].data) != 2 {
 		t.Fatalf("started data: %+v", events[0].data)
 	}
-	// Two found changes within 10s: no event.
+	// Two found changes within one second: no event.
 	found.Store(120)
-	if _, err := p.tick(context.Background(), base.Add(time.Second)); err != nil {
+	if _, err := p.tick(context.Background(), base.Add(100*time.Millisecond)); err != nil {
 		t.Fatal(err)
 	}
 	found.Store(140)
-	if _, err := p.tick(context.Background(), base.Add(2*time.Second)); err != nil {
+	if _, err := p.tick(context.Background(), base.Add(200*time.Millisecond)); err != nil {
 		t.Fatal(err)
 	}
 	if got := readScanEvents(t, db); len(got) != 1 {
 		t.Fatalf("throttled changes emitted: %+v", got)
 	}
-	// Advance past 10s: exactly one progress with the latest count.
-	if _, err := p.tick(context.Background(), base.Add(11*time.Second)); err != nil {
+	// At one second: exactly one progress with the latest count.
+	if _, err := p.tick(context.Background(), base.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	events = readScanEvents(t, db)
@@ -145,7 +145,7 @@ func TestScanEventsStartedProgressFinished(t *testing.T) {
 	// End the scan: one finished.
 	deleteActive(t, db, "src1")
 	scanning.Store(false)
-	if _, err := p.tick(context.Background(), base.Add(12*time.Second)); err != nil {
+	if _, err := p.tick(context.Background(), base.Add(1100*time.Millisecond)); err != nil {
 		t.Fatal(err)
 	}
 	events = readScanEvents(t, db)

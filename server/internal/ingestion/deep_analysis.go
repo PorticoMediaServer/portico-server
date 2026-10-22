@@ -39,10 +39,11 @@ func (s *Service) analyzeDeep(parent context.Context, job, object, revision stri
 	if s.DeepAnalysis == nil {
 		return s.analysisOutcome(parent, job, object, revision, policy.Revision, true, "analysis_worker_unavailable")
 	}
+	var relative string
 	var size int64
 	var duration float64
 	if err := dbwork.ReadHandle(parent, s.db).QueryRowContext(parent,
-		`SELECT o.size,COALESCE(a.duration,0) FROM inventory_objects o LEFT JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=?`, object).Scan(&size, &duration); err != nil && err != sql.ErrNoRows {
+		`SELECT o.relative_path,o.size,COALESCE(a.duration,0) FROM inventory_objects o LEFT JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=?`, object).Scan(&relative, &size, &duration); err != nil && err != sql.ErrNoRows {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(parent, deepAnalysisBudget(size, duration))
@@ -75,6 +76,8 @@ func (s *Service) analyzeDeep(parent context.Context, job, object, revision stri
 			}
 		}
 	})
+	clearActivityFile := s.activityFile(ctx, job, relative)
+	defer clearActivityFile()
 	done, warning, err := s.DeepAnalysis.RunOne(ctx, mediaanalysis.Request{JobID: job, ObjectID: object, SourceRevision: revision, PolicyRevision: policy.Revision})
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 		return nil
