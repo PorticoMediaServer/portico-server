@@ -107,8 +107,10 @@ type SearchRequest struct {
 	Libraries                                                         []string
 	LibraryIDs                                                        []string
 	Groups                                                            []string
-	LiveTV                                                            bool
-	Record                                                            bool
+	// LiveTV is a server-resolved viewer permission, never client input or
+	// service presence alone. It gates all live search, including future programme results.
+	LiveTV bool
+	Record bool
 	// Restrictions is applied to the catalog groups; people and live channels
 	// carry no content rating and are governed by their own policies.
 	Restrictions identity.ContentRestrictions
@@ -256,6 +258,21 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 	selected, e := searchSelection(r)
 	if e != nil {
 		return out, e
+	}
+	if !r.LiveTV {
+		if r.Group == "live-tv" {
+			if r.Cursor != "" {
+				return out, ErrCursor
+			}
+			return out, ErrSearchQuery
+		}
+		visible := make([]searchGroupDefinition, 0, len(selected))
+		for _, g := range selected {
+			if g.source != "live" {
+				visible = append(visible, g)
+			}
+		}
+		selected = visible
 	}
 	if r.Cursor != "" && r.Group == "" {
 		return out, ErrSearchQuery
@@ -430,6 +447,9 @@ func (s *Service) searchCapabilities(ctx context.Context, r SearchRequest) Searc
 	live := r.LiveTV && s.tableExists(ctx, "live_channel_versions")
 	people := s.tableExists(ctx, "catalog_people_names")
 	for _, g := range searchGroups {
+		if g.source == "live" && !r.LiveTV {
+			continue
+		}
 		capability := SearchGroupCapability{ID: g.id, LabelKey: searchGroupLabelKey(g.id), Title: g.label, EntityKind: g.kind, Available: true, Sorts: g.sorts}
 		switch g.source {
 		case "live":
@@ -482,11 +502,6 @@ func (s *Service) searchGroup(ctx context.Context, r SearchRequest, g searchGrou
 	case "people":
 		return s.searchPeopleGroup(ctx, r, g, match, scopeHash, fingerprint, rev, pageSize, out)
 	case "live":
-		if !r.LiveTV {
-			out.Status = "error"
-			out.ErrorCode = "search_group_unavailable"
-			return nil
-		}
 		return s.searchLiveGroup(ctx, r, g, scopeHash, fingerprint, rev, pageSize, out)
 	}
 	return s.searchCatalogGroup(ctx, r, g, match, scopeHash, fingerprint, rev, pageSize, out)
@@ -952,6 +967,14 @@ func (s *Service) allLibraryIDs(ctx context.Context) ([]string, error) {
 // searchLiveGroup matches the active published channel lineup. Channels are not
 // library scoped; the caller states whether this viewer may read live TV at all.
 func (s *Service) searchLiveGroup(ctx context.Context, r SearchRequest, g searchGroupDefinition, scopeHash, fingerprint string, rev ContentRevision, pageSize int, out *SearchGroupResult) error {
+	// Enforce denial at the lookup too: another composition must not bypass
+	// the permission by calling this without Search's group selection.
+	if !r.LiveTV {
+		if r.Cursor != "" {
+			return ErrCursor
+		}
+		return ErrSearchQuery
+	}
 	contains := "%" + strings.ToLower(searchPrefix(r.Q))
 	where := ` FROM live_channel_versions v JOIN live_sources s ON s.active_generation=v.generation_id AND s.state='active' WHERE lower(v.name) LIKE ? ESCAPE '\'`
 	if e := s.read().QueryRowContext(ctx, `SELECT count(*)`+where, contains).Scan(&out.TotalCount); e != nil {
