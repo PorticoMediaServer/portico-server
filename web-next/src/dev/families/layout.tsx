@@ -133,7 +133,7 @@ function ShelfDesktop() { return <ShelfCase />; }
 function ShelfPhone() { return <ShelfCase platform="phone-web" />; }
 function ShelfTv() { return <ShelfCase platform="tv" />; }
 
-function FlowCase() {
+function FlowCase({group = 'all'}: {group?: 'all' | 'movies' | 'small'}) {
   const art = useReferenceArtwork(), [action, setAction] = useState('');
   const search = useMemo(() => new DOMParser().parseFromString(searchHtml, 'text/html'), []);
   const people = [...search.querySelectorAll('#s-all .person:not(.artist)')].map((person, index) => ({id: `person-${index}`, initials: person.querySelector('.face')!.textContent!, title: person.querySelector('b')!.textContent!, caption: [{id: 'known-for', role: 'context' as const, text: person.querySelector('small')!.textContent!}]}));
@@ -145,14 +145,17 @@ function FlowCase() {
     const time = /^(\d+):(\d+)$/.exec(song.querySelector('.d')!.textContent!.trim())!;
     return {id: `reference-song-${index}`, text: cardText({id: `reference-song-${index}`, kind: 'song', title: song.querySelector('b')!.textContent!, artist: names[0], album: names[1], durationSeconds: Number(time[1]) * 60 + Number(time[2])}, 'song-row', {t}), artwork: <Artwork source={index === 0 ? art.abbeyRoad : art.album} alt="" />};
   });
-  return <div data-gallery-action={action}><FlowSections sections={[
+  const sections = [
     {id: 'movies', heading: t('next.layout.movies'), count: 7, cap: 7, itemCount: 7, itemWidth: 173.714286, fullWidth: true, content: <div className={styles.fixtureMovieGrid}>{movies.map((item, index) => <PosterCard key={item.id} context="search" style={{width: '100%'}} artwork={art.searchMovies[index]} model={item} onNavigate={() => setAction(item.id)} />)}</div>},
     {id: 'people', heading: t('next.layout.people'), count: 3, cap: 3, itemCount: 3, itemWidth: 124, content: <div className={styles.fixtureCards}>{people.map(item => <CircleCard key={item.id} context="search" covers={[]} initials={item.initials} model={item} onNavigate={() => setAction(item.id)} />)}</div>},
     {id: 'artists', heading: t('next.layout.artists'), count: 1, cap: 1, itemCount: 1, itemWidth: 124, content: <CircleCard context="search" covers={[art.album]} model={{title: artist.querySelector('b')!.textContent!, caption: [{id: 'albums', text: artist.querySelector('small')!.textContent!, role: 'value'}]}} onNavigate={() => setAction('artist')} />},
     {id: 'albums', heading: t('next.layout.albums'), count: 1, cap: 1, itemCount: 1, itemWidth: 150, content: <SquareCard context="search" artwork={art.album} model={cardText({id: 'reference-album', kind: 'album', title: albumData.title, year: albumData.year, artist: albumData.artist.name}, 'ordinary', {t})} onNavigate={() => setAction('album')} />},
     {id: 'songs', heading: t('next.layout.songs'), count: t('next.layout.itemCount', {shown: 4, total: 5}), cap: 1, itemCount: 1, itemWidth: 452, grow: true, onSeeAll: () => setAction('see-all-songs'), content: <div>{songs.map(row => <SongRow key={row.id} row={row} onPlay={id => setAction(`play:${id}`)} />)}</div>},
-  ]} /></div>;
+  ];
+  return <div data-gallery-action={action}><FlowSections sections={group === 'movies' ? sections.slice(0, 1) : group === 'small' ? sections.slice(1) : sections} /></div>;
 }
+function FlowMovies() { return <FlowCase group="movies" />; }
+function FlowSmall() { return <FlowCase group="small" />; }
 
 const anchors = [{key: '#', index: 0}, {key: 'A', index: 2}, {key: 'B', index: 9}, {key: 'C', index: 15}, {key: 'J', index: 27}, {key: 'M', index: 34}, {key: 'R', index: 45}, {key: 'S', index: 51}, {key: 'Б', index: 7000}, {key: 'あ', index: 12000}];
 function RailCase({unicode = false, phone = false}: {unicode?: boolean; phone?: boolean}) {
@@ -196,6 +199,8 @@ export default defineGalleryFamily({id: 'layout', labelKey: 'next.layout.family'
   {id: 'shelf-phone', labelKey: 'next.layout.gallery.shelfPhone', width: 390, height: 250, render: ShelfPhone},
   {id: 'shelf-tv', labelKey: 'next.layout.gallery.shelfTv', width: 1920, height: 400, render: ShelfTv},
   {id: 'flow', labelKey: 'next.layout.gallery.flow', width: 1440, height: 1000, render: FlowCase},
+  {id: 'flow-movies', labelKey: 'next.layout.gallery.flowMovies', width: 1440, height: 408, render: FlowMovies},
+  {id: 'flow-small', labelKey: 'next.layout.gallery.flowSmall', width: 1440, height: 340, render: FlowSmall},
   {id: 'grid', labelKey: 'next.layout.gallery.grid', width: 1440, height: 844, render: GridLarge},
   {id: 'grid-phone', labelKey: 'next.layout.gallery.gridPhone', width: 390, height: 528, render: GridPhone},
   {id: 'rail', labelKey: 'next.layout.gallery.rail', width: 100, height: 620, render: RailLatin},

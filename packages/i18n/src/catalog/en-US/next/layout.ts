@@ -22,6 +22,8 @@ export const layoutMessages = {
   'next.layout.gallery.shelfPhone': 'Phone shelf',
   'next.layout.gallery.shelfTv': 'TV shelf',
   'next.layout.gallery.flow': 'Search sections',
+  'next.layout.gallery.flowMovies': 'Full-width search section',
+  'next.layout.gallery.flowSmall': 'Shared-line search sections',
   'next.layout.gallery.grid': 'Windowed library',
   'next.layout.gallery.gridPhone': 'Phone windowed library',
   'next.layout.gallery.rail': 'Alphabet rail',
