@@ -96,16 +96,16 @@ func TestContinueListeningLargeHistoryLatency(t *testing.T) {
 		t.Logf("%s: best of 5 %s", label, best.Round(10*time.Microsecond))
 	}
 	var cursor string
-	measure("continue_listening first page", func() error {
-		row, err := s.HomeSingleRow(r, "continue_listening", HomeRowPage{Limit: 12})
-		if err == nil && (row.Total != continueListeningMaximum || len(row.Entries) != 12) {
+	measure("listen_next first page", func() error {
+		row, err := s.HomeSingleRow(r, "listen_next", HomeRowPage{Limit: 12})
+		if err == nil && (row.Total != 2 || len(row.Entries) != 2 || row.HasMore || row.NextCursor != "") {
 			err = fmt.Errorf("row total %d entries %d", row.Total, len(row.Entries))
 		}
 		cursor = row.NextCursor
 		return err
 	})
-	measure("continue_listening cursor page", func() error {
-		_, err := s.HomeSingleRow(r, "continue_listening", HomeRowPage{Limit: 12, Cursor: cursor})
+	measure("listen_next subsequent page", func() error {
+		_, err := s.HomeSingleRow(r, "listen_next", HomeRowPage{Limit: 12, Cursor: cursor})
 		return err
 	})
 	measure("uncapped count (previous per-request cost)", func() error {

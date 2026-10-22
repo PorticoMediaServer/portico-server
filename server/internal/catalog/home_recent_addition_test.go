@@ -48,7 +48,7 @@ func TestRecentlyAddedNamesTheEpisodeOrSeasonThatArrived(t *testing.T) {
 	c.Drain()
 	s := New(c.DB)
 	viewer := Viewer{Profile: "p", Libraries: []string{"tv"}}
-	row, err := s.HomeSingleRow(HomeRequest{Viewer: viewer, ServerID: "server", Profile: "p", Libraries: []string{"tv"}}, "recent_tv", HomeRowPage{Limit: 12})
+	row, err := s.HomeSingleRow(HomeRequest{Viewer: viewer, ServerID: "server", Profile: "p", Libraries: []string{"tv"}}, "new_on_server", HomeRowPage{Limit: 12})
 	if err != nil {
 		t.Fatal(err)
 	}

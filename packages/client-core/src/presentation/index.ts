@@ -35,3 +35,4 @@ export * from './manual-order.ts';
 export * from './browse-groups.ts';
 export * from './licences.ts';
 export * as kitModel from './kit-model/index.ts';
+export * from './home-spotlight.ts';

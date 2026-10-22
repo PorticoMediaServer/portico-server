@@ -6,6 +6,7 @@ import {unreadableServerResponse} from './server-messages.ts';
 import {validateContentEntry, type ContentEntry} from './library-content.ts';
 import {parseBrowseNode, type BrowseNode, type BrowseSortSelection} from './browse.ts';
 import {firstOfEach, keepReadable, noteSkipped, oneOfOr} from './tolerant.ts';
+import {parseGuideChannels, parseGuideSources, type GuideChannel, type GuideSource} from './channel-guide.ts';
 
 export type HomeArtworkShape = 'poster' | 'square' | 'landscape';
 export type HomeRevision = Readonly<{catalog: number; viewer: number}>;
@@ -14,13 +15,25 @@ export type HomeRevision = Readonly<{catalog: number; viewer: number}>;
 export type ServerText = Readonly<{code: string; params?: Readonly<Record<string, string>>; fallback: string}>;
 export type HomeSeeAll = Readonly<
  {type:'library';libraryId:string;pivot:string;query?:BrowseNode;sort:readonly BrowseSortSelection[]} |
- {type:'row';rowId:string} | {type:'saved_view';resourceId:string}
+ {type:'row';rowId:string} | {type:'saved_view';resourceId:string} |
+ {type:'collection';resourceId:string;libraryId:string} | {type:'guide';group?:string;sourceId?:string}
 >;
+export type HomeReason = Readonly<{kind:string;text:ServerText;source?:Readonly<{id:string;name:string}>;libraryId?:string}>;
+export type HomeSpotlight = Readonly<{entry:ContentEntry;reason:HomeReason;resumeTarget?:ContentEntry}>;
+export type HomeResume = Readonly<{entryId:string;target:ContentEntry}>;
+export type HomePeriod = Readonly<{days:number;start:string;end:string;metric:string;text:ServerText}>;
+export type HomeCollection = Readonly<{collection:Readonly<{id:string;libraryId:string;name:string;itemCount:number;revision:number}>;members:readonly ContentEntry[];backdropUrl?:string;firstYear?:number;lastTitle?:string}>;
+/** The server resolves marks over the entire authorized source, before filtering or paging. */
+export type HomeChannelMark = Readonly<{text:string;seed:string}>;
+export type HomeChannel = Readonly<{channel:GuideChannel & Readonly<{mark:HomeChannelMark}>;source:GuideSource}>;
+export type HomeLive = Readonly<{revision:string;observedAt:string;expiresAt:string;sort:'favorites';group:string;groups:readonly Readonly<{name:string;count:number}>[];channels:readonly HomeChannel[]}>;
 export type HomeRow = Readonly<{
   id: string; viewerFence: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; explanation?: string; endpoint: string;
   /** `for_you` on the personal rows: the layout arranges and hides them together as the row `for_you`. */
   family?: string;
-  deferred?: boolean; children?: readonly HomeRow[]; hero?: HomeHeroRef;
+  deferred?: boolean; children?: readonly HomeRow[];
+  reason?:HomeReason; resumes?:readonly HomeResume[]; collection?:HomeCollection; live?:HomeLive; period?:HomePeriod; subtitleText?:ServerText;
+  platforms?:readonly ('web'|'phone'|'tv')[];
   seeAll?: HomeSeeAll;
   libraryId?: string; privacySensitivity: string; policyState: string;
   relation?: string; provider?: string; evidenceId?: string;
@@ -34,12 +47,12 @@ export type HomeRow = Readonly<{
 export type HomeLayout = Readonly<{revision: number; rowOrder: readonly string[]; hiddenRowIds: readonly string[]}>;
 export type HomeLayoutRowView = Readonly<{id: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; libraryId?: string; required: boolean; hideable: boolean; reorderable: boolean; hidden: boolean}>;
 export type HomeLayoutView = Readonly<HomeLayout & {rows: readonly HomeLayoutRowView[]}>;
-/** The entry Home opens with: the first entry of one of its rows (the server chooses which). */
+/** Frozen type dependency of presentation/home-hero.ts, removed with the old UI in Phase 10. */
 export type HomeHeroRef = Readonly<{rowId: string; entryId: string; selectionKey?: string}>;
 export type HomeDocument = Readonly<{
-  serverId: string; viewerFence: string; rows: readonly HomeRow[]; hero?: HomeHeroRef; layout: HomeLayout; revision: HomeRevision; generatedAt: string;
+  serverId: string; viewerFence: string; rows: readonly HomeRow[]; spotlight:readonly HomeSpotlight[]; hero?: HomeHeroRef; layout: HomeLayout; revision: HomeRevision; generatedAt: string;
 }>;
-export type HomeRowPage = Readonly<{limit?: number; cursor?: string; start?: number; revision?: string; anchorId?: string}>;
+export type HomeRowPage = Readonly<{limit?: number; cursor?: string; start?: number; revision?: string; anchorId?: string;group?:string;sourceId?:string}>;
 export type HomeLayoutIntent = Readonly<{expectedRevision: number; rowOrder: readonly string[]; hiddenRowIds: readonly string[]; idempotencyKey?: string}>;
 export interface HomeApi {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}
 
@@ -86,10 +99,69 @@ function revision(value: unknown): HomeRevision {
   return Object.freeze({catalog: value.catalog, viewer: value.viewer});
 }
 
+const instant=(v:unknown):v is string=>text(v,128)&&Number.isFinite(Date.parse(v));
+export function parseHomeReason(value:unknown):HomeReason {
+  if(!object(value)||!id(value.kind))invalid();
+  const label=parseServerText(value.text)??invalid();
+  let source:HomeReason['source'];
+  if(value.source!==undefined){
+    if(!object(value.source)||!id(value.source.id)||!text(value.source.name,2048))invalid();
+    source=Object.freeze({id:value.source.id,name:value.source.name});
+  }
+  if(value.kind==='because_you_watched'&&!source)invalid();
+  if(value.libraryId!==undefined&&!id(value.libraryId))invalid();
+  return Object.freeze({kind:value.kind,text:label,...(source?{source}:{}),...(value.libraryId===undefined?{}:{libraryId:value.libraryId as string})});
+}
+export function parseHomeSpotlight(value:unknown):HomeSpotlight {
+  if(!object(value))invalid();
+  const entry=validateContentEntry(value.entry);
+  if(!['movie','show'].includes(entry.kind)||[...(entry.overview??'')].length>300)invalid();
+  const reason=parseHomeReason(value.reason);
+  const resumeTarget=value.resumeTarget===undefined?undefined:validateContentEntry(value.resumeTarget);
+  if(resumeTarget&&(entry.kind!=='show'||resumeTarget.kind!=='episode'||resumeTarget.show?.id!==entry.id||!resumeTarget.playback))invalid();
+  return Object.freeze({entry,reason,...(resumeTarget?{resumeTarget}:{})});
+}
+function parseHomeCollection(value:unknown):HomeCollection {
+  if(!object(value)||!object(value.collection)||!Array.isArray(value.members)||value.members.length>4)invalid();
+  const c=value.collection;
+  if(!id(c.id)||!id(c.libraryId)||!text(c.name,1024)||!whole(c.itemCount)||!whole(c.revision)||c.itemCount<value.members.length)invalid();
+  const members=Object.freeze(value.members.map(v=>validateContentEntry(v)));
+  if(members.some(e=>e.libraryId!==c.libraryId))invalid();
+  if(value.firstYear!==undefined&&(!whole(value.firstYear)||value.firstYear<1))invalid();
+  if(value.backdropUrl!==undefined&&!text(value.backdropUrl,4096)||value.lastTitle!==undefined&&!text(value.lastTitle,2048))invalid();
+  return Object.freeze({collection:Object.freeze({id:c.id,libraryId:c.libraryId,name:c.name,itemCount:c.itemCount,revision:c.revision}),members,
+    ...(value.backdropUrl===undefined?{}:{backdropUrl:value.backdropUrl as string}),...(value.firstYear===undefined?{}:{firstYear:value.firstYear as number}),...(value.lastTitle===undefined?{}:{lastTitle:value.lastTitle as string})});
+}
+function parseHomeLive(value:unknown):HomeLive {
+  if(!object(value)||!id(value.revision)||!instant(value.observedAt)||!instant(value.expiresAt)||Date.parse(value.expiresAt)<=Date.parse(value.observedAt)||value.sort!=='favorites'||!text(value.group,120)||!Array.isArray(value.groups)||value.groups.length>2000||!Array.isArray(value.channels)||value.channels.length>50)invalid();
+  const observedAt=value.observedAt;
+  const groups=Object.freeze(value.groups.map(v=>{
+    if(!object(v)||!id(v.name)||!whole(v.count))invalid();
+    return Object.freeze({name:v.name,count:v.count});
+  }));
+  const channels=Object.freeze(value.channels.map(v=>{
+    if(!object(v)||!object(v.channel)||!object(v.channel.mark)||!id(v.channel.mark.text)||!id(v.channel.mark.seed)||!Array.isArray(v.channel.programmes)||v.channel.programmes.length>1)invalid();
+    const source=parseGuideSources([v.source])[0];
+    if(!source)invalid();
+    const channel=parseGuideChannels([v.channel],[source],{kind:source.provenance,start:observedAt,end:new Date(Date.parse(observedAt)+1000).toISOString(),timezone:'UTC',search:'',sourceId:source.id})[0];
+    if(!channel||channel.hidden||channel.programmes.length!==v.channel.programmes.length||channel.programmes.some(p=>Date.parse(p.start)>Date.parse(observedAt)||Date.parse(p.end)<=Date.parse(observedAt)))invalid();
+    return Object.freeze({source:Object.freeze(source),channel:Object.freeze({...channel,programmes:Object.freeze(channel.programmes),mark:Object.freeze({text:v.channel.mark.text,seed:v.channel.mark.seed})})});
+  }));
+  const keys=channels.map(v=>v.channel.provenance+':'+v.channel.sourceId+':'+v.channel.id);
+  if(new Set(keys).size!==keys.length)invalid();
+  return Object.freeze({revision:value.revision,observedAt,expiresAt:value.expiresAt,sort:'favorites',group:value.group,groups,channels});
+}
+export const hasHomeRowContent=(row:HomeRow):boolean=>row.entries.length>0||!!row.collection?.members.length||!!row.live?.channels.length;
+
 export function validateHomeSeeAll(value:unknown):HomeSeeAll {
  if(!object(value))invalid();
  if(value.type==='row' && id(value.rowId))return Object.freeze({type:'row',rowId:value.rowId});
  if(value.type==='saved_view' && id(value.resourceId))return Object.freeze({type:'saved_view',resourceId:value.resourceId});
+ if(value.type==='collection' && id(value.resourceId) && id(value.libraryId))return Object.freeze({type:'collection',resourceId:value.resourceId,libraryId:value.libraryId});
+ if(value.type==='guide') {
+  if(value.group!==undefined&&!id(value.group)||value.sourceId!==undefined&&!id(value.sourceId))invalid();
+  return Object.freeze({type:'guide',...(value.group===undefined?{}:{group:value.group as string}),...(value.sourceId===undefined?{}:{sourceId:value.sourceId as string})});
+ }
  if(value.type!=='library'||!id(value.libraryId)||!id(value.pivot)||!Array.isArray(value.sort)||value.sort.length<1||value.sort.length>3)invalid();
  const sort=value.sort.map(s=>{if(!object(s)||!id(s.field)||(s.direction!=='asc'&&s.direction!=='desc'))invalid();return Object.freeze({field:s.field,direction:s.direction}) as BrowseSortSelection;});
  return Object.freeze({type:'library',libraryId:value.libraryId,pivot:value.pivot,sort:Object.freeze(sort),...(value.query===undefined?{}:{query:parseBrowseNode(value.query)})});
@@ -131,10 +203,32 @@ function parseHomeRow(value: unknown, allowChildren: boolean): HomeRow {
       return parsed;
     }));
   }
-  if (object(value.hero) && id(value.hero.rowId) && id(value.hero.entryId)) row.hero = Object.freeze({rowId: value.hero.rowId, entryId: value.hero.entryId, ...(typeof value.hero.selectionKey === "string" ? {selectionKey: words(value.hero.selectionKey,1024)} : {})});
+  if (value.reason !== undefined) row.reason = parseHomeReason(value.reason);
+  if (value.collection !== undefined) row.collection = parseHomeCollection(value.collection);
+  if (value.live !== undefined) row.live = parseHomeLive(value.live);
+  if (value.period !== undefined) {
+    const p=value.period;
+    if(!object(p)||!whole(p.days)||p.days<1||!instant(p.start)||!instant(p.end)||Date.parse(p.start)>=Date.parse(p.end)||!id(p.metric))invalid();
+    row.period=Object.freeze({days:p.days,start:p.start,end:p.end,metric:p.metric,text:parseServerText(p.text)??invalid()});
+  }
+  if (value.resumes !== undefined) {
+    if(!Array.isArray(value.resumes)||value.resumes.length>100)invalid();
+    row.resumes=Object.freeze(value.resumes.map(v=>{
+      if(!object(v)||!id(v.entryId)||!entries.some(e=>e.id===v.entryId))invalid();
+      const target=validateContentEntry(v.target);
+      if(!target.playback)invalid();
+      return Object.freeze({entryId:v.entryId,target});
+    }));
+  }
+  if(value.platforms!==undefined){
+    if(!Array.isArray(value.platforms)||value.platforms.length>3||value.platforms.some(p=>!['web','phone','tv'].includes(p)))invalid();
+    row.platforms=Object.freeze([...value.platforms]);
+  }
   if (whole(value.cacheTtlMs)) row.cacheTtlMs = value.cacheTtlMs;
   const titleText = titleTextOf(value.titleText);
   if (titleText) row.titleText = titleText;
+  const subtitleText=titleTextOf(value.subtitleText);
+  if(subtitleText)row.subtitleText=subtitleText;
   for (const field of ['explanation', 'libraryId', 'relation', 'provider', 'evidenceId', 'anchorId', 'family'] as const) {
     if (text(value[field], 1024)) row[field] = value[field];
     else if (value[field] !== undefined && value[field] !== null) noteSkipped('home', 'row.' + field);
@@ -204,22 +298,19 @@ export function validateHomeLayoutView(value: unknown): HomeLayoutView {
  * row the viewer hid or an empty row that is not critical is not shown.
  */
 export function validateHomeDocument(value: unknown): HomeDocument {
-  if (!object(value) || !id(value.serverId) || !id(value.viewerFence) || !Array.isArray(value.rows) || value.rows.length > 64) invalid();
+  if (!object(value) || !id(value.serverId) || !id(value.viewerFence) || !Array.isArray(value.rows) || value.rows.length > 64 || !Array.isArray(value.spotlight) || value.spotlight.length>5) invalid();
+  const spotlight=Object.freeze(value.spotlight.map(parseHomeSpotlight));
   const layout = validateHomeLayout(value.layout);
   const readable = keepReadable('home', 'rows', value.rows, raw => {
     const row = validateHomeRow(raw);
     // An entry of a kind this app does not know leaves its row in place; a row the server sent empty is kept only when critical.
-    return {row, shown: !layout.hiddenRowIds.includes(row.id) && ((raw as {entries: unknown[]}).entries.length > 0 || row.critical || row.deferred)};
+    if(row.viewerFence!==value.viewerFence)invalid();
+    return {row, shown: !layout.hiddenRowIds.includes(row.id) && ((raw as {entries: unknown[]}).entries.length > 0 || hasHomeRowContent(row) || row.critical || row.deferred)};
   });
   // A Home none of whose rows could be read is refused rather than shown as empty.
   if (!readable.length && value.rows.length) invalid();
   const rows = firstOfEach('home', 'rows', readable.filter(read => read.shown).map(read => read.row), row => row.id);
-  let hero: HomeHeroRef | undefined;
-  // A hero that cannot be read, or whose entry this client cannot draw (a kind it does not know), is simply absent.
-  if (object(value.hero) && id(value.hero.rowId) && id(value.hero.entryId)) {
-    if (rows.find(row => row.id === (value.hero as HomeHeroRef).rowId)?.entries.some(entry => entry.id === (value.hero as HomeHeroRef).entryId)) hero = Object.freeze({rowId: value.hero.rowId, entryId: value.hero.entryId, ...(typeof value.hero.selectionKey === "string" ? {selectionKey: words(value.hero.selectionKey,1024)} : {})});
-  } else if (value.hero !== undefined && value.hero !== null) noteSkipped('home', 'hero');
-  return Object.freeze({serverId: value.serverId, viewerFence: value.viewerFence, rows: Object.freeze(rows), ...(hero ? {hero} : {}), layout, revision: revision(value.revision), generatedAt: words(value.generatedAt, 128)});
+  return Object.freeze({serverId: value.serverId, viewerFence: value.viewerFence, rows: Object.freeze(rows), spotlight, layout, revision: revision(value.revision), generatedAt: words(value.generatedAt, 128)});
 }
 
 function pageQuery(page: HomeRowPage): string {
@@ -229,6 +320,8 @@ function pageQuery(page: HomeRowPage): string {
   if (page.start !== undefined) query.set('start', String(page.start));
   if (page.revision) query.set('revision', page.revision);
   if (page.anchorId) query.set('anchorId', page.anchorId);
+  if (page.group) query.set('group',page.group);
+  if (page.sourceId) query.set('sourceId',page.sourceId);
   const text = query.toString();
   return text ? '?' + text : '';
 }
@@ -248,12 +341,27 @@ export async function fetchHomeLayout(api: HomeApi, signal?: AbortSignal): Promi
  */
 export const HOME_ROW_MAX_ENTRIES = 100;
 
+/** These server rows reject cursors from any different selected membership. */
+export function hasFencedHomeMembership(rowId: string): boolean {
+  return ['new_on_server', 'because_you_watched', 'listen_next', 'continue_books', 'community_watching'].includes(rowId);
+}
+
 /** A row after one more page: new entries appended (duplicates dropped), capped at `max`. */
 export function appendHomeRowPage(row: HomeRow, page: HomeRow, max = HOME_ROW_MAX_ENTRIES): HomeRow {
+  if(row.id!==page.id||row.viewerFence!==page.viewerFence)invalid();
+  if(row.live||page.live){
+    if(!row.live||!page.live||row.live.revision!==page.live.revision||row.live.observedAt!==page.live.observedAt||row.live.group!==page.live.group)invalid();
+    const key=(v:HomeChannel)=>v.channel.provenance+':'+v.channel.sourceId+':'+v.channel.id;
+    const seen=new Set(row.live.channels.map(key));
+    const channels=Object.freeze([...row.live.channels,...page.live.channels.filter(v=>!seen.has(key(v)))] .slice(0,max));
+    const expiresAt=Date.parse(page.live.expiresAt)<Date.parse(row.live.expiresAt)?page.live.expiresAt:row.live.expiresAt;
+    return Object.freeze({...row,live:Object.freeze({...row.live,channels,expiresAt}),nextCursor:channels.length>=max?'':page.nextCursor,hasMore:page.hasMore,total:page.total});
+  }
   const seen = new Set(row.entries.map(e => e.id));
   const entries = [...row.entries, ...page.entries.filter(e => !seen.has(e.id))].slice(0, max);
   const capped = entries.length >= max;
-  return Object.freeze({...row, entries, nextCursor: capped ? '' : page.nextCursor, hasMore: page.hasMore, total: page.total});
+  const resumes=page.resumes?Object.freeze([...(row.resumes??[]),...page.resumes.filter(v=>!row.resumes?.some(old=>old.entryId===v.entryId))].filter(v=>entries.some(e=>e.id===v.entryId))):row.resumes;
+  return Object.freeze({...row, entries, ...(resumes?{resumes}:{}), nextCursor: capped ? '' : page.nextCursor, hasMore: page.hasMore, total: page.total});
 }
 
 export async function fetchHomeRow(api: HomeApi, rowId: string, page: HomeRowPage = {}, signal?: AbortSignal): Promise<HomeRow> {

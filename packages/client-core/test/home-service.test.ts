@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateHomeDocument, type HomeApi} from '../src/home.ts';
+import {HOME_ROW_MAX_ENTRIES, validateHomeDocument, type HomeApi} from '../src/home.ts';
 import {HomeService, mergeHomeDocument} from '../src/home-service.ts';
+import {HomeRowPager} from '../src/home-row-page.ts';
 
 function entry(id: string, extra: Record<string, unknown> = {}) {
   return {id, kind: 'movie', title: `Title ${id}`, libraryId: 'movies', available: true, navigation: {view: 'item', entityId: id}, playback: {itemId: id}, ...extra};
@@ -14,7 +15,7 @@ function row(id: string, ids: string[], changes: Record<string, unknown> = {}): 
   };
 }
 function document(rows: any[], changes: Record<string, unknown> = {}): any {
-  return {serverId: 'server', viewerFence: 'fence', rows, layout: {revision: 2, rowOrder: rows.map(r => r.id), hiddenRowIds: []}, revision: {catalog: 3, viewer: 1}, generatedAt: '2026-09-16T12:00:00.000Z', ...changes};
+  return {serverId: 'server', viewerFence: 'fence', rows, spotlight: [], layout: {revision: 2, rowOrder: rows.map(r => r.id), hiddenRowIds: []}, revision: {catalog: 3, viewer: 1}, generatedAt: '2026-09-16T12:00:00.000Z', ...changes};
 }
 const api = (handler: (path: string, method?: string, body?: any) => unknown): HomeApi => ({request: async <T>(path: string, method?: string, body?: unknown) => handler(path, method, body) as T});
 const ids = (service: HomeService, rowId: string) => service.getSnapshot().document!.rows.find(r => r.id === rowId)!.entries.map(e => e.id).join(',');
@@ -93,6 +94,152 @@ test('a row page the server refuses as out of date brings Home up to date quietl
   assert.equal(ids(service, 'recent'), 'new,m1,m2');
 });
 
+for (const rowId of ['new_on_server', 'because_you_watched', 'listen_next', 'continue_books', 'community_watching']) {
+  test(`${rowId} recovers a refused fingerprint cursor without retaining the old overlapping tail`, async () => {
+    let changed = false;
+    const cursors: string[] = [];
+    const service = new HomeService(api(path => {
+      if (path === '/v1/home') return document([changed
+        ? row(rowId, ['x', 'a'], {nextCursor: 'membership-b-first'})
+        : row(rowId, ['a', 'b'], {nextCursor: 'membership-a-first'})]);
+      const cursor = new URL(path, 'http://fixture.invalid').searchParams.get('cursor')!;
+      cursors.push(cursor);
+      if (changed && cursor.startsWith('membership-a')) throw {status: 409, code: 'stale_continuation'};
+      if (cursor === 'membership-a-first') return row(rowId, ['c', 'd'], {start: 2, nextCursor: 'membership-a-tail'});
+      assert.equal(cursor, 'membership-b-first');
+      return row(rowId, ['e', 'f'], {start: 2, nextCursor: '', hasMore: false, total: 4});
+    }));
+    try {
+      await service.load();
+      await service.more(rowId);
+      assert.equal(ids(service, rowId), 'a,b,c,d');
+      changed = true;
+      await service.more(rowId);
+      assert.equal(ids(service, rowId), 'x,a', 'removed tail entries cannot survive a changed membership');
+      assert.equal(service.getSnapshot().document!.rows[0].nextCursor, 'membership-b-first');
+      await service.more(rowId);
+      assert.equal(ids(service, rowId), 'x,a,e,f');
+      assert.deepEqual(cursors, ['membership-a-first', 'membership-a-tail', 'membership-b-first']);
+      assert.equal(service.getSnapshot().paging.size, 0);
+    } finally { service.dispose(); }
+  });
+}
+
+test('deferred causal hydration replaces the old reason, paged tail and cursor together', async () => {
+  let changed = false;
+  const reason = (id: string) => ({kind: 'because_you_watched', source: {id, name: id}, text: {code: 'next.home.becauseYouWatched', params: {title: id}, fallback: 'Because you watched ' + id}});
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') return document([row('because_you_watched', [], {deferred: true, limit: 2})]);
+    const cursor = new URL(path, 'http://fixture.invalid').searchParams.get('cursor');
+    if (cursor) return row('because_you_watched', ['old-c', 'old-d'], {reason: reason('old-source'), start: 2, nextCursor: 'old-tail'});
+    return changed
+      ? row('because_you_watched', ['x', 'a'], {reason: reason('new-source'), nextCursor: 'new-first'})
+      : row('because_you_watched', ['a', 'b'], {reason: reason('old-source'), nextCursor: 'old-first'});
+  }));
+  try {
+    await service.load();
+    await new Promise(resolve => setImmediate(resolve));
+    await service.more('because_you_watched');
+    assert.equal(ids(service, 'because_you_watched'), 'a,b,old-c,old-d');
+    changed = true;
+    await service.revalidate();
+    await new Promise(resolve => setImmediate(resolve));
+    const refreshed = service.getSnapshot().document!.rows[0];
+    assert.equal(ids(service, 'because_you_watched'), 'x,a');
+    assert.equal(refreshed.reason!.source!.id, 'new-source');
+    assert.equal(refreshed.nextCursor, 'new-first');
+  } finally { service.dispose(); }
+});
+
+test('quiet refreshes keep Home within its retention bound for fenced and reanchorable rows', async () => {
+  for (const rowId of ['new_on_server', 'recent']) {
+    const first = Array.from({length: 60}, (_, i) => 'item-' + i);
+    const tail = Array.from({length: 40}, (_, i) => 'item-' + (i + 60));
+    let changed = false;
+    const service = new HomeService(api(path => path === '/v1/home'
+      ? document([row(rowId, changed ? ['inserted', ...first.slice(0, 59)] : first, {nextCursor: changed ? 'fresh-first' : 'old-first', total: 200})])
+      : row(rowId, tail, {start: 60, limit: 60, nextCursor: 'old-tail', total: 200})));
+    try {
+      await service.load(); await service.more(rowId);
+      assert.equal(service.getSnapshot().document!.rows[0].entries.length, HOME_ROW_MAX_ENTRIES);
+      changed = true;
+      await service.revalidate();
+      const refreshed = service.getSnapshot().document!.rows[0];
+      assert.ok(refreshed.entries.length <= HOME_ROW_MAX_ENTRIES);
+      assert.equal(refreshed.entries[0].id, 'inserted');
+      assert.equal(refreshed.entries.length, rowId === 'new_on_server' ? 60 : HOME_ROW_MAX_ENTRIES);
+      assert.equal(refreshed.nextCursor, rowId === 'new_on_server' ? 'fresh-first' : '');
+    } finally { service.dispose(); }
+  }
+});
+
+test('a refused fenced cursor is unavailable while the authoritative Home refresh is pending', async () => {
+  let finish!: (value: unknown) => void;
+  let refresh = false;
+  const service = new HomeService(api(path => {
+    if (path !== '/v1/home') throw {status: 409, code: 'stale_continuation'};
+    if (refresh) return new Promise(resolve => { finish = resolve; });
+    return document([row('new_on_server', ['a', 'b'], {nextCursor: 'old'})]);
+  }));
+  try {
+    await service.load(); refresh = true;
+    const pending = service.more('new_on_server');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(service.getSnapshot().document!.rows[0].nextCursor, '');
+    assert.equal(service.getSnapshot().phase, 'ready');
+    finish(document([row('new_on_server', ['x', 'a'], {nextCursor: 'current'})]));
+    await pending;
+    assert.equal(ids(service, 'new_on_server'), 'x,a');
+    assert.equal(service.getSnapshot().document!.rows[0].nextCursor, 'current');
+  } finally { service.dispose(); }
+});
+
+test('a fenced See all refresh drops pages beyond its authoritative reread budget and continues from the new cursor', async () => {
+  let changed = false;
+  const pager = new HomeRowPager(api(path => {
+    const cursor = new URL(path, 'http://fixture.invalid').searchParams.get('cursor');
+    const page = cursor ? Number(cursor.split('-')[1]) : 0;
+    if (changed) {
+      if (cursor) assert.ok(cursor.startsWith('new-'));
+      return row('because_you_watched', page === 0 ? ['x', 'a'] : [`new-${page}-a`, `new-${page}-b`], {start: page * 2, nextCursor: `new-${page + 1}`});
+    }
+    return row('because_you_watched', page === 0 ? ['a', 'b'] : [`old-${page}-a`, `old-${page}-b`], {start: page * 2, nextCursor: `old-${page + 1}`});
+  }), 'because_you_watched', 2);
+  try {
+    await pager.load();
+    for (let i = 0; i < 5; i++) await pager.more();
+    assert.equal(pager.getSnapshot().entries.length, 12);
+    changed = true;
+    await pager.revalidate();
+    assert.deepEqual(pager.getSnapshot().entries.map(e => e.id), ['x', 'a', 'new-1-a', 'new-1-b', 'new-2-a', 'new-2-b', 'new-3-a', 'new-3-b', 'new-4-a', 'new-4-b']);
+    assert.equal(pager.getSnapshot().nextCursor, 'new-5');
+    await pager.more();
+    assert.deepEqual(pager.getSnapshot().entries.slice(-2).map(e => e.id), ['new-5-a', 'new-5-b']);
+  } finally { pager.dispose(); }
+});
+
+test('a fenced See all refresh restarts if membership changes during its page reload', async () => {
+  let membership = 'old';
+  const pager = new HomeRowPager(api(path => {
+    const cursor = new URL(path, 'http://fixture.invalid').searchParams.get('cursor');
+    if (cursor === 'old-first') return row('listen_next', ['c', 'd'], {start: 2, nextCursor: 'old-tail'});
+    if (cursor === 'intermediate-first') { membership = 'current'; throw {status: 409, code: 'stale_continuation'}; }
+    if (cursor === 'current-first') return row('listen_next', ['e', 'f'], {start: 2, nextCursor: '', hasMore: false});
+    assert.equal(cursor, null);
+    return row('listen_next', membership === 'old' ? ['a', 'b'] : membership === 'intermediate' ? ['x', 'a'] : ['y', 'x'], {nextCursor: membership + '-first'});
+  }), 'listen_next', 2);
+  try {
+    await pager.load(); await pager.more();
+    membership = 'intermediate';
+    await pager.revalidate();
+    assert.deepEqual(pager.getSnapshot().entries.map(e => e.id), ['y', 'x']);
+    assert.equal(pager.getSnapshot().nextCursor, 'current-first');
+    assert.equal(pager.getSnapshot().restarts, 1);
+    await pager.more();
+    assert.deepEqual(pager.getSnapshot().entries.map(e => e.id), ['y', 'x', 'e', 'f']);
+  } finally { pager.dispose(); }
+});
+
 test('saving the layout after it moved elsewhere reads it again and sends the same arrangement', async () => {
   let revision = 2;
   const writes: any[] = [];
@@ -127,7 +274,7 @@ test('removing a card is immediate and can be put back', async () => {
 
 test('another viewer or server is never merged into what is shown', () => {
   const shown = validateHomeDocument(document([row('recent', ['m1'])]));
-  const other = validateHomeDocument(document([row('recent', ['x'])], {viewerFence: 'someone-else'}));
+  const other = validateHomeDocument(document([row('recent', ['x'], {viewerFence:'someone-else'})], {viewerFence: 'someone-else'}));
   assert.equal(mergeHomeDocument(shown, other), other);
 });
 
@@ -197,19 +344,21 @@ test('a row timeout releases its queue slot even if its API ignores cancellation
   service.dispose();
 });
 
-test('independent Continue previews choose the server-ranked hero regardless of arrival order', async () => {
+test('deferred row arrival cannot select or replace the server spotlight', async () => {
   let finishListening!: (value: unknown) => void;
+  const spotlight=[{entry:entry('selected'),reason:{kind:'recommended',text:{code:'next.home.reason.recommended',fallback:'Recommended for you'}}}];
   const service = new HomeService(api(path => {
-    if (path === '/v1/home') return document([row('continue', [], {deferred: true}), row('continue_listening', [], {deferred: true})]);
-    if (path.includes('/rows/continue_listening')) return new Promise(resolve => { finishListening = resolve; });
-    return row('continue', ['video'], {hero: {rowId: 'continue', entryId: 'video', selectionKey: '2026-10-13!999'}});
+    if (path === '/v1/home') return document([row('continue', [], {deferred: true}), row('listen_next', [], {deferred: true})],{spotlight,hero:{rowId:'continue',entryId:'video'}});
+    if (path.includes('/rows/listen_next')) return new Promise(resolve => { finishListening = resolve; });
+    return row('continue', ['video'], {hero: {rowId: 'continue', entryId: 'video'}});
   }));
   await service.load();
   await new Promise(resolve => setTimeout(resolve, 0));
-  assert.equal(service.getSnapshot().document!.hero!.entryId, 'video');
-  finishListening(row('continue_listening', ['audio'], {hero: {rowId: 'continue_listening', entryId: 'audio', selectionKey: '2026-10-12!998'}}));
+  assert.equal(service.getSnapshot().document!.spotlight[0].entry.id,'selected');
+  finishListening(row('listen_next', ['audio'], {hero: {rowId: 'listen_next', entryId: 'audio'}}));
   await new Promise(resolve => setTimeout(resolve, 0));
-  assert.equal(service.getSnapshot().document!.hero!.entryId, 'video', 'a later answer cannot replace a more recent hero');
+  assert.equal(service.getSnapshot().document!.spotlight[0].entry.id,'selected');
+  assert.equal(JSON.stringify(service.getSnapshot().document).includes('"hero"'),false);
   service.dispose();
 });
 

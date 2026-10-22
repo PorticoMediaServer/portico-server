@@ -20,7 +20,9 @@ export type HomeSeeAllDestination =
   | Readonly<{to: 'browse'; libraryId: string; tab: string; sort?: BrowseSortSelection; filters: readonly Predicate[]}>
   | Readonly<{to: 'row'; rowId: string}>
   | Readonly<{to: 'library'; libraryId: string}>
-  | Readonly<{to: 'saved_view'; resourceId: string}>;
+  | Readonly<{to: 'saved_view'; resourceId: string}>
+  | Readonly<{to: '/library/$libraryId/$view/$entityId'; params: Readonly<{libraryId:string;view:'collection';entityId:string}>; search:Readonly<Record<string,never>>}>
+  | Readonly<{to: '/channels/$entry';params:Readonly<{entry:string}>;search:Readonly<{view:'guide';group?:string}>}>;
 
 /** Follow the destination published with the composed Home row. */
 export function homeRowSeeAll(row: Pick<HomeRow, 'id' | 'kind' | 'libraryId' | 'seeAll' | 'cursorCapable'>, libraryKind: string | undefined): HomeSeeAllDestination | undefined {
@@ -32,6 +34,8 @@ export function homeRowSeeAll(row: Pick<HomeRow, 'id' | 'kind' | 'libraryId' | '
   }
   if (target.type === 'row') return {to: 'row', rowId: target.rowId};
   if (target.type === 'saved_view') return {to: 'saved_view', resourceId: target.resourceId};
+  if (target.type === 'collection') return {to:'/library/$libraryId/$view/$entityId',params:{libraryId:target.libraryId,view:'collection',entityId:target.resourceId},search:{}};
+  if (target.type === 'guide') return {to:'/channels/$entry',params:{entry:target.sourceId??'all'},search:{view:'guide',...(target.group?{group:target.group}:{})}};
   const tab = libraryKind ? libraryTabForPivot(libraryKind, target.pivot) : undefined;
   const filters = seeAllPredicates(target.query);
   if (tab && filters) return {to: 'browse', libraryId: target.libraryId, tab: tab.id, ...(target.sort[0] ? {sort: target.sort[0]} : {}), filters};

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -441,6 +442,67 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 		if !known {
 			t.Errorf("%s is not in the golden file", actual.Name)
 			continue
+		}
+		// Home's approved composition replaces the old per-library/single-hero policy.
+		// Keep unrelated read-path goldens exact; assert the new manifest and retired routes explicitly.
+		if strings.HasPrefix(actual.Name, "home/") {
+			if actual.Status != 200 {
+				t.Errorf("%s: %d", actual.Name, actual.Status)
+				continue
+			}
+			var doc catalog.HomeDocument
+			if err := json.Unmarshal([]byte(actual.Response), &doc); err != nil {
+				t.Fatal(err)
+			}
+			wantIDs := []string{"continue", "new_on_server", "because_you_watched", "featured_collection", "listen_next", "continue_books"}
+			ids := []string{}
+			for _, row := range doc.Rows {
+				ids = append(ids, row.ID)
+				if !row.Deferred || len(row.Entries) != 0 || row.SeeAll == nil {
+					t.Errorf("%s: invalid descriptor %+v", actual.Name, row)
+				}
+			}
+			if !reflect.DeepEqual(ids, wantIDs) || len(doc.Spotlight) != 5 {
+				t.Errorf("%s: Home composition rows %v spotlight %d", actual.Name, ids, len(doc.Spotlight))
+			}
+			if strings.Contains(actual.Response, `"hero"`) || doc.Rows[0].ArtworkShape != "landscape" {
+				t.Errorf("%s: retired Home policy survived", actual.Name)
+			}
+			for _, slide := range doc.Spotlight {
+				if slide.Entry.ID == "" || slide.Reason.Text.Code == "" || slide.Entry.Kind == "movie" && slide.Entry.Overview == "" || len([]rune(slide.Entry.Overview)) > 300 {
+					t.Errorf("%s: invalid spotlight %+v", actual.Name, slide)
+				}
+			}
+			continue
+		}
+		if strings.HasPrefix(actual.Name, "row:") {
+			rowID := strings.Split(strings.TrimPrefix(actual.Name, "row:"), "/")[0]
+			rowID = strings.TrimSuffix(rowID, ":page2")
+			if rowID != "continue" && rowID != "recommended" {
+				if actual.Status != 404 || !strings.Contains(actual.Response, `"code":"not_found"`) {
+					t.Errorf("%s: retired route answered %d %s", actual.Name, actual.Status, actual.Response)
+				}
+				continue
+			}
+			if rowID == "recommended" {
+				var rewritten map[string]any
+				if err := json.Unmarshal([]byte(want.Response), &rewritten); err != nil {
+					t.Fatal(err)
+				}
+				rewritten["priority"] = 90
+				encoded, _ := json.Marshal(rewritten)
+				want.Response = string(encoded)
+			}
+			if rowID == "continue" {
+				var rewritten map[string]any
+				if err := json.Unmarshal([]byte(want.Response), &rewritten); err != nil {
+					t.Fatal(err)
+				}
+				rewritten["artworkShape"] = "landscape"
+				rewritten["titleText"] = map[string]any{"code": "next.home.continueWatching", "fallback": "Continue Watching"}
+				encoded, _ := json.Marshal(rewritten)
+				want.Response = string(encoded)
+			}
 		}
 		if want.Status != actual.Status {
 			differences++
