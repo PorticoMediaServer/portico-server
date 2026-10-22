@@ -452,6 +452,7 @@ index personal_watched_intents_item_id_fk
 index personal_watchlist
 index play_history_account
 index play_history_library
+index play_history_listen_profile
 index play_history_recent
 index playback_admin_retention
 index playback_channel_sessions_live
@@ -476,6 +477,7 @@ index playback_v1_sessions_paused
 index playback_vod_pending
 index playlist_receipts_expiry
 index playlist_shared_viewer
+index playlist_shares_listen_actor
 index ported_artwork_jobs_entity
 index portico_admitted_signer
 index prepared_media_item_jobs

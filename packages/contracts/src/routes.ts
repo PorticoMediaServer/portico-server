@@ -2966,6 +2966,32 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "get_books_id_timeline",
+    "method": "GET",
+    "path": "/v1/books/{id}/timeline",
+    "summary": "Read verified whole-book timeline and seek targets",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit",
+      "positionMs"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_bootstrap",
     "method": "GET",
     "path": "/v1/bootstrap",
@@ -4775,6 +4801,30 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "expensive"
+  },
+  {
+    "id": "get_items_id_similar",
+    "method": "GET",
+    "path": "/v1/items/{id}/similar",
+    "summary": "Read locally ranked permitted listening titles",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_items_id_source_availability",
@@ -16590,6 +16640,7 @@ export const routePaths = {
   "get_auth_capabilities": "/v1/auth/capabilities",
   "get_books_id_chapters": "/v1/books/{id}/chapters",
   "get_books_id_files": "/v1/books/{id}/files",
+  "get_books_id_timeline": "/v1/books/{id}/timeline",
   "get_bootstrap": "/v1/bootstrap",
   "get_browse_capabilities": "/v1/browse-capabilities",
   "get_browse_facets": "/v1/browse/facets",
@@ -16668,6 +16719,7 @@ export const routePaths = {
   "get_items_id_playback_offers": "/v1/items/{id}/playback-offers",
   "get_items_id_prepared_versions": "/v1/items/{id}/prepared-versions",
   "get_items_id_recommendations": "/v1/items/{id}/recommendations",
+  "get_items_id_similar": "/v1/items/{id}/similar",
   "get_items_id_source_availability": "/v1/items/{id}/source-availability",
   "get_items_id_trickplay": "/v1/items/{id}/trickplay",
   "get_items_id_trickplay_set_thumbnails_vtt": "/v1/items/{id}/trickplay/{set}/thumbnails.vtt",

@@ -18,6 +18,7 @@ import (
 // MusicArtist is what the artist page needs from MusicBrainz: the Wikidata
 // id, the country and the active years.
 type MusicArtist struct {
+	Type       string // Group or Person from upstream; empty when unknown.
 	ID         string
 	Name       string
 	Country    string
@@ -46,6 +47,7 @@ func (s *MusicBrainz) Artist(ctx context.Context, id string) (MusicArtist, error
 	query := url.Values{"fmt": {"json"}, "inc": {"url-rels"}}
 	var v struct {
 		ID       string `json:"id"`
+		Type     string `json:"type"`
 		Name     string `json:"name"`
 		Country  string `json:"country"`
 		LifeSpan struct {
@@ -68,6 +70,9 @@ func (s *MusicBrainz) Artist(ctx context.Context, id string) (MusicArtist, error
 		return out, &Error{Provider: "musicbrainz", Code: "invalid_artist"}
 	}
 	out = MusicArtist{ID: v.ID, Name: strings.TrimSpace(v.Name), Country: v.Country, BeginYear: parseMBYear(v.LifeSpan.Begin), EndYear: parseMBYear(v.LifeSpan.End)}
+	if v.Type == "Group" || v.Type == "Person" {
+		out.Type = v.Type
+	}
 	for _, relation := range v.Relations {
 		if !strings.EqualFold(relation.Type, "wikidata") {
 			continue

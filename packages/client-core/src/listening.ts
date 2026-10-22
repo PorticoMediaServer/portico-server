@@ -21,7 +21,7 @@ export type ListeningItem=Readonly<{itemId:string;libraryId:string;kind:string;b
 export type ListeningRequest=(path:string,body?:unknown,method?:'GET'|'POST'|'PUT',signal?:AbortSignal)=>Promise<unknown>;
 export type SleepChoice='off'|'chapter'|'item'|'book'|15|30|45|60|90;
 export type ListeningTimer=Readonly<{choice:SleepChoice;label:string;deadline?:number;wallDeadline?:number;libraryId?:string;endSeconds?:number;itemId?:string;bookId?:string;sessionId?:string;generation?:number}>;
-export type ListeningSnapshot=Readonly<{phase:'loading'|'ready'|'saving'|'error'|'disposed';preferences:ListeningPreferences|null;context:ListeningItem|null;rate:number;timer:ListeningTimer|null;timerLoading:boolean;stopped:boolean;message:string|null;error:string|null}>;
+export type ListeningSnapshot=Readonly<{rewind?:Readonly<{seconds:number;fromSeconds:number;toSeconds:number;messageKey:'listening.rewound'}>; phase:'loading'|'ready'|'saving'|'error'|'disposed';preferences:ListeningPreferences|null;context:ListeningItem|null;rate:number;timer:ListeningTimer|null;timerLoading:boolean;stopped:boolean;message:string|null;error:string|null}>;
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const id=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
@@ -116,7 +116,7 @@ export class ListeningService {
   const sessionKey=`${p.session?.id??''}:${p.session?.generation??0}`;
   if(this.state.context?.kind==='audiobook_file'&&p.phase==='ready'&&p.session){
    if(p.intent==='paused'&&this.pausedBook?.session!==p.session.id)this.pausedBook={session:p.session.id,at:this.now()};
-   else if(p.intent==='playing'&&this.pausedBook){const paused=this.pausedBook;this.pausedBook=undefined;if(paused.session===p.session.id){const rewind=audiobookResumeRewind(this.now()-paused.at);if(rewind>0&&!p.pendingSeek&&!p.failedSeek){this.playback.seek(Math.max(0,p.positionSeconds-rewind));}}}
+   else if(p.intent==='playing'&&this.pausedBook){const paused=this.pausedBook;this.pausedBook=undefined;if(paused.session===p.session.id){const rewind=audiobookResumeRewind(this.now()-paused.at);if(rewind>0&&!p.pendingSeek&&!p.failedSeek){const toSeconds=Math.max(0,p.positionSeconds-rewind);this.playback.seek(toSeconds);this.publish({rewind:Object.freeze({seconds:p.positionSeconds-toSeconds,fromSeconds:p.positionSeconds,toSeconds,messageKey:'listening.rewound'})});}}}
   }else this.pausedBook=undefined;
   if(this.sessionKey!==sessionKey){this.sessionKey=sessionKey;const t=this.state.timer;if(t?.sessionId&&(t.sessionId!==p.session?.id||t.generation!==p.session?.generation))this.clearTimer('Chapter timer cleared because the playback source changed.');}
   if(item!==this.itemId){const old=this.state.context;this.itemId=item;const generation=++this.contextGeneration;this.publish({context:null});
@@ -197,3 +197,36 @@ export async function readListeningContext(request:ListeningRequest,scope:SavedS
 }
 
 export function audiobookResumeRewind(pauseMs:number):number{return pauseMs>=3600000?30:pauseMs>=300000?15:0;}
+
+/** Nested book times stay explicit integer milliseconds. They never pass through
+ * the top-level legacy display-duration conversion. */
+export type BookProgress=Readonly<{bookId:string;itemId:string;partPositionMs:number;positionMs?:number;durationMs?:number;remainingMs?:number;chapter?:Readonly<{index:number;title:string;startMs:number;endMs:number}>}>;
+export function parseBookProgress(v:unknown):BookProgress{
+ if(!object(v)||!id(v.bookId)||!id(v.itemId)||!counter(v.partPositionMs))bad();
+ const out:{-readonly[K in keyof BookProgress]:BookProgress[K]}={bookId:v.bookId,itemId:v.itemId,partPositionMs:v.partPositionMs};
+ for(const k of ['positionMs','durationMs','remainingMs'] as const){if(v[k]!==undefined){if(!counter(v[k]))bad();out[k]=v[k];}}
+ if(out.remainingMs!==undefined&&(out.durationMs===undefined||out.positionMs===undefined||out.remainingMs!==Math.max(0,out.durationMs-out.positionMs)))bad();
+ if(out.durationMs!==undefined&&out.positionMs!==undefined&&out.positionMs>out.durationMs)bad();
+ if(v.chapter!==undefined){const c=v.chapter;if(!object(c)||!counter(c.index)||typeof c.title!=='string'||c.title.length>2048||/[\x00-\x1f\x7f]/.test(c.title)||!counter(c.startMs)||!counter(c.endMs)||c.endMs<=c.startMs||out.partPositionMs<c.startMs||out.partPositionMs>=c.endMs)bad();out.chapter=Object.freeze({index:c.index,title:c.title,startMs:c.startMs,endMs:c.endMs});}
+ return Object.freeze(out);
+}
+export type BookTimelinePart=Readonly<{itemId:string;title:string;discNumber?:number;partNumber?:number;offsetMs?:number;durationMs?:number}>;
+export type BookTimeline=Readonly<{bookId:string;libraryId:string;revision:Readonly<{catalog:number;viewer:number}>;parts:readonly BookTimelinePart[];totalCount:number;nextCursor:string;durationMs?:number;progress?:BookProgress;seek?:Readonly<{itemId:string;startMs:number}>}>;
+export function parseBookTimeline(v:unknown,bookId:string):BookTimeline{
+ if(!object(v)||v.bookId!==bookId||!id(v.libraryId)||!object(v.revision)||!counter(v.revision.catalog)||!counter(v.revision.viewer)||!counter(v.totalCount)||!Array.isArray(v.parts)||v.parts.length>100||v.parts.length>v.totalCount||typeof v.nextCursor!=='string'||v.nextCursor.length>4096)bad();
+ const ids=new Set<string>();let previousEnd:number|undefined;
+ const parts=v.parts.map(raw=>{if(!object(raw)||!id(raw.itemId)||ids.has(raw.itemId)||typeof raw.title!=='string'||raw.title.length>2048||/[\x00-\x1f\x7f]/.test(raw.title))bad();ids.add(raw.itemId);const p:{-readonly[K in keyof BookTimelinePart]:BookTimelinePart[K]}={itemId:raw.itemId,title:raw.title};for(const k of ['discNumber','partNumber','offsetMs','durationMs'] as const){if(raw[k]!==undefined){if(!counter(raw[k]))bad();p[k]=raw[k];}}if(previousEnd!==undefined&&p.offsetMs!==undefined&&p.offsetMs<previousEnd)bad();previousEnd=p.offsetMs!==undefined&&p.durationMs!==undefined?p.offsetMs+p.durationMs:undefined;return Object.freeze(p);});
+ const out:{-readonly[K in keyof BookTimeline]:BookTimeline[K]}={bookId,libraryId:v.libraryId,revision:Object.freeze({catalog:v.revision.catalog,viewer:v.revision.viewer}),parts:Object.freeze(parts),totalCount:v.totalCount,nextCursor:v.nextCursor};
+ if(v.durationMs!==undefined){if(!counter(v.durationMs))bad();out.durationMs=v.durationMs;}
+ if(v.progress!==undefined){out.progress=parseBookProgress(v.progress);if(out.progress.bookId!==bookId)bad();}
+ if(v.seek!==undefined){if(!object(v.seek)||!id(v.seek.itemId)||!counter(v.seek.startMs))bad();out.seek=Object.freeze({itemId:v.seek.itemId,startMs:v.seek.startMs});}
+ return Object.freeze(out);
+}
+export async function readBookTimeline(request:ListeningRequest,scope:QueueScope,bookId:string,options:{cursor?:string;limit?:number;positionMs?:number;signal?:AbortSignal}={}):Promise<BookTimeline>{
+ const q=new URLSearchParams();if(options.cursor)q.set('cursor',options.cursor);if(options.limit!==undefined)q.set('limit',String(options.limit));if(options.positionMs!==undefined){if(!counter(options.positionMs))bad();q.set('positionMs',String(options.positionMs));}
+ const raw=await request(encodedRoutePath('get_books_id_timeline',{id:encodeURIComponent(bookId)})+(q.size?'?'+q:''),undefined,'GET',options.signal);
+ return parseBookTimeline(listeningData(raw,scope),bookId);
+}
+
+/** Screen choices follow the media boundary; a file part is never labelled as a book. */
+export function listeningSleepChoices(kind:'song'|'audiobook_file'):readonly SleepChoice[]{return Object.freeze(kind==='audiobook_file'?['off',15,30,45,60,90,'chapter','book']:['off',15,30,45,60,90,'item']);}

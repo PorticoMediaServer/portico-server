@@ -131,18 +131,30 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 	}
 	out.Revision = before
 	if r.View == "discover" {
-		if r.Cursor != "" || r.EntityID != "" {
+		if r.EntityID != "" || r.Cursor != "" && lib.Kind != "music" {
 			return out, ErrCursor
 		}
-		discovery, err := s.DiscoverWithRestrictions(lib.ID, r.Profile, r.Restrictions, r.Now)
-		if err != nil {
-			return out, err
-		}
-		for _, section := range discovery.Sections {
-			out.Sections = append(out.Sections, contentSection(section.ID, "rail", section.Title, section.Items, section.Total, ""))
+		if r.Cursor == "" {
+			discovery, err := s.DiscoverWithRestrictions(lib.ID, r.Profile, r.Restrictions, r.Now)
+			if err != nil {
+				return out, err
+			}
+			for _, section := range discovery.Sections {
+				if lib.Kind == "music" && section.ID == "recently_added" {
+					continue
+				}
+				out.Sections = append(out.Sections, contentSection(section.ID, "rail", section.Title, section.Items, section.Total, ""))
+			}
 		}
 		if lib.Kind == "music" {
-			out.Listening = &ListeningJourney{Target: ListeningTarget{lib.ID, "library", lib.ID}, Actions: []string{"play", "shuffle", "mix", "enqueue"}}
+			rows, err := s.musicDiscover(r, before)
+			if err != nil {
+				return out, err
+			}
+			out.Sections = append(out.Sections, rows...)
+		}
+		if lib.Kind == "music" {
+			out.Listening = &ListeningJourney{Target: ListeningTarget{lib.ID, "library", lib.ID}, Actions: []string{"play", "shuffle", "enqueue"}}
 		}
 		after, err := s.ContentRevision(lib.ID, r.Profile)
 		if err != nil {
@@ -215,7 +227,7 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 			return out, requestinput.New("view does not belong to this library")
 		}
 		if lib.Kind == "music" {
-			out.Listening = &ListeningJourney{Target: target, Actions: []string{"play", "shuffle", "mix", "enqueue"}}
+			out.Listening = &ListeningJourney{Target: target, Actions: []string{"play", "shuffle", "enqueue"}}
 		}
 	case "artist", "album", "disc":
 		if lib.Kind != "music" {
@@ -246,7 +258,7 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 			title += fmt.Sprintf(" · Disc %d", disc)
 		}
 		out.Heading = ContentHeading{Key: "entity.title", Fallback: title}
-		out.Listening = &ListeningJourney{Target: target, Actions: []string{"play", "shuffle", "mix", "enqueue"}}
+		out.Listening = &ListeningJourney{Target: target, Actions: []string{"play", "shuffle", "enqueue"}}
 		if kind == "artist" {
 			// The artist's songs and releases are sets found by index (their
 			// albums, and the songs that credit them) and lead the query, so a
@@ -328,8 +340,8 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 		} else if e != sql.ErrNoRows {
 			return out, e
 		}
-		sections = append(sections, listeningSection{"chapters", "Chapters", "list", "chapter", "item", `SELECT pid(file.public_id)||':'||c.chapter_index id,file.id entity_id,c.chapter_index,pid(file.public_id) subtitle,c.title title,printf('%08d:%08d:%020d:%08d',COALESCE(f.disc_number,1),COALESCE(f.part_number,0),file.id,c.chapter_index) ordering,0 n FROM catalog_book_chapters c JOIN catalog_entities file ON file.id=c.file_id JOIN catalog_book_files f ON f.entity_id=file.id JOIN catalog_entities book ON book.id=f.book_id WHERE book.public_id=pid_blob(?) AND book.retired=0 AND file.retired=0`, []any{r.EntityID}, false, ""})
-		sections = append(sections, listeningSection{"files", "Book parts", "list", "audiobook_file", "item", `SELECT pid(file.public_id) id,file.id entity_id,file.title,'' subtitle,printf('%08d:%08d:%020d',COALESCE(f.disc_number,1),COALESCE(f.part_number,0),file.id) ordering,0 n,0 chapter_index FROM catalog_entities book JOIN catalog_book_files f ON f.book_id=book.id JOIN catalog_entities file ON file.id=f.entity_id WHERE book.public_id=pid_blob(?) AND book.retired=0 AND file.retired=0`, []any{r.EntityID}, true, ""})
+		sections = append(sections, listeningSection{"chapters", "Chapters", "list", "chapter", "item", `SELECT pid(file.public_id)||':'||c.chapter_index id,file.id entity_id,c.chapter_index,pid(file.public_id) subtitle,c.title title,printf('%08d:%08d:',COALESCE(f.disc_number,1),COALESCE(f.part_number,0))||file.sort_key||printf(':%020d:%08d',file.id,c.chapter_index) ordering,0 n FROM catalog_book_chapters c JOIN catalog_entities file ON file.id=c.file_id JOIN catalog_book_files f ON f.entity_id=file.id JOIN catalog_entities book ON book.id=f.book_id WHERE book.public_id=pid_blob(?) AND book.retired=0 AND file.retired=0`, []any{r.EntityID}, false, ""})
+		sections = append(sections, listeningSection{"files", "Book parts", "list", "audiobook_file", "item", `SELECT pid(file.public_id) id,file.id entity_id,file.title,'' subtitle,printf('%08d:%08d:',COALESCE(f.disc_number,1),COALESCE(f.part_number,0))||file.sort_key||printf(':%020d',file.id) ordering,0 n,0 chapter_index FROM catalog_entities book JOIN catalog_book_files f ON f.book_id=book.id JOIN catalog_entities file ON file.id=f.entity_id WHERE book.public_id=pid_blob(?) AND book.retired=0 AND file.retired=0`, []any{r.EntityID}, true, ""})
 		sections = append(sections, listeningSection{"context", "Author & series", "list", "context", "", `SELECT ` + listeningGroupNavigationID + ` id,g.id entity_id,g.name title,CASE g.kind WHEN 1 THEN 'author' ELSE 'book_series' END subtitle,g.name ordering,0 n,0 chapter_index FROM catalog_entities book JOIN catalog_book_group_members m ON m.book_id=book.id JOIN catalog_book_groups g ON g.id=m.group_id AND g.retired=0 JOIN catalog_libraries l ON l.id=g.library_id WHERE book.public_id=pid_blob(?)`, []any{r.EntityID}, false, ""})
 	default:
 		return out, requestinput.New("unknown listening view")
@@ -410,6 +422,9 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 	}
 	for i := range out.Sections {
 		if e := s.countEntryPlays(r.Profile, out.Sections[i].Entries); e != nil {
+			return out, e
+		}
+		if e := s.listeningPageFavorites(r.Profile, out.Sections[i].Entries); e != nil {
 			return out, e
 		}
 	}
@@ -622,10 +637,10 @@ func (s *Service) enrichListeningEntries(r ContentRequest, spec listeningSection
 					parts = append(parts, fmt.Sprintf("Track %d", *item.Song.TrackNumber))
 				}
 				parts = append(parts, item.Song.Artist)
-				v.Subtitle = strings.Join(parts, " · ")
+				v.Subtitle = strings.Join(parts, ", ")
 			}
 			if item.BookFile != nil && item.BookFile.PartNumber != nil {
-				v.Subtitle = fmt.Sprintf("Part %d · %s", *item.BookFile.PartNumber, item.BookFile.BookTitle)
+				v.Subtitle = fmt.Sprintf("Part %d, %s", *item.BookFile.PartNumber, item.BookFile.BookTitle)
 			}
 		} else if spec.kind == "context" {
 			v.Kind = v.Subtitle
@@ -659,22 +674,13 @@ func (s *Service) enrichListeningEntries(r ContentRequest, spec listeningSection
 			if v.Kind == "book" {
 				table, col = "catalog_book_files", "book_id"
 			}
+			visible, args := r.Viewer.itemVisibilitySQL("i.id")
 			var art string
-			if e = s.read().QueryRow(`SELECT COALESCE((SELECT pid(i.public_id) FROM catalog_entities parent JOIN `+table+` f ON f.`+col+`=parent.id JOIN catalog_entities i ON i.id=f.entity_id JOIN catalog_item_details detail ON detail.entity_id=i.id WHERE parent.public_id=pid_blob(?) AND parent.retired=0 AND i.retired=0 AND detail.poster_url<>'' ORDER BY i.id LIMIT 1),'')`, v.ID).Scan(&art); e != nil {
+			if e = s.read().QueryRow(`SELECT COALESCE((SELECT pid(i.public_id) FROM catalog_entities parent JOIN `+table+` f ON f.`+col+`=parent.id JOIN catalog_entities i ON i.id=f.entity_id JOIN catalog_item_details detail ON detail.entity_id=i.id WHERE parent.public_id=pid_blob(?) AND parent.retired=0 AND detail.poster_url<>'' AND `+visible+` ORDER BY i.sort_key,i.id LIMIT 1),'')`, append([]any{v.ID}, args...)...).Scan(&art); e != nil {
 				return e
 			}
 			if art != "" {
 				v.PosterURL = "/v1/items/" + art + "/art/poster"
-			}
-			if v.Kind == "book" {
-				var pos int64
-				e = s.read().QueryRow(`SELECT position FROM book_resume WHERE profile_id=? AND book_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, r.Profile, v.ID).Scan(&pos)
-				if e == nil {
-					seconds := float64(pos) / 1000
-					v.ProgressSeconds = &seconds
-				} else if e != sql.ErrNoRows {
-					return e
-				}
 			}
 		}
 	}

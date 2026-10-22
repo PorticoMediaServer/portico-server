@@ -1,7 +1,7 @@
 import {clockText, compact, durationText, integer, nonnegative, part, positive, supplied, timelineFacts, type FactPart, type TextEnvironment} from './text.ts';
 
 /** Local semantic inputs, not generated wire responses. `book` means an audiobook. */
-export type TitleKind = 'movie' | 'show' | 'season' | 'episode' | 'extra' | 'artist' | 'album' | 'song' | 'disc' | 'book' | 'audiobook_file' | 'chapter' | 'author' | 'book_series' | 'collection' | 'category';
+export type TitleKind = 'movie' | 'show' | 'season' | 'episode' | 'extra' | 'artist' | 'album' | 'song' | 'disc' | 'book' | 'audiobook_file' | 'chapter' | 'author' | 'book_series' | 'collection' | 'category' | 'playlist';
 export type EpisodeNumbering =
   | Readonly<{mode: 'seasonal'; season?: number; episode?: number}>
   | Readonly<{mode: 'absolute'; number?: number}>

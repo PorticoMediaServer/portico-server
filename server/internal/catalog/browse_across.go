@@ -200,6 +200,9 @@ func (s *Service) BrowseAcross(viewer Viewer, request AcrossRequest) (BrowseResu
 	if err = s.nameEntryLibraries(rows, entries); err != nil {
 		return out, err
 	}
+	if err = s.EnrichListeningEntries(viewer, entries); err != nil {
+		return out, err
+	}
 	out.Entries = entries
 	return out, nil
 }

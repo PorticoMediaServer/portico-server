@@ -92,3 +92,28 @@ func TestWikipediaSummaryAndCommonsImage(t *testing.T) {
 		t.Fatal("path filename accepted")
 	}
 }
+
+func TestMusicBrainzArtistTypeIsOnlyObservedGroupOrPerson(t *testing.T) {
+	for _, kind := range []string{"Group", "Person", "Choir", "", "Imaginary"} {
+		name := kind
+		if name == "" {
+			name = "Absent"
+		}
+		t.Run(name, func(t *testing.T) {
+			provider := &MusicBrainz{http: fixtureTransport(t, func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, `{"id":"`+musicArtistMBID+`","name":"Artist","type":"`+kind+`","relations":[]}`)
+			})}
+			actual, err := provider.Artist(context.Background(), musicArtistMBID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := ""
+			if kind == "Group" || kind == "Person" {
+				want = kind
+			}
+			if actual.Type != want {
+				t.Fatalf("type %q want %q", actual.Type, want)
+			}
+		})
+	}
+}

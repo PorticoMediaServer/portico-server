@@ -23,6 +23,7 @@ const selectionCountKeys = {
   book_series: 'next.selection.bookSeries',
   disc: 'next.selection.disc',
   extra: 'next.selection.extra',
+  playlist: 'next.selection.playlistsCount',
 } satisfies Readonly<Record<Exclude<SelectionMediaKind, 'channel' | 'person'>, SelectionMessage>>;
 
 export function selectionCountText({count, kind}: SelectionCount): string {

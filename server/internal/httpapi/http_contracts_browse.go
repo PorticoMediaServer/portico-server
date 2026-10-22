@@ -172,6 +172,14 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 	}](registry, apikit.Metadata{ID: "get_items_id_recommendations", Method: "GET", Path: "/v1/items/{id}/recommendations", Summary: "Read title recommendations", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneExpensive, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
+	if err := apikit.RegisterHTTP[struct{}, projectedViewerEnvelope[catalog.ListeningSimilar]](registry, apikit.Metadata{ID: "get_items_id_similar", Method: "GET", Path: "/v1/items/{id}/similar", Summary: "Read locally ranked permitted listening titles", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+
+	if err := apikit.RegisterHTTP[struct{}, projectedViewerEnvelope[catalog.BookTimeline]](registry, apikit.Metadata{ID: "get_books_id_timeline", Method: "GET", Path: "/v1/books/{id}/timeline", Summary: "Read verified whole-book timeline and seek targets", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "positionMs"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+
 	// internal/httpapi/listening.go:17
 	if err := apikit.RegisterHTTP[struct{}, projectedViewerEnvelope[catalog.ListeningPreferences]](registry, apikit.Metadata{ID: "get_listening_preferences", Method: "GET", Path: "/v1/listening/preferences", Summary: "Read listening preferences", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
