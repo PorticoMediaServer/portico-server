@@ -10,10 +10,10 @@ import {nextFacetSelection} from './model';
 
 const t = defaultI18n.t;
 type ToolbarGroupId = BrowseToolbarModel['groups'][number]['id'];
-export type FieldTileProps = Readonly<{label: string; summary?: ReactNode; active?: boolean; expanded?: boolean; controls?: string; onClick: () => void; className?: string}>;
-export function FieldTile({label, summary, active = false, expanded = false, controls, onClick, className}: FieldTileProps) {
+export type FieldTileProps = Readonly<{label: string; summary?: ReactNode; active?: boolean; expanded?: boolean; forward?: boolean; controls?: string; onClick: () => void; className?: string}>;
+export function FieldTile({label, summary, active = false, expanded = false, forward = false, controls, onClick, className}: FieldTileProps) {
   return <button type="button" className={[styles.fieldTile, className].filter(Boolean).join(' ')} data-active={active || undefined} aria-expanded={expanded} aria-controls={controls} onClick={onClick}>
-    <span className={styles.fieldLabel}>{label}</span><span className={styles.fieldSummary}>{summary ?? t('next.browse.any')}</span><Icon name={expanded ? 'i-up' : 'i-down'} size={18}/>
+    <span className={styles.fieldLabel}>{label}</span><span className={styles.fieldSummary}>{summary ?? t('next.browse.any')}</span><Icon name={forward ? 'i-right' : expanded ? 'i-up' : 'i-down'} size={18}/>
   </button>;
 }
 export type FacetChipsProps = Readonly<{
@@ -64,7 +64,7 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
         onValueChange={value => change({kind: 'toggle', value: value === 'any' ? undefined : value === 'yes'})}/></div>;
     return <div className={open ? styles.expandedField : styles.collapsedField} key={field.id} data-active={active(state) || undefined}>
       {open ? <div className={styles.expandedHeading}><button type="button" className={styles.expandedName} aria-expanded aria-controls={contentId} onClick={() => onFieldOpenChange(field.id, false)}>
-        {label}{state.summary && <span>{state.summary}</span>}<Icon name="i-up" size={16}/></button>
+        {label}{state.summary && <span>{state.summary}</span>}<Icon name={platform === 'tv' ? 'i-down' : 'i-up'} size={16}/></button>
         {platform === 'desktop' && active(state) && <Button variant="text" size="xs" onClick={() => change({kind: 'clear'})}>{t('next.browse.clear')}</Button>}</div> :
         <FieldTile label={label} summary={state.summary} active={active(state)} expanded={false} controls={contentId} onClick={() => onFieldOpenChange(field.id, true)}/>}
       {open && <div className={styles.fieldContent} id={contentId}>

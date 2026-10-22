@@ -1,4 +1,4 @@
-.libraryHeader, .phoneHeader, .toolbar, .filterBuilder, .filteredEmpty, .trackTable, .songRow {
+.libraryHeader, .phoneHeader, .toolbar, .filterBuilder, .filteredEmpty, .trackTable, .songRow, .fieldTile {
   --browse-text: var(--color-text);
   --browse-secondary: var(--color-text-secondary);
   --browse-muted: var(--color-text-tertiary);
@@ -314,3 +314,16 @@
 .libraryMenu [data-menu-item] { color: var(--color-text); }
 .libraryMenu [data-menu-item] > span:first-child { color: var(--color-text-secondary); }
 .libraryMenu .ownerGroup [data-menu-item] > span:first-child { color: var(--color-accent-strong); }
+
+.filterBuilder[data-platform=tv] { padding: 0 24px; }
+.filterBuilder[data-platform=tv] .fieldContent { padding-top: 6px; gap: 14px; }
+.filterBuilder[data-platform=tv] .fieldTile > svg { display: none; }
+.filterBuilder[data-platform=tv] .fieldSummary { padding-right: 0; }
+.filterBuilder[data-platform=tv] .facetChip { gap: 8px; }
+.filterBuilder[data-platform=phone] .facetChip { gap: 6px; }
+.filterBuilder[data-platform=phone] .fieldTile > svg { transform: rotate(-90deg); }
+.filterBuilder[data-platform=phone] .expandedField + .collapsedField { border-top: 1px solid color-mix(in srgb, var(--color-line-strong) 50%, transparent); }
+.filterBuilder[data-platform=phone] .collapsedField + .collapsedField > .fieldTile, .filterBuilder[data-platform=phone] .expandedField + .collapsedField > .fieldTile { min-height: 47px; }
+
+.trackTable[data-platform=phone] .trackActions > button[data-size=xs] { width: 32px; min-width: 32px; height: 32px; opacity: 1; }
+.filterBuilder[data-platform=tv] .facetChip:focus-visible { outline-width: 4px; outline-offset: 4px; }

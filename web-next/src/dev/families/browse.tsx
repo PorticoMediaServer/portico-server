@@ -210,7 +210,7 @@ function readFieldsCase(rich: boolean): ComponentType { return function ReadFiel
   const source = new DOMParser().parseFromString(drawnRead, 'text/html');
   const body = source.querySelector(rich ? '#filters .fp-body' : '#filters-s .fp-body')!;
   const fields = Array.from(body.querySelectorAll('.ft')).filter(item => !item.classList.contains('more-f'));
-  return <Stage outcome={opened}><div className={styles.readFields} data-fixture-kind="drawn-synthetic">{fields.map((item, index) => <FieldTile key={index} label={item.querySelector('.fl')?.textContent ?? ''} summary={item.querySelector('.fv')?.textContent ?? undefined} expanded={opened === String(index)} onClick={() => setOpened(current => current === String(index) ? undefined : String(index))}/>)}</div></Stage>;
+  return <Stage outcome={opened}><div className={styles.readFields} data-fixture-kind="drawn-synthetic">{fields.map((item, index) => <FieldTile forward key={index} label={item.querySelector('.fl')?.textContent ?? ''} summary={item.querySelector('.fv')?.textContent ?? undefined} expanded={opened === String(index)} onClick={() => setOpened(current => current === String(index) ? undefined : String(index))}/>)}</div></Stage>;
 };}
 function StickyScrollCase() {
   const [library, setLibrary] = useState('movies'), [outcome, setOutcome] = useState('');
@@ -312,7 +312,7 @@ export default defineGalleryFamily({id: 'browse', labelKey: 'next.browse.family'
   ...([false, true] as const).map(rich => ({id: rich ? 'read-fields-full' : 'read-fields-sparse', labelKey: 'next.browse.filtersCase' as const, width: 520, height: 600, render: readFieldsCase(rich)})),
   {id: 'filter-desktop', labelKey: 'next.browse.filtersCase', width: 520, height: 1140, render: filterCase('desktop')},
   {id: 'filter-phone', labelKey: 'next.browse.filtersCase', width: 390, height: 610, render: filterCase('phone')},
-  {id: 'filter-tv', labelKey: 'next.browse.filtersCase', width: 670, height: 850, render: filterCase('tv')},
+  {id: 'filter-tv', labelKey: 'next.browse.filtersCase', width: 576, height: 850, render: filterCase('tv')},
   ...(['loading', 'error', 'empty'] as const).map(state => ({id: `filter-${state}`, labelKey: 'next.browse.filtersCase' as const, width: 520, height: 650, render: filterCase('desktop', state)})),
   {id: 'filtered-empty', labelKey: 'next.browse.emptyCase', width: 1440, height: 650, render: EmptyCase},
   ...(['album', 'top-songs', 'songs'] as const).map(variant => ({id: `drawn-${variant}`, labelKey: 'next.browse.tracksCase' as const, width: variant === 'songs' ? 1308 : 880, height: variant === 'songs' ? 608 : 288, render: tableCase(variant, true)})),

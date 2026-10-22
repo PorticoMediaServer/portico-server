@@ -37,11 +37,11 @@ const defaultColumns: Readonly<Record<TrackTableProps['variant'], readonly Track
 function rowDuration(row: TrackRowData): string | undefined { return row.duration?.text ?? row.text.detail.find(part => part.id === 'duration')?.text; }
 function Levels() { return <span className={styles.levels} role="img" aria-label={t('next.browse.playing')}><i/><i/><i/><i/></span>; }
 function Parts({parts}: Readonly<{parts: readonly FactPart[]}>) { return <>{parts.map(part => <span key={part.id}>{part.text}</span>)}</>; }
-function RowActions({row, onMore, onFavorite, onAddPlaylist}: Pick<TrackActions, 'onMore' | 'onFavorite' | 'onAddPlaylist'> & Readonly<{row: TrackRowData}>) {
+function RowActions({row, onMore, onFavorite, onAddPlaylist, compact = false}: Pick<TrackActions, 'onMore' | 'onFavorite' | 'onAddPlaylist'> & Readonly<{row: TrackRowData; compact?: boolean}>) {
   return <div className={styles.trackActions}>
-    {onFavorite && <Button variant="icon" size="xs" icon={row.favorite ? 'i-heart-f' : 'i-heart'} iconOnly aria-pressed={!!row.favorite}
+    {onFavorite && !compact && <Button variant="icon" size="xs" icon={row.favorite ? 'i-heart-f' : 'i-heart'} iconOnly aria-pressed={!!row.favorite}
       className={styles.favoriteAction} aria-label={t(row.favorite ? 'next.browse.unfavorite' : 'next.browse.favorite', {title: row.text.title})} onClick={() => onFavorite(row.id, !row.favorite)}/>}
-    {onAddPlaylist && <Button variant="icon" size="xs" icon="i-listadd" iconOnly aria-label={t('next.browse.addPlaylist', {title: row.text.title})} onClick={() => onAddPlaylist(row.id)}/>}
+    {onAddPlaylist && !compact && <Button variant="icon" size="xs" icon="i-listadd" iconOnly aria-label={t('next.browse.addPlaylist', {title: row.text.title})} onClick={() => onAddPlaylist(row.id)}/>}
     <Button variant="icon" size="xs" icon="i-more" iconOnly aria-label={t('next.browse.moreFor', {title: row.text.title})} onClick={() => onMore(row.id)}/>
   </div>;
 }
@@ -73,7 +73,7 @@ export function TrackTable({rows, variant, label, platform = 'desktop', columns:
       case 'plays': return row.plays === undefined ? undefined : defaultI18n.number(row.plays);
       case 'duration': return rowDuration(row);
       case 'added': return row.addedAt ? defaultI18n.date(row.addedAt, 'medium') : undefined;
-      case 'actions': return variant === 'chapters' ? <div className={styles.trackActions}><Button variant="icon" size="xs" icon="i-play" iconOnly aria-label={t(row.current ? 'next.browse.resume' : 'next.browse.play', {title: row.text.title})} onClick={() => actions.onPlay(row.id)}/></div> : <RowActions row={row} {...actions}/>;
+      case 'actions': return variant === 'chapters' ? <div className={styles.trackActions}><Button variant="icon" size="xs" icon="i-play" iconOnly aria-label={t(row.current ? 'next.browse.resume' : 'next.browse.play', {title: row.text.title})} onClick={() => actions.onPlay(row.id)}/></div> : <RowActions row={row} compact={platform === 'phone'} {...actions}/>;
     }
   };
   return <div className={[styles.trackTable, className].filter(Boolean).join(' ')} data-variant={variant} data-platform={platform} role="table" aria-label={label} aria-rowcount={totalCount + (variant === 'chapters' || platform === 'phone' ? 0 : 1)}>
