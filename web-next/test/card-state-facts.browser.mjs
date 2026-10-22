@@ -105,3 +105,37 @@ export async function checkLiveFacts(page, origin, onCase = async () => {}, case
   }
   return results;
 }
+
+export async function checkLiveChannelSpacing(page, origin, onCase = async () => {}) {
+  await page.setViewportSize({width: 1440, height: 900});
+  const [descriptor] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname === '/src/dev/families/cards.tsx'),
+    page.goto(`${origin}/dev/kit?family=cards&case=reference&capture=true`, {waitUntil: 'networkidle'}),
+  ]);
+  await page.locator('[data-gallery-ready=true]').waitFor();
+  await page.evaluate(async descriptor => {
+    const {setCardsReferenceCase} = await import(descriptor);
+    const {suppliedChannelElement} = await import('/test/fixtures/card-state-facts.tsx');
+    setCardsReferenceCase(suppliedChannelElement());
+  }, descriptor.url());
+  const card = page.locator('[data-card-kind=live]');
+  await card.waitFor(); await page.evaluate(() => document.fonts.ready);
+  await page.mouse.move(1439, 850);
+  const data = await card.evaluate(element => {
+    const name = element.querySelector('[class*=_channelName_]');
+    const number = element.querySelector('[class*=_channelNumber_]');
+    const flag = element.querySelector('[class*=_liveFlag_]');
+    const text = document.createRange(); text.selectNode(name.firstChild);
+    return {card: element.getBoundingClientRect().toJSON(), name: {text: name.firstChild.textContent, box: text.getBoundingClientRect().toJSON()}, number: {text: number.textContent, box: number.getBoundingClientRect().toJSON()}, flag: {text: flag.textContent, box: flag.getBoundingClientRect().toJSON()}, facts: [...element.querySelectorAll('[data-fact]')].map(part => ({id: part.dataset.fact, role: part.dataset.role, text: part.textContent}))};
+  });
+  await onCase({id: 'live-channel-spacing-1440', locator: card, data});
+  assert.equal(data.card.width, 316);
+  assert.equal(data.name.text, 'Northwind News'); assert.equal(data.number.text, '101');
+  assert.equal(data.flag.text, 'Live');
+  assert.deepEqual(data.facts, [{id: '0', role: 'supplement', text: 'Ends 4:30 PM'}]);
+  // Pinned mock.html's name / 12px spacer / number are distinct flex items,
+  // separated by the channel row's 10px gap on each side of the spacer.
+  assert.ok(Math.abs(data.number.box.x - data.name.box.right - (10 + 12 + 10)) < .1);
+  assert.ok(Math.abs(data.flag.box.right - (data.card.right - 18)) < .1, 'the badge keeps its original trailing alignment');
+  return data;
+}

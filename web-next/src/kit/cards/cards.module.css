@@ -140,7 +140,8 @@
 .live:hover, .live:focus-within, .videoGenre:hover, .musicGenre:hover, .series:hover { transform:scale(1.03); box-shadow:0 22px 40px -16px rgba(0,0,0,.85),0 0 0 1px rgba(237,245,250,.16); }
 .channel { display:flex; align-items:center; gap:10px; width:100%; font-size:13px; color:var(--color-text-secondary); font-weight:600; }
 .monogram { position:relative; width:34px; height:34px; flex:none; border-radius:8px; display:grid; place-items:center; overflow:hidden; background:var(--cards-tint); color:var(--color-white); font-size:13px; font-weight:800; }
-.channelName { display:flex; gap:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* The drawing's 12px spacer has a 10px channel-row gap on either side. */
+.channelName { display:flex; gap:32px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .channelNumber { color:var(--color-text-tertiary); }
 .liveFlag { margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--color-record); }
 .liveFlag::before { content:''; flex:none; width:7px; height:7px; border-radius:50%; background:var(--color-record); }

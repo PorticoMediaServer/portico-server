@@ -18,3 +18,10 @@ export function SuppliedLiveFacts({kind}: {kind: FactsCase}) {
   return <LiveCard channel={channel} programme={{title: 'Morning Briefing', facts: factsFor(kind), progress: .65}} onNavigate={() => {}} />;
 }
 export const suppliedLiveElement = (kind: FactsCase) => <SuppliedLiveFacts kind={kind} />;
+
+// Exact caller-supplied content from Cards r7 root-review-index 007-LiveCard.
+export const suppliedChannelElement = () => <LiveCard
+  channel={{sourceId: 'drawn-source', id: 'drawn-channel', name: 'Northwind News', number: '101', mark: {sourceId: 'drawn-source', id: 'drawn-channel', text: 'NN', seed: 'drawn-source:drawn-channel'}}}
+  programme={{title: 'World Tonight', facts: [{id: '0', role: 'supplement', text: 'Ends 4:30 PM'}], progress: .58, live: true, extra: []}}
+  tint="#7a3b3b" onNavigate={() => {}}
+/>;
