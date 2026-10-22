@@ -339,7 +339,8 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
   .pickerFailure { margin: 4px 16px 10px; padding: 12px 14px; border-radius: 12px; }
   .pickerFailure b { font-size: 14.5px; }
   .pickerSearch { margin: 0 16px 6px; }
-  .pickerToast.pickerToast { font-size: 14px; }
+  .pickerToastHost.pickerToastHost { left: 12px; right: 12px; }
+  .pickerToast.pickerToast { min-height: 62px; font-size: 14px; }
   .deleteDialog.deleteDialog { padding: 0 0 max(34px,env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--color-raised); }
   .deleteDialog.deleteDialog .deleteBody { padding: 6px 20px 0; gap: 12px; font-size: 14px; }
   .deleteDialog .deleteBody > div { display: flex; flex-direction: column; gap: 12px; padding-bottom: 16px; }

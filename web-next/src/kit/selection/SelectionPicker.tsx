@@ -1,4 +1,5 @@
 import {useEffect, useRef, type ReactNode} from 'react';
+import {defaultI18n} from '@i18n';
 import {Button, TextField} from '../controls';
 import {BottomSheet, Popover, ToastHost, type OverlayChange, type ToastData} from '../overlays';
 import {focusable, usePhone} from '../overlays/shared';
@@ -90,12 +91,16 @@ export function PlaylistPicker(props: SelectionPickerProps) { return <SelectionP
 export function CollectionPicker(props: SelectionPickerProps) { return <SelectionPicker {...props} destination="collection" />; }
 
 export type PickerAddedToastProps = Readonly<{open: boolean; onOpenChange: OverlayChange; selection: SelectionCount; destination: Destination; result: PickerResult; onView: (id: string) => void; bottomInset?: number}>;
+function PickerToastViewLabel({destination}: {destination: Destination}) {
+  const phone = usePhone();
+  return phone ? defaultI18n.t('action.view') : text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection');
+}
 /** Owns the supported host, exact result copy, positioning, lifetime and dismissal. */
 export function PickerAddedToast({open, onOpenChange, selection, destination, result, onView, bottomInset}: PickerAddedToastProps) {
   const toast: ToastData | null = open && pickerResultSucceeded(result) ? {
     id: `picker-${destination}-${result.destination.id}`,
     message: <>{text('next.selection.addedToast', {items: selectionCountText({count: result.inserted!, kind: selection.kind}), name: result.destination.name})}{result.alreadyIn !== undefined && result.alreadyIn > 0 && <> {text('next.selection.duplicatesToast', {count: result.alreadyIn})}</>}</>,
-    action: {variant: 'text', label: text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection'), onAction: () => onView(result.destination.id)},
+    action: {variant: 'text', label: <PickerToastViewLabel destination={destination} />, accessibilityLabel: text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection'), onAction: () => onView(result.destination.id)},
   } : null;
-  return <ToastHost toast={toast} bottomInset={bottomInset} toastClassName={styles.pickerToast} onDismiss={(_id, reason) => onOpenChange(false, reason)} />;
+  return <ToastHost toast={toast} bottomInset={bottomInset} className={styles.pickerToastHost} toastClassName={styles.pickerToast} onDismiss={(_id, reason) => onOpenChange(false, reason)} />;
 }
