@@ -1,6 +1,6 @@
 import {selectionCapabilities, selectionCapabilityNames, selectionKinds, selectionKindAllowsCapability} from './capabilities.ts';
 import {summarizeQuerySelection} from './query-summary.ts';
-import type {SelectionContext, SelectionItem, SelectionLimits, SelectionQuery, WholeSelectionSelector} from './types.ts';
+import type {SelectionCapabilities, SelectionContext, SelectionItem, SelectionKind, SelectionLimits, SelectionQuery, SelectionQueryType, WholeSelectionSelector} from './types.ts';
 
 export type SelectionInputErrorCode = 'invalid-context' | 'invalid-item' | 'invalid-window' | 'invalid-query' | 'invalid-limits' | 'registration-limit' | 'conflicting-windows';
 /** Diagnostic codes only. Renderers own catalogue-backed explanations. */
@@ -14,6 +14,7 @@ export function requireSelection(value: unknown, code: SelectionInputErrorCode):
 export const selectionID = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 4096 && !/[\x00-\x1f\x7f]/.test(value);
 export const catalogueID = (value: unknown): value is string => selectionID(value) && value.length <= 256;
 export const selectionCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const selectionKind = (value: unknown): value is SelectionKind => selectionKinds.some(kind => kind === value);
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 
 export function checkedContext(input: SelectionContext): SelectionContext {
@@ -118,15 +119,24 @@ export function checkedQuery(input: SelectionQuery, context: SelectionContext): 
   const kinds = new Set<string>();
   let total = 0;
   let libraryFacts = 0;
-  const types = summary.types.map(row => {
-    requireSelection(record(row) && selectionKinds.includes(row.kind) && !['channel', 'person'].includes(row.kind) && !kinds.has(row.kind)
-      && selectionCount(row.count) && row.count > 0, 'invalid-query');
-    kinds.add(row.kind); total += row.count;
+  const types: SelectionQueryType[] = summary.types.map(row => {
+    requireSelection(record(row), 'invalid-query');
+    const kind = row.kind, count = row.count;
+    requireSelection(selectionKind(kind) && kind !== 'channel' && kind !== 'person' && !kinds.has(kind)
+      && selectionCount(count) && count > 0, 'invalid-query');
+    kinds.add(kind); total += count;
     requireSelection(Number.isSafeInteger(total), 'invalid-query');
-    requireSelection(record(row.capabilityCounts) && selectionCapabilityNames.every(name =>
-      selectionCount(row.capabilityCounts[name]) && row.capabilityCounts[name] <= row.count
-      && (selectionKindAllowsCapability(row.kind, name) || row.capabilityCounts[name] === 0))
-      && Array.isArray(row.libraries) && row.libraries.length <= 2048, 'invalid-query');
+    requireSelection(record(row.capabilityCounts) && Array.isArray(row.libraries) && row.libraries.length <= 2048, 'invalid-query');
+    const capabilityCounts: Record<keyof SelectionCapabilities, number> = {
+      play: 0, queue: 0, playlist: 0, myList: 0, watched: 0, collection: 0,
+      favorite: 0, download: 0, edit: 0, refresh: 0, delete: 0,
+    };
+    for (const name of selectionCapabilityNames) {
+      const offered = row.capabilityCounts[name];
+      requireSelection(selectionCount(offered) && offered <= count
+        && (selectionKindAllowsCapability(kind, name) || offered === 0), 'invalid-query');
+      capabilityCounts[name] = offered;
+    }
     libraryFacts += row.libraries.length;
     requireSelection(libraryFacts <= 2048, 'invalid-query');
     let libraryTotal = 0;
@@ -138,9 +148,9 @@ export function checkedQuery(input: SelectionQuery, context: SelectionContext): 
       requireSelection(Number.isSafeInteger(libraryTotal), 'invalid-query');
       return Object.freeze({libraryId: fact.libraryId, count: fact.count});
     });
-    requireSelection(libraryTotal === row.count, 'invalid-query');
-    return Object.freeze({kind: row.kind, count: row.count, libraries: Object.freeze(libraries),
-      capabilityCounts: Object.freeze(Object.fromEntries(selectionCapabilityNames.map(name => [name, row.capabilityCounts[name]]))) as typeof row.capabilityCounts});
+    requireSelection(libraryTotal === count, 'invalid-query');
+    return Object.freeze({kind, count, libraries: Object.freeze(libraries),
+      capabilityCounts: Object.freeze(capabilityCounts)});
   });
   requireSelection(total === input.total, 'invalid-query');
   const library = summary.library;
