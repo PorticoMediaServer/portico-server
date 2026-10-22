@@ -1,0 +1,8 @@
+.stateStage, .detailStage, .compactStage, .headerStage { position: relative; width: 100%; height: 100%; background: var(--color-ink); color: var(--color-text); }
+.stateIdentity { position: relative; padding-top: 44px; display: flex; justify-content: center; }
+.detailStage { padding: 14px 0 0; }
+.detailHeading { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 800; line-height: normal; margin-bottom: 8px; }
+.detailHeading > :last-child, .compactHeading > :last-child { margin-left: auto; }
+.compactStage { padding: 10px 12px 12px; }
+.compactHeading { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 800; line-height: normal; margin-bottom: 6px; }
+.headerPosition { position: relative; padding: 112px 64px 0 424px; }
