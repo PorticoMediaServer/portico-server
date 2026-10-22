@@ -1,12 +1,10 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -260,20 +258,20 @@ func TestPlaybackV1QueueRetentionCancellationAndCleanupRemainOrdinary(t *testing
 	f := newV1Fixture(t, 1)
 	first := retainedQueueCreate(f, "retain-cleanup-0001", retainedQueueBody(f.items))
 	second := retainedQueueCreate(f, "retain-cleanup-0002", retainedQueueBody(f.items, first.Queue.ID))
-	body, err := json.Marshal(retainedQueueBody(f.items, first.Queue.ID, second.Queue.ID))
-	if err != nil {
+	var caller playbackv1.Caller
+	if err := f.db.QueryRow(`SELECT owner_id,authority,account_id,profile_id FROM queues_v1 WHERE id=?`, second.Queue.ID).Scan(&caller.DeviceID, &caller.Principal.Authority, &caller.Principal.AccountID, &caller.Principal.ProfileID); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	r := httptest.NewRequest("POST", "/v1/queues", bytes.NewReader(body)).WithContext(ctx)
-	r.Header.Set("Authorization", "Bearer "+f.owner.AccessToken)
-	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Idempotency-Key", "retain-cancel-00001")
-	w := httptest.NewRecorder()
-	f.handler.ServeHTTP(w, r)
-	if w.Code == 201 {
-		t.Fatalf("canceled create succeeded: %d", w.Code)
+	// HTTP/1 intentionally detaches an already-canceled connection context.
+	// Exercise cancellation at the service boundary before any retained write.
+	result, err := f.v1.CreateQueue(ctx, caller, "retain-cancel-00001", playbackv1.CreateQueueRequest{
+		RetainQueueIDs: []string{first.Queue.ID, second.Queue.ID},
+		Segments:       []playbackv1.SegmentInput{{Source: playbackv1.Selector{Items: &playbackv1.ItemList{IDs: f.items}}}},
+	})
+	if !errors.Is(err, context.Canceled) || result.Queue.ID != "" || result.Session != nil {
+		t.Fatalf("canceled create returned a receipt: %+v %v", result, err)
 	}
 	var receipts int
 	if err := f.db.QueryRow(`SELECT count(*) FROM queue_v1_create_receipts WHERE create_key='retain-cancel-00001'`).Scan(&receipts); err != nil || receipts != 0 {
