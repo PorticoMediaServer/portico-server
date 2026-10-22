@@ -12,7 +12,7 @@ import styles from './shell.module.css';
 import wordmark from './wordmark.svg';
 
 export type ShellIdentity = Readonly<{
-  viewer: Viewer; profileName: string; profileArt?: ProfileTone;
+  viewer: Viewer; username?: string; profileName: string; profileArt?: ProfileTone;
   primaryProfile?: boolean; profiles: readonly ProfileIdentity[]; canManageProfiles: boolean; accountFacts: readonly FactPart[];
   libraries: readonly Library[]; liveAvailable: boolean; unread: number; showNotificationDot: boolean;
 }>;
@@ -51,7 +51,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
     if (id) void navigate({to: '/library/$libraryId', params: {libraryId: id}});
     else void navigate({to: '/libraries'});
   };
-  const current = {id: viewer.profileId, name: identity.profileName, initial: Array.from(identity.profileName.trim())[0] ?? '', art: identity.profileArt};
+  const current = {id: viewer.profileId, username: identity.username, name: identity.profileName, initial: Array.from(identity.profileName.trim())[0] ?? '', art: identity.profileArt};
   const account = <AccountMenu open={accountOpen} onOpenChange={setAccountOpen} current={current} primary={identity.primaryProfile === true}
     notificationCount={desktop ? undefined : identity.unread} notificationDot={!desktop && identity.showNotificationDot && identity.unread > 0}
     profiles={identity.profiles} accountFacts={identity.accountFacts} actions={{
