@@ -1,7 +1,7 @@
 import {useRef, useState, type ReactNode, type RefObject} from 'react';
 import {Button} from '../controls';
 import {Icon} from '../Icon';
-import {Menu, type MenuEntry} from '../overlays';
+import {Menu, MenuGroup, MenuItem, type MenuEntry} from '../overlays';
 import {usePhone} from '../overlays/shared';
 import {selectionText as text} from './copy';
 import {selectionCountText} from './presentation';
@@ -9,20 +9,20 @@ import type {SelectionActions, SelectionBarProps, SelectionCount} from './types'
 import styles from './selection.module.css';
 
 type ActionMenu = 'queue' | 'watched' | 'more' | null;
+type ActionEntry = Exclude<MenuEntry, {section: true} | {separator: true}>;
 function useActionMenus(selection: SelectionCount, actions: SelectionActions) {
   const phone = usePhone();
   const [open, setOpen] = useState<ActionMenu>(null);
   const queue = useRef<HTMLButtonElement | null>(null), watched = useRef<HTMLButtonElement | null>(null), more = useRef<HTMLButtonElement | null>(null);
-  const extra: MenuEntry[] = [];
+  const extra: ActionEntry[] = [], owner: ActionEntry[] = [];
   if (actions.onCollection) extra.push({id: 'collection', label: text('next.selection.addToCollection'), icon: 'i-layers', onSelect: () => { if (more.current) actions.onCollection!(more.current); }});
   if (actions.onWatchedChange) extra.push({id: 'unwatched', label: text('next.selection.markUnwatched'), icon: 'i-eyeoff-selection', onSelect: () => actions.onWatchedChange!(false)});
   if (actions.onFavorite) extra.push({id: 'favorite', label: text('next.selection.favorite'), icon: 'i-heart', onSelect: actions.onFavorite});
   if (actions.onRemoveFromMyList) extra.push({id: 'remove', label: text('next.selection.removeFromMyList'), icon: 'i-x', onSelect: actions.onRemoveFromMyList});
-  if (actions.onRefresh || actions.onDelete) {
-    extra.push({id: 'owner', section: true, label: <span className={styles.ownerMenuLabel}>{actions.ownerMark}<span>{text('next.selection.owner')}</span></span>, ownerOnly: true});
-    if (actions.onRefresh) extra.push({id: 'refresh', label: text('next.selection.refresh'), icon: 'i-refresh', onSelect: actions.onRefresh});
-    if (actions.onDelete) extra.push({id: 'delete', label: text('next.selection.deleteMenu'), icon: 'i-trash', destructive: true, disabled: !!actions.deleteDisabledReason, description: actions.deleteDisabledReason, onSelect: actions.onDelete});
-  }
+  if (actions.onRefresh) owner.push({id: 'refresh', label: text('next.selection.refresh'), icon: 'i-refresh', onSelect: actions.onRefresh});
+  if (actions.onDelete) owner.push({id: 'delete', label: text('next.selection.deleteMenu'), icon: 'i-trash', destructive: true, disabled: !!actions.deleteDisabledReason, description: actions.deleteDisabledReason, onSelect: actions.onDelete});
+  const ownerLabel = <span className={styles.ownerMenuLabel}>{actions.ownerMark}<span>{text('next.selection.owner')}</span></span>;
+  const moreRow = (item: ActionEntry, ownerRow = false) => <MenuItem key={item.id} icon={item.icon} description={item.description} disabled={item.disabled} selected={item.selected} destructive={item.destructive} onSelect={item.onSelect} className={ownerRow ? styles.moreOwnerRow : undefined}>{item.label}</MenuItem>;
   const menus = <>
     <Menu open={open === 'queue'} onOpenChange={value => setOpen(value ? 'queue' : null)} title={text('next.selection.queueTitle', {items: selectionCountText(selection)})} description={phone ? text('next.selection.queueOrder') : undefined} anchorRef={queue} width={330} placement="bottom-start" className={styles.selectionMenu} items={actions.onQueue ? [
       {id: 'next', label: text('next.selection.playNext'), description: text(phone ? 'next.selection.playNextPhoneDescription' : 'next.selection.playNextDescription'), icon: 'i-pnext', onSelect: () => actions.onQueue!('next')},
@@ -32,9 +32,13 @@ function useActionMenus(selection: SelectionCount, actions: SelectionActions) {
       {id: 'watched', label: text('next.selection.markWatched'), icon: 'i-check', onSelect: () => actions.onWatchedChange!(true)},
       {id: 'unwatched', label: text('next.selection.markUnwatched'), icon: 'i-eyeoff-selection', onSelect: () => actions.onWatchedChange!(false)},
     ] : []} />
-    <Menu open={open === 'more'} onOpenChange={value => setOpen(value ? 'more' : null)} title={text('next.selection.moreActions')} anchorRef={more} width={330} placement="bottom-end" className={styles.selectionMenu} items={extra} />
+    <Menu open={open === 'more'} onOpenChange={value => setOpen(value ? 'more' : null)} title={text('next.selection.moreActions')} anchorRef={more} width={330} placement="bottom-end" className={styles.selectionMenu}>
+      {extra.length > 0 && <MenuGroup>{extra.map(item => moreRow(item))}</MenuGroup>}
+      {owner.length > 0 && <MenuGroup label={ownerLabel} className={styles.moreOwnerGroup}>{owner.map(item => moreRow(item, true))}</MenuGroup>}
+    </Menu>
   </>;
-  return {open, setOpen, queue, watched, more, menus, extra};
+  const phoneExtra: MenuEntry[] = [...extra, ...(owner.length > 0 ? [{id: 'owner', section: true as const, label: ownerLabel, ownerOnly: true}, ...owner] : [])];
+  return {open, setOpen, queue, watched, more, menus, extra: phoneExtra};
 }
 
 function SelectAll({selectAll, onSelectAll}: Pick<SelectionBarProps, 'selectAll' | 'onSelectAll'>) {
@@ -45,11 +49,12 @@ function SelectAll({selectAll, onSelectAll}: Pick<SelectionBarProps, 'selectAll'
 /** Mount in the existing toolbar slot. The shell mounts PhoneActionBar in place of its tab bar. */
 export function SelectionBar({selection, actions, context, typeCount, selectAll, onSelectAll, onExit, allInView, sticky = false, className}: SelectionBarProps) {
   const menu = useActionMenus(selection, actions);
+  const subtitle = allInView ? text('next.selection.allInView') : context ?? (typeCount && typeCount > 1 ? text('next.selection.typeCount', {count: typeCount}) : undefined);
   if (selection.count <= 0) return null;
   return <div className={[styles.barContainer, sticky && styles.stickyBar, className].filter(Boolean).join(' ')}>
     <div className={styles.desktopBar} role="toolbar" aria-label={text('next.selection.selection')} onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); onExit(); } }}>
       <Button variant="icon" size="small" iconOnly icon="i-x" iconSize={20} aria-label={text('next.selection.clear')} className={styles.barClose} onClick={onExit} />
-      <b className={styles.selectedCount}>{text('next.selection.selected', {count: selection.count})}<small>{allInView ? text('next.selection.allInView') : context ?? (typeCount && typeCount > 1 ? text('next.selection.typeCount', {count: typeCount}) : undefined)}</small></b>
+      <b className={styles.selectedCount}>{text('next.selection.selected', {count: selection.count})}{subtitle && <small>{subtitle}</small>}</b>
       <span className={styles.barSeparator} aria-hidden="true" />
       {actions.onPlay && <Button variant="primary" size="compact" icon="i-play" iconSize={18} className={styles.barPrimary} onClick={actions.onPlay}>{text('next.selection.play')}</Button>}
       {actions.onQueue && <Button size="compact" icon="i-queue" iconSize={18} ref={menu.queue} className={styles.barAction} aria-haspopup="menu" aria-expanded={menu.open === 'queue'} onClick={() => menu.setOpen(menu.open === 'queue' ? null : 'queue')}>{text('next.selection.addToQueue')}<Icon name="i-down" size={16} /></Button>}
@@ -57,7 +62,7 @@ export function SelectionBar({selection, actions, context, typeCount, selectAll,
       {actions.onMyList && <Button size="compact" icon="i-plus" iconSize={18} className={styles.barAction} onClick={actions.onMyList}>{text('next.selection.myList')}</Button>}
       {actions.onWatchedChange && <Button size="compact" icon="i-check" iconSize={18} ref={menu.watched} className={styles.barAction} aria-label={text('next.selection.watchMenu')} aria-haspopup="menu" aria-expanded={menu.open === 'watched'} onClick={() => menu.setOpen(menu.open === 'watched' ? null : 'watched')}>{text('next.selection.watched')}<Icon name="i-down" size={16} /></Button>}
       {actions.onEdit && <Button size="compact" icon="i-edit" iconSize={18} className={[styles.barAction, actions.editMode === 'mixed' ? styles.mixedEdit : styles.ownerEdit].join(' ')} aria-label={text('next.selection.editAccessibility')} onClick={event => actions.onEdit!(event.currentTarget)}>{text('next.selection.edit')}</Button>}
-      {menu.extra.length > 0 && <Button variant="icon" size="small" iconOnly icon="i-more" ref={menu.more} aria-label={text('next.selection.moreActions')} aria-haspopup="menu" aria-expanded={menu.open === 'more'} className={styles.barMore} onClick={() => menu.setOpen(menu.open === 'more' ? null : 'more')} />}
+      {menu.extra.length > 0 && <Button variant="icon" size="small" iconOnly icon="i-more" iconSize={20} ref={menu.more} aria-label={text('next.selection.moreActions')} aria-haspopup="menu" aria-expanded={menu.open === 'more'} className={styles.barMore} onClick={() => menu.setOpen(menu.open === 'more' ? null : 'more')} />}
       <div className={styles.barRight}><SelectAll selectAll={selectAll} onSelectAll={onSelectAll} /><Button variant="text" size="small" className={styles.done} onClick={onExit}>{text('next.selection.done')}</Button><kbd className={styles.escape} title={text('next.selection.escHint')}>{text('next.selection.esc')}</kbd></div>
     </div>
     <div className={styles.phoneHeader} role="toolbar" aria-label={text('next.selection.selection')}>
