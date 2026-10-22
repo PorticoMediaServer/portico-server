@@ -46,7 +46,7 @@ function ActivityReference({load = 'three', initialOpen = false, role = 'owner',
       <button type="button" aria-label={t('next.shell.notifications')}><Icon name="i-bell" size={22} />{load !== 'update' && <span className={styles.notificationDot} aria-hidden="true" />}</button>
       {top}<span className={styles.avatar}><ProfileAvatarFace initial={role === 'member' ? f.streams[0].initial : f.current.initial} art={role === 'member' ? 'mint' : 'blue'} /></span>
     </div>}
-    {majorHarness && !specimen && <div className={styles.output} data-major-harness="true"><button type="button" onClick={() => setResolved(true)}>{activityR9Reference.resolve}</button><button type="button" onClick={() => setRole('member')}>{t('next.shell.member')}</button><button type="button" onClick={() => setPhase('loading')}>{t('next.shell.loadingActivity')}</button></div>}
+    {majorHarness && !specimen && <div className={styles.harness} data-major-harness="true"><button type="button" onClick={() => setResolved(true)}>{activityR9Reference.resolve}</button><button type="button" onClick={() => setRole('member')}>{t('next.shell.member')}</button><button type="button" onClick={() => setPhase('loading')}>{t('next.shell.loadingActivity')}</button></div>}
     <output className={styles.output} hidden={!destination}>{destination}</output>
   </div>;
 }
