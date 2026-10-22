@@ -1588,7 +1588,7 @@ END;
 -- ===== everything else
 CREATE TABLE configuration(key TEXT PRIMARY KEY,value TEXT NOT NULL) STRICT;
 CREATE TABLE accounts(id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,password_hash BLOB NOT NULL,profile_id TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1) STRICT;
-CREATE TABLE libraries(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,root TEXT NOT NULL UNIQUE, position INTEGER NOT NULL DEFAULT 0) STRICT;
+CREATE TABLE libraries(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,root TEXT NOT NULL UNIQUE, position INTEGER NOT NULL DEFAULT 0, group_film_series INTEGER NOT NULL DEFAULT 1 CHECK(group_film_series IN (0,1)), lyrics_source TEXT NOT NULL DEFAULT 'files_only' CHECK(lyrics_source IN ('files_only','files_then_lrclib')), episode_thumbnail_mode TEXT NOT NULL DEFAULT 'provider_then_generated' CHECK(episode_thumbnail_mode IN ('provider_then_generated','provider_only','off'))) STRICT;
 CREATE TABLE metadata_jobs(item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE provider_evidence(item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,provider TEXT NOT NULL,provider_id INTEGER NOT NULL,payload TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(item_id,provider)) STRICT;
 CREATE TABLE jobs(id TEXT PRIMARY KEY,library_id TEXT NOT NULL REFERENCES libraries(id),status TEXT NOT NULL,processed INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL) STRICT;

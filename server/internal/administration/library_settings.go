@@ -148,12 +148,15 @@ type GeneratedNavigation struct {
 
 // LibrarySettings is one library's whole administration document.
 type LibrarySettings struct {
-	MonitorChanges     bool                             `json:"monitorChanges"`
-	AllowMediaDeletion bool                             `json:"allowMediaDeletion"`
-	ContinueWatching   catalog.ContinueWatchingSettings `json:"continueWatching"`
-	Providers          []ProviderSelection              `json:"providers"`
-	Analysis           []string                         `json:"analysis"`
-	Navigation         GeneratedNavigation              `json:"navigation"`
+	GroupFilmSeries      bool                             `json:"groupFilmSeries"`
+	LyricsSource         string                           `json:"lyricsSource"`
+	EpisodeThumbnailMode string                           `json:"episodeThumbnailMode"`
+	MonitorChanges       bool                             `json:"monitorChanges"`
+	AllowMediaDeletion   bool                             `json:"allowMediaDeletion"`
+	ContinueWatching     catalog.ContinueWatchingSettings `json:"continueWatching"`
+	Providers            []ProviderSelection              `json:"providers"`
+	Analysis             []string                         `json:"analysis"`
+	Navigation           GeneratedNavigation              `json:"navigation"`
 	// SegmentDetection is this library's intro and credits detection choice
 	// (mediaanalysis.SegmentLibraryChoices): "server" follows the server's
 	// mode; off, standard or thorough decide for this library alone.
@@ -173,6 +176,7 @@ func DefaultLibrarySettings() LibrarySettings {
 		}
 	}
 	return LibrarySettings{
+		GroupFilmSeries: true, LyricsSource: "files_only", EpisodeThumbnailMode: "provider_then_generated",
 		MonitorChanges:     true,
 		AllowMediaDeletion: false,
 		ContinueWatching:   catalog.DefaultContinueWatchingSettings(),
@@ -225,6 +229,12 @@ func validLocale(v string, max int) bool {
 
 func validateLibrarySettings(v *LibrarySettings) error {
 	fields := []string{}
+	if !oneOf(v.LyricsSource, "files_only", "files_then_lrclib") {
+		fields = append(fields, "settings.lyricsSource")
+	}
+	if !oneOf(v.EpisodeThumbnailMode, "provider_then_generated", "provider_only", "off") {
+		fields = append(fields, "settings.episodeThumbnailMode")
+	}
 	if !catalog.ValidContinueWatchingSettings(v.ContinueWatching) {
 		fields = append(fields, "settings.continueWatching")
 	}
@@ -339,7 +349,7 @@ func libraryDefaults(context.Context, *sql.Tx) (LibrarySettings, error) {
 }
 
 func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (LibraryDocument, error) {
-	out := LibraryDocument{LibraryID: id, Matrix: Matrix(), Modes: map[string][]string{"chapterThumbnailMode": ChapterThumbnailModes, "videoCompletion": {"earliest", "threshold", "credits"}, "segmentDetection": mediaanalysis.SegmentLibraryChoices}}
+	out := LibraryDocument{LibraryID: id, Matrix: Matrix(), Modes: map[string][]string{"chapterThumbnailMode": ChapterThumbnailModes, "videoCompletion": {"earliest", "threshold", "credits"}, "segmentDetection": mediaanalysis.SegmentLibraryChoices, "lyricsSource": {"files_only", "files_then_lrclib"}, "episodeThumbnailMode": {"provider_then_generated", "provider_only", "off"}}}
 	name, kind, err := libraryExists(ctx, tx, id)
 	if err != nil {
 		return out, err
@@ -348,7 +358,7 @@ func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (L
 	// Only what this library can choose: AniList serves anime libraries alone.
 	out.Providers = []MetadataProvider{}
 	for _, p := range MetadataProviders() {
-		if p.ID != "anilist" || kind == "anime" {
+		if (kind != "book" && kind != "comic" && kind != "audiobook" || p.ID == "local") && (p.ID != "anilist" || kind == "anime") {
 			out.Providers = append(out.Providers, p)
 		}
 	}

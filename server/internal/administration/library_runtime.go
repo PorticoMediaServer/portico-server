@@ -20,6 +20,12 @@ func libraryMediaKind(kind string) string {
 	return kind
 }
 func effectiveLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v *LibrarySettings, revision int64) (int64, error) {
+	if err := tx.QueryRowContext(ctx, `SELECT group_film_series,lyrics_source,episode_thumbnail_mode FROM libraries WHERE id=?`, id).Scan(&v.GroupFilmSeries, &v.LyricsSource, &v.EpisodeThumbnailMode); err != nil {
+		return 0, err
+	}
+	if kind != "tv" && kind != "anime" {
+		v.EpisodeThumbnailMode = "off"
+	}
 	p, err := catalog.ScanPolicyTx(ctx, tx, id)
 	if err != nil {
 		return 0, err
@@ -52,6 +58,15 @@ func effectiveLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v 
 	return revision + p.Revision - 1 + provider.Revision, nil
 }
 func applyLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v LibrarySettings) error {
+	if kind != "music" && v.LyricsSource != "files_only" {
+		return invalid("settings.lyricsSource")
+	}
+	if kind != "tv" && kind != "anime" && v.EpisodeThumbnailMode != "off" {
+		return invalid("settings.episodeThumbnailMode")
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE libraries SET group_film_series=?,lyrics_source=?,episode_thumbnail_mode=? WHERE id=?`, v.GroupFilmSeries, v.LyricsSource, v.EpisodeThumbnailMode, id); err != nil {
+		return err
+	}
 	ops := []string{}
 	seen := map[string]bool{}
 	for _, ui := range v.Analysis {

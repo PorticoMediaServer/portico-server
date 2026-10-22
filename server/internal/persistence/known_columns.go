@@ -994,10 +994,13 @@ catalog_kinds.listening
 catalog_kinds.name
 catalog_kinds.playable
 catalog_kinds.searchable
-catalog_libraries.id
+catalog_libraries.episode_thumbnail_mode
+libraries.group_film_series
+libraries.id
 catalog_libraries.kind
 catalog_libraries.library_id
-catalog_libraries.name
+catalog_libraries.lyrics_source
+libraries.name
 catalog_libraries.retired
 catalog_libraries.root
 catalog_merged_ids.entity_id
@@ -2272,8 +2275,11 @@ lc_used.cycle
 lc_used.generation_id
 lc_used.item_id
 lc_used.rule_id
+libraries.episode_thumbnail_mode
+libraries.group_film_series
 libraries.id
 libraries.kind
+libraries.lyrics_source
 libraries.name
 libraries.position
 libraries.root
