@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"portico.local/server/internal/httpapi/fixture"
 	"strings"
@@ -45,6 +46,9 @@ func TestCompositeResponsesCompressAndMediaDoesNot(t *testing.T) {
 	}
 	if zipped.Header().Get("Content-Encoding") != "gzip" {
 		t.Fatalf("home was not compressed for a client that asked (%d bytes)", plain.Body.Len())
+	}
+	if !strings.Contains(strings.Join(zipped.Header().Values("Vary"), ","), "Accept-Encoding") {
+		t.Fatal("compressed Home did not vary by encoding")
 	}
 	if zipped.Body.Len() >= plain.Body.Len() {
 		t.Fatalf("compression made the body larger: %d against %d", zipped.Body.Len(), plain.Body.Len())
@@ -113,25 +117,50 @@ func TestCompositeResponsesCompressAndMediaDoesNot(t *testing.T) {
 	if plain.Header().Get("ETag") != "" {
 		t.Fatal("time-dependent Home advertised a reusable validator")
 	}
-	// A stable continuation row still honors validators. A 304 has no body.
-	stable := ask("/v1/home/rows/continue", "")
-	if stable.Code != 200 {
-		t.Fatal(stable.Code, stable.Body.String())
+	// Home rows also carry live command offers and must be recomposed, even
+	// when a client presents a wildcard validator.
+	r := httptest.NewRequest("GET", "/v1/home/rows/continue", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	r.Header.Set("If-None-Match", "*")
+	live := httptest.NewRecorder()
+	f.handler.ServeHTTP(live, r)
+	if live.Code != http.StatusOK || live.Header().Get("ETag") != "" || live.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Home command offers were reusable: %d %v", live.Code, live.Header())
+	}
+	// A stable catalogue grid still honors validators. A 304 has no body.
+	path := "/v1/libraries/" + f.library + "/content?view=browse&limit=20"
+	stable := ask(path, "")
+	if stable.Code != http.StatusOK || stable.Header().Get("Cache-Control") != revalidate {
+		t.Fatal(stable.Code, stable.Header(), stable.Body.String())
 	}
 	tag := stable.Header().Get("ETag")
 	if tag == "" {
-		t.Fatal("stable row carried no ETag")
+		t.Fatal("stable grid carried no ETag")
 	}
-	r := httptest.NewRequest("GET", "/v1/home/rows/continue", bytes.NewReader(nil))
+	zippedGrid := ask(path, "gzip")
+	if zippedGrid.Code != http.StatusOK || zippedGrid.Header().Get("Content-Encoding") != "gzip" || zippedGrid.Header().Get("ETag") != "W/"+tag || !strings.Contains(strings.Join(zippedGrid.Header().Values("Vary"), ","), "Accept-Encoding") {
+		t.Fatalf("compressed grid lost its representation headers: %d %v", zippedGrid.Code, zippedGrid.Header())
+	}
+	r = httptest.NewRequest("GET", path, bytes.NewReader(nil))
 	r.Header.Set("Authorization", "Bearer "+token)
 	r.Header.Set("Accept-Encoding", "gzip")
 	r.Header.Set("If-None-Match", tag)
 	w := httptest.NewRecorder()
 	f.handler.ServeHTTP(w, r)
 	if w.Code != 304 {
-		t.Fatalf("a matching If-None-Match on home answered %d", w.Code)
+		t.Fatalf("a matching If-None-Match on the grid answered %d", w.Code)
 	}
 	if w.Body.Len() != 0 || w.Header().Get("Content-Encoding") != "" {
 		t.Fatalf("the 304 carried %d bytes and Content-Encoding %q", w.Body.Len(), w.Header().Get("Content-Encoding"))
+	}
+	if weakETag(w.Header().Get("ETag")) != tag {
+		t.Fatalf("304 changed the grid validator: %q", w.Header().Get("ETag"))
+	}
+	r = httptest.NewRequest("GET", path, nil)
+	r.Header.Set("If-None-Match", tag)
+	denied := httptest.NewRecorder()
+	f.handler.ServeHTTP(denied, r)
+	if denied.Code != http.StatusUnauthorized || denied.Header().Get("ETag") != "" {
+		t.Fatalf("anonymous client revalidated a private grid: %d %v", denied.Code, denied.Header())
 	}
 }
