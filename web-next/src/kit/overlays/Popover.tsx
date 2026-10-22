@@ -8,7 +8,7 @@ import styles from './overlays.module.css';
 
 export type PopoverProps = AnchoredOverlayProps & {role?: 'dialog' | 'menu'; onContentKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void};
 
-export function Popover({open, onOpenChange, title, children, description, trigger, anchorRef, modal = false, placement = 'bottom-end', width = 300, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, role = 'dialog', onContentKeyDown}: PopoverProps) {
+export function Popover({open, onOpenChange, title, children, description, trigger, anchorRef, modal = false, placement = 'bottom-end', width = 300, sideOffset = 8, alignOffset = 0, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, role = 'dialog', onContentKeyDown}: PopoverProps) {
   const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef ?? anchorRef);
   const present = usePresence(open, 160), motionRef = useSurfaceMotion(open, 'menu');
   const anchor = useMemo(() => ({current: {getBoundingClientRect: () => anchorRef?.current?.getBoundingClientRect() ?? new DOMRect()}}), [anchorRef]);
@@ -26,7 +26,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
   return <RadixPopover.Root open={open} onOpenChange={value => { onOpenChange(value, reason.current); reason.current = 'action'; }} modal={modal}>
     {trigger ? <RadixPopover.Trigger asChild>{trigger}</RadixPopover.Trigger> : <RadixPopover.Anchor virtualRef={anchor} />}
     {present && !superseded && <RadixPopover.Portal forceMount><RadixPopover.Content forceMount ref={motionRef}
-      side={placement.startsWith('top') ? 'top' : 'bottom'} align={placement.endsWith('start') ? 'start' : 'end'} sideOffset={8} collisionPadding={8}
+      side={placement.startsWith('top') ? 'top' : 'bottom'} align={placement.endsWith('start') ? 'start' : 'end'} sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={8}
       id={`${id}-content`} className={classes(styles.popover, className)} style={{'--overlay-width': `${width}px`} as OverlayStyle} role={role}
       aria-label={accessibilityLabel} aria-labelledby={accessibilityLabel ? undefined : `${id}-title`} aria-describedby={description === undefined ? undefined : `${id}-description`}
       data-state={open ? 'open' : 'closed'} data-testid={testID}
@@ -80,7 +80,7 @@ export function MenuGroup({label, ownerOnly = false, children, className}: MenuG
 export function MenuSeparator() { return <div className={styles.menuSeparator} role="separator" />; }
 
 export type MenuEntry = Readonly<{id: string; label: ReactNode; icon?: IconName; description?: ReactNode; disabled?: boolean; selected?: boolean; destructive?: boolean; onSelect: () => void} | {id: string; separator: true} | {id: string; label: ReactNode; section: true; ownerOnly?: boolean}>;
-export type MenuProps = Omit<AnchoredOverlayProps, 'children'> & {items?: readonly MenuEntry[]; children?: ReactNode};
+export type MenuProps = Omit<AnchoredOverlayProps, 'children'> & {items?: readonly MenuEntry[]; children?: ReactNode; presentation?: 'anchored' | 'responsive'};
 
 function EntryGroups({items, phone}: {items: readonly MenuEntry[]; phone: boolean}) {
   type Action = Exclude<MenuEntry, {separator: true} | {section: true}>;
@@ -95,9 +95,10 @@ function EntryGroups({items, phone}: {items: readonly MenuEntry[]; phone: boolea
   </Fragment>)}</>;
 }
 
-export function Menu({items, children, open, onOpenChange, title, ...props}: MenuProps) {
+export function Menu({items, children, open, onOpenChange, title, presentation = 'responsive', ...props}: MenuProps) {
   const phone = usePhone(), typeahead = useRef({text: '', time: 0}), initial = useRef<HTMLElement | null>(null);
-  useExclusiveAnchor(phone && open, onOpenChange);
+  const sheet = phone && presentation === 'responsive';
+  useExclusiveAnchor(sheet && open, onOpenChange);
   const keydown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     const rows = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-menu-item]:not(:disabled)'));
@@ -117,9 +118,9 @@ export function Menu({items, children, open, onOpenChange, title, ...props}: Men
     if (next) { event.preventDefault(); focusElement(next); }
   };
   const content = <MenuContext.Provider value={{change: onOpenChange}}><div ref={element => { initial.current = element?.querySelector<HTMLButtonElement>('[data-menu-item]:not(:disabled)') ?? null; }} onKeyDown={keydown} className={styles.menuItems}>
-    {items && <EntryGroups items={items} phone={phone} />}
+    {items && <EntryGroups items={items} phone={sheet} />}
     {children}
   </div></MenuContext.Provider>;
-  if (phone) return <BottomSheet open={open} onOpenChange={onOpenChange} trigger={props.trigger} title={title} description={props.description} className={classes(styles.phoneMenu, props.className)} fitContent initialFocusRef={props.initialFocusRef ?? initial} returnFocusRef={props.returnFocusRef ?? props.anchorRef} accessibilityLabel={props.accessibilityLabel} testID={props.testID}>{content}</BottomSheet>;
+  if (sheet) return <BottomSheet open={open} onOpenChange={onOpenChange} trigger={props.trigger} title={title} description={props.description} className={classes(styles.phoneMenu, props.className)} fitContent initialFocusRef={props.initialFocusRef ?? initial} returnFocusRef={props.returnFocusRef ?? props.anchorRef} accessibilityLabel={props.accessibilityLabel} testID={props.testID}>{content}</BottomSheet>;
   return <Popover {...props} open={open} onOpenChange={onOpenChange} title={title} role="menu" className={classes(styles.menu, props.className)} initialFocusRef={props.initialFocusRef ?? initial}>{content}</Popover>;
 }

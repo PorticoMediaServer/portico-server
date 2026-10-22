@@ -22,5 +22,7 @@ export type AnchoredOverlayProps = Omit<OverlaySurfaceProps, 'footer'> & {
   modal?: boolean;
   placement?: 'bottom-start' | 'bottom-end' | 'top-start' | 'top-end';
   width?: number;
+  sideOffset?: number;
+  alignOffset?: number;
 };
 export type OverlayStyle = CSSProperties & Record<`--overlay-${string}`, string | number>;
