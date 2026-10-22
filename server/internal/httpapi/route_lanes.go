@@ -58,6 +58,7 @@ var routeLanes = map[string]string{
 	"GET /v1/admin/access/members":                                               "admin",
 	"GET /v1/admin/access/members/{id}":                                          "admin",
 	"GET /v1/admin/access/members/{id}/limits":                                   "admin",
+	"GET /v1/admin/activity":                                                     "admin",
 	"GET /v1/admin/analysis-operations":                                          "admin-heavy",
 	"GET /v1/admin/api-keys":                                                     "admin",
 	"GET /v1/admin/attention":                                                    "admin",

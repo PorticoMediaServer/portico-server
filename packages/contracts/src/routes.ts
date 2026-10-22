@@ -1441,6 +1441,25 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_admin_activity",
+    "method": "GET",
+    "path": "/v1/admin/activity",
+    "summary": "Read the owner's bounded server activity summary",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_admin_analysis_operations",
     "method": "GET",
     "path": "/v1/admin/analysis-operations",
@@ -16367,6 +16386,7 @@ export const routePaths = {
   "get_admin_access_member": "/v1/admin/access/members/{id}",
   "get_admin_access_members": "/v1/admin/access/members",
   "get_admin_access_members_id_limits": "/v1/admin/access/members/{id}/limits",
+  "get_admin_activity": "/v1/admin/activity",
   "get_admin_analysis_operations": "/v1/admin/analysis-operations",
   "get_admin_attention": "/v1/admin/attention",
   "get_admin_backups": "/v1/admin/backups",

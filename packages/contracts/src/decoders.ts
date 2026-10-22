@@ -65,6 +65,7 @@ export function decodeGetAdminAccessInvitationsResponse(input: unknown): types.G
 export function decodeGetAdminAccessMemberResponse(input: unknown): types.GetAdminAccessMemberResponse { return decode("GetAdminAccessMemberResponse", input) as types.GetAdminAccessMemberResponse; }
 export function decodeGetAdminAccessMembersResponse(input: unknown): types.GetAdminAccessMembersResponse { return decode("GetAdminAccessMembersResponse", input) as types.GetAdminAccessMembersResponse; }
 export function decodeGetAdminAccessMembersIdLimitsResponse(input: unknown): types.GetAdminAccessMembersIdLimitsResponse { return decode("GetAdminAccessMembersIdLimitsResponse", input) as types.GetAdminAccessMembersIdLimitsResponse; }
+export function decodeGetAdminActivityResponse(input: unknown): types.GetAdminActivityResponse { return decode("GetAdminActivityResponse", input) as types.GetAdminActivityResponse; }
 export function decodeGetAdminAnalysisOperationsResponse(input: unknown): types.GetAdminAnalysisOperationsResponse { return decode("GetAdminAnalysisOperationsResponse", input) as types.GetAdminAnalysisOperationsResponse; }
 export function decodeGetAdminAttentionResponse(input: unknown): types.GetAdminAttentionResponse { return decode("GetAdminAttentionResponse", input) as types.GetAdminAttentionResponse; }
 export function decodeGetAdminBackupsResponse(input: unknown): types.GetAdminBackupsResponse { return decode("GetAdminBackupsResponse", input) as types.GetAdminBackupsResponse; }

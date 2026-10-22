@@ -385,6 +385,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err = registerResourceUsage(registry, d); err != nil {
 		return nil, err
 	}
+	if err = registerActivitySummary(registry, d); err != nil {
+		return nil, err
+	}
 	if err = registerBackgroundPause(registry, d); err != nil {
 		return nil, err
 	}
