@@ -152,7 +152,7 @@ func validDirectoryQuery(q DirectoryQuery) bool {
 	} else if q.AnchorChannelID != "" || q.AnchorSourceID != "" || q.AnchorProvenance != "" {
 		return false
 	}
-	return (q.Kind == "all" || q.Kind == string(LiveSource) || q.Kind == string(LibraryChannel)) && (q.Sort == "server" || q.Sort == "number" || q.Sort == "name") && q.Offset >= 0 && q.Offset <= MaxSources*MaxChannels+64 && q.Limit >= 1 && q.Limit <= 50 && len(q.SourceID) <= 256 && len(q.Search) <= 120 && len(q.Group) <= 120 && len(q.Revision) <= 64
+	return (q.Kind == "all" || q.Kind == string(LiveSource) || q.Kind == string(LibraryChannel)) && (q.Sort == "server" || q.Sort == "number" || q.Sort == "name" || q.Sort == "favorites") && q.Offset >= 0 && q.Offset <= MaxSources*MaxChannels+64 && q.Limit >= 1 && q.Limit <= 50 && len(q.SourceID) <= 256 && len(q.Search) <= 120 && len(q.Group) <= 120 && len(q.Revision) <= 64
 }
 
 // The revision binds the entire filtered directory, not its current page. A
@@ -310,6 +310,9 @@ func (s *Store) ChannelDirectory(ctx context.Context, a DirectoryAuthority, q Di
 		}
 		err = rows.Err()
 		rows.Close()
+		if err == nil {
+			err = directoryMarks(ctx, tx, scope, q, out.Channels)
+		}
 		return err
 	})
 	return out, err
@@ -380,6 +383,9 @@ func sortSummaryGroups(groups []GuideGroupCount) {
 func directoryOrder(sort string) string {
 	order := `CASE provenance WHEN 'live-source' THEN 0 ELSE 1 END,source_name,source_id,channel_position,channel_id`
 	numeric := `(portico_channel_number(number) IS NULL),portico_channel_number(number),name COLLATE portico_guide_name,channel_id`
+	if sort == "favorites" {
+		return `favorite DESC,` + numeric + `,source_id,provenance`
+	}
 	if sort == "number" {
 		return `CASE provenance WHEN 'live-source' THEN 0 ELSE 1 END,CASE WHEN provenance='live-source' THEN source_name ELSE '' END,CASE WHEN provenance='live-source' THEN source_id ELSE '' END,` + numeric
 	}

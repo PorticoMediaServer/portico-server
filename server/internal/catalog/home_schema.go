@@ -16,11 +16,13 @@ func (HomeSeeAll) JSONSchema() map[string]any {
 	tag := func(value string) map[string]any { return map[string]any{"type": "string", "enum": []string{value}} }
 	sort := map[string]any{"type": "array", "minItems": 1, "maxItems": BrowseMaximumSorts, "items": object(map[string]any{"field": text(), "direction": map[string]any{"type": "string", "enum": []string{"asc", "desc"}}}, "field", "direction")}
 	variants := []any{
+		object(map[string]any{"type": tag("guide"), "group": text(), "sourceId": text()}, "type"),
 		object(map[string]any{"type": tag("library"), "libraryId": text(), "pivot": text(), "query": map[string]any{"type": "object", "additionalProperties": map[string]any{}}, "sort": sort}, "type", "libraryId", "pivot", "sort"),
 		object(map[string]any{"type": tag("row"), "rowId": text()}, "type", "rowId"),
+		object(map[string]any{"type": tag("collection"), "resourceId": text(), "libraryId": text()}, "type", "resourceId", "libraryId"),
 		object(map[string]any{"type": tag("saved_view"), "resourceId": text()}, "type", "resourceId"),
 	}
-	properties := map[string]any{"type": map[string]any{"type": "string", "enum": []string{"library", "row", "saved_view"}}}
+	properties := map[string]any{"type": map[string]any{"type": "string", "enum": []string{"library", "row", "saved_view", "collection", "guide"}}}
 	for _, variant := range variants {
 		for key, value := range variant.(map[string]any)["properties"].(map[string]any) {
 			if key != "type" {
@@ -69,4 +71,27 @@ func (HomeRow) JSONSchema() map[string]any {
 	}
 	out["properties"] = properties
 	return out
+}
+
+// These are wire bounds enforced by Home composition, not renderer guesses.
+func (HomeLive) JSONSchema() map[string]any {
+	type wire HomeLive
+	schema, err := apikit.Schema(reflect.TypeFor[wire]())
+	if err != nil {
+		panic(err)
+	}
+	p := schema["properties"].(map[string]any)
+	p["sort"] = map[string]any{"type": "string", "enum": []string{"favorites"}}
+	p["channels"].(map[string]any)["maxItems"] = 50
+	p["groups"].(map[string]any)["maxItems"] = 2000
+	return schema
+}
+func (HomeCollection) JSONSchema() map[string]any {
+	type wire HomeCollection
+	schema, err := apikit.Schema(reflect.TypeFor[wire]())
+	if err != nil {
+		panic(err)
+	}
+	schema["properties"].(map[string]any)["members"].(map[string]any)["maxItems"] = 4
+	return schema
 }

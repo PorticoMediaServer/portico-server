@@ -51,6 +51,12 @@ func (d Dependencies) homeRequestFor(r *http.Request, p identity.Principal, rest
 	}
 	viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: libraries, Restrictions: restrictions}
 	request := catalog.HomeRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Libraries: libraries, Restrictions: restrictions}
+	if d.LiveChannels != nil {
+		if err := d.featureAllowed(r.Context(), p, "live_tv"); err == nil {
+			request.LiveAvailable = true
+			request.OnNow = func(page catalog.HomeRowPage) (catalog.HomeRow, error) { return d.homeOnNow(r, p, page) }
+		}
+	}
 	if d.Console == nil {
 		return request, nil
 	}
@@ -284,7 +290,6 @@ func (d Dependencies) serveHomeDocument(w http.ResponseWriter, r *http.Request) 
 	}
 	var out catalog.HomeDocument
 	var request catalog.HomeRequest
-	notModified := false
 	e = d.composeScope(r, restrictions, func(ctx context.Context, cat *catalog.Service) error {
 		var scopeErr error
 		if request, scopeErr = d.homeRequestFor(r.WithContext(ctx), p, restrictions); scopeErr != nil {
@@ -294,22 +299,13 @@ func (d Dependencies) serveHomeDocument(w http.ResponseWriter, r *http.Request) 
 		// Personal/catalog revisions cover mutations; the minute bucket also
 		// expires provider feeds and daily rotation. Community composition
 		// must recheck other profiles' membership and privacy on every read.
-		if revision, revisionErr := cat.HomeRevision(request.Libraries, request.Profile); revisionErr == nil && !request.CommunityActivity {
-			tag := responseTag("home", request.ViewerFence, number(revision.Catalog), number(revision.Viewer), number(request.LayoutRevision), number(int64(limit)), number(time.Now().UTC().Unix()/60))
-			if conditional(w, r, tag) {
-				notModified = true
-				return nil
-			}
-		}
+
 		var composeErr error
 		out, composeErr = cat.HomeManifest(request)
 		return composeErr
 	})
 	if e != nil {
 		homeFailure(w, e)
-		return
-	}
-	if notModified {
 		return
 	}
 	after, e := d.homeFenceAfter(r, p)
@@ -325,7 +321,7 @@ func (d Dependencies) serveHomeDocument(w http.ResponseWriter, r *http.Request) 
 }
 
 func (d Dependencies) serveHomeRow(w http.ResponseWriter, r *http.Request) {
-	if e := homeAllowedQuery(r, "limit", "cursor", "start", "revision", "anchorId"); e != nil {
+	if e := homeAllowedQuery(r, "limit", "cursor", "start", "revision", "anchorId", "group", "sourceId"); e != nil {
 		homeFailure(w, e)
 		return
 	}
@@ -334,7 +330,11 @@ func (d Dependencies) serveHomeRow(w http.ResponseWriter, r *http.Request) {
 		homeFailure(w, e)
 		return
 	}
-	page := catalog.HomeRowPage{Limit: limit, Cursor: r.URL.Query().Get("cursor"), Revision: r.URL.Query().Get("revision"), AnchorID: r.URL.Query().Get("anchorId")}
+	if r.PathValue("id") != "on_now" && (r.URL.Query().Has("group") || r.URL.Query().Has("sourceId")) {
+		homeFailure(w, catalog.ErrCursor)
+		return
+	}
+	page := catalog.HomeRowPage{Group: r.URL.Query().Get("group"), SourceID: r.URL.Query().Get("sourceId"), Limit: limit, Cursor: r.URL.Query().Get("cursor"), Revision: r.URL.Query().Get("revision"), AnchorID: r.URL.Query().Get("anchorId")}
 	if raw := r.URL.Query().Get("start"); raw != "" {
 		start, err := strconv.Atoi(raw)
 		if err != nil || start < 0 || start > 100000 {
@@ -352,7 +352,7 @@ func (d Dependencies) serveHomeRow(w http.ResponseWriter, r *http.Request) {
 	// Home document's validator does; community rows recheck other
 	// profiles' privacy on every read, so they carry no validator.
 	tag := ""
-	if !request.CommunityActivity {
+	if !request.CommunityActivity && r.PathValue("id") != "on_now" {
 		tag = d.gridTag(r, p, time.Minute, request.ViewerFence)
 		if gridNotModified(w, r, tag) {
 			return

@@ -4326,7 +4326,9 @@ export const routes = [
       "cursor",
       "start",
       "revision",
-      "anchorId"
+      "anchorId",
+      "group",
+      "sourceId"
     ],
     "errors": [
       "invalid_request",

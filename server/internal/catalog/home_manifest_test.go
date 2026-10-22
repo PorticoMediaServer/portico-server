@@ -10,7 +10,7 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-func TestHomeManifestDoesNotComposeShelves(t *testing.T) {
+func TestHomeManifestDefersShelvesAndComposesBoundedSpotlight(t *testing.T) {
 	db := homeFixture(t)
 	s := New(db)
 	req := homeRequestFixture("movies", "tv", "music")
@@ -27,11 +27,15 @@ func TestHomeManifestDoesNotComposeShelves(t *testing.T) {
 			t.Fatalf("row was composed or unfenced: %+v", row)
 		}
 	}
+	if len(doc.Spotlight) != 5 {
+		t.Fatalf("spotlight candidates: %d", len(doc.Spotlight))
+	}
 	for _, query := range trace() {
-		if strings.Contains(query, "progress_activity") || strings.Contains(query, "catalog_browse_rows") || strings.Contains(query, "catalog_rec_") {
-			t.Fatalf("manifest read shelf facts: %s", query)
+		if strings.Contains(query, "substr(COALESCE(sh.overview,d.overview") && !strings.Contains(query, "1,300") {
+			t.Fatalf("unbounded overview: %s", query)
 		}
 	}
+
 	spec, schema, err := apispec.Schema("HomeDocument")
 	if err != nil {
 		t.Fatal(err)
@@ -73,9 +77,11 @@ func TestContinuePreviewDoesNotReadSiblingRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.Hero != nil && (row.Hero.RowID != row.ID || row.Hero.SelectionKey == "") {
-		t.Fatalf("unranked or sibling hero: %+v", row.Hero)
+	raw, _ := json.Marshal(row)
+	if strings.Contains(string(raw), `"hero"`) {
+		t.Fatal("retired hero output")
 	}
+
 	sources := 0
 	for _, q := range trace() {
 		if strings.Contains(q, "FROM progress_activity") {
@@ -87,10 +93,19 @@ func TestContinuePreviewDoesNotReadSiblingRow(t *testing.T) {
 	}
 }
 
-func TestHomeHeroOrderingKeyKeepsUndatedActivityBeforeDated(t *testing.T) {
-	empty := homeHero([]HomeRow{{ID: "continue", Entries: []ContentEntry{{ID: "video"}}}})
-	dated := homeHero([]HomeRow{{ID: "continue_listening", Entries: []ContentEntry{{ID: "audio"}}, lead: "2026-10-13T00:00:00Z"}})
-	if empty.SelectionKey >= dated.SelectionKey {
-		t.Fatal("undated activity outranks a dated one")
+// The approved spotlight replaces the continuation-only hero. Wire responses
+// must not retain the retired single-entry selector.
+func TestHomeSpotlightRetiresSingleHero(t *testing.T) {
+	s := New(homeFixture(t))
+	doc, err := s.HomeRows(homeRequestFixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(doc)
+	if strings.Contains(string(raw), `"hero"`) {
+		t.Fatal("retired hero serialized")
+	}
+	if len(doc.Spotlight) != 5 {
+		t.Fatalf("spotlight %+v", doc.Spotlight)
 	}
 }

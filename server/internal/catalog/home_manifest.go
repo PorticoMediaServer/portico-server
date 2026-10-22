@@ -24,8 +24,6 @@ func (s *Service) HomeManifest(r HomeRequest) (HomeDocument, error) {
 	if err := s.prepareViewer(r.Viewer); err != nil {
 		return HomeDocument{}, err
 	}
-	r.RowOrder = homeCanonicalLayout(r.RowOrder)
-	r.HiddenRowIDs = homeCanonicalLayout(r.HiddenRowIDs)
 	r.Libraries = homeUnique(r.Libraries)
 	r.Now = s.recommendationNow(r.Now)
 	revision, err := s.homeRevision(r.Libraries, r.Profile)
@@ -71,5 +69,7 @@ func (s *Service) HomeManifest(r HomeRequest) (HomeDocument, error) {
 		row.Revision = revision
 		out.Rows = append(out.Rows, row)
 	}
-	return out, nil
+	composed := s.WithRecommendationRestrictions(r.Restrictions)
+	out.Spotlight, err = composed.homeSpotlight(r)
+	return out, err
 }

@@ -191,13 +191,13 @@ func TestHomeRowsComposeOrderAndHide(t *testing.T) {
 	if homeRowByID(out.Rows, "ondeck") != nil {
 		t.Fatal("empty non-critical row published", out.Rows)
 	}
-	// Each library has its own Recently added shelf, on by default; libraries are never mixed in one.
+	// The approved Home merges video libraries while preserving poster geometry.
 	for _, id := range []string{"watchlist", "favorites"} {
 		if homeRowByID(out.Rows, id) != nil {
 			t.Fatal("a Saved tab is not a Home row", id, out.Rows)
 		}
 	}
-	for _, id := range []string{"recent_movies", "recent_tv"} {
+	for _, id := range []string{"new_on_server", "listen_next"} {
 		if homeRowByID(out.Rows, id) == nil {
 			t.Fatal("missing row", id, out.Rows)
 		}
@@ -215,17 +215,17 @@ func TestHomeRowsComposeOrderAndHide(t *testing.T) {
 		}
 	}
 	request := homeRequestFixture()
-	request.RowOrder = []string{"recent_tv", "recommended"}
-	request.HiddenRowIDs = []string{"recent_movies"}
+	request.RowOrder = []string{"listen_next", "recommended"}
+	request.HiddenRowIDs = []string{"new_on_server"}
 	settleCompact(t, db)
 	out, e = service.HomeRows(request)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if out.Rows[0].ID != "recent_tv" {
+	if out.Rows[0].ID != "listen_next" {
 		t.Fatal("viewer order not applied first", out.Rows[0].ID)
 	}
-	if homeRowByID(out.Rows, "recent_movies") != nil {
+	if homeRowByID(out.Rows, "new_on_server") != nil {
 		t.Fatal("hidden row published")
 	}
 	if homeRowByID(out.Rows, "continue") == nil {
@@ -245,10 +245,10 @@ func TestHomeLayoutRequiredRowProtection(t *testing.T) {
 	db := homeFixture(t)
 	service := New(db)
 	request := homeRequestFixture()
-	if e := service.ValidateHomeLayout(request, []string{"recent_tv", "watchlist", "favorites"}, []string{"recent_all", "recent_movies"}); e != nil {
+	if e := service.ValidateHomeLayout(request, []string{"listen_next", "new_on_server"}, []string{"recommended"}); e != nil {
 		t.Fatal(e)
 	}
-	for _, row := range []string{"continue", "continue_listening"} {
+	for _, row := range []string{"continue"} {
 		e := service.ValidateHomeLayout(request, nil, []string{row})
 		if !errors.Is(e, ErrHomeLayoutRow) || !contains(e.Error(), row) {
 			t.Fatal("required row hideable", row, e)
@@ -257,7 +257,7 @@ func TestHomeLayoutRequiredRowProtection(t *testing.T) {
 	if e := service.ValidateHomeLayout(request, []string{"invented"}, nil); !errors.Is(e, ErrHomeLayoutRow) {
 		t.Fatal("unknown row accepted", e)
 	}
-	if e := service.ValidateHomeLayout(request, nil, []string{"recent_movies", "recent_movies"}); !errors.Is(e, ErrHomeLayoutRow) {
+	if e := service.ValidateHomeLayout(request, nil, []string{"new_on_server", "new_on_server"}); !errors.Is(e, ErrHomeLayoutRow) {
 		t.Fatal("duplicate hidden row accepted", e)
 	}
 	// Hiding a hideable row is still allowed after the required-row refusal.
@@ -547,7 +547,7 @@ func TestHomeRowPagingAnchorAfterPublication(t *testing.T) {
 	service := New(db)
 	request := homeRequestFixture("movies")
 	settleCompact(t, db)
-	row, e := service.HomeSingleRow(request, "recent_movies", HomeRowPage{Limit: 2})
+	row, e := service.HomeSingleRow(request, "new_on_server", HomeRowPage{Limit: 2})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -555,7 +555,7 @@ func TestHomeRowPagingAnchorAfterPublication(t *testing.T) {
 		t.Fatal("first page", row.Entries, row.Total, row.NextCursor)
 	}
 	settleCompact(t, db)
-	next, e := service.HomeSingleRow(request, "recent_movies", HomeRowPage{Limit: 2, Cursor: row.NextCursor})
+	next, e := service.HomeSingleRow(request, "new_on_server", HomeRowPage{Limit: 2, Cursor: row.NextCursor})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -563,7 +563,7 @@ func TestHomeRowPagingAnchorAfterPublication(t *testing.T) {
 		t.Fatal("cursor page", next.Entries, next.Start)
 	}
 	settleCompact(t, db)
-	offset, e := service.HomeSingleRow(request, "recent_movies", HomeRowPage{Limit: 2, Start: 2})
+	offset, e := service.HomeSingleRow(request, "new_on_server", HomeRowPage{Limit: 2, Start: 2})
 	if e != nil || offset.Entries[0].ID != homeItem(t, db, "m3").Public {
 		t.Fatal("offset range disagrees with cursor page", offset.Entries, e)
 	}
@@ -571,7 +571,7 @@ func TestHomeRowPagingAnchorAfterPublication(t *testing.T) {
 	m6 := homeAddMovie(t, db, "m6", "Movie m6", 2006)
 	catalogtest.New(t, db).Fields(m6.ID, map[string]any{"backdrop_url": "/backdrop", "added_text": "2026-01-09T00:00:00.000Z"})
 	settleCompact(t, db)
-	anchored, e := service.HomeSingleRow(request, "recent_movies", HomeRowPage{Limit: 2, Start: 2, AnchorID: homeItem(t, db, "m3").Public})
+	anchored, e := service.HomeSingleRow(request, "new_on_server", HomeRowPage{Limit: 2, Start: 2, AnchorID: homeItem(t, db, "m3").Public})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -579,11 +579,11 @@ func TestHomeRowPagingAnchorAfterPublication(t *testing.T) {
 		t.Fatal("anchor did not re-resolve after publication", anchored.Start, anchored.Entries, anchored.Total)
 	}
 	settleCompact(t, db)
-	if _, e = service.HomeSingleRow(request, "recent_movies", HomeRowPage{Limit: 2, Cursor: row.NextCursor}); e != nil {
-		t.Fatal("cursor did not re-anchor after publication", e)
+	if _, e = service.HomeSingleRow(request, "new_on_server", HomeRowPage{Limit: 2, Cursor: row.NextCursor}); !errors.Is(e, ErrStaleContinuation) {
+		t.Fatal("changed membership accepted a stale cursor", e)
 	}
 	settleCompact(t, db)
-	if _, e = service.HomeSingleRow(request, "recent_movies", HomeRowPage{Limit: 2, Revision: "1:1"}); e != nil {
+	if _, e = service.HomeSingleRow(request, "new_on_server", HomeRowPage{Limit: 2, Revision: "1:1"}); e != nil {
 		t.Fatal("a stale revision did not refresh quietly", e)
 	}
 }
@@ -692,11 +692,9 @@ func TestHomeEngineRowsListOnlyTopLevelWorks(t *testing.T) {
 	}
 }
 
-// Continue Listening stops at its maximum: the row, its total and its cursor
-// pages cover the newest continueListeningMaximum entries across every music
-// and audiobook library, and the base walks the cross-library activity index
-// in row order rather than sorting the profile's whole history.
-func TestHomeContinueListeningStopsAtItsMaximum(t *testing.T) {
+// Listen next groups bounded real continuation files into unique album/book
+// containers, then includes suggestions. The source keeps its activity index.
+func TestHomeListenNextGroupsResumesAcrossLibraries(t *testing.T) {
 	db := homeFixture(t)
 	s := New(db)
 	c := catalogtest.New(t, db)
@@ -707,7 +705,6 @@ func TestHomeContinueListeningStopsAtItsMaximum(t *testing.T) {
 	stamp := func(n int) string {
 		return time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(n) * time.Minute).Format("2006-01-02T15:04:05.000Z")
 	}
-	want := []string{}
 	for n := 0; n < 60; n++ {
 		library := "music"
 		if n%3 == 0 {
@@ -722,33 +719,23 @@ func TestHomeContinueListeningStopsAtItsMaximum(t *testing.T) {
 		homeRegister(db, id, item)
 		homeExec(t, db, `INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES('p',?,120000,0,?)`, item.ID, "play-"+id)
 		homeExec(t, db, `INSERT INTO progress_activity VALUES('p',?,?,?,'paused')`, library, item.ID, stamp(n))
-		if n >= 20 {
-			want = append([]string{item.Public}, want...)
-		}
+
 	}
 	// Newer unfinished video activity shares the index and must not enter the row.
 	movie := homeItem(t, db, "m1")
 	homeExec(t, db, `INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES('p',?,120000,0,'play-m1')`, movie.ID)
 	homeExec(t, db, `INSERT INTO progress_activity VALUES('p','movies',?,?, 'paused')`, movie.ID, stamp(100))
 	r := homeRequestFixture("movies", "music", "music2", "books")
-	got := []string{}
-	page := HomeRowPage{Limit: 12}
-	for {
-		settleCompact(t, db)
-		row, err := s.HomeSingleRow(r, "continue_listening", page)
-		if err != nil || row.Total != continueListeningMaximum {
-			t.Fatalf("row total %d, want %d: %v", row.Total, continueListeningMaximum, err)
-		}
-		for _, entry := range row.Entries {
-			got = append(got, entry.ID)
-		}
-		if row.NextCursor == "" {
-			break
-		}
-		page = HomeRowPage{Limit: 12, Cursor: row.NextCursor}
+	settleCompact(t, db)
+	row, err := s.HomeSingleRow(r, "listen_next", HomeRowPage{Limit: 12})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("pages\n got %v\nwant %v", got, want)
+	if row.Total != 3 || len(row.Entries) != 3 || row.Entries[0].ID != album1.Public || row.Entries[1].ID != album2.Public || row.Entries[2].ID != homeItem(t, db, "book").Public {
+		t.Fatalf("resume containers/order: %+v", row)
+	}
+	if _, err = s.HomeSingleRow(r, "continue_listening", HomeRowPage{}); !errors.Is(err, ErrHomeRowUnknown) {
+		t.Fatal("retired row reachable", err)
 	}
 	raw := `["movies","music","music2","books"]`
 	rows, err := db.Query(`EXPLAIN QUERY PLAN SELECT id,ord FROM (`+homeContinueBase("continue_listening")+`) ORDER BY ord DESC,id DESC LIMIT 40`, "p", "p", raw)
@@ -823,14 +810,14 @@ func TestHomeRecentShelfIsBoundedAndNewestFirst(t *testing.T) {
 	}
 	r := homeRequestFixture("movies")
 	settleCompact(t, db)
-	row, err := s.HomeSingleRow(r, "recent_movies", HomeRowPage{Limit: 12})
+	row, err := s.HomeSingleRow(r, "new_on_server", HomeRowPage{Limit: 12})
 	if err != nil || row.Total != homeRecentMaximum || row.Entries[0].ID != homeItem(t, db, "new150").Public || row.Entries[1].ID != homeItem(t, db, "new149").Public {
 		t.Fatalf("open shelf: total %d first %v: %v", row.Total, row.Entries[:2], err)
 	}
 	r.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"adult"}}
 	r.Viewer.Restrictions = r.Restrictions
 	settleCompact(t, db)
-	if row, err = s.HomeSingleRow(r, "recent_movies", HomeRowPage{Limit: 12}); err != nil || row.Entries[0].ID != homeItem(t, db, "new149").Public {
+	if row, err = s.HomeSingleRow(r, "new_on_server", HomeRowPage{Limit: 12}); err != nil || row.Entries[0].ID != homeItem(t, db, "new149").Public {
 		t.Fatalf("restricted shelf starts with %v: %v", row.Entries[0].ID, err)
 	}
 	restriction, args := ItemRestrictionSQL("i.id", r.Restrictions)
