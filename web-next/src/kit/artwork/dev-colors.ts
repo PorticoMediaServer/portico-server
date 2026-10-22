@@ -8,4 +8,6 @@ export const referenceArtworkColors = {
   brown: {first: '#b4642a', second: '#5e2a22'},
   slate: {first: '#55709a', second: '#2a3a66'},
   channel: '#286383',
+  // auth.html 13/15/16/22 inline bases, deliberately different from owner-people's semantic map.
+  authProfileTints: {demo: '#2f86bb', jules: '#8a7a3a'} as Readonly<Record<string, string>>,
 } as const;
