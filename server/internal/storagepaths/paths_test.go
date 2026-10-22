@@ -62,11 +62,18 @@ func TestTempResetNeverFollowsLinksOrDeletesParents(t *testing.T) {
 		t.Fatal("escaped Temp", err)
 	}
 	entries, _ := os.ReadDir(l.Temp)
-	if len(entries) != 0 {
+	if len(entries) != 1 || entries[0].Name() != ownershipMarker {
 		t.Fatal(entries)
 	}
-	os.Remove(l.Temp)
-	os.Symlink(filepath.Dir(l.Data), l.Temp)
+	if err := os.Remove(filepath.Join(l.Temp, ownershipMarker)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(l.Temp); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Dir(l.Data), l.Temp); err != nil {
+		t.Fatal(err)
+	}
 	if err := l.ResetTemp(); err == nil {
 		t.Fatal("accepted linked Temp")
 	}
@@ -151,7 +158,7 @@ func TestRecordingsOutsideDataOnly(t *testing.T) {
 }
 
 func TestEveryLegacyCategoryIsRefusedWithoutMutation(t *testing.T) {
-	for _, name := range []string{"artwork", "local-artwork", "subtitles", "channel-logos", "analysis-artifacts", "title-dataset", "remote-sources", "managed-storage", "mounts", "run", "live-source-locks", "logs", "backups", "restore-staged", "networking-keys", "keys", "supervisor", "hls", "recordings"} {
+	for _, name := range []string{"artwork", "local-artwork", "subtitles", "channel-logos", "guide-images", "analysis-artifacts", "title-dataset", "remote-sources", "managed-storage", "mounts", "run", "live-source-locks", "logs", "backups", "restore-staged", "networking-keys", "keys", "supervisor", "hls", "recordings"} {
 		t.Run(name, func(t *testing.T) {
 			data := filepath.Join(t.TempDir(), "data")
 			old := filepath.Join(data, name)

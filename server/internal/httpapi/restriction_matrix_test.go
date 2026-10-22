@@ -391,6 +391,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/admin/live/sources/{id}/groups":                             exempt("owner-only line-up choices"),
 		"GET /v1/admin/live/sources/{id}/channels":                           exempt("owner-only line-up choices"),
 		"GET /v1/admin/storage/status":                                       exempt("owner-only storage status"),
+		"GET /v1/admin/storage/usage":                                        exempt("owner-only folder totals and filesystem notices; no catalogue content"),
 		"GET /v1/admin/metadata/attention":                                   exempt("owner-only metadata evidence"),
 		"GET /v1/admin/metadata/attention/counts":                            exempt("owner-only metadata evidence"),
 		"GET /v1/libraries/{id}/metadata/attention":                          perLibrary("/metadata/attention"),

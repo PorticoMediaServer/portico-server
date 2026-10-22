@@ -44,11 +44,14 @@ func recoverOwner(args []string, out io.Writer) error {
 	if info, err = os.Stat(dbPath); err != nil || !info.Mode().IsRegular() {
 		return errors.New("existing server database required")
 	}
-	lock, err := acquireInstanceLock(filepath.Join(root, "server.lock"))
+	lock, err := acquireInstanceLock(storagepaths.Path(root, "server.lock"))
 	if err != nil {
 		return fmt.Errorf("stop Portico before recovering the owner: %w", err)
 	}
 	defer lock.Close()
+	if err := storagepaths.At(root).ActivateTemp(); err != nil {
+		return err
+	}
 	db, err := persistence.Open(dbPath)
 	if err != nil {
 		return err

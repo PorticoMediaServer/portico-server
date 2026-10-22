@@ -31,7 +31,7 @@ func NewTranscodePool(memory, disk string, availableRAM int64, mounts []Mount) (
 	if !filepath.IsAbs(disk) || filesystemRoot(disk) {
 		return nil, errors.New("disk spill needs a dedicated absolute directory")
 	}
-	if memory != "" && Filesystem(disk, mounts) == "tmpfs" {
+	if memory != "" && MemoryFilesystem(Filesystem(disk, mounts)) {
 		return nil, errors.New("disk spill must be on a separate disk filesystem, not RAM")
 	}
 	if err := canonicalParents(disk); err != nil {

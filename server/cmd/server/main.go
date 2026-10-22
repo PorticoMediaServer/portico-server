@@ -333,10 +333,7 @@ func run() (runErr error) {
 		defer instance.Close()
 	}
 	doneInstance(nil)
-	if e = layout.ResetTemp(); e != nil {
-		return e
-	}
-	if e = layout.ApplyCacheEmpty(); e != nil {
+	if e = resetStartupWork(layout, lockErr == nil); e != nil {
 		return e
 	}
 	if e = layout.ActivateTemp(); e != nil {
@@ -793,7 +790,20 @@ func run() (runErr error) {
 			return errors.New("container transcodes must use /transcode or /config/Transcode; clear the previous temporary-directory override")
 		}
 	}
-	hls, e := playback.NewHLS(ctx, db, conversionDirectory, ffmpegTool)
+	requestedConversion := conversionDirectory
+	conversionDirectory, conversionErr := storagepaths.DiskTranscodeDirectory(conversionDirectory, filepath.Join(layout.Data, "Transcode"), startupMounts())
+	if conversionErr != nil {
+		log.Printf("Media conversion unavailable: %v", conversionErr)
+	} else if conversionDirectory != requestedConversion {
+		log.Printf("RAM-backed conversion storage is unavailable; using disk storage at %s", conversionDirectory)
+	}
+	layout.Transcode = conversionDirectory
+	var hls *playback.HLS
+	if conversionErr == nil {
+		hls, e = playback.NewHLS(ctx, db, conversionDirectory, ffmpegTool)
+	} else {
+		e = conversionErr
+	}
 	if e == nil {
 		hls.SourceStorage = storeIO
 		hls.WindowInputs = subtitleRenderer

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"portico.local/server/internal/storagepaths"
@@ -77,5 +78,22 @@ func TestRecoverOwnerCLINeedsNoKey(t *testing.T) {
 	defer db.Close()
 	if err = db.QueryRow(`SELECT count(*) FROM identity_account_factors`).Scan(&factors); err != nil || factors != 0 {
 		t.Fatalf("reset-mfa left factors: %d %v", factors, err)
+	}
+}
+
+func TestRecoverOwnerSharesTheServerDataLock(t *testing.T) {
+	state := t.TempDir()
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	lock, err := acquireInstanceLock(storagepaths.Path(state, "server.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err := recoverOwner([]string{"--state", state}, io.Discard); err == nil || !strings.Contains(err.Error(), "stop Portico") {
+		t.Fatalf("recovery did not share the server lock: %v", err)
 	}
 }

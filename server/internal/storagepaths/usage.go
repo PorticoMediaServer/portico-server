@@ -50,6 +50,9 @@ func (l Layout) Usage(ctx context.Context, mounts []Mount) (Usage, error) {
 			if entry.Type()&os.ModeSymlink != 0 {
 				return nil
 			}
+			if entry.Name() == ownershipMarker {
+				return nil
+			}
 			info, err := entry.Info()
 			if err != nil {
 				return err
@@ -100,7 +103,7 @@ func (l Layout) Usage(ctx context.Context, mounts []Mount) (Usage, error) {
 		}
 	}
 	if l.TranscodeFallback {
-		out.Notices = append(out.Notices, Notice{"transcode_not_mapped", "Map /transcode to a fast disk or to memory"})
+		out.Notices = append(out.Notices, Notice{"transcode_not_mapped", "Map /transcode to a fast disk. Unmapped or RAM-backed /transcode uses the data volume's Transcode folder; bounded RAM playback is not yet available."})
 	}
 	if SharedFilesystem(Filesystem(l.Data, mounts)) {
 		out.Notices = append(out.Notices, Notice{"data_on_shared_drive", "The data folder is on a shared or network drive, which can make the database slow or damage it. Use a local disk or Unraid's cache pool (for example /mnt/cache/appdata/portico)."})
@@ -110,6 +113,12 @@ func (l Layout) Usage(ctx context.Context, mounts []Mount) (Usage, error) {
 
 // Cache is emptied after graceful restart, before cache consumers are opened.
 func (l Layout) RequestCacheEmpty() error {
+	if err := l.verifyOwned("Cache"); err != nil {
+		return err
+	}
+	if err := refuseMountedChildren(l.Cache); err != nil {
+		return err
+	}
 	return atomicfile.Write(filepath.Join(l.Database, "empty-cache-on-start"), []byte("empty cache\n"), 0600)
 }
 func (l Layout) ApplyCacheEmpty() error {

@@ -179,7 +179,7 @@ The data folder contains `portico.toml`, `Database/`, `Metadata/`, `Cache/`,
 `Logs/`, `Keys/`, `Backups/` and `Temp/`. `Temp/` is emptied at start; `Cache/`
 contains rebuildable files. The owner storage API reports each folder's size.
 Empty cache schedules a graceful restart and removes only the owned Cache
-before media services reopen it. It refuses linked roots and mounted children.
+before media services reopen it. It refuses unowned scopes, linked roots and mounted children. Temp and cache cleanup require the single-instance lock. On a platform without complete mount enumeration, cleanup is postponed while the server continues to start.
 Previous preview layouts are refused read-only: choose a fresh data folder.
 There is no automatic copy migration.
 
@@ -188,9 +188,10 @@ Transcodes use a separate folder: `%LOCALAPPDATA%\Portico Transcode` on Windows
 on macOS, `/var/cache/portico` for Linux services, and `~/.cache/portico` for Linux
 user launches. Containers use a mounted `/transcode`, falling back to
 `/config/Transcode` when it is not mounted. Transcodes never enter a backup.
-RAM backing requires verified tmpfs or `/dev/shm`, a bounded capacity, and disk
-spill. The settings specification will supply its selector; no new keys are
-introduced by the loader.
+RAM playback is not integrated yet. The tested bounded tmpfs spill primitive is
+not used by the playback producer. RAM-backed conversion paths fall back to a
+verified disk path, or conversion stays unavailable if no disk path exists.
+No new settings keys are introduced by the loader.
 
 Recordings require an explicitly chosen folder outside the data folder.
 Set `PORTICO_RECORDINGS_DIR` to that absolute path for headless use. If no
@@ -226,7 +227,7 @@ only where you intend to allow media writes. To upgrade, pull the chosen image,
 stop and remove the old container, then run the same command with the new tag
 and the same state volume. Removing the container does not remove a named
 volume; do not delete that volume when upgrading.
-`/config` must be mounted. If `/transcode` is absent, Storage reports “Map /transcode to a fast disk or to memory” and uses `/config/Transcode`. `TZ` and `UMASK` are honoured without writing `/etc`. The Unraid Community Applications template is `packaging/unraid/portico.xml` (`99:100`); the TrueNAS SCALE custom app is `packaging/truenas/compose.yaml` (`568:568`). Use a local cache pool for the database. NFS, SMB and Unraid FUSE pool mounts raise a quiet storage notice. The image includes an
+`/config` must be mounted. If `/transcode` is absent or RAM-backed, Storage reports a disk-mapping notice and uses a disk-backed `/config/Transcode`. `TZ` and `UMASK` are honoured without writing `/etc`. The Unraid Community Applications template is `packaging/unraid/portico.xml` (`99:100`); the TrueNAS SCALE custom app is `packaging/truenas/compose.yaml` (`568:568`). Use a local cache pool for the database. NFS, SMB and Unraid FUSE pool mounts raise a quiet storage notice. The image includes an
 init for orphan reaping and the server's own restart parent; restore and Restart
 work without a Docker restart policy. A restart policy remains useful for host
 reboots or crashes. Allow at least 45 seconds for container stop.

@@ -71,7 +71,7 @@ func Resolve(o Options) (Layout, error) {
 	}
 	l := At(data)
 	l.Container = o.Container
-	if o.Container && !IsMount("/transcode", o.Mounts) {
+	if o.Container && (!IsMount("/transcode", o.Mounts) || MemoryFilesystem(Filesystem("/transcode", o.Mounts))) {
 		transcode = filepath.Join(data, "Transcode")
 		l.TranscodeFallback = true
 	}
@@ -87,7 +87,7 @@ func At(data string) Layout {
 var Mapping = map[string]string{
 	"server.sqlite": "Database/server.sqlite", "server.sqlite-wal": "Database/server.sqlite-wal", "server.sqlite-shm": "Database/server.sqlite-shm", "server.lock": "Database/server.lock",
 	"networking-keys": "Keys/networking-keys", "networking-tls.pem": "Keys/networking-tls.pem", "networking-claim-credentials.key": "Keys/networking-claim-credentials.key", "networking-tls.key": "Keys/networking-tls.key", "networking-tls-seal.key": "Keys/networking-tls-seal.key", "authorization-replay.key": "Keys/authorization-replay.key", "setup-token": "Keys/setup-token", "keys": "Keys", "supervisor": "Keys/supervisor", "managed-storage": "Keys/managed-storage",
-	"artwork": "Metadata/artwork", "local-artwork": "Metadata/local-artwork", "subtitles": "Metadata/subtitles", "channel-logos": "Metadata/channel-logos", "analysis-artifacts": "Metadata/analysis-artifacts",
+	"artwork": "Metadata/artwork", "local-artwork": "Metadata/local-artwork", "subtitles": "Metadata/subtitles", "channel-logos": "Metadata/channel-logos", "guide-images": "Metadata/guide-images", "analysis-artifacts": "Metadata/analysis-artifacts",
 	"title-dataset": "Cache/title-dataset", "remote-sources": "Cache/remote-sources", "mounts": "Temp/mounts", "prepared-media": "Cache/prepared-media", "subtitle-video": "Cache/subtitle-video", "linear-media": "Cache/linear-media", "run": "Database/run", "live-source-locks": "Temp/live-source-locks", "logs": "Logs", "backups": "Backups", "restore-staged": "Backups/restore-staged", "restore-result.json": "Backups/restore-result.json",
 }
 
@@ -124,6 +124,17 @@ func (l Layout) Prepare() error {
 			return fmt.Errorf("previous data layout at %s: choose a fresh data folder; automatic migration is unavailable", l.Data)
 		}
 	}
+	// Never adopt an existing disposable scope. A directory is ours only if
+	// this layout created it and recorded that fact before putting work in it.
+	for _, name := range []string{"Cache", "Temp"} {
+		if _, err := os.Lstat(filepath.Join(l.Data, name)); err == nil {
+			if err := l.verifyOwned(name); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
 	for _, dir := range []string{l.Data, l.Database, l.Metadata, l.Cache, l.Logs, l.Keys, l.Backups, l.Temp, l.Transcode} {
 		if dir == "" {
 			continue
@@ -131,7 +142,11 @@ func (l Layout) Prepare() error {
 		if err := canonicalParents(dir); err != nil {
 			return err
 		}
-		if err := os.MkdirAll(dir, 0700); err != nil {
+		if dir == l.Cache || dir == l.Temp {
+			if err := l.prepareOwned(filepath.Base(dir)); err != nil {
+				return err
+			}
+		} else if err := os.MkdirAll(dir, 0700); err != nil {
 			return err
 		}
 	}
@@ -146,7 +161,8 @@ func (l Layout) Prepare() error {
 }
 func filesystemRoot(path string) bool {
 	clean := filepath.Clean(path)
-	return clean == filepath.VolumeName(clean)+string(os.PathSeparator)
+	volume := filepath.VolumeName(clean)
+	return clean == volume+string(os.PathSeparator) || volume != "" && clean == volume
 }
 
 func canonicalParents(path string) error {
@@ -179,6 +195,10 @@ func (l Layout) EmptyOwned(name string) error {
 	if err := canonicalParents(l.Data); err != nil {
 		return err
 	}
+	validatedData, err := os.Lstat(l.Data)
+	if err != nil {
+		return err
+	}
 	if err := refuseMountedChildren(filepath.Join(l.Data, name)); err != nil {
 		return err
 	}
@@ -187,6 +207,13 @@ func (l Layout) EmptyOwned(name string) error {
 		return err
 	}
 	defer parent.Close()
+	openedData, err := parent.Stat(".")
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(validatedData, openedData) {
+		return errors.New("data directory changed while acquiring its handle")
+	}
 	info, err := parent.Lstat(name)
 	if err != nil {
 		return err
@@ -206,6 +233,9 @@ func (l Layout) EmptyOwned(name string) error {
 	if !os.SameFile(info, current) {
 		return errors.New("owned directory changed")
 	}
+	if err := verifyOwnedRoot(root, l.ownership(name)); err != nil {
+		return err
+	}
 	file, err := root.Open(".")
 	if err != nil {
 		return err
@@ -214,6 +244,9 @@ func (l Layout) EmptyOwned(name string) error {
 	for {
 		entries, err := file.ReadDir(128)
 		for _, entry := range entries {
+			if entry.Name() == ownershipMarker {
+				continue
+			}
 			if e := root.RemoveAll(entry.Name()); e != nil {
 				return e
 			}
@@ -228,6 +261,16 @@ func (l Layout) EmptyOwned(name string) error {
 }
 func (l Layout) ResetTemp() error { return l.EmptyOwned("Temp") }
 func (l Layout) ActivateTemp() error {
+	if !filepath.IsAbs(l.Data) || filesystemRoot(l.Data) || l.Temp != filepath.Join(l.Data, "Temp") {
+		return errors.New("invalid owned Temp directory")
+	}
+	if err := canonicalParents(l.Temp); err != nil {
+		return err
+	}
+	if err := l.prepareOwned("Temp"); err != nil {
+		return err
+	}
+
 	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
 		if err := os.Setenv(key, l.Temp); err != nil {
 			return err
@@ -238,6 +281,9 @@ func (l Layout) ActivateTemp() error {
 func (l Layout) ValidateRecordings(path string) error {
 	if !filepath.IsAbs(path) {
 		return errors.New("choose an absolute recordings folder outside the data folder")
+	}
+	if err := canonicalParents(l.Data); err != nil {
+		return err
 	}
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
@@ -251,6 +297,12 @@ func (l Layout) ValidateRecordings(path string) error {
 	}
 	relative, err := filepath.Rel(l.Data, resolved)
 	if err != nil {
+		// Windows Rel cannot compare different volumes. Establish actual local
+		// volume identity rather than accepting different drive/share spellings;
+		// mapped letters and UNC aliases must not bypass containment.
+		if distinct, volumeErr := distinctNativeVolumes(l.Data, resolved); volumeErr == nil && distinct {
+			return nil
+		}
 		return err
 	}
 	if relative == "." || relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {

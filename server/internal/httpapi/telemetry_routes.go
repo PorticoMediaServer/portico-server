@@ -137,12 +137,16 @@ func (d Dependencies) capacityComposer() *telemetry.Capacity {
 			cache = absolute
 		}
 	}
-	return &telemetry.Capacity{
+	capacity := &telemetry.Capacity{
 		FFmpeg:  ffmpeg,
 		FFprobe: ffprobe,
 		State:   cache,
 		Probes:  playbackProbes{d.Playback},
 	}
+	if d.StorageLayout != nil {
+		capacity.Directory = &d.StorageLayout.Transcode
+	}
+	return capacity
 }
 
 func telemetryEnv(key, fallback string) string {

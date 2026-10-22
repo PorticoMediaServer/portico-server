@@ -2,11 +2,11 @@ package storagepaths
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 )
@@ -33,6 +33,9 @@ func ParseMountInfo(r io.Reader) []Mount {
 			point = strings.ReplaceAll(point, escape, string(rune(v)))
 		}
 		out = append(out, Mount{point, b[0]})
+	}
+	if scanner.Err() != nil {
+		return nil // An incomplete mount table cannot authorize cleanup.
 	}
 	return out
 }
@@ -62,19 +65,39 @@ func SharedFilesystem(kind string) bool {
 	return false
 }
 
+func MemoryFilesystem(kind string) bool { return kind == "tmpfs" || kind == "ramfs" }
+
+// DiskTranscodeDirectory keeps production FFmpeg output off RAM until the
+// producer/serve path supports aggregate bounded RAM with live disk spill.
+// The SpillFile primitive alone does not provide that integration.
+func DiskTranscodeDirectory(requested, fallback string, mounts []Mount) (string, error) {
+	if !MemoryFilesystem(Filesystem(requested, mounts)) {
+		return requested, nil
+	}
+	if fallback != "" && Filesystem(fallback, mounts) != "" && !MemoryFilesystem(Filesystem(fallback, mounts)) {
+		return fallback, nil
+	}
+	return "", errors.New("RAM-backed transcode storage is unavailable until bounded producer spill is integrated; choose a disk directory")
+}
+
+var ErrCleanupUnavailable = errors.New("destructive cleanup cannot be confined to the owned filesystem")
+
 func refuseMountedChildren(directory string) error {
-	if runtime.GOOS != "linux" {
-		return nil
-	}
-	file, err := os.Open("/proc/self/mountinfo")
+	mounts, err := cleanupMounts()
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrCleanupUnavailable, err)
 	}
-	defer file.Close()
-	for _, mount := range ParseMountInfo(file) {
+	return refuseMountsWithin(directory, mounts)
+}
+
+func refuseMountsWithin(directory string, mounts []Mount) error {
+	if len(mounts) == 0 {
+		return ErrCleanupUnavailable
+	}
+	for _, mount := range mounts {
 		rel, err := filepath.Rel(directory, mount.Point)
 		if err == nil && (rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))) {
-			return fmt.Errorf("cannot empty a directory containing a mounted filesystem: %s", mount.Point)
+			return fmt.Errorf("%w: mounted filesystem at %s", ErrCleanupUnavailable, mount.Point)
 		}
 	}
 	return nil
