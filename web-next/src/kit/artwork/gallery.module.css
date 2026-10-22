@@ -1,5 +1,9 @@
 .stage { position: relative; width: 100%; height: 100%; background: var(--color-ink); color: var(--color-text); overflow: hidden; line-height: normal; }
 .fallback { background: var(--color-raised-soft); border-radius: 14px; }
+.boundedResume { background: var(--color-raised); border-radius: 14px; }
+.boundedLibrary { background: var(--color-raised); border-radius: 16px; }
+.boundedCollection { width: 421.328125px; height: 236.984375px; background: #0a2233; border-radius: 14px; }
+.boundedSession { background: var(--color-raised-high); border-radius: 9px; }
 .crop { position: relative; width: 100%; height: 100%; }
 .generated { position: relative; width: 100%; height: 100%; border-radius: 8px; overflow: hidden; }
 .artist { width: 172px; height: 172px; }
@@ -19,3 +23,7 @@
 .lifecycleControls { display: flex; gap: 12px; position: absolute; bottom: 24px; }
 .fallbackLabel { display: grid; place-items: center; width: 100%; height: 100%; color: var(--color-text-tertiary); font-size: 14px; }
 .mosaic { width: 190px; height: 190px; border-radius: 10px; }
+
+.stateFull { opacity: .7; -webkit-mask-image: linear-gradient(180deg,#000,transparent 55%); mask-image: linear-gradient(180deg,#000,transparent 55%); }
+
+.cover .compactCoverTitle { white-space: nowrap; text-wrap: nowrap; text-overflow: ellipsis; display: flow-root; font-weight: 600; }

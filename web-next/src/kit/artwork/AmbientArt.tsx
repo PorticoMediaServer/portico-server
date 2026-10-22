@@ -9,10 +9,14 @@ export function ColourBackdrop({shape = 'side', fill = false, className, style, 
   return <div aria-hidden="true" className={artClass(styles.colour, styles[shape], fill && styles.fill, className)} style={artSize({width, height, style})} />;
 }
 
+/** Bounded card washes contain no sharp art, scrims, controls or readiness overrides. */
+export type AmbientArtTreatment = 'hero' | 'title' | 'phone' | 'cover' | 'wash' | 'library' | 'artist' | 'poster'
+  | 'resume' | 'resume-phone' | 'library-row' | 'collection-tile' | 'session-audio';
+
 export type AmbientArtProps = ArtStyleProps & Readonly<{
   source?: AmbientArtSource | null; sources?: readonly AmbientArtSource[];
   foreground?: ArtworkSource | null; palette?: ArtworkPalette;
-  treatment?: 'hero' | 'title' | 'phone' | 'cover' | 'wash' | 'library' | 'artist' | 'poster';
+  treatment?: AmbientArtTreatment;
   visible?: boolean; arrivalDurationMs?: number; position?: string;
   /** Static dimensions and position of the fixed masked foreground frame. */
   foregroundFrameStyle?: CSSProperties;
