@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PlaybackDock, type DockPlayback, type QueuePlaybackFence, type QueueScope} from '../../packages/player-core/src/index.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../src/platform/playback/index.ts';
-import type {DockPresentation} from '../src/kit/dock/index.ts';
-import {fenceKey, hasDock, PlaybackPresentations} from '../src/shell/playback-model.ts';
+import type {DockNoticeData, DockPresentation} from '../src/kit/dock/index.ts';
+import {fenceKey, hasDock, PlaybackPresentations, retainedPlaybackNotice} from '../src/shell/playback-model.ts';
 import {homeFixtures as f} from '../../packages/i18n/src/catalog/en-US/next/dev/home-fixtures.ts';
 import {PlaybackMediaOwner} from '../src/shell/playback-media-owner.ts';
 
@@ -11,7 +11,7 @@ const scope: QueueScope = {serverId: 'server', authority: 'local', accountId: 'a
 const fence = (id: string, generation = 1): QueuePlaybackFence => ({kind: 'queue', playback: {scope, run: 1}, sessionId: id, itemId: id, entryId: id, sourceId: id, generation});
 const audio: DockPlayback = {fence: fence('song'), kind: 'music', positionSeconds: 107, playing: true, expanded: false, queue: null};
 const video: DockPlayback = {fence: fence('movie'), kind: 'video', positionSeconds: 845, playing: true, expanded: true, queue: null};
-function presentation(value: DockPlayback): DockPresentation { return {fence: value.fence, identity: {id: value.fence.itemId, kind: value.kind === 'music' ? 'music' : 'video', title: f.movie, subtitle: []}, controls: ['play', 'pause'], skipBackSeconds: 10, skipForwardSeconds: 30}; }
+function presentation(value: DockPlayback): DockPresentation { return {fence: value.fence, identity: {id: value.fence.kind === 'queue' ? value.fence.itemId : value.fence.channelId, kind: value.kind === 'music' ? 'music' : 'video', title: f.movie, subtitle: []}, controls: ['play', 'pause'], skipBackSeconds: 10, skipForwardSeconds: 30}; }
 function snapshot(dock: PlaybackDock): WebPlaybackRuntimeSnapshot { return {dock: dock.getSnapshot()} as WebPlaybackRuntimeSnapshot; }
 
 test('presentation keys preserve queue and channel identities independently of wire property order', () => {
@@ -40,6 +40,43 @@ test('a source generation replacement cannot reuse the old display identity', ()
   const replaced = {...video, fence: fence('movie', 2)}; dock.start(replaced);
   const current = values.update(snapshot(dock), presentation(replaced));
   assert.equal(current.length, 1); assert.equal(current[0].fence.generation, 2);
+});
+test('empty playback and authority gaps cannot read or retain a nullable notice', () => {
+  const dock = new PlaybackDock(scope), runtime = {};
+  assert.equal(retainedPlaybackNotice(null, undefined, undefined, [presentation(audio)]), null);
+  assert.equal(retainedPlaybackNotice(null, runtime, dock.getSnapshot(), [presentation(audio)]), null);
+  dock.start(audio); dock.start(video);
+  const value: DockNoticeData = {kind: 'paused-audio', playback: audio, presentation: presentation(audio), changedAtMs: 0};
+  const notice = {runtime, value};
+  assert.equal(retainedPlaybackNotice(notice, undefined, dock.getSnapshot(), [value.presentation]), null);
+  assert.equal(retainedPlaybackNotice(notice, {}, dock.getSnapshot(), [value.presentation]), null);
+  assert.equal(retainedPlaybackNotice(notice, runtime, dock.getSnapshot(), []), null);
+  assert.equal(retainedPlaybackNotice(notice, runtime, dock.getSnapshot(), [value.presentation]), value);
+  dock.reset(scope);
+  assert.equal(retainedPlaybackNotice(notice, runtime, dock.getSnapshot(), [value.presentation]), null);
+});
+test('restoring a bookmark retires its notice even while that same playback presentation remains current', () => {
+  const dock = new PlaybackDock(scope), runtime = {}, presentations = [presentation(audio), presentation(video)];
+  dock.start(audio); dock.start(video);
+  const audioNotice = {runtime, value: {kind: 'paused-audio', playback: audio, presentation: presentation(audio), changedAtMs: 0} satisfies DockNoticeData};
+  assert.equal(retainedPlaybackNotice(audioNotice, runtime, dock.getSnapshot(), presentations), audioNotice.value);
+  dock.restoreAudio();
+  assert.equal(retainedPlaybackNotice(audioNotice, runtime, dock.getSnapshot(), presentations), null);
+  const videoNotice = {runtime, value: {kind: 'stopped-video', playback: video, presentation: presentation(video), changedAtMs: 1} satisfies DockNoticeData};
+  assert.equal(retainedPlaybackNotice(videoNotice, runtime, dock.getSnapshot(), presentations), videoNotice.value);
+  dock.restoreVideo();
+  assert.equal(retainedPlaybackNotice(videoNotice, runtime, dock.getSnapshot(), presentations), null);
+});
+test('notice retention compares canonical channel identity and rejects a replaced channel generation', () => {
+  const dock = new PlaybackDock(scope), runtime = {};
+  const channel: DockPlayback = {kind: 'live', fence: {kind: 'channel', channelKind: 'live-source', playback: {scope, run: 1},
+    sourceId: 'source', sessionId: 'session', generation: 1, channelId: 'channel', channelGeneration: '1'}, queue: null, positionSeconds: 10, playing: true, expanded: true};
+  dock.start(channel); dock.start(audio);
+  const notice = {runtime, value: {kind: 'stopped-video', playback: channel, presentation: presentation(channel), changedAtMs: 0} satisfies DockNoticeData};
+  assert.equal(retainedPlaybackNotice(notice, runtime, dock.getSnapshot(), [notice.value.presentation]), notice.value);
+  const nextChannel: DockPlayback = {...channel, fence: {...channel.fence, channelGeneration: '2'}};
+  dock.start(nextChannel); dock.start(audio);
+  assert.equal(retainedPlaybackNotice(notice, runtime, dock.getSnapshot(), [notice.value.presentation, presentation(nextChannel)]), null);
 });
 test('spacing follows accepted dock arbitration, including remote ownership while local video is expanded', () => {
   const dock = new PlaybackDock(scope); assert.equal(hasDock(snapshot(dock)), false);

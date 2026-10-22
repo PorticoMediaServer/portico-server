@@ -30,6 +30,17 @@ test('conversion names the delivered height and never substitutes the requested 
   assert.ok(!view.streams[0].conversion?.text.includes('2160'));
   assert.equal(activityView(summary({...stream(), videoHeight: undefined}), environment, actions).streams[0].conversion?.text, defaultI18n.t('web.nowPlaying.delivery.convertVideo'));
 });
+test('Activity decisions use canonical open-enum validation and conversion precedence', () => {
+  const view = (decision: ActivitySummarySession['decision']) => activityView(summary({...stream(), decision}), environment, actions).streams[0];
+  assert.equal(view({video: {action: 'future-video-mode', reasons: []}, audio: {action: 'transcode', reasons: []}}).conversion?.text,
+    defaultI18n.t('web.nowPlaying.delivery.convertAudio'));
+  assert.equal(view({video: {action: 'copy', reasons: []}, audio: {action: 'transcode', reasons: []}, subtitles: {action: 'burn', reasons: []}}).conversion?.text,
+    defaultI18n.t('next.home.shell.convertingTo', {quality: '1080p'}));
+  for (const action of ['direct', 'copy', 'future-video-mode']) {
+    assert.equal(view({video: {action, reasons: []}, audio: {action: 'direct', reasons: []}}).conversion, undefined);
+  }
+  assert.equal(view({}).conversion, undefined);
+});
 test('unknown totals stay unknown and server work counts and identifiers survive mapping', () => {
   const view = activityView(summary(), environment, actions);
   assert.equal(view.scans[0].discovered, 40); assert.equal(view.scans[0].processed, 12); assert.equal(view.scans[0].total, undefined);

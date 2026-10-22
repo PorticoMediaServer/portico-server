@@ -6,7 +6,7 @@ import {DockHost, DockNotice, MediaSurface, type DockBinding, type DockNoticeDat
 import {Button} from '../kit/controls';
 import {router} from '../router';
 import type {ShellArtwork} from './artwork';
-import {fenceKey, playbackPresentation, PlaybackPresentations} from './playback-model';
+import {fenceKey, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice} from './playback-model';
 import {PlaybackMediaOwner} from './playback-media-owner';
 import {useShellWidth} from './viewport';
 import styles from './playback.module.css';
@@ -43,17 +43,17 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
   useEffect(() => {
     if (!runtime || !snapshot) { previous.current = {}; return; }
     const parked = snapshot.dock.parkedAudio, resume = snapshot.dock.resumeVideo;
-    const audioKey = parked && fenceKey(parked.fence), videoKey = resume && fenceKey(resume.fence);
+    const audioKey = parked ? fenceKey(parked.fence) : undefined, videoKey = resume ? fenceKey(resume.fence) : undefined;
     const sameRuntime = previous.current.runtime === runtime;
-    const changed = audioKey && (!sameRuntime || audioKey !== previous.current.audio) ? {kind: 'paused-audio' as const, playback: parked!}
-      : videoKey && (!sameRuntime || videoKey !== previous.current.video) ? {kind: 'stopped-video' as const, playback: resume!} : undefined;
+    const changed: Pick<DockNoticeData, 'kind' | 'playback'> | undefined = parked && (!sameRuntime || audioKey !== previous.current.audio) ? {kind: 'paused-audio', playback: parked}
+      : resume && (!sameRuntime || videoKey !== previous.current.video) ? {kind: 'stopped-video', playback: resume} : undefined;
     previous.current = {runtime, audio: audioKey, video: videoKey};
     if (changed) {
       const presentation = presentations.find(value => fenceKey(value.fence) === fenceKey(changed.playback.fence));
       if (presentation) { const changedAtMs = performance.now(); setNow(changedAtMs); setNotice({runtime, value: {...changed, presentation, changedAtMs}}); }
     }
   }, [runtime, snapshot?.dock, presentations]);
-  const currentNotice = notice?.runtime === runtime && presentations.some(value => fenceKey(value.fence) === fenceKey(notice.value.playback.fence)) ? notice.value : null;
+  const currentNotice = retainedPlaybackNotice(notice, runtime, snapshot?.dock, presentations);
   useEffect(() => {
     if (!currentNotice) return;
     const timers = [300, 8300].map(delay => setTimeout(() => setNow(performance.now()), Math.max(0, currentNotice.changedAtMs + delay - performance.now())));
