@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func TestDefaultMediaCompositionAddsScansAndBrowsesWithoutRootsEnv(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

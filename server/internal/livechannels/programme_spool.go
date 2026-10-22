@@ -24,7 +24,7 @@ type programmeSpool struct {
 }
 
 func newProgrammeSpool() (*programmeSpool, error) {
-	file, e := os.CreateTemp("", "portico-programmes-*.sqlite")
+	file, e := os.CreateTemp(os.TempDir(), "portico-programmes-*.sqlite")
 	if e != nil {
 		return nil, e
 	}

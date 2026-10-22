@@ -20,6 +20,7 @@ type Notice struct {
 type Usage struct {
 	DataDirectory      string        `json:"dataDirectory"`
 	TranscodeDirectory string        `json:"transcodeDirectory"`
+	TranscodeBytes     int64         `json:"transcodeBytes"`
 	Folders            []FolderUsage `json:"folders"`
 	Notices            []Notice      `json:"notices"`
 }
@@ -62,6 +63,41 @@ func (l Layout) Usage(ctx context.Context, mounts []Mount) (Usage, error) {
 			return out, err
 		}
 		out.Folders = append(out.Folders, usage)
+	}
+	if l.Transcode != "" {
+		if err := canonicalParents(l.Transcode); err != nil {
+			return out, err
+		}
+		transcode, err := os.OpenRoot(l.Transcode)
+		if err != nil {
+			return out, err
+		}
+		err = fs.WalkDir(transcode.FS(), ".", func(_ string, entry fs.DirEntry, err error) error {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if info.Mode().IsRegular() {
+				out.TranscodeBytes += info.Size()
+			}
+			return nil
+		})
+		transcode.Close()
+		if err != nil {
+			return out, err
+		}
 	}
 	if l.TranscodeFallback {
 		out.Notices = append(out.Notices, Notice{"transcode_not_mapped", "Map /transcode to a fast disk or to memory"})

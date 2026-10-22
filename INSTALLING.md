@@ -24,9 +24,11 @@ compare the file with `checksums.sha256` on the release page. Do not enable
 unattended installation of these preview builds.
 
 Portico stores server data separately from the application. Linux packages use
-`/var/lib/portico-media-server`, Windows installs use
-`%ProgramData%\Portico Media Server`, and the macOS application uses
-`/Library/Application Support/Portico Media Server`.
+`/var/lib/portico` as a system service, or `~/.local/share/portico` for a
+user launch. Windows uses `%LOCALAPPDATA%\Portico`, or `%ProgramData%\Portico`
+for its service. macOS uses `~/Library/Application Support/Portico`. Containers
+use their mounted `/config`. `PORTICO_DATA_DIR` overrides the data path; the
+former state-directory variable is not supported.
 
 ## First start and service commands
 
@@ -82,23 +84,22 @@ Run the PKG, including the one inside the DMG. Then open the installed app, or
 open the console address in your browser. Inspect the service:
 
 ```sh
-sudo launchctl print system/tv.getportico.server.service
+launchctl print gui/$(id -u)/tv.getportico.server.service
 ```
 
 For a restart, or a clean stop before copying state, use `launchctl bootout`
 and bootstrap it again afterwards:
 
 ```sh
-sudo launchctl bootout system/tv.getportico.server.service
-sudo launchctl bootstrap system /Library/LaunchDaemons/tv.getportico.server.service.plist
+launchctl bootout gui/$(id -u)/tv.getportico.server.service
+launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/tv.getportico.server.service.plist"
 ```
 
 ### Portable archives
 
 Unpack the entire archive, including `web` and `third_party`. Run
 `./start-portico.sh` on Linux or `start-portico.cmd` on Windows. These run under
-your account and install no service or firewall rule. State defaults to `state`
-beside the launcher. Set an absolute `PORTICO_STATE_DIR` to keep it elsewhere.
+your account and install no service or firewall rule. Data defaults to the platform user data folder. Set an absolute `PORTICO_DATA_DIR` to keep it elsewhere.
 For an upgrade, stop the process, unpack the new build into a separate folder,
 and point its launcher at the existing state folder. Keep the previous build
 and a backup until the new build has started successfully.
@@ -128,7 +129,7 @@ service sandbox; it does not grant Unix ownership or ACL permissions. Keep
 
 Optional environment settings can instead be stored in the root-owned
 `/etc/portico-media-server/environment` file (one `NAME=value` per line).
-A custom `PORTICO_STATE_DIR` also needs its own additive `ReadWritePaths` entry.
+A custom `PORTICO_DATA_DIR` also needs its own additive `ReadWritePaths` entry.
 Selecting a path in the console or setting an environment variable alone does
 not grant it sandbox write access.
 
@@ -162,39 +163,52 @@ if you choose another listening port.
 ## macOS service
 
 The package installs `/Applications/Portico Media Server.app` and registers
-`tv.getportico.server.service` in `/Library/LaunchDaemons`, running as the
-hidden `_portico` account. It starts at boot without an interactive login.
-Grant that account access to your selected media folders. Use the same package
-to upgrade; its preinstall stops the service and postinstall starts the new
-build. Existing launchd configuration is preserved. Opening the app opens the
-console; `PORTICO_CONSOLE_URL` can select its address when opening from a shell.
-To uninstall, run with `sudo` the app's
-`Contents/Resources/launchd/uninstall.sh`. It removes the service and app while
-retaining data and the service account. Deleting the app alone is not uninstalling.
+`tv.getportico.server.service` in the signed-in owner's `~/Library/LaunchAgents`.
+It starts in that user's login session and uses that user's data and cache
+folders. Opening the app registers the agent if installation happened before a
+user signed in, then opens the console. Grant your account access to your media.
+An upgrade stops the previous job and starts the replacement, retaining data.
+The retired system service's data and account are left intact; no migration is
+performed. `PORTICO_CONSOLE_URL` can select the console address from a shell.
+To uninstall, run with `sudo` the app's `Contents/Resources/launchd/uninstall.sh`.
+It removes the app and the current user's agent while retaining data.
 
-## Cache and backup destinations
+## Data, transcodes and backups
 
-One state folder remains the default. Set absolute `PORTICO_CACHE_DIR` and
-`PORTICO_BACKUP_DIR` paths before starting to place temporary conversion,
-prepared and live media files, and database backups on separate volumes.
-The conversion folder saved in Playback settings overrides the HLS directory
-and takes effect after Restart. Ensure the service can write the chosen paths;
-Linux paths also need additive `ReadWritePaths` entries. Pre-restore rollback
-copies and the newest three pre-migration database copies stay beside the
-live database so restart recovery remains atomic. Scheduled backup retention
-keeps the selected number; manual copies remain until you delete them.
-A backup on the same disk does not protect against that disk failing.
+The data folder contains `portico.toml`, `Database/`, `Metadata/`, `Cache/`,
+`Logs/`, `Keys/`, `Backups/` and `Temp/`. `Temp/` is emptied at start; `Cache/`
+contains rebuildable files. The owner storage API reports each folder's size.
+Empty cache schedules a graceful restart and removes only the owned Cache
+before media services reopen it. It refuses linked roots and mounted children.
+Previous preview layouts are refused read-only: choose a fresh data folder.
+There is no automatic copy migration.
+
+Transcodes use a separate folder: `%LOCALAPPDATA%\Portico Transcode` on Windows
+(`%ProgramData%\Portico Transcode` for the service), `~/Library/Caches/Portico Transcode`
+on macOS, `/var/cache/portico` for Linux services, and `~/.cache/portico` for Linux
+user launches. Containers use a mounted `/transcode`, falling back to
+`/config/Transcode` when it is not mounted. Transcodes never enter a backup.
+RAM backing requires verified tmpfs or `/dev/shm`, a bounded capacity, and disk
+spill. The settings specification will supply its selector; no new keys are
+introduced by the loader.
+
+Recordings require an explicitly chosen folder outside the data folder.
+Set `PORTICO_RECORDINGS_DIR` to that absolute path for headless use. If no
+folder is selected, the server starts with recording storage unavailable.
+`PORTICO_BACKUP_DIR` can choose another backup destination. Backups include
+only `portico.toml`, the consistent database, Metadata and Keys. Keep backups
+on another disk to protect against a disk failure.
 
 ## Docker
 
-Keep `/var/lib/portico` in a persistent volume, and mount media separately.
+Keep `/config` in a persistent volume, and mount media separately.
 A minimal example (choose the image tag from the release you install):
 
 ```sh
 docker volume create portico-state
 docker run -d --name portico --restart unless-stopped --stop-timeout 45 \
-  -p 32500:32500 -e TZ=America/Halifax \
-  -v portico-state:/var/lib/portico -v /srv/media:/media:ro \
+  -p 32500:32500 -e TZ=America/Halifax -e PUID=1000 -e PGID=1000 -e UMASK=0077 \
+  -v portico-state:/config -v /srv/portico-transcode:/transcode -v /srv/media:/media:ro \
   ghcr.io/porticomediaserver/portico-server:latest
 docker logs --tail 100 portico
 docker restart --time 45 portico
@@ -206,13 +220,13 @@ IP address instead. The container's machine name is not the host's name. Router
 DNS suffixes and Tailscale MagicDNS names also need their exact authority in
 this list when used for browser setup.
 
-The container runs as `portico`; host permissions must allow that user to read
+The entrypoint drops to numeric `PUID:PGID` (default `1000:1000`); host permissions must allow it to read
 media. The read-only media mount above prevents deletion. Use a writable mount
 only where you intend to allow media writes. To upgrade, pull the chosen image,
 stop and remove the old container, then run the same command with the new tag
 and the same state volume. Removing the container does not remove a named
 volume; do not delete that volume when upgrading.
-Optional cache and backup volumes use the paths above. The image includes an
+`/config` must be mounted. If `/transcode` is absent, Storage reports “Map /transcode to a fast disk or to memory” and uses `/config/Transcode`. `TZ` and `UMASK` are honoured without writing `/etc`. The Unraid Community Applications template is `packaging/unraid/portico.xml` (`99:100`); the TrueNAS SCALE custom app is `packaging/truenas/compose.yaml` (`568:568`). Use a local cache pool for the database. NFS, SMB and Unraid FUSE pool mounts raise a quiet storage notice. The image includes an
 init for orphan reaping and the server's own restart parent; restore and Restart
 work without a Docker restart policy. A restart policy remains useful for host
 reboots or crashes. Allow at least 45 seconds for container stop.
@@ -289,11 +303,9 @@ forms and cross-site preflights cannot claim the server. Native API clients may 
 ## Backup and restore
 
 Settings → Server → Storage & backups provides backup and restore controls.
-A manual backup creates a directory containing `portico.db`, a checksum manifest,
-server identity keys and selected non-rebuildable state: TLS identity,
-authority incarnation, managed-storage configuration, channel logos and
-subtitles. It excludes media files, recordings, generated artwork, conversion
-caches and logs. A database backup is not a backup of your collection.
+A manual backup creates `Database/server.sqlite`, a checksum manifest,
+`portico.toml`, `Metadata/` and `Keys/`. It excludes media, recordings, Cache,
+Logs, Temp and transcodes. A database backup is not a backup of your collection.
 
 The API can start a backup with
 `POST /v1/admin/backups {"operationId":"backup-20261013-1"}`. It answers

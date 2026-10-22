@@ -41,6 +41,9 @@ func NewTranscodePool(memory, disk string, availableRAM int64, mounts []Mount) (
 	if memory == "" {
 		return p, nil
 	}
+	if Filesystem(disk, mounts) == "tmpfs" {
+		return nil, errors.New("disk spill must be on a separate disk filesystem, not RAM")
+	}
 	if Filesystem(memory, mounts) != "tmpfs" {
 		return nil, errors.New("memory transcodes require a verified tmpfs or /dev/shm filesystem")
 	}

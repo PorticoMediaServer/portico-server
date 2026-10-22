@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/ingestion"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/storagepaths"
 	"strconv"
 	"strings"
 	"testing"
@@ -79,7 +80,7 @@ func TestHLSManifestRepresentationRangeReloadAndGrantRevocation(t *testing.T) {
 	}
 	player.ConfigureHLS(hls)
 	handler := New(Dependencies{DB: db, Identity: id, Catalog: cat, Ingestion: ingestion.New(db, cat, assets.Probe{}), Playback: player, Hosted: host})
-	setupToken, err := os.ReadFile(filepath.Join(root, "setup-token"))
+	setupToken, err := os.ReadFile(storagepaths.Path(root, "setup-token"))
 	if err != nil {
 		t.Fatal(err)
 	}

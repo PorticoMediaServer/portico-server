@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 	"time"
 )
@@ -54,7 +55,7 @@ func TestSeparateBackupDestinationAndRestoreRefusalWithoutLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	listed, err := svc.List()
-	if err != nil || len(listed) != 1 || listed[0].ID != id || svc.backupRoot() == filepath.Join(state, BackupsDir) {
+	if err != nil || len(listed) != 1 || listed[0].ID != id || svc.backupRoot() == storagepaths.Path(state, BackupsDir) {
 		t.Fatal(listed, err)
 	}
 	svc.SetRestoreAvailable(false)

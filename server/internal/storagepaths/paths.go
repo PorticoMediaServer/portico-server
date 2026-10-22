@@ -114,11 +114,14 @@ func (l Layout) Prepare() error {
 	if err := canonicalParents(l.Data); err != nil {
 		return err
 	}
-	for _, name := range []string{"server.sqlite", "networking-keys", "supervisor", "managed-storage", "recordings", "hls"} {
-		if _, err := os.Lstat(filepath.Join(l.Data, name)); err == nil {
+	entries, err := os.ReadDir(l.Data)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	for _, entry := range entries {
+		_, old := Mapping[entry.Name()]
+		if old || entry.Name() == "hls" || entry.Name() == "recordings" {
 			return fmt.Errorf("previous data layout at %s: choose a fresh data folder; automatic migration is unavailable", l.Data)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
 		}
 	}
 	for _, dir := range []string{l.Data, l.Database, l.Metadata, l.Cache, l.Logs, l.Keys, l.Backups, l.Temp, l.Transcode} {

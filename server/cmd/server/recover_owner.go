@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/persistence"
@@ -39,7 +40,7 @@ func recoverOwner(args []string, out io.Writer) error {
 		// recovery command does the same.
 		fmt.Fprintln(out, "Warning: other accounts on this computer can read your Portico data, including sign-in secrets. Tighten the state folder when you are done.")
 	}
-	dbPath := filepath.Join(root, "server.sqlite")
+	dbPath := storagepaths.Path(root, "server.sqlite")
 	if info, err = os.Stat(dbPath); err != nil || !info.Mode().IsRegular() {
 		return errors.New("existing server database required")
 	}

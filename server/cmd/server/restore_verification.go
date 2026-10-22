@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 
 	"portico.local/server/internal/backup"
 	"portico.local/server/internal/livechannels/dvr"
@@ -95,7 +95,7 @@ var restoredStateRequirements = []restoredRequirement{
 		return e
 	}},
 	{"the restored subtitles folder is not a folder Portico can use", func(_ context.Context, _ *sql.DB, state string) error {
-		return mediaartifact.Inspect(filepath.Join(state, "subtitles"))
+		return mediaartifact.Inspect(storagepaths.Path(state, "subtitles"))
 	}},
 	{"the restored mount configuration folder is not a folder Portico can use", func(_ context.Context, _ *sql.DB, state string) error {
 		return mounts.InspectPrivateDirectory(state)

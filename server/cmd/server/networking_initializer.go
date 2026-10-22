@@ -18,6 +18,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/operations"
+	"portico.local/server/internal/storagepaths"
 	"strconv"
 	"strings"
 )
@@ -28,7 +29,7 @@ func syncCurrentDirectory(path string) error { return dirsync.Sync(path) }
 // holds. It creates nothing and repairs nothing: a missing, irregular,
 // wrong-sized, replaced or malformed file is refused.
 func readCurrentAuthority(state string) (*authoritygate.AuthorityGate, error) {
-	path := filepath.Join(state, "supervisor", "authority-incarnation.v1")
+	path := storagepaths.Path(state, "supervisor", "authority-incarnation.v1")
 	info, e := os.Lstat(path)
 	if e != nil || !info.Mode().IsRegular() || info.Size() != 64 {
 		return nil, errors.New("current authority incarnation is unavailable")
@@ -50,7 +51,7 @@ func readCurrentAuthority(state string) (*authoritygate.AuthorityGate, error) {
 	return authoritygate.NewAuthorityGate(string(raw), false)
 }
 func openCurrentAuthority(state string) (*networking.AuthorityRunner, error) {
-	directory := filepath.Join(state, "supervisor")
+	directory := storagepaths.Path(state, "supervisor")
 	if e := os.MkdirAll(directory, 0700); e != nil {
 		return nil, e
 	}
@@ -58,7 +59,7 @@ func openCurrentAuthority(state string) (*networking.AuthorityRunner, error) {
 	path := filepath.Join(directory, "authority-incarnation.v1")
 	_, e := os.Lstat(path)
 	if errors.Is(e, os.ErrNotExist) {
-		if _, dbErr := os.Lstat(filepath.Join(state, "server.sqlite")); !errors.Is(dbErr, os.ErrNotExist) {
+		if _, dbErr := os.Lstat(storagepaths.Path(state, "server.sqlite")); !errors.Is(dbErr, os.ErrNotExist) {
 			return fail(errors.New("existing server state has no current authority incarnation"))
 		}
 		random := make([]byte, 32)

@@ -14,6 +14,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/storage"
+	"portico.local/server/internal/storagepaths"
 	"portico.local/server/internal/supervise"
 	"portico.local/server/internal/worker"
 	"strings"
@@ -65,6 +66,7 @@ type Service struct {
 	commands              sync.Mutex
 	db                    *sql.DB
 	root, private, helper string
+	work, cache           string
 	// fpKey signs command fingerprints. Hashing that is not encryption stays:
 	// the key lives in the configuration table, and replays survive restarts.
 	// Folder permissions are the protection, as in Plex.
@@ -97,7 +99,7 @@ func canonicalDirectory(path string) error {
 // configuration folder already in a state folder, without creating anything.
 // A folder that is not there yet is fine: New makes it.
 func InspectPrivateDirectory(state string) error {
-	path := filepath.Join(state, "managed-storage")
+	path := storagepaths.Path(state, "managed-storage")
 	info, e := os.Lstat(path)
 	if errors.Is(e, os.ErrNotExist) {
 		return nil
@@ -110,7 +112,7 @@ func InspectPrivateDirectory(state string) error {
 
 func New(db *sql.DB, state, root, helper string, store *storage.Client) (*Service, error) {
 	if root == "" {
-		root = filepath.Join(state, "mounts")
+		root = storagepaths.Path(state, "mounts")
 	}
 	root, err := filepath.Abs(root)
 	if err != nil {
@@ -119,7 +121,7 @@ func New(db *sql.DB, state, root, helper string, store *storage.Client) (*Servic
 	if root == filepath.VolumeName(root)+string(filepath.Separator) {
 		return nil, errors.New("managed mount root must be a dedicated directory")
 	}
-	for _, path := range []string{root, filepath.Join(state, "managed-storage")} {
+	for _, path := range []string{root, storagepaths.Path(state, "managed-storage"), filepath.Join(state, "Temp", "managed-storage"), filepath.Join(state, "Cache", "managed-storage")} {
 		if err = os.MkdirAll(path, 0700); err != nil {
 			return nil, err
 		}
@@ -141,7 +143,7 @@ func New(db *sql.DB, state, root, helper string, store *storage.Client) (*Servic
 			}
 		}
 	}
-	private := filepath.Join(state, "managed-storage")
+	private := storagepaths.Path(state, "managed-storage")
 	// Mount configs are rclone's plain config format. A state from the
 	// sealed era converts its sealed configs while the old key exists.
 	migrateSealedConfigs(private)
@@ -155,7 +157,7 @@ func New(db *sql.DB, state, root, helper string, store *storage.Client) (*Servic
 	if err = loadOrCreateFingerprintKey(db, &fpKey); err != nil {
 		return nil, err
 	}
-	s := &Service{db: db, root: root, private: private, helper: helper, fpKey: fpKey, storage: store, active: map[string]*child{}, available: map[string]bool{}, paths: map[string]string{}, retry: map[string]time.Time{}, validation: make(chan struct{}, 2), validationSupervisor: &storage.Supervisor{Limit: 2}, nativeInventory: &storage.Supervisor{Limit: 4}, nativePlayback: &storage.Supervisor{Limit: 8}}
+	s := &Service{db: db, root: root, private: private, work: filepath.Join(state, "Temp", "managed-storage"), cache: filepath.Join(state, "Cache", "managed-storage"), helper: helper, fpKey: fpKey, storage: store, active: map[string]*child{}, available: map[string]bool{}, paths: map[string]string{}, retry: map[string]time.Time{}, validation: make(chan struct{}, 2), validationSupervisor: &storage.Supervisor{Limit: 2}, nativeInventory: &storage.Supervisor{Limit: 4}, nativePlayback: &storage.Supervisor{Limit: 8}}
 	s.observe = store.Mounted
 	s.mountSupported = MountSupported
 	s.observeIdentity = store.MountedIdentity
@@ -484,7 +486,7 @@ func (s *Service) reconcile(ctx context.Context) bool {
 				}
 				continue
 			}
-			if m.CacheBytes > 0 && !cacheSpaceAvailable(s.private, m.CacheFloor) {
+			if m.CacheBytes > 0 && !cacheSpaceAvailable(s.cache, m.CacheFloor) {
 				c.invalidateRuntime()
 				c.stopping = true
 				c.stopAt = time.Now()
@@ -561,12 +563,12 @@ func (s *Service) reconcile(ctx context.Context) bool {
 			s.state(m.ID, "failed", "Managed mount directory changed.")
 			continue
 		}
-		if m.CacheBytes > 0 && !cacheSpaceAvailable(s.private, m.CacheFloor) {
+		if m.CacheBytes > 0 && !cacheSpaceAvailable(s.cache, m.CacheFloor) {
 			s.state(m.ID, "unavailable", "Private cache free-space floor reached.")
 			s.retry[m.ID] = time.Now().Add(30 * time.Second)
 			continue
 		}
-		request := launch{Executable: executable, Digest: digest, Remote: remote, MountPath: m.MountPath, ConfigPath: filepath.Join(s.private, configFile), PrivateHome: s.private, Password: "", CachePath: filepath.Join(s.private, m.ID+".cache"), CacheBytes: m.CacheBytes, CacheFloor: m.CacheFloor}
+		request := launch{Executable: executable, Digest: digest, Remote: remote, MountPath: m.MountPath, ConfigPath: filepath.Join(s.private, configFile), PrivateHome: s.work, Password: "", CachePath: filepath.Join(s.cache, m.ID+".cache"), CacheBytes: m.CacheBytes, CacheFloor: m.CacheFloor}
 		cmd := exec.Command(s.helper, "--portico-rclone-guardian")
 		cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
 		cmd.Stdout = io.Discard

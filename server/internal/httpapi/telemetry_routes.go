@@ -128,7 +128,10 @@ func historyQuery(r *http.Request) (string, int, error) {
 // caller holds its own, so one surface's reporter cache never stalls another's.
 func (d Dependencies) capacityComposer() *telemetry.Capacity {
 	ffmpeg, ffprobe := decoder.ResolveTools()
-	cache := telemetryEnv("PORTICO_CACHE_DIR", d.stateDirectory())
+	cache := d.CacheDirectory
+	if d.StorageLayout != nil {
+		cache = d.StorageLayout.Transcode
+	}
 	if cache != "" {
 		if absolute, err := filepath.Abs(cache); err == nil {
 			cache = absolute

@@ -149,3 +149,28 @@ func TestRecordingsOutsideDataOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestEveryLegacyCategoryIsRefusedWithoutMutation(t *testing.T) {
+	for _, name := range []string{"artwork", "local-artwork", "subtitles", "channel-logos", "analysis-artifacts", "title-dataset", "remote-sources", "managed-storage", "mounts", "run", "live-source-locks", "logs", "backups", "restore-staged", "networking-keys", "keys", "supervisor", "hls", "recordings"} {
+		t.Run(name, func(t *testing.T) {
+			data := filepath.Join(t.TempDir(), "data")
+			old := filepath.Join(data, name)
+			if err := os.MkdirAll(old, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(old, "keep"), []byte("original"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := At(data).Prepare(); err == nil {
+				t.Fatal("old layout accepted")
+			}
+			if raw, err := os.ReadFile(filepath.Join(old, "keep")); err != nil || string(raw) != "original" {
+				t.Fatal("old data changed", err)
+			}
+			entries, _ := os.ReadDir(data)
+			if len(entries) != 1 {
+				t.Fatal("created new layout over old", entries)
+			}
+		})
+	}
+}

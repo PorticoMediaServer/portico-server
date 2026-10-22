@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 
@@ -36,7 +37,7 @@ func startedState(t *testing.T) (state, serverID string) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -56,7 +57,7 @@ func startedState(t *testing.T) (state, serverID string) {
 // bare-file restore on the server at state.
 func stageBareDatabase(t *testing.T, state, serverID, from, probe string) {
 	t.Helper()
-	raw, e := os.ReadFile(filepath.Join(from, "server.sqlite"))
+	raw, e := os.ReadFile(storagepaths.Path(from, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -72,7 +73,7 @@ func stageBareDatabase(t *testing.T, state, serverID, from, probe string) {
 		t.Fatal(e)
 	}
 	candidate.Close()
-	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -84,7 +85,7 @@ func stageBareDatabase(t *testing.T, state, serverID, from, probe string) {
 
 func restoredProbe(t *testing.T, state string) (serverID, probe string) {
 	t.Helper()
-	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -116,7 +117,7 @@ func TestRestoreOfAnotherServersBareDatabaseIsRolledBack(t *testing.T) {
 	if id, probe := restoredProbe(t, state); id != serverID || probe != "" {
 		t.Fatalf("the previous database was not put back: server %q probe %q", id, probe)
 	}
-	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -135,7 +136,7 @@ func TestRestoreOfAnotherServersBareDatabaseIsRolledBack(t *testing.T) {
 		t.Fatalf("the server no longer opens its own keys: %v", e)
 	}
 	keys.Close()
-	entries, e := os.ReadDir(filepath.Join(state, "networking-keys"))
+	entries, e := os.ReadDir(storagepaths.Path(state, "networking-keys"))
 	if e != nil || len(entries) != 1 {
 		t.Fatalf("verification changed the key folder: %d %v", len(entries), e)
 	}
@@ -158,7 +159,7 @@ func TestRestoreOfThisServersBareDatabaseIsKept(t *testing.T) {
 func TestStateKeyVerificationIsReadOnly(t *testing.T) {
 	ctx := context.Background()
 	fresh := t.TempDir()
-	db, e := persistence.Open(filepath.Join(fresh, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(fresh, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -166,7 +167,7 @@ func TestStateKeyVerificationIsReadOnly(t *testing.T) {
 	if e = networking.VerifyStateKeys(ctx, db, fresh); e != nil {
 		t.Fatalf("an untouched state was refused: %v", e)
 	}
-	if _, e = os.Lstat(filepath.Join(fresh, "networking-keys")); !os.IsNotExist(e) {
+	if _, e = os.Lstat(storagepaths.Path(fresh, "networking-keys")); !os.IsNotExist(e) {
 		t.Fatalf("verification created the key folder: %v", e)
 	}
 	var identities int
@@ -195,7 +196,7 @@ func stageBackupFolder(t *testing.T, state, serverID, probe string, change func(
 func tryStageBackupFolder(t *testing.T, state, serverID, probe string, change func(folder string)) error {
 	t.Helper()
 	ctx := context.Background()
-	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -205,7 +206,7 @@ func tryStageBackupFolder(t *testing.T, state, serverID, probe string, change fu
 	if e != nil {
 		t.Fatal(e)
 	}
-	folder := filepath.Join(state, backup.BackupsDir, id)
+	folder := storagepaths.Path(state, backup.BackupsDir, id)
 	candidate, e := persistence.Open(filepath.Join(folder, backup.DatabaseName))
 	if e != nil {
 		t.Fatal(e)
@@ -338,7 +339,7 @@ func startable(t *testing.T, state string) error {
 	if e != nil {
 		return e
 	}
-	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if e != nil {
 		return e
 	}
@@ -372,7 +373,7 @@ func startable(t *testing.T, state string) error {
 	if e = storage.CheckBackgroundTaskPriority(priority); e != nil {
 		return e
 	}
-	if _, e = mediaartifact.New(filepath.Join(state, "subtitles")); e != nil {
+	if _, e = mediaartifact.New(storagepaths.Path(state, "subtitles")); e != nil {
 		return e
 	}
 	if _, e = dvr.ReadStoragePolicy(ctx, db); e != nil {
@@ -393,7 +394,7 @@ func startable(t *testing.T, state string) error {
 // rolled back while the previous state can still be put back, and the server
 // must start on what the rollback leaves.
 func TestRestoreIsRefusedForEveryMissingStartupRequirement(t *testing.T) {
-	authority := "supervisor/authority-incarnation.v1"
+	authority := "Keys/supervisor/authority-incarnation.v1"
 	cases := map[string]func(t *testing.T, state, folder string){
 		"authority file is not a valid value": func(t *testing.T, _, folder string) {
 			replaceBackupFile(t, folder, authority, []byte(strings.Repeat("z", 64)))
@@ -402,7 +403,7 @@ func TestRestoreIsRefusedForEveryMissingStartupRequirement(t *testing.T) {
 			replaceBackupFile(t, folder, authority, []byte(strings.Repeat("a", 63)))
 		},
 		"signing key is another server's": func(t *testing.T, state, folder string) {
-			entries, e := os.ReadDir(filepath.Join(state, "networking-keys"))
+			entries, e := os.ReadDir(storagepaths.Path(state, "networking-keys"))
 			if e != nil || len(entries) != 1 {
 				t.Fatalf("fixture keys: %d %v", len(entries), e)
 			}
@@ -410,7 +411,7 @@ func TestRestoreIsRefusedForEveryMissingStartupRequirement(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			replaceBackupFile(t, folder, "networking-keys/"+entries[0].Name(), other)
+			replaceBackupFile(t, folder, "Keys/networking-keys/"+entries[0].Name(), other)
 		},
 		"claim schema: an identity protection is missing": func(t *testing.T, _, folder string) {
 			changeBackupDatabase(t, folder, `DROP TRIGGER networking_identity_no_update`)
@@ -456,7 +457,7 @@ func TestRestoreIsRefusedForEveryMissingStartupRequirement(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			state, serverID := startedState(t)
-			before, e := os.ReadFile(filepath.Join(state, filepath.FromSlash(authority)))
+			before, e := os.ReadFile(storagepaths.Path(state, filepath.FromSlash(authority)))
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -476,10 +477,10 @@ func TestRestoreIsRefusedForEveryMissingStartupRequirement(t *testing.T) {
 			if id, probe := restoredProbe(t, state); id != serverID || probe != "" {
 				t.Fatalf("the previous database was not put back: server %q probe %q", id, probe)
 			}
-			if after, e := os.ReadFile(filepath.Join(state, filepath.FromSlash(authority))); e != nil || string(after) != string(before) {
+			if after, e := os.ReadFile(storagepaths.Path(state, filepath.FromSlash(authority))); e != nil || string(after) != string(before) {
 				t.Fatalf("the previous authority file was not put back: %v", e)
 			}
-			db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+			db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -514,7 +515,7 @@ func TestRestoreOfThisServersBackupFolderIsKept(t *testing.T) {
 func TestRestoreRefusesABackgroundPriorityStartupWouldNotAccept(t *testing.T) {
 	ctx := context.Background()
 	state, serverID := startedState(t)
-	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -524,7 +525,7 @@ func TestRestoreRefusesABackgroundPriorityStartupWouldNotAccept(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	folder := filepath.Join(state, backup.BackupsDir, id)
+	folder := storagepaths.Path(state, backup.BackupsDir, id)
 	changeBackupDatabase(t, folder, `PRAGMA ignore_check_constraints=ON`, `UPDATE maintenance_policy SET background_priority='whenever'`)
 	if _, e = service.Stage(ctx, backup.Source{BackupID: id}); !errors.Is(e, persistence.ErrCandidateIntegrity) {
 		t.Fatalf("a database with a setting outside its allowed values was staged: %v", e)
@@ -560,7 +561,7 @@ func TestRestoreRefusesABackgroundPriorityStartupWouldNotAccept(t *testing.T) {
 func TestRestoreOfAHealthyBackupDoesNotNeedTheTemporaryFolder(t *testing.T) {
 	state, serverID := startedState(t)
 	stageBackupFolder(t, state, serverID, "healthy", nil)
-	t.Setenv("TMPDIR", filepath.Join(state, "no-such-folder"))
+	t.Setenv("TMPDIR", storagepaths.Path(state, "no-such-folder"))
 	if e := backup.ApplyStaged(context.Background(), state, verifyRestoredState(state)); e != nil {
 		t.Fatalf("a healthy backup was refused because the temporary folder is unusable: %v", e)
 	}

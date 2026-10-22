@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"sort"
 	"time"
 )
@@ -119,7 +120,7 @@ func (s *Service) Storage(ctx context.Context, auth Authorize) (StorageReport, e
 	for _, category := range StorageCategories() {
 		usage := StorageUsage{StorageCategory: category, Paths: []string{}}
 		for _, name := range category.Directories {
-			path := filepath.Join(s.StateDirectory(), name)
+			path := storagepaths.Path(s.StateDirectory(), name)
 			info, err := os.Stat(path)
 			if err != nil || !info.IsDir() {
 				continue
@@ -204,7 +205,7 @@ func (s *Service) Cleanup(ctx context.Context, auth Authorize, category string, 
 	s.files.Lock()
 	defer s.files.Unlock()
 	for _, name := range chosen.Directories {
-		root := filepath.Join(s.StateDirectory(), name)
+		root := storagepaths.Path(s.StateDirectory(), name)
 		if info, err := os.Stat(root); err != nil || !info.IsDir() {
 			continue
 		}

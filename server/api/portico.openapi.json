@@ -29623,6 +29623,72 @@
         ],
         "type": "object"
       },
+      "GetDataStorageUsageRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetDataStorageUsageResponse": {
+        "properties": {
+          "dataDirectory": {
+            "type": "string"
+          },
+          "folders": {
+            "items": {
+              "properties": {
+                "bytes": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "bytes"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "notices": {
+            "items": {
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "transcodeBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "transcodeDirectory": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataDirectory",
+          "transcodeDirectory",
+          "transcodeBytes",
+          "folders",
+          "notices"
+        ],
+        "type": "object"
+      },
       "GetDeviceCapabilitiesRequest": {
         "properties": {},
         "required": [],
@@ -135770,6 +135836,22 @@
         ],
         "type": "object"
       },
+      "PostEmptyDataCacheRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "PostEmptyDataCacheResponse": {
+        "properties": {
+          "scheduled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "scheduled"
+        ],
+        "type": "object"
+      },
       "PostFeedbackReportsRequest": {
         "properties": {
           "attachDiagnostics": {
@@ -208881,6 +208963,73 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/storage/cache/empty": {
+      "post": {
+        "operationId": "post_empty_data_cache",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "scheduled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "scheduled"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Empty rebuildable cache on a graceful server restart",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
     "/v1/admin/storage/status": {
       "get": {
         "operationId": "get_storage_status",
@@ -208966,6 +209115,123 @@
           "not_permitted",
           "not_found",
           "invalid_request",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/storage/usage": {
+      "get": {
+        "operationId": "get_data_storage_usage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "dataDirectory": {
+                      "type": "string"
+                    },
+                    "folders": {
+                      "items": {
+                        "properties": {
+                          "bytes": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "bytes"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "notices": {
+                      "items": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "transcodeBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "transcodeDirectory": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "dataDirectory",
+                    "transcodeDirectory",
+                    "transcodeBytes",
+                    "folders",
+                    "notices"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read data folder usage and storage notices",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
           "internal"
         ],
         "x-lane": "default",

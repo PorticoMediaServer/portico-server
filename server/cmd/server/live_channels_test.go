@@ -4,16 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"os"
-	"path/filepath"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 )
 
 func TestLiveInitializationNeedsNoKeyWithReferences(t *testing.T) {
 	state := t.TempDir()
-	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -32,7 +32,7 @@ func TestLiveInitializationNeedsNoKeyWithReferences(t *testing.T) {
 	if _, e = initializeLiveChannels(db, state); e != nil {
 		t.Fatal("valid reopen failed", e)
 	}
-	key := filepath.Join(state, "keys", "live-sources.v1.key")
+	key := storagepaths.Path(state, "keys", "live-sources.v1.key")
 	if _, e = os.Stat(key); !os.IsNotExist(e) {
 		t.Fatal("key file present")
 	}

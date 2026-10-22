@@ -10,7 +10,7 @@ import (
 	"errors"
 	"log"
 	"os"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -89,7 +89,7 @@ func (c *ClaimCipher) open(v Intent, _, encrypted []byte) (*Secret, error) {
 // sealed credential rows move to plaintext and the key file is removed.
 // Anything it cannot read is left for the next start; it never blocks.
 func migrateClaimCredentials(ctx context.Context, db *sql.DB, stateDir string) error {
-	raw, err := os.ReadFile(filepath.Join(stateDir, "networking-claim-credentials.key"))
+	raw, err := os.ReadFile(storagepaths.Path(stateDir, "networking-claim-credentials.key"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -162,6 +162,6 @@ func migrateClaimCredentials(ctx context.Context, db *sql.DB, stateDir string) e
 		return err
 	}
 	// Best effort: a leftover file is inert and migrates again next start.
-	_ = os.Remove(filepath.Join(stateDir, "networking-claim-credentials.key"))
+	_ = os.Remove(storagepaths.Path(stateDir, "networking-claim-credentials.key"))
 	return nil
 }

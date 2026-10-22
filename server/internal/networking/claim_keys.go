@@ -12,9 +12,9 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/dirsync"
+	"portico.local/server/internal/storagepaths"
 )
 
 // ProtectedKeys is the current immutable key registry. It never imports a key
@@ -118,7 +118,7 @@ func VerifyStateKeys(ctx context.Context, db *sql.DB, state string) error {
 	if db == nil {
 		return ErrInvalid
 	}
-	directory := filepath.Join(state, "networking-keys")
+	directory := storagepaths.Path(state, "networking-keys")
 	gated, e := dbwork.BeginSnapshot(ctx, db)
 	if e != nil {
 		return e
@@ -165,7 +165,7 @@ func openCurrentKeys(ctx context.Context, db *sql.DB, state string, runner *Auth
 	if db == nil || runner == nil {
 		return nil, ErrInvalid
 	}
-	directory := filepath.Join(state, "networking-keys")
+	directory := storagepaths.Path(state, "networking-keys")
 	if e := privateDirectory(directory); e != nil {
 		return nil, e
 	}

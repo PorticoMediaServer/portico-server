@@ -317,7 +317,7 @@ should be able to keep them effectively forever. Backups are kept by count
 (`backupKeepCount`), not by age.
 
 **Moving a server.** Stop Portico, copy the whole state folder to the new
-machine, point Portico at it (`PORTICO_STATE_DIR`), and start the same build first. Verify the resulting library and network state.
+machine, point Portico at it (`PORTICO_DATA_DIR`), and start the same build first. Verify the resulting library and network state.
 Portico's own files are stored absolute and rebased to the new folder on first
 start. Media library paths are absolute too and still point at the old
 machine's mounts, so change them in the console when the new machine mounts

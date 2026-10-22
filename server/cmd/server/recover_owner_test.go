@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 	"os/exec"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 
@@ -19,7 +19,7 @@ func TestRecoverOwnerCLINeedsNoKey(t *testing.T) {
 	if err := os.Chmod(state, 0700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(state, "server.sqlite")
+	path := storagepaths.Path(state, "server.sqlite")
 	db, err := persistence.Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestRecoverOwnerCLINeedsNoKey(t *testing.T) {
 	if err = db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = os.Stat(filepath.Join(state, "authorization-replay.key")); !os.IsNotExist(err) {
+	if _, err = os.Stat(storagepaths.Path(state, "authorization-replay.key")); !os.IsNotExist(err) {
 		t.Fatal("key file present")
 	}
 	binary := serverBinary(t)

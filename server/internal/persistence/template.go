@@ -80,7 +80,7 @@ func openFromTemplate(path string) (*sql.DB, bool, error) {
 // bytes.
 func schemaTemplate() ([]byte, error) {
 	templateOnce.Do(func() {
-		directory, err := os.MkdirTemp("", "portico-schema-template-")
+		directory, err := os.MkdirTemp(os.TempDir(), "portico-schema-template-")
 		if err != nil {
 			templateErr = err
 			return

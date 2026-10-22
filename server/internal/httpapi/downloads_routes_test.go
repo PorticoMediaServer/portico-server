@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 	"time"
@@ -66,7 +67,7 @@ func TestDownloadTransferSupportsRangeAndValidators(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	secret, e := os.ReadFile(filepath.Join(root, "setup-token"))
+	secret, e := os.ReadFile(storagepaths.Path(root, "setup-token"))
 	if e != nil {
 		t.Fatal(e)
 	}

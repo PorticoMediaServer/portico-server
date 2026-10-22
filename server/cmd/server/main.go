@@ -23,9 +23,11 @@ import (
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/configfile"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/dlna"
 	"portico.local/server/internal/enrichment"
+	"portico.local/server/internal/storagepaths"
 	"runtime"
 
 	"portico.local/server/internal/decoder"
@@ -246,15 +248,26 @@ func run() (runErr error) {
 	if err := childprocess.AdoptTree(); err != nil {
 		log.Printf("warn: Child processes are not bound to this server's lifetime (%v); a crash may leave media processes running", err)
 	}
-	state := env("PORTICO_STATE_DIR", "../../runtime/server")
-	state, e := filepath.Abs(state)
+	layout, e := startupLayout()
 	if e != nil {
 		return e
 	}
-	if e = os.MkdirAll(state, 0700); e != nil {
+	if e = layout.Prepare(); e != nil {
 		return e
 	}
-	startupLog := servicelog.New(servicelog.Options{Directory: filepath.Join(state, "logs")})
+	state := layout.Data
+	configuration := configfile.New(layout.Config)
+	if _, e = configuration.Reload(); e != nil {
+		return e
+	}
+	configCtx, stopConfig := context.WithCancel(ctx)
+	configDone := make(chan struct{})
+	supervise.Go("cmd.config-file", func() {
+		defer close(configDone)
+		configuration.Watch(configCtx, time.Second, nil, func(err error) { log.Printf("Config file could not be re-read: %v", err) })
+	})
+	defer func() { stopConfig(); <-configDone }()
+	startupLog := servicelog.New(servicelog.Options{Directory: storagepaths.Path(state, "logs")})
 	installMessageLogOutput(startupLog)
 	defer startupLog.Close()
 	defer func() {
@@ -264,10 +277,7 @@ func run() (runErr error) {
 			log.Printf("error: [server] Portico stopped: %v", runErr)
 		}
 	}()
-	cache, e := startupDirectory("PORTICO_CACHE_DIR", state)
-	if e != nil {
-		return e
-	}
+	cache := layout.Cache
 	// New state folders start private. An existing folder is never
 	// re-tightened here: the console warns about loose permissions and the
 	// owner fixes them with an explicit action.
@@ -310,7 +320,7 @@ func run() (runErr error) {
 	// anything opens the database or the journal, so a second instance never
 	// writes a byte.
 	doneInstance := reporter.step("instance", "Take the single-instance lock")
-	instance, lockErr := acquireInstanceLock(filepath.Join(state, "server.lock"))
+	instance, lockErr := acquireInstanceLock(storagepaths.Path(state, "server.lock"))
 	if errors.Is(lockErr, errInstanceLockHeld) {
 		doneInstance(lockErr)
 		return fmt.Errorf("another Portico server is already using %s", state)
@@ -323,6 +333,19 @@ func run() (runErr error) {
 		defer instance.Close()
 	}
 	doneInstance(nil)
+	if lockErr != nil {
+		return fmt.Errorf("data folder must support single-instance locking before Temp can be reset: %w", lockErr)
+	}
+	if e = layout.ResetTemp(); e != nil {
+		return e
+	}
+	if e = layout.ApplyCacheEmpty(); e != nil {
+		return e
+	}
+	if e = layout.ActivateTemp(); e != nil {
+		return e
+	}
+
 	// A staged restore applies now, before the authority or the database is
 	// opened: the current database moves into a pre-restore backup, the staged
 	// copy moves into place, and verification runs the ordinary migrations. A
@@ -332,7 +355,7 @@ func run() (runErr error) {
 		// Without the instance lock another server may be running on this state
 		// folder: moving its database would pull it out from under that server.
 		// A staged restore waits for a start that holds the lock.
-		if _, err := os.Stat(filepath.Join(state, backup.RestoreStagedDir)); err == nil {
+		if _, err := os.Stat(storagepaths.Path(state, backup.RestoreStagedDir)); err == nil {
 			log.Printf("A staged restore is waiting: it applies on a start that holds the single-instance lock")
 		}
 	} else {
@@ -344,7 +367,7 @@ func run() (runErr error) {
 				// Files may already have moved: starting now could serve a
 				// half-restored folder or a new empty database. Nothing has been
 				// deleted, and the next start resumes the restore.
-				return fmt.Errorf("A restore didn't finish (%v). Portico won't start on a half-restored state folder; nothing has been deleted, and the previous data is kept under %s. Fix the cause (for example free disk space or folder permissions), then start Portico again: it resumes the restore.", err, filepath.Join(state, backup.BackupsDir))
+				return fmt.Errorf("A restore didn't finish (%v). Portico won't start on a half-restored state folder; nothing has been deleted, and the previous data is kept under %s. Fix the cause (for example free disk space or folder permissions), then start Portico again: it resumes the restore.", err, storagepaths.Path(state, backup.BackupsDir))
 			}
 			log.Printf("warn: Staged restore did not apply (%v); continuing on the current state", err)
 		}
@@ -367,10 +390,10 @@ func run() (runErr error) {
 		return e
 	}
 	doneDatabase := reporter.step("database", "Open and install the database")
-	if _, err := os.Stat(filepath.Join(state, "server.sqlite")); os.IsNotExist(err) {
+	if _, err := os.Stat(storagepaths.Path(state, "server.sqlite")); os.IsNotExist(err) {
 		stateDirFreshThisProcess = true
 	}
-	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	doneDatabase(e)
 	if e != nil {
 		return e
@@ -422,7 +445,7 @@ func run() (runErr error) {
 	// before the database closes and after the HTTP server has stopped accepting.
 	drain := &drainBarrier{}
 	defer drain.wait()
-	databasePath := filepath.Join(state, "server.sqlite")
+	databasePath := storagepaths.Path(state, "server.sqlite")
 	watchdog := dbwork.NewWatchdog(db)
 	watchdog.Reopen = func() (*sql.DB, error) { return dbwork.OpenHandle(databasePath, dbwork.DefaultPolicy()) }
 	doneClaims := reporter.step("networking-claims", "Verify the networking claim schema")
@@ -540,7 +563,7 @@ func run() (runErr error) {
 	scanner := ingestion.New(db, cat, assets.Probe{Binary: ffprobeTool, Supervisor: storeIO.Supervisor})
 	scanner.Admission = workAdmission.Admit
 	scanner.SetStorage(storeIO)
-	localMeta, e := localmetadata.New(filepath.Join(state, "local-artwork"), ffmpegTool, storeIO)
+	localMeta, e := localmetadata.New(storagepaths.Path(state, "local-artwork"), ffmpegTool, storeIO)
 	if e != nil {
 		return e
 	}
@@ -605,7 +628,7 @@ func run() (runErr error) {
 	subtitleAuthority := httpapi.Dependencies{DB: db, Identity: ident, Hosted: control, Catalog: cat}
 	doneSubtitles := reporter.step("subtitles", "Open subtitle storage")
 	subtitleProvider := subtitles.ProviderFromEnvironment()
-	subtitleService, e := subtitles.New(subtitles.Options{DB: db, Directory: filepath.Join(state, "subtitles"), Storage: storeIO, HelperBinary: helperBinary, FFmpeg: ffmpegTool, Authorize: subtitleAuthority.AuthorizeSubtitles, Provider: subtitleProvider})
+	subtitleService, e := subtitles.New(subtitles.Options{DB: db, Directory: storagepaths.Path(state, "subtitles"), Storage: storeIO, HelperBinary: helperBinary, FFmpeg: ffmpegTool, Authorize: subtitleAuthority.AuthorizeSubtitles, Provider: subtitleProvider})
 	if e != nil {
 		return e
 	}
@@ -672,9 +695,11 @@ func run() (runErr error) {
 	if e != nil {
 		return errors.New("Library Channel storage could not be initialized")
 	}
-	recordingsRoot, e := filepath.Abs(env("PORTICO_RECORDINGS_DIR", filepath.Join(state, "recordings")))
-	if e != nil {
-		return errors.New("recording root must be an absolute local path")
+	recordingsRoot := os.Getenv("PORTICO_RECORDINGS_DIR")
+	if recordingsRoot != "" {
+		if e = layout.ValidateRecordings(recordingsRoot); e != nil {
+			return e
+		}
 	}
 	doneRecording := reporter.step("recording", "Open recording storage")
 	recorder, e := recordingmedia.New(recordingsRoot, ffmpegTool, ffprobeTool, filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES")))
@@ -686,7 +711,7 @@ func run() (runErr error) {
 		_ = recorder.Close()
 		return e
 	}
-	recordingLocks, e := livechannels.NewPhysicalLocks(filepath.Join(state, "live-source-locks"))
+	recordingLocks, e := livechannels.NewPhysicalLocks(storagepaths.Path(state, "live-source-locks"))
 	if e != nil {
 		_ = recorder.Close()
 		return e
@@ -719,7 +744,7 @@ func run() (runErr error) {
 	if e != nil {
 		return e
 	}
-	if e = currentPlayback.ConfigureChannels(playbackruntime.LinearConfig{DB: db, Live: liveSources, Library: generatedChannels, Policy: recordingaccess.Policy{Cached: control}, CacheDirectory: filepath.Join(cache, "linear-media"), LockDirectory: filepath.Join(state, "live-source-locks"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, DecoderLibraries: filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES"))}); e != nil {
+	if e = currentPlayback.ConfigureChannels(playbackruntime.LinearConfig{DB: db, Live: liveSources, Library: generatedChannels, Policy: recordingaccess.Policy{Cached: control}, CacheDirectory: filepath.Join(cache, "linear-media"), LockDirectory: storagepaths.Path(state, "live-source-locks"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, DecoderLibraries: filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES"))}); e != nil {
 		return e
 	}
 	// Channels on v1 sessions open a Library Channels title the way every v1
@@ -764,7 +789,13 @@ func run() (runErr error) {
 	player.ConfigureProbe(assets.Probe{Binary: ffprobeTool, Supervisor: storeIO.Supervisor})
 	supervise.Go("cmd.hardware-report", func() { player.HardwareReport(context.Background()) })
 	appliedConversionSetting := startupMedia.TemporaryDirectory
-	conversionDirectory := operations.ConversionDirectory(cache, appliedConversionSetting)
+	conversionDirectory := layout.Transcode
+	if appliedConversionSetting != "" {
+		conversionDirectory = operations.ConversionDirectory(layout.Transcode, appliedConversionSetting)
+		if layout.Container {
+			return errors.New("container transcodes must use /transcode or /config/Transcode; clear the previous temporary-directory override")
+		}
+	}
 	hls, e := playback.NewHLS(ctx, db, conversionDirectory, ffmpegTool)
 	if e == nil {
 		hls.SourceStorage = storeIO
@@ -831,7 +862,7 @@ func run() (runErr error) {
 	// The Portico title dataset: a daily manifest check and download for the
 	// domains this server has libraries for, and works matched as they gain
 	// provider ids. Off until a release is published (enrichment.Published*).
-	titles := enrichment.New(db, enrichment.ConfigFromEnvironment(filepath.Join(state, "title-dataset")))
+	titles := enrichment.New(db, enrichment.ConfigFromEnvironment(storagepaths.Path(state, "title-dataset")))
 	if titles.Enabled() {
 		supervise.Supervise(ctx, "cmd.title-dataset", func(life context.Context) {
 			wake := worker.NewSignal()
@@ -893,7 +924,7 @@ func run() (runErr error) {
 	})
 	meta.LocalArtwork = localMeta.Open
 	meta.LocalArtworkUsage = localMeta.MeasuredArtworkUsage
-	if e = meta.SetArtworkDirectory(filepath.Join(state, "artwork")); e != nil {
+	if e = meta.SetArtworkDirectory(storagepaths.Path(state, "artwork")); e != nil {
 		return e
 	}
 	supervise.Supervise(ctx, "cmd.metadata", meta.Run)
@@ -1102,7 +1133,7 @@ func run() (runErr error) {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
 	var transport *cappedListener
-	handler := httpapi.New(httpapi.Dependencies{CacheDirectory: cache, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
+	handler := httpapi.New(httpapi.Dependencies{CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
 		held, _ := transport.Held()
 		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
 	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {

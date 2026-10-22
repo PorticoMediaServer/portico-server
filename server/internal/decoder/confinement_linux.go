@@ -192,7 +192,7 @@ func sandboxArgs(v linuxSpec, socket string, n int) ([]string, error) {
 	if e != nil {
 		return nil, e
 	}
-	args := []string{"--unshare-user", "--unshare-pid", "--unshare-net", "--unshare-ipc", "--unshare-uts", "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv", "--setenv", "PATH", "/usr/bin:/bin", "--dev", "/dev", "--tmpfs", "/tmp", "--chdir", "/tmp", "--ro-bind", helper, "/portico-helper"}
+	args := []string{"--unshare-user", "--unshare-pid", "--unshare-net", "--unshare-ipc", "--unshare-uts", "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv", "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "TMPDIR", os.TempDir(), "--setenv", "TMP", os.TempDir(), "--setenv", "TEMP", os.TempDir(), "--dev", "/dev", "--tmpfs", os.TempDir(), "--chdir", os.TempDir(), "--ro-bind", helper, "/portico-helper"}
 	if v.Hardware {
 		args = append(args, mediaexec.LinuxHardwareSandboxArgs(v.HardwareEnvironment)...)
 	}
@@ -263,7 +263,7 @@ func ProbeConfinement(ctx context.Context) error {
 	check, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(check, binary, args...)
-	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "TMPDIR=" + os.TempDir(), "TMP=" + os.TempDir(), "TEMP=" + os.TempDir()}
 	cmd.Stdout = io.Discard
 	var stderr strings.Builder
 	cmd.Stderr = &limitedWriter{w: &stderr, n: 512}
@@ -330,7 +330,7 @@ func runOuter(v linuxSpec, fds []*os.File) error {
 	if v.Probe {
 		return ErrInvalidConfiguration
 	}
-	dir, e := os.MkdirTemp("", "portico-decoder-")
+	dir, e := os.MkdirTemp(os.TempDir(), "portico-decoder-")
 	if e != nil {
 		return e
 	}
@@ -362,7 +362,7 @@ func runOuter(v linuxSpec, fds []*os.File) error {
 		return e
 	}
 	cmd := exec.Command(binary, args...)
-	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "TMPDIR=" + os.TempDir(), "TMP=" + os.TempDir(), "TEMP=" + os.TempDir()}
 	cmd.ExtraFiles = fds
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

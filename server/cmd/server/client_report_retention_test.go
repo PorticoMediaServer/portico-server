@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"log"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 	"time"
 
@@ -14,7 +14,7 @@ import (
 
 func TestAdministrationInitializationPrunesExpiredClientReports(t *testing.T) {
 	state := t.TempDir()
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

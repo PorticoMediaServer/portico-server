@@ -86,6 +86,9 @@ func copyDatabaseGuardedLimited(ctx context.Context, source *sql.DB, dest string
 	if err = snapshot.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_schema").Scan(&objects); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0700); err != nil {
+		return err
+	}
 	file, err := os.OpenFile(dest, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return err
@@ -301,5 +304,5 @@ func finalizeDatabase(ctx context.Context, path string) (FileEntry, error) {
 	if closeErr != nil {
 		return empty, closeErr
 	}
-	return hashFile(ctx, filepath.Dir(path), DatabaseName)
+	return hashFile(ctx, filepath.Dir(filepath.Dir(path)), DatabaseName)
 }

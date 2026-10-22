@@ -20,6 +20,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"regexp"
 	"sort"
 	"strings"
@@ -33,17 +34,17 @@ import (
 // Layout names.
 const (
 	// BackupsDir holds one folder per backup under the state directory.
-	BackupsDir = "backups"
+	BackupsDir = "Backups"
 	// DatabaseName is the database copy inside every backup folder.
-	DatabaseName = "portico.db"
+	DatabaseName = "Database/server.sqlite"
 	// ManifestName describes a backup folder. Names inside use "/".
 	ManifestName = "manifest.json"
 	// RestoreStagedDir holds a validated restore waiting for a restart.
-	RestoreStagedDir = "restore-staged"
+	RestoreStagedDir = "Backups/restore-staged"
 	// RestoreMarkerFile is the staged-restore marker inside RestoreStagedDir.
 	RestoreMarkerFile = "restore.json"
 	// RestoreResultFile records the last restore's outcome.
-	RestoreResultFile = "restore-result.json"
+	RestoreResultFile = "Backups/restore-result.json"
 	// Format and Version identify the manifest shape.
 	Format  = "portico-backup"
 	Version = 2
@@ -293,7 +294,7 @@ func (s *Service) backupRoot() string {
 	if s.directory != "" {
 		return s.directory
 	}
-	return filepath.Join(s.state, BackupsDir)
+	return storagepaths.Path(s.state, BackupsDir)
 }
 
 // SetDirectory is startup-only; an empty path keeps the single-folder default.
@@ -401,7 +402,7 @@ func (s *Service) Job(id string) (*Job, bool) {
 }
 
 // databasePath is the live database file Create copies from.
-func (s *Service) databasePath() string { return filepath.Join(s.state, "server.sqlite") }
+func (s *Service) databasePath() string { return storagepaths.Path(s.state, "server.sqlite") }
 
 // backupsDir creates the backups folder if needed and returns it.
 func (s *Service) backupsDir() (string, error) {
@@ -534,7 +535,7 @@ func (s *Service) CreateKind(ctx context.Context, kind Kind) (string, error) {
 func (s *Service) List() ([]Info, error) {
 	out := []Info{}
 	seen := map[string]bool{}
-	local := filepath.Join(s.state, BackupsDir)
+	local := storagepaths.Path(s.state, BackupsDir)
 	roots := []string{local}
 	if s.backupRoot() != local {
 		roots = append(roots, s.backupRoot())
@@ -600,7 +601,7 @@ func (s *Service) backupPath(id string) (string, error) {
 		return "", err
 	}
 	if strings.HasSuffix(id, "-pre-restore") {
-		local := filepath.Join(s.state, BackupsDir, id)
+		local := storagepaths.Path(s.state, BackupsDir, id)
 		info, err := os.Lstat(local)
 		if err == nil {
 			if !info.IsDir() {
@@ -697,7 +698,7 @@ func (s *Service) LastRestore() (*RestoreResult, error) { return ReadRestoreResu
 // ReadRestoreResult is LastRestore for a caller that has only the state
 // folder: start-up reads it before the backup service exists.
 func ReadRestoreResult(state string) (*RestoreResult, error) {
-	raw, err := os.ReadFile(filepath.Join(state, RestoreResultFile))
+	raw, err := os.ReadFile(storagepaths.Path(state, RestoreResultFile))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -717,7 +718,7 @@ func ReadRestoreResult(state string) (*RestoreResult, error) {
 // CleanupPartials deletes stale .partial-* folders. It runs at startup,
 // before any staged restore is applied.
 func CleanupPartials(state string) error {
-	return cleanupPartialsDirectory(filepath.Join(state, BackupsDir))
+	return cleanupPartialsDirectory(storagepaths.Path(state, BackupsDir))
 }
 
 func cleanupPartialsDirectory(dir string) error {

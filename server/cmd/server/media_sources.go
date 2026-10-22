@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 
 	"portico.local/server/internal/administration"
 	"portico.local/server/internal/mounts"
@@ -16,7 +17,7 @@ import (
 func configureLocalMedia(db *sql.DB, state, helperBinary string, admin *administration.Service) (*storage.Client, *mounts.Service, error) {
 	mountRoot := os.Getenv("PORTICO_MANAGED_MOUNT_ROOT")
 	if mountRoot == "" {
-		mountRoot = filepath.Join(state, "mounts")
+		mountRoot = storagepaths.Path(state, "mounts")
 	}
 	var err error
 	mountRoot, err = filepath.Abs(mountRoot)

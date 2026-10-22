@@ -96,7 +96,7 @@ func TestCommandReceiptsReplayCASAndRemovalRecovery(t *testing.T) {
 		t.Fatal("removal acceptance", r, e)
 	}
 	// Simulate server restart after accepted removal but before filesystem cleanup.
-	newer, e := New(s.db, filepath.Dir(s.private), s.root, s.helper, s.storage)
+	newer, e := New(s.db, filepath.Dir(filepath.Dir(s.private)), s.root, s.helper, s.storage)
 	if e != nil {
 		t.Fatal(e)
 	}

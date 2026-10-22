@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"os"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"reflect"
 	"strings"
 	"testing"
@@ -17,7 +17,7 @@ func TestSetupCodeExpirySurvivesRestart(t *testing.T) {
 	if _, err := db.Exec(`DELETE FROM accounts`); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, "setup-token")
+	path := storagepaths.Path(dir, "setup-token")
 	oldCode, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -213,7 +213,7 @@ func TestP09HostedInitializationResumeAndPrivateRecovery(t *testing.T) {
 	if _, e := db.Exec(`DELETE FROM accounts`); e != nil {
 		t.Fatal(e)
 	}
-	token, e := os.ReadFile(filepath.Join(dir, "setup-token"))
+	token, e := os.ReadFile(storagepaths.Path(dir, "setup-token"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -285,7 +285,7 @@ func TestRemoteHostedSetupKeepsRecoveryReachable(t *testing.T) {
 	if _, e := db.Exec(`DELETE FROM accounts`); e != nil {
 		t.Fatal(e)
 	}
-	token, e := os.ReadFile(filepath.Join(dir, "setup-token"))
+	token, e := os.ReadFile(storagepaths.Path(dir, "setup-token"))
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -3,6 +3,7 @@ package backup
 import (
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 )
 
@@ -14,7 +15,7 @@ func TestRestoreUnresolvedStopsTheStartOnlyWhenFilesMayHaveMoved(t *testing.T) {
 	if RestoreUnresolved(state) {
 		t.Fatal("no restore at all reported as unresolved")
 	}
-	staged := filepath.Join(state, RestoreStagedDir)
+	staged := storagepaths.Path(state, RestoreStagedDir)
 	if err := os.MkdirAll(staged, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +34,7 @@ func TestRestoreUnresolvedStopsTheStartOnlyWhenFilesMayHaveMoved(t *testing.T) {
 		}
 	}
 	// A torn marker (a crash in the middle of an old-style write) is unresolved.
-	if err := os.WriteFile(filepath.Join(staged, RestoreMarkerFile), []byte(`{"state":"swi`), 0o600); err != nil {
+	if err := writeTestFile(filepath.Join(staged, RestoreMarkerFile), []byte(`{"state":"swi`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if !RestoreUnresolved(state) {

@@ -19,7 +19,7 @@ cp -c "$fixture" "$scratch/state/server.sqlite" 2>/dev/null || cp "$fixture" "$s
 rm -f "$scratch/state/server.sqlite-wal" "$scratch/state/server.sqlite-shm"
 printf 'database %s MB\n' "$(( $(wc -c < "$scratch/state/server.sqlite") / 1048576 ))"
 
-PORTICO_STATE_DIR="$scratch/state" PORTICO_BIND=127.0.0.1:32599 "$binary" > "$scratch/server.log" 2>&1 &
+PORTICO_DATA_DIR="$scratch/state" PORTICO_BIND=127.0.0.1:32599 "$binary" > "$scratch/server.log" 2>&1 &
 pid=$!
 trap 'kill "$pid" 2>/dev/null || true' EXIT
 

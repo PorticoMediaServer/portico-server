@@ -3,6 +3,7 @@ package backup
 import (
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"runtime"
 	"testing"
 )
@@ -15,8 +16,8 @@ func TestPrivateStateBoundaryProtectsLooseDescendants(t *testing.T) {
 	if err := os.Chmod(state, 0700); err != nil {
 		t.Fatal(err)
 	}
-	child := filepath.Join(state, "artwork")
-	if err := os.Mkdir(child, 0755); err != nil {
+	child := storagepaths.Path(state, "artwork")
+	if err := os.MkdirAll(child, 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(child, 0755); err != nil {
@@ -32,12 +33,12 @@ func TestPermissionRepairLeavesMediaAndLinksUntouched(t *testing.T) {
 		t.Skip("POSIX modes do not describe Windows ACLs")
 	}
 	state, external := t.TempDir(), t.TempDir()
-	for _, dir := range []string{filepath.Join(state, "mounts"), filepath.Join(state, "recordings")} {
-		if err := os.Mkdir(dir, 0755); err != nil {
+	for _, dir := range []string{storagepaths.Path(state, "mounts"), storagepaths.Path(state, "recordings")} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatal(err)
 		}
 		path := filepath.Join(dir, "media.mkv")
-		if err := os.WriteFile(path, []byte("media"), 0644); err != nil {
+		if err := writeTestFile(path, []byte("media"), 0644); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Chmod(path, 0644); err != nil {
@@ -45,16 +46,16 @@ func TestPermissionRepairLeavesMediaAndLinksUntouched(t *testing.T) {
 		}
 	}
 	outside := filepath.Join(external, "media.mkv")
-	if err := os.WriteFile(outside, []byte("media"), 0644); err != nil {
+	if err := writeTestFile(outside, []byte("media"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(outside, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Link(outside, filepath.Join(state, "linked-media")); err != nil {
+	if err := os.Link(outside, storagepaths.Path(state, "linked-media")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(external, filepath.Join(state, "external")); err != nil {
+	if err := os.Symlink(external, storagepaths.Path(state, "external")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(state, 0755); err != nil {
@@ -63,7 +64,7 @@ func TestPermissionRepairLeavesMediaAndLinksUntouched(t *testing.T) {
 	if err := FixPermissions(state); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{outside, filepath.Join(state, "mounts/media.mkv"), filepath.Join(state, "recordings/media.mkv")} {
+	for _, path := range []string{outside, storagepaths.Path(state, "mounts/media.mkv"), storagepaths.Path(state, "recordings/media.mkv")} {
 		info, err := os.Stat(path)
 		if err != nil || info.Mode().Perm() != 0644 {
 			t.Fatalf("media mode changed: %s %v %v", path, info, err)
@@ -84,7 +85,7 @@ func TestPermissionRepairFollowsTheSelectedStateRootOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	child := filepath.Join(target, "media.mkv")
-	if err := os.WriteFile(child, []byte("media"), 0644); err != nil {
+	if err := writeTestFile(child, []byte("media"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(child, 0644); err != nil {

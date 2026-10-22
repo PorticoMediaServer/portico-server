@@ -3276,6 +3276,25 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_data_storage_usage",
+    "method": "GET",
+    "path": "/v1/admin/storage/usage",
+    "summary": "Read data folder usage and storage notices",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_device_capabilities",
     "method": "GET",
     "path": "/v1/me/devices/current/capabilities",
@@ -10413,6 +10432,25 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "post_empty_data_cache",
+    "method": "POST",
+    "path": "/v1/admin/storage/cache/empty",
+    "summary": "Empty rebuildable cache on a graceful server restart",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "admission": "admin"
+  },
+  {
     "id": "post_feedback",
     "method": "POST",
     "path": "/v1/feedback",
@@ -16513,6 +16551,7 @@ export const routePaths = {
   "get_console_registry": "/v1/console/registry",
   "get_console_settings": "/v1/admin/console/settings",
   "get_container_personal_state": "/v1/containers/{kind}/{id}/personal-state",
+  "get_data_storage_usage": "/v1/admin/storage/usage",
   "get_device_capabilities": "/v1/me/devices/current/capabilities",
   "get_devices": "/v1/devices",
   "get_direct_account": "/v1/direct",
@@ -16810,6 +16849,7 @@ export const routePaths = {
   "post_dvr_recordings": "/v1/dvr/recordings",
   "post_dvr_recordings_id_cancel": "/v1/dvr/recordings/{id}/cancel",
   "post_dvr_rules_preview": "/v1/dvr/rules/preview",
+  "post_empty_data_cache": "/v1/admin/storage/cache/empty",
   "post_feedback": "/v1/feedback",
   "post_feedback_reports": "/v1/feedback/reports",
   "post_home_destination_picker": "/v1/home/destination-picker",

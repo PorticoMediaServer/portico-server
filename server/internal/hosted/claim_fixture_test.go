@@ -1,6 +1,7 @@
 package hosted
 
 import (
+ "portico.local/server/internal/storagepaths"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -60,7 +61,7 @@ func newClaimFixture(t *testing.T, beforeInstall ...func(*claimFixture)) *claimF
 	if e != nil {
 		t.Fatal(e)
 	}
-	token, _ := os.ReadFile(filepath.Join(state, "setup-token"))
+	token, _ := os.ReadFile(storagepaths.Path(state, "setup-token"))
 	owner, e := id.Setup(string(token), "owner", "test-password-long", "Server")
 	if e != nil {
 		t.Fatal(e)

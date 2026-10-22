@@ -150,6 +150,7 @@ export function decodeGetConnectivityStatusResponse(input: unknown): types.GetCo
 export function decodeGetConsoleRegistryResponse(input: unknown): types.GetConsoleRegistryResponse { return decode("GetConsoleRegistryResponse", input) as types.GetConsoleRegistryResponse; }
 export function decodeGetConsoleSettingsResponse(input: unknown): types.GetConsoleSettingsResponse { return decode("GetConsoleSettingsResponse", input) as types.GetConsoleSettingsResponse; }
 export function decodeGetContainerPersonalStateResponse(input: unknown): types.GetContainerPersonalStateResponse { return decode("GetContainerPersonalStateResponse", input) as types.GetContainerPersonalStateResponse; }
+export function decodeGetDataStorageUsageResponse(input: unknown): types.GetDataStorageUsageResponse { return decode("GetDataStorageUsageResponse", input) as types.GetDataStorageUsageResponse; }
 export function decodeGetDeviceCapabilitiesResponse(input: unknown): types.GetDeviceCapabilitiesResponse { return decode("GetDeviceCapabilitiesResponse", input) as types.GetDeviceCapabilitiesResponse; }
 export function decodeGetDevicesResponse(input: unknown): types.GetDevicesResponse { return decode("GetDevicesResponse", input) as types.GetDevicesResponse; }
 export function decodeGetDirectAccountResponse(input: unknown): types.GetDirectAccountResponse { return decode("GetDirectAccountResponse", input) as types.GetDirectAccountResponse; }
@@ -447,6 +448,7 @@ export function decodePostDirectTwoFactorVerifyResponse(input: unknown): types.P
 export function decodePostDvrRecordingsResponse(input: unknown): types.PostDvrRecordingsResponse { return decode("PostDvrRecordingsResponse", input) as types.PostDvrRecordingsResponse; }
 export function decodePostDvrRecordingsIdCancelResponse(input: unknown): types.PostDvrRecordingsIdCancelResponse { return decode("PostDvrRecordingsIdCancelResponse", input) as types.PostDvrRecordingsIdCancelResponse; }
 export function decodePostDvrRulesPreviewResponse(input: unknown): types.PostDvrRulesPreviewResponse { return decode("PostDvrRulesPreviewResponse", input) as types.PostDvrRulesPreviewResponse; }
+export function decodePostEmptyDataCacheResponse(input: unknown): types.PostEmptyDataCacheResponse { return decode("PostEmptyDataCacheResponse", input) as types.PostEmptyDataCacheResponse; }
 export function decodePostFeedbackResponse(input: unknown): types.PostFeedbackResponse { return decode("PostFeedbackResponse", input) as types.PostFeedbackResponse; }
 export function decodePostFeedbackReportsResponse(input: unknown): types.PostFeedbackReportsResponse { return decode("PostFeedbackReportsResponse", input) as types.PostFeedbackReportsResponse; }
 export function decodePostHomeDestinationPickerResponse(input: unknown): types.PostHomeDestinationPickerResponse { return decode("PostHomeDestinationPickerResponse", input) as types.PostHomeDestinationPickerResponse; }

@@ -30,6 +30,21 @@ func TestMemoryTranscodesRejectDiskAndSpillWithinCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(memory)
+	if Filesystem(disk, mounts) == "tmpfs" {
+		cache, e := os.UserCacheDir()
+		if e != nil {
+			t.Fatal(e)
+		}
+		scratch, e := os.MkdirTemp(cache, "portico-spill-test-")
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer os.RemoveAll(scratch)
+		disk = filepath.Join(scratch, "disk")
+	}
+	if _, err := NewTranscodePool(memory, filepath.Join(memory, "bad-spill"), 32, mounts); err == nil {
+		t.Fatal("RAM spill advertised as disk")
+	}
 	pool, err := NewTranscodePool(memory, disk, 32, mounts)
 	if err != nil {
 		t.Fatal(err)

@@ -1,30 +1,17 @@
 #!/bin/sh
 set -eu
-if ! dscl . -read /Groups/_portico >/dev/null 2>&1; then
- gid=400
- while dscl . -search /Groups PrimaryGroupID "$gid" | grep -q .; do gid=$((gid+1)); done
- dscl . -create /Groups/_portico
- dscl . -create /Groups/_portico PrimaryGroupID "$gid"
-fi
-gid=$(dscl . -read /Groups/_portico PrimaryGroupID | awk '{print $2}')
-if ! dscl . -read /Users/_portico >/dev/null 2>&1; then
- uid=400
- while dscl . -search /Users UniqueID "$uid" | grep -q .; do uid=$((uid+1)); done
- dscl . -create /Users/_portico
- dscl . -create /Users/_portico UniqueID "$uid"
- dscl . -create /Users/_portico PrimaryGroupID "$gid"
- dscl . -create /Users/_portico UserShell /usr/bin/false
- dscl . -create /Users/_portico NFSHomeDirectory '/Library/Application Support/Portico Media Server'
- dscl . -create /Users/_portico IsHidden 1
-fi
-state='/Library/Application Support/Portico Media Server'
-mkdir -p "$state"
-chown _portico:_portico "$state"
-chmod 700 "$state"
-plist='/Library/LaunchDaemons/tv.getportico.server.service.plist'
-if [ ! -f "$plist" ]; then
- install -o root -g wheel -m 644 '/Applications/Portico Media Server.app/Contents/Resources/launchd/tv.getportico.server.service.plist' "$plist"
-fi
+# Run in the signed-in owner's session so macOS user data/cache conventions
+# apply. Never move or delete data from an earlier service installation.
+owner=$(stat -f '%Su' /dev/console)
+case "$owner" in root|loginwindow|'') echo 'Open Portico after signing in to finish registration.'; exit 0;; esac
+uid=$(id -u "$owner")
+home=$(dscl . -read "/Users/$owner" NFSHomeDirectory | sed 's/^NFSHomeDirectory: //')
+case "$home" in /*) ;; *) echo 'Cannot determine the signed-in user home' >&2; exit 1;; esac
+agents="$home/Library/LaunchAgents"
+mkdir -p "$agents"
+chown "$owner" "$agents"
+plist="$agents/tv.getportico.server.service.plist"
+install -o "$owner" -m 644 '/Applications/Portico Media Server.app/Contents/Resources/launchd/tv.getportico.server.service.plist' "$plist"
 plutil -lint "$plist"
-launchctl enable system/tv.getportico.server.service
-launchctl bootstrap system "$plist"
+launchctl enable "gui/$uid/tv.getportico.server.service"
+launchctl bootstrap "gui/$uid" "$plist"

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 
 	"portico.local/server/internal/persistence"
@@ -16,7 +17,7 @@ func TestFreshClaimKeysFailureCanRetryAndRestart(t *testing.T) {
 	for _, failure := range []string{"key-directory", "state-directory", "identity-insert", "cancelled"} {
 		t.Run(failure, func(t *testing.T) {
 			state := t.TempDir()
-			db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+			db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -31,7 +32,7 @@ func TestFreshClaimKeysFailureCanRetryAndRestart(t *testing.T) {
 				}
 			}
 			syncDir := func(path string) error {
-				if failure == "key-directory" && path == filepath.Join(state, "networking-keys") {
+				if failure == "key-directory" && path == storagepaths.Path(state, "networking-keys") {
 					return refused
 				}
 				if failure == "state-directory" && path == state {
@@ -51,7 +52,7 @@ func TestFreshClaimKeysFailureCanRetryAndRestart(t *testing.T) {
 					t.Fatalf("flush error suppressed: %v", err)
 				}
 			}
-			entries, err := os.ReadDir(filepath.Join(state, "networking-keys"))
+			entries, err := os.ReadDir(storagepaths.Path(state, "networking-keys"))
 			if err != nil || len(entries) != 0 {
 				t.Fatalf("orphan key prevents retry: %v %v", entries, err)
 			}
@@ -69,11 +70,11 @@ func TestFreshClaimKeysFailureCanRetryAndRestart(t *testing.T) {
 				t.Fatalf("retry failed: %v", err)
 			}
 			keys.Close()
-			entries, err = os.ReadDir(filepath.Join(state, "networking-keys"))
+			entries, err = os.ReadDir(storagepaths.Path(state, "networking-keys"))
 			if err != nil || len(entries) != 1 {
 				t.Fatalf("key registry: %v %v", entries, err)
 			}
-			path := filepath.Join(state, "networking-keys", entries[0].Name())
+			path := storagepaths.Path(state, "networking-keys", entries[0].Name())
 			original, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
@@ -81,7 +82,7 @@ func TestFreshClaimKeysFailureCanRetryAndRestart(t *testing.T) {
 			if err = db.Close(); err != nil {
 				t.Fatal(err)
 			}
-			db, err = persistence.Open(filepath.Join(state, "server.sqlite"))
+			db, err = persistence.Open(storagepaths.Path(state, "server.sqlite"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -101,14 +102,14 @@ func TestFreshClaimKeysFailureCanRetryAndRestart(t *testing.T) {
 
 func TestFreshClaimKeysNeverDeleteUnmarkedExistingMaterial(t *testing.T) {
 	state := t.TempDir()
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	_, runner := lifecycleRunner(t)
-	directory := filepath.Join(state, "networking-keys")
-	if err = os.Mkdir(directory, 0700); err != nil {
+	directory := storagepaths.Path(state, "networking-keys")
+	if err = os.MkdirAll(directory, 0700); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(directory, "existing.ed25519")
@@ -135,7 +136,7 @@ func TestFreshClaimKeysKeepKeyAfterAmbiguousCommit(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			state := t.TempDir()
-			db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+			db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -154,7 +155,7 @@ func TestFreshClaimKeysKeepKeyAfterAmbiguousCommit(t *testing.T) {
 			if !errors.Is(err, refused) || keys != nil {
 				t.Fatalf("ambiguous commit accepted: %v", err)
 			}
-			entries, err := os.ReadDir(filepath.Join(state, "networking-keys"))
+			entries, err := os.ReadDir(storagepaths.Path(state, "networking-keys"))
 			if err != nil || len(entries) != 1 {
 				t.Fatalf("possibly committed key removed: %v %v", entries, err)
 			}
@@ -171,7 +172,7 @@ func TestFreshClaimKeysKeepKeyAfterAmbiguousCommit(t *testing.T) {
 			if err == nil || keys != nil {
 				t.Fatal("unmarked retained key adopted")
 			}
-			if after, err := os.ReadDir(filepath.Join(state, "networking-keys")); err != nil || len(after) != 1 || after[0].Name() != entries[0].Name() {
+			if after, err := os.ReadDir(storagepaths.Path(state, "networking-keys")); err != nil || len(after) != 1 || after[0].Name() != entries[0].Name() {
 				t.Fatalf("retained key changed: %v %v", after, err)
 			}
 		})

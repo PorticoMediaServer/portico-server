@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/networkpolicy"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/storagepaths"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,6 +56,7 @@ import (
 )
 
 type Dependencies struct {
+	StorageLayout     *storagepaths.Layout
 	ConnectionUsage   func() ConnectionUsage
 	LocalArtworkUsage func() (int64, bool)
 	CacheDirectory    string
