@@ -268,13 +268,28 @@ func TestRecommendationProviderTrendsPolicyExpiryAndLocalMatch(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(recIDs(got), []string{f.items["m1"].Public, f.items["m2"].Public, f.items["m3"].Public}) {
 		t.Fatal(recIDs(got), err)
 	}
-	page, err := s.HomeSingleRow(r, "trending_now", HomeRowPage{Limit: 2})
-	if err != nil || page.Total != 3 || page.NextCursor == "" || page.Entries[0].ID != f.items["m1"].Public {
-		t.Fatal(page, err)
+	// Provider trends retain their engine source and keyset pagination. Home's
+	// drawn Trending row is separately fed by genuine weekly local activity.
+	spec := homeRowSpec{ID: "trending_now", Direction: "asc"}
+	source, err := s.homeEngineSource(r, spec)
+	if err != nil {
+		t.Fatal(err)
 	}
-	next, err := s.HomeSingleRow(r, "trending_now", HomeRowPage{Limit: 2, Cursor: page.NextCursor})
-	if err != nil || len(next.Entries) != 1 || next.Entries[0].ID != f.items["m3"].Public {
-		t.Fatal(next, err)
+	revision, err := s.homeRevision(r.Libraries, r.Profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, total, start, cursor, _, err := s.homeRowIDs(spec, source, HomeRowPage{Limit: 2}, revision, r.ViewerFence, r.Profile)
+	if err != nil || total != 3 || start != 0 || cursor == "" || !reflect.DeepEqual(first, []string{f.items["m1"].Public, f.items["m2"].Public}) {
+		t.Fatal(first, total, start, cursor, err)
+	}
+	next, nextTotal, nextStart, exhausted, _, err := s.homeRowIDs(spec, source, HomeRowPage{Limit: 2, Cursor: cursor}, revision, r.ViewerFence, r.Profile)
+	if err != nil || nextTotal != 3 || nextStart != 2 || exhausted != "" || !reflect.DeepEqual(next, []string{f.items["m3"].Public}) {
+		t.Fatal(next, nextTotal, nextStart, exhausted, err)
+	}
+	weekly, err := s.HomeSingleRow(r, "trending_now", HomeRowPage{Limit: 2})
+	if err != nil || weekly.Total != 0 || len(weekly.Entries) != 0 || weekly.NextCursor != "" {
+		t.Fatal("provider feed invented genuine weekly Home activity", weekly, err)
 	}
 	for _, mutation := range []string{`UPDATE screen_metadata_consent SET confirmed=0`, `UPDATE screen_metadata_policies SET enabled=0`, `UPDATE screen_metadata_policies SET providers='["tvdb"]'`, `UPDATE metadata_discovery_items SET expires_at='2020-01-01T00:00:00Z'`, `UPDATE metadata_discovery_items SET fetched_at='2020-01-01T00:00:00Z',expires_at='2099-01-01T00:00:00Z'`} {
 		engineExec(t, f, mutation)
