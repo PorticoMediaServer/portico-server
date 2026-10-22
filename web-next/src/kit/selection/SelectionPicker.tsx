@@ -77,7 +77,7 @@ function SelectionPicker({destination, ...props}: SelectionPickerProps & {destin
     {error && <div className={styles.pickerFailure} role="alert"><Icon name="i-warn" size={18} /><p>{error}</p></div>}
   </div>;
   const initialFocusRef = retryAvailable ? retryRef : mode === 'new' ? nameRef : surface.initialFocusRef;
-  const shared = {...surface, returnFocusRef: surface.returnFocusRef ?? anchorRef, title: phone && mode === 'new' ? newName : title, initialFocusRef, className: styles.picker, dismissOnOutsidePress: !busy, dismissOnBack: !busy};
+  const shared = {...surface, onOpenChange: (next: boolean, reason: Parameters<OverlayChange>[1]) => {if (next || !busy) surface.onOpenChange(next, reason);}, returnFocusRef: surface.returnFocusRef ?? anchorRef, title: phone && mode === 'new' ? newName : title, initialFocusRef, className: styles.picker, dismissOnOutsidePress: !busy, dismissOnBack: !busy, showCloseButton: !phone && !busy};
   return phone ? <BottomSheet {...shared} fitContent>{content}</BottomSheet> : <Popover {...shared} anchorRef={anchorRef} title={title} width={360} placement="bottom-start">{content}</Popover>;
 }
 

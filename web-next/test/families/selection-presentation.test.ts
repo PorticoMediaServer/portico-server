@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import type {DeletePreview} from '../../../packages/client-core/src/administration.ts';
 import type {RepairFieldSpec} from '../../../packages/client-core/src/metadata-repair.ts';
 import {selectionKinds} from '../../../packages/client-core/src/selection-model/capabilities.ts';
-import {addListValue, bulkDraftValid, bulkEditorSchema, bulkSummary, bulkReceiptView, pickerResultSucceeded, deletePermission, missingPickerIds, selectionCountText, toggleListRemoval} from '../../src/kit/selection/presentation.ts';
+import {addListValue, bulkDraftValid, bulkEditorSchema, bulkFieldDisplayValue, bulkSummary, bulkReceiptView, pickerResultSucceeded, deletePermission, missingPickerIds, selectionCountText, toggleListRemoval} from '../../src/kit/selection/presentation.ts';
+import {defaultI18n} from '../../../packages/i18n/src/index.ts';
 import type {BulkEditorDraft, BulkFieldValues, SelectionMediaKind} from '../../src/kit/selection/types.ts';
 
 test('every canonical selection kind has an exact singular and plural count label', () => {
@@ -29,6 +30,18 @@ const schema: readonly RepairFieldSpec[] = [
 ];
 const values: Readonly<Record<string, BulkFieldValues>> = {year: {state: 'mixed', distinctCount: 2, truncated: false, values: [{value: '2019', count: 1}, {value: '2020', count: 3}], entries: []}, tags: {state: 'mixed', distinctCount: 2, truncated: false, values: [{value: 'shared', count: 3}, {value: '', count: 1}], entries: [{value: 'shared', count: 3}]}};
 const empty: BulkEditorDraft = {fields: {}, lists: {}, lockEdited: true};
+
+test('language display and summary use the canonical language formatter without changing write values', () => {
+  for (const value of ['en', 'fr', 'en-US', 'zh-Hant', '']) assert.equal(bulkFieldDisplayValue('metadataLanguage', value), value ? defaultI18n.languageName(value) : '');
+  assert.equal(bulkFieldDisplayValue('studio', 'en'), 'en');
+  const registry = [{field: 'metadataLanguage', label: 'Metadata language', group: 'general' as const, type: 'text' as const, bulk: true}];
+  const actual = {metadataLanguage: {state: 'mixed' as const, distinctCount: 2, truncated: false, values: [{value: 'en', count: 2}, {value: 'fr', count: 1}], entries: []}};
+  const draft = {...empty, fields: {metadataLanguage: 'en'}};
+  const summary = bulkSummary(registry, actual, draft, 3);
+  assert.equal(summary[0].text, 'Metadata language becomes English on all 3');
+  assert.equal(summary[0].changedCount, 1);
+  assert.equal(draft.fields.metadataLanguage, 'en');
+});
 
 test('only actual bulk fields can enter a save; untouched Mixed fields never become empty writes', () => {
   assert.equal(bulkDraftValid(schema, values, empty), false);

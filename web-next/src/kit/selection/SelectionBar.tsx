@@ -17,9 +17,9 @@ function useActionMenus(selection: SelectionCount, actions: SelectionActions) {
   if (actions.onCollection) extra.push({id: 'collection', label: text('next.selection.addToCollection'), icon: 'i-layers', onSelect: () => { if (more.current) actions.onCollection!(more.current); }});
   if (actions.onWatchedChange) extra.push({id: 'unwatched', label: text('next.selection.markUnwatched'), icon: 'i-eyeoff', onSelect: () => actions.onWatchedChange!(false)});
   if (actions.onFavorite) extra.push({id: 'favorite', label: text('next.selection.favorite'), icon: 'i-heart', onSelect: actions.onFavorite});
-  if (actions.onRemoveFromMyList) extra.push({id: 'remove', label: text('next.selection.removeFromMyList'), icon: 'i-bookmark', onSelect: actions.onRemoveFromMyList});
+  if (actions.onRemoveFromMyList) extra.push({id: 'remove', label: text('next.selection.removeFromMyList'), icon: 'i-x', onSelect: actions.onRemoveFromMyList});
   if (actions.onRefresh || actions.onDelete) {
-    extra.push({id: 'owner', section: true, label: <span className={styles.ownerMenuLabel}>{actions.ownerMark}{text('next.selection.owner')}</span>, ownerOnly: true});
+    extra.push({id: 'owner', section: true, label: <span className={styles.ownerMenuLabel}>{actions.ownerMark}<span>{text('next.selection.owner')}</span></span>, ownerOnly: true});
     if (actions.onRefresh) extra.push({id: 'refresh', label: text('next.selection.refresh'), icon: 'i-refresh', onSelect: actions.onRefresh});
     if (actions.onDelete) extra.push({id: 'delete', label: text('next.selection.deleteMenu'), icon: 'i-trash', destructive: true, disabled: !!actions.deleteDisabledReason, description: actions.deleteDisabledReason, onSelect: actions.onDelete});
   }
@@ -65,7 +65,7 @@ export function SelectionBar({selection, actions, context, typeCount, selectAll,
       <b>{text('next.selection.selected', {count: selection.count})}</b><SelectAll selectAll={selectAll} onSelectAll={onSelectAll} />
       {context && <small>{context}</small>}
     </div>
-    {allInView && <div className={styles.allNote}><span>{text('next.selection.allNote', {items: selectionCountText(selection), visible: allInView.visible})}</span><Button variant="text" size="xs" onClick={onExit}>{text('next.selection.clear')}</Button></div>}
+    {allInView && <div className={styles.allNote}><Icon name="i-check" size={18} /><span><b>{text('next.selection.allSelectedNote', {items: selectionCountText(selection)})}</b> {text('next.selection.allSelectedRemainder', {visible: allInView.visible})}</span><Button variant="text" size="xs" onClick={onExit}>{text('next.selection.clear')}</Button></div>}
     {menu.menus}
   </div>;
 }
@@ -84,7 +84,7 @@ export function PhoneActionBar({selection, actions, episodeSelection = false, cl
     const index = phoneExtra.findIndex(entry => 'section' in entry && entry.id === 'owner');
     const edit: MenuEntry = {id: 'edit', label: text('next.selection.editMenu'), icon: 'i-edit', onSelect: () => { if (menu.more.current) actions.onEdit!(menu.more.current); }};
     if (index >= 0) phoneExtra.splice(index + 1, 0, edit);
-    else phoneExtra.push({id: 'editor', section: true, label: <span className={styles.ownerMenuLabel}>{actions.ownerMark}{text('next.selection.owner')}</span>, ownerOnly: true}, edit);
+    else phoneExtra.push({id: 'editor', section: true, label: <span className={styles.ownerMenuLabel}>{actions.ownerMark}<span>{text('next.selection.owner')}</span></span>, ownerOnly: true}, edit);
   }
   const action = (label: string, glyph: ReactNode, callback: () => void, ref?: RefObject<HTMLButtonElement | null>, primary = false, expanded?: boolean) => <Button ref={ref} variant="text" size="small" className={[styles.phoneAction, primary && styles.phonePlay].filter(Boolean).join(' ')} aria-haspopup={expanded === undefined ? undefined : 'menu'} aria-expanded={expanded} onClick={callback}><span className={styles.phoneGlyph}>{glyph}</span><span>{label}</span></Button>;
   return <>
