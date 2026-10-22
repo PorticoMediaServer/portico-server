@@ -4,6 +4,8 @@ import {PlaybackDock, type DockPlayback, type PlaybackFence, type QueuePlaybackF
 import {dockView, commandFor, dispatchDockAction, actionCurrent, seekTarget, progressOf} from '../../src/kit/dock/model.ts';
 import {PlayerMorph, GestureRelease} from '../../src/kit/dock/motion.ts';
 import type {DockAction, DockPresentation} from '../../src/kit/dock/types.ts';
+import {playbackIdentity} from '../../../packages/client-core/src/presentation/kit-model/index.ts';
+import {defaultI18n} from '@i18n';
 import {registerHooks} from 'node:module';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -127,4 +129,31 @@ test('a restored paused phone song states Paused beside its canonical artist', a
   const html = renderToStaticMarkup(createElement(Identity, {view, binding: {getSnapshot: dock.getSnapshot, onAction() {}}, phone: true}));
   assert.match(html, /Artist/);
   assert.match(html, /data-fact-role="status">Paused/);
+});
+
+test('desktop subtitle tools select the exact canonical reference glyph for local and remote playback', async () => {
+  const {EndControls} = await import('../../src/kit/dock/parts.tsx');
+  const dock = new PlaybackDock(scope); dock.start(playback());
+  const model = {...presentation(), controls: ['subtitles-audio'] as const};
+  for (const remote of [false, true]) {
+    if (remote) dock.beginRemote({id: 'receiver', kind: 'cast', sequence: '1', phase: 'playing', playback: playback(), positionSeconds: 14}, 0);
+    const view = dockView(dock.getSnapshot(), [model])!;
+    const html = renderToStaticMarkup(createElement(EndControls, {view, binding: {getSnapshot: dock.getSnapshot, onAction() {}}}));
+    assert.match(html, /aria-label="Subtitles and audio"/);
+    assert.match(html, /href="#d-cc"/);
+    assert.doesNotMatch(html, /href="#i-cc"/);
+  }
+});
+
+test('desktop paused music punctuates the canonical artist and omits punctuation when artist is absent', async () => {
+  const {DockNotice} = await import('../../src/kit/dock/DockNotice.tsx');
+  const dock = new PlaybackDock(scope), saved = playback('music');
+  dock.start(saved); dock.start(playback('video', {fence: {...fence, playback: {...fence.playback, run: 2}}}));
+  for (const artist of ['The Weeknd', undefined]) {
+    const identity = playbackIdentity({kind: 'music', item: {kind: 'song', id: 'song', title: 'Hardest To Love', artist}}, 'dock', {t: defaultI18n.t});
+    const html = renderToStaticMarkup(createElement(DockNotice, {notice: {kind: 'paused-audio', playback: saved, presentation: {...presentation(), identity}, changedAtMs: 100}, binding: {getSnapshot: dock.getSnapshot, onAction() {}}, nowMs: 400}));
+    if (artist) assert.match(html, /Hardest To Love, The Weeknd/);
+    else assert.doesNotMatch(html, /Hardest To Love,/);
+    assert.match(html, /Resume music/);
+  }
 });

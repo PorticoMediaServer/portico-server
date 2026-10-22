@@ -55,6 +55,7 @@ export const dockMessages = {
   'next.dock.continue': 'Continue here',
   'next.dock.dismiss': 'Dismiss',
   'next.dock.musicPaused': 'Music paused at {position}.',
+  'next.dock.musicPausedIdentity': '{title}, {artist}',
   'next.dock.musicPausedPhone': '{title} is paused while you watch. Resume it from Continue Listening, or the lock screen.',
   'next.dock.musicPausedPhoneBody': ' is paused while you watch. Resume it from Continue Listening, or the lock screen.',
   'next.dock.resumeMusic': 'Resume music',

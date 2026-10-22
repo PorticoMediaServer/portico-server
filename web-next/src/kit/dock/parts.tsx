@@ -79,13 +79,13 @@ export function TerminalActions({view, binding, t = dockText, phone = false}: Do
 export function EndControls({view, binding, t = dockText}: DockRendererProps) {
   const send = useDockActions({view, binding}), model = view.presentation;
   const tool = (kind: 'subtitles-audio' | 'options' | 'play-on' | 'lyrics' | 'queue' | 'chapters', icon: IconName, key: DockMessageId) => model.controls.includes(kind) ? <Control icon={icon} label={t(key)} onClick={() => send({kind})} /> : null;
-  if (view.remote) return <div className={styles.endControls}>{remoteReady(view.remote) && tool('subtitles-audio', 'i-cc', 'next.dock.subtitlesAudio')}
+  if (view.remote) return <div className={styles.endControls}>{remoteReady(view.remote) && tool('subtitles-audio', 'd-cc', 'next.dock.subtitlesAudio')}
     <Button size="dock" variant="glass" onClick={() => send({kind: 'stop'})}>{t('next.dock.stop')}</Button>{remoteReady(view.remote) && <Control icon="i-up" label={t('next.dock.castControls')} onClick={() => send({kind: 'expand'})} />}</div>;
   return <div className={styles.endControls}>
     {view.mode === 'music' && <>{tool('lyrics', 'i-lyrics', 'next.dock.lyrics')}{tool('queue', 'i-queue', 'next.dock.queue')}</>}
     {view.mode === 'audiobook' && <>{model.controls.includes('speed') && model.rate !== undefined && <button className={styles.pill} type="button" aria-label={t('next.dock.speed', {rate: model.rate})} onClick={() => send({kind: 'speed'})}>{t('next.dock.rate', {rate: model.rate})}</button>}
       {model.controls.includes('sleep') && <button className={styles.pill} type="button" aria-label={t('next.dock.sleep')} onClick={() => send({kind: 'sleep'})}><Icon name="i-moon" size={16} />{model.sleepLabel ?? t('next.dock.sleep')}</button>}{tool('chapters', 'i-chapters', 'next.dock.chapters')}</>}
-    {(view.mode === 'video' || view.mode === 'live') && <>{tool('subtitles-audio', 'i-cc', 'next.dock.subtitlesAudio')}{tool('options', 'i-sliders', 'next.dock.options')}</>}
+    {(view.mode === 'video' || view.mode === 'live') && <>{tool('subtitles-audio', 'd-cc', 'next.dock.subtitlesAudio')}{tool('options', 'i-sliders', 'next.dock.options')}</>}
     {tool('play-on', 'i-cast', 'next.dock.playOnDevice')}
     {model.controls.includes('volume') && model.volume !== undefined && <div className={styles.volume}><Control icon="i-vol" label={t(model.muted ? 'next.dock.unmute' : 'next.dock.mute')} onClick={() => send({kind: 'mute'})} /><Slider variant="dock" min={0} max={1} step={.01} value={model.muted ? 0 : model.volume} aria-label={t('next.dock.volume')} onValueChange={volume => send({kind: 'volume', volume})} /></div>}
     <Control icon="i-up" label={t('next.dock.expand')} onClick={() => send({kind: 'expand'})} /><Control icon="i-x" label={t('next.dock.stopClose')} onClick={() => send({kind: 'stop'})} />
