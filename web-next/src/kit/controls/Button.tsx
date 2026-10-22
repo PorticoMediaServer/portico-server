@@ -4,7 +4,7 @@ import {progressFraction} from './model';
 import styles from './controls.module.css';
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'glass' | 'text' | 'icon';
+  variant?: 'primary' | 'glass' | 'text' | 'icon' | 'ghost';
   size?: 'hero' | 'compact' | 'small' | 'xs' | 'episode' | 'dock';
   icon?: IconName;
   iconSize?: number;
