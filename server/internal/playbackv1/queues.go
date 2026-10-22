@@ -104,11 +104,11 @@ type CreateQueueRequest struct {
 	// RetainQueueIDs keeps at most three previously committed queues on this
 	// exact device and viewer. Only queue data is retained, never a session.
 	RetainQueueIDs []string       `json:"retainQueueIds,omitempty"`
-	Segments      []SegmentInput `json:"segments,omitempty"`
-	Selector      *Selector      `json:"selector,omitempty"`
-	Shuffle       *QueueSeed     `json:"shuffle,omitempty"`
-	Repeat        string         `json:"repeat,omitempty"`
-	StartPlayback *StartPlayback `json:"startPlayback,omitempty"`
+	Segments       []SegmentInput `json:"segments,omitempty"`
+	Selector       *Selector      `json:"selector,omitempty"`
+	Shuffle        *QueueSeed     `json:"shuffle,omitempty"`
+	Repeat         string         `json:"repeat,omitempty"`
+	StartPlayback  *StartPlayback `json:"startPlayback,omitempty"`
 }
 type QueueSeed struct {
 	Seed string `json:"seed,omitempty"`

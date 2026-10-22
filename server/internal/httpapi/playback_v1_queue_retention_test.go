@@ -124,9 +124,9 @@ func TestPlaybackV1QueueRetentionKeepsThreeAndDigestsTheSemanticSet(t *testing.T
 
 func TestPlaybackV1QueueRetentionRejectsUnownedOrInvalidWithoutChangingCurrent(t *testing.T) {
 	cases := []struct {
-		name string
+		name   string
 		change string
-		list func(protected, candidate string) any
+		list   func(protected, candidate string) any
 		status int
 	}{
 		{"four", "", func(p, c string) any { return []string{p, c, "missing-one", "missing-two"} }, 400},
