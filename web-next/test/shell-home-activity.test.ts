@@ -55,7 +55,7 @@ test('an absent or unrecognized media projection never becomes an invented title
 test('cold loading, refreshing and errors assert no health, counts or update facts, while a ready zero is real', () => {
   for (const phase of ['idle', 'loading', 'error', 'unavailable'] as const) {
     const view = activityPanelView({phase, document: summary()}, f.server, environment, actions);
-    for (const field of ['health', 'streamCount', 'taskCount', 'update']) assert.equal(Object.hasOwn(view, field), false);
+    for (const field of ['health', 'streamCount', 'taskCount', 'update', 'majorIssue']) assert.equal(Object.hasOwn(view, field), false);
     assert.deepEqual(view.streams, []); assert.deepEqual(view.scans, []); assert.deepEqual(view.tasks, []);
   }
   const document = {...summary(), streams: {count: 0, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: []}, tasks: {count: 0, items: []}, scans: []};
@@ -90,4 +90,16 @@ test('a stored buffering problem uses its actual state while other problems rema
   const error = activityView(summary({...stream(), state: 'error', problem: true}), environment, actions).streams[0];
   assert.equal(error.problem?.text, defaultI18n.t('next.shell.activityProblem'));
   assert.equal(activityView(summary({...stream(), state: 'playing', problem: false}), environment, actions).streams[0].problem, undefined);
+});
+
+test('watchdog degraded is unqualified attention and never fabricates a major issue or destination', () => {
+  const document = {...summary(), health: {degraded: true}};
+  const view = activityView(document, environment, actions);
+  assert.equal(view.health, 'attention');
+  assert.equal(view.majorIssue, undefined);
+  assert.equal(activityView(summary({...stream(), state: 'buffering', problem: true}), environment, actions).majorIssue, undefined);
+  for (const phase of ['loading', 'error', 'unavailable'] as const) {
+    const stale = activityPanelView({phase, document}, f.server, environment, actions);
+    assert.equal(stale.majorIssue, undefined); assert.equal(stale.health, undefined);
+  }
 });

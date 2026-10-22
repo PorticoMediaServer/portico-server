@@ -25,6 +25,10 @@ export function activitySubject(stream: ActivitySummarySession): PlaybackSubject
 }
 export function activityView(document: OwnerActivitySummary, time: TimeEnvironment, actions: Pick<ActivityPanelView, 'onDashboard' | 'onRetry'> & {openUpdate: () => void}): ActivityPanelView {
   const {t} = defaultI18n;
+  // health.degraded includes watchdog recovery as well as failed probes/corruption.
+  // It cannot qualify a major issue. Future status must supply its qualified
+  // playback-stop/data-risk severity, honest title/details and existing destination
+  // before a shared projection can supply majorIssue to Activity and its Settings row.
   return {serverName: document.serverName, health: document.health.degraded ? 'attention' : 'normal', streamCount: document.streams.count, streamOverflow: document.streams.overflow, taskCount: document.tasks.count,
     // This bounded set is already selected globally. Preserve its order and exact overflow facts.
     streams: document.streams.items.map(stream => {

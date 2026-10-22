@@ -10,4 +10,4 @@ export {PersonRow, DeviceRow, WaitingNotice} from './People';
 export {SegmentWindows} from './SegmentWindows';
 export type {SegmentMark, SegmentEdit, SegmentWindowsProps} from './SegmentWindows';
 export {TopBarActivity, ActivityPanel, ProgressRing} from './Activity';
-export type {ActivityPanelView, ActivityStreamView, ActivityWorkView} from './Activity';
+export type {ActivityPanelView, ActivityStreamView, ActivityWorkView, ActivityMajorIssueView} from './Activity';
