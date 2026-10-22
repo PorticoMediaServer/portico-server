@@ -10,6 +10,7 @@ import (
 
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/qualityladder"
 )
 
 // deliveryContext is the edge's own observation of one request: whether it
@@ -98,7 +99,7 @@ func (d Dependencies) deliveryRoutes(mux *http.ServeMux) {
 		}
 		policy := playback.ResolveDeliveryPolicy(values, edge.NetworkClass, edge.ServerLocality, edge.TransportClass, cfg)
 		w.Header().Set("Cache-Control", "no-store")
-		write(w, 200, map[string]any{"serverId": d.Identity.ID(), "policy": policy, "ladder": playback.QualityLadder, "planningPolicies": playback.PlanningPolicies, "transportClasses": playback.TransportClasses, "savedQualities": playback.SavedQualities()})
+		write(w, 200, map[string]any{"serverId": d.Identity.ID(), "policy": policy, "ladder": qualityladder.Menu(), "planningPolicies": playback.PlanningPolicies, "transportClasses": playback.TransportClasses, "savedQualities": playback.SavedQualities()})
 	})
 
 	// GET /v1/admin/transcode/capacity lives in telemetry_routes.go; its report

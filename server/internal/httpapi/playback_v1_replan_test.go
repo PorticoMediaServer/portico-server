@@ -66,7 +66,7 @@ func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 	// The viewer saves automatic for home and 720p for everywhere else. A start
 	// that names no quality follows the one for where it comes from.
 	var saved map[string]any
-	f.call("PATCH", "/v1/preferences", nil, map[string]any{"expectedRevision": 1, "idempotencyKey": "quality-home", "scope": "profile-device-class", "deviceClass": "web", "values": map[string]any{"quality.home": "automatic", "quality.remote": "720p"}}, 200, &saved)
+	f.call("PATCH", "/v1/preferences", nil, map[string]any{"expectedRevision": 1, "idempotencyKey": "quality-home", "scope": "profile-device-class", "deviceClass": "web", "values": map[string]any{"quality.home": "automatic", "quality.remote": "720p-high"}}, 200, &saved)
 	const home, away = "192.168.1.20:51000", "93.184.216.34:51000"
 	start := func(peer, key string) playbackv1.SessionView {
 		t.Helper()
@@ -78,7 +78,7 @@ func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 		return out
 	}
 	remote := start(away, "quality-default-0002")
-	if q := remote.Presentation.Quality; q == nil || q.Mode != "fixed" || q.ID != "720p" || remote.Presentation.Mode != "stream" || remote.Presentation.BitrateKbps > 4128 {
+	if q := remote.Presentation.Quality; q == nil || q.Mode != "fixed" || q.ID != "720p-high" || remote.Presentation.Mode != "stream" || remote.Presentation.BitrateKbps > 4128 {
 		t.Fatalf("away from home: %+v quality %+v", remote.Presentation, q)
 	}
 	f.call("DELETE", "/v1/playback/sessions/"+remote.ID, nil, nil, 204, nil)
@@ -93,7 +93,7 @@ func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 	if options.Preferred == nil || options.Preferred.Quality.Mode != "automatic" || options.Plan == nil || options.Plan.Engine != playback.EngineNative || options.Plan.Quality.Mode != "automatic" {
 		t.Fatalf("options preferred %+v plan %+v", options.Preferred, options.Plan)
 	}
-	if len(options.Qualities) != 6 || options.Qualities[0].Mode != "original" || options.Qualities[1].Mode != "automatic" || options.Qualities[2].ID != "1080p" || options.Qualities[5].ID != "360p" {
+	if len(options.Qualities) != 9 || options.Qualities[0].Mode != "original" || options.Qualities[1].Mode != "automatic" || options.Qualities[2].ID != "2160p" || options.Qualities[8].ID != "240p" {
 		t.Fatalf("quality menu %+v", options.Qualities)
 	}
 
@@ -102,7 +102,7 @@ func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 	path := "/v1/playback/sessions/" + s.ID
 	var down playbackv1.SessionView
 	f.call("PATCH", path, map[string]string{"If-Match": s.Revision}, map[string]any{"quality": map[string]any{"mode": "automatic", "step": "down"}, "positionMs": 61_000}, 200, &down)
-	if down.ID != s.ID || down.Presentation.Generation != 2 || down.Presentation.Quality.ID != "1080p" || down.Presentation.Quality.Step != "" || down.Presentation.Mode != "stream" || down.Presentation.StartPositionMs != 61_000 {
+	if down.ID != s.ID || down.Presentation.Generation != 2 || down.Presentation.Quality.ID != "1080p-low" || down.Presentation.Quality.Step != "" || down.Presentation.Mode != "stream" || down.Presentation.StartPositionMs != 61_000 {
 		t.Fatalf("step down: %+v quality %+v", down.Presentation, down.Presentation.Quality)
 	}
 	if d := down.Presentation.Decision.Video; d == nil || d.Action != "transcode" || down.Presentation.BitrateKbps > 8192 {
@@ -111,16 +111,16 @@ func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 	// Naming automatic again is not a change; a second step goes on down.
 	var same playbackv1.SessionView
 	f.call("PATCH", path, map[string]string{"If-Match": down.Revision}, map[string]any{"quality": map[string]any{"mode": "automatic"}}, 200, &same)
-	if same.Presentation.Generation != 2 || same.Presentation.Quality.ID != "1080p" {
+	if same.Presentation.Generation != 2 || same.Presentation.Quality.ID != "1080p-low" {
 		t.Fatalf("automatic named again moved the session: %+v", same.Presentation.Quality)
 	}
 	var lower, higher, up playbackv1.SessionView
 	f.call("PATCH", path, map[string]string{"If-Match": same.Revision}, map[string]any{"quality": map[string]any{"mode": "automatic", "step": "down"}}, 200, &lower)
-	if lower.Presentation.Quality.ID != "720p" || lower.Presentation.Generation != 3 {
+	if lower.Presentation.Quality.ID != "720p-high" || lower.Presentation.Generation != 3 {
 		t.Fatalf("second step: %+v", lower.Presentation.Quality)
 	}
 	f.call("PATCH", path, map[string]string{"If-Match": lower.Revision}, map[string]any{"quality": map[string]any{"mode": "automatic", "step": "up"}}, 200, &higher)
-	if higher.Presentation.Quality.ID != "1080p" {
+	if higher.Presentation.Quality.ID != "1080p-low" {
 		t.Fatalf("one step up: %+v", higher.Presentation.Quality)
 	}
 	f.call("PATCH", path, map[string]string{"If-Match": higher.Revision}, map[string]any{"quality": map[string]any{"mode": "automatic", "step": "up"}}, 200, &up)
@@ -141,8 +141,8 @@ func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 	up = back
 	// A fixed quality is a ceiling: this file is over 720p's, so it converts.
 	var fixed playbackv1.SessionView
-	f.call("PATCH", path, map[string]string{"If-Match": up.Revision}, map[string]any{"quality": map[string]any{"mode": "fixed", "id": "720p"}}, 200, &fixed)
-	if q := fixed.Presentation.Quality; q.Mode != "fixed" || q.ID != "720p" || fixed.Presentation.Mode != "stream" || fixed.Presentation.BitrateKbps > 4128 {
+	f.call("PATCH", path, map[string]string{"If-Match": up.Revision}, map[string]any{"quality": map[string]any{"mode": "fixed", "id": "720p-high"}}, 200, &fixed)
+	if q := fixed.Presentation.Quality; q.Mode != "fixed" || q.ID != "720p-high" || fixed.Presentation.Mode != "stream" || fixed.Presentation.BitrateKbps > 4128 {
 		t.Fatalf("fixed quality: %+v at %d kbps", q, fixed.Presentation.BitrateKbps)
 	}
 	if w := f.raw("PATCH", path, f.owner.AccessToken, map[string]string{"If-Match": fixed.Revision}, map[string]any{"quality": map[string]any{"mode": "fixed", "id": "900p"}}); w.Code != 400 {
@@ -376,7 +376,7 @@ func TestPlaybackV1ReplanUsesCurrentCapabilitiesAndKeepsChoices(t *testing.T) {
 	original := *created.Session
 	path := "/v1/playback/sessions/" + original.ID
 	var chosen playbackv1.SessionView
-	f.call("PATCH", path, map[string]string{"If-Match": original.Revision}, map[string]any{"quality": map[string]any{"mode": "fixed", "id": "720p"}, "audio": map[string]any{"trackId": "a2"}, "versionId": f.records[0].Token, "subtitles": map[string]any{"trackId": "off"}, "state": "paused", "positionMs": 42_000}, 200, &chosen)
+	f.call("PATCH", path, map[string]string{"If-Match": original.Revision}, map[string]any{"quality": map[string]any{"mode": "fixed", "id": "720p-high"}, "audio": map[string]any{"trackId": "a2"}, "versionId": f.records[0].Token, "subtitles": map[string]any{"trackId": "off"}, "state": "paused", "positionMs": 42_000}, 200, &chosen)
 
 	caps := webCapabilities()
 	mpv := map[string]any{}
@@ -394,7 +394,7 @@ func TestPlaybackV1ReplanUsesCurrentCapabilitiesAndKeepsChoices(t *testing.T) {
 		t.Fatalf("re-plan replaced the occurrence/queue/state: %+v", replanned)
 	}
 	p := replanned.Presentation
-	if p.Engine != playback.EngineMPV || p.Generation != chosen.Presentation.Generation+1 || p.StartPositionMs != 61_000 || p.Quality == nil || p.Quality.Mode != "fixed" || p.Quality.ID != "720p" || p.AudioTrackID != "a2" {
+	if p.Engine != playback.EngineMPV || p.Generation != chosen.Presentation.Generation+1 || p.StartPositionMs != 61_000 || p.Quality == nil || p.Quality.Mode != "fixed" || p.Quality.ID != "720p-high" || p.AudioTrackID != "a2" {
 		t.Fatalf("re-plan lost current capabilities, position or choices: %+v", p)
 	}
 	var stored string

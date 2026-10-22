@@ -23,3 +23,5 @@ export {AutomaticQuality, audioStreamIndex, audioTrackId, fixedQualities, fixedQ
 export {sessionEndMessage} from '../session-end.ts';
 export {audioGainLinear, audioSeconds, audioTrimWindow, parseAudioRenderV2, playableAudio, type AudioDecodeCapability, type AudioGain, type AudioRenderMode, type AudioRenderV2, type AudioTrim, type Normalization, type PlayableAudioRender} from './audio-render.ts';
 export {V1ChannelControl, serverSupportsV1Channels, channelView, parseChannelSession, v1ChannelId, type ChannelPlayback, type ChannelStartOptions, type ChannelView, type ChannelViewSink, type V1ChannelOptions} from './channel-control.ts';
+
+export {qualityPresentation, qualityLimitKbps, qualityLimit} from './quality-presentation.ts';

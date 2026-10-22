@@ -121,7 +121,7 @@ func TestHLSManifestRepresentationRangeReloadAndGrantRevocation(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatal("catalog", err)
 	}
-	session, err := player.Create(principal, items[0].ID, "auto", "hls-manifest-http")
+	session, err := player.Create(principal, items[0].ID, "automatic", "hls-manifest-http")
 	if err != nil {
 		t.Fatal(err)
 	}

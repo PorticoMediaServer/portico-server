@@ -1,3 +1,4 @@
+import {canonicalQualityLadder} from '../../contracts/src/types.ts';
 import {wireFixture} from './wire-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -30,7 +31,7 @@ function title(over: Record<string, unknown> = {}): any {
 
 function preparation(): any {
   return {
-    id: 'prep', itemId: 'item', libraryId: 'lib', profileId: 'profile', quality: '1080p', origin: 'item',
+    id: 'prep', itemId: 'item', libraryId: 'lib', profileId: 'profile', quality: '1080p-low', origin: 'item',
     title: title(), batchId: 'batch', state: 'ready', reason: '',
     artifact: {kind: 'prepared', ref: 'version', sha256: sha, bytes: 4096, estimated: false, container: 'mp4', contentType: 'video/mp4', fileName: 'prep.mp4'},
     progress: {bytesDone: 4096, bytesTotal: 4096, bytesTotalEstimated: false, percent: 100, etaSeconds: null},
@@ -45,7 +46,7 @@ function options(): any {
     source: {container: 'mp4', videoCodec: 'h264', audioCodec: 'aac', height: 1080, durationSeconds: 5400, bytes: 8_000_000_000, available: true},
     options: [
       {quality: 'original', label: 'Original', kind: 'source', targetDisplayHeight: 1080, estimatedBytes: 8_000_000_000, estimated: false, available: true, reason: '', requiresPreparation: false},
-      {quality: '720p', label: '720p', kind: 'optimized', targetDisplayHeight: 720, maxVideoBitrateBps: 4_000_000, maxAudioBitrateBps: 128_000, estimatedBytes: 2_800_000_000, estimated: true, available: false, reason: 'optimized_version_unavailable', requiresPreparation: false, preparedProfileId: 'portable-720-v3'},
+      {quality: '720p-high', label: '720p-high', kind: 'optimized', targetDisplayHeight: 720, maxVideoBitrateBps: 4_000_000, maxAudioBitrateBps: 128_000, estimatedBytes: 2_800_000_000, estimated: true, available: false, reason: 'optimized_version_unavailable', requiresPreparation: false, preparedProfileId: 'portable-720-v3'},
     ],
     policy: {allowDownloads: true, reason: ''},
     storage: {maxPreparedBytes: 0, committedBytes: 12, remainingBytes: null, retentionDays: 30},
@@ -56,7 +57,7 @@ function claims(): any {
   return {
     kind: 'portico.download-receipt', version: '1', receiptId: 'receipt', keyId: 'key',
     viewer: {authority: 'local', accountId: 'account', profileId: 'profile', serverId: 'server'},
-    itemId: 'item', preparationId: 'prep', quality: '1080p', qualityLabel: '1080p',
+    itemId: 'item', preparationId: 'prep', quality: '1080p-low', qualityLabel: '1080p-low',
     artifact: {sha256: sha, bytes: 4096}, issuedAt: '2026-09-16T10:00:00Z', expiresAt: '2026-10-16T10:00:00Z',
   };
 }
@@ -64,7 +65,7 @@ const envelope = (c = claims()) => ({receiptId: c.receiptId, algorithm: 'ed25519
 
 function bundle(): any {
   return {
-    preparationId: 'prep', itemId: 'item', quality: '1080p', qualityLabel: '1080p', overview: 'An overview.',
+    preparationId: 'prep', itemId: 'item', quality: '1080p-low', qualityLabel: '1080p-low', overview: 'An overview.',
     title: title({kind: 'episode', title: 'Pilot', parentTitle: 'Show', groupNumber: 1, number: 2}),
     media: {container: 'mp4', videoCodec: 'h264', audioCodec: 'aac', width: 1920, height: 1080},
     artwork: [{role: 'poster', path: 'artwork/poster.jpg', contentType: 'image/jpeg'}],
@@ -178,15 +179,15 @@ test('download options keep every quality the server offers and leave out only w
     {...v.options[0], quality: '4320p', label: '4K+'},
     {...v.options[0], quality: '480p', kind: 'remote'},
     // An available option with a reason, or an unavailable one without, leaves nothing to say.
-    {...v.options[0], quality: '360p', reason: 'storage_full'},
-    {...v.options[1], quality: '1080p', reason: ''},
+    {...v.options[0], quality: '240p', reason: 'storage_full'},
+    {...v.options[1], quality: '1080p-low', reason: ''},
     {...v.options[0], label: 'Original again'},
-    {...v.options[0], quality: '1440p', estimatedBytes: -1},
+    {...v.options[0], quality: '1080p-high', estimatedBytes: -1},
   );
   const view = parseDownloadOptions(v, 'item');
   // The server's menu is the list: a quality this app has never heard of is offered as the server
   // names it. What is left out is an option that contradicts itself or cannot be read.
-  assert.deepEqual(view.options.map(o => o.quality), ['original', '720p', '4320p']);
+  assert.deepEqual(view.options.map(o => o.quality), ['original', '720p-high', '4320p']);
   assert.equal(view.options[2].label, '4K+');
   assert.equal(view.options[0].label, 'Original');
   assert.equal(view.options[1].reason, 'device_limit_reached');
@@ -196,7 +197,7 @@ test('download options keep every quality the server offers and leave out only w
   // The original need not come first, or be readable, for the other rungs to be offered.
   const reordered = options();
   reordered.options.reverse();
-  assert.deepEqual(parseDownloadOptions(reordered, 'item').options.map(o => o.quality), ['720p', 'original']);
+  assert.deepEqual(parseDownloadOptions(reordered, 'item').options.map(o => o.quality), ['720p-high', 'original']);
   const blocked = options();
   blocked.policy = {allowDownloads: false, reason: 'household_limit'};
   assert.deepEqual(parseDownloadOptions(blocked, 'item').policy, {allowDownloads: false, reason: 'household_limit'});
@@ -437,19 +438,10 @@ test('usage and settings enforce the unlimited-ceiling contract', () => {
   assert.deepEqual(breakdown.profiles, [{profileId: 'profile', bytes: 10, count: 1}, {profileId: 'second', bytes: 10, count: 1}]);
   assert.throws(() => parseDownloadUsage({profileId: 'bad id!', profileBytes: 10, profileCount: 1, serverBytes: 20, serverCount: 2, distinctArtifactBytes: 20, maxPreparedBytes: 100, remainingBytes: 80, retentionDays: 30, profiles: []}));
   assert.throws(() => parseDownloadUsage({profileId: 'profile', profileBytes: 10, profileCount: 1, serverBytes: 20, serverCount: 2, distinctArtifactBytes: 20, maxPreparedBytes: 100, remainingBytes: 80, retentionDays: 30, profiles: Array.from({length: 257}, (_, i) => ({profileId: 'p' + i, bytes: 0, count: 0}))}));
-  const original = {quality: 'original', label: 'Original', kind: 'source', targetDisplayHeight: 0};
-  const qualities = [
-    {quality: 'original', label: 'Original', kind: 'source'},
-    {quality: '720p', label: '720p', kind: 'optimized', targetDisplayHeight: 720},
-  ];
-  assert.deepEqual(parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 30, revision: 1, qualities, schedule: 'nightly'}), {
-    maxPreparedBytes: 0, retentionDays: 30, revision: 1,
-    qualities: [original, {quality: '720p', label: '720p', kind: 'optimized', targetDisplayHeight: 720}],
-  });
-  // The original can always be asked for: a menu that is missing, or does not lead with it, still
-  // offers it first; a choice that cannot be read, or is listed twice, is left out alone.
-  assert.deepEqual(parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 30, revision: 1}).qualities, [original]);
-  assert.deepEqual(parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 30, revision: 1, qualities: [qualities[1], {quality: 'Bad Rung', label: 'x', kind: 'optimized'}, qualities[1]]}).qualities.map(q => q.quality), ['original', '720p']);
+  const qualities=canonicalQualityLadder.map(q=>({quality:q.id,label:q.label,kind:q.height?'optimized':'source',targetDisplayHeight:q.height}));
+  assert.deepEqual(parseDownloadSettings({maxPreparedBytes:0,retentionDays:30,revision:1,qualities}).qualities,qualities);
+  assert.throws(()=>parseDownloadSettings({maxPreparedBytes:0,retentionDays:30,revision:1}), 'missing ladder cannot invent a short fallback');
+  assert.throws(()=>parseDownloadSettings({maxPreparedBytes:0,retentionDays:30,revision:1,qualities:qualities.slice(0,2)}));
   assert.throws(() => parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 30, revision: 0, qualities}));
   assert.throws(() => parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 0, revision: 1, qualities}));
   assert.throws(() => parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 400, revision: 1, qualities}));

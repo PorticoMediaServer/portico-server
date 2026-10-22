@@ -26,7 +26,7 @@ func TestActivitySummarySessionsExactTotalAndRealDisplay(t *testing.T) {
 	s := &Service{DB: c.DB, Now: func() time.Time { return now }}
 	for n := 0; n < 7; n++ {
 		insertPausedSession(t, c.DB, fmt.Sprint(n), "vod", "playing", now.UnixMilli()+int64(n), 0)
-		if _, e := c.DB.Exec(`UPDATE playback_v1_sessions SET item_id=?,presentation=?,position_ms=1234 WHERE id=?`, episode.ID, `{"url":"/private-capability-token","decision":{"video":{"action":"transcode"}},"quality":{"mode":"fixed","id":"1080p"},"videoHeight":720}`, fmt.Sprint(n)); e != nil {
+		if _, e := c.DB.Exec(`UPDATE playback_v1_sessions SET item_id=?,presentation=?,position_ms=1234 WHERE id=?`, episode.ID, `{"url":"/private-capability-token","decision":{"video":{"action":"transcode"}},"quality":{"mode":"fixed","id":"1080p-low"},"videoHeight":720}`, fmt.Sprint(n)); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -42,7 +42,7 @@ func TestActivitySummarySessionsExactTotalAndRealDisplay(t *testing.T) {
 		t.Fatalf("cap/total: %+v", out)
 	}
 	for _, v := range out.Items {
-		if v.Item == nil || v.Item.Title != "Episode 3" || v.Item.ShowTitle != "A show" || v.Item.ShowID != show.Public || v.Item.Kind != "episode" || v.Item.EpisodeNumbering != "seasonal" || len(v.Item.Art) != 1 || v.Item.Art[0].ID != show.Public || v.Item.Art[0].Kind != "show" || v.Item.SeasonNumber == nil || *v.Item.SeasonNumber != 2 || v.Item.EpisodeNumber == nil || *v.Item.EpisodeNumber != 3 || v.Quality == nil || v.Quality.ID != "1080p" || v.Quality.MaxHeight != 0 || v.VideoHeight != 720 || v.Kind != "vod" || v.Decision.Video == nil || v.Decision.Video.Action != "transcode" || v.PositionMs != 1234 {
+		if v.Item == nil || v.Item.Title != "Episode 3" || v.Item.ShowTitle != "A show" || v.Item.ShowID != show.Public || v.Item.Kind != "episode" || v.Item.EpisodeNumbering != "seasonal" || len(v.Item.Art) != 1 || v.Item.Art[0].ID != show.Public || v.Item.Art[0].Kind != "show" || v.Item.SeasonNumber == nil || *v.Item.SeasonNumber != 2 || v.Item.EpisodeNumber == nil || *v.Item.EpisodeNumber != 3 || v.Quality == nil || v.Quality.ID != "1080p-low" || v.Quality.MaxHeight != 0 || v.VideoHeight != 720 || v.Kind != "vod" || v.Decision.Video == nil || v.Decision.Video.Action != "transcode" || v.PositionMs != 1234 {
 			t.Fatalf("wrong real facts: %+v %+v", v, v.Item)
 		}
 	}
@@ -93,10 +93,10 @@ func TestActivitySummarySessionsCommittedVideoHeight(t *testing.T) {
 		plan    playback.DeliveryPlan
 		want    int
 	}{
-		{"fixed capped below requested ladder", Quality{Mode: QualityFixed, ID: "1080p"}, playback.DeliveryPlan{Mode: "hls", SourceVideoCodec: "h264", VideoAction: "convert", TargetHeight: 720, Trace: &playback.DecisionTrace{Video: &playback.TraceVideo{Width: 1920, Height: 1080}}}, 720},
-		{"automatic on a real rung", Quality{Mode: QualityAutomatic, ID: "1080p"}, playback.DeliveryPlan{Mode: "hls", SourceVideoCodec: "h264", VideoAction: "convert", TargetHeight: 480, Trace: &playback.DecisionTrace{Video: &playback.TraceVideo{Width: 1920, Height: 1080}}}, 480},
+		{"fixed capped below requested ladder", Quality{Mode: QualityFixed, ID: "1080p-low"}, playback.DeliveryPlan{Mode: "hls", SourceVideoCodec: "h264", VideoAction: "convert", TargetHeight: 720, Trace: &playback.DecisionTrace{Video: &playback.TraceVideo{Width: 1920, Height: 1080}}}, 720},
+		{"automatic on a real rung", Quality{Mode: QualityAutomatic, ID: "1080p-low"}, playback.DeliveryPlan{Mode: "hls", SourceVideoCodec: "h264", VideoAction: "convert", TargetHeight: 480, Trace: &playback.DecisionTrace{Video: &playback.TraceVideo{Width: 1920, Height: 1080}}}, 480},
 		{"numeric limit still subject to committed cap", Quality{Mode: QualityLimit, MaxHeight: 1080}, playback.DeliveryPlan{Mode: "hls", SourceVideoCodec: "h264", VideoAction: "convert", TargetHeight: 720, Trace: &playback.DecisionTrace{Video: &playback.TraceVideo{Width: 1920, Height: 1080}}}, 720},
-		{"unknown geometry", Quality{Mode: QualityFixed, ID: "1080p"}, playback.DeliveryPlan{Mode: "hls", SourceVideoCodec: "h264", VideoAction: "convert", TargetHeight: 720}, 0},
+		{"unknown geometry", Quality{Mode: QualityFixed, ID: "1080p-low"}, playback.DeliveryPlan{Mode: "hls", SourceVideoCodec: "h264", VideoAction: "convert", TargetHeight: 720}, 0},
 		{"audio-only conversion", Quality{Mode: QualityAutomatic}, playback.DeliveryPlan{Mode: "hls", SourceVideoCodec: "h264", VideoAction: "copy", AudioAction: "convert", Trace: &playback.DecisionTrace{Video: &playback.TraceVideo{Width: 1920, Height: 1080}}}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

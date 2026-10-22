@@ -126,14 +126,14 @@ func TestReplanRefusesAV1PresentationWhoseCeilingsWereNotStored(t *testing.T) {
 	}
 	t.Run("a legacy session", func(t *testing.T) {
 		f := newReplanFixture(t, 40_000_000)
-		session, err := f.s.Create(f.p, f.item, "auto", "legacy")
+		session, err := f.s.Create(f.p, f.item, "automatic", "legacy")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err = f.subtitle(context.Background(), session.ID, styledSubtitle); err != nil {
 			t.Fatalf("a legacy session's burn-in re-plan: %v", err)
 		}
-		if plan := f.plan(session.ID); plan.BurnIn == nil || plan.Target == nil || plan.QualityID != "original" {
+		if plan := f.plan(session.ID); plan.BurnIn == nil || plan.Target == nil || plan.QualityID != "automatic" {
 			t.Fatalf("legacy re-plan: %+v", plan)
 		}
 	})
@@ -422,7 +422,7 @@ func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
 		}
 		return session
 	}
-	for _, quality := range []string{"auto", "original"} {
+	for _, quality := range []string{"automatic", "original"} {
 		t.Run(quality+" under the member's cap", func(t *testing.T) {
 			f := newReplanFixture(t, 40_000_000)
 			session := legacy(t, f, quality)
@@ -431,7 +431,7 @@ func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
 				if err := f.subtitle(claimsLocal, session.ID, resource); err != nil {
 					t.Fatal(err)
 				}
-				if plan := f.plan(session.ID); plan.VideoAction != "convert" || plan.VideoBitrateBPS < 1 || plan.VideoBitrateBPS > 1_000_000 || plan.QualityID != "original" || plan.Target == nil {
+				if plan := f.plan(session.ID); plan.VideoAction != "convert" || plan.VideoBitrateBPS < 1 || plan.VideoBitrateBPS > 1_000_000 || plan.QualityID != quality || plan.Target == nil {
 					t.Fatalf("a legacy re-plan (burn-in %v) planned %s at %d bit/s (%s) above the member's 1000000", resource != nil, plan.VideoAction, plan.VideoBitrateBPS, plan.QualityID)
 				}
 			}
@@ -453,7 +453,7 @@ func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
 	})
 	t.Run("a request that carries no ceilings is refused", func(t *testing.T) {
 		f := newReplanFixture(t, 40_000_000)
-		session := legacy(t, f, "auto")
+		session := legacy(t, f, "automatic")
 		started := f.plan(session.ID)
 		for _, resource := range []*subtitles.Resource{styledSubtitle, nil} {
 			if err := f.bareSubtitle(context.Background(), session.ID, resource); !errors.Is(err, ErrQualityUnavailable) {
@@ -466,7 +466,7 @@ func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
 	})
 	t.Run("on the LAN it is planned as it always was", func(t *testing.T) {
 		f := newReplanFixture(t, 40_000_000)
-		session := legacy(t, f, "auto")
+		session := legacy(t, f, "automatic")
 		if err := f.subtitle(context.Background(), session.ID, styledSubtitle); err != nil {
 			t.Fatal(err)
 		}
@@ -547,7 +547,7 @@ func TestConversionFallbackAppliesTheMembersCurrentCap(t *testing.T) {
 	})
 	t.Run("a legacy session a request has shown to be remote", func(t *testing.T) {
 		f := newReplanFixture(t, 1_600_000)
-		session, err := f.s.Create(f.p, f.item, "auto", "legacy-remote")
+		session, err := f.s.Create(f.p, f.item, "automatic", "legacy-remote")
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -46,7 +46,7 @@ func TestRealFFmpegRemuxProducesPlayableHLS(t *testing.T) {
 	s := New(db)
 	s.ConfigureHLS(h)
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
-	session, e := s.Create(p, item, "auto", "hls-one")
+	session, e := s.Create(p, item, "automatic", "hls-one")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -106,7 +106,7 @@ func TestRealFLACConvertsToAudioOnlyHLS(t *testing.T) {
 	player := New(db)
 	player.ConfigureHLS(hls)
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
-	session, err := player.Create(p, item, "auto", "audio")
+	session, err := player.Create(p, item, "automatic", "audio")
 	if err != nil || session.Mode != "hls" {
 		t.Fatal(session, err)
 	}

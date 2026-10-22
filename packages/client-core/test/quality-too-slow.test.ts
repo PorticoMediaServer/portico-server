@@ -6,9 +6,9 @@ import {connectionTooSlow} from '../src/playback-v1/quality.ts';
 const answering = (body: unknown): V1Http => ({send: async () => ({status: 422, headers: {}, body})});
 
 test('a too-slow refusal keeps the server reason and names the quality that fits', async () => {
-  const error = await call(answering({error: {code: 'connection_too_slow', retry: 'never', reason: '720p'}}), {method: 'PATCH', path: '/v1/playback/sessions/s'}).catch(e => e);
+  const error = await call(answering({error: {code: 'connection_too_slow', retry: 'never', reason: '720p-high'}}), {method: 'PATCH', path: '/v1/playback/sessions/s'}).catch(e => e);
   assert.ok(error instanceof PlaybackApiError);
-  assert.equal(error.reason, '720p');
+  assert.equal(error.reason, '720p-high');
   assert.equal(connectionTooSlow(error)?.fits?.height, 720);
 });
 

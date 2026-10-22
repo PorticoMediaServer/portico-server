@@ -16,10 +16,10 @@
  * `choices.ts`; this file is the server's vocabulary.
  */
 
-export type QualityId = '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p';
-/** The values of the saved defaults `quality.home` and `quality.remote`. */
-export type SavedQuality = 'original' | 'automatic' | QualityId;
-export const savedQualities: readonly SavedQuality[] = Object.freeze(['original', 'automatic', '2160p', '1440p', '1080p', '720p', '480p', '360p']);
+import {canonicalQualityLadder} from '../../../contracts/src/types.ts';
+export type SavedQuality = (typeof canonicalQualityLadder)[number]['id'];
+export type QualityId = Exclude<SavedQuality, 'original' | 'automatic'>;
+export const savedQualities: readonly SavedQuality[] = Object.freeze(canonicalQualityLadder.map(r => r.id));
 
 /** The `quality` field of a start, a change and the options preview. */
 export type QualityRequest =
@@ -34,18 +34,11 @@ export type QualityRequest =
 /** The quality in force on a presentation: never a `step`; automatic's `id` is the step it is on (absent: the original). */
 export type QualityInForce = Readonly<{mode: 'original' | 'fixed' | 'automatic' | 'limit'; id?: string; maxVideoBitrateKbps?: number; maxHeight?: number; maxAudioBitrateKbps?: number}>;
 
-/** One entry of a title's quality menu (playback options `qualities`): the original, automatic, then the ladder steps no taller than the picture. */
-export type QualityOption = Readonly<{mode: 'original' | 'automatic' | 'fixed'; id?: QualityId; maxHeight?: number; maxVideoBitrateKbps?: number; maxAudioBitrateKbps?: number}>;
+/** One entry of a title's quality menu (playback options `qualities`): the original, automatic, then all seven fixed ceilings, including source-equivalent steps. */
+export type QualityOption = Readonly<{mode: 'original' | 'automatic' | 'fixed'; id?: QualityId; maxHeight?: number; maxVideoBitrateKbps?: number; maxAudioBitrateKbps?: number; sameAsOriginal?: boolean; dataGBPerHour?: number; applicable?: boolean}>;
 
 /** The server's ladder (`GET /v1/playback/delivery-policy` `ladder`), widest first: what each fixed quality allows. */
-export const qualityLadder: readonly Readonly<{id: QualityId; height: number; videoKbps: number; audioKbps: number}>[] = Object.freeze([
-  {id: '2160p', height: 2160, videoKbps: 20_000, audioKbps: 192},
-  {id: '1440p', height: 1440, videoKbps: 12_000, audioKbps: 192},
-  {id: '1080p', height: 1080, videoKbps: 8000, audioKbps: 192},
-  {id: '720p', height: 720, videoKbps: 4000, audioKbps: 128},
-  {id: '480p', height: 480, videoKbps: 2000, audioKbps: 96},
-  {id: '360p', height: 360, videoKbps: 1000, audioKbps: 96},
-]);
+export const qualityLadder = Object.freeze(canonicalQualityLadder.filter(r => r.height > 0).map(r => Object.freeze({...r, id: r.id as QualityId})));
 
 const isQualityId = (v: unknown): v is QualityId => qualityLadder.some(r => r.id === v);
 

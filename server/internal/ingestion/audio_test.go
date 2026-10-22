@@ -212,14 +212,14 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 
 	player := playback.New(db)
 	p := identity.Principal{Hash: "local-session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Role: "owner", Authority: "local"}}
-	first, err := player.Create(p, files[0].ID, "auto", "first")
+	first, err := player.Create(p, files[0].ID, "automatic", "first")
 	if err != nil || first.Mode != "direct" {
 		t.Fatal(first, err)
 	}
 	if err = player.Progress(p, first.ID, first.Generation, 1, 3.9, "paused"); err != nil {
 		t.Fatal(err)
 	}
-	resumed, err := player.Create(p, files[0].ID, "auto", "resume")
+	resumed, err := player.Create(p, files[0].ID, "automatic", "resume")
 	if err != nil || resumed.ResumeSeconds != 3.9 {
 		t.Fatal("near-end bookmark reset", resumed, err)
 	}
@@ -250,7 +250,7 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 		t.Fatal("book bookmark missing from Home")
 	}
 	checkBookResume(nearHome, files[0].ID, 3.9, 3.9)
-	second, err := player.Create(p, files[1].ID, "auto", "second")
+	second, err := player.Create(p, files[1].ID, "automatic", "second")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 	if err != nil || other[0].Resume != nil {
 		t.Fatal("book bookmark leaked profiles", other, err)
 	}
-	songSession, err := player.Create(p, songs[0].ID, "auto", "home-song")
+	songSession, err := player.Create(p, songs[0].ID, "automatic", "home-song")
 	if err != nil {
 		t.Fatal(err)
 	}

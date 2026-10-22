@@ -85,7 +85,7 @@ func TestRealCurrentSourceChaptersAudioAndVideo(t *testing.T) {
 			insertFixtureSession(t, db, "session", "owner", "profile", "owner", "2999-01-01T00:00:00Z")
 			p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
 			s := New(db)
-			session, e := s.Create(p, item, "auto", "one")
+			session, e := s.Create(p, item, "automatic", "one")
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -168,7 +168,7 @@ func TestChapterPagingUnavailableAndCurrentGeneration(t *testing.T) {
 	tx.Commit()
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "account", ProfileID: "profile"}}
 	s := New(db)
-	session, e := s.Create(p, item, "auto", "one")
+	session, e := s.Create(p, item, "automatic", "one")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -213,7 +213,7 @@ func TestChapterPagingUnavailableAndCurrentGeneration(t *testing.T) {
 	if e != nil || legacy.Reason == nil || *legacy.Reason != "session_source_unverified" {
 		t.Fatal(legacy, e)
 	}
-	next, e := s.Create(p, item, "auto", "two")
+	next, e := s.Create(p, item, "automatic", "two")
 	if e != nil || next.Generation <= session.Generation {
 		t.Fatal(e)
 	}

@@ -59,7 +59,7 @@ func seekFixture(t *testing.T, settings DeliverySettings) (context.Context, *sql
 	s.ConfigureHLS(h)
 	s.ConfigureDelivery(settings, nil, nil, "")
 	p := identity.Principal{Hash: "login", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}, Epoch: 1}
-	session, err := s.Create(p, item, "auto", "seek")
+	session, err := s.Create(p, item, "automatic", "seek")
 	if err != nil {
 		cancel()
 		t.Fatal(err)

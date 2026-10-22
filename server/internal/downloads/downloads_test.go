@@ -342,7 +342,7 @@ func TestActionFencesAndLifecycle(t *testing.T) {
 
 func TestRetryReopensAFailedClaim(t *testing.T) {
 	h := newHarness(t)
-	batch, e := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-retry", MediaID: h.item, Quality: "1080p"}, nil)
+	batch, e := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-retry", MediaID: h.item, Quality: "720p-low"}, nil)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -374,7 +374,7 @@ func TestStorageFullRefusesNewPreparations(t *testing.T) {
 		t.Fatal(e)
 	}
 	// The ceiling is on what the server stores: converted copies.
-	_, e := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-full", MediaID: h.item, Quality: "720p"}, nil)
+	_, e := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-full", MediaID: h.item, Quality: "720p-high"}, nil)
 	if e != ErrStorageFull {
 		t.Fatalf("expected storage_full, got %v", e)
 	}
@@ -387,7 +387,7 @@ func TestStorageFullRefusesNewPreparations(t *testing.T) {
 	if _, e = h.service.ApplySettings(context.Background(), h.viewer, SettingsChange{OperationID: "op-settings-2", ExpectedRevision: 2, MaxPreparedBytes: 0, RetentionDays: 30}); e != nil {
 		t.Fatal(e)
 	}
-	if batch, e := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-full-3", MediaID: h.item, Quality: "720p"}, nil); e != nil || batch.Accepted != 1 {
+	if batch, e := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-full-3", MediaID: h.item, Quality: "720p-high"}, nil); e != nil || batch.Accepted != 1 {
 		t.Fatalf("%+v %v", batch, e)
 	}
 	if _, e = h.db.Exec(`DELETE FROM download_preparations WHERE quality<>'original'`); e != nil {
@@ -987,33 +987,16 @@ func TestOptionsPublishTheLadderAndEstimates(t *testing.T) {
 	for _, option := range view.Options {
 		seen[option.Quality] = option
 	}
-	if _, ok := seen["2160p"]; ok {
-		t.Fatal("a rung taller than the source was offered as an upscale")
+	if len(view.Options) != 9 || view.Options[1].Quality != "automatic" {
+		t.Fatalf("incomplete menu %+v", view.Options)
 	}
-	rung, ok := seen["720p"]
-	if !ok {
-		t.Fatalf("720p missing from %v", seen)
-	}
-	if !rung.Estimated || rung.Bytes <= 0 || rung.PreparedProfileID != "portable-720-v3" {
-		t.Fatalf("720p %+v", rung)
-	}
-	if !rung.RequiresPrepare {
-		t.Fatal("an owner must be told the rung needs preparing first")
-	}
-	// Only what the conversion code can make is on the menu: a rung that is
-	// just a name in the ladder would be a claim that can only fail.
-	for _, option := range view.Options[1:] {
-		if !preparedmedia.Producible(option.PreparedProfileID) {
-			t.Fatalf("%s is offered and cannot be produced", option.Quality)
+	for _, option := range view.Options[2:] {
+		if option.Available && !option.SameAsOriginal && !preparedmedia.Producible(option.PreparedProfileID) {
+			t.Fatalf("unproducible available option %+v", option)
 		}
 	}
-	for _, missing := range []string{"480p", "360p"} {
-		if _, offered := seen[missing]; offered != preparedmedia.Producible("portable-"+strings.TrimSuffix(missing, "p")+"-v3") {
-			t.Fatalf("%s offered=%v disagrees with the conversion code", missing, offered)
-		}
-	}
-	if batch, err := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-unreal", MediaID: h.item, Quality: "480p"}, nil); preparedmedia.Producible("portable-480-v3") == (err == nil && len(batch.Rejected) == 1) {
-		t.Fatalf("a claim for 480p: %+v %v", batch, err)
+	if view.Options[2].MaxVideoBitrateBPS != 40_000_000 || view.Options[7].MaxVideoBitrateBPS != 1_500_000 {
+		t.Fatalf("wrong canonical budgets %+v", view.Options)
 	}
 	if view.Source.Bytes != int64(len(filmBody)) || !view.Source.Available {
 		t.Fatalf("source %+v", view.Source)
@@ -1237,27 +1220,22 @@ func TestAudioItemsPublishOneOptimizedOption(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(view.Options) != 2 {
-		t.Fatalf("an audio item published %d options: %+v", len(view.Options), view.Options)
+	if len(view.Options) != 9 {
+		t.Fatalf("audio menu %+v", view.Options)
 	}
 	optimized := view.Options[1]
-	if optimized.Label != "AAC 192 kbps" || optimized.TargetHeight != 0 || optimized.MaxVideoBitrateBPS != 0 {
-		t.Fatalf("audio option describes video: %+v", optimized)
+	if optimized.Quality != "automatic" || optimized.TargetHeight != 0 || optimized.MaxVideoBitrateBPS != 0 || optimized.PreparedProfileID != "audio-aac-v3" {
+		t.Fatalf("audio automatic invents picture %+v", optimized)
 	}
-	if optimized.PreparedProfileID != "audio-aac-v3" {
-		t.Fatalf("audio recipe %q", optimized.PreparedProfileID)
-	}
-	// 192 kbps over four minutes, plus container overhead.
 	if optimized.Bytes < 5_500_000 || optimized.Bytes > 6_200_000 {
-		t.Fatalf("audio estimate %d", optimized.Bytes)
+		t.Fatal(optimized.Bytes)
 	}
-	// Every rung resolves to the same recipe, so every rung estimates the same.
-	for _, rung := range []string{"360p", "720p", "2160p"} {
-		other, _ := estimateBytes(rung, "", source{Kind: "song", Duration: 240})
-		if other != optimized.Bytes {
-			t.Fatalf("rung %s estimated %d, not %d", rung, other, optimized.Bytes)
+	for _, option := range view.Options[2:] {
+		if option.Available || option.Reason != "not_video" || option.PreparedProfileID != "" {
+			t.Fatalf("video step applied to audio %+v", option)
 		}
 	}
+
 }
 
 func TestDownloadPinsRequestedVersionAndClaimsFollowMerge(t *testing.T) {

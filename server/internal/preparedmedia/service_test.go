@@ -64,7 +64,7 @@ func requestPrepared(t *testing.T, s *Service, p identity.Principal, item catalo
 	if len(v.Sources) != 1 || !v.Sources[0].Available {
 		t.Fatalf("source: %+v", v)
 	}
-	r := Request{key, item.Public, item.Token, v.Sources[0].Revision, "portable-720-v1", TargetID}
+	r := Request{key, item.Public, item.Token, v.Sources[0].Revision, "portable-720p-high-v3", TargetID}
 	j, e := s.Submit(context.Background(), p, r)
 	if e != nil {
 		t.Fatal(e)
@@ -133,13 +133,13 @@ func TestPreparedSubmitReceiptCurrentOwnerAndRetryCAS(t *testing.T) {
 	if e != nil || replay.ID != j.ID {
 		t.Fatal("duplicate", replay, e)
 	}
-	r.ProfileID = "portable-1080-v1"
+	r.ProfileID = "portable-1080p-low-v3"
 	if _, e = s.Submit(ctx, p, r); !errors.Is(e, operations.ErrConflict) {
 		t.Fatal("key alias", e)
 	}
 	viewer := p
 	viewer.Role = "viewer"
-	r.ProfileID = "portable-720-v1"
+	r.ProfileID = "portable-720p-high-v3"
 	if _, e = s.Submit(ctx, viewer, r); !errors.Is(e, ErrOwner) {
 		t.Fatal("receipt disclosed without owner", e)
 	}
@@ -289,7 +289,7 @@ func TestPreparedDeletionWaitsForSessionAndPhysicalReader(t *testing.T) {
 	}
 }
 func TestPreparedProfilesAndCompleteOutputValidation(t *testing.T) {
-	p, _ := profile("portable-720-v1")
+	p, _ := profile("portable-720p-high-v3")
 	raw := []byte(`{"format":{"format_name":"mov,mp4,m4a,3gp,3g2,mj2","duration":"60"},"streams":[{"codec_type":"video","codec_name":"h264","width":1280,"height":720,"pix_fmt":"yuv420p","profile":"High","level":40,"avg_frame_rate":"30/1"},{"codec_type":"audio","codec_name":"aac","channels":2}]}`)
 	f, e := parseProbe(raw)
 	if e != nil {
@@ -381,21 +381,19 @@ func TestPreparedWholeSealedRecordingEndAndMultipartAdmission(t *testing.T) {
 	}
 }
 
-func TestPreparedRecipesVersionChapterPolicyWithoutLosingLegacyIdentity(t *testing.T) {
+func TestPreparedRecipesUseCanonicalVersionedIdentity(t *testing.T) {
 	for _, current := range Profiles() {
-		// HEVC recipes are a family of their own, first made as v1.
-		if !strings.HasSuffix(current.ID, "-v3") && !Rich(current.ID) {
-			t.Fatal("new requests offered an old recipe", current.ID)
+		if !strings.HasSuffix(current.ID, "-v3") {
+			t.Fatal(current.ID)
 		}
-		if current.ID != "portable-720-v3" && current.ID != "portable-1080-v3" && current.ID != "audio-aac-v3" {
-			continue
-		} // Newly introduced resolutions have no historical recipes.
-		for _, version := range []string{"-v1", "-v2"} {
-			legacyID := strings.TrimSuffix(current.ID, "-v3") + version
-			legacy, err := profile(legacyID)
-			if err != nil || legacy.ID != legacyID || legacy.Kind != current.Kind || legacy.Width != current.Width || legacy.AudioKbps != current.AudioKbps {
-				t.Fatal("lost immutable legacy recipe", legacy, err)
-			}
+		r := recipeFor(current)
+		if !r.DropChapters || !r.BoundedFragments {
+			t.Fatal("unbounded or unremapped current recipe", current.ID)
+		}
+	}
+	for _, gone := range []string{"portable-720-v1", "portable-1080-v2", "portable-1440-v3"} {
+		if _, err := profile(gone); err == nil {
+			t.Fatal("removed recipe alias", gone)
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package playback
 
 import (
+	"portico.local/server/internal/qualityladder"
 	"sort"
 	"strings"
 )
@@ -164,6 +165,11 @@ func ResolveDeliveryPolicy(values DeliveryPreferenceReader, class NetworkClass, 
 	}
 	out.MaxAudioBitrateBPS = cfg.MaxAudioBitrateBPS
 	out.MaxVideoHeight = cfg.MaxVideoHeight
+	if class == NetworkRemote {
+		if step, ok := qualityladder.AtBitrate(cfg.MaxVideoBitrateBPS); ok {
+			out.MaxVideoHeight = narrowCeiling(out.MaxVideoHeight, step.Height)
+		}
+	}
 	if !cfg.AllowHDR {
 		out.Clamps = append(out.Clamps, DeliveryClamp{Field: "allowHDR", Source: "server_clamp", Requested: 1, Applied: 0})
 		out.AllowHDR = false

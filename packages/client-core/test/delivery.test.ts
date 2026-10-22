@@ -1,13 +1,14 @@
+import {canonicalQualityLadder} from '../../contracts/src/types.ts';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {parseResolvedDeliveryPolicy,parseSessionDelivery,parseQualityRungs,parseDeliveryPolicyDocument,normalizeTransportClass,transportClassHeader,deviceClassHeader,networkClasses,transportClasses} from '../src/delivery.ts';
 import {HttpLocalApi} from '../src/index.ts';
 
-function policy(overrides:Record<string,unknown>={}){return {networkClass:'remote',serverLocality:'remote',transportClass:'cellular',preferenceLane:'remote',directPlay:'prefer',directStream:'allow',transcode:'allow',qualityMode:'720p',maxVideoBitrateBps:8000000,maxAudioBitrateBps:256000,maxVideoHeight:720,allowHDR:false,planningPolicy:'maximum_fidelity',clamps:[{field:'maxVideoBitrateBps',source:'server_clamp',requested:8000000,applied:4000000}],...overrides};}
+function policy(overrides:Record<string,unknown>={}){return {networkClass:'remote',serverLocality:'remote',transportClass:'cellular',preferenceLane:'remote',directPlay:'prefer',directStream:'allow',transcode:'allow',qualityMode:'720p-high',maxVideoBitrateBps:8000000,maxAudioBitrateBps:256000,maxVideoHeight:720,allowHDR:false,planningPolicy:'maximum_fidelity',clamps:[{field:'maxVideoBitrateBps',source:'server_clamp',requested:8000000,applied:4000000}],...overrides};}
 
 test('a resolved policy is accepted only in the shape the server publishes',()=>{
  const parsed=parseResolvedDeliveryPolicy(policy());
  assert.equal(parsed.networkClass,'remote');
- assert.equal(parsed.qualityMode,'720p');
+ assert.equal(parsed.qualityMode,'720p-high');
  assert.equal(parsed.allowHDR,false);
  assert.equal(parsed.clamps[0].applied,4000000);
  assert(Object.isFrozen(parsed)&&Object.isFrozen(parsed.clamps));
@@ -38,17 +39,17 @@ test('a resolved policy is accepted only in the shape the server publishes',()=>
 
 test('a rung set carries exactly one automatic rung, and only fixed rungs carry ceilings',()=>{
  const rungs=parseQualityRungs([
-  {id:'auto',kind:'automatic',label:'Automatic',enabled:true},
   {id:'original',kind:'original',label:'Original',enabled:false,reason:'original_exceeds_policy'},
-  {id:'720p',kind:'fixed',label:'720p',enabled:true,maxVideoBitrateBps:4000000,maxAudioBitrateBps:128000,targetDisplayHeight:720},
+  {id:'automatic',kind:'automatic',label:'Automatic',enabled:true},
+  {id:'720p-high',kind:'fixed',label:'720p-high',enabled:true,maxVideoBitrateBps:4000000,maxAudioBitrateBps:128000,targetDisplayHeight:720},
  ]);
  assert.equal(rungs.length,3);
- assert.equal(rungs[0].kind,'automatic');
- assert.equal(rungs[1].reason,'original_exceeds_policy');
+ assert.equal(rungs[0].kind,'original');
+ assert.equal(rungs[0].reason,'original_exceeds_policy');
  assert.equal(rungs[2].targetDisplayHeight,720);
  assert.equal(parseQualityRungs([]).length,0);
  for(const broken of [
-  [{id:'720p',kind:'fixed',label:'720p',enabled:true,targetDisplayHeight:720}],                    // no automatic rung
+  [{id:'720p-high',kind:'fixed',label:'720p-high',enabled:true,targetDisplayHeight:720}],                    // no automatic rung
   [{id:'auto',kind:'automatic',label:'A',enabled:true},{id:'auto2',kind:'automatic',label:'B',enabled:true}],
   [{id:'auto',kind:'automatic',label:'A',enabled:true,targetDisplayHeight:1080}],                  // automatic with a ceiling
   [{id:'auto',kind:'automatic',label:'A',enabled:true},{id:'x',kind:'fixed',label:'x',enabled:true}], // fixed with none
@@ -58,7 +59,7 @@ test('a rung set carries exactly one automatic rung, and only fixed rungs carry 
 });
 
 test('session delivery diagnostics publish the route, the stages and the progress',()=>{
- const raw={mode:'hls',strategy:'video_conversion',reasonCodes:['video_codec_requires_conversion','hdr_tone_mapping_required'],policy:policy(),qualityId:'720p',
+ const raw={mode:'hls',strategy:'video_conversion',reasonCodes:['video_codec_requires_conversion','hdr_tone_mapping_required'],policy:policy(),qualityId:'720p-high',
   hardware:{backend:'videotoolbox',stages:[{operation:'decode',execution:'hardware'},{operation:'tone_map',execution:'software'},{operation:'encode',execution:'hardware'}]},
   streams:[{kind:'video',inputCodec:'hevc',outputCodec:'h264',action:'convert'},{kind:'audio',inputCodec:'eac3',outputCodec:'aac',action:'convert'},{kind:'subtitle',inputCodec:'',outputCodec:'',action:'burn_in'}],
   throttled:true,convertedThroughMs:126000,toneMap:true,toneMapAlgorithm:'hable',targetDisplayHeight:720,targetVideoBitrateBps:4000000,targetAudioBitrateBps:128000,
@@ -89,10 +90,10 @@ test('session delivery diagnostics publish the route, the stages and the progres
 });
 
 test('the delivery policy document carries the ladder the client renders',()=>{
- const document=parseDeliveryPolicyDocument({serverId:'server',policy:policy(),ladder:[{id:'1080p',label:'1080p',targetDisplayHeight:1080,maxVideoBitrateBps:8000000,maxAudioBitrateBps:192000}]});
- assert.equal(document.ladder[0].id,'1080p');
+ const document=parseDeliveryPolicyDocument({serverId:'server',policy:policy(),ladder:canonicalQualityLadder.map(q=>({id:q.id,label:q.label,targetDisplayHeight:q.height,maxVideoBitrateBps:q.videoKbps*1000,maxAudioBitrateBps:q.audioKbps*1000,dataGBPerHour:q.dataGBPerHour??0}))});
+ assert.equal(document.ladder[0].id,'original');assert.equal(document.ladder[2].maxVideoBitrateBps,40000000);
  assert.equal(document.policy.networkClass,'remote');
- assert.throws(()=>parseDeliveryPolicyDocument({serverId:'server',policy:policy(),ladder:[{id:'1080p',label:'1080p',targetDisplayHeight:8640,maxVideoBitrateBps:1,maxAudioBitrateBps:1}]}),{code:'invalid_delivery_payload'});
+ assert.throws(()=>parseDeliveryPolicyDocument({serverId:'server',policy:policy(),ladder:[{id:'1080p-low',label:'1080p-low',targetDisplayHeight:8640,maxVideoBitrateBps:1,maxAudioBitrateBps:1}]}),{code:'invalid_delivery_payload'});
 });
 
 test('the transport hint is normalized and sent as a header the server may narrow by',async()=>{

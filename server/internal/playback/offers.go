@@ -127,7 +127,12 @@ func (s *Service) Offers(ctx context.Context, p identity.Principal, scope Offers
 	}
 	for i := range out.Sources {
 		source := &out.Sources[i]
-		source.Qualities = QualityOffers(source.Height, source.Available && source.FactsStatus == "known", out.TranscodingOpen, policy)
+		facts, _ := DeliverySourceTx(ctx, tx, source.ID)
+		rate := facts.BitRate
+		if facts.Video != nil && facts.Video.BitRate > 0 {
+			rate = facts.Video.BitRate
+		}
+		source.Qualities = QualityOffers(source.Height, source.Available && source.FactsStatus == "known", out.TranscodingOpen, policy, rate)
 	}
 
 	out.PreparedVersions = []preparedmedia.Version{}

@@ -29364,6 +29364,9 @@ export const schemas = {
             "available": {
               "type": "boolean"
             },
+            "dataGBPerHour": {
+              "type": "number"
+            },
             "estimated": {
               "type": "boolean"
             },
@@ -29375,8 +29378,16 @@ export const schemas = {
             "label": {
               "type": "string"
             },
+            "maxVideoBitrateBps": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "quality": {
               "type": "string"
+            },
+            "sameAsOriginal": {
+              "type": "boolean"
             },
             "unavailableCount": {
               "maximum": 9007199254740991,
@@ -29391,6 +29402,7 @@ export const schemas = {
           },
           "required": [
             "quality",
+            "sameAsOriginal",
             "label",
             "estimatedBytes",
             "estimated",
@@ -31323,6 +31335,12 @@ export const schemas = {
             "available": {
               "type": "boolean"
             },
+            "dataGBPerHour": {
+              "type": "number"
+            },
+            "effectiveQuality": {
+              "type": "string"
+            },
             "estimated": {
               "type": "boolean"
             },
@@ -31368,6 +31386,9 @@ export const schemas = {
             "requiresPreparation": {
               "type": "boolean"
             },
+            "sameAsOriginal": {
+              "type": "boolean"
+            },
             "targetDisplayHeight": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -31381,7 +31402,9 @@ export const schemas = {
             "estimatedBytes",
             "estimated",
             "available",
-            "requiresPreparation"
+            "requiresPreparation",
+            "sameAsOriginal",
+            "effectiveQuality"
           ],
           "type": "object"
         },
@@ -31984,11 +32007,24 @@ export const schemas = {
       "qualities": {
         "items": {
           "properties": {
+            "dataGBPerHour": {
+              "type": "number"
+            },
             "kind": {
               "type": "string"
             },
             "label": {
               "type": "string"
+            },
+            "maxAudioBitrateBps": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "maxVideoBitrateBps": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
             "quality": {
               "type": "string"
@@ -60283,6 +60319,9 @@ export const schemas = {
             "qualities": {
               "items": {
                 "properties": {
+                  "dataGBPerHour": {
+                    "type": "number"
+                  },
                   "enabled": {
                     "type": "boolean"
                   },
@@ -60308,6 +60347,9 @@ export const schemas = {
                   "reason": {
                     "type": "string"
                   },
+                  "sameAsOriginal": {
+                    "type": "boolean"
+                  },
                   "targetDisplayHeight": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -60318,7 +60360,8 @@ export const schemas = {
                   "id",
                   "kind",
                   "label",
-                  "enabled"
+                  "enabled",
+                  "sameAsOriginal"
                 ],
                 "type": "object"
               },
@@ -95957,6 +96000,9 @@ export const schemas = {
       "ladder": {
         "items": {
           "properties": {
+            "dataGBPerHour": {
+              "type": "number"
+            },
             "id": {
               "type": "string"
             },
@@ -95984,7 +96030,8 @@ export const schemas = {
             "label",
             "targetDisplayHeight",
             "maxVideoBitrateBps",
-            "maxAudioBitrateBps"
+            "maxAudioBitrateBps",
+            "dataGBPerHour"
           ],
           "type": "object"
         },
@@ -96393,6 +96440,12 @@ export const schemas = {
       "qualities": {
         "items": {
           "properties": {
+            "applicable": {
+              "type": "boolean"
+            },
+            "dataGBPerHour": {
+              "type": "number"
+            },
             "id": {
               "type": "string"
             },
@@ -96413,10 +96466,15 @@ export const schemas = {
             },
             "mode": {
               "type": "string"
+            },
+            "sameAsOriginal": {
+              "type": "boolean"
             }
           },
           "required": [
-            "mode"
+            "mode",
+            "sameAsOriginal",
+            "applicable"
           ],
           "type": "object"
         },
@@ -151525,11 +151583,24 @@ export const schemas = {
       "qualities": {
         "items": {
           "properties": {
+            "dataGBPerHour": {
+              "type": "number"
+            },
             "kind": {
               "type": "string"
             },
             "label": {
               "type": "string"
+            },
+            "maxAudioBitrateBps": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "maxVideoBitrateBps": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
             "quality": {
               "type": "string"

@@ -14,6 +14,7 @@ import (
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/qualityladder"
 )
 
 var (
@@ -49,33 +50,15 @@ type Profile struct {
 
 // Immutable recipes: a recipe change gets a new ID, never different bytes under
 // an old transformation identity. Clients cannot supply arbitrary encoder flags.
-var profiles = []Profile{
-	{"portable-360-v3", "360p", "video", 640, 360, 1000, 96, "H.264 SDR video and AAC stereo audio in MP4."},
-	{"portable-480-v3", "480p", "video", 854, 480, 2000, 96, "H.264 SDR video and AAC stereo audio in MP4."},
-	{"portable-1440-v3", "1440p", "video", 2560, 1440, 12000, 192, "H.264 SDR video and AAC stereo audio in MP4."},
-	{"portable-2160-v3", "2160p", "video", 3840, 2160, 20000, 192, "H.264 SDR video and AAC stereo audio in MP4."},
-	{"portable-720-v3", "Portable · 720p", "video", 1280, 720, 2500, 192, "H.264 SDR video and AAC stereo audio in MP4. Keeps the original."},
-	{"portable-1080-v3", "Balanced · 1080p", "video", 1920, 1080, 5000, 192, "H.264 SDR video and AAC stereo audio in MP4. Keeps all audio tracks."},
-	{"audio-aac-v3", "Audio · AAC", "audio", 0, 0, 0, 192, "AAC stereo in M4A for music and audiobook files. Keeps the original."},
-	// HEVC recipes keep what a conversion keeps: the source's HDR10 or HLG
-	// picture at ten bits, with its mastering description, and surround sound
-	// up to 5.1. Downloads choose them for a device that plays them.
-	{"hevc-720-v1", "HEVC · 720p", "video", 1280, 720, 1750, 384, "HEVC video that keeps HDR, with surround AAC, in MP4."},
-	{"hevc-1080-v1", "HEVC · 1080p", "video", 1920, 1080, 3500, 384, "HEVC video that keeps HDR, with surround AAC, in MP4."},
-	{"hevc-1440-v1", "HEVC · 1440p", "video", 2560, 1440, 8400, 384, "HEVC video that keeps HDR, with surround AAC, in MP4."},
-	{"hevc-2160-v1", "HEVC · 2160p", "video", 3840, 2160, 14000, 384, "HEVC video that keeps HDR, with surround AAC, in MP4."},
-}
+var profiles = canonicalProfiles()
 
-// Legacy recipes remain resolvable for retained jobs/versions. New views offer
-// v3 bounds streaming MP4 fragments; v2 omits unremapped chapter data.
-var legacyProfiles = []Profile{
-	{"portable-720-v2", "Portable · 720p", "video", 1280, 720, 2500, 192, "H.264 SDR video and AAC stereo audio in MP4. Keeps the original."},
-	{"portable-1080-v2", "Balanced · 1080p", "video", 1920, 1080, 5000, 192, "H.264 SDR video and AAC stereo audio in MP4. Keeps all audio tracks."},
-	{"audio-aac-v2", "Audio · AAC", "audio", 0, 0, 0, 192, "AAC stereo in M4A for music and audiobook files. Keeps the original."},
-
-	{"portable-720-v1", "Portable · 720p", "video", 1280, 720, 2500, 192, "H.264 SDR video and AAC stereo audio in MP4. Keeps the original."},
-	{"portable-1080-v1", "Balanced · 1080p", "video", 1920, 1080, 5000, 192, "H.264 SDR video and AAC stereo audio in MP4. Keeps all audio tracks."},
-	{"audio-aac-v1", "Audio · AAC", "audio", 0, 0, 0, 192, "AAC stereo in M4A for music and audiobook files. Keeps the original."},
+func canonicalProfiles() []Profile {
+	out := []Profile{}
+	for _, r := range qualityladder.Fixed() {
+		out = append(out, Profile{"portable-" + r.ID + "-v3", r.Label, "video", r.Width(), r.Height, r.VideoBitrateBPS / 1000, r.MaxAudioBitrateBPS / 1000, "H.264 SDR video and AAC audio in MP4."})
+		out = append(out, Profile{"hevc-" + r.ID + "-v3", r.Label, "video", r.Width(), r.Height, r.VideoBitrateBPS / 1000, 384, "HEVC video that keeps HDR, with surround AAC, in MP4."})
+	}
+	return append(out, Profile{"audio-aac-v3", "Audio · AAC", "audio", 0, 0, 0, 192, "AAC audio in M4A. Keeps the original."})
 }
 
 // Profiles lists the recipes this server can actually make. The table above
@@ -112,9 +95,13 @@ func Rich(id string) bool { return strings.HasPrefix(id, "hevc-") }
 
 // RichProfileFor is the HEVC recipe at a picture height, or "" when there is
 // none at that height.
-func RichProfileFor(height int) string {
+func RichProfileFor(quality string) string {
+	rung, ok := qualityladder.Find(quality)
+	if !ok {
+		return ""
+	}
 	for _, p := range profiles {
-		if Rich(p.ID) && p.Height == height {
+		if Rich(p.ID) && p.Height == rung.Height && p.VideoKbps == rung.VideoBitrateBPS/1000 {
 			return p.ID
 		}
 	}
@@ -126,11 +113,6 @@ func ProfileByID(id string) (Profile, error) { return profile(id) }
 
 func profile(id string) (Profile, error) {
 	for _, p := range profiles {
-		if p.ID == id {
-			return p, nil
-		}
-	}
-	for _, p := range legacyProfiles {
 		if p.ID == id {
 			return p, nil
 		}

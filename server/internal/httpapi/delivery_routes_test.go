@@ -40,7 +40,7 @@ func TestDeliveryPolicyRouteResolvesTheViewersLane(t *testing.T) {
 		if policy == nil {
 			t.Fatalf("no policy published: %s", w.Body.String())
 		}
-		if ladder, _ := out["ladder"].([]any); len(ladder) != len(playback.QualityLadder) {
+		if ladder, _ := out["ladder"].([]any); len(ladder) != len(playback.SavedQualities()) {
 			t.Fatal("ladder was not published with the policy")
 		}
 		return policy

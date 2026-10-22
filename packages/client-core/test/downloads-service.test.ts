@@ -5,7 +5,7 @@ import {DownloadsService} from '../src/downloads-service.ts';
 const sha='a'.repeat(64);
 const usageDoc={profileId:'profile',profileBytes:0,profileCount:0,serverBytes:0,serverCount:0,distinctArtifactBytes:0,maxPreparedBytes:0,remainingBytes:null,retentionDays:7,profiles:[]};
 const preparation=(over:Record<string,unknown>={}):any=>({
- id:'prep',itemId:'item',libraryId:'lib',profileId:'profile',quality:'1080p',origin:'item',title:{kind:'movie',title:'Film',onServer:true},batchId:'batch',state:'ready',reason:'',
+ id:'prep',itemId:'item',libraryId:'lib',profileId:'profile',quality:'1080p-low',origin:'item',title:{kind:'movie',title:'Film',onServer:true},batchId:'batch',state:'ready',reason:'',
  artifact:{kind:'prepared',ref:'version',sha256:sha,bytes:4096,estimated:false,container:'mp4',contentType:'video/mp4',fileName:'prep.mp4'},
  progress:{bytesDone:4096,bytesTotal:4096,bytesTotalEstimated:false,percent:100,etaMs:null},
  actions:['remove'],revision:3,createdAt:'2026-09-16T10:00:00Z',updatedAt:'2026-09-16T10:05:00Z',readyAt:'2026-09-16T10:05:00Z',expiresAt:'2026-10-16T10:05:00Z',...over});
@@ -342,7 +342,7 @@ test('a quiet read never runs before the first load or on a server without downl
 
 test('container options keep server aggregate sizes and reject a different target',async()=>{
  const calls: unknown[]=[];let wrong=false;
- const service=new DownloadsService({async request<T>(path:string,method='GET',body?:unknown):Promise<T>{calls.push({path,method,body});return {target:{kind:'season',id:wrong?'other':'season'},total:43,options:[{quality:'original',label:'Original',estimatedBytes:43000,estimated:false,available:true,unavailableCount:0,unknownSizeCount:0}]} as T;}});
+ const service=new DownloadsService({async request<T>(path:string,method='GET',body?:unknown):Promise<T>{calls.push({path,method,body});return {target:{kind:'season',id:wrong?'other':'season'},total:43,options:[{quality:'original',label:'Original',sameAsOriginal:false,estimatedBytes:43000,estimated:false,available:true,unavailableCount:0,unknownSizeCount:0}]} as T;}});
  try {
   const result=await service.containerOptions({kind:'season',id:'season'},'device',{episodes:'all'});
   assert.equal(result.total,43);assert.equal(result.options[0]?.estimatedBytes,43000);

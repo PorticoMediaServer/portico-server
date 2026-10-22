@@ -9,7 +9,7 @@ func TestOwnerCanReadAndClearRememberedRoutes(t *testing.T) {
 	_, s, p, _, item, _ := activityFixture(t)
 	ctx := context.Background()
 	s.ConfigureHLS(&HLS{})
-	first, err := s.Create(p, item, "auto", "memory-original")
+	first, err := s.Create(p, item, "automatic", "memory-original")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestOwnerCanReadAndClearRememberedRoutes(t *testing.T) {
 	if err = s.ClearRouteFailureMemory(ctx, page.Items[0].SourceID); err != nil {
 		t.Fatal(err)
 	}
-	retry, err := s.Create(p, item, "auto", "memory-cleared")
+	retry, err := s.Create(p, item, "automatic", "memory-cleared")
 	if err != nil || retry.Mode != "direct" {
 		t.Fatal("clear did not restore original route", retry, err)
 	}

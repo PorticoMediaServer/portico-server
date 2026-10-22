@@ -13,54 +13,20 @@ func rungIDs(rungs []QualityRung) []string {
 	return out
 }
 
-func TestQualityLadderCapsBySourceHeight(t *testing.T) {
-	policy := openPolicy()
-	cases := []struct {
-		height int
-		want   string
-	}{
-		{2160, "auto original 2160p 1440p 1080p 720p 480p 360p"},
-		{1080, "auto original 1080p 720p 480p 360p"},
-		{720, "auto original 720p 480p 360p"},
-		{480, "auto original 480p 360p"},
-		// Shorter than every rung: the smallest rung is kept, re-targeted at the
-		// source, so a constrained lane still has something to convert to.
-		{240, "auto original 360p"},
-		// Unmeasured source: publish the whole ladder rather than guess.
-		{0, "auto original 2160p 1440p 1080p 720p 480p 360p"},
-	}
-	for _, tt := range cases {
-		got := strings.Join(rungIDs(QualityOffers(tt.height, true, true, policy)), " ")
-		if got != tt.want {
-			t.Fatalf("height %d published %q, want %q", tt.height, got, tt.want)
+func TestQualityLadderKeepsEverySourceStep(t *testing.T) {
+	want := "original automatic 2160p 1080p-high 1080p-low 720p-high 720p-low 480p 240p"
+	for _, height := range []int{0, 144, 240, 480, 720, 1080, 2160} {
+		rungs := QualityOffers(height, true, true, openPolicy(), 6_000_000)
+		if got := strings.Join(rungIDs(rungs), " "); got != want {
+			t.Fatal(got)
+		}
+		if rungs[2].SameAsOriginal != (height > 0) {
+			t.Fatal("source facts", height, rungs[2])
 		}
 	}
-	// Exactly one automatic rung, and it is first.
-	rungs := QualityOffers(1080, true, true, policy)
-	automatic := 0
-	for i, r := range rungs {
-		if r.Kind == QualityAutomatic {
-			automatic++
-			if i != 0 {
-				t.Fatal("automatic rung is not first")
-			}
-		}
-	}
-	if automatic != 1 {
-		t.Fatal("published", automatic, "automatic rungs")
-	}
-	if rungs[1].Kind != QualityOriginal {
-		t.Fatal("original rung is not second", rungs[1])
-	}
-	for _, r := range rungs[2:] {
-		if r.Kind != QualityFixed || r.TargetDisplayHeight == 0 || r.MaxVideoBitrateBPS == 0 || r.MaxAudioBitrateBPS == 0 {
-			t.Fatal("fixed rung is missing its ceilings", r)
-		}
-	}
-	// The 240p source's kept rung is re-targeted rather than upscaling.
-	short := QualityOffers(240, true, true, policy)
-	if short[2].TargetDisplayHeight != 240 {
-		t.Fatal("kept rung upscales the source", short[2])
+	unknown := QualityOffers(1080, true, true, openPolicy())
+	if unknown[2].SameAsOriginal {
+		t.Fatal("guessed unknown bitrate")
 	}
 }
 
@@ -132,11 +98,11 @@ func TestQualityOffersRevisionFencesSelection(t *testing.T) {
 	if _, ok := SelectedRung(rungs, "nonsense"); ok {
 		t.Fatal("unknown rung accepted")
 	}
-	if _, ok := SelectedRung(QualityOffers(1080, true, false, policy), "720p"); ok {
+	if _, ok := SelectedRung(QualityOffers(1080, true, false, policy), "720p-high"); ok {
 		t.Fatal("disabled rung accepted")
 	}
 	rung, ok := SelectedRung(rungs, "")
-	if !ok || rung.ID != "auto" {
+	if !ok || rung.ID != "automatic" {
 		t.Fatal("empty selection did not default to automatic", rung)
 	}
 }
@@ -146,7 +112,7 @@ func TestQualityTargetNarrowsToTheStricterCeiling(t *testing.T) {
 	owner.MaxVideoHeight, owner.MaxVideoBitrateBPS, owner.MaxAudioBitrateBPS = 720, 3_000_000, 128_000
 	lane := ResolveDeliveryPolicy(nil, NetworkRemote, LocalityRemote, "cellular", owner)
 	// A rung asking for more than the lane allows is narrowed to the lane.
-	wide := QualityRung{ID: "1080p", Kind: QualityFixed, TargetDisplayHeight: 1080, MaxVideoBitrateBPS: 8_000_000, MaxAudioBitrateBPS: 192_000}.Target(lane, 2160)
+	wide := QualityRung{ID: "1080p-low", Kind: QualityFixed, TargetDisplayHeight: 1080, MaxVideoBitrateBPS: 8_000_000, MaxAudioBitrateBPS: 192_000}.Target(lane, 2160)
 	if wide.MaxVideoHeight != 720 || wide.MaxVideoBitrateBPS != 3_000_000 || wide.MaxAudioBitrateBPS != 128_000 {
 		t.Fatal("rung was not narrowed by the lane", wide)
 	}
@@ -156,8 +122,8 @@ func TestQualityTargetNarrowsToTheStricterCeiling(t *testing.T) {
 		t.Fatal("lane widened a narrower rung", narrow)
 	}
 	// Original carries no ceilings, and automatic carries the lane's.
-	if original := (QualityRung{ID: "original", Kind: QualityOriginal}).Target(lane, 2160); original.MaxVideoBitrateBPS != 0 || original.MaxVideoHeight != 0 {
-		t.Fatal("original rung acquired ceilings", original)
+	if original := (QualityRung{ID: "original", Kind: QualityOriginal}).Target(lane, 2160); original.MaxVideoBitrateBPS != 3_000_000 || original.MaxVideoHeight != 720 {
+		t.Fatal("original ignored the mandatory lane ceiling", original)
 	}
 	if auto := autoTarget(lane, 2160); auto.MaxVideoHeight != 720 || auto.MaxVideoBitrateBPS != 3_000_000 {
 		t.Fatal("automatic rung did not take the lane ceiling", auto)
@@ -166,13 +132,13 @@ func TestQualityTargetNarrowsToTheStricterCeiling(t *testing.T) {
 	if capped := autoTarget(openPolicy(), 480); capped.MaxVideoHeight != 0 {
 		t.Fatal("unclamped lane invented a height", capped)
 	}
-	if capped := (QualityRung{ID: "1080p", Kind: QualityFixed, TargetDisplayHeight: 1080}).Target(openPolicy(), 480); capped.MaxVideoHeight != 480 {
+	if capped := (QualityRung{ID: "1080p-low", Kind: QualityFixed, TargetDisplayHeight: 1080}).Target(openPolicy(), 480); capped.MaxVideoHeight != 480 {
 		t.Fatal("target exceeded the source height", capped)
 	}
 }
 
 func TestQualitySelectionDomain(t *testing.T) {
-	if !validQualitySelection("auto") || !validQualitySelection("original") || !validQualitySelection("1080p") {
+	if !validQualitySelection("automatic") || !validQualitySelection("original") || !validQualitySelection("1080p-low") {
 		t.Fatal("published rung rejected")
 	}
 	if validQualitySelection("") || validQualitySelection("4320p") || validQualitySelection("../auto") {

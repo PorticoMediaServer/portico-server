@@ -4,7 +4,7 @@ import {DownloadsService} from '../src/downloads-service.ts';
 
 const sha = 'a'.repeat(64);
 const preparation = (over: Record<string, unknown> = {}): any => ({
-  id: 'prep', itemId: 'item', libraryId: 'lib', profileId: 'profile', quality: '1080p', origin: 'item',
+  id: 'prep', itemId: 'item', libraryId: 'lib', profileId: 'profile', quality: '1080p-low', origin: 'item',
   title: {kind: 'movie', title: 'Film', onServer: true},
   batchId: 'batch', state: 'ready', reason: '',
   artifact: {kind: 'prepared', ref: 'version', sha256: sha, bytes: 4096, estimated: false, container: 'mp4', contentType: 'video/mp4', fileName: 'prep.mp4'},

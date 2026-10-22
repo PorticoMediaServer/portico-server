@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"portico.local/server/internal/decoder"
+	"portico.local/server/internal/qualityladder"
 	"strings"
 	"sync"
 	"time"
@@ -79,13 +80,11 @@ type Preset struct {
 // Presets is the server's ladder. It is server policy, published rather than
 // inferred by a client.
 func Presets() []Preset {
-	return []Preset{
-		{"2160p", "4K", 2160, 40000, 384},
-		{"1080p", "1080p", 1080, 10000, 256},
-		{"720p", "720p", 720, 4000, 192},
-		{"480p", "480p", 480, 1500, 128},
-		{"360p", "360p", 360, 720, 96},
+	out := []Preset{}
+	for _, p := range qualityladder.Menu() {
+		out = append(out, Preset{ID: p.ID, Label: p.Label, Height: p.Height, VideoKbps: p.VideoBitrateBPS / 1000, AudioKbps: p.MaxAudioBitrateBPS / 1000})
 	}
+	return out
 }
 
 type Dependency struct {

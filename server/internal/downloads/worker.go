@@ -428,7 +428,7 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 	if quality != QualityOriginal {
 		if s.optimizer != nil && principal.Role == "owner" && stored != "" && !requested {
 			rung, ok := ladderRung(quality)
-			if !ok {
+			if !ok && recipeID == "" {
 				return out, ErrInput
 			}
 			recipe := recipeID
@@ -506,7 +506,7 @@ func (s *Service) settle(ctx context.Context, tx *sql.Tx, id string, now int64) 
 func (s *Service) advanceOptimized(ctx context.Context, gatedArg *dbwork.Write, id, quality, recipe string, found source, now int64) error {
 	tx := gatedArg.Tx()
 	rung, ok := ladderRung(quality)
-	if !ok {
+	if !ok && recipe == "" {
 		return terminal(ctx, gatedArg, id, StateFailed, ReasonFailed, now)
 	}
 	// The recipe chosen for the device when the download was asked for.

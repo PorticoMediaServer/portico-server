@@ -193,7 +193,7 @@ func TestConvertedAudioSampleRateIsStoredWithThePlan(t *testing.T) {
 	updateCatalogAsset(t, db, asset, func(a *compactcatalog.Asset) { a.Container, a.AudioCodec = "mkv", "truehd" })
 	mustAudioExec(t, db, `INSERT INTO asset_stream_facts(asset_id,revision,size,modified_ns,fingerprint,detail_version) VALUES(?,1,1,1,'test',?)`, asset, assets.StreamDetailVersion)
 	mustAudioExec(t, db, `INSERT INTO asset_streams(asset_id,stream_index,type,codec,language,title,channels,channel_layout,is_default,is_forced,detail_json) VALUES(?,0,'video','h264','','',0,'',1,0,'{"width":640,"height":360,"bitDepth":8}'),(?,1,'audio','truehd','eng','',6,'5.1',1,0,'{"sampleRate":96000}')`, asset, asset)
-	session, err := s.Create(p, item, "auto", "high-rate")
+	session, err := s.Create(p, item, "automatic", "high-rate")
 	if err != nil {
 		t.Fatal(err)
 	}

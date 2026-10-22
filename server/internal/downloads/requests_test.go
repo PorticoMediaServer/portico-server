@@ -101,7 +101,7 @@ func TestContainerRequestRestartIdempotencyAndPolicies(t *testing.T) {
 	if e != nil || replay.RequestID != first.RequestID || replay.Total != 43 || !replay.TotalKnown {
 		t.Fatal(replay, e)
 	}
-	req.Quality = "720p"
+	req.Quality = "720p-high"
 	if _, e = h.service.SubmitContainer(ctx, h.viewer, req); !errors.Is(e, ErrRequestConflict) {
 		t.Fatal("altered replay", e)
 	}
@@ -197,7 +197,7 @@ func TestContainerRequestSelectionAndAuthorityChanges(t *testing.T) {
 		t.Fatal(out, e)
 	}
 	// A library that never holds still is read through anyway.
-	busy, e := h.service.SubmitContainer(ctx, h.viewer, ContainerRequest{OperationID: "busy", Target: ContainerTarget{Kind: "show", ID: h.show}, DeviceID: "device", Quality: "720p", Policy: EpisodePolicy{Episodes: "all"}})
+	busy, e := h.service.SubmitContainer(ctx, h.viewer, ContainerRequest{OperationID: "busy", Target: ContainerTarget{Kind: "show", ID: h.show}, DeviceID: "device", Quality: "720p-high", Policy: EpisodePolicy{Episodes: "all"}})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -429,7 +429,7 @@ func TestContainerRequestKindsAndStorageRefusal(t *testing.T) {
 		t.Fatal(e)
 	}
 	req := newContainerRequest("no-space", h.show)
-	req.Quality = "720p"
+	req.Quality = "720p-high"
 	r, e := h.service.SubmitContainer(ctx, h.viewer, req)
 	if e != nil {
 		t.Fatal(e)
@@ -463,7 +463,7 @@ func TestDownloadOptimizationIsDeferredUntilWorkerAdmission(t *testing.T) {
 	optimizer := &requestOptimizer{}
 	h.service.optimizer = optimizer
 	ctx := context.Background()
-	out, e := h.service.Submit(ctx, h.viewer, Request{OperationID: "optimizer", MediaID: h.itemIDs["ep-0001"], Quality: "720p"}, nil)
+	out, e := h.service.Submit(ctx, h.viewer, Request{OperationID: "optimizer", MediaID: h.itemIDs["ep-0001"], Quality: "720p-high"}, nil)
 	if e != nil {
 		t.Fatal(e)
 	}

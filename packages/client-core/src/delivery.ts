@@ -1,3 +1,4 @@
+import {canonicalQualityLadder} from '../../contracts/src/types.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 /** Server-authored delivery policy and per-session conversion diagnostics.
  *
@@ -31,7 +32,7 @@ export type ResolvedDeliveryPolicy=Readonly<{
 
 export type QualityRungKind='automatic'|'original'|'fixed';
 export type QualityRung=Readonly<{
- id:string;kind:QualityRungKind;label:string;enabled:boolean;reason?:string;
+ id:string;kind:QualityRungKind;label:string;enabled:boolean;reason?:string;sameAsOriginal?:boolean;dataGBPerHour?:number;
  maxVideoBitrateBps?:number;maxAudioBitrateBps?:number;targetDisplayHeight?:number;
 }>;
 
@@ -124,7 +125,7 @@ export function parseQualityRung(raw:unknown):QualityRung{
  if(raw.reason!==undefined&&!text(raw.reason,64))invalid();
  if(raw.enabled&&raw.reason!==undefined&&raw.reason!=='')invalid();
  return Object.freeze({
-  id:raw.id,kind,label:raw.label,enabled:raw.enabled,
+  id:raw.id,kind,label:raw.label,enabled:raw.enabled,sameAsOriginal:raw.sameAsOriginal===true,...(typeof raw.dataGBPerHour==='number'&&Number.isFinite(raw.dataGBPerHour)&&raw.dataGBPerHour>=0?{dataGBPerHour:raw.dataGBPerHour}:{}),
   ...(raw.reason===undefined||raw.reason===''?{}:{reason:raw.reason as string}),
   ...(raw.maxVideoBitrateBps===undefined?{}:{maxVideoBitrateBps:raw.maxVideoBitrateBps as number}),
   ...(raw.maxAudioBitrateBps===undefined?{}:{maxAudioBitrateBps:raw.maxAudioBitrateBps as number}),
@@ -136,7 +137,7 @@ export function parseQualityRung(raw:unknown):QualityRung{
 export function parseQualityRungs(raw:unknown):readonly QualityRung[]{
  const rungs=list(raw,16).map(parseQualityRung);
  if(rungs.length===0)return Object.freeze(rungs);
- if(rungs.filter(r=>r.kind==='automatic').length!==1||rungs[0].kind!=='automatic')invalid();
+ if(rungs.filter(r=>r.kind==='automatic').length!==1||rungs[0].kind!=='original'||rungs[1]?.kind!=='automatic')invalid();
  if(new Set(rungs.map(r=>r.id)).size!==rungs.length)invalid();
  return Object.freeze(rungs);
 }
@@ -231,14 +232,15 @@ export function parseSessionDelivery(raw:unknown):SessionDelivery{
 }
 
 /** The GET /v1/playback/delivery-policy body. */
-export type DeliveryPolicyDocument=Readonly<{serverId:string;policy:ResolvedDeliveryPolicy;ladder:readonly Readonly<{id:string;label:string;targetDisplayHeight:number;maxVideoBitrateBps:number;maxAudioBitrateBps:number}>[]}>;
+export type DeliveryPolicyDocument=Readonly<{serverId:string;policy:ResolvedDeliveryPolicy;ladder:readonly Readonly<{id:string;label:string;targetDisplayHeight:number;maxVideoBitrateBps:number;maxAudioBitrateBps:number;dataGBPerHour:number}>[]}>;
 
 export function parseDeliveryPolicyDocument(raw:unknown):DeliveryPolicyDocument{
  if(!obj(raw)||!text(raw.serverId,256))invalid();
  const ladder=list(raw.ladder??[],16).map(v=>{
   if(!obj(v)||!text(v.id,64)||!text(v.label,128)||!count(v.targetDisplayHeight,4320)||!count(v.maxVideoBitrateBps)||!count(v.maxAudioBitrateBps))invalid();
-  return Object.freeze({id:v.id,label:v.label,targetDisplayHeight:v.targetDisplayHeight,maxVideoBitrateBps:v.maxVideoBitrateBps,maxAudioBitrateBps:v.maxAudioBitrateBps});
+  return Object.freeze({id:v.id,label:v.label,targetDisplayHeight:v.targetDisplayHeight,maxVideoBitrateBps:v.maxVideoBitrateBps,maxAudioBitrateBps:v.maxAudioBitrateBps,dataGBPerHour:typeof v.dataGBPerHour==='number'?v.dataGBPerHour:0});
  });
+ if(ladder.length!==canonicalQualityLadder.length||ladder.some((r,i)=>r.id!==canonicalQualityLadder[i].id||r.maxVideoBitrateBps!==canonicalQualityLadder[i].videoKbps*1000))invalid();
  return Object.freeze({serverId:raw.serverId,policy:parseResolvedDeliveryPolicy(raw.policy),ladder:Object.freeze(ladder)});
 }
 
