@@ -20,3 +20,7 @@ export function readSegmentClock(text: string): number | undefined {
   const colon = text.indexOf(':'), minutes = Number(text.slice(0, colon)), seconds = Number(text.slice(colon + 1));
   return Number.isFinite(minutes) && seconds < 60 ? minutes * 60 + seconds : undefined;
 }
+/** Display the actual profile only when it adds an identity beyond the username. */
+export function differingProfileName(profile: string, username?: string): string | undefined {
+  return profile.trim() && profile.trim().toLocaleLowerCase() !== username?.trim().toLocaleLowerCase() ? profile : undefined;
+}

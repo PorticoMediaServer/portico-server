@@ -8,6 +8,7 @@ import {Menu, MenuItem, MenuSeparator} from '../overlays/Popover';
 import type {OverlayChange} from '../overlays/types';
 import type {ShellTranslate} from './ServerIdentity';
 import {ShellScrim} from './ShellScrim';
+import {differingProfileName} from './model';
 import styles from './account.module.css';
 
 const tDefault = createI18n().t;
@@ -16,7 +17,8 @@ export type ProfileAvatarSize = 22 | 30 | 32 | 34 | 48 | 54 | 84 | 168;
 export type ProfileIdentity = Readonly<{id: string; name: string; username?: string; initial: string; art?: ProfileTone; pinRequired?: boolean}>;
 /** A profile label is never promoted into a username. */
 export function IdentityName({person}: {person: Pick<ProfileIdentity, 'name' | 'username'>}) {
-  return <>{person.username ?? person.name}{person.username && person.name !== person.username && <span className={styles.identityProfile}>{person.name}</span>}</>;
+  const profile = differingProfileName(person.name, person.username);
+  return <>{person.username || person.name}{person.username && profile && <span className={styles.identityProfile}>{profile}</span>}</>;
 }
 export type ProfileAvatarProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & {
   initial: string; name: string; art?: ProfileTone; size?: ProfileAvatarSize; appearance?: 'profile' | 'session';

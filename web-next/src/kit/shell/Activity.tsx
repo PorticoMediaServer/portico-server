@@ -6,7 +6,7 @@ import {Popover} from '../overlays/Popover';
 import type {OverlayChange} from '../overlays/types';
 import {ServerMark, type ServerRole, type ShellTranslate} from './ServerIdentity';
 import {ProfileAvatarFace, type ProfileTone} from './AccountSurfaces';
-import {counterProgress} from './model';
+import {counterProgress, differingProfileName} from './model';
 import {ShellScrim} from './ShellScrim';
 import styles from './activity.module.css';
 
@@ -68,9 +68,10 @@ export function ActivityPanel({viewerRole, view, t = tDefault}: {viewerRole: Ser
 function More({count, onClick, t}: {count: number; onClick: () => void; t: ShellTranslate}) { return <button type="button" className={styles.more} onClick={onClick}>{t('next.shell.moreDashboard', {count})}</button>; }
 function ActivityStream({stream, t}: {stream: ActivityStreamView; t: ShellTranslate}) {
   const fraction = timelineFacts(stream.durationMs, stream.positionMs).progress;
+  const profile = differingProfileName(stream.name, stream.username);
   return <button type="button" className={styles.work} data-stream="true" data-session-id={stream.id} onClick={stream.onOpen}><ProfileAvatarFace initial={stream.initial} art={stream.art} size={32} appearance="session" /><span className={styles.workText}>
     <span className={styles.line1}><b>{stream.identity?.title || stream.title || t('next.shell.playbackDetailsUnavailable')}</b>{stream.identity?.subtitle.map(part => <span key={part.id} data-code={part.id === 'episode-label' || undefined}>{part.text}</span>)}</span>
-    <span className={styles.line2}><em>{stream.username || t('next.shell.usernameUnavailable')}</em>{stream.name && stream.name !== stream.username && <span className={styles.profile}>{stream.name}</span>}{stream.device && <span className={styles.device}>{stream.device}</span>}</span>
+    <span className={styles.line2}><em>{stream.username || t('next.shell.usernameUnavailable')}</em>{profile && <span className={styles.profile}>{profile}</span>}{stream.device && <span className={styles.device}>{stream.device}</span>}</span>
     {(stream.problem || stream.conversion || stream.rate) && <span className={styles.streamFacts}>{stream.problem && <span data-problem="true">{stream.problem.text}</span>}{stream.conversion && <span><Icon name="i-swap" size={13} />{stream.conversion.text}</span>}{stream.rate && <span>{stream.rate.text}</span>}</span>}
     {fraction !== undefined && <span className={styles.progress} data-paused={stream.paused || undefined} aria-hidden="true"><span style={{transform: `scaleX(${fraction})`}} /></span>}
   </span></button>;
