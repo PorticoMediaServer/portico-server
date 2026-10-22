@@ -15,7 +15,7 @@ function useActionMenus(selection: SelectionCount, actions: SelectionActions) {
   const queue = useRef<HTMLButtonElement | null>(null), watched = useRef<HTMLButtonElement | null>(null), more = useRef<HTMLButtonElement | null>(null);
   const extra: MenuEntry[] = [];
   if (actions.onCollection) extra.push({id: 'collection', label: text('next.selection.addToCollection'), icon: 'i-layers', onSelect: () => { if (more.current) actions.onCollection!(more.current); }});
-  if (actions.onWatchedChange) extra.push({id: 'unwatched', label: text('next.selection.markUnwatched'), icon: 'i-eyeoff', onSelect: () => actions.onWatchedChange!(false)});
+  if (actions.onWatchedChange) extra.push({id: 'unwatched', label: text('next.selection.markUnwatched'), icon: 'i-eyeoff-selection', onSelect: () => actions.onWatchedChange!(false)});
   if (actions.onFavorite) extra.push({id: 'favorite', label: text('next.selection.favorite'), icon: 'i-heart', onSelect: actions.onFavorite});
   if (actions.onRemoveFromMyList) extra.push({id: 'remove', label: text('next.selection.removeFromMyList'), icon: 'i-x', onSelect: actions.onRemoveFromMyList});
   if (actions.onRefresh || actions.onDelete) {
@@ -30,7 +30,7 @@ function useActionMenus(selection: SelectionCount, actions: SelectionActions) {
     ] : []} />
     <Menu open={open === 'watched'} onOpenChange={value => setOpen(value ? 'watched' : null)} title={text('next.selection.watchMenu')} anchorRef={watched} width={260} placement="bottom-start" items={actions.onWatchedChange ? [
       {id: 'watched', label: text('next.selection.markWatched'), icon: 'i-check', onSelect: () => actions.onWatchedChange!(true)},
-      {id: 'unwatched', label: text('next.selection.markUnwatched'), icon: 'i-eyeoff', onSelect: () => actions.onWatchedChange!(false)},
+      {id: 'unwatched', label: text('next.selection.markUnwatched'), icon: 'i-eyeoff-selection', onSelect: () => actions.onWatchedChange!(false)},
     ] : []} />
     <Menu open={open === 'more'} onOpenChange={value => setOpen(value ? 'more' : null)} title={text('next.selection.moreActions')} anchorRef={more} width={330} placement="bottom-end" className={styles.selectionMenu} items={extra} />
   </>;
@@ -77,7 +77,7 @@ export function PhoneActionBar({selection, actions, episodeSelection = false, cl
   // Phone More includes the actions that have moved out of its five visible slots.
   const phoneExtra: MenuEntry[] = [];
   if (actions.onWatchedChange && !episodeSelection) phoneExtra.push({id: 'mark-watched', label: text('next.selection.markWatched'), icon: 'i-check', onSelect: () => actions.onWatchedChange!(true)});
-  if (actions.onWatchedChange) phoneExtra.push({id: 'mark-unwatched', label: text('next.selection.markUnwatched'), icon: 'i-eyeoff', onSelect: () => actions.onWatchedChange!(false)});
+  if (actions.onWatchedChange) phoneExtra.push({id: 'mark-unwatched', label: text('next.selection.markUnwatched'), icon: 'i-eyeoff-selection', onSelect: () => actions.onWatchedChange!(false)});
   if (episodeSelection && actions.onMyList) phoneExtra.push({id: 'my-list', label: text('next.selection.myList'), icon: 'i-plus', onSelect: actions.onMyList});
   phoneExtra.push(...menu.extra.filter(item => item.id !== 'unwatched'));
   if (actions.onEdit) {
