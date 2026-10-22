@@ -4,6 +4,8 @@
 .shell[data-desktop='true'][data-has-dock='true'] { padding-bottom: 92px; }
 .shell[data-navigation='rail'], .shell[data-navigation='sidebar'] { --shell-tab-height: 0px; --shell-gutter: 24px; --shell-nav-width: 88px; padding-left: var(--shell-nav-width); padding-bottom: 0; }
 .shell[data-navigation='sidebar'] { --shell-nav-width: 224px; --shell-gutter: 32px; }
+.shell[data-navigation='tabs'] :global([data-home-document]:has([data-with-hero='false'])) { padding-top: 56px; }
+.shell[data-navigation='topbar'] :global([data-home-document]:has([data-with-hero='false'])) { padding-top: 76px; }
 .shell[data-navigation='rail'][data-has-dock='true'], .shell[data-navigation='sidebar'][data-has-dock='true'] { padding-bottom: 92px; }
 .rail { position: fixed; inset: 0 auto 0 0; width: var(--shell-nav-width); z-index: var(--layer-navigation); display: flex; flex-direction: column; padding: max(16px, env(safe-area-inset-top, 0px)) 8px max(16px, env(safe-area-inset-bottom, 0px)); background: var(--color-ink); border-right: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
 .railDestinations { min-height: 0; overflow-y: auto; flex: 1; }

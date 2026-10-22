@@ -43,6 +43,8 @@ export async function checkSizeShell(page, origin, onCase = async () => {}) {
     assert.equal(result.homeCount,1); assert.equal(result.videoCount,1);
     const dockLeft=await page.locator('[data-shell-dock]').evaluate(e=>e.getBoundingClientRect().left);
     assert.equal(dockLeft,navigation==='rail'?96:navigation==='tabs'?8:0);
+    const firstRowTop=await page.locator('[data-home-document] section').first().evaluate(e=>e.getBoundingClientRect().top);
+    if(navigation==='tabs'||navigation==='topbar') assert.ok(firstRowTop>=(navigation==='tabs'?56:76),'no-spotlight Home must clear fixed navigation');
     const nav = page.getByRole('navigation', {name:'Main',exact:true});
     assert.equal(await nav.getByRole('link',{name:'Home',exact:true}).getAttribute('aria-current'),'page');
     if (navigation === 'rail') {
