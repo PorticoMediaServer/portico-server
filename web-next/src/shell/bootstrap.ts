@@ -43,7 +43,7 @@ export function sameShellAuthority(a: LocalSession, b: LocalSession): boolean {
   return a.sessionFamilyId === b.sessionFamilyId && (['serverId', 'authority', 'accountId', 'profileId', 'role'] as const).every(key => a.viewer[key] === b.viewer[key]);
 }
 
-type ShellAccount = Pick<ShellIdentity, 'profileName' | 'profileArt' | 'primaryProfile' | 'profiles' | 'canManageProfiles' | 'accountFacts'>;
+type ShellAccount = Pick<ShellIdentity, 'username' | 'profileName' | 'profileArt' | 'primaryProfile' | 'profiles' | 'canManageProfiles' | 'accountFacts'>;
 /** Synchronize through the public readiness API without renewing healthy local playback. */
 export async function hostedShellProfile(service: Pick<CredentialSessionService, 'synchronize' | 'getSnapshot'>, viewer: Pick<LocalSession['viewer'], 'accountId' | 'profileId'>): Promise<ShellAccount> {
   await service.synchronize();
@@ -51,25 +51,25 @@ export async function hostedShellProfile(service: Pick<CredentialSessionService,
   if (!current || current.account.id !== viewer.accountId) throw new Error('The selected Portico Account profile is unavailable.');
   const profile = current.profiles.find(candidate => candidate.id === viewer.profileId);
   if (!profile) throw new Error('The selected Portico Account profile is unavailable.');
-  return {profileName: profile.name, profiles: current.profiles.map(value => ({id: value.id, name: value.name, initial: Array.from(value.name.trim())[0] ?? ''})),
-    canManageProfiles: false, accountFacts: [{id: 'account', text: current.account.username, role: 'identity'}]};
+  return {username: current.account.username, profileName: profile.name, profiles: current.profiles.map(value => ({id: value.id, name: value.name, initial: Array.from(value.name.trim())[0] ?? ''})),
+    canManageProfiles: false, accountFacts: []};
 }
-async function currentProfile(api: HttpLocalApi, session: LocalSession, signal: AbortSignal): Promise<ShellAccount> {
+export async function currentShellProfile(api: HttpLocalApi, session: LocalSession, signal: AbortSignal): Promise<ShellAccount> {
   const v = session.viewer;
   if (v.authority === 'local') {
     const snapshot = parseDirectSnapshot(await api.request(routePath('get_direct_account'), 'GET', undefined, signal), {authority: 'local', accountId: v.accountId, serverId: v.serverId}, true);
     const profile = snapshot.profiles.find(candidate => candidate.id === v.profileId);
     if (!profile) throw new Error('The selected profile is no longer present.');
-    return {profileName: profile.name, profileArt: profile.art, primaryProfile: profile.primary, canManageProfiles: snapshot.canManage,
+    return {username: snapshot.account.username, profileName: profile.name, profileArt: profile.art, primaryProfile: profile.primary, canManageProfiles: snapshot.canManage,
       profiles: snapshot.profiles.map(value => ({id: value.id, name: value.name, initial: Array.from(value.name.trim())[0] ?? '', art: value.art, pinRequired: value.pinRequired})),
-      accountFacts: [{id: 'account', text: snapshot.account.username, role: 'identity'}]};
+      accountFacts: []};
   }
   // Existing Portico Account bootstrap owns the account credential and its genuine names.
   return hostedShellProfile(browserAccount().service, v);
 }
 async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<ShellFacts> {
   const [libraries, profile, settings, system, guide] = await Promise.all([
-    api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList), currentProfile(api, session, signal), preferences.preferences('web'), api.request<SystemInfo>(routePath('get_system'), 'GET', undefined, signal),
+    api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList), currentShellProfile(api, session, signal), preferences.preferences('web'), api.request<SystemInfo>(routePath('get_system'), 'GET', undefined, signal),
     fetchGuideSourceSummaries(api, session.viewer.serverId, Intl.DateTimeFormat().resolvedOptions().timeZone, signal).catch(error => {
       if ((error as {status?: number}).status === 403) return undefined;
       throw error;

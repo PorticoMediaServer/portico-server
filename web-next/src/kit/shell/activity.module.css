@@ -38,8 +38,11 @@
 .line2 > * { flex: none; }
 .line2 em { font-style: normal; font-weight: 700; color: var(--color-text-secondary); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .line2 .device { flex: 0 100000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.line2 .profile { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.streamFacts { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 2px; font-size: 13px; line-height: 18px; color: var(--color-text-tertiary); }
+.streamFacts > span { display: inline-flex; align-items: center; gap: 5px; }
+.streamFacts > span[data-problem] { color: var(--color-amber); }
 .line2 .file { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-text-secondary); }
-.line2 .conversion { display: inline-flex; align-items: center; gap: 5px; }
 .progress { display: block; height: 3px; margin-top: 9px; border-radius: 3px; background: color-mix(in srgb, var(--color-text) 12%, transparent); overflow: hidden; }
 .progress > span { display: block; width: 100%; height: 100%; border-radius: 3px; transform-origin: left; background: var(--color-accent-strong); transition: transform 600ms var(--ease-out); }
 .progress[data-paused] > span { background: var(--color-text-tertiary); }
@@ -57,6 +60,7 @@
 .quiet p { margin: 2px 0 0; font-size: 13px; line-height: 18px; color: var(--color-text-tertiary); }
 .dashboard:focus-visible, .work:focus-visible { outline: 3px solid var(--color-focus); outline-offset: -3px; }
 .more { display: block; margin: 0 20px 6px 66px; padding: 5px 0; border: 0; background: none; color: var(--color-accent-strong); font-size: 13px; font-weight: 700; cursor: pointer; }
+.more > span + span { margin-left: 12px; }
 .error { padding: 12px 20px; font-size: 14px; }
 .error p { margin: 0 0 10px; }
 .error button { height: 34px; padding: 0 12px; border: 0; border-radius: 9px; color: var(--color-text); background: color-mix(in srgb, var(--color-text) 14%, transparent); font-size: 13.5px; font-weight: 700; cursor: pointer; }

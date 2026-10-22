@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {counterProgress, readSegmentClock, segmentClock, zoomedSegmentRange} from '../../src/kit/shell/model.ts';
+import {counterProgress, differingProfileName, readSegmentClock, segmentClock, zoomedSegmentRange} from '../../src/kit/shell/model.ts';
+
+test('profile labels retain their actual value only when they differ from the username', () => {
+  assert.equal(differingProfileName('Demo', 'demo'), undefined);
+  assert.equal(differingProfileName(' Demo ', 'demo'), undefined);
+  assert.equal(differingProfileName('Family room', 'sam'), 'Family room');
+  assert.equal(differingProfileName('Sam', undefined), 'Sam');
+  assert.equal(differingProfileName(' ', undefined), undefined);
+});
 
 test('activity progress never guesses a denominator while discovery is incomplete', () => {
   assert.equal(counterProgress(412, undefined), undefined);
