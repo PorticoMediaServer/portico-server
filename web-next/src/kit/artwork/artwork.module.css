@@ -69,6 +69,8 @@
 .circle1 .image { transform: scale(var(--circle-cover-zoom, 1.22)); }
 .searchCircle.circle1 .image { transform: scale(var(--circle-cover-zoom, 1.75)); }
 .circle2 { grid-template-columns: 1fr 1fr; gap: 2px; background: var(--color-ink); }
+.circle2 .circleCell:first-child { grid-column: 2; grid-row: 1; }
+.circle2 .circleCell:last-child { grid-column: 1; grid-row: 1; }
 .circle2 .image { transform: scale(1.5); }
 .circle2 .circleCell:first-child .image { object-position: 30% 50%; }
 .circle2 .circleCell:last-child .image { object-position: 60% 50%; }
