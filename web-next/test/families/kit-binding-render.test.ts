@@ -52,3 +52,11 @@ test('the search SongRow owns its search geometry and omits the ordinal', () => 
   const list = renderToStaticMarkup(createElement(SongRow, {row, onPlay() {}}));
   assert.match(list, /songNumber/); assert.match(list, />42</);
 });
+
+test('the card owns one named selection control around a decorative circle', () => {
+  const html = renderToStaticMarkup(createElement(CardFrame, {model: {title: 'Actual title', caption: []}, kind: 'poster', onNavigate() {}, onMore() {}, selection: {active: true, checked: true, control: createElement('span', {'aria-hidden': true}, 'circle'), onToggle() {}, onExit() {}}, children: createElement('span', {}, 'Actual artwork')}));
+  assert.equal((html.match(/<button/g) ?? []).length, 3);
+  assert.match(html, /class="selection"[^>]*aria-label="[^"]*Actual title/);
+  assert.match(html, /class="selection"[^>]*aria-pressed="true"/);
+  assert.doesNotMatch(html, /<button[^>]*>(?:(?!<\/button>).)*<button/s);
+});

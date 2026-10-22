@@ -72,7 +72,7 @@ export function bulkSummary(schema: readonly RepairFieldSpec[], values: Readonly
   for (const spec of schema.filter(field => field.bulk)) {
     if (Object.hasOwn(draft.fields, spec.field)) {
       const value = draft.fields[spec.field]!, original = values[spec.field];
-      const same = spec.type === 'list' || !original ? undefined : original.values.find(entry => entry.value === value)?.count ?? (original.truncated ? undefined : 0);
+      const same = spec.type === 'list' || !original ? undefined : original.values.find(entry => entry.value === value)?.count ?? (original.truncated || original.state === 'shared' && original.value === undefined ? undefined : 0);
       rows.push({id: spec.field, text: selectionText('next.selection.scalarChange', {field: spec.label, value: value || selectionText('next.selection.notSet'), count}), changedCount: same === undefined ? undefined : count - same, changedTitles: original && !original.truncated && original.values.every(entry => entry.titles?.length === entry.count) ? original.values.filter(entry => entry.value !== value).flatMap(entry => entry.titles ?? []) : undefined});
     }
     const list = draft.lists[spec.field];

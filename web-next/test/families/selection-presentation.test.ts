@@ -113,3 +113,8 @@ test('picker success requires supplied insertion and failure facts rather than p
   assert.equal(pickerResultSucceeded({...result, inserted: 20, failed: 0, complete: false}), false);
   assert.equal(pickerResultSucceeded({...result, inserted: 20, failed: 0, failures: [{id: 'failure', title: 'Actual title', reason: 'Actual reason'}]}), false);
 });
+
+test('a shared preview with an absent value cannot claim a known prior difference count', () => {
+  const unknown: BulkFieldValues = {state: 'shared', distinctCount: 1, truncated: false, values: [], entries: []};
+  assert.equal(bulkSummary(schema, {year: unknown}, {...empty, fields: {year: '2020'}}, 4)[0]!.changedCount, undefined);
+});

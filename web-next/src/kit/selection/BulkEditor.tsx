@@ -18,7 +18,7 @@ function BulkField({spec, aggregate, count, draft, onChange, busy, phone, initia
   const value = edited ? draft.fields[spec.field]! : known ? aggregate.value! : '';
   const changed = edited || !!(list?.add.length || list?.remove.length);
   const addLabel = text(spec.field === 'genres' ? 'next.selection.addGenre' : spec.field === 'tags' ? 'next.selection.addTag' : spec.field === 'labels' ? 'next.selection.addLabel' : 'next.selection.addValue', {field: spec.label});
-  const emptyList = spec.type === 'list' && aggregate.entries.length === 0 && !list?.add.length;
+  const emptyList = spec.type === 'list' && aggregate.state === 'shared' && aggregate.value !== undefined && !aggregate.truncated && aggregate.entries.length === 0 && !list?.add.length;
   const scalarChange = (next: string) => {
     const fields = {...draft.fields};
     if (known && aggregate.value === next) delete fields[spec.field]; else fields[spec.field] = next;
