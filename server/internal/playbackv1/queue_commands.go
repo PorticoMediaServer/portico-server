@@ -1214,7 +1214,10 @@ func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req
 			if old.device == c.DeviceID {
 				start.ReplacesSessionID = old.id
 			}
-			session, _, err := s.Start(ctx, c, "advance-"+l.q.id[2:]+"-"+strconv.FormatInt(l.q.revision, 10), start)
+			// Advance continues this playback even when another device controls
+			// the queue and cannot replace the playing device's session.
+			startCtx := context.WithValue(ctx, queueContinuationKey{}, queueContinuation{queue: l.q.id, session: old.id})
+			session, _, err := s.Start(startCtx, c, "advance-"+l.q.id[2:]+"-"+strconv.FormatInt(l.q.revision, 10), start)
 			if err != nil {
 				return QueueReply{}, err
 			}
@@ -1297,9 +1300,7 @@ func (s *Service) startQueueEntry(ctx context.Context, c Caller, key, startDiges
 		stored.Quality = *req.Quality
 	}
 	if sessionKind == "vod" {
-		// The playback goes on: the tracks picked in the player for the entry
-		// before carry to this one.
-		stored.Carry = s.queueCarry(ctx, c, q.session)
+		stored.Carry = s.queueCarry(ctx, c, q, req.ReplacesSessionID)
 	}
 	view, preparing, err := s.startPresentation(ctx, c, key, startDigest, req, row{kind: sessionKind, role: "local", item: item, version: req.VersionID, queueID: q.id, entryID: req.Queue.EntryID}, stored)
 	if err != nil {
