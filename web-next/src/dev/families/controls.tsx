@@ -77,7 +77,7 @@ function AuthFieldCase() {
 function ViewSegmentedCase() {
   const [value, choose] = useState('guide');
   return <Surface><Segmented variant="view" aria-label={t('next.controls.layout')} value={value} onValueChange={choose} items={[
-    {value: 'list', label: t('next.controls.list'), icon: 'i-list'},
+    {value: 'list', label: t('next.controls.list'), icon: 'i-list-guide'},
     {value: 'guide', label: t('next.controls.guide'), icon: 'i-timeline'},
   ]} /><output data-selection={value} /></Surface>;
 }
