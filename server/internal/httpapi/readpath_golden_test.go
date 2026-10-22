@@ -490,8 +490,28 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 					t.Fatal(err)
 				}
 				rewritten["priority"] = 90
+				// Home now projects command offers onto each returned title. Keep
+				// the recorded membership, order, counts, paging and entry facts
+				// exact; add only independently specified offers for this member
+				// fixture (no bulk scheduler, owner tools or personal state).
+				for _, raw := range rewritten["entries"].([]any) {
+					entry := raw.(map[string]any)
+					actions := catalog.HomeActions{
+						Play: true, Queue: true, MyList: true, Favorite: true, Watched: true, Details: true,
+						Selection: catalog.HomeSelectionActions{Play: true, Queue: true},
+					}
+					switch entry["kind"] {
+					case "movie":
+						actions.Playlist, actions.Collection, actions.Rating = true, true, true
+					case "show":
+						actions.Selection.Favorite, actions.Selection.Watched = true, true
+					default:
+						t.Fatalf("%s: specify the member offers for golden kind %v", actual.Name, entry["kind"])
+					}
+					entry["homeActions"] = actions
+				}
 				encoded, _ := json.Marshal(rewritten)
-				want.Response = string(encoded)
+				want.Response = canonical(string(encoded))
 			}
 			if rowID == "continue" {
 				var rewritten map[string]any
