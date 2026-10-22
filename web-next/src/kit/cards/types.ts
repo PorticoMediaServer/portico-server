@@ -35,6 +35,7 @@ export type CardProps = Readonly<{
 }>;
 export type MediaCardProps = CardProps & Readonly<{
   artwork?: ArtworkSource;
+  arrivalDurationMs?: number;
   fallback?: ReactNode;
   position?: string;
   ambient?: AmbientArtSource;
