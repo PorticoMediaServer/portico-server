@@ -167,9 +167,9 @@ func TestActivitySummaryActualScanProgressAndTaskCaps(t *testing.T) {
 	}
 }
 func TestActivitySummaryRegistrationIsOwnerScoped(t *testing.T) {
-	d, _, _ := activitySummaryFixture(t)
-	r := apikit.NewContextual(d.v1Authorize, policyCatalogue())
-	if e := registerActivitySummary(r, d); e != nil {
+	deps, _, _ := activitySummaryFixture(t)
+	r := apikit.NewContextual(deps.v1Authorize, policyCatalogue())
+	if e := registerActivitySummary(r, deps); e != nil {
 		t.Fatal(e)
 	}
 	d := r.Definitions()[0]
