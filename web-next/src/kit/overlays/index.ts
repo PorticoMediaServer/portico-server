@@ -6,3 +6,4 @@ export {Toast, ToastHost, Banner, type OverlayAction, type ToastData, type Toast
 export type {OverlayDismissReason, OverlayChange, OverlaySurfaceProps, OverlayContentSlots} from './types';
 
 export {Tooltip, type TooltipProps} from './Tooltip';
+export {FileInfo, type FileInfoProps, type FileInfoAction} from './FileInfo';

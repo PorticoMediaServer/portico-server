@@ -1,11 +1,10 @@
 import {useLayoutEffect, useRef, useState, type ImgHTMLAttributes, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
-import {fileInfoModel, type FileFacts, type FileInfoModel} from '@portico/client-core/kit-model';
+import {fileInfoModel, type FileFacts} from '@portico/client-core/kit-model';
 import {overlaysFixtures} from '../../../../packages/i18n/src/catalog/en-US/next/dev/overlays-fixtures';
 import {defineGalleryFamily} from '../gallery-registry';
 import {Button, Segmented} from '../../kit/controls';
-import {OwnerTag, ServerMark} from '../../kit/shell/ServerIdentity';
-import {Banner, BottomSheet, Dialog, Menu, MenuGroup, MenuItem, MenuRow, MenuSeparator, Popover, SidePanel, Toast, ToastHost, Tooltip, type OverlayDismissReason, type ToastData} from '../../kit/overlays';
+import {Banner, BottomSheet, Dialog, FileInfo, Menu, MenuGroup, MenuItem, MenuRow, MenuSeparator, Popover, SidePanel, Toast, ToastHost, Tooltip, type OverlayDismissReason, type ToastData} from '../../kit/overlays';
 import styles from '../../kit/overlays/gallery.module.css';
 
 const t = defaultI18n.t;
@@ -18,32 +17,15 @@ const files: readonly FileFacts[] = [
   {id: 'version-2', available: true, width: 1920, height: 804, videoCodec: 'h264', bitRate: 12_000_000, container: 'mkv', sizeBytes: 14.6 * 1024 ** 3, durationSeconds: 9960,
     audio: [{id: 'a1', language: 'en', codec: 'eac3', channels: 6}, {id: 'a2', language: 'en', codec: 'aac', channels: 2}], subtitles: [{id: 's1', language: 'en'}, {id: 's2', language: 'es'}]},
 ];
-// Phone reference uses a different pair of files; these are isolated DEV facts from phone-detail@11–12.
+// Phone reference uses different files, supplied codec profiles and a supplied picked ID.
+// These explicit drawn DEV facts never imply a profile or selection for production files.
+const phonePickedFileId = 'version-1';
 const phoneFiles: readonly FileFacts[] = [
-  {id: 'version-1', available: true, width: 3840, height: 2160, videoCodec: 'hevc', dynamicRange: 'dolby_vision', bitDepth: 10, bitRate: 53_000_000, container: 'mkv', sizeBytes: 61.4 * 1024 ** 3, durationSeconds: 9960,
+  {id: 'version-1', available: true, width: 3840, height: 2160, videoCodec: 'hevc', videoProfile: 'Main 10', dynamicRange: 'dolby_vision', bitDepth: 10, bitRate: 53_000_000, container: 'mkv', sizeBytes: 61.4 * 1024 ** 3, durationSeconds: 9960,
     audio: [{id: 'a1', language: 'en', codec: 'truehd', channels: 8}, {id: 'a2', language: 'en', codec: 'ac3', channels: 6}], subtitles: [{id: 's1', language: 'en'}, {id: 's2', language: 'en', hearingImpaired: true}, {id: 's3', language: 'fr'}, {id: 's4', language: 'es'}]},
-  {id: 'version-2', available: true, width: 1920, height: 1080, videoCodec: 'h264', bitRate: 12_000_000, container: 'mp4', sizeBytes: 14.2 * 1024 ** 3, durationSeconds: 9960,
+  {id: 'version-2', available: true, width: 1920, height: 1080, videoCodec: 'h264', videoProfile: 'High', bitRate: 12_000_000, container: 'mp4', sizeBytes: 14.2 * 1024 ** 3, durationSeconds: 9960,
     audio: [{id: 'a1', language: 'en', codec: 'aac', channels: 6}], subtitles: []},
 ];
-function FileSlot({model, onManage, phone = false}: {model: FileInfoModel; onManage: (id: string) => void; phone?: boolean}) {
-  return <>{model.files.map((file, index) => {
-    const row = (id: string) => file.rows.find(value => value.id === id);
-    const technical = (phone ? ['video', 'bitrate'] : ['video', 'bitrate', 'container']).flatMap(id => row(id)?.parts ?? []);
-    return <section className={styles.version} key={file.id}>
-      <h3><span className={styles.versionBadge}>{t('next.kit.version', {number: index + 1})}</span>{file.version.name.filter(part => ['name', 'resolution', 'dynamic-range'].includes(part.id)).map(part => <span key={part.id}>{part.text}</span>)}</h3>
-      <dl>{row('resolution') && <><dt>{row('resolution')!.label}</dt><dd>{row('resolution')!.parts.map(part => <span key={part.id}>{part.text}</span>)}</dd></>}
-        {technical.length > 0 && <><dt>{t('next.kit.video')}</dt><dd>{technical.map(part => <span key={part.id}>{part.text}</span>)}</dd></>}
-        <dt>{t('next.kit.audio')}</dt><dd>{file.audio.map(track => <span key={track.id} className={styles.track}><span>{track.name.text}</span>{[...track.technical.filter(part => part.id === 'codec'), ...track.detail, ...track.technical.filter(part => part.id !== 'codec')].map(part => <span key={part.id}>{part.text}</span>)}</span>)}</dd>
-        {file.subtitles.length > 0 && <><dt>{t('next.kit.subtitles')}</dt><dd className={styles.subtitleList}>{file.subtitles.map((track, index) => <span key={track.id}>{index > 0 && t('next.overlays.trackSeparator')}{track.name.text}{track.detail.map(part => <span className={styles.trackDetail} key={part.id}>{part.text}</span>)}</span>)}</dd></>}
-        {['size', 'length', 'frame-rate'].map(id => { const value = row(id); return value && <span key={id} style={{display: 'contents'}}><dt>{value.label}</dt><dd>{value.parts.map(part => <span key={part.id}>{part.text}</span>)}</dd></span>; })}
-      </dl>
-    </section>;
-  })}<p className={styles.note}>{t(phone ? 'next.overlays.fileInfoNote' : 'next.overlays.fileInfoDesktopNote')}</p>{model.owner && <section className={styles.owner}>
-    <div className={styles.ownerHeading}><ServerMark size={34} /><div><h3>{model.owner.heading}<OwnerTag /></h3>{!phone && <small>{t('next.overlays.membersNeverSee')}</small>}</div></div>
-    <div className={styles.ownerLocations}>{model.owner.locations.map((location, index) => <div key={location.id} className={styles.location}><span className={styles.versionBadge}>{t('next.kit.version', {number: index + 1})}</span><span className={styles.path}>{location.path}</span>{location.actions.map(action => <Button variant="text" size="small" icon="i-trash" className={styles.deleteVersion} key={action.id} onClick={() => onManage(`${location.id}:${action.id}`)}>{action.label}</Button>)}</div>)}
-    <div className={styles.ownerActions}>{model.owner.actions.map(action => <Button variant="text" size="small" className={phone ? styles.phoneOwnerAction : undefined} icon={action.id === 'split-versions' ? 'i-split' : 'i-merge'} key={action.id} onClick={() => onManage(action.id)}>{action.label}</Button>)}</div></div><p className={styles.note}>{t('next.overlays.deleteVersionNote')}</p>
-  </section>}</>;
-}
 function useFixture() {
   const [open, setOpen] = useState(true), [event, setCurrentEvent] = useState(''), events = useRef<string[]>([]);
   const setEvent = (value: string) => { events.current.push(value); setCurrentEvent(value); };
@@ -101,16 +83,15 @@ function PhoneRecordingDialog() { return <RecordingDialog responsive />; }
 function PanelCase({owner = false}: {owner?: boolean}) {
   const fixture = useFixture(), model = fileInfoModel(files, owner ? {audience: 'owner', ownerFacts: {locations: files.map((file, index) => ({id: file.id, path: overlaysFixtures[index === 0 ? 'next.overlays.dev.desktopPathOne' : 'next.overlays.dev.desktopPathTwo'], canDelete: true})), canSplit: true, canMerge: false}, manageSurface: 'desktop'} : {audience: 'viewer'}, {t});
   return <Fixture event={fixture.event} events={fixture.events}><nav className={styles.toolbar}><Button size="small" onClick={() => fixture.setEvent('navigation')}>{t('next.overlays.done')}</Button><Button size="small" onClick={fixture.show}>{t('next.overlays.fileInfo')}</Button></nav>
-    <SidePanel open={fixture.open} onOpenChange={fixture.change} title={model.heading} description={<>{reference.film}<span className={styles.panelCount}>{t('next.overlays.versionCount', {count: model.files.length})}</span></>} width={560} topInset={76}><FileSlot model={model} onManage={fixture.setEvent} /></SidePanel></Fixture>;
+    <FileInfo open={fixture.open} onOpenChange={fixture.change} model={model} subject={reference.film} layout="desktop" onManage={({fileId, action}) => fixture.setEvent(fileId ? `${fileId}:${action}` : action)} testID="file-info-panel" /></Fixture>;
 }
 function Panel() { return <PanelCase />; }
 function OwnerPanel() { return <PanelCase owner />; }
 function SheetCase({full = false}: {full?: boolean}) {
   const fixture = useFixture(), [detent, setDetent] = useState(full ? 1 : 0), [scrollBody, setScrollBody] = useState<HTMLDivElement | null>(null);
-  const model = fileInfoModel(phoneFiles, full ? {audience: 'owner', ownerFacts: {locations: phoneFiles.map((file, index) => ({id: file.id, path: overlaysFixtures[index === 0 ? 'next.overlays.dev.phonePathOne' : 'next.overlays.dev.phonePathTwo'], canDelete: true})), canSplit: true, canMerge: true}, manageSurface: 'phone'} : {audience: 'viewer'}, {t});
+  const model = fileInfoModel(phoneFiles, full ? {audience: 'owner', ownerFacts: {locations: phoneFiles.map((file, index) => ({id: file.id, path: overlaysFixtures[index === 0 ? 'next.overlays.dev.phonePathOne' : 'next.overlays.dev.phonePathTwo'], canDelete: true})), canSplit: true, canMerge: true}, manageSurface: 'phone'} : {audience: 'viewer'}, {t}, 'phone');
   useLayoutEffect(() => { if (full && scrollBody && fixture.open) scrollBody.scrollTop = 296; }, [full, scrollBody, fixture.open]);
-  return <Fixture event={fixture.event} events={fixture.events}><Button size="compact" onClick={fixture.show}>{t('next.overlays.fileInfo')}</Button><BottomSheet open={fixture.open} onOpenChange={fixture.change} title={<>{model.heading}<small className={styles.menuYear}>{reference.film}</small></>} detents={[554, 740]} detent={detent} onDetentChange={setDetent} scrollRef={setScrollBody} testID="file-info-sheet">
-    <div className={styles.sheetFiles}><FileSlot model={model} onManage={fixture.setEvent} phone /></div></BottomSheet></Fixture>;
+  return <Fixture event={fixture.event} events={fixture.events}><Button size="compact" onClick={fixture.show}>{t('next.overlays.fileInfo')}</Button><FileInfo open={fixture.open} onOpenChange={fixture.change} model={model} subject={reference.film} layout="phone" pickedFileId={phonePickedFileId} onManage={({fileId, action}) => fixture.setEvent(fileId ? `${fileId}:${action}` : action)} detent={detent} onDetentChange={setDetent} scrollRef={setScrollBody} testID="file-info-sheet" /></Fixture>;
 }
 function HalfSheet() { return <SheetCase />; }
 function FullSheet() { return <SheetCase full />; }

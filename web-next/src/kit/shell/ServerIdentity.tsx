@@ -10,9 +10,10 @@ export type ShellTranslate = I18n['t'];
 const defaultTranslate = createI18n().t;
 
 /** The mark carries no authority; the caller supplies the authorized area's facts. */
-export function ServerMark({size = 26, context = 'standard', className, ...props}: Omit<HTMLAttributes<HTMLSpanElement>, 'children'> & {size?: 22 | 24 | 26 | 34 | 38; context?: 'standard' | 'editor'}) {
-  const iconSize = size === 22 ? 13 : size === 24 || size === 26 ? 15 : size === 34 ? context === 'editor' ? 20 : 18 : 19;
-  return <span {...props} className={[styles.mark, className].filter(Boolean).join(' ')} data-size={size} aria-hidden="true"><Icon name="i-server" size={iconSize} /></span>;
+export type ServerMarkProps = Omit<HTMLAttributes<HTMLSpanElement>, 'children'> & ({size?: 22 | 24 | 26 | 34 | 38; context?: 'standard' | 'editor'} | {size: 36; context: 'file-info-phone'});
+export function ServerMark({size = 26, context = 'standard', className, ...props}: ServerMarkProps) {
+  const iconSize = size === 36 ? 20 : size === 22 ? 13 : size === 24 || size === 26 ? 15 : size === 34 ? context === 'editor' ? 20 : 18 : 19;
+  return <span {...props} className={[styles.mark, className].filter(Boolean).join(' ')} data-size={size} data-context={context} aria-hidden="true"><Icon name="i-server" size={iconSize} /></span>;
 }
 
 /** An editor's authority is supplied by admission; a role alone never grants editing. */

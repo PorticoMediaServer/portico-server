@@ -1,5 +1,5 @@
 export {OwnerTag, ServerBand, ServerHeader, ServerMark, ServerAudienceTag, EditorHeader} from './ServerIdentity';
-export type {ServerRole, ServerAudience, ServerHeaderProps, OwnerTagProps, ShellTranslate, EditorAudience, ServerAudienceTagProps, EditorHeaderProps} from './ServerIdentity';
+export type {ServerRole, ServerAudience, ServerHeaderProps, ServerMarkProps, OwnerTagProps, ShellTranslate, EditorAudience, ServerAudienceTagProps, EditorHeaderProps} from './ServerIdentity';
 export {ProfileAvatar, ProfileAvatarFace, AccountMenu, NotificationItem, WatchTogetherPill} from './AccountSurfaces';
 export type {ProfileAvatarProps, ProfileAvatarSize, ProfileTone, ProfileIdentity, AccountMenuActions, AccountMenuProps, NotificationSubject, NotificationItemProps, TogetherParticipant} from './AccountSurfaces';
 export {SettingsNav, SettingsSheet, ShortcutTiles, LargeTitleHeader, PushedNavBar, SettingsRow, DefaultHint, ChoiceMatrix, ChoiceCards, LanguageList, SubtitlePreview, MatchText} from './SettingsSurfaces';
