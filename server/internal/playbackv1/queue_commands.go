@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"sort"
 	"strconv"
 
@@ -330,6 +331,13 @@ func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req Cre
 	if req.Owner != "" && req.Owner != "device" {
 		return QueueReply{}, &FieldError{Path: "owner"}
 	}
+	if err := validateRetainQueueIDs(req.RetainQueueIDs); err != nil {
+		return QueueReply{}, err
+	}
+	// Retention is a set. Copy it before sorting so the caller's request stays
+	// untouched and reordered retries have the same semantic digest.
+	req.RetainQueueIDs = append([]string(nil), req.RetainQueueIDs...)
+	sort.Strings(req.RetainQueueIDs)
 	segments := req.Segments
 	if req.Selector != nil {
 		if len(segments) > 0 {
@@ -360,6 +368,14 @@ func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req Cre
 		}
 	}
 	want := digest(req)
+	if len(req.RetainQueueIDs) > 0 {
+		// A saved receipt must not expose the previous viewer's queue/session
+		// after an account or profile change on the same device.
+		want = digest(struct {
+			Request                     CreateQueueRequest
+			Authority, Account, Profile string
+		}{req, c.Principal.Authority, c.Principal.AccountID, c.Principal.ProfileID})
+	}
 	// A replay is answered by its receipt (review P18).
 	if reply, ok, err := s.createReplay(ctx, c, key, want, req); ok || err != nil {
 		return reply, err
@@ -414,6 +430,7 @@ func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req Cre
 		return QueueReply{}, err
 	}
 	var l *layout
+	var canceled []string
 	err := dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassInteractive, func(ctx context.Context, tx *sql.Tx) error {
 		// The key is this command's: a concurrent retry that committed first
 		// wins, and this one answers as its replay (review P18).
@@ -424,11 +441,40 @@ func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req Cre
 		if n, err := claimed.RowsAffected(); err != nil || n == 0 {
 			return errCreateRaced
 		}
+		// Validate every exemption in this same write, before retiring anything.
+		// A profile's other devices and group queues are never candidates.
+		for _, id := range req.RetainQueueIDs {
+			old, err := loadQueue(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			if old.ownerKind != "device" || old.ownerID != c.DeviceID || !ownsQueue(c, old) {
+				return ErrNotFound
+			}
+		}
 		// Play replaces the device's current queue (ARCH-MEDIA-06). The old one
 		// is retired, not deleted here: its keys (up to millions) are removed
 		// in batches by the sweep, off this write (review P19).
-		if _, err := tx.ExecContext(ctx, `UPDATE queues_v1 SET owner_id='!'||owner_id WHERE owner_kind='device' AND owner_id=?`, c.DeviceID); err != nil {
+		retire := `UPDATE queues_v1 SET owner_id='!'||owner_id WHERE owner_kind='device' AND owner_id=?`
+		args := []any{c.DeviceID}
+		for _, id := range req.RetainQueueIDs {
+			retire += ` AND id<>?`
+			args = append(args, id)
+		}
+		if _, err := tx.ExecContext(ctx, retire, args...); err != nil {
 			return err
+		}
+		for _, id := range req.RetainQueueIDs {
+			// Restoration starts a fresh paused session. No old session or
+			// prepared transition may be continued through the parked queue.
+			ids, err := cancelPreparedTx(ctx, tx, "queue_id", id, "queue_changed")
+			if err != nil {
+				return err
+			}
+			canceled = append(canceled, ids...)
+			if _, err := tx.ExecContext(ctx, `UPDATE queues_v1 SET session_id='' WHERE id=?`, id); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.ExecContext(ctx, insertQueue, q.id, q.ownerKind, q.ownerID, q.authority, q.account, q.profile, q.revision, q.repeat, q.created, q.updated); err != nil {
 			return err
@@ -494,6 +540,7 @@ func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req Cre
 		return QueueReply{}, err
 	}
 	s.hub.wake()
+	s.stopMedia(ctx, canceled)
 	s.sweepQueues() // the queue this one replaced
 	for _, snap := range snaps {
 		if snap.partial {
@@ -502,6 +549,22 @@ func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req Cre
 		}
 	}
 	return s.finishCreate(ctx, c, key, req, q)
+}
+
+var retainedQueueIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+
+func validateRetainQueueIDs(ids []string) error {
+	if len(ids) > 3 {
+		return &FieldError{Path: "retainQueueIds"}
+	}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if !retainedQueueIDPattern.MatchString(id) || seen[id] {
+			return &FieldError{Path: "retainQueueIds"}
+		}
+		seen[id] = true
+	}
+	return nil
 }
 
 // errCreateRaced: another request with this create's key committed first.
