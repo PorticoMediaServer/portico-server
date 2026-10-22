@@ -295,6 +295,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "home_layout_conflict",
+    "status": 409,
+    "message": "Home changed on another device. Reload the layout before saving.",
+    "retry": "after_refresh"
+  },
+  {
     "code": "host_required",
     "status": 403,
     "message": "Only the group host may do that.",

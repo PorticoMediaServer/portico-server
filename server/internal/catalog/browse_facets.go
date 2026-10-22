@@ -43,8 +43,9 @@ type FacetRequest struct {
 	// person, playlist, collection, Home row, My List, Favorites or the
 	// history): values are counted over the list's own titles. Rows are the
 	// Home rows it names, resolved by the caller.
-	Group *BrowseNode
-	Rows  map[string][]int64
+	Group      *BrowseNode
+	Rows       map[string][]int64
+	RowSources map[string]HomeRowMembership
 }
 
 // facetSource describes how one facet is counted. Join is appended after

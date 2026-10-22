@@ -396,6 +396,7 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
+		"DELETE /v1/me/removed-titles/{id}": perHidden("DELETE", "/v1/me/removed-titles/ID", "", "item"),
 		"POST /v1/home/destination-picker": writeProbes(func(m *restrictionEnv) []idProbe {
 			var out []idProbe
 			for _, kind := range []string{"playlist", "collection"} {

@@ -188,7 +188,7 @@ func TestHomeFeaturedCollectionAndAudioComposition(t *testing.T) {
 	}
 }
 
-func TestHomeMergedRecentLargeFixtureKeepsWorkBoundAndExactTotal(t *testing.T) {
+func TestHomeMergedRecentLargeFixturePagesPastTheOldWorkBound(t *testing.T) {
 	db := homeFixture(t)
 	s := New(db)
 	c := catalogtest.New(t, db)
@@ -201,12 +201,12 @@ func TestHomeMergedRecentLargeFixtureKeepsWorkBoundAndExactTotal(t *testing.T) {
 	ctx, trace := dbwork.TraceQueryPlans(context.Background())
 	r := homeRequestFixture("movies", "tv")
 	row, err := s.WithContext(ctx).HomeSingleRow(r, "new_on_server", HomeRowPage{Limit: 7})
-	if err != nil || row.Total != 100 || len(row.Entries) != 7 {
+	if err != nil || row.Total != 246 || len(row.Entries) != 7 {
 		t.Fatalf("bounded union %+v %v", row, err)
 	}
 	for _, q := range trace() {
-		if strings.Contains(q, "catalog_browse_recent_works") && !strings.Contains(q, "LIMIT 256") {
-			t.Fatalf("unbounded recent index read: %s", q)
+		if strings.Contains(q, "SELECT id,ord FROM (") && !strings.Contains(q, "LIMIT 8") && !strings.Contains(q, "WHERE id IN(SELECT value FROM json_each(?))") {
+			t.Fatalf("row hydrated more than its bounded page: %s", q)
 		}
 	}
 }
@@ -341,5 +341,25 @@ func TestHomeBooksContinuationFiltersMusicBeforeItsPageLimit(t *testing.T) {
 	row, err := s.HomeSingleRow(r, "continue_books", HomeRowPage{Limit: 12})
 	if err != nil || row.Total != 1 || len(row.Entries) != 1 || row.Entries[0].Kind != "book" || len(row.Resumes) != 1 || row.Resumes[0].Target.ID != part.Public {
 		t.Fatalf("music consumed book candidate budget: %+v %v", row, err)
+	}
+}
+
+func TestHomeSpotlightDoesNotInventMissingOverview(t *testing.T) {
+	db := homeFixture(t)
+	c := catalogtest.New(t, db)
+	c.Exec(`UPDATE catalog_item_details SET overview=''`)
+	c.Exec(`UPDATE catalog_shows SET overview=''`)
+	c.Drain()
+	doc, err := New(db).HomeRows(homeRequestFixture("movies", "tv"))
+	if err != nil || len(doc.Spotlight) == 0 {
+		t.Fatal(doc, err)
+	}
+	for _, spot := range doc.Spotlight {
+		if spot.Entry.Overview != "" {
+			t.Fatal("missing source metadata was fabricated", spot.Entry)
+		}
+		if spot.Reason.Text.Code == "" {
+			t.Fatal("missing real selection reason", spot)
+		}
 	}
 }

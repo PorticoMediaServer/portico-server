@@ -7,6 +7,8 @@ import {firstOfEach, keepReadable, noteSkipped, oneOfOr} from './tolerant.ts';
 import type { ContentEntry, ContentHeading, ContentProjection } from './library-content.ts';
 export type SavedScope = Readonly<{ serverId: string; viewerId: string }>;
 export interface SavedApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
+export type SavedShape = 'posters' | 'squares';
+export type SavedShapeCounts = Readonly<{posters:number;squares:number}>;
 export type SavedListFilter = 'all' | 'unwatched' | 'inProgress';
 export type SavedListSort = 'title' | 'added' | 'updated' | 'year' | 'duration' | 'progress';
 export type HistoryPeriod = '24h' | '7d' | '30d' | '90d' | 'all';
@@ -17,16 +19,18 @@ export const playlistListFilters: readonly PlaylistListFilter[] = ['all', 'mine'
 const filterAllowed = (view: string, filter: string) => (view === 'playlists' ? (playlistListFilters as readonly string[]).includes(filter) : (view === 'watchlist' || view === 'favorites') && (savedListFilters as readonly string[]).includes(filter));
 export const savedListSorts: readonly SavedListSort[] = ['title', 'added', 'updated', 'year', 'duration', 'progress'];
 export const historyPeriods: readonly HistoryPeriod[] = ['24h', '7d', '30d', '90d', 'all'];
-export type SavedRoute = Readonly<{ view: 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history' | 'resource'; resourceId?:string; sort?: string; direction?: 'asc' | 'desc'; filter?: SavedListFilter | PlaylistListFilter; period?: HistoryPeriod } | { view: 'playlist'; playlistId: string }>;
+export type SavedRoute = Readonly<{ view: 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history' | 'resource'; resourceId?:string; sort?: string; direction?: 'asc' | 'desc'; filter?: SavedListFilter | PlaylistListFilter; shape?:SavedShape; period?: HistoryPeriod } | { view: 'playlist'; playlistId: string }>;
 /** Filters and sorts are named server policies. The client picks a published name; it never
  * evaluates the predicate or re-sorts the page it was given. */
-export function savedListPath(view: 'watchlist' | 'favorites', options: Readonly<{ filter?: SavedListFilter; sort?: SavedListSort; direction?: 'asc' | 'desc'; limit?: number; cursor?: string | null }> = {}): string {
+export function savedListPath(view: 'watchlist' | 'favorites', options: Readonly<{ filter?: SavedListFilter; shape?:SavedShape; sort?: SavedListSort; direction?: 'asc' | 'desc'; limit?: number; cursor?: string | null }> = {}): string {
   const limit = options.limit ?? 40;
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Saved lists page 1 to 100 rows.');
   if (options.filter !== undefined && !savedListFilters.includes(options.filter)) throw new Error('Unknown saved list filter.');
   if (options.sort !== undefined && !savedListSorts.includes(options.sort)) throw new Error('Unknown saved list sort.');
   if (options.direction !== undefined && options.direction !== 'asc' && options.direction !== 'desc') throw new Error('Unknown sort direction.');
   const params = new URLSearchParams({ view, limit: String(limit) });
+  if(options.shape!==undefined&&!['posters','squares'].includes(options.shape))throw new Error('Unknown Saved shape.');
+  if(options.shape)params.set('shape',options.shape);
   if (options.filter) params.set('filter', options.filter);
   if (options.sort) params.set('sort', options.sort);
   if (options.direction) params.set('direction', options.direction);
@@ -44,10 +48,11 @@ export function personalHistoryPath(options: Readonly<{ period?: HistoryPeriod; 
   return routePath("get_personal_history") + "?" + (params);
 }
 export type PlaylistOccurrence = Readonly<{ id: string; kind: 'playlist_entry'; hidden: true } | { id: string; kind: 'playlist_entry'; hidden: false; media: ContentEntry }>;
-export type PlaylistCard = Readonly<{ id: string; kind: 'playlist'; title: string; subtitle?: string; count?: number; navigation: Readonly<{ view: 'playlist'; entityId: string }> }>;
+export type PlaylistCard = Readonly<{ id: string; kind: 'playlist'; title: string; subtitle?: string; count?: number; artworkPaths?:readonly string[]; navigation: Readonly<{ view: 'playlist'; entityId: string }> }>;
 export type SavedEntry = ContentEntry | PlaylistOccurrence | PlaylistCard;
 export type SavedProjection = Readonly<Omit<ContentProjection, 'scope' | 'sections' | 'navigation'> & {
  scope: Readonly<{ serverId: string; libraryId: ''; libraryKind: 'mixed'; view: SavedRoute['view']; entityId: string; viewerFence: string }>;
+ shapeCounts?:SavedShapeCounts;
  playlistRevision?: number;
  actions?: readonly string[];
  navigation: readonly Readonly<{ id: string; labelKey: string; view: 'watchlist' | 'favorites' | 'playlists' }>[];
@@ -112,7 +117,8 @@ function route(v: SavedRoute): SavedRoute {
  }
  if (v.period !== undefined && !historyPeriods.includes(v.period)) throw new Error('Unknown history period.');
  if (v.period !== undefined && v.view !== 'history') throw new Error('Invalid Saved query.');
- return freeze({ view: v.view,...(v.resourceId?{resourceId:v.resourceId}:{}), ...(v.sort === undefined ? {} : { sort: v.sort }), ...(v.direction === undefined ? {} : { direction: v.direction }), ...(v.filter === undefined ? {} : { filter: v.filter }), ...(v.period === undefined ? {} : { period: v.period }) });
+ if(v.shape!==undefined&&(!['posters','squares'].includes(v.shape)||!['watchlist','favorites','collections','views'].includes(v.view)))throw new Error('Invalid Saved shape.');
+ return freeze({ view: v.view,...(v.shape?{shape:v.shape}:{}),...(v.resourceId?{resourceId:v.resourceId}:{}), ...(v.sort === undefined ? {} : { sort: v.sort }), ...(v.direction === undefined ? {} : { direction: v.direction }), ...(v.filter === undefined ? {} : { filter: v.filter }), ...(v.period === undefined ? {} : { period: v.period }) });
 }
 function media(v: unknown): ContentEntry {
  v=wireDurations(v,{duration:"durationMs",progressSeconds:"progressMs"});
@@ -139,7 +145,8 @@ function entry(v: unknown, view: SavedRoute['view']): SavedEntry {
  if (view === 'playlists') {
   if (!id(v.id) || v.kind !== 'playlist' || !prose(v.title, 200) || !record(v.navigation) || v.navigation.view !== 'playlist' || v.navigation.entityId !== v.id || v.playback !== undefined) invalid();
   if (v.subtitle !== undefined && !prose(v.subtitle, 4000, true) || v.count !== undefined && !int(v.count)) invalid();
-  return { id: v.id, kind: 'playlist', title: v.title, navigation: { view: 'playlist', entityId: v.id }, ...(v.subtitle === undefined ? {} : { subtitle: v.subtitle as string }), ...(v.count === undefined ? {} : { count: v.count as number }) };
+  const artworkPaths=v.artworkPaths===undefined?undefined:list(v.artworkPaths,4).map(path=>{if(!text(path,4096))invalid();return path;});
+  return { id: v.id, kind: 'playlist', title: v.title,...(artworkPaths?{artworkPaths:Object.freeze(artworkPaths)}:{}), navigation: { view: 'playlist', entityId: v.id }, ...(v.subtitle === undefined ? {} : { subtitle: v.subtitle as string }), ...(v.count === undefined ? {} : { count: v.count as number }) };
  }
  return media(v);
 }
@@ -175,7 +182,8 @@ function projection(v: unknown, bound: SavedScope, selected: SavedRoute): SavedP
  const actions = v.actions === undefined ? undefined : [...new Set(list(v.actions, 8).filter((a): a is string => selected.view === 'playlists' && a === 'create_playlist'))];
  if (actions !== undefined && actions.length !== (v.actions as unknown[]).length) noteSkipped('saved', 'actions', (v.actions as unknown[]).length - actions.length);
  if (selected.view === 'playlists' && actions === undefined) invalid();
- return freeze({ scope: { serverId: bound.serverId, libraryId: '', libraryKind: 'mixed', view: selected.view, entityId: s.entityId as string, viewerFence: s.viewerFence }, revision: { catalog: r.catalog, viewer: r.viewer }, heading: heading(v.heading), query: { sort: q.sort, direction: q.direction as string, category: q.category as string, q: '', limit: 40, searchMode: 'none' }, navigation, sorts, filters, sections, ...(actions === undefined ? {} : { actions }), ...(selected.view === 'playlist' ? { playlistRevision: v.playlistRevision as number } : {}), ...(v.empty === undefined ? {} : keepReadable('saved', 'empty', [v.empty], value => ({ empty: heading(value) }))[0]) });
+ const shapeCounts=v.shapeCounts===undefined?undefined:parseSavedShapeCounts(v.shapeCounts);
+ return freeze({...(shapeCounts?{shapeCounts}:{}), scope: { serverId: bound.serverId, libraryId: '', libraryKind: 'mixed', view: selected.view, entityId: s.entityId as string, viewerFence: s.viewerFence }, revision: { catalog: r.catalog, viewer: r.viewer }, heading: heading(v.heading), query: { sort: q.sort, direction: q.direction as string, category: q.category as string, q: '', limit: 40, searchMode: 'none' }, navigation, sorts, filters, sections, ...(actions === undefined ? {} : { actions }), ...(selected.view === 'playlist' ? { playlistRevision: v.playlistRevision as number } : {}), ...(v.empty === undefined ? {} : keepReadable('saved', 'empty', [v.empty], value => ({ empty: heading(value) }))[0]) });
 }
 function resource(v: unknown, bound: SavedScope, playlistId: string): PlaylistResource {
  if (!record(v) || v.serverId !== bound.serverId || !id(v.viewerFence) || v.id !== playlistId || !prose(v.name, 200) || !prose(v.summary, 4000, true) || !int(v.revision) || !['owner','editor','viewer'].includes(v.role as string) || !int(v.entryCount) || !record(v.limits)) invalid();
@@ -267,7 +275,7 @@ export class SavedService {
    const params = new URLSearchParams({ limit: '40' }); if (cursor) params.set('cursor', cursor);
    let path: string;
    if (selected.view === 'playlist') path = encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)});
-   else { path = routePath("get_saved_content"); params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if ('filter' in selected && selected.filter) params.set('filter', selected.filter); }
+   else { path = routePath("get_saved_content"); params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if('shape'in selected&&selected.shape)params.set('shape',selected.shape); if ('filter' in selected && selected.filter) params.set('filter', selected.filter); }
    const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(path + '?' + params, 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<RouteResponse<"get_playlists_id">>(encodedRoutePath("get_playlists_id", {"id": encodeURIComponent(selected.playlistId)}), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
    if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
    const parsed = projection(raw, bound, selected), playlist = selected.view === 'playlist' ? resource(rawResource, bound, selected.playlistId) : null;
@@ -301,7 +309,7 @@ export class SavedService {
   const pathOf = (cursor: string | null) => {
    const params = new URLSearchParams({ limit: String(SAVED_PAGE) }); if (cursor) params.set('cursor', cursor);
    if (selected.view === 'playlist') return encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)}) + '?' + params;
-   params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if ('filter' in selected && selected.filter) params.set('filter', selected.filter);
+   params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if('shape'in selected&&selected.shape)params.set('shape',selected.shape); if ('filter' in selected && selected.filter) params.set('filter', selected.filter);
    return routePath("get_saved_content") + '?' + params;
   };
   const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(pathOf(null), 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<RouteResponse<"get_playlists_id">>(encodedRoutePath("get_playlists_id", {"id": encodeURIComponent(selected.playlistId)}), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
@@ -372,7 +380,7 @@ export class SavedService {
     const params = new URLSearchParams({ limit: '40' }); if (cursor) params.set('cursor', cursor);
     let path: string;
     if (selected.view === 'playlist') path = encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)});
-    else { path = routePath("get_saved_content"); params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if ('filter' in selected && selected.filter) { if (!filterAllowed(selected.view, selected.filter)) throw new Error('Unknown saved list filter.'); params.set('filter', selected.filter); } }
+    else { path = routePath("get_saved_content"); params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if('shape'in selected&&selected.shape)params.set('shape',selected.shape); if ('filter' in selected && selected.filter) { if (!filterAllowed(selected.view, selected.filter)) throw new Error('Unknown saved list filter.'); params.set('filter', selected.filter); } }
     const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(path + '?' + params, 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<RouteResponse<"get_playlists_id">>(encodedRoutePath("get_playlists_id", {"id": encodeURIComponent(selected.playlistId)}), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
     if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
     const parsed = projection(raw, bound, selected), playlist = selected.view === 'playlist' ? resource(rawResource, bound, selected.playlistId) : null;
@@ -569,4 +577,29 @@ export class SavedService {
   try { return await Promise.race([operation, new Promise<never>((_, reject) => { listener = () => reject(new Failure('cancelled','Saved request cancelled.')); if (controller.signal.aborted) listener(); else controller.signal.addEventListener('abort', listener, { once: true }); timer = setTimeout(() => { reject(new Failure('timeout','Saved request timed out. Retry the same operation.',true)); controller.abort(); }, this.timeoutMs); })]); }
   finally { if (timer) clearTimeout(timer); if (listener) controller.signal.removeEventListener('abort', listener); this.controllers.delete(controller); }
  }
+}
+
+
+export function parseSavedShapeCounts(value:unknown):SavedShapeCounts {
+ if(!record(value)||!int(value.posters)||!int(value.squares))invalid();
+ return Object.freeze({posters:value.posters,squares:value.squares});
+}
+export type SavedLandingSummary=Readonly<{serverId:string;viewerFence:string;revision:Readonly<{catalog:number;viewer:number}>;myList:SavedShapeCounts;favorites:SavedShapeCounts;playlists:number;collections:number;savedViews:number}>;
+export async function fetchSavedSummary(api:SavedApi,bound:SavedScope,signal?:AbortSignal):Promise<SavedLandingSummary>{
+ const value:unknown=await api.request<RouteResponse<"get_me_saved_summary">>(routePath('get_me_saved_summary'),'GET',undefined,signal);
+ if(!record(value)||value.serverId!==bound.serverId||!id(value.viewerFence)||!record(value.revision)||!int(value.revision.catalog)||!int(value.revision.viewer)||!int(value.playlists)||!int(value.collections)||!int(value.savedViews))invalid();
+ return freeze({serverId:bound.serverId,viewerFence:value.viewerFence,revision:{catalog:value.revision.catalog,viewer:value.revision.viewer},myList:parseSavedShapeCounts(value.myList),favorites:parseSavedShapeCounts(value.favorites),playlists:value.playlists,collections:value.collections,savedViews:value.savedViews});
+}
+export type RemovedTitle=Readonly<{id:string;title:string;kind:string;posterUrl?:string;backdropUrl?:string;removedAt:string;canRemoveFromContinue:boolean}>;
+export async function fetchRemovedTitle(api:SavedApi,itemId:string,signal?:AbortSignal):Promise<RemovedTitle>{
+ if(!id(itemId))throw new Error('A removed title ID is required.');
+ const value:unknown=await api.request<RouteResponse<"get_me_removed_titles_id">>(encodedRoutePath('get_me_removed_titles_id',{id:encodeURIComponent(itemId)}),'GET',undefined,signal);
+ if(!record(value)||value.id!==itemId||!text(value.title,2048)||!['movie','episode','song','audiobook_file'].includes(String(value.kind))||!text(value.removedAt,128)||typeof value.canRemoveFromContinue!=='boolean')invalid();
+ for(const key of ['posterUrl','backdropUrl'])if(value[key]!==undefined&&!text(value[key],4096))invalid();
+ return freeze({id:itemId,title:value.title,kind:value.kind as string,removedAt:value.removedAt,canRemoveFromContinue:value.canRemoveFromContinue,...(typeof value.posterUrl==='string'?{posterUrl:value.posterUrl}:{}),...(typeof value.backdropUrl==='string'?{backdropUrl:value.backdropUrl}:{})});
+}
+export async function dismissRemovedTitle(api:SavedApi,itemId:string,signal?:AbortSignal):Promise<void>{
+ if(!id(itemId))throw new Error('A removed title ID is required.');
+ const value:unknown=await api.request<RouteResponse<"delete_me_removed_titles_id">>(encodedRoutePath('delete_me_removed_titles_id',{id:encodeURIComponent(itemId)}),'DELETE',undefined,signal);
+ if(!record(value)||value.removed!==true)invalid();
 }

@@ -583,8 +583,8 @@ func TestHomeRowPagingAnchorAfterPublication(t *testing.T) {
 		t.Fatal("changed membership accepted a stale cursor", e)
 	}
 	settleCompact(t, db)
-	if _, e = service.HomeSingleRow(request, "new_on_server", HomeRowPage{Limit: 2, Revision: "1:1"}); e != nil {
-		t.Fatal("a stale revision did not refresh quietly", e)
+	if _, e = service.HomeSingleRow(request, "new_on_server", HomeRowPage{Limit: 2, Revision: "1:1"}); !errors.Is(e, ErrStaleContinuation) {
+		t.Fatal("a stale revision did not require an explicit restart", e)
 	}
 }
 
@@ -798,7 +798,7 @@ func TestHomeContinueWalksStartedShowsInSlices(t *testing.T) {
 
 // ARCH-SRV-04: a Recently Added shelf walks the library newest first and stops
 // at homeRecentMaximum works; it never materialises the library.
-func TestHomeRecentShelfIsBoundedAndNewestFirst(t *testing.T) {
+func TestHomeRecentShelfPagesTheFullSourceNewestFirst(t *testing.T) {
 	db := homeFixture(t)
 	s := New(db)
 	c := catalogtest.New(t, db)
@@ -814,7 +814,7 @@ func TestHomeRecentShelfIsBoundedAndNewestFirst(t *testing.T) {
 	r := homeRequestFixture("movies")
 	settleCompact(t, db)
 	row, err := s.HomeSingleRow(r, "new_on_server", HomeRowPage{Limit: 12})
-	if err != nil || row.Total != homeRecentMaximum || row.Entries[0].ID != homeItem(t, db, "new150").Public || row.Entries[1].ID != homeItem(t, db, "new149").Public {
+	if err != nil || row.Total != 155 || row.Entries[0].ID != homeItem(t, db, "new150").Public || row.Entries[1].ID != homeItem(t, db, "new149").Public {
 		t.Fatalf("open shelf: total %d first %v: %v", row.Total, row.Entries[:2], err)
 	}
 	r.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"adult"}}

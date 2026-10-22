@@ -2344,6 +2344,9 @@ export const schemas = {
                 "refreshMetadata": {
                   "type": "boolean"
                 },
+                "removeFromContinue": {
+                  "type": "boolean"
+                },
                 "selection": {
                   "properties": {
                     "collection": {
@@ -2671,6 +2674,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -2876,6 +2882,9 @@ export const schemas = {
                 "new": {
                   "type": "boolean"
                 },
+                "origin": {
+                  "type": "string"
+                },
                 "overview": {
                   "type": "string"
                 },
@@ -2916,6 +2925,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -2996,6 +3008,16 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -3029,6 +3051,9 @@ export const schemas = {
             },
             "new": {
               "type": "boolean"
+            },
+            "origin": {
+              "type": "string"
             },
             "overview": {
               "type": "string"
@@ -3070,6 +3095,9 @@ export const schemas = {
             },
             "rating": {
               "type": "number"
+            },
+            "removed": {
+              "type": "boolean"
             },
             "resolution": {
               "type": "string"
@@ -3147,6 +3175,16 @@ export const schemas = {
               "type": "boolean"
             },
             "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "yearMax": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "yearMin": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
@@ -3549,6 +3587,9 @@ export const schemas = {
                 "refreshMetadata": {
                   "type": "boolean"
                 },
+                "removeFromContinue": {
+                  "type": "boolean"
+                },
                 "selection": {
                   "properties": {
                     "collection": {
@@ -3876,6 +3917,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -4081,6 +4125,9 @@ export const schemas = {
                 "new": {
                   "type": "boolean"
                 },
+                "origin": {
+                  "type": "string"
+                },
                 "overview": {
                   "type": "string"
                 },
@@ -4121,6 +4168,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -4201,6 +4251,16 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -4234,6 +4294,9 @@ export const schemas = {
             },
             "new": {
               "type": "boolean"
+            },
+            "origin": {
+              "type": "string"
             },
             "overview": {
               "type": "string"
@@ -4275,6 +4338,9 @@ export const schemas = {
             },
             "rating": {
               "type": "number"
+            },
+            "removed": {
+              "type": "boolean"
             },
             "resolution": {
               "type": "string"
@@ -4352,6 +4418,16 @@ export const schemas = {
               "type": "boolean"
             },
             "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "yearMax": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "yearMin": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
@@ -10943,6 +11019,22 @@ export const schemas = {
       "digest",
       "provenance",
       "createdAt"
+    ],
+    "type": "object"
+  },
+  "DeleteMeRemovedTitlesIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteMeRemovedTitlesIdResponse": {
+    "properties": {
+      "removed": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "removed"
     ],
     "type": "object"
   },
@@ -26371,6 +26463,9 @@ export const schemas = {
       "name": {
         "type": "string"
       },
+      "origin": {
+        "type": "string"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -26382,7 +26477,8 @@ export const schemas = {
       "libraryId",
       "name",
       "itemCount",
-      "revision"
+      "revision",
+      "origin"
     ],
     "type": "object"
   },
@@ -33328,6 +33424,27 @@ export const schemas = {
             "artworkShape": {
               "type": "string"
             },
+            "availabilityText": {
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "fallback": {
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "code",
+                "fallback"
+              ],
+              "type": "object"
+            },
             "hidden": {
               "type": "boolean"
             },
@@ -33525,6 +33642,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -33655,6 +33775,9 @@ export const schemas = {
                           "name": {
                             "type": "string"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "revision": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -33666,7 +33789,8 @@ export const schemas = {
                           "libraryId",
                           "name",
                           "itemCount",
-                          "revision"
+                          "revision",
+                          "origin"
                         ],
                         "type": "object"
                       },
@@ -33830,6 +33954,9 @@ export const schemas = {
                                   "type": "boolean"
                                 },
                                 "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "removeFromContinue": {
                                   "type": "boolean"
                                 },
                                 "selection": {
@@ -34159,6 +34286,9 @@ export const schemas = {
                                     "refreshMetadata": {
                                       "type": "boolean"
                                     },
+                                    "removeFromContinue": {
+                                      "type": "boolean"
+                                    },
                                     "selection": {
                                       "properties": {
                                         "collection": {
@@ -34364,6 +34494,9 @@ export const schemas = {
                                 "new": {
                                   "type": "boolean"
                                 },
+                                "origin": {
+                                  "type": "string"
+                                },
                                 "overview": {
                                   "type": "string"
                                 },
@@ -34404,6 +34537,9 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "removed": {
+                                  "type": "boolean"
                                 },
                                 "resolution": {
                                   "type": "string"
@@ -34484,6 +34620,16 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "yearMax": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "yearMin": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 }
                               },
                               "required": [
@@ -34517,6 +34663,9 @@ export const schemas = {
                             },
                             "new": {
                               "type": "boolean"
+                            },
+                            "origin": {
+                              "type": "string"
                             },
                             "overview": {
                               "type": "string"
@@ -34558,6 +34707,9 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "removed": {
+                              "type": "boolean"
                             },
                             "resolution": {
                               "type": "string"
@@ -34638,6 +34790,16 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "yearMax": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMin": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -34668,6 +34830,25 @@ export const schemas = {
                       false
                     ],
                     "type": "boolean"
+                  },
+                  "displayTargets": {
+                    "items": {
+                      "properties": {
+                        "entryId": {
+                          "type": "string"
+                        },
+                        "membershipId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "membershipId",
+                        "entryId"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 60,
+                    "type": "array"
                   },
                   "endpoint": {
                     "type": "string"
@@ -34821,6 +35002,9 @@ export const schemas = {
                               "type": "boolean"
                             },
                             "refreshMetadata": {
+                              "type": "boolean"
+                            },
+                            "removeFromContinue": {
                               "type": "boolean"
                             },
                             "selection": {
@@ -35150,6 +35334,9 @@ export const schemas = {
                                 "refreshMetadata": {
                                   "type": "boolean"
                                 },
+                                "removeFromContinue": {
+                                  "type": "boolean"
+                                },
                                 "selection": {
                                   "properties": {
                                     "collection": {
@@ -35355,6 +35542,9 @@ export const schemas = {
                             "new": {
                               "type": "boolean"
                             },
+                            "origin": {
+                              "type": "string"
+                            },
                             "overview": {
                               "type": "string"
                             },
@@ -35395,6 +35585,9 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "removed": {
+                              "type": "boolean"
                             },
                             "resolution": {
                               "type": "string"
@@ -35475,6 +35668,16 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "yearMax": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMin": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -35508,6 +35711,9 @@ export const schemas = {
                         },
                         "new": {
                           "type": "boolean"
+                        },
+                        "origin": {
+                          "type": "string"
                         },
                         "overview": {
                           "type": "string"
@@ -35549,6 +35755,9 @@ export const schemas = {
                         },
                         "rating": {
                           "type": "number"
+                        },
+                        "removed": {
+                          "type": "boolean"
                         },
                         "resolution": {
                           "type": "string"
@@ -35626,6 +35835,16 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "yearMax": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "yearMin": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
@@ -36291,6 +36510,9 @@ export const schemas = {
                                 "refreshMetadata": {
                                   "type": "boolean"
                                 },
+                                "removeFromContinue": {
+                                  "type": "boolean"
+                                },
                                 "selection": {
                                   "properties": {
                                     "collection": {
@@ -36618,6 +36840,9 @@ export const schemas = {
                                     "refreshMetadata": {
                                       "type": "boolean"
                                     },
+                                    "removeFromContinue": {
+                                      "type": "boolean"
+                                    },
                                     "selection": {
                                       "properties": {
                                         "collection": {
@@ -36823,6 +37048,9 @@ export const schemas = {
                                 "new": {
                                   "type": "boolean"
                                 },
+                                "origin": {
+                                  "type": "string"
+                                },
                                 "overview": {
                                   "type": "string"
                                 },
@@ -36863,6 +37091,9 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "removed": {
+                                  "type": "boolean"
                                 },
                                 "resolution": {
                                   "type": "string"
@@ -36943,6 +37174,16 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "yearMax": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "yearMin": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 }
                               },
                               "required": [
@@ -36976,6 +37217,9 @@ export const schemas = {
                             },
                             "new": {
                               "type": "boolean"
+                            },
+                            "origin": {
+                              "type": "string"
                             },
                             "overview": {
                               "type": "string"
@@ -37017,6 +37261,9 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "removed": {
+                              "type": "boolean"
                             },
                             "resolution": {
                               "type": "string"
@@ -37094,6 +37341,16 @@ export const schemas = {
                               "type": "boolean"
                             },
                             "year": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMax": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMin": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
@@ -37425,6 +37682,46 @@ export const schemas = {
                   },
                   "viewerFence": {
                     "type": "string"
+                  },
+                  "why": {
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "fallback": {
+                        "type": "string"
+                      },
+                      "params": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "fallback"
+                    ],
+                    "type": "object"
+                  },
+                  "whyTitles": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 3,
+                    "type": "array"
                   }
                 },
                 "required": [
@@ -37498,6 +37795,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "removeFromContinue": {
                       "type": "boolean"
                     },
                     "selection": {
@@ -37630,6 +37930,9 @@ export const schemas = {
                     "name": {
                       "type": "string"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -37641,7 +37944,8 @@ export const schemas = {
                     "libraryId",
                     "name",
                     "itemCount",
-                    "revision"
+                    "revision",
+                    "origin"
                   ],
                   "type": "object"
                 },
@@ -37805,6 +38109,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "removeFromContinue": {
                             "type": "boolean"
                           },
                           "selection": {
@@ -38134,6 +38441,9 @@ export const schemas = {
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -38339,6 +38649,9 @@ export const schemas = {
                           "new": {
                             "type": "boolean"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "overview": {
                             "type": "string"
                           },
@@ -38379,6 +38692,9 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -38459,6 +38775,16 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -38492,6 +38818,9 @@ export const schemas = {
                       },
                       "new": {
                         "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
                       },
                       "overview": {
                         "type": "string"
@@ -38533,6 +38862,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -38613,6 +38945,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -38640,6 +38982,25 @@ export const schemas = {
             },
             "deferred": {
               "type": "boolean"
+            },
+            "displayTargets": {
+              "items": {
+                "properties": {
+                  "entryId": {
+                    "type": "string"
+                  },
+                  "membershipId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "membershipId",
+                  "entryId"
+                ],
+                "type": "object"
+              },
+              "maxItems": 60,
+              "type": "array"
             },
             "endpoint": {
               "type": "string"
@@ -38793,6 +39154,9 @@ export const schemas = {
                         "type": "boolean"
                       },
                       "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "removeFromContinue": {
                         "type": "boolean"
                       },
                       "selection": {
@@ -39122,6 +39486,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -39327,6 +39694,9 @@ export const schemas = {
                       "new": {
                         "type": "boolean"
                       },
+                      "origin": {
+                        "type": "string"
+                      },
                       "overview": {
                         "type": "string"
                       },
@@ -39367,6 +39737,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -39447,6 +39820,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -39480,6 +39863,9 @@ export const schemas = {
                   },
                   "new": {
                     "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
                   },
                   "overview": {
                     "type": "string"
@@ -39521,6 +39907,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -39598,6 +39987,16 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -40263,6 +40662,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -40590,6 +40992,9 @@ export const schemas = {
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -40795,6 +41200,9 @@ export const schemas = {
                           "new": {
                             "type": "boolean"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "overview": {
                             "type": "string"
                           },
@@ -40835,6 +41243,9 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -40915,6 +41326,16 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -40948,6 +41369,9 @@ export const schemas = {
                       },
                       "new": {
                         "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
                       },
                       "overview": {
                         "type": "string"
@@ -40989,6 +41413,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -41066,6 +41493,16 @@ export const schemas = {
                         "type": "boolean"
                       },
                       "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
@@ -41397,6 +41834,46 @@ export const schemas = {
             },
             "viewerFence": {
               "type": "string"
+            },
+            "why": {
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "fallback": {
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "code",
+                "fallback"
+              ],
+              "type": "object"
+            },
+            "whyTitles": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "maxItems": 3,
+              "type": "array"
             }
           },
           "required": [
@@ -41583,6 +42060,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "removeFromContinue": {
                       "type": "boolean"
                     },
                     "selection": {
@@ -41912,6 +42392,9 @@ export const schemas = {
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -42117,6 +42600,9 @@ export const schemas = {
                     "new": {
                       "type": "boolean"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "overview": {
                       "type": "string"
                     },
@@ -42157,6 +42643,9 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -42237,6 +42726,16 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -42270,6 +42769,9 @@ export const schemas = {
                 },
                 "new": {
                   "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
                 },
                 "overview": {
                   "type": "string"
@@ -42311,6 +42813,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -42388,6 +42893,16 @@ export const schemas = {
                   "type": "boolean"
                 },
                 "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
@@ -42600,6 +43115,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -42927,6 +43445,9 @@ export const schemas = {
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -43132,6 +43653,9 @@ export const schemas = {
                     "new": {
                       "type": "boolean"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "overview": {
                       "type": "string"
                     },
@@ -43172,6 +43696,9 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -43252,6 +43779,16 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -43285,6 +43822,9 @@ export const schemas = {
                 },
                 "new": {
                   "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
                 },
                 "overview": {
                   "type": "string"
@@ -43326,6 +43866,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -43403,6 +43946,16 @@ export const schemas = {
                   "type": "boolean"
                 },
                 "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
@@ -43512,6 +44065,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "removeFromContinue": {
                       "type": "boolean"
                     },
                     "selection": {
@@ -43644,6 +44200,9 @@ export const schemas = {
                     "name": {
                       "type": "string"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -43655,7 +44214,8 @@ export const schemas = {
                     "libraryId",
                     "name",
                     "itemCount",
-                    "revision"
+                    "revision",
+                    "origin"
                   ],
                   "type": "object"
                 },
@@ -43819,6 +44379,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "removeFromContinue": {
                             "type": "boolean"
                           },
                           "selection": {
@@ -44148,6 +44711,9 @@ export const schemas = {
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -44353,6 +44919,9 @@ export const schemas = {
                           "new": {
                             "type": "boolean"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "overview": {
                             "type": "string"
                           },
@@ -44393,6 +44962,9 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -44473,6 +45045,16 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -44506,6 +45088,9 @@ export const schemas = {
                       },
                       "new": {
                         "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
                       },
                       "overview": {
                         "type": "string"
@@ -44547,6 +45132,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -44627,6 +45215,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -44657,6 +45255,25 @@ export const schemas = {
                 false
               ],
               "type": "boolean"
+            },
+            "displayTargets": {
+              "items": {
+                "properties": {
+                  "entryId": {
+                    "type": "string"
+                  },
+                  "membershipId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "membershipId",
+                  "entryId"
+                ],
+                "type": "object"
+              },
+              "maxItems": 60,
+              "type": "array"
             },
             "endpoint": {
               "type": "string"
@@ -44810,6 +45427,9 @@ export const schemas = {
                         "type": "boolean"
                       },
                       "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "removeFromContinue": {
                         "type": "boolean"
                       },
                       "selection": {
@@ -45139,6 +45759,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -45344,6 +45967,9 @@ export const schemas = {
                       "new": {
                         "type": "boolean"
                       },
+                      "origin": {
+                        "type": "string"
+                      },
                       "overview": {
                         "type": "string"
                       },
@@ -45384,6 +46010,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -45464,6 +46093,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -45497,6 +46136,9 @@ export const schemas = {
                   },
                   "new": {
                     "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
                   },
                   "overview": {
                     "type": "string"
@@ -45538,6 +46180,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -45615,6 +46260,16 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -46280,6 +46935,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -46607,6 +47265,9 @@ export const schemas = {
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -46812,6 +47473,9 @@ export const schemas = {
                           "new": {
                             "type": "boolean"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "overview": {
                             "type": "string"
                           },
@@ -46852,6 +47516,9 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -46932,6 +47599,16 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -46965,6 +47642,9 @@ export const schemas = {
                       },
                       "new": {
                         "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
                       },
                       "overview": {
                         "type": "string"
@@ -47006,6 +47686,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -47083,6 +47766,16 @@ export const schemas = {
                         "type": "boolean"
                       },
                       "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
@@ -47414,6 +48107,46 @@ export const schemas = {
             },
             "viewerFence": {
               "type": "string"
+            },
+            "why": {
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "fallback": {
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "code",
+                "fallback"
+              ],
+              "type": "object"
+            },
+            "whyTitles": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "maxItems": 3,
+              "type": "array"
             }
           },
           "required": [
@@ -47487,6 +48220,9 @@ export const schemas = {
                 "type": "boolean"
               },
               "refreshMetadata": {
+                "type": "boolean"
+              },
+              "removeFromContinue": {
                 "type": "boolean"
               },
               "selection": {
@@ -47619,6 +48355,9 @@ export const schemas = {
               "name": {
                 "type": "string"
               },
+              "origin": {
+                "type": "string"
+              },
               "revision": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -47630,7 +48369,8 @@ export const schemas = {
               "libraryId",
               "name",
               "itemCount",
-              "revision"
+              "revision",
+              "origin"
             ],
             "type": "object"
           },
@@ -47794,6 +48534,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "removeFromContinue": {
                       "type": "boolean"
                     },
                     "selection": {
@@ -48123,6 +48866,9 @@ export const schemas = {
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -48328,6 +49074,9 @@ export const schemas = {
                     "new": {
                       "type": "boolean"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "overview": {
                       "type": "string"
                     },
@@ -48368,6 +49117,9 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -48448,6 +49200,16 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -48481,6 +49243,9 @@ export const schemas = {
                 },
                 "new": {
                   "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
                 },
                 "overview": {
                   "type": "string"
@@ -48522,6 +49287,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -48602,6 +49370,16 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -48629,6 +49407,25 @@ export const schemas = {
       },
       "deferred": {
         "type": "boolean"
+      },
+      "displayTargets": {
+        "items": {
+          "properties": {
+            "entryId": {
+              "type": "string"
+            },
+            "membershipId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "membershipId",
+            "entryId"
+          ],
+          "type": "object"
+        },
+        "maxItems": 60,
+        "type": "array"
       },
       "endpoint": {
         "type": "string"
@@ -48782,6 +49579,9 @@ export const schemas = {
                   "type": "boolean"
                 },
                 "refreshMetadata": {
+                  "type": "boolean"
+                },
+                "removeFromContinue": {
                   "type": "boolean"
                 },
                 "selection": {
@@ -49111,6 +49911,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -49316,6 +50119,9 @@ export const schemas = {
                 "new": {
                   "type": "boolean"
                 },
+                "origin": {
+                  "type": "string"
+                },
                 "overview": {
                   "type": "string"
                 },
@@ -49356,6 +50162,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -49436,6 +50245,16 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -49469,6 +50288,9 @@ export const schemas = {
             },
             "new": {
               "type": "boolean"
+            },
+            "origin": {
+              "type": "string"
             },
             "overview": {
               "type": "string"
@@ -49510,6 +50332,9 @@ export const schemas = {
             },
             "rating": {
               "type": "number"
+            },
+            "removed": {
+              "type": "boolean"
             },
             "resolution": {
               "type": "string"
@@ -49587,6 +50412,16 @@ export const schemas = {
               "type": "boolean"
             },
             "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "yearMax": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "yearMin": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
@@ -50252,6 +51087,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -50579,6 +51417,9 @@ export const schemas = {
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -50784,6 +51625,9 @@ export const schemas = {
                     "new": {
                       "type": "boolean"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "overview": {
                       "type": "string"
                     },
@@ -50824,6 +51668,9 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -50904,6 +51751,16 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -50937,6 +51794,9 @@ export const schemas = {
                 },
                 "new": {
                   "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
                 },
                 "overview": {
                   "type": "string"
@@ -50978,6 +51838,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -51055,6 +51918,16 @@ export const schemas = {
                   "type": "boolean"
                 },
                 "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
@@ -51386,6 +52259,46 @@ export const schemas = {
       },
       "viewerFence": {
         "type": "string"
+      },
+      "why": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "fallback": {
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "fallback"
+        ],
+        "type": "object"
+      },
+      "whyTitles": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "type": "object"
+        },
+        "maxItems": 3,
+        "type": "array"
       }
     },
     "required": [
@@ -52193,6 +53106,9 @@ export const schemas = {
                       "refreshMetadata": {
                         "type": "boolean"
                       },
+                      "removeFromContinue": {
+                        "type": "boolean"
+                      },
                       "selection": {
                         "properties": {
                           "collection": {
@@ -52520,6 +53436,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -52725,6 +53644,9 @@ export const schemas = {
                       "new": {
                         "type": "boolean"
                       },
+                      "origin": {
+                        "type": "string"
+                      },
                       "overview": {
                         "type": "string"
                       },
@@ -52765,6 +53687,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -52845,6 +53770,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -52878,6 +53813,9 @@ export const schemas = {
                   },
                   "new": {
                     "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
                   },
                   "overview": {
                     "type": "string"
@@ -52919,6 +53857,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -52996,6 +53937,16 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -54055,6 +55006,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -54382,6 +55336,9 @@ export const schemas = {
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -54587,6 +55544,9 @@ export const schemas = {
                           "new": {
                             "type": "boolean"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "overview": {
                             "type": "string"
                           },
@@ -54627,6 +55587,9 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -54707,6 +55670,16 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -54740,6 +55713,9 @@ export const schemas = {
                       },
                       "new": {
                         "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
                       },
                       "overview": {
                         "type": "string"
@@ -54781,6 +55757,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -54858,6 +55837,16 @@ export const schemas = {
                         "type": "boolean"
                       },
                       "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
@@ -58202,6 +59191,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -58332,6 +59324,9 @@ export const schemas = {
                           "name": {
                             "type": "string"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "revision": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -58343,7 +59338,8 @@ export const schemas = {
                           "libraryId",
                           "name",
                           "itemCount",
-                          "revision"
+                          "revision",
+                          "origin"
                         ],
                         "type": "object"
                       },
@@ -58507,6 +59503,9 @@ export const schemas = {
                                   "type": "boolean"
                                 },
                                 "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "removeFromContinue": {
                                   "type": "boolean"
                                 },
                                 "selection": {
@@ -58836,6 +59835,9 @@ export const schemas = {
                                     "refreshMetadata": {
                                       "type": "boolean"
                                     },
+                                    "removeFromContinue": {
+                                      "type": "boolean"
+                                    },
                                     "selection": {
                                       "properties": {
                                         "collection": {
@@ -59041,6 +60043,9 @@ export const schemas = {
                                 "new": {
                                   "type": "boolean"
                                 },
+                                "origin": {
+                                  "type": "string"
+                                },
                                 "overview": {
                                   "type": "string"
                                 },
@@ -59081,6 +60086,9 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "removed": {
+                                  "type": "boolean"
                                 },
                                 "resolution": {
                                   "type": "string"
@@ -59161,6 +60169,16 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "yearMax": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "yearMin": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 }
                               },
                               "required": [
@@ -59194,6 +60212,9 @@ export const schemas = {
                             },
                             "new": {
                               "type": "boolean"
+                            },
+                            "origin": {
+                              "type": "string"
                             },
                             "overview": {
                               "type": "string"
@@ -59235,6 +60256,9 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "removed": {
+                              "type": "boolean"
                             },
                             "resolution": {
                               "type": "string"
@@ -59315,6 +60339,16 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "yearMax": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMin": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -59345,6 +60379,25 @@ export const schemas = {
                       false
                     ],
                     "type": "boolean"
+                  },
+                  "displayTargets": {
+                    "items": {
+                      "properties": {
+                        "entryId": {
+                          "type": "string"
+                        },
+                        "membershipId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "membershipId",
+                        "entryId"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 60,
+                    "type": "array"
                   },
                   "endpoint": {
                     "type": "string"
@@ -59498,6 +60551,9 @@ export const schemas = {
                               "type": "boolean"
                             },
                             "refreshMetadata": {
+                              "type": "boolean"
+                            },
+                            "removeFromContinue": {
                               "type": "boolean"
                             },
                             "selection": {
@@ -59827,6 +60883,9 @@ export const schemas = {
                                 "refreshMetadata": {
                                   "type": "boolean"
                                 },
+                                "removeFromContinue": {
+                                  "type": "boolean"
+                                },
                                 "selection": {
                                   "properties": {
                                     "collection": {
@@ -60032,6 +61091,9 @@ export const schemas = {
                             "new": {
                               "type": "boolean"
                             },
+                            "origin": {
+                              "type": "string"
+                            },
                             "overview": {
                               "type": "string"
                             },
@@ -60072,6 +61134,9 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "removed": {
+                              "type": "boolean"
                             },
                             "resolution": {
                               "type": "string"
@@ -60152,6 +61217,16 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "yearMax": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMin": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -60185,6 +61260,9 @@ export const schemas = {
                         },
                         "new": {
                           "type": "boolean"
+                        },
+                        "origin": {
+                          "type": "string"
                         },
                         "overview": {
                           "type": "string"
@@ -60226,6 +61304,9 @@ export const schemas = {
                         },
                         "rating": {
                           "type": "number"
+                        },
+                        "removed": {
+                          "type": "boolean"
                         },
                         "resolution": {
                           "type": "string"
@@ -60303,6 +61384,16 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "yearMax": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "yearMin": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
@@ -60968,6 +62059,9 @@ export const schemas = {
                                 "refreshMetadata": {
                                   "type": "boolean"
                                 },
+                                "removeFromContinue": {
+                                  "type": "boolean"
+                                },
                                 "selection": {
                                   "properties": {
                                     "collection": {
@@ -61295,6 +62389,9 @@ export const schemas = {
                                     "refreshMetadata": {
                                       "type": "boolean"
                                     },
+                                    "removeFromContinue": {
+                                      "type": "boolean"
+                                    },
                                     "selection": {
                                       "properties": {
                                         "collection": {
@@ -61500,6 +62597,9 @@ export const schemas = {
                                 "new": {
                                   "type": "boolean"
                                 },
+                                "origin": {
+                                  "type": "string"
+                                },
                                 "overview": {
                                   "type": "string"
                                 },
@@ -61540,6 +62640,9 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "removed": {
+                                  "type": "boolean"
                                 },
                                 "resolution": {
                                   "type": "string"
@@ -61620,6 +62723,16 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "yearMax": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "yearMin": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 }
                               },
                               "required": [
@@ -61653,6 +62766,9 @@ export const schemas = {
                             },
                             "new": {
                               "type": "boolean"
+                            },
+                            "origin": {
+                              "type": "string"
                             },
                             "overview": {
                               "type": "string"
@@ -61694,6 +62810,9 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "removed": {
+                              "type": "boolean"
                             },
                             "resolution": {
                               "type": "string"
@@ -61771,6 +62890,16 @@ export const schemas = {
                               "type": "boolean"
                             },
                             "year": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMax": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMin": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
@@ -62102,6 +63231,46 @@ export const schemas = {
                   },
                   "viewerFence": {
                     "type": "string"
+                  },
+                  "why": {
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "fallback": {
+                        "type": "string"
+                      },
+                      "params": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "fallback"
+                    ],
+                    "type": "object"
+                  },
+                  "whyTitles": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 3,
+                    "type": "array"
                   }
                 },
                 "required": [
@@ -62175,6 +63344,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "removeFromContinue": {
                       "type": "boolean"
                     },
                     "selection": {
@@ -62307,6 +63479,9 @@ export const schemas = {
                     "name": {
                       "type": "string"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -62318,7 +63493,8 @@ export const schemas = {
                     "libraryId",
                     "name",
                     "itemCount",
-                    "revision"
+                    "revision",
+                    "origin"
                   ],
                   "type": "object"
                 },
@@ -62482,6 +63658,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "removeFromContinue": {
                             "type": "boolean"
                           },
                           "selection": {
@@ -62811,6 +63990,9 @@ export const schemas = {
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -63016,6 +64198,9 @@ export const schemas = {
                           "new": {
                             "type": "boolean"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "overview": {
                             "type": "string"
                           },
@@ -63056,6 +64241,9 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -63136,6 +64324,16 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -63169,6 +64367,9 @@ export const schemas = {
                       },
                       "new": {
                         "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
                       },
                       "overview": {
                         "type": "string"
@@ -63210,6 +64411,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -63290,6 +64494,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -63317,6 +64531,25 @@ export const schemas = {
             },
             "deferred": {
               "type": "boolean"
+            },
+            "displayTargets": {
+              "items": {
+                "properties": {
+                  "entryId": {
+                    "type": "string"
+                  },
+                  "membershipId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "membershipId",
+                  "entryId"
+                ],
+                "type": "object"
+              },
+              "maxItems": 60,
+              "type": "array"
             },
             "endpoint": {
               "type": "string"
@@ -63470,6 +64703,9 @@ export const schemas = {
                         "type": "boolean"
                       },
                       "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "removeFromContinue": {
                         "type": "boolean"
                       },
                       "selection": {
@@ -63799,6 +65035,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -64004,6 +65243,9 @@ export const schemas = {
                       "new": {
                         "type": "boolean"
                       },
+                      "origin": {
+                        "type": "string"
+                      },
                       "overview": {
                         "type": "string"
                       },
@@ -64044,6 +65286,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -64124,6 +65369,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -64157,6 +65412,9 @@ export const schemas = {
                   },
                   "new": {
                     "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
                   },
                   "overview": {
                     "type": "string"
@@ -64198,6 +65456,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -64275,6 +65536,16 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -64940,6 +66211,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -65267,6 +66541,9 @@ export const schemas = {
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -65472,6 +66749,9 @@ export const schemas = {
                           "new": {
                             "type": "boolean"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "overview": {
                             "type": "string"
                           },
@@ -65512,6 +66792,9 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -65592,6 +66875,16 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -65625,6 +66918,9 @@ export const schemas = {
                       },
                       "new": {
                         "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
                       },
                       "overview": {
                         "type": "string"
@@ -65666,6 +66962,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -65743,6 +67042,16 @@ export const schemas = {
                         "type": "boolean"
                       },
                       "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
@@ -66074,6 +67383,46 @@ export const schemas = {
             },
             "viewerFence": {
               "type": "string"
+            },
+            "why": {
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "fallback": {
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "code",
+                "fallback"
+              ],
+              "type": "object"
+            },
+            "whyTitles": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "maxItems": 3,
+              "type": "array"
             }
           },
           "required": [
@@ -68880,6 +70229,9 @@ export const schemas = {
             "name": {
               "type": "string"
             },
+            "origin": {
+              "type": "string"
+            },
             "revision": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -68891,7 +70243,8 @@ export const schemas = {
             "libraryId",
             "name",
             "itemCount",
-            "revision"
+            "revision",
+            "origin"
           ],
           "type": "object"
         },
@@ -69089,6 +70442,9 @@ export const schemas = {
                 "type": "boolean"
               },
               "refreshMetadata": {
+                "type": "boolean"
+              },
+              "removeFromContinue": {
                 "type": "boolean"
               },
               "selection": {
@@ -69418,6 +70774,9 @@ export const schemas = {
                   "refreshMetadata": {
                     "type": "boolean"
                   },
+                  "removeFromContinue": {
+                    "type": "boolean"
+                  },
                   "selection": {
                     "properties": {
                       "collection": {
@@ -69623,6 +70982,9 @@ export const schemas = {
               "new": {
                 "type": "boolean"
               },
+              "origin": {
+                "type": "string"
+              },
               "overview": {
                 "type": "string"
               },
@@ -69663,6 +71025,9 @@ export const schemas = {
               },
               "rating": {
                 "type": "number"
+              },
+              "removed": {
+                "type": "boolean"
               },
               "resolution": {
                 "type": "string"
@@ -69743,6 +71108,16 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "yearMax": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "yearMin": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               }
             },
             "required": [
@@ -69776,6 +71151,9 @@ export const schemas = {
           },
           "new": {
             "type": "boolean"
+          },
+          "origin": {
+            "type": "string"
           },
           "overview": {
             "type": "string"
@@ -69817,6 +71195,9 @@ export const schemas = {
           },
           "rating": {
             "type": "number"
+          },
+          "removed": {
+            "type": "boolean"
           },
           "resolution": {
             "type": "string"
@@ -69894,6 +71275,16 @@ export const schemas = {
             "type": "boolean"
           },
           "year": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "yearMax": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "yearMin": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -70288,6 +71679,9 @@ export const schemas = {
                       "refreshMetadata": {
                         "type": "boolean"
                       },
+                      "removeFromContinue": {
+                        "type": "boolean"
+                      },
                       "selection": {
                         "properties": {
                           "collection": {
@@ -70615,6 +72009,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -70820,6 +72217,9 @@ export const schemas = {
                       "new": {
                         "type": "boolean"
                       },
+                      "origin": {
+                        "type": "string"
+                      },
                       "overview": {
                         "type": "string"
                       },
@@ -70860,6 +72260,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -70940,6 +72343,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -70973,6 +72386,9 @@ export const schemas = {
                   },
                   "new": {
                     "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
                   },
                   "overview": {
                     "type": "string"
@@ -71014,6 +72430,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -71091,6 +72510,16 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -71198,6 +72627,25 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "shapeCounts": {
+        "properties": {
+          "posters": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "squares": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "posters",
+          "squares"
+        ],
+        "type": "object"
       },
       "sorts": {
         "items": {
@@ -71428,6 +72876,9 @@ export const schemas = {
                       "refreshMetadata": {
                         "type": "boolean"
                       },
+                      "removeFromContinue": {
+                        "type": "boolean"
+                      },
                       "selection": {
                         "properties": {
                           "collection": {
@@ -71755,6 +73206,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -71960,6 +73414,9 @@ export const schemas = {
                       "new": {
                         "type": "boolean"
                       },
+                      "origin": {
+                        "type": "string"
+                      },
                       "overview": {
                         "type": "string"
                       },
@@ -72000,6 +73457,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -72080,6 +73540,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -72113,6 +73583,9 @@ export const schemas = {
                   },
                   "new": {
                     "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
                   },
                   "overview": {
                     "type": "string"
@@ -72154,6 +73627,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -72231,6 +73707,16 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -73023,6 +74509,9 @@ export const schemas = {
                   "refreshMetadata": {
                     "type": "boolean"
                   },
+                  "removeFromContinue": {
+                    "type": "boolean"
+                  },
                   "selection": {
                     "properties": {
                       "collection": {
@@ -73350,6 +74839,9 @@ export const schemas = {
                       "refreshMetadata": {
                         "type": "boolean"
                       },
+                      "removeFromContinue": {
+                        "type": "boolean"
+                      },
                       "selection": {
                         "properties": {
                           "collection": {
@@ -73555,6 +75047,9 @@ export const schemas = {
                   "new": {
                     "type": "boolean"
                   },
+                  "origin": {
+                    "type": "string"
+                  },
                   "overview": {
                     "type": "string"
                   },
@@ -73595,6 +75090,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -73675,6 +75173,16 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   }
                 },
                 "required": [
@@ -73708,6 +75216,9 @@ export const schemas = {
               },
               "new": {
                 "type": "boolean"
+              },
+              "origin": {
+                "type": "string"
               },
               "overview": {
                 "type": "string"
@@ -73749,6 +75260,9 @@ export const schemas = {
               },
               "rating": {
                 "type": "number"
+              },
+              "removed": {
+                "type": "boolean"
               },
               "resolution": {
                 "type": "string"
@@ -73826,6 +75340,16 @@ export const schemas = {
                 "type": "boolean"
               },
               "year": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "yearMax": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "yearMin": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -74220,6 +75744,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -74547,6 +76074,9 @@ export const schemas = {
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -74752,6 +76282,9 @@ export const schemas = {
                           "new": {
                             "type": "boolean"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "overview": {
                             "type": "string"
                           },
@@ -74792,6 +76325,9 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -74872,6 +76408,16 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -74905,6 +76451,9 @@ export const schemas = {
                       },
                       "new": {
                         "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
                       },
                       "overview": {
                         "type": "string"
@@ -74946,6 +76495,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -75023,6 +76575,16 @@ export const schemas = {
                         "type": "boolean"
                       },
                       "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
@@ -75130,6 +76692,25 @@ export const schemas = {
               "type": "object"
             },
             "type": "array"
+          },
+          "shapeCounts": {
+            "properties": {
+              "posters": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "squares": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "posters",
+              "squares"
+            ],
+            "type": "object"
           },
           "sorts": {
             "items": {
@@ -75344,6 +76925,9 @@ export const schemas = {
                 "type": "boolean"
               },
               "refreshMetadata": {
+                "type": "boolean"
+              },
+              "removeFromContinue": {
                 "type": "boolean"
               },
               "selection": {
@@ -75673,6 +77257,9 @@ export const schemas = {
                   "refreshMetadata": {
                     "type": "boolean"
                   },
+                  "removeFromContinue": {
+                    "type": "boolean"
+                  },
                   "selection": {
                     "properties": {
                       "collection": {
@@ -75878,6 +77465,9 @@ export const schemas = {
               "new": {
                 "type": "boolean"
               },
+              "origin": {
+                "type": "string"
+              },
               "overview": {
                 "type": "string"
               },
@@ -75918,6 +77508,9 @@ export const schemas = {
               },
               "rating": {
                 "type": "number"
+              },
+              "removed": {
+                "type": "boolean"
               },
               "resolution": {
                 "type": "string"
@@ -75998,6 +77591,16 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "yearMax": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "yearMin": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               }
             },
             "required": [
@@ -76031,6 +77634,9 @@ export const schemas = {
           },
           "new": {
             "type": "boolean"
+          },
+          "origin": {
+            "type": "string"
           },
           "overview": {
             "type": "string"
@@ -76072,6 +77678,9 @@ export const schemas = {
           },
           "rating": {
             "type": "number"
+          },
+          "removed": {
+            "type": "boolean"
           },
           "resolution": {
             "type": "string"
@@ -76149,6 +77758,16 @@ export const schemas = {
             "type": "boolean"
           },
           "year": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "yearMax": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "yearMin": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -77962,6 +79581,44 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetMeRemovedTitlesIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMeRemovedTitlesIdResponse": {
+    "properties": {
+      "backdropUrl": {
+        "type": "string"
+      },
+      "canRemoveFromContinue": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "posterUrl": {
+        "type": "string"
+      },
+      "removedAt": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "title",
+      "kind",
+      "removedAt",
+      "canRemoveFromContinue"
+    ],
+    "type": "object"
+  },
   "GetMeRequest": {
     "properties": {},
     "required": [],
@@ -77999,6 +79656,104 @@ export const schemas = {
     },
     "required": [
       "viewer"
+    ],
+    "type": "object"
+  },
+  "GetMeSavedSummaryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMeSavedSummaryResponse": {
+    "properties": {
+      "collections": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "favorites": {
+        "properties": {
+          "posters": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "squares": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "posters",
+          "squares"
+        ],
+        "type": "object"
+      },
+      "myList": {
+        "properties": {
+          "posters": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "squares": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "posters",
+          "squares"
+        ],
+        "type": "object"
+      },
+      "playlists": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "properties": {
+          "catalog": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "viewer": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "catalog",
+          "viewer"
+        ],
+        "type": "object"
+      },
+      "savedViews": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "revision",
+      "myList",
+      "favorites",
+      "playlists",
+      "collections",
+      "savedViews"
     ],
     "type": "object"
   },
@@ -80097,6 +81852,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -80424,6 +82182,9 @@ export const schemas = {
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -80629,6 +82390,9 @@ export const schemas = {
                     "new": {
                       "type": "boolean"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "overview": {
                       "type": "string"
                     },
@@ -80669,6 +82433,9 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -80749,6 +82516,16 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -80782,6 +82559,9 @@ export const schemas = {
                 },
                 "new": {
                   "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
                 },
                 "overview": {
                   "type": "string"
@@ -80823,6 +82603,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -80900,6 +82683,16 @@ export const schemas = {
                   "type": "boolean"
                 },
                 "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
@@ -81108,6 +82901,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -81435,6 +83231,9 @@ export const schemas = {
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -81640,6 +83439,9 @@ export const schemas = {
                     "new": {
                       "type": "boolean"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "overview": {
                       "type": "string"
                     },
@@ -81680,6 +83482,9 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -81760,6 +83565,16 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -81793,6 +83608,9 @@ export const schemas = {
                 },
                 "new": {
                   "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
                 },
                 "overview": {
                   "type": "string"
@@ -81834,6 +83652,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -81911,6 +83732,16 @@ export const schemas = {
                   "type": "boolean"
                 },
                 "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
@@ -82251,6 +84082,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -82578,6 +84412,9 @@ export const schemas = {
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -82783,6 +84620,9 @@ export const schemas = {
                     "new": {
                       "type": "boolean"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "overview": {
                       "type": "string"
                     },
@@ -82823,6 +84663,9 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -82903,6 +84746,16 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -82936,6 +84789,9 @@ export const schemas = {
                 },
                 "new": {
                   "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
                 },
                 "overview": {
                   "type": "string"
@@ -82977,6 +84833,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -83054,6 +84913,16 @@ export const schemas = {
                   "type": "boolean"
                 },
                 "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
@@ -84776,6 +86645,9 @@ export const schemas = {
               "refreshMetadata": {
                 "type": "boolean"
               },
+              "removeFromContinue": {
+                "type": "boolean"
+              },
               "selection": {
                 "properties": {
                   "collection": {
@@ -85103,6 +86975,9 @@ export const schemas = {
                   "refreshMetadata": {
                     "type": "boolean"
                   },
+                  "removeFromContinue": {
+                    "type": "boolean"
+                  },
                   "selection": {
                     "properties": {
                       "collection": {
@@ -85308,6 +87183,9 @@ export const schemas = {
               "new": {
                 "type": "boolean"
               },
+              "origin": {
+                "type": "string"
+              },
               "overview": {
                 "type": "string"
               },
@@ -85348,6 +87226,9 @@ export const schemas = {
               },
               "rating": {
                 "type": "number"
+              },
+              "removed": {
+                "type": "boolean"
               },
               "resolution": {
                 "type": "string"
@@ -85428,6 +87309,16 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "yearMax": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "yearMin": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               }
             },
             "required": [
@@ -85461,6 +87352,9 @@ export const schemas = {
           },
           "new": {
             "type": "boolean"
+          },
+          "origin": {
+            "type": "string"
           },
           "overview": {
             "type": "string"
@@ -85502,6 +87396,9 @@ export const schemas = {
           },
           "rating": {
             "type": "number"
+          },
+          "removed": {
+            "type": "boolean"
           },
           "resolution": {
             "type": "string"
@@ -85579,6 +87476,16 @@ export const schemas = {
             "type": "boolean"
           },
           "year": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "yearMax": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "yearMin": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -85973,6 +87880,9 @@ export const schemas = {
                       "refreshMetadata": {
                         "type": "boolean"
                       },
+                      "removeFromContinue": {
+                        "type": "boolean"
+                      },
                       "selection": {
                         "properties": {
                           "collection": {
@@ -86300,6 +88210,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -86505,6 +88418,9 @@ export const schemas = {
                       "new": {
                         "type": "boolean"
                       },
+                      "origin": {
+                        "type": "string"
+                      },
                       "overview": {
                         "type": "string"
                       },
@@ -86545,6 +88461,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -86625,6 +88544,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -86658,6 +88587,9 @@ export const schemas = {
                   },
                   "new": {
                     "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
                   },
                   "overview": {
                     "type": "string"
@@ -86699,6 +88631,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -86776,6 +88711,16 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -86883,6 +88828,25 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "shapeCounts": {
+        "properties": {
+          "posters": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "squares": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "posters",
+          "squares"
+        ],
+        "type": "object"
       },
       "sorts": {
         "items": {
@@ -87934,6 +89898,9 @@ export const schemas = {
               "refreshMetadata": {
                 "type": "boolean"
               },
+              "removeFromContinue": {
+                "type": "boolean"
+              },
               "selection": {
                 "properties": {
                   "collection": {
@@ -88261,6 +90228,9 @@ export const schemas = {
                   "refreshMetadata": {
                     "type": "boolean"
                   },
+                  "removeFromContinue": {
+                    "type": "boolean"
+                  },
                   "selection": {
                     "properties": {
                       "collection": {
@@ -88466,6 +90436,9 @@ export const schemas = {
               "new": {
                 "type": "boolean"
               },
+              "origin": {
+                "type": "string"
+              },
               "overview": {
                 "type": "string"
               },
@@ -88506,6 +90479,9 @@ export const schemas = {
               },
               "rating": {
                 "type": "number"
+              },
+              "removed": {
+                "type": "boolean"
               },
               "resolution": {
                 "type": "string"
@@ -88586,6 +90562,16 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "yearMax": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "yearMin": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               }
             },
             "required": [
@@ -88619,6 +90605,9 @@ export const schemas = {
           },
           "new": {
             "type": "boolean"
+          },
+          "origin": {
+            "type": "string"
           },
           "overview": {
             "type": "string"
@@ -88660,6 +90649,9 @@ export const schemas = {
           },
           "rating": {
             "type": "number"
+          },
+          "removed": {
+            "type": "boolean"
           },
           "resolution": {
             "type": "string"
@@ -88737,6 +90729,16 @@ export const schemas = {
             "type": "boolean"
           },
           "year": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "yearMax": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "yearMin": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -89131,6 +91133,9 @@ export const schemas = {
                       "refreshMetadata": {
                         "type": "boolean"
                       },
+                      "removeFromContinue": {
+                        "type": "boolean"
+                      },
                       "selection": {
                         "properties": {
                           "collection": {
@@ -89458,6 +91463,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -89663,6 +91671,9 @@ export const schemas = {
                       "new": {
                         "type": "boolean"
                       },
+                      "origin": {
+                        "type": "string"
+                      },
                       "overview": {
                         "type": "string"
                       },
@@ -89703,6 +91714,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -89783,6 +91797,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -89816,6 +91840,9 @@ export const schemas = {
                   },
                   "new": {
                     "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
                   },
                   "overview": {
                     "type": "string"
@@ -89857,6 +91884,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -89934,6 +91964,16 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -90041,6 +92081,25 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "shapeCounts": {
+        "properties": {
+          "posters": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "squares": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "posters",
+          "squares"
+        ],
+        "type": "object"
       },
       "sorts": {
         "items": {
@@ -90382,6 +92441,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -90709,6 +92771,9 @@ export const schemas = {
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -90914,6 +92979,9 @@ export const schemas = {
                     "new": {
                       "type": "boolean"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "overview": {
                       "type": "string"
                     },
@@ -90954,6 +93022,9 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -91034,6 +93105,16 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -91067,6 +93148,9 @@ export const schemas = {
                 },
                 "new": {
                   "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
                 },
                 "overview": {
                   "type": "string"
@@ -91108,6 +93192,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -91185,6 +93272,16 @@ export const schemas = {
                   "type": "boolean"
                 },
                 "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
@@ -91425,6 +93522,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -91752,6 +93852,9 @@ export const schemas = {
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -91957,6 +94060,9 @@ export const schemas = {
                     "new": {
                       "type": "boolean"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "overview": {
                       "type": "string"
                     },
@@ -91997,6 +94103,9 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -92077,6 +94186,16 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -92110,6 +94229,9 @@ export const schemas = {
                 },
                 "new": {
                   "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
                 },
                 "overview": {
                   "type": "string"
@@ -92151,6 +94273,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -92228,6 +94353,16 @@ export const schemas = {
                   "type": "boolean"
                 },
                 "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
@@ -92742,6 +94877,12 @@ export const schemas = {
               },
               "type": "array"
             },
+            "artworkPaths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "definition": {
               "properties": {
                 "libraryId": {
@@ -92850,6 +94991,9 @@ export const schemas = {
             "name": {
               "type": "string"
             },
+            "onHome": {
+              "type": "boolean"
+            },
             "pinRevision": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -92866,7 +95010,1015 @@ export const schemas = {
             "role": {
               "type": "string"
             },
+            "samples": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "absoluteNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "activeBeginYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "activeEndYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "addedAt": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "airDate": {
+                    "type": "string"
+                  },
+                  "album": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "albumType": {
+                    "type": "string"
+                  },
+                  "artist": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "artworkPaths": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "author": {
+                    "type": "string"
+                  },
+                  "available": {
+                    "type": "boolean"
+                  },
+                  "backdropUrl": {
+                    "type": "string"
+                  },
+                  "contentRating": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "country": {
+                    "type": "string"
+                  },
+                  "discNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "episodeNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "genres": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "hidden": {
+                    "nullable": true,
+                    "type": "boolean"
+                  },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "removeFromContinue": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
+                  },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "latestEpisode": {
+                    "properties": {
+                      "airDate": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "episodeNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "seasonNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "airDate",
+                      "episodeNumber",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "libraryId": {
+                    "type": "string"
+                  },
+                  "media": {
+                    "properties": {
+                      "absoluteNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "activeBeginYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "activeEndYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "addedAt": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "airDate": {
+                        "type": "string"
+                      },
+                      "album": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "albumType": {
+                        "type": "string"
+                      },
+                      "artist": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "artworkPaths": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "author": {
+                        "type": "string"
+                      },
+                      "available": {
+                        "type": "boolean"
+                      },
+                      "backdropUrl": {
+                        "type": "string"
+                      },
+                      "contentRating": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "country": {
+                        "type": "string"
+                      },
+                      "discNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "episodeNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
+                        ],
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "latestEpisode": {
+                        "properties": {
+                          "airDate": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "episodeNumber": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "seasonNumber": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "airDate",
+                          "episodeNumber",
+                          "count"
+                        ],
+                        "type": "object"
+                      },
+                      "libraryId": {
+                        "type": "string"
+                      },
+                      "missing": {
+                        "type": "boolean"
+                      },
+                      "navigation": {
+                        "properties": {
+                          "category": {
+                            "type": "string"
+                          },
+                          "entityId": {
+                            "type": "string"
+                          },
+                          "view": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "view"
+                        ],
+                        "type": "object"
+                      },
+                      "new": {
+                        "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "overview": {
+                        "type": "string"
+                      },
+                      "overviewSource": {
+                        "type": "string"
+                      },
+                      "overviewSourceUrl": {
+                        "type": "string"
+                      },
+                      "playback": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId"
+                        ],
+                        "type": "object"
+                      },
+                      "plays": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "posterUrl": {
+                        "type": "string"
+                      },
+                      "progressMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "rating": {
+                        "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
+                      },
+                      "resolution": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "seasonNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "show": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "sortLetter": {
+                        "type": "string"
+                      },
+                      "stillUrl": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "totalAtLeast": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "trackNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "unwatchedCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "userRating": {
+                        "maximum": 10,
+                        "minimum": 0,
+                        "nullable": true,
+                        "type": "integer"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      },
+                      "watchedCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "watchlisted": {
+                        "type": "boolean"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "missing",
+                      "id",
+                      "kind",
+                      "title",
+                      "addedAt"
+                    ],
+                    "type": "object"
+                  },
+                  "missing": {
+                    "type": "boolean"
+                  },
+                  "navigation": {
+                    "properties": {
+                      "category": {
+                        "type": "string"
+                      },
+                      "entityId": {
+                        "type": "string"
+                      },
+                      "view": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "view"
+                    ],
+                    "type": "object"
+                  },
+                  "new": {
+                    "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "overview": {
+                    "type": "string"
+                  },
+                  "overviewSource": {
+                    "type": "string"
+                  },
+                  "overviewSourceUrl": {
+                    "type": "string"
+                  },
+                  "playback": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "startMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId"
+                    ],
+                    "type": "object"
+                  },
+                  "plays": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "posterUrl": {
+                    "type": "string"
+                  },
+                  "progressMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "rating": {
+                    "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
+                  },
+                  "resolution": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "seasonNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "show": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "sortLetter": {
+                    "type": "string"
+                  },
+                  "stillUrl": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "totalAtLeast": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "trackNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "unwatchedCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "userRating": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "integer"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  },
+                  "watchedCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "watchlisted": {
+                    "type": "boolean"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
             "serverId": {
+              "type": "string"
+            },
+            "shape": {
               "type": "string"
             },
             "shares": {
@@ -92905,6 +96057,9 @@ export const schemas = {
             "summary": {
               "type": "string"
             },
+            "totalIsLowerBound": {
+              "type": "boolean"
+            },
             "viewerFence": {
               "type": "string"
             },
@@ -92927,7 +96082,11 @@ export const schemas = {
             "status",
             "invalidComponents",
             "pinned",
-            "pinRevision"
+            "pinRevision",
+            "shape",
+            "artworkPaths",
+            "samples",
+            "onHome"
           ],
           "type": "object"
         },
@@ -92941,6 +96100,25 @@ export const schemas = {
       "serverId": {
         "type": "string"
       },
+      "shapeCounts": {
+        "properties": {
+          "posters": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "squares": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "posters",
+          "squares"
+        ],
+        "type": "object"
+      },
       "viewerFence": {
         "type": "string"
       }
@@ -92950,6 +96128,7 @@ export const schemas = {
       "viewerFence",
       "revision",
       "resources",
+      "shapeCounts",
       "nextCursor"
     ],
     "type": "object"
@@ -94275,6 +97454,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -94405,6 +97587,9 @@ export const schemas = {
                           "name": {
                             "type": "string"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "revision": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -94416,7 +97601,8 @@ export const schemas = {
                           "libraryId",
                           "name",
                           "itemCount",
-                          "revision"
+                          "revision",
+                          "origin"
                         ],
                         "type": "object"
                       },
@@ -94580,6 +97766,9 @@ export const schemas = {
                                   "type": "boolean"
                                 },
                                 "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "removeFromContinue": {
                                   "type": "boolean"
                                 },
                                 "selection": {
@@ -94909,6 +98098,9 @@ export const schemas = {
                                     "refreshMetadata": {
                                       "type": "boolean"
                                     },
+                                    "removeFromContinue": {
+                                      "type": "boolean"
+                                    },
                                     "selection": {
                                       "properties": {
                                         "collection": {
@@ -95114,6 +98306,9 @@ export const schemas = {
                                 "new": {
                                   "type": "boolean"
                                 },
+                                "origin": {
+                                  "type": "string"
+                                },
                                 "overview": {
                                   "type": "string"
                                 },
@@ -95154,6 +98349,9 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "removed": {
+                                  "type": "boolean"
                                 },
                                 "resolution": {
                                   "type": "string"
@@ -95234,6 +98432,16 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "yearMax": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "yearMin": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 }
                               },
                               "required": [
@@ -95267,6 +98475,9 @@ export const schemas = {
                             },
                             "new": {
                               "type": "boolean"
+                            },
+                            "origin": {
+                              "type": "string"
                             },
                             "overview": {
                               "type": "string"
@@ -95308,6 +98519,9 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "removed": {
+                              "type": "boolean"
                             },
                             "resolution": {
                               "type": "string"
@@ -95388,6 +98602,16 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "yearMax": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMin": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -95418,6 +98642,25 @@ export const schemas = {
                       false
                     ],
                     "type": "boolean"
+                  },
+                  "displayTargets": {
+                    "items": {
+                      "properties": {
+                        "entryId": {
+                          "type": "string"
+                        },
+                        "membershipId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "membershipId",
+                        "entryId"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 60,
+                    "type": "array"
                   },
                   "endpoint": {
                     "type": "string"
@@ -95571,6 +98814,9 @@ export const schemas = {
                               "type": "boolean"
                             },
                             "refreshMetadata": {
+                              "type": "boolean"
+                            },
+                            "removeFromContinue": {
                               "type": "boolean"
                             },
                             "selection": {
@@ -95900,6 +99146,9 @@ export const schemas = {
                                 "refreshMetadata": {
                                   "type": "boolean"
                                 },
+                                "removeFromContinue": {
+                                  "type": "boolean"
+                                },
                                 "selection": {
                                   "properties": {
                                     "collection": {
@@ -96105,6 +99354,9 @@ export const schemas = {
                             "new": {
                               "type": "boolean"
                             },
+                            "origin": {
+                              "type": "string"
+                            },
                             "overview": {
                               "type": "string"
                             },
@@ -96145,6 +99397,9 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "removed": {
+                              "type": "boolean"
                             },
                             "resolution": {
                               "type": "string"
@@ -96225,6 +99480,16 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "yearMax": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMin": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -96258,6 +99523,9 @@ export const schemas = {
                         },
                         "new": {
                           "type": "boolean"
+                        },
+                        "origin": {
+                          "type": "string"
                         },
                         "overview": {
                           "type": "string"
@@ -96299,6 +99567,9 @@ export const schemas = {
                         },
                         "rating": {
                           "type": "number"
+                        },
+                        "removed": {
+                          "type": "boolean"
                         },
                         "resolution": {
                           "type": "string"
@@ -96376,6 +99647,16 @@ export const schemas = {
                           "type": "boolean"
                         },
                         "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "yearMax": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "yearMin": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
@@ -97041,6 +100322,9 @@ export const schemas = {
                                 "refreshMetadata": {
                                   "type": "boolean"
                                 },
+                                "removeFromContinue": {
+                                  "type": "boolean"
+                                },
                                 "selection": {
                                   "properties": {
                                     "collection": {
@@ -97368,6 +100652,9 @@ export const schemas = {
                                     "refreshMetadata": {
                                       "type": "boolean"
                                     },
+                                    "removeFromContinue": {
+                                      "type": "boolean"
+                                    },
                                     "selection": {
                                       "properties": {
                                         "collection": {
@@ -97573,6 +100860,9 @@ export const schemas = {
                                 "new": {
                                   "type": "boolean"
                                 },
+                                "origin": {
+                                  "type": "string"
+                                },
                                 "overview": {
                                   "type": "string"
                                 },
@@ -97613,6 +100903,9 @@ export const schemas = {
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "removed": {
+                                  "type": "boolean"
                                 },
                                 "resolution": {
                                   "type": "string"
@@ -97693,6 +100986,16 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "yearMax": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "yearMin": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 }
                               },
                               "required": [
@@ -97726,6 +101029,9 @@ export const schemas = {
                             },
                             "new": {
                               "type": "boolean"
+                            },
+                            "origin": {
+                              "type": "string"
                             },
                             "overview": {
                               "type": "string"
@@ -97767,6 +101073,9 @@ export const schemas = {
                             },
                             "rating": {
                               "type": "number"
+                            },
+                            "removed": {
+                              "type": "boolean"
                             },
                             "resolution": {
                               "type": "string"
@@ -97844,6 +101153,16 @@ export const schemas = {
                               "type": "boolean"
                             },
                             "year": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMax": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "yearMin": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
@@ -98175,6 +101494,46 @@ export const schemas = {
                   },
                   "viewerFence": {
                     "type": "string"
+                  },
+                  "why": {
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "fallback": {
+                        "type": "string"
+                      },
+                      "params": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "fallback"
+                    ],
+                    "type": "object"
+                  },
+                  "whyTitles": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 3,
+                    "type": "array"
                   }
                 },
                 "required": [
@@ -98248,6 +101607,9 @@ export const schemas = {
                       "type": "boolean"
                     },
                     "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "removeFromContinue": {
                       "type": "boolean"
                     },
                     "selection": {
@@ -98380,6 +101742,9 @@ export const schemas = {
                     "name": {
                       "type": "string"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -98391,7 +101756,8 @@ export const schemas = {
                     "libraryId",
                     "name",
                     "itemCount",
-                    "revision"
+                    "revision",
+                    "origin"
                   ],
                   "type": "object"
                 },
@@ -98555,6 +101921,9 @@ export const schemas = {
                             "type": "boolean"
                           },
                           "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "removeFromContinue": {
                             "type": "boolean"
                           },
                           "selection": {
@@ -98884,6 +102253,9 @@ export const schemas = {
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -99089,6 +102461,9 @@ export const schemas = {
                           "new": {
                             "type": "boolean"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "overview": {
                             "type": "string"
                           },
@@ -99129,6 +102504,9 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -99209,6 +102587,16 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -99242,6 +102630,9 @@ export const schemas = {
                       },
                       "new": {
                         "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
                       },
                       "overview": {
                         "type": "string"
@@ -99283,6 +102674,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -99363,6 +102757,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -99390,6 +102794,25 @@ export const schemas = {
             },
             "deferred": {
               "type": "boolean"
+            },
+            "displayTargets": {
+              "items": {
+                "properties": {
+                  "entryId": {
+                    "type": "string"
+                  },
+                  "membershipId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "membershipId",
+                  "entryId"
+                ],
+                "type": "object"
+              },
+              "maxItems": 60,
+              "type": "array"
             },
             "endpoint": {
               "type": "string"
@@ -99543,6 +102966,9 @@ export const schemas = {
                         "type": "boolean"
                       },
                       "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "removeFromContinue": {
                         "type": "boolean"
                       },
                       "selection": {
@@ -99872,6 +103298,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -100077,6 +103506,9 @@ export const schemas = {
                       "new": {
                         "type": "boolean"
                       },
+                      "origin": {
+                        "type": "string"
+                      },
                       "overview": {
                         "type": "string"
                       },
@@ -100117,6 +103549,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -100197,6 +103632,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -100230,6 +103675,9 @@ export const schemas = {
                   },
                   "new": {
                     "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
                   },
                   "overview": {
                     "type": "string"
@@ -100271,6 +103719,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -100348,6 +103799,16 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -101013,6 +104474,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -101340,6 +104804,9 @@ export const schemas = {
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -101545,6 +105012,9 @@ export const schemas = {
                           "new": {
                             "type": "boolean"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "overview": {
                             "type": "string"
                           },
@@ -101585,6 +105055,9 @@ export const schemas = {
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -101665,6 +105138,16 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -101698,6 +105181,9 @@ export const schemas = {
                       },
                       "new": {
                         "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
                       },
                       "overview": {
                         "type": "string"
@@ -101739,6 +105225,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -101816,6 +105305,16 @@ export const schemas = {
                         "type": "boolean"
                       },
                       "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
@@ -102147,6 +105646,46 @@ export const schemas = {
             },
             "viewerFence": {
               "type": "string"
+            },
+            "why": {
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "fallback": {
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "code",
+                "fallback"
+              ],
+              "type": "object"
+            },
+            "whyTitles": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "maxItems": 3,
+              "type": "array"
             }
           },
           "required": [
@@ -103676,6 +107215,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -104003,6 +107545,9 @@ export const schemas = {
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -104208,6 +107753,9 @@ export const schemas = {
                     "new": {
                       "type": "boolean"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "overview": {
                       "type": "string"
                     },
@@ -104248,6 +107796,9 @@ export const schemas = {
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -104328,6 +107879,16 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -104361,6 +107922,9 @@ export const schemas = {
                 },
                 "new": {
                   "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
                 },
                 "overview": {
                   "type": "string"
@@ -104402,6 +107966,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -104479,6 +108046,16 @@ export const schemas = {
                   "type": "boolean"
                 },
                 "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
@@ -109154,6 +112731,9 @@ export const schemas = {
       "name": {
         "type": "string"
       },
+      "origin": {
+        "type": "string"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -109165,7 +112745,8 @@ export const schemas = {
       "libraryId",
       "name",
       "itemCount",
-      "revision"
+      "revision",
+      "origin"
     ],
     "type": "object"
   },
@@ -118147,6 +121728,9 @@ export const schemas = {
           "name": {
             "type": "string"
           },
+          "origin": {
+            "type": "string"
+          },
           "revision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -118158,7 +121742,8 @@ export const schemas = {
           "libraryId",
           "name",
           "itemCount",
-          "revision"
+          "revision",
+          "origin"
         ],
         "type": "object"
       },
@@ -121367,6 +124952,9 @@ export const schemas = {
                       "refreshMetadata": {
                         "type": "boolean"
                       },
+                      "removeFromContinue": {
+                        "type": "boolean"
+                      },
                       "selection": {
                         "properties": {
                           "collection": {
@@ -121694,6 +125282,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -121899,6 +125490,9 @@ export const schemas = {
                       "new": {
                         "type": "boolean"
                       },
+                      "origin": {
+                        "type": "string"
+                      },
                       "overview": {
                         "type": "string"
                       },
@@ -121939,6 +125533,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -122019,6 +125616,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -122052,6 +125659,9 @@ export const schemas = {
                   },
                   "new": {
                     "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
                   },
                   "overview": {
                     "type": "string"
@@ -122093,6 +125703,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -122170,6 +125783,16 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -122431,6 +126054,9 @@ export const schemas = {
                   "type": "boolean"
                 },
                 "refreshMetadata": {
+                  "type": "boolean"
+                },
+                "removeFromContinue": {
                   "type": "boolean"
                 },
                 "selection": {
@@ -122760,6 +126386,9 @@ export const schemas = {
                     "refreshMetadata": {
                       "type": "boolean"
                     },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
                     "selection": {
                       "properties": {
                         "collection": {
@@ -122965,6 +126594,9 @@ export const schemas = {
                 "new": {
                   "type": "boolean"
                 },
+                "origin": {
+                  "type": "string"
+                },
                 "overview": {
                   "type": "string"
                 },
@@ -123005,6 +126637,9 @@ export const schemas = {
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -123085,6 +126720,16 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -123118,6 +126763,9 @@ export const schemas = {
             },
             "new": {
               "type": "boolean"
+            },
+            "origin": {
+              "type": "string"
             },
             "overview": {
               "type": "string"
@@ -123159,6 +126807,9 @@ export const schemas = {
             },
             "rating": {
               "type": "number"
+            },
+            "removed": {
+              "type": "boolean"
             },
             "resolution": {
               "type": "string"
@@ -123236,6 +126887,16 @@ export const schemas = {
               "type": "boolean"
             },
             "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "yearMax": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "yearMin": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
@@ -124683,6 +128344,9 @@ export const schemas = {
       "name": {
         "type": "string"
       },
+      "origin": {
+        "type": "string"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -124694,7 +128358,8 @@ export const schemas = {
       "libraryId",
       "name",
       "itemCount",
-      "revision"
+      "revision",
+      "origin"
     ],
     "type": "object"
   },
@@ -140990,6 +144655,9 @@ export const schemas = {
       "name": {
         "type": "string"
       },
+      "origin": {
+        "type": "string"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -141001,7 +144669,8 @@ export const schemas = {
       "libraryId",
       "name",
       "itemCount",
-      "revision"
+      "revision",
+      "origin"
     ],
     "type": "object"
   },
@@ -142756,6 +146425,9 @@ export const schemas = {
                       "refreshMetadata": {
                         "type": "boolean"
                       },
+                      "removeFromContinue": {
+                        "type": "boolean"
+                      },
                       "selection": {
                         "properties": {
                           "collection": {
@@ -143083,6 +146755,9 @@ export const schemas = {
                           "refreshMetadata": {
                             "type": "boolean"
                           },
+                          "removeFromContinue": {
+                            "type": "boolean"
+                          },
                           "selection": {
                             "properties": {
                               "collection": {
@@ -143288,6 +146963,9 @@ export const schemas = {
                       "new": {
                         "type": "boolean"
                       },
+                      "origin": {
+                        "type": "string"
+                      },
                       "overview": {
                         "type": "string"
                       },
@@ -143328,6 +147006,9 @@ export const schemas = {
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -143408,6 +147089,16 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -143441,6 +147132,9 @@ export const schemas = {
                   },
                   "new": {
                     "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
                   },
                   "overview": {
                     "type": "string"
@@ -143482,6 +147176,9 @@ export const schemas = {
                   },
                   "rating": {
                     "type": "number"
+                  },
+                  "removed": {
+                    "type": "boolean"
                   },
                   "resolution": {
                     "type": "string"
@@ -143559,6 +147256,16 @@ export const schemas = {
                     "type": "boolean"
                   },
                   "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"

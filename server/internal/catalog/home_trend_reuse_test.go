@@ -2,15 +2,22 @@ package catalog
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"portico.local/server/internal/access"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/persistence"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"portico.local/server/internal/dbwork"
 )
 
-func TestHomeRecommendedReusesTheSameRequestTrendingRanking(t *testing.T) {
+// Provider recommendation sources retain their established cache and ranks;
+// Home's f47 local weekly source is tested independently below.
+func TestProviderRecommendedReusesTheSameRequestTrendingRanking(t *testing.T) {
 	f := recommendationFixtureDB(t)
 	r := engineRequest().scoped()
 	engineExec(t, f, `UPDATE screen_metadata_consent SET confirmed=1`)
@@ -69,11 +76,11 @@ func TestHomeRecommendedReusesTheSameRequestTrendingRanking(t *testing.T) {
 	// Request entry points allocate a new source map, so revoking consent must
 	// remove the old provider rows instead of reusing a previous request's list.
 	engineExec(t, f, `UPDATE screen_metadata_consent SET confirmed=0`)
-	row, err := s.HomeSingleRow(r, "trending_now", HomeRowPage{})
+	row, err := New(f.db).homeEngineSource(r, homeRowSpec{ID: "trending_now"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.Total != 0 || len(row.Entries) != 0 {
+	if len(row.candidates) != 0 {
 		t.Fatal("a new request reused trends after consent was revoked")
 	}
 }
@@ -97,5 +104,128 @@ func TestHomeHiddenTrendingDoesNotSuppressRecommended(t *testing.T) {
 	}
 	if _, ok := s.recSources["trending_now:"+idsJSON(r.Libraries)]; ok {
 		t.Fatal("hidden Trending was unnecessarily scored")
+	}
+}
+
+// collections f47 and Root's 22 October ruling supersede the provider feed for
+// Home only. These are real normalized history records in a fresh baseline;
+// no production response, rank or activity is fabricated by the test server.
+func TestHomeWeeklyTrendingUsesOnlyGenuineEligibleLocalSignals(t *testing.T) {
+	f := recommendationFixtureDB(t)
+	r := engineRequest("movies")
+	r.CommunityActivity = true
+	for _, letter := range []string{"a", "b", "c", "d"} {
+		engineExec(t, f, `INSERT INTO accounts VALUES(?,?,x'00',?,1)`, letter, letter, "profile-"+letter)
+	}
+	engineExec(t, f, `UPDATE direct_memberships SET allowed_libraries='["movies"]'`)
+	record := func(actor, item, tag string, at time.Time, completed int, position int64) {
+		t.Helper()
+		key := persistence.PersonalOwnerKey("local", actor, "profile-"+actor)
+		engineExec(t, f, `INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed)VALUES(?,?,?,?,?,1,?,0,?)`, tag, key, f.items[item].ID, at.UTC().Format("2006-01-02T15:04:05.000Z"), at.UTC().Format("2006-01-02T15:04:05.000Z"), position, completed)
+	}
+	for _, actor := range []string{"a", "b", "c", "d"} {
+		record(actor, "m1", "one-"+actor, r.Now.Add(-2*time.Hour), 1, 300000)
+		if actor != "d" {
+			record(actor, "m2", "two-"+actor, r.Now.Add(-time.Hour), 1, 300000)
+		}
+		record(actor, "m3", "old-"+actor, r.Now.Add(-8*24*time.Hour), 1, 300000)
+		record(actor, "m4", "future-"+actor, r.Now.Add(time.Hour), 1, 300000)
+		record(actor, "m5", "tiny-"+actor, r.Now.Add(-time.Hour), 0, 1)
+	}
+	for i := 0; i < 5; i++ {
+		record("a", "m2", fmt.Sprint("replay-", i), r.Now.Add(-30*time.Minute), 1, 300000)
+	}
+	f.c.Drain()
+	s := New(f.db)
+	check := func(want ...string) HomeRow {
+		t.Helper()
+		row, err := s.HomeSingleRow(r, "trending_now", HomeRowPage{Limit: 60})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := []string{}
+		for _, entry := range row.Entries {
+			got = append(got, entry.ID)
+		}
+		expected := []string{}
+		for _, key := range want {
+			expected = append(expected, f.items[key].Public)
+		}
+		if !reflect.DeepEqual(got, expected) {
+			t.Fatal("weekly activity membership/rank", got, expected)
+		}
+		raw, _ := json.Marshal(row)
+		for _, private := range []string{"profile-a", "profile-b", "profile-c", "profile-d", "viewers", "accountId", "profileId"} {
+			if strings.Contains(string(raw), private) {
+				t.Fatal("private activity fact left source", private)
+			}
+		}
+		return row
+	}
+	row := check("m1", "m2")
+	if row.Why == nil || row.Why.Fallback != "What people on this server are watching most this week." {
+		t.Fatal("f47 copy", row.Why)
+	}
+	t.Log("genuine seven-day normalized signals produce four-profile work before three-profile work; replays, eight-day, future and tiny signals do not add titles or inflate rank")
+	// A privacy opt-out is applied immediately, including to an open cursor.
+	engineExec(t, f, `INSERT INTO console_documents VALUES('profile:["local","d","profile-d"]',1,'{"privacy.showActivityToMembers":false}',0)`)
+	check("m2", "m1") // same three viewers; newest eligible activity wins.
+	engineExec(t, f, `INSERT INTO console_documents VALUES('profile:["local","c","profile-c"]',1,'{"privacy.pauseWatchHistory":true}',0)`)
+	check() // fewer than three eligible people for either work.
+	engineExec(t, f, `DELETE FROM console_documents`)
+	f.c.Attributes(f.items["m1"].ID, "label", "adult")
+	f.c.Drain()
+	r.Viewer.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"adult"}}
+	check("m2")
+	r.Viewer.Restrictions = identity.ContentRestrictions{}
+	engineExec(t, f, `UPDATE direct_memberships SET allowed_libraries='[]' WHERE account_id IN('c','d')`)
+	check() // current library admission, not the historical admission.
+	engineExec(t, f, `UPDATE direct_memberships SET allowed_libraries='["movies"]'`)
+	engineExec(t, f, `INSERT INTO profile_restrictions(profile_id,blocked_labels)VALUES('profile-c','["adult"]'),('profile-d','["adult"]')`)
+	check("m2") // current contributor policy cannot lend hidden title signals.
+	engineExec(t, f, `DELETE FROM profile_restrictions`)
+	limits := access.DefaultLimits()
+	limits.Tags.DeniedLabels = []string{"adult"}
+	body, _ := json.Marshal(limits)
+	for _, actor := range []string{"c", "d"} {
+		engineExec(t, f, `INSERT INTO access_limits(account_id,revision,body,updated_ms)VALUES(?,1,?,0)`, actor, string(body))
+	}
+	check("m2") // account ceilings narrow the contributor's own profile policy.
+	engineExec(t, f, `DELETE FROM access_limits`)
+	engineExec(t, f, `DELETE FROM personal_history`)
+	// Provider discovery and owner ratings never substitute for empty activity.
+	engineExec(t, f, `UPDATE screen_metadata_consent SET confirmed=1`)
+	engineExec(t, f, `INSERT INTO screen_metadata_policies(library_id,providers)VALUES('movies','["tmdb"]') ON CONFLICT(library_id)DO UPDATE SET providers=excluded.providers`)
+	engineMeta(t, f, "m1", "tmdb", "101")
+	engineExec(t, f, `INSERT INTO metadata_discovery_items VALUES('tmdb','movie','101',1,?,?)`, r.Now.Add(-time.Hour).Format(time.RFC3339), r.Now.Add(time.Hour).Format(time.RFC3339))
+	check()
+	provider, err := s.recommendationCandidates(r.scoped(), "trending_now", "")
+	if err != nil || len(provider) != 1 {
+		t.Fatal("provider discovery was rewritten", provider, err)
+	}
+}
+
+func TestHomeRecommendationWhyCarriesOnlyCurrentPersonalSeeds(t *testing.T) {
+	f := recommendationFixtureDB(t)
+	r := engineRequest("movies")
+	engineWatched(t, f, "p", r.Now.Add(-time.Hour).Format(time.RFC3339), "m1")
+	f.c.Drain()
+	s := New(f.db)
+	row, err := s.HomeSingleRow(r, "recommended", HomeRowPage{Limit: 1})
+	if err != nil || len(row.WhyTitles) != 1 || row.WhyTitles[0].ID != f.items["m1"].Public || row.Why == nil || row.Why.Params["titles"] != "Movie m1" {
+		t.Fatal(row, err)
+	}
+	r.Viewer.Profile = "other"
+	row, err = s.HomeSingleRow(r, "recommended", HomeRowPage{Limit: 1})
+	if err != nil || len(row.WhyTitles) != 0 {
+		t.Fatal("another profile's reason", row, err)
+	}
+	r.Viewer.Profile = "p"
+	r.Viewer.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"hidden"}}
+	f.c.Attributes(f.items["m1"].ID, "label", "hidden")
+	f.c.Drain()
+	row, err = s.HomeSingleRow(r, "recommended", HomeRowPage{Limit: 1})
+	if err != nil || len(row.WhyTitles) != 0 {
+		t.Fatal("hidden seed in reason", row, err)
 	}
 }

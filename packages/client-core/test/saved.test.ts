@@ -330,3 +330,17 @@ test('a playlist paged past its first page is read again through every page on s
  // Shown as one long first page now: the next change reads it all again too, never only its first 40.
  reads.length=0;ids=['n',...ids];await s.revalidate();assert.deepEqual(reads,['0','40','80']);assert.equal(s.getSnapshot().projection!.sections[0].entries.length,90);assert.equal(s.getSnapshot().phase,'ready');
 });
+
+test('Saved summary, shape paths and removed-title reads use typed routes and validate authority', async()=>{
+ const {savedListPath,fetchSavedSummary,fetchRemovedTitle,dismissRemovedTitle}=await import('../src/saved.ts');
+ assert.equal(savedListPath('watchlist',{shape:'squares',limit:37}),'/v1/content?view=watchlist&limit=37&shape=squares');
+ assert.throws(()=>savedListPath('watchlist',{shape:'mixed' as never}));
+ const calls:string[]=[];
+ const response={serverId:'s',viewerFence:'f',revision:{catalog:3,viewer:2},myList:{posters:1203,squares:40},favorites:{posters:3,squares:1},playlists:2,collections:1,savedViews:4};
+ const api={async request<T>(path:string,method?:string):Promise<T>{calls.push((method??'GET')+' '+path);return (path.endsWith('/summary')?response:method==='DELETE'?{removed:true}:{id:'gone',title:'Gone',kind:'movie',removedAt:'2026-10-22T00:00:00Z',canRemoveFromContinue:true}) as T;}};
+ assert.equal((await fetchSavedSummary(api,{serverId:'s',viewerId:'p'})).myList.posters,1203);
+ await assert.rejects(fetchSavedSummary(api,{serverId:'other',viewerId:'p'}));
+ assert.equal((await fetchRemovedTitle(api,'gone')).title,'Gone');
+ await dismissRemovedTitle(api,'gone');
+ assert.deepEqual(calls,['GET /v1/me/saved/summary','GET /v1/me/saved/summary','GET /v1/me/removed-titles/gone','DELETE /v1/me/removed-titles/gone']);
+});

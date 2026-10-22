@@ -86,8 +86,9 @@ type BrowseRequest struct {
 	Restrictions identity.ContentRestrictions
 	// Rows are the Home rows the query names, resolved by the caller to their
 	// titles in order (ResolveHomeRows); a homeRow condition reads nothing else.
-	Rows   map[string][]int64
-	viewer Viewer
+	Rows       map[string][]int64
+	RowSources map[string]HomeRowMembership
+	viewer     Viewer
 	// scope overrides the cursor scope so the legacy GET surface keeps its
 	// existing continuation fencing.
 	scope *cursorScope
@@ -319,7 +320,7 @@ func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts
 	if err != nil {
 		return "", err
 	}
-	extra, err := s.browseGroupFence(request.Query, request.Rows)
+	extra, err := s.browseGroupFence(request.Query, request.Rows, request.RowSources)
 	if err != nil {
 		return "", err
 	}
@@ -355,6 +356,7 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 	if err := s.prepareViewer(viewer); err != nil {
 		return BrowseResult{}, err
 	}
+	s = s.WithRecommendationRestrictions(viewer.EffectiveRestrictions())
 	request.Profile, request.ViewerFence, request.Restrictions, request.viewer = viewer.Profile, viewer.Fence, viewer.EffectiveRestrictions(), viewer
 	if dbwork.Snapshot(s.Context()) == nil {
 		var result BrowseResult
@@ -442,7 +444,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 
 	where, args := browseScopeSQL(request.Library, pivot)
-	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), rows: request.Rows}
+	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), rows: request.Rows, rowSources: request.RowSources}
 	for _, member := range entityKindMembers(pivot) {
 		if kind, err := compactcatalog.ParseKind(member); err == nil {
 			compiler.kinds = append(compiler.kinds, int(kind))
@@ -600,7 +602,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	group, groupArgs := "", []any(nil)
 	if sorts[0].Field == "groupOrder" {
-		if group, groupArgs, err = s.groupOrderSource(groupOrderTarget(request.Query), request.Rows); err != nil {
+		if group, groupArgs, err = s.groupOrderSource(groupOrderTarget(request.Query), request.Rows, request.RowSources); err != nil {
 			return out, nil, err
 		}
 	}
@@ -820,6 +822,9 @@ func (s *Service) browseProjection(profile string, rows []browseRow) ([]ContentE
 		out = append(out, entry)
 	}
 	if err = s.nameEntryMakers(out); err != nil {
+		return nil, err
+	}
+	if err = s.ProjectCoverSamples(profile, out); err != nil {
 		return nil, err
 	}
 	if err = s.countEntryPlays(profile, out); err != nil {

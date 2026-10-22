@@ -109,11 +109,11 @@ test('On now requires authoritative marks, real one-programme windows and keeps 
   assert.equal(paths[0],'/v1/home/rows/on_now?limit=2&cursor=opaque&group=Sports&sourceId=source');
 });
 
-test('live paging retains server order and stops at the device bound without inferring marks',()=>{
+test('live paging retains server order and next cursor without a source-length cap',()=>{
   let current=validateHomeRow(row('on_now',{live:live([channel('0')]),total:2000,nextCursor:'next',hasMore:true}));
   for(let page=0;page<3;page++)current=appendHomeRowPage(current,validateHomeRow(row('on_now',{live:live(Array.from({length:50},(_,i)=>channel(String(page*50+i)))),total:2000,nextCursor:'next',hasMore:true})));
-  assert.equal(current.live!.channels.length,100);
-  assert.equal(current.nextCursor,'');
+  assert.equal(current.live!.channels.length,150);
+  assert.equal(current.nextCursor,'next');
   assert.equal(current.total,2000);
   assert.deepEqual(current.live!.channels.slice(0,3).map(v=>v.channel.id),['0','1','2']);
   assert.ok(current.live!.channels.every(v=>v.channel.mark.text==='SS'));
@@ -133,7 +133,7 @@ test('merged live pages keep the earliest programme expiry in either page order'
     assert.deepEqual(merged.live!.channels[1].channel.programmes[0].flags,{live:false,premiere:false,new:false,repeat:true});
     const last=validateHomeRow(row('on_now',{live:live([channel('three')]),start:2,total:3}));
     assert.equal(appendHomeRowPage(merged,last).live!.expiresAt,early,'later pages cannot extend the retained expiry');
-    assert.equal(appendHomeRowPage(first,page,1).live!.channels.length,1,'the retention cap remains in force');
+    assert.equal(appendHomeRowPage(first,page).live!.channels.length,2,'both authorized channels remain loaded');
   }
 });
 

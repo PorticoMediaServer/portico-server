@@ -50,26 +50,29 @@ type HomeRow struct {
 	// Deferred rows publish their policy and endpoint before their preview.
 	Deferred bool `json:"deferred,omitempty"`
 	// Children are the server-selected rows in the personal recommendation family.
-	Children           []HomeRow       `json:"children,omitempty"`
-	Resumes            []HomeResume    `json:"resumes,omitempty"`
-	Reason             *HomeReason     `json:"reason,omitempty"`
-	Collection         *HomeCollection `json:"collection,omitempty"`
-	Live               *HomeLive       `json:"live,omitempty"`
-	Period             *HomePeriod     `json:"period,omitempty"`
-	SubtitleText       *ServerText     `json:"subtitleText,omitempty"`
-	Platforms          []string        `json:"platforms,omitempty"`
-	SeeAll             *HomeSeeAll     `json:"seeAll,omitempty"`
-	ID                 string          `json:"id"`
-	Title              string          `json:"title"`
-	TitleText          ServerText      `json:"titleText"`
-	Kind               string          `json:"kind"`
-	ArtworkShape       string          `json:"artworkShape"`
-	Explanation        string          `json:"explanation,omitempty"`
-	Endpoint           string          `json:"endpoint"`
-	LibraryID          string          `json:"libraryId,omitempty"`
-	PrivacySensitivity string          `json:"privacySensitivity"`
-	PolicyState        string          `json:"policyState"`
-	Relation           string          `json:"relation,omitempty"`
+	Children           []HomeRow           `json:"children,omitempty"`
+	Resumes            []HomeResume        `json:"resumes,omitempty"`
+	Reason             *HomeReason         `json:"reason,omitempty"`
+	Collection         *HomeCollection     `json:"collection,omitempty"`
+	Live               *HomeLive           `json:"live,omitempty"`
+	Period             *HomePeriod         `json:"period,omitempty"`
+	SubtitleText       *ServerText         `json:"subtitleText,omitempty"`
+	Platforms          []string            `json:"platforms,omitempty"`
+	SeeAll             *HomeSeeAll         `json:"seeAll,omitempty"`
+	ID                 string              `json:"id"`
+	Title              string              `json:"title"`
+	TitleText          ServerText          `json:"titleText"`
+	Kind               string              `json:"kind"`
+	ArtworkShape       string              `json:"artworkShape"`
+	Explanation        string              `json:"explanation,omitempty"`
+	Why                *ServerText         `json:"why,omitempty"`
+	WhyTitles          []ContentEntityRef  `json:"whyTitles,omitempty"`
+	DisplayTargets     []HomeDisplayTarget `json:"displayTargets,omitempty"`
+	Endpoint           string              `json:"endpoint"`
+	LibraryID          string              `json:"libraryId,omitempty"`
+	PrivacySensitivity string              `json:"privacySensitivity"`
+	PolicyState        string              `json:"policyState"`
+	Relation           string              `json:"relation,omitempty"`
 	// Family groups rows the layout arranges as one ("for_you": the personal
 	// rows, which vary with the profile and the day).
 	Family        string          `json:"family,omitempty"`
@@ -286,15 +289,6 @@ func homeVisible(alias string) string {
 	return fmt.Sprintf(`EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_item_availability v ON v.entity_id=e.id WHERE e.id=%s AND e.retired=0 AND v.available=1 AND v.retired=0 AND EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id WHERE link.entity_id=e.id AND link.available=1 AND asset.available=1))`, alias)
 }
 
-// continueListeningMaximum bounds Continue Listening the way the owner maximum
-// bounds Continue Watching: the row, its count and its pages never read past
-// this many entries, however long the profile's listening history is.
-const continueListeningMaximum = 40
-
-// continueListeningWindow is how much of the profile's recent unfinished
-// activity Continue Listening reads to find those entries.
-const continueListeningWindow = 1000
-
 func homeContinueBase(mode string) string {
 	kind := `k.playable=1 AND k.listening=0 AND i.kind<>11`
 	libraries := `a.library_id IN(SELECT value FROM json_each(?))`
@@ -305,13 +299,9 @@ func homeContinueBase(mode string) string {
 	}
 	if mode == "continue_listening" {
 		kind = `(k.playable=1 AND k.listening=1 AND (i.kind<>9 OR EXISTS(SELECT 1 FROM catalog_book_files f JOIN book_resume b ON b.book_id=f.book_id AND b.profile_id=a.profile_id WHERE f.entity_id=i.id AND b.item_id=i.id)))`
-		// One ordered walk of the profile's unfinished activity across its music
-		// and audiobook libraries (0079). The per-library index would make SQLite
-		// sort the whole history before the row's LIMIT could stop it.
-		// The walk reads at most continueListeningWindow of the profile's
-		// most recent unfinished activity, so a long history of unfinished
-		// films and episodes ahead of the music costs the same in any library.
-		activity = `(SELECT * FROM progress_activity INDEXED BY progress_home_profile_recent WHERE profile_id=? AND state!='ended' ORDER BY updated_at DESC,item_id DESC LIMIT ` + strconv.Itoa(continueListeningWindow) + `) a`
+		// Page the profile's actual unfinished activity through its maintained
+		// index. An arbitrary history window cannot define a row's true end.
+		activity = `(SELECT * FROM progress_activity INDEXED BY progress_home_profile_recent WHERE profile_id=? AND state!='ended') a`
 	}
 	// id names the public id for hydration, entity the integer id for
 	// restriction predicates, ord the activity row's own column so the planner
@@ -351,8 +341,7 @@ func (s *Service) homeSourceBase(r HomeRequest, spec homeRowSpec) (homeSource, e
 	libraries := string(raw)
 	switch {
 	case spec.ID == "new_on_server":
-		values, e := s.homeMergedRecent(r, false)
-		return homeRecentList(values), e
+		return s.homeRecentPagedSource(r, false)
 	case spec.ID == "because_you_watched":
 		_, c, e := s.homeBecause(r)
 		return candidateSource(c), e
@@ -366,8 +355,22 @@ func (s *Service) homeSourceBase(r HomeRequest, spec homeRowSpec) (homeSource, e
 		if err != nil {
 			return homeSource{}, err
 		}
-		return s.homeContinueSource(r, libraries, cutoffs, premieres, maximum)
-	case spec.ID == "recommended" || spec.ID == "trending_now" || strings.HasPrefix(spec.ID, recFamily+":"):
+		live, err := s.homeContinueSource(r, libraries, cutoffs, premieres, maximum)
+		if err != nil {
+			return homeSource{}, err
+		}
+		removed, err := s.homeRemovedSource(r.Viewer)
+		if err != nil {
+			return homeSource{}, err
+		}
+		var revision int64
+		if err = s.read().QueryRow(`SELECT COALESCE((SELECT revision FROM catalog_removed_title_revisions WHERE profile_id=?),0)`, r.Profile).Scan(&revision); err != nil {
+			return homeSource{}, err
+		}
+		return homeSource{base: `SELECT id,ord FROM (` + live.base + ` UNION ALL ` + removed.base + `) ORDER BY ord DESC,id DESC LIMIT ` + strconv.Itoa(maximum), args: append(live.args, removed.args...), selfRestricted: true, fingerprint: fmt.Sprintf("%s:removed:%d", live.fingerprint, revision)}, nil
+	case spec.ID == "trending_now":
+		return s.homeWeeklyTrendingSource(r)
+	case spec.ID == "recommended" || strings.HasPrefix(spec.ID, recFamily+":"):
 		return s.homeEngineSource(r, spec)
 	case strings.HasPrefix(spec.ID, homeViewPrefix):
 		return s.homeViewSource(r, spec)
@@ -393,8 +396,8 @@ func (s *Service) homeSpecs(r HomeRequest) ([]homeRowSpec, error) {
 		{ID: "because_you_watched", Title: "Because you watched", Kind: "recommendation", ArtworkShape: "poster", Direction: "asc", Priority: 30, CacheTTL: 60, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available"},
 		{ID: "featured_collection", Title: "Collection", Kind: "collection_banner", ArtworkShape: "poster", Priority: 40, CacheTTL: 120, Hideable: true, Reorderable: true, Privacy: "catalog", PolicyState: "available"},
 		{ID: "community_watching", Title: "Most watched on this server", Kind: "community", ArtworkShape: "poster", Direction: "asc", Priority: 60, CacheTTL: 60, Hideable: true, Reorderable: true, Cursors: true, Privacy: "aggregated", PolicyState: "available"},
-		{ID: "listen_next", Title: "Listen next", Kind: "listening", ArtworkShape: "square", Direction: "asc", Priority: 70, CacheTTL: 45, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available"},
-		{ID: "continue_books", Title: "Continue your books", Kind: "continue_books", ArtworkShape: "square", Direction: "asc", Priority: 80, CacheTTL: 45, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available"},
+		{ID: "listen_next", Title: "Listen next", Kind: "listening", ArtworkShape: "square", Direction: "desc", Priority: 70, CacheTTL: 45, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available"},
+		{ID: "continue_books", Title: "Continue your books", Kind: "continue_books", ArtworkShape: "square", Direction: "desc", Priority: 80, CacheTTL: 45, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available"},
 		{ID: "recommended", Title: "Recommended for you", Kind: "recommendation", ArtworkShape: "poster", Direction: "asc", Priority: 90, CacheTTL: 300, DefaultHidden: true, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available"},
 		{ID: recFamily, Title: "More recommendations", Kind: "family", Family: recFamily, ArtworkShape: "poster", Direction: "asc", Priority: 91, CacheTTL: 300, DefaultHidden: true, Hideable: true, Reorderable: true, Privacy: "personal", PolicyState: "available"},
 		{ID: "trending_now", Title: "Trending now", Kind: "recommendation", ArtworkShape: "poster", Direction: "asc", Priority: 92, CacheTTL: 300, DefaultHidden: true, Hideable: true, Reorderable: true, Cursors: true, Privacy: "catalog", PolicyState: "available"},
@@ -495,12 +498,13 @@ func (s *Service) decodeHomeCursor(raw string, expected homeCursor, revision Con
 	if out.Expires <= time.Now().Unix() {
 		return out, ErrCursor
 	}
-	if out.Fingerprint != expected.Fingerprint {
-		switch expected.Row {
-		case "new_on_server", "because_you_watched", "listen_next", "continue_books", "community_watching":
-			return out, ErrStaleContinuation
-		}
+	if out.Catalog != revision.Catalog || out.Revision != revision.Viewer {
+		return out, ErrStaleContinuation
 	}
+	if out.Fingerprint != expected.Fingerprint {
+		return out, ErrStaleContinuation
+	}
+
 	return out, nil
 }
 
@@ -512,6 +516,9 @@ func homeOrder(direction string) (string, string) {
 }
 
 func (s *Service) homeRowIDs(spec homeRowSpec, src homeSource, page HomeRowPage, revision ContentRevision, viewer string, profile string) (ids []string, total, start int, next, lead string, err error) {
+	if page.Revision != "" && page.Revision != fmt.Sprintf("%d:%d", revision.Catalog, revision.Viewer) {
+		return nil, 0, 0, "", "", ErrStaleContinuation
+	}
 	order, operator := homeOrder(spec.Direction)
 	limit := homeLimit(page.Limit)
 	// SQLite reprepares a VM whenever a bound LIMIT/OFFSET changes or is bound
@@ -558,7 +565,15 @@ func (s *Service) homeRowIDs(spec homeRowSpec, src homeSource, page HomeRowPage,
 		return ids, total, cursor.Offset, next, lead, e
 	}
 	if page.AnchorID != "" {
-		args := append(append([]any{}, src.args...), page.AnchorID)
+		anchor := page.AnchorID
+		if spec.ID == "new_on_server" {
+			// Delivery cards navigate to a real episode or season, while the
+			// stable row cursor and order belong to the canonical show work.
+			if err := s.read().QueryRow(`SELECT COALESCE((SELECT pid(parent.public_id) FROM catalog_entities child JOIN catalog_entities parent ON parent.id=CASE child.kind WHEN 4 THEN (SELECT show_id FROM catalog_episodes WHERE entity_id=child.id) WHEN 3 THEN (SELECT show_id FROM catalog_seasons WHERE entity_id=child.id) ELSE child.id END WHERE child.public_id=pid_blob(?)),?)`, anchor, anchor).Scan(&anchor); err != nil {
+				return nil, 0, 0, "", "", err
+			}
+		}
+		args := append(append([]any{}, src.args...), anchor)
 		var rank int
 		rankErr := s.read().QueryRow(`SELECT position FROM (SELECT id,ROW_NUMBER() OVER (ORDER BY ord `+order+`,id `+order+`)-1 AS position FROM (`+src.base+`)) WHERE id=?`, args...).Scan(&rank)
 		if rankErr == nil {
@@ -722,7 +737,19 @@ func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRe
 	if e != nil {
 		return row, e
 	}
-	entries, e := s.homeRowEntries(r.Profile, spec, ids)
+	displayIDs := ids
+	if spec.ID == "new_on_server" {
+		displayIDs, e = s.homeRecentPageTargets(r, ids)
+		if e != nil {
+			return row, e
+		}
+	}
+	var entries []ContentEntry
+	if spec.ID == "continue" {
+		entries, e = s.homeContinueEntries(r.Viewer, ids)
+	} else {
+		entries, e = s.homeRowEntries(r.Profile, spec, displayIDs)
+	}
 	if e != nil {
 		return row, e
 	}
@@ -732,7 +759,7 @@ func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRe
 		}
 	}
 	if spec.ID == "new_on_server" {
-		if e = s.homeNewBadges(r, entries, src); e != nil {
+		if e = s.homeNewBadges(r, entries, src, ids); e != nil {
 			return row, e
 		}
 		row.SubtitleText = &ServerText{Code: "next.home.videoKinds", Fallback: "Movies, shows and anime"}
@@ -749,7 +776,17 @@ func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRe
 			row.TitleText = reason.Text
 		}
 	}
+	if spec.ID == "trending_now" {
+		row.Why = &ServerText{Code: "next.home.whyTrending", Fallback: "What people on this server are watching most this week."}
+	}
+	if spec.ID == "recommended" {
+		row.Why, row.WhyTitles, e = s.homeRecommendationWhy(r)
+		if e != nil {
+			return row, e
+		}
+	}
 	if spec.ID == "community_watching" {
+		row.Why = &ServerText{Code: "next.home.whyPopular", Fallback: "Watched by people here over the last month. Only profiles that share their activity count."}
 		row.Period = &HomePeriod{Days: 30, Start: r.now().Add(-communityWindow).UTC().Format(time.RFC3339), End: r.now().UTC().Format(time.RFC3339), Metric: "distinct_eligible_viewers", Text: ServerText{Code: "next.home.last30Days", Fallback: "Last 30 days"}}
 	}
 	if spec.ID == "listen_next" || spec.ID == "continue_books" {
@@ -760,6 +797,11 @@ func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRe
 			row.SubtitleText = &ServerText{Code: "next.home.audioKinds", Fallback: "Audiobooks and music"}
 		} else {
 			row.Platforms = []string{"web", "phone"}
+		}
+	}
+	if spec.ID == "new_on_server" {
+		for i, entry := range entries {
+			row.DisplayTargets = append(row.DisplayTargets, HomeDisplayTarget{MembershipID: ids[i], EntryID: entry.ID})
 		}
 	}
 	row.Entries = entries
@@ -838,16 +880,17 @@ func (s *Service) HomeRowCatalogue(r HomeRequest) ([]HomeRow, error) {
 // the saved layout hides it. No entries: Customise Home lists every row, empty or not, without
 // composing any of them.
 type HomeLayoutRow struct {
-	ID           string     `json:"id"`
-	Title        string     `json:"title"`
-	TitleText    ServerText `json:"titleText"`
-	Kind         string     `json:"kind"`
-	ArtworkShape string     `json:"artworkShape"`
-	LibraryID    string     `json:"libraryId,omitempty"`
-	Required     bool       `json:"required"`
-	Hideable     bool       `json:"hideable"`
-	Reorderable  bool       `json:"reorderable"`
-	Hidden       bool       `json:"hidden"`
+	AvailabilityText *ServerText `json:"availabilityText,omitempty"`
+	ID               string      `json:"id"`
+	Title            string      `json:"title"`
+	TitleText        ServerText  `json:"titleText"`
+	Kind             string      `json:"kind"`
+	ArtworkShape     string      `json:"artworkShape"`
+	LibraryID        string      `json:"libraryId,omitempty"`
+	Required         bool        `json:"required"`
+	Hideable         bool        `json:"hideable"`
+	Reorderable      bool        `json:"reorderable"`
+	Hidden           bool        `json:"hidden"`
 }
 
 // HomeLayoutView is the saved layout with every row it can arrange, in the viewer's order.
@@ -881,7 +924,11 @@ func (s *Service) HomeLayoutRows(r HomeRequest) (HomeLayoutView, error) {
 		if spec.PolicyState != "available" {
 			continue
 		}
-		out.Rows = append(out.Rows, HomeLayoutRow{ID: spec.ID, Title: spec.Title, TitleText: spec.titleText(), Kind: spec.Kind, ArtworkShape: spec.ArtworkShape, LibraryID: spec.LibraryID,
+		var availability *ServerText
+		if spec.ID == "continue_books" {
+			availability = &ServerText{Code: "next.home.booksAvailability", Fallback: "Shown when a book is in progress"}
+		}
+		out.Rows = append(out.Rows, HomeLayoutRow{AvailabilityText: availability, ID: spec.ID, Title: spec.Title, TitleText: spec.titleText(), Kind: spec.Kind, ArtworkShape: spec.ArtworkShape, LibraryID: spec.LibraryID,
 			Required: spec.Required, Hideable: spec.Hideable, Reorderable: spec.Reorderable, Hidden: spec.hiddenIn(r.RowOrder, hidden)})
 	}
 	return out, nil

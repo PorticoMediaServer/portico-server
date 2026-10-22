@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"portico.local/server/internal/catalogtest"
@@ -492,10 +493,8 @@ func TestRecommendationCommunityPrivacyAndCurrentAccess(t *testing.T) {
 	check(0)
 }
 
-// A row that is open keeps paging when the daily rotation turns over: the
-// continuation carries on from its place in the list as it now is. A viewer
-// sees a conflict only when the thing they acted on changed.
-func TestRecommendationCursorContinuesAcrossDailyRotation(t *testing.T) {
+// A daily ranking change cannot silently reshuffle an open row's loaded prefix.
+func TestHomeRecommendationCursorRestartsAcrossDailyRotation(t *testing.T) {
 	f := recommendationFixtureDB(t)
 	s := New(f.db)
 	r := engineRequest("movies")
@@ -503,15 +502,14 @@ func TestRecommendationCursorContinuesAcrossDailyRotation(t *testing.T) {
 	if err != nil || first.NextCursor == "" {
 		t.Fatal(first, err)
 	}
+	original := r
 	r.Now = r.Now.Add(24 * time.Hour)
-	next, err := s.HomeSingleRow(r, "recommended", HomeRowPage{Limit: 1, Cursor: first.NextCursor})
-	if err != nil {
-		t.Fatal("cursor could not continue after ranking changes", err)
+	if _, err = s.HomeSingleRow(r, "recommended", HomeRowPage{Limit: 1, Cursor: first.NextCursor}); !errors.Is(err, ErrStaleContinuation) {
+		t.Fatal("ranking changed without typed restart", err)
 	}
-	for _, entry := range next.Entries {
-		if len(first.Entries) > 0 && entry.ID == first.Entries[0].ID {
-			t.Fatal("the continuation repeated the entry it started after", entry.ID)
-		}
+	replay, err := s.HomeSingleRow(original, "recommended", HomeRowPage{Limit: 1})
+	if err != nil || !reflect.DeepEqual(replay.Entries, first.Entries) {
+		t.Fatal("stable ranking replay changed", replay, err)
 	}
 }
 
