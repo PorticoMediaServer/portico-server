@@ -466,3 +466,15 @@ test('reconcile: closing a retained menu releases its one-item registration with
   h.controller.registerWindow({id: 'window', row: h.document.rows[0], sectionOrder: 0}); h.controller.closeMenu();
   assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 2); h.controller.dispose();
 });
+
+
+test('reconcile: reusing a window id for a different genuine row never moves the menu origin', async () => {
+  for (const refresh of [false, true]) {
+    const h = harness(); const other = {...h.document.rows[0], id: 'different-row'};
+    h.replace({...h.document, rows: [...h.document.rows, other]}); openLast(h);
+    h.controller.registerWindow({id: 'window', row: other, sectionOrder: 1});
+    if (refresh) h.replace({...h.document, revision: {catalog: 2, viewer: 2}});
+    await assert.rejects(h.controller.executeMenu('play'), /unregistered-home-entry|menu-action-not-offered/);
+    assert.equal(h.controller.getSnapshot().menu, null); assert.equal(h.played.length, 0); h.controller.dispose();
+  }
+});

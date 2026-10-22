@@ -25,6 +25,7 @@ export function homeSelectionContext(scope: Omit<SelectionContext['scope'], 'pri
   return {scope: {...scope, privacyFence: document.viewerFence}, revision: {catalogRevision: String(document.revision.catalog), viewerRevision: String(document.revision.viewer)}};
 }
 type WindowSource = Readonly<{kind: 'row'; id: string; slot: 'entries' | 'collection' | 'live'} | {kind: 'spotlight'}>;
+const sameSource = (a: WindowSource, b: WindowSource) => a.kind === 'spotlight' ? b.kind === 'spotlight' : b.kind === 'row' && a.id === b.id && a.slot === b.slot;
 type CurrentMember = Readonly<{member: HomeSelectionMember; row?: HomeRow; spotlight?: HomeSpotlight; index: number}>;
 type Ticket = {document: HomeDocument; epoch: number; context: SelectionContext; target: SelectionTarget; model?: SelectionOperation; controller: AbortController};
 /** Shared execution only: all renderer, locale, key, gesture and haptic ownership stays in the shell. */
@@ -42,6 +43,7 @@ export class HomeSelectionController {
   private changing = false;
   private document?: HomeDocument;
   private menuWindow?: () => void;
+  private menuSource?: WindowSource;
   private ticket?: Ticket;
   private pickerSession?: HomeSelectionDestinations;
   private jobs: HomeJobTask[] = [];
@@ -100,24 +102,24 @@ export class HomeSelectionController {
     if (!this.options.isCurrent(next)) {this.invalidate(); return;}
     if (document !== this.document || !sameContext(next, this.state.context)) this.reconcile(next, this.environment);
   }
-  private invalidate() {this.cancelAction(); this.selection.clear(); for (const window of this.windows.values()) window.unregister(); this.windows.clear(); this.menuWindow = undefined; this.held.clear(); this.editorEdits = []; this.editorReceipts = []; this.editorOriginalTargets = []; this.editorRetryTargets = undefined; this.deleteBody = undefined; this.jobs = []; this.personalCommands = []; this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null, action: idle()});}
+  private invalidate() {this.cancelAction(); this.selection.clear(); for (const window of this.windows.values()) window.unregister(); this.windows.clear(); this.menuWindow = undefined; this.menuSource = undefined; this.held.clear(); this.editorEdits = []; this.editorReceipts = []; this.editorOriginalTargets = []; this.editorRetryTargets = undefined; this.deleteBody = undefined; this.jobs = []; this.personalCommands = []; this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null, action: idle()});}
   /** Revision changes may retain a menu's semantic opener, never its old grants or in-flight work. */
   private reconcile(context: SelectionContext, environment: SelectionEnvironment) {
-    const previous = this.state.context, menu = this.state.menu, window = menu && this.windows.get(menu.windowId);
+    const previous = this.state.context, menu = this.state.menu, source = this.menuSource, window = menu && this.windows.get(menu.windowId);
     this.changing = true;
     try {
       this.invalidate();
       this.environment = {...environment}; this.selection.setContext(context);
       this.document = this.options.home.getSnapshot().document;
       this.publish({context: this.selection.getSnapshot().context, selection: this.selection.getSnapshot(), actions: selectionActions(this.selection.getSnapshot().summary, this.environment), action: idle()});
-      if (!menu || !window || !sameScope(previous, context) || !this.isHomeCurrent(context)) return;
-      const current = this.resolveMember(window.source, menu.key);
+      if (!menu || !window || !source || !sameSource(source, window.source) || !sameScope(previous, context) || !this.isHomeCurrent(context)) return;
+      const current = this.resolveMember(source, menu.key);
       if (!current || !this.retainsGrants(menu, current.member)) return;
       // Re-register only the proven current item. The shell owns physical order and visible windows.
       const registered = current.spotlight ? this.registerSpotlight({id: menu.windowId, spotlight: current.spotlight})
         : current.row ? this.registerWindow({id: menu.windowId, row: current.row, sectionOrder: window.order - 1,
-          ...(window.source.kind === 'row' && window.source.slot === 'live' ? {channels: current.row.live!.channels.slice(current.index, current.index + 1)}
-            : window.source.kind === 'row' && window.source.slot === 'entries' ? {entries: [current.member.entry!]} : {})}) : undefined;
+          ...(source.kind === 'row' && source.slot === 'live' ? {channels: current.row.live!.channels.slice(current.index, current.index + 1)}
+            : source.kind === 'row' && source.slot === 'entries' ? {entries: [current.member.entry!]} : {})}) : undefined;
       if (registered?.ok) {this.menuWindow = registered.unregister; this.openMenu(menu.windowId, menu.key);}
     } finally {
       this.changing = false;
@@ -364,17 +366,18 @@ export class HomeSelectionController {
   }
   private currentMenu(menu: HomeSelectionMenu) {
     const window = this.windows.get(menu.windowId);
-    if (!window?.members.has(menu.key)) {this.closeMenu(); throw selectionExecutionError('unregistered-home-entry');}
-    const current = this.resolveMember(window.source, menu.key);
+    if (!window?.members.has(menu.key) || !this.menuSource || !sameSource(this.menuSource, window.source)) {this.closeMenu(); throw selectionExecutionError('unregistered-home-entry');}
+    const current = this.resolveMember(this.menuSource, menu.key);
     if (!current || !this.retainsGrants(menu, current.member)) {this.closeMenu(); throw selectionExecutionError('home-offers-changed');}
     return {...menu, member: current.member, groups: this.menuGroups(current.member)};
   }
   openMenu(windowId: string, key: string) {
     this.active(); const window = this.windows.get(windowId), current = window?.members.has(key) ? this.resolveMember(window.source, key) : undefined;
     if (!current) throw selectionExecutionError('unregistered-home-entry');
+    this.menuSource = window!.source;
     this.publish({menu: {windowId, key, member: current.member, groups: this.menuGroups(current.member)}});
   }
-  closeMenu() {const cleanup = this.menuWindow; this.menuWindow = undefined; cleanup?.(); this.publish({menu: null});}
+  closeMenu() {this.menuSource = undefined; const cleanup = this.menuWindow; this.menuWindow = undefined; cleanup?.(); this.publish({menu: null});}
   async executeMenu(action: EntryActionId, value?: number | null) {
     this.active(); const shown = this.state.menu, menu = shown ? this.currentMenu(shown) : null;
     if (!menu || !menu.groups.some(group => group.actions.some(offered => offered.id === action))) throw selectionExecutionError('menu-action-not-offered');
@@ -591,5 +594,5 @@ export class HomeSelectionController {
   reloadDelete() {return this.openDelete(this.ticket?.target);}
   closeDelete() {this.cancelAction(); this.deleteBody = undefined; this.publish({deletion: null});}
   private closeDialogs() {this.cancelAction(); this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null});}
-  dispose() {if (this.disposed) return; this.cancelAction(); for (const cleanup of this.cleanups) cleanup(); this.selection.dispose(); this.windows.clear(); this.menuWindow = undefined; this.held.clear(); this.operationMembers.clear(); this.disposed = true; this.state = Object.freeze({...this.state, displayMembers: [], menu: null, picker: null, editor: null, deletion: null, rating: null}); this.listeners.clear();}
+  dispose() {if (this.disposed) return; this.cancelAction(); for (const cleanup of this.cleanups) cleanup(); this.selection.dispose(); this.windows.clear(); this.menuWindow = undefined; this.menuSource = undefined; this.held.clear(); this.operationMembers.clear(); this.disposed = true; this.state = Object.freeze({...this.state, displayMembers: [], menu: null, picker: null, editor: null, deletion: null, rating: null}); this.listeners.clear();}
 }
