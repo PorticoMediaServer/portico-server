@@ -11,7 +11,7 @@ import type {DockRendererProps} from './types';
 import styles from './dock.module.css';
 
 export function MediaBar(props: DockRendererProps) {
-  const {view, binding, t = dockText, className, style} = props, root = useRef<HTMLElement | null>(null), anchor = useRef<HTMLButtonElement | null>(null);
+  const {view, binding, t = dockText, className, style} = props, root = useRef<HTMLElement | null>(null), anchor = useRef<HTMLButtonElement | null>(null), menuAnchor = useRef<HTMLSpanElement | null>(null);
   const [held, setHeld] = useState(false), [holding, setHolding] = useState(false), reduced = useDockReducedMotion(root), send = useDockActions({view, binding});
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null), animation = useRef<Animation | null>(null), suppressClick = useRef(false);
   const gesture = useRef<{id: number; x: number; y: number; lastX: number; lastY: number; time: number; vx: number; vy: number; dx: number; dy: number; moved: boolean} | null>(null);
@@ -21,15 +21,19 @@ export function MediaBar(props: DockRendererProps) {
   useEffect(() => () => { if (holdTimer.current) clearTimeout(holdTimer.current); animation.current?.cancel(); }, []);
   useLayoutEffect(() => { setHeld(false); }, [view.playback.fence.sessionId, view.playback.fence.generation]);
   useLayoutEffect(() => {
-    if (!held || !root.current || reduced) return;
+    if (!root.current) return;
+    const element = root.current;
+    signalDockMotion(element, {kind: 'hold', raised: held, scales: reduced ? [1] : held ? [.98, 1.02, 1] : holding ? [.98] : [1], duration: held && !reduced ? springTiming(springs.snap).durationMs : 0});
+    if (!held || reduced) return;
     const job = root.current.animate([{transform: 'scale(.98)'}, {transform: 'scale(1.02)', offset: .3}, {transform: 'scale(1)'}], {duration: springTiming(springs.snap).durationMs, easing: 'ease-out'});
     return () => job.cancel();
-  }, [held, reduced]);
+  }, [held, holding, reduced]);
   const down = (event: PointerEvent<HTMLElement>) => {
     if (event.button !== 0 || held || remoteTerminal(view.remote)) return;
     const current = animation.current ? movement.current.sample(performance.now()) : {position: 0, velocity: 0};
     animation.current?.cancel(); animation.current = null; event.currentTarget.style.transform = current.position ? `translateX(${current.position}px)` : ''; suppressClick.current = false;
     gesture.current = {id: event.pointerId, x: event.clientX - current.position, y: event.clientY, lastX: event.clientX, lastY: event.clientY, time: event.timeStamp, vx: current.velocity, vy: 0, dx: current.position, dy: 0, moved: current.position !== 0};
+    event.currentTarget.setPointerCapture(event.pointerId);
     signalDockMotion(event.currentTarget, {kind: 'begin', offset: current.position});
     holdTimer.current = setTimeout(() => { suppressClick.current = true; setHolding(false); setHeld(true); }, 500); setHolding(true);
   };
@@ -57,6 +61,7 @@ export function MediaBar(props: DockRendererProps) {
     void job.finished.then(() => { if (animation.current !== job) return; if (decision.dismiss) send({kind: 'stop'}); element.style.transform = ''; signalDockMotion(element, {kind: 'reset'}); job.cancel(); animation.current = null; }).catch(() => {});
   };
   return <>
+    <span ref={menuAnchor} className={styles.menuAnchor} style={style} aria-hidden="true" />
     {held && <div className={styles.phoneScrim} onClick={() => setHeld(false)} />}
     <section ref={root} className={[styles.phoneBar, held && styles.held, className].filter(Boolean).join(' ')} data-mode={view.mode} data-holding={holding || undefined} aria-label={t('next.dock.nowPlaying')} style={style}
       onPointerDown={down} onPointerMove={move} onPointerUp={event => release(event)} onPointerCancel={event => release(event, true)}
@@ -66,7 +71,7 @@ export function MediaBar(props: DockRendererProps) {
       {remoteTerminal(view.remote) ? <TerminalActions {...props} phone /> : view.remote && view.remote.phase !== 'playing' ? <Control icon="i-stop" label={t('next.dock.stopConnecting')} onClick={() => send({kind: 'stop'})} /> : <Transport {...props} phone />}
       <Progress {...props} line />
     </section>
-    <Menu open={held} onOpenChange={open => setHeld(open)} title={t('next.dock.nowPlaying')} presentation="anchored" anchorRef={root} returnFocusRef={anchor} placement="top-start" width={250} sideOffset={8} className={styles.holdMenu} items={[
+    <Menu open={held} onOpenChange={open => setHeld(open)} title={t('next.dock.nowPlaying')} presentation="anchored" anchorRef={menuAnchor} returnFocusRef={anchor} placement="top-start" width={250} sideOffset={8} className={styles.holdMenu} items={[
       {id: 'open', label: t('next.dock.open'), icon: 'i-up', onSelect: () => send({kind: 'expand'})},
       ...(view.presentation.controls.includes('play-on') ? [{id: 'play-on', label: t('next.dock.playOn'), icon: 'i-cast' as const, onSelect: () => send({kind: 'play-on'})}] : []),
       {id: 'stop', label: t('next.dock.stop'), icon: 'i-stop', destructive: true, onSelect: () => send({kind: 'stop'})},
