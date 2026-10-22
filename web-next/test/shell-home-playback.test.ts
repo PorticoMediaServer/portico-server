@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {PlaybackDock, type DockPlayback, type QueuePlaybackFence, type QueueScope} from '../../packages/player-core/src/index.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../src/platform/playback/index.ts';
 import type {DockPresentation} from '../src/kit/dock/index.ts';
-import {hasDock, PlaybackPresentations} from '../src/shell/playback-model.ts';
+import {fenceKey, hasDock, PlaybackPresentations} from '../src/shell/playback-model.ts';
 import {homeFixtures as f} from '../../packages/i18n/src/catalog/en-US/next/dev/home-fixtures.ts';
 import {PlaybackMediaOwner} from '../src/shell/playback-media-owner.ts';
 
@@ -13,6 +13,18 @@ const audio: DockPlayback = {fence: fence('song'), kind: 'music', positionSecond
 const video: DockPlayback = {fence: fence('movie'), kind: 'video', positionSeconds: 845, playing: true, expanded: true, queue: null};
 function presentation(value: DockPlayback): DockPresentation { return {fence: value.fence, identity: {id: value.fence.itemId, kind: value.kind === 'music' ? 'music' : 'video', title: f.movie, subtitle: []}, controls: ['play', 'pause'], skipBackSeconds: 10, skipForwardSeconds: 30}; }
 function snapshot(dock: PlaybackDock): WebPlaybackRuntimeSnapshot { return {dock: dock.getSnapshot()} as WebPlaybackRuntimeSnapshot; }
+
+test('presentation keys preserve queue and channel identities independently of wire property order', () => {
+  const original = fence('movie');
+  const reordered: QueuePlaybackFence = {generation: original.generation, sourceId: original.sourceId, entryId: original.entryId,
+    itemId: original.itemId, sessionId: original.sessionId, playback: {run: 1, scope: {...scope}}, kind: 'queue'};
+  assert.equal(fenceKey(original), fenceKey(reordered));
+  assert.notEqual(fenceKey(original), fenceKey({...reordered, generation: 2}));
+  const channel = {kind: 'channel' as const, channelKind: 'live-source' as const, playback: original.playback,
+    sourceId: original.sourceId, sessionId: original.sessionId, generation: 1, channelId: 'movie', channelGeneration: '1'};
+  assert.notEqual(fenceKey(original), fenceKey(channel));
+  assert.notEqual(fenceKey(channel), fenceKey({...channel, channelGeneration: '2'}));
+});
 
 test('presentation retention follows actual parked/bookmarked fences and clears when the source goes away', () => {
   const dock = new PlaybackDock(scope), values = new PlaybackPresentations();
