@@ -17,6 +17,16 @@ export function hdrText(range: string | undefined, hdr10Plus: boolean | undefine
   return key ? t(key) : undefined;
 }
 export const heightText = (height: number | undefined, t: KitTranslate): string | undefined => integer(height) ? t('next.kit.height', {height}) : undefined;
+/** File info's horizontal source class, including cropped cinema. Never a delivered height. */
+export function fileDisplayResolutionPart(width: number | undefined, height: number | undefined, t: KitTranslate): FactPart | undefined {
+  const text = integer(width) && width >= 7680 ? t('next.kit.fileInfo.8k')
+    : integer(width) && width >= 3840 ? t('next.kit.4k')
+    : integer(width) && width >= 2560 ? heightText(1440, t)
+    : integer(width) && width >= 1920 ? heightText(1080, t)
+    : integer(width) && width >= 1280 ? heightText(720, t)
+    : heightText(height, t);
+  return text ? part('resolution-class', text) : undefined;
+}
 export function bitRateText(bits: number | undefined, t: KitTranslate): string | undefined {
   if (!positive(bits)) return undefined;
   const rate = bits / 1_000_000;
