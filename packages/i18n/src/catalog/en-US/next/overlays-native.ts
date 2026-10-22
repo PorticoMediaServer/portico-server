@@ -1,1 +1,17 @@
-export const overlaysNativeMessages = {} as const satisfies Record<`next.overlays.native.${string}`, string>;
+export const overlaysNativeMessages = {
+  'next.overlays.native.galleryTitle': 'Overlays',
+  'next.overlays.native.menu': 'Menu',
+  'next.overlays.native.popover': 'Popover',
+  'next.overlays.native.dialog': 'Dialog',
+  'next.overlays.native.sidePanel': 'Side panel',
+  'next.overlays.native.bottomSheet': 'Bottom sheet',
+  'next.overlays.native.toast': 'Toast',
+  'next.overlays.native.banner': 'Banner',
+  'next.overlays.native.expandSheet': 'Expand sheet',
+  'next.overlays.native.collapseSheet': 'Collapse sheet',
+  'next.overlays.native.dismissToast': 'Dismiss notification',
+  'next.overlays.native.sheetPosition': '{position, number} of {count, number}',
+  'next.overlays.native.fileInfoNote': 'Portico chooses the version to play from the device and your settings. This list is for information.',
+  'next.overlays.native.addedToMyList': 'Added to My List',
+  'next.overlays.native.stillLoading': 'Still loading. Your connection is slow.',
+} as const satisfies Record<`next.overlays.native.${string}`, string>;
