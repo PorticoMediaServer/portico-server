@@ -59,6 +59,7 @@ export const browseNativeMessages = {
   'next.browse.native.added': 'Date added',
   'next.browse.native.number': 'Track number',
   'next.browse.native.play': 'Play {title}',
+  'next.browse.native.select': 'Select',
   'next.browse.native.moreFor': 'More options for {title}',
   'next.browse.native.favorite': 'Favorite',
   'next.browse.native.unfavorite': 'Remove from Favorites',
