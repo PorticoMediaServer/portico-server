@@ -243,7 +243,13 @@ func bulkEvent(tx *sql.Tx, p identity.Principal, id string) error {
 	if err = tx.QueryRow(`SELECT revision FROM personal_jobs WHERE id=?`, id).Scan(&revision); err != nil {
 		return err
 	}
-	return apievents.Append(tx, apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID), "job.updated", "job", id, strconv.FormatInt(revision, 10), j)
+	if err = apievents.Append(tx, apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID), "job.updated", "job", id, strconv.FormatInt(revision, 10), j); err != nil {
+		return err
+	}
+	if jobOwnerCommand(j.Command) {
+		return apievents.Append(tx, "admin", "job.updated", "job", id, strconv.FormatInt(revision, 10), j)
+	}
+	return nil
 }
 
 func (s *Service) CreateBulkJob(ctx context.Context, p identity.Principal, v Viewer, in JobRequest, scheduler *operations.Scheduler, access BulkAccess) (out BulkJob, err error) {
@@ -253,7 +259,7 @@ func (s *Service) CreateBulkJob(ctx context.Context, p identity.Principal, v Vie
 	if !personalOperation.MatchString(in.OperationID) {
 		return out, jobInvalid("invalid command or operationId")
 	}
-	if jobOwnerCommand(in.Command) && p.Role != "owner" {
+	if jobOwnerCommand(in.Command) && !identity.Administrative(p.Role) {
 		return out, identity.ErrUnauthorized
 	}
 	if err = s.validateBulkCommand(in.Command, in.Args); err != nil {
@@ -473,7 +479,7 @@ func (s *Service) AdvanceBulkJob(ctx context.Context, id string, access BulkAcce
 			e = commandErr
 		}
 		if e != nil {
-			if !errors.Is(e, identity.ErrUnauthorized) && !errors.Is(e, identity.ErrContentRestricted) {
+			if !errors.Is(e, identity.ErrUnauthorized) && !errors.Is(e, identity.ErrForbidden) && !errors.Is(e, identity.ErrContentRestricted) {
 				return e
 			}
 			if _, e = tx.ExecContext(ctx, `UPDATE personal_jobs SET revision=revision+1,state='failed',error_code='authority_revoked',updated_ms=? WHERE id=?`, time.Now().UnixMilli(), id); e != nil {

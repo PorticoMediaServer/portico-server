@@ -111,7 +111,13 @@ type rankedEpisode struct {
 // pass over one show's episodes, whatever the library's size.
 func (s *Service) showRankedEpisodes(r ShowWorkspaceRequest, show string) ([]rankedEpisode, error) {
 	restriction, bound := ItemRestrictionSQL("item.id", r.Viewer.EffectiveRestrictions())
+	stateSQL, stateArgs, err := episodePlayStateSQL(r.Profile, r.PlayState)
+	if err != nil {
+		return nil, err
+	}
+	restriction += stateSQL
 	args := append([]any{show}, bound...)
+	args = append(args, stateArgs...)
 	rows, e := s.read().Query(`SELECT pid(item.public_id),COALESCE(pid(se.public_id),''),ep.number,COALESCE(sd.number,1)
  FROM catalog_episodes ep JOIN catalog_entities item ON item.id=ep.entity_id JOIN catalog_entities sh ON sh.id=ep.show_id
  LEFT JOIN catalog_entities se ON se.id=ep.season_id LEFT JOIN catalog_seasons sd ON sd.entity_id=ep.season_id
@@ -254,7 +260,7 @@ func (s *Service) workspaceSettingEpisodes(r ShowWorkspaceRequest, w ShowWorkspa
 		}
 	}
 	if r.Cursor != "" {
-		c, e := s.decodeRevisionCursor(r.Cursor, scope, revision)
+		c, e := s.decodeDetailCursor(r.Cursor, scope, revision)
 		if e != nil {
 			return out, e
 		}

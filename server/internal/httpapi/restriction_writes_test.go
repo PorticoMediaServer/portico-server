@@ -527,6 +527,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/metadata/{kind}/{id}/art/{role}/upload":                 perHidden("POST", "/v1/metadata/item/ID/art/poster/upload", `{}`, "item"),
 		"DELETE /v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}": perHidden("DELETE", "/v1/metadata/item/ID/art/poster/upload/matrix-candidate", "", "item"),
 		"POST /v1/metadata/bulk":                                          perHidden("POST", "/v1/metadata/bulk", `{"operationId":"OP","itemIds":["ID"]}`, "item"),
+		"POST /v1/metadata/bulk/preview":                                  perHidden("POST", "/v1/metadata/bulk/preview", `{"targets":[{"kind":"item","contentKind":"movie","id":"ID","libraryId":"matrix-movies"}]}`, "item"),
 		"PUT /v1/shows/{id}/metadata/screen/season":                       perHidden("PUT", "/v1/shows/ID/metadata/screen/season", `{}`, "show"),
 		"PUT /v1/shows/{id}/metadata/tvdb":                                perHidden("PUT", "/v1/shows/ID/metadata/tvdb", `{}`, "show"),
 		"POST /v1/shows/{id}/metadata/tvdb/retry":                         perHidden("POST", "/v1/shows/ID/metadata/tvdb/retry", `{}`, "show"),

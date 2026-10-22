@@ -143,9 +143,10 @@ test('one part of a title page that cannot be read is left out and the page is k
  assert.deepEqual([bare.metadata,bare.actions,bare.markers,'future' in bare],[{status:'unavailable',ratings:[],genres:[],credits:[]},[],[],false]);
  // Related rows this app cannot read are left out whole.
  assert.equal((await read(d=>{d.related={version:2};})).related,undefined);
- // Files: a file without an id and a track without a codec name are handled alone.
- const files=await read(d=>{d.files=[{size:1},{id:'f1',size:'big',video:{codec:7},audio:[{codec:'aac',channels:2},'nope',{language:'en'}],subtitles:null}];});
- assert.deepEqual(files.files,[{id:'f1',size:0,container:'',duration:0,available:false,audio:[{codec:'aac',channels:2},{codec:'',language:'en'}],subtitles:[]}]);
+ // Technical files no longer ride on the page; language summaries remain.
+ const lazy=await read(d=>{d.files=[{id:'private-file',path:'/private/title.mkv'}];d.languages={audio:['en'],subtitles:['fr']};});
+ assert.equal('files' in lazy,false);
+ assert.deepEqual(lazy.languages,{audio:['en'],subtitles:['fr']});
 });
 
 test('bounded queue, cancellation and disposal settle pending commands without late publication',async()=>{
@@ -160,7 +161,7 @@ test('bounded episode/song/bookFile source metadata and unknown boundaries survi
  for(const [field,value]of Object.entries(fields)){
   const service=setup(async()=>{const d=data();d.item[field]=value;d.item.overview='Paragraph one.\n\nParagraph two.';d.item.sources[0].duration=100;return d;});await service.select(target);
   assert.equal(service.getSnapshot().phase,'ready');assert.deepEqual((service.getSnapshot().data!.item as any)[field],value);
-  assert.equal(service.getSnapshot().data!.item.sources![0].duration,100);assert.match(service.getSnapshot().data!.item.overview!,/\n\n/);
+  assert.equal(service.getSnapshot().data!.item.sources,undefined);assert.match(service.getSnapshot().data!.item.overview!,/\n\n/);
  }
  // Facts that cannot be read are left out whole; a fact the server stops sending reads as empty.
  const bad=setup(async()=>{const d=data();d.item.episode={...fields.episode,showTitle:'x'.repeat(2049)};return d;});await bad.select(target);assert.equal(bad.getSnapshot().phase,'ready');assert.equal(bad.getSnapshot().data!.item.episode,undefined);
@@ -199,7 +200,44 @@ test('CD-24: audiobook part with progress past duration opens with a bounded res
 
 test('a page of credits keeps the credits it can read; the group asked for, the cursor and the bound stay exact',()=>{
  const credit=(id:string)=>({id,name:'Name '+id,role:'Role',department:'Acting',provider:'tmdb'});
- const page=parseCreditPage({group:'cast',total:1,future:true,credits:[credit('1'),{name:'No id'},'nope',{...credit('2'),portraitUrl:'/v1/metadata/item/other/art/portrait?v=1',future:1}],nextCursor:'next'},'item','cast');
- assert.deepEqual(page,{group:'cast',credits:[credit('1'),credit('2')],total:2,nextCursor:'next'});
+ const revision={catalog:1,viewer:0};
+ const page=parseCreditPage({revision,group:'cast',total:1,future:true,credits:[credit('1'),{name:'No id'},'nope',{...credit('2'),portraitUrl:'/v1/metadata/item/other/art/portrait?v=1',future:1}],nextCursor:'next'},'item','cast');
+ assert.deepEqual(page,{revision,group:'cast',credits:[credit('1'),credit('2')],total:2,nextCursor:'next'});
  for(const broken of [{group:'crew',total:0,credits:[]},{group:'cast',total:0,credits:'nope'},{group:'cast',total:0,credits:[],nextCursor:7},{group:'cast',total:0,credits:Array(10001).fill(credit('1'))}])assert.throws(()=>parseCreditPage(broken,'item','cast'),{code:'invalid_detail'});
+});
+
+test('lazy file information binds scope and keeps member responses free of owner paths', async()=>{
+ const {parseFileInfo,readFileInfo}=await import('../src/detail.ts');
+ const raw={scope:{serverId:'server',libraryId:'library',itemId:'item',viewerFence:'fence'},revision:{catalog:1,viewer:0},kind:'movie',files:[{id:'version',container:'mkv',durationMs:100000,size:1000,available:true,audio:[{codec:'aac',language:'en'}],subtitles:[]}]};
+ const parsed=parseFileInfo(raw,scope,target);assert.equal(parsed.files[0].duration,100);assert.equal(parsed.manage,undefined);
+ assert.throws(()=>parseFileInfo({...raw,scope:{...raw.scope,itemId:'other'}},scope,target));
+ assert.throws(()=>parseFileInfo({...raw,files:[{...raw.files[0],path:'/private/movie.mkv'}]},scope,target));
+ const owner=parseFileInfo({...raw,manage:{delete:true,split:true,merge:true},files:[{...raw.files[0],path:'/private/movie.mkv'}]},scope,target);assert.equal(owner.files[0].path,'/private/movie.mkv');
+ let requested='';await readFileInfo({request:async<T>(path:string)=>{requested=path;return raw as T;}},scope,target);assert.equal(requested,'/v1/items/item/file-info');
+});
+
+test('detail recommendation and credit pages preserve all 537 loaded entries and reject a different revision', async()=>{
+ const {readCreditPage,appendCreditPage,readDetailMoreLike,appendDetailRecommendationPage}=await import('../src/detail.ts');
+ const revision={catalog:3,viewer:1};
+ const makePage=(start:number)=>{
+  const entries=Array.from({length:Math.min(37,537-start)},(_,index)=>{const id=String(start+index);return {id,kind:'movie',title:'Title '+id,libraryId:'library',available:true,navigation:{view:'item',entityId:id},playback:{itemId:id}};});
+  return {id:'more_like:local:item',evidenceId:'item',relation:'more_like',endpoint:'/v1/items/item/recommendations/rows/more_like',title:'More like Item',kind:'related',artworkShape:'poster',viewerFence:'fence',entries,revision,start,limit:37,total:537,hasMore:start+entries.length<537,nextCursor:start+entries.length<537?String(start+entries.length):''};
+ };
+ const paths:string[]=[];
+ const api:DetailApi={request:async<T>(path:string)=>{
+  paths.push(path);const url=new URL(path,'http://test');const start=Number(url.searchParams.get('cursor')??0);const row=makePage(start);
+  if(url.pathname.endsWith('/credits')) return {group:'cast',revision,total:537,credits:row.entries.map(entry=>({id:entry.id,name:entry.title,role:'Role',department:'Acting',provider:'tmdb'})),...(row.nextCursor?{nextCursor:row.nextCursor}:{})} as T;
+  return row as T;
+ }};
+ let row=await readDetailMoreLike(api,'item'),credits=await readCreditPage(api,'item','cast');
+ const firstRows=row.entries,firstCredits=credits.credits;
+ while(row.nextCursor)row=appendDetailRecommendationPage(row,await readDetailMoreLike(api,'item',{cursor:row.nextCursor}));
+ while(credits.nextCursor)credits=appendCreditPage(credits,await readCreditPage(api,'item','cast',{cursor:credits.nextCursor}));
+ const ids=Array.from({length:537},(_,index)=>String(index));
+ assert.deepEqual(row.entries.map(entry=>entry.id),ids);assert.deepEqual(credits.credits.map(credit=>credit.id),ids);
+ assert.deepEqual(row.entries.slice(0,37),firstRows);assert.deepEqual(credits.credits.slice(0,37),firstCredits);
+ assert.throws(()=>appendDetailRecommendationPage(row,{...row,revision:{catalog:4,viewer:1}}),{code:'stale_continuation'});
+ assert.throws(()=>appendCreditPage(credits,{...credits,revision:{catalog:4,viewer:1}}),{code:'stale_continuation'});
+ assert.ok(paths.includes('/v1/items/item/credits?group=cast&limit=37&cursor=37'));
+ assert.ok(paths.includes('/v1/items/item/recommendations/rows/more_like?limit=37&cursor=37'));
 });

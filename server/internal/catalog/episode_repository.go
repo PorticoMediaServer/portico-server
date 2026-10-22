@@ -8,6 +8,8 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
+	"portico.local/server/internal/naming"
+	"portico.local/server/internal/personalstate"
 	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
@@ -15,6 +17,8 @@ import (
 )
 
 type Show struct {
+	EpisodeCount     int64    `json:"episodeCount"`
+	AddedAt          string   `json:"addedAt,omitempty"`
 	WatchedCount     *int     `json:"watchedCount,omitempty"`
 	UnwatchedCount   *int     `json:"unwatchedCount,omitempty"`
 	PosterURL        string   `json:"posterUrl,omitempty"`
@@ -54,6 +58,9 @@ type ShowRating struct {
 	Votes int     `json:"votes,omitempty"`
 }
 type Season struct {
+	FirstAired     string `json:"firstAired,omitempty"`
+	LastAired      string `json:"lastAired,omitempty"`
+	Overview       string `json:"overview,omitempty"`
 	UnwatchedCount *int   `json:"unwatchedCount,omitempty"`
 	ID             string `json:"id"`
 	ShowID         string `json:"showId"`
@@ -107,7 +114,7 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 		return err
 	}
 	if plan.Issue != "" {
-		return nil
+		return s.commitLooseEpisode(tx, library, asset, name)
 	}
 	ctx := context.Background()
 	handle, err := compactcatalog.LibraryTx(ctx, tx, library)
@@ -150,6 +157,10 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 	if err != nil {
 		return err
 	}
+	var loose int64
+	if err = tx.QueryRow(`SELECT e.id FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id WHERE l.asset_id=? AND e.library_id=? AND e.kind=? AND e.parent_id IS NULL AND NOT EXISTS(SELECT 1 FROM catalog_episodes ep WHERE ep.entity_id=e.id) LIMIT 1`, assetID, handle, compactcatalog.Episode).Scan(&loose); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	for _, item := range linked {
 		if err = compactcatalog.UnlinkAssetTx(ctx, tx, item, assetID); err != nil {
 			return err
@@ -172,7 +183,16 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 				title = plan.AirDate
 			}
 			var fresh bool
-			item, fresh, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Episode, Parent: parent, Key: compactcatalog.EpisodeKey(key, plan.Numbering, plan.Season, number), Title: title, Added: catalogedNow()})
+			if loose != 0 {
+				item = loose
+				loose = 0
+				_, err = tx.Exec(`UPDATE catalog_entities SET parent_id=?,retired=0 WHERE id=?`, parent, item)
+				if err == nil {
+					err = compactcatalog.SetFactsTx(ctx, tx, item, map[string]any{"title": title})
+				}
+			} else {
+				item, fresh, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Episode, Parent: parent, Key: compactcatalog.EpisodeKey(key, plan.Numbering, plan.Season, number), Title: title, Added: catalogedNow()})
+			}
 			if err != nil {
 				return err
 			}
@@ -390,57 +410,63 @@ func (s *Service) Seasons(viewer Viewer, show string) ([]Season, error) {
 	}
 	return out, nil
 }
-func (s *Service) Episodes(viewer Viewer, show, season, cursor string, limit int) ([]Item, string, error) {
+func (s *Service) Episodes(viewer Viewer, show, season, cursor string, limit int, playStates ...string) ([]Item, string, error) {
 	if err := s.prepareViewer(viewer); err != nil {
 		return nil, "", err
 	}
 	if season != "" {
-		var parent string
-		if err := s.read().QueryRow(`SELECT pid(sh.public_id) FROM catalog_entities se JOIN catalog_seasons d ON d.entity_id=se.id JOIN catalog_entities sh ON sh.id=d.show_id WHERE se.public_id=pid_blob(?) AND se.retired=0`, season).Scan(&parent); err != nil {
+		if err := s.VisibleEntity(s.Context(), viewer, "season", season); err != nil {
 			return nil, "", err
 		}
-		if show != "" && show != parent {
-			return nil, "", sql.ErrNoRows
+	} else if show != "" {
+		if err := s.VisibleEntity(s.Context(), viewer, "show", show); err != nil {
+			return nil, "", err
 		}
-		show = parent
 	}
-	if show != "" {
-		visible, args := viewer.itemVisibilitySQL("item.id")
-		args = append([]any{show}, args...)
-		var present int
-		if err := s.read().QueryRow(`SELECT 1 FROM catalog_entities sh JOIN catalog_episodes ep ON ep.show_id=sh.id JOIN catalog_entities item ON item.id=ep.entity_id JOIN catalog_asset_links a ON a.entity_id=item.id WHERE sh.public_id=pid_blob(?) AND `+visible+` LIMIT 1`, args...).Scan(&present); err != nil {
-			return nil, "", err
-		}
+	state := "all"
+	if len(playStates) > 0 && playStates[0] != "" {
+		state = playStates[0]
+	}
+	if len(playStates) > 1 || state != "all" && state != "played" && state != "unplayed" && state != "in-progress" {
+		return nil, "", requestinput.New("invalid episode playState")
 	}
 	limit = pageLimit(limit)
-	after := 0
+	revision, err := s.homeRevision(viewer.Libraries, viewer.Profile)
+	if err != nil {
+		return nil, "", err
+	}
+	scope := cursorScope{Profile: viewer.Profile, Viewer: viewer.Fence, View: "episodes", Entity: show, Section: season + ":" + state, Limit: limit}
+	offset := 0
 	if cursor != "" {
-		var err error
-		after, err = strconv.Atoi(cursor)
-		if err != nil || after < 0 {
-			return nil, "", requestinput.New("invalid episode cursor")
+		c, e := s.decodeDetailCursor(cursor, scope, revision)
+		if e != nil {
+			return nil, "", e
+		}
+		offset, e = strconv.Atoi(c.Value)
+		if e != nil || offset < 0 {
+			return nil, "", ErrCursor
 		}
 	}
-	restriction, bound := ItemRestrictionSQL("item.id", viewer.EffectiveRestrictions())
-	// PERF-13: show- and season-scoped id shapes so the season page uses
-	// the compact season order index.
-	var rows *sql.Rows
-	var err error
-	const tail = ` AND l.library_id IN(SELECT value FROM json_each(?)) AND item.retired=0 AND EXISTS(SELECT 1 FROM catalog_asset_links a WHERE a.entity_id=item.id) AND `
-	switch {
-	case season != "":
-		args := append([]any{season, after, viewer.librariesJSON()}, bound...)
-		args = append(args, limit+1)
-		rows, err = s.read().Query(`SELECT pid(item.public_id) FROM catalog_entities se JOIN catalog_episodes ep ON ep.season_id=se.id JOIN catalog_entities item ON item.id=ep.entity_id JOIN catalog_libraries l ON l.id=item.library_id WHERE se.public_id=pid_blob(?) AND ep.number>?`+tail+restriction+` ORDER BY ep.number,item.id LIMIT ?`, args...)
-	case show != "":
-		args := append([]any{show, after, viewer.librariesJSON()}, bound...)
-		args = append(args, limit+1)
-		rows, err = s.read().Query(`SELECT pid(item.public_id) FROM catalog_entities sh JOIN catalog_episodes ep ON ep.show_id=sh.id JOIN catalog_entities item ON item.id=ep.entity_id JOIN catalog_libraries l ON l.id=item.library_id WHERE sh.public_id=pid_blob(?) AND ep.season_id IS NULL AND ep.number>?`+tail+restriction+` ORDER BY ep.number,item.id LIMIT ?`, args...)
-	default:
-		args := append([]any{after, viewer.librariesJSON()}, bound...)
-		args = append(args, limit+1)
-		rows, err = s.read().Query(`SELECT pid(item.public_id) FROM catalog_episodes ep JOIN catalog_entities item ON item.id=ep.entity_id JOIN catalog_libraries l ON l.id=item.library_id WHERE ep.season_id IS NULL AND ep.number>?`+tail+restriction+` ORDER BY ep.number,item.id LIMIT ?`, args...)
+	visible, args := viewer.itemVisibilitySQL("item.id")
+	where := visible + recordingsClause("item.id", viewer.EffectiveRestrictions())
+	if season != "" {
+		where += ` AND se.public_id=pid_blob(?)`
+		args = append(args, season)
 	}
+	if show != "" {
+		where += ` AND sh.public_id=pid_blob(?)`
+		args = append(args, show)
+		if season == "" {
+			where += ` AND ep.season_id IS NULL`
+		}
+	}
+	if state != "all" {
+		watched := personalstate.CompactSQL("?", "item.id")
+		where += ` AND CASE WHEN ` + watched + `=1 THEN 'played' WHEN COALESCE((SELECT position FROM progress WHERE profile_id=? AND item_id=item.id),0)>0 THEN 'in-progress' ELSE 'unplayed' END=?`
+		args = append(args, viewer.Profile, viewer.Profile, state)
+	}
+	args = append(args, limit+1, offset)
+	rows, err := s.read().Query(`SELECT pid(item.public_id) FROM catalog_episodes ep JOIN catalog_entities item ON item.id=ep.entity_id JOIN catalog_entities sh ON sh.id=ep.show_id LEFT JOIN catalog_entities se ON se.id=ep.season_id LEFT JOIN catalog_seasons sd ON sd.entity_id=ep.season_id WHERE `+where+` ORDER BY COALESCE(sd.number,1)=0,COALESCE(sd.number,1),ep.number,item.id LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, "", err
 	}
@@ -458,29 +484,26 @@ func (s *Service) Episodes(viewer Viewer, show, season, cursor string, limit int
 	if err != nil {
 		return nil, "", err
 	}
-	if len(ids) == 0 && cursor == "" && season != "" {
-		return nil, "", sql.ErrNoRows
-	}
 	more := len(ids) > limit
 	if more {
 		ids = ids[:limit]
 	}
-	// PERF-13: hydrate the page with the batched mediaPage (two bounded reads
-	// plus one batched per-kind enrichment) instead of one Get — three
-	// statements — per row.
 	out, err := s.mediaPage(viewer.Profile, ids, false)
 	if err != nil {
 		return nil, "", err
 	}
 	next := ""
-	if more && len(out) > 0 {
-		last := out[len(out)-1]
-		if last.Episode == nil {
-			return nil, "", sql.ErrNoRows
-		}
-		next = strconv.Itoa(last.Episode.Number)
+	if more {
+		next, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(offset + len(ids)), Expires: time.Now().Add(30 * time.Minute).Unix()}, revision)
 	}
-	return out, next, nil
+	after, e := s.homeRevision(viewer.Libraries, viewer.Profile)
+	if e != nil {
+		return nil, "", e
+	}
+	if after != revision {
+		return nil, "", ErrStaleContinuation
+	}
+	return out, next, err
 }
 func (s *Service) episodeInfo(id string) (*EpisodeInfo, error) {
 	var out EpisodeInfo
@@ -492,6 +515,15 @@ func (s *Service) episodeInfo(id string) (*EpisodeInfo, error) {
  FROM catalog_entities item JOIN catalog_episodes ep ON ep.entity_id=item.id JOIN catalog_entities sh ON sh.id=ep.show_id
  LEFT JOIN catalog_entities se ON se.id=ep.season_id LEFT JOIN catalog_seasons sd ON sd.entity_id=se.id
  WHERE item.public_id=pid_blob(?)`, id).Scan(&out.ShowID, &out.ShowTitle, &out.SeasonID, &season, &out.Numbering, &out.Number, &out.LocalIdentityStatus, &out.ProviderMatchStatus, &out.OrderingBasis, &out.AirDate, &out.SourceBoundary)
+	if errors.Is(err, sql.ErrNoRows) {
+		var loose int
+		if e := s.read().QueryRow(`SELECT count(*) FROM catalog_entities WHERE public_id=pid_blob(?) AND kind=4 AND parent_id IS NULL`, id).Scan(&loose); e != nil {
+			return nil, e
+		}
+		if loose == 1 {
+			return nil, nil
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -522,4 +554,49 @@ func (s *Service) EpisodeIssues(library, cursor string, limit int) ([]EpisodeIss
 		next = out[len(out)-1].AssetID
 	}
 	return out, next, rows.Err()
+}
+
+// A playable source without placement is still a real episode. Its entity is
+// source-backed and has no show or numbering facts until those are known.
+func (s *Service) commitLooseEpisode(tx *sql.Tx, library, asset, name string) error {
+	ctx := s.Context()
+	handle, err := compactcatalog.LibraryTx(ctx, tx, library)
+	if err != nil {
+		return err
+	}
+	assetID, err := compactcatalog.AssetByTokenTx(ctx, tx, asset)
+	if err != nil {
+		return err
+	}
+	if assetID == 0 {
+		return sql.ErrNoRows
+	}
+	// Never replace a prior real placement merely because a later filename is sparse.
+	var existing int64
+	err = tx.QueryRow(`SELECT l.entity_id FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id WHERE l.asset_id=? AND e.library_id=? AND e.kind=? LIMIT 1`, assetID, handle, compactcatalog.Episode).Scan(&existing)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	title, _ := naming.Read(name, "tv").PreferredTitle()
+	if title == "" {
+		return requestinput.New("a filename title is required")
+	}
+	item, _, err := compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Episode, Key: "loose:" + asset, Title: title, Added: catalogedNow()})
+	if err != nil {
+		return err
+	}
+	return compactcatalog.LinkAssetTx(ctx, tx, item, assetID, compactcatalog.Link{})
+}
+
+func episodePlayStateSQL(profile, state string) (string, []any, error) {
+	if state == "" || state == "all" {
+		return "", nil, nil
+	}
+	if state != "played" && state != "unplayed" && state != "in-progress" {
+		return "", nil, requestinput.New("invalid episode playState")
+	}
+	return ` AND CASE WHEN ` + personalstate.CompactSQL("?", "item.id") + `=1 THEN 'played' WHEN COALESCE((SELECT position FROM progress WHERE profile_id=? AND item_id=item.id),0)>0 THEN 'in-progress' ELSE 'unplayed' END=?`, []any{profile, profile, state}, nil
 }

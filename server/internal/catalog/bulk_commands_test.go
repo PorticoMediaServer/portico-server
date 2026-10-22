@@ -126,45 +126,78 @@ func TestBulkResourceCommandsRestartReplayAndDestinationFence(t *testing.T) {
 }
 
 func TestBulkPlaylistAfterAndQueryOrder(t *testing.T) {
-	s, scheduler, p, v, access, _, names := bulkFixture(t, 4)
-	actor := jobActor(p)
-	name := "After"
-	r, e := s.MutatePlaylist(actor, "", "create", "", PlaylistMutation{OperationID: "create", Name: &name, ItemIDs: names.Publics("ep000000", "ep000003")}, nil)
-	if e != nil {
-		t.Fatal(e)
-	}
-	var anchor string
-	s.db.QueryRow(`SELECT e.token FROM catalog_playlist_entries e JOIN catalog_playlists p ON p.id=e.playlist_id WHERE p.token=? ORDER BY e.order_key LIMIT 1`, r.PlaylistID).Scan(&anchor)
-	placement, _ := json.Marshal(map[string]string{"after": anchor})
-	rev := int64(1)
-	in := JobRequest{OperationID: "ordered", Command: "playlist-add", Args: JobArguments{PlaylistID: r.PlaylistID, ExpectedRevision: &rev, Placement: placement}, Selector: JobSelector{Query: &JobQuery{LibraryID: "lib", Pivot: "episodes", Sort: []BrowseSortSelection{{Field: "title", Direction: "desc"}}}}}
-	j, e := s.CreateBulkJob(context.Background(), p, v, in, scheduler, access)
-	if e != nil {
-		t.Fatal(e)
-	}
-	j = finishCapture(t, s, j, access)
-	for j.State == "queued" || j.State == "running" {
-		j, e = s.AdvanceBulkJob(context.Background(), j.JobID, access)
-		if e != nil {
-			t.Fatal(e)
-		}
-	}
-	if j.Done != 4 {
-		t.Fatal(j)
-	}
-	rows, e := s.db.Query(`SELECT e.item_id FROM catalog_playlist_entries e JOIN catalog_playlists p ON p.id=e.playlist_id WHERE p.token=? ORDER BY e.order_key,e.id`, r.PlaylistID)
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var id int64
-		rows.Scan(&id)
-		items = append(items, bulkFixtureName(names, id))
-	}
-	expected := []string{"ep000000", "ep000003", "ep000002", "ep000001", "ep000000", "ep000003"}
-	if fmt.Sprint(items) != fmt.Sprint(expected) {
-		t.Fatal(items, expected)
+	for _, mode := range []string{"after", "next", "end"} {
+		t.Run(mode, func(t *testing.T) {
+			s, scheduler, p, v, access, _, names := bulkFixture(t, 4)
+			actor := jobActor(p)
+			name := "Ordered destination"
+			r, err := s.MutatePlaylist(actor, "", "create", "", PlaylistMutation{OperationID: "create", Name: &name, ItemIDs: names.Publics("ep000000", "ep000003")}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			placement, _ := json.Marshal(mode)
+			if mode == "after" {
+				var anchor string
+				if err = s.db.QueryRow(`SELECT e.token FROM catalog_playlist_entries e JOIN catalog_playlists p ON p.id=e.playlist_id WHERE p.token=? ORDER BY e.order_key LIMIT 1`, r.PlaylistID).Scan(&anchor); err != nil {
+					t.Fatal(err)
+				}
+				placement, _ = json.Marshal(map[string]string{"after": anchor})
+			}
+			rev := int64(1)
+			in := JobRequest{OperationID: "ordered", Command: "playlist-add", Args: JobArguments{PlaylistID: r.PlaylistID, ExpectedRevision: &rev, Placement: placement}, Selector: JobSelector{Query: &JobQuery{LibraryID: "lib", Pivot: "episodes", Sort: []BrowseSortSelection{{Field: "title", Direction: "desc"}}}}}
+			j, err := s.CreateBulkJob(context.Background(), p, v, in, scheduler, access)
+			if err != nil {
+				t.Fatal(err)
+			}
+			j = finishCapture(t, s, j, access)
+			// Placement and query order must survive a worker restart.
+			s = restartBulkService(t, s)
+			for j.State == "queued" || j.State == "running" {
+				j, err = s.AdvanceBulkJob(context.Background(), j.JobID, access)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if j.State != "complete" || j.Done != 4 || j.Failed != 0 {
+				t.Fatal(j)
+			}
+			replay, err := s.CreateBulkJob(context.Background(), p, v, in, scheduler, access)
+			if err != nil || replay.JobID != j.JobID || replay.Done != j.Done {
+				t.Fatal("replay changed", replay, err)
+			}
+			rows, err := s.db.Query(`SELECT e.item_id FROM catalog_playlist_entries e JOIN catalog_playlists p ON p.id=e.playlist_id WHERE p.token=? ORDER BY e.order_key,e.id`, r.PlaylistID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			items := []string{}
+			for rows.Next() {
+				var id int64
+				if err = rows.Scan(&id); err != nil {
+					t.Fatal(err)
+				}
+				items = append(items, bulkFixtureName(names, id))
+			}
+			if err = rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			expected := []string{"ep000000", "ep000003", "ep000002", "ep000001", "ep000000", "ep000003"}
+			added, present := 4, 0
+			switch mode {
+			case "next":
+				expected = []string{"ep000003", "ep000002", "ep000001", "ep000000", "ep000000", "ep000003"}
+			case "end":
+				// Home's picker appends membership and reports existing titles.
+				expected = []string{"ep000000", "ep000003", "ep000002", "ep000001"}
+				added, present = 2, 2
+			}
+			if fmt.Sprint(items) != fmt.Sprint(expected) {
+				t.Fatal(items, expected)
+			}
+			var actualAdded, actualPresent int
+			if err = s.db.QueryRow(`SELECT count(*) FILTER(WHERE outcome='added'),count(*) FILTER(WHERE outcome='already_present') FROM personal_job_membership_outcomes WHERE job_id=?`, j.JobID).Scan(&actualAdded, &actualPresent); err != nil || actualAdded != added || actualPresent != present {
+				t.Fatal("membership receipts", actualAdded, actualPresent, err)
+			}
+		})
 	}
 }

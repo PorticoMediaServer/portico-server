@@ -11,6 +11,7 @@ import (
 
 func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (string, []any, error) {
 	selector := in.Selector
+	metadataEdit := in.Command == "metadata-edit"
 	n := 0
 	where := ""
 	from := "catalog_entities i"
@@ -63,6 +64,11 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 			if kind != c.Kind {
 				return "", nil, sql.ErrNoRows
 			}
+			if metadataEdit {
+				where = `i.public_id=pid_blob(?)`
+				args = append(args, c.ID)
+				break
+			}
 			from = `catalog_browse_memberships bm JOIN catalog_entities i ON i.id=bm.item_id`
 			distinct = "DISTINCT "
 			where = `bm.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`
@@ -101,7 +107,11 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 		if e != nil {
 			return "", nil, e
 		}
-		where = `i.id IN(SELECT bm.item_id FROM catalog_browse_rows e JOIN catalog_browse_memberships bm ON bm.entity_id=e.entity_id WHERE ` + scope + ` AND ` + filter + `)`
+		if metadataEdit {
+			where = `i.id IN(SELECT e.entity_id FROM catalog_browse_rows e WHERE ` + scope + ` AND ` + filter + `)`
+		} else {
+			where = `i.id IN(SELECT bm.item_id FROM catalog_browse_rows e JOIN catalog_browse_memberships bm ON bm.entity_id=e.entity_id WHERE ` + scope + ` AND ` + filter + `)`
+		}
 		args = append(args, values...)
 		args = append(args, c.args...)
 		revision, e = s.browseRevision(BrowseRequest{Library: library, Profile: v.Profile, ViewerFence: v.Fence, Query: node}, pivot, sorts)
@@ -142,6 +152,19 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 		}
 	}
 	visible, bound := v.itemVisibilitySQL("i.id")
+	if metadataEdit {
+		visible, bound = v.entityVisibilitySQL("i.id", "l.library_id")
+		args = append(args, bound...)
+		query := `SELECT ` + distinct + `i.id AS id FROM ` + from + ` JOIN catalog_libraries l ON l.id=i.library_id JOIN catalog_kinds k ON k.id=i.kind WHERE k.name IN('movie','episode','song','audiobook_file','show','season','album','artist','book') AND i.retired=0 AND ` + where + ` AND ` + visible + recordingsClause("i.id", v.EffectiveRestrictions())
+		var kinds int
+		if err := s.read().QueryRow(`SELECT count(DISTINCT kind) FROM (`+query+`) selected JOIN catalog_entities target ON target.id=selected.id`, args...).Scan(&kinds); err != nil {
+			return "", nil, err
+		}
+		if kinds > 1 {
+			return "", nil, jobInvalid("metadata editing needs one displayed content kind")
+		}
+		return query + ` ORDER BY i.id`, args, nil
+	}
 	args = append(args, bound...)
 	return `SELECT ` + distinct + `i.id AS id FROM ` + from + ` JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1 WHERE i.retired=0 AND ` + where + ` AND ` + visible + recordingsClause("i.id", v.EffectiveRestrictions()) + ` AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=i.id) ORDER BY i.id`, args, nil
 }
@@ -161,8 +184,13 @@ func (s *Service) BulkFailures(profile, id, cursor string, v Viewer) (JobFailure
 		after = n
 	}
 	visible, args := v.itemVisibilitySQL("i.id")
+	kindClause := "k.playable=1"
+	if job.Command == "metadata-edit" {
+		visible, args = v.entityVisibilitySQL("i.id", "l.library_id")
+		kindClause = "k.name IN('movie','episode','song','audiobook_file','show','season','album','artist','book')"
+	}
 	args = append([]any{id, after}, args...)
-	query := `SELECT f.ordinal,pid(i.public_id),f.code FROM personal_job_failures f JOIN catalog_entities i ON i.id=f.item_id JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1 WHERE f.job_id=? AND f.ordinal>? AND i.retired=0 AND ` + visible + recordingsClause("i.id", v.EffectiveRestrictions()) + ` ORDER BY f.ordinal LIMIT 101`
+	query := `SELECT f.ordinal,pid(i.public_id),f.code FROM personal_job_failures f JOIN catalog_entities i ON i.id=f.item_id JOIN catalog_libraries l ON l.id=i.library_id JOIN catalog_kinds k ON k.id=i.kind AND ` + kindClause + ` WHERE f.job_id=? AND f.ordinal>? AND i.retired=0 AND ` + visible + recordingsClause("i.id", v.EffectiveRestrictions()) + ` ORDER BY f.ordinal LIMIT 101`
 	if job.Command == "playlist-add" || job.Command == "collection-add" {
 		// Membership failures retain their captured public identity after the
 		// ordinary captured item rows are purged or integer IDs are reused.

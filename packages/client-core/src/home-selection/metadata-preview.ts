@@ -11,7 +11,7 @@ export type BulkMetadataValueCount = Readonly<{value: string; count: number}>;
 export type BulkMetadataField = Readonly<{state: 'shared' | 'mixed'; distinctCount: number; value?: string; values: readonly BulkMetadataValueCount[]; entries: readonly BulkMetadataValueCount[]; locked: number; truncated: boolean}>;
 export type BulkMetadataPreview = Readonly<{
   serverId: string; viewerFence: string; contentKind: string; kind: BulkMetadataPreviewTarget['kind']; total: number; selectionRevision?: string;
-  schema: readonly RepairFieldSpec[];
+  tabs?: readonly string[];schema: readonly RepairFieldSpec[];
   singleItemFields: readonly RepairFieldSpec[];
   excludedFields: readonly RepairFieldSpec[];
   fields: Readonly<Record<string, BulkMetadataField>>;
@@ -69,7 +69,7 @@ export function parseBulkMetadataPreview(raw: unknown, request: BulkMetadataPrev
     if (!record(row) || !expected || row.kind !== expected.kind || row.id !== expected.id || row.libraryId !== expected.libraryId || !hash(row.expectedRevision) || raw.contentKind !== expected.contentKind) bad();
     return Object.freeze({kind: expected.kind, id: expected.id, libraryId: expected.libraryId, expectedRevision: row.expectedRevision});
   });
-  return Object.freeze({serverId, viewerFence: raw.viewerFence, contentKind: raw.contentKind, kind: raw.kind as BulkMetadataPreviewTarget['kind'], total: raw.total, ...(typeof raw.selectionRevision === 'string' ? {selectionRevision: raw.selectionRevision} : {}), schema, singleItemFields, excludedFields, fields: Object.freeze(fields), targets: Object.freeze(targets)});
+  return Object.freeze({serverId, viewerFence: raw.viewerFence, contentKind: raw.contentKind, kind: raw.kind as BulkMetadataPreviewTarget['kind'], total: raw.total, ...(typeof raw.selectionRevision === 'string' ? {selectionRevision: raw.selectionRevision} : {}), ...(Array.isArray(raw.tabs)?{tabs:Object.freeze(raw.tabs.filter((tab):tab is string=>typeof tab==='string'&&['general','numbers','text','identity'].includes(tab)))}:{}),schema, singleItemFields, excludedFields, fields: Object.freeze(fields), targets: Object.freeze(targets)});
 }
 export async function fetchBulkMetadataPreview(api: HomeApi, request: BulkMetadataPreviewRequest, serverId: string, signal?: AbortSignal): Promise<BulkMetadataPreview> {
   if (request.targets && (!request.targets.length || request.targets.length > 2048)) throw selectionExecutionError('metadata-preview-limit');

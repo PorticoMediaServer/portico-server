@@ -93,6 +93,8 @@ type ContentEntry struct {
 	UnwatchedCount *int64        `json:"unwatchedCount,omitempty"`
 	Watched        *bool         `json:"watched,omitempty"`
 	TrackNumber    *int          `json:"trackNumber,omitempty"`
+	DateBased      bool          `json:"dateBased,omitempty"`
+	Special        bool          `json:"special,omitempty"`
 	EpisodeNumber  *int          `json:"episodeNumber,omitempty"`
 	SeasonNumber   *int          `json:"seasonNumber,omitempty"`
 	Hidden         *bool         `json:"hidden,omitempty"`

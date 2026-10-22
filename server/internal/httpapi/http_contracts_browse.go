@@ -106,7 +106,7 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct{}, struct {
 		Episodes   []catalog.Item `json:"episodes"`
 		NextCursor string         `json:"nextCursor"`
-	}](registry, apikit.Metadata{ID: "get_seasons_id_episodes", Method: "GET", Path: "/v1/seasons/{id}/episodes", Summary: "Read season episodes", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_seasons_id_episodes", Method: "GET", Path: "/v1/seasons/{id}/episodes", Summary: "Read season episodes", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "playState"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/episodes.go:97
@@ -114,7 +114,7 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 		Episodes   []catalog.Item `json:"episodes"`
 		NextCursor string         `json:"nextCursor"`
 		Group      string         `json:"group"`
-	}](registry, apikit.Metadata{ID: "get_shows_id_episodes", Method: "GET", Path: "/v1/shows/{id}/episodes", Summary: "Read show episodes", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_shows_id_episodes", Method: "GET", Path: "/v1/shows/{id}/episodes", Summary: "Read show episodes", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "playState"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/episodes.go:116
@@ -218,7 +218,7 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/show_workspace.go:11
-	if err := apikit.RegisterHTTP[struct{}, catalog.ShowWorkspace](registry, apikit.Metadata{ID: "get_libraries_id_show_workspace", Method: "GET", Path: "/v1/libraries/{id}/show-workspace", Summary: "Read library show workspace", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "episodeId", "group", "seasonCursor", "seasonId", "selectedSeasonId", "showId"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.ShowWorkspace](registry, apikit.Metadata{ID: "get_libraries_id_show_workspace", Method: "GET", Path: "/v1/libraries/{id}/show-workspace", Summary: "Read library show workspace", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"playState","cursor", "episodeId", "group", "seasonCursor", "seasonId", "selectedSeasonId", "showId"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	return nil

@@ -1077,7 +1077,9 @@ catalog_movie_category_visible_summaries.posters_json
 catalog_movie_category_visible_summaries.total
 catalog_movie_category_visible_summaries.value
 catalog_people.biography
+catalog_people.biography_source
 catalog_people.birth_date
+catalog_people.birth_place
 catalog_people.death_date
 catalog_people.id
 catalog_people.identity_key
@@ -2915,6 +2917,8 @@ metadata_jobs.error
 metadata_jobs.item_id
 metadata_jobs.next_attempt
 metadata_jobs.status
+metadata_kept_files.entity_id
+metadata_kept_files.files_fingerprint
 metadata_movie_candidates.item_id
 metadata_movie_candidates.observed_at
 metadata_movie_candidates.payload

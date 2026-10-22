@@ -28,9 +28,18 @@ func TestAttentionCountsFollowDismissalRetirementAndRemoval(t *testing.T) {
 	}
 	publicationExec(t, db, `UPDATE screen_metadata_work SET status='low_confidence' WHERE target_id=?`, item.ID)
 	check(1)
-	publicationExec(t, db, `UPDATE screen_metadata_attention SET dismissed_generation=generation WHERE entity_id=?`, item.ID)
+	page, err := s.Attention(ctx, "lib", "", 25)
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatal(page, err)
+	}
+	if err = s.AttentionAction(ctx, "lib", AttentionCommand{Kind: "item", EntityID: item.Public, ExpectedRevision: page.Entries[0].Revision, Action: "dismiss"}, MBActor{}, nil); err != nil {
+		t.Fatal(err)
+	}
 	check(0)
 	publicationExec(t, db, `UPDATE screen_metadata_work SET generation=generation+1 WHERE target_id=?`, item.ID)
+	check(0)
+	publicationExec(t, db, `UPDATE catalog_assets SET size=size+1 WHERE id IN(SELECT asset_id FROM catalog_asset_links WHERE entity_id=?)`, item.ID)
+	publicationExec(t, db, `UPDATE screen_metadata_work SET status='unmatched' WHERE target_id=?`, item.ID)
 	check(1)
 	publicationExec(t, db, `UPDATE catalog_entities SET retired=1 WHERE id=?`, item.ID)
 	check(0)

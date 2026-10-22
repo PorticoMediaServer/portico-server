@@ -102,7 +102,10 @@ func TestMCPEveryToolReachesItsRoute(t *testing.T) {
 	ok("search", `{"q":"Film"}`)
 	ok("list_titles", `{"library":"movies","kind":"movie"}`, "FILM")
 	ok("find_title_by_provider_id", `{"provider":"tmdb","providerId":"603"}`, `"items":[]`)
-	ok("get_title", `{"itemId":"FILM"}`, "/movies/film.mkv")
+	title := ok("get_title", `{"itemId":"FILM"}`, "A Film", `"languages"`)
+	if strings.Contains(title, `"files"`) || strings.Contains(title, "/movies/film.mkv") {
+		t.Fatal("get_title must use the page projection without lazy file information", title)
+	}
 	ok("list_seasons", `{"showId":"SHOW"}`, "SEASON")
 	ok("list_episodes", `{"seasonId":"SEASON"}`, "EPISODE")
 	ok("mark_watched", `{"itemIds":["FILM"],"watched":true}`)

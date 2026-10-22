@@ -16,7 +16,7 @@ export type ContentEntryKind = 'movie' | 'show' | 'season' | 'episode' | 'artist
 /** `params` fill a parameterised heading (a Discover personal row: "{genre} for you"); name it with `serverTextLabel`. */
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;
 export type ContentEntry = Readonly<{
-  new?:boolean; show?:Readonly<{id:string;name:string}>;
+  dateBased?:boolean;special?:boolean;new?:boolean; show?:Readonly<{id:string;name:string}>;
   id: string; libraryId?: string; kind: ContentEntryKind; title: string; subtitle?: string; posterUrl?: string; backdropUrl?: string; /** An episode's own still, never inherited from the season or show (absent when it has none). */ stillUrl?: string; overview?: string;
   /** The letter a browse page files the entry under (its sort title's, articles already set aside): a key of the page's `positionIndex`. */
   sortLetter?: string;
@@ -166,6 +166,7 @@ function entry(v: unknown): ContentEntry {
   if (string(v.sortLetter, 8) && v.sortLetter) row.sortLetter = v.sortLetter as string; else left('entry.sortLetter', v.sortLetter);
   if (count(v.count)) row.count = v.count; else left('entry.count', v.count);
   if (count(v.totalAtLeast) && row.count !== undefined) row.countIsLowerBound = true; else left('entry.totalAtLeast', v.totalAtLeast);
+  for(const flag of ['dateBased','special'] as const)if(typeof v[flag]==='boolean')row[flag]=v[flag] as boolean;
   if(typeof v.watched==='boolean')row.watched=v.watched;else left('entry.watched',v.watched);
   if(typeof v.new==='boolean')row.new=v.new;else left('entry.new',v.new);
   if(record(v.show)&&id(v.show.id)&&string(v.show.name,2048))row.show=Object.freeze({id:v.show.id,name:v.show.name});else left('entry.show',v.show);

@@ -118,8 +118,11 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 		if out.Item.Kind == "movie" || out.Item.Kind == "episode" || out.Item.Kind == "song" || out.Item.Kind == "audiobook_file" {
 			out.Actions = append(out.Actions, catalog.DetailAction{ID: "add_to_playlist", LabelKey: "action.add_to_playlist", Enabled: true}, catalog.DetailAction{ID: "add_to_collection", LabelKey: "action.add_to_collection", Enabled: true})
 		}
-		if p.Authority == "local" && p.Role == "owner" && d.Metadata != nil && out.Item.Kind == "movie" {
+		if identity.Administrative(p.Role) && d.Metadata != nil && out.Item.Kind == "movie" {
 			out.Actions = append(out.Actions, catalog.DetailAction{ID: "metadata_refresh", LabelKey: "action.metadata_refresh", Enabled: true})
+		}
+		if p.Role == identity.TierAdmin && d.Metadata != nil && (out.Item.Kind == "movie" || out.Item.Kind == "episode" || out.Item.Kind == "song" || out.Item.Kind == "audiobook_file") {
+			out.Actions = append(out.Actions, catalog.DetailAction{ID: "metadata_edit", LabelKey: "action.metadata_edit", Enabled: true})
 		}
 		// Earlier clients validate related rows as movie-only. New clients opt in
 		// so a server update cannot make their song/book detail reads fail.
