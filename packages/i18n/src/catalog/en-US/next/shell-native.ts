@@ -7,6 +7,8 @@ export const shellNativeMessages = {
   'next.shell.native.peopleGallery': 'People and devices',
   'next.shell.native.statisticsGallery': 'Statistics',
   'next.shell.native.segmentsGallery': 'Intros and credits',
+  'next.shell.native.moreOptions': 'More options',
+  'next.shell.native.open': 'Open',
   'next.shell.native.noLanguages': 'No languages chosen',
   'next.shell.native.decreaseSymbol': '−',
   'next.shell.native.increaseSymbol': '+',

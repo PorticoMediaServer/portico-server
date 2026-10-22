@@ -22,7 +22,7 @@ export const shellNativeCases = {
   currentProfileId: 'demo',
   group: {name: 'Movie night', status: 'In step', waiting: false},
   notification: {id: 'reference-download-ready', title: 'Download ready', body: 'Work Drinks finished downloading and is ready to play offline.', when: '12 min ago', read: false, archived: false, severity: 'info'},
-  avatarSubject: {uri: 'http://100.120.50.24:8787/assets/bd-tlou.jpg', cacheKey: 'reference-tlou-backdrop'},
+  avatarSubject: {uri: 'http://100.120.50.24:8787/assets/pool/tv/severance.jpg', cacheKey: 'reference-severance-subject'},
   subtitleSource: {uri: 'http://100.120.50.24:8787/assets/pool/movies/dune-part-two--bd.jpg', cacheKey: 'reference-dune-backdrop'},
   languages: [{id: 'en', label: 'English'}, {id: 'fr', label: 'French'}, {id: 'es-419', label: 'Spanish (Latin America)'}],
   availableLanguages: [{id: 'en', label: 'English'}, {id: 'fr', label: 'French'}, {id: 'es-419', label: 'Spanish (Latin America)'}, {id: 'de', label: 'German'}],
