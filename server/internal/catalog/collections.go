@@ -953,17 +953,21 @@ func (s *Service) ProjectPlaylistSamples(v Viewer, entries []ContentEntry) error
 		if entry.Kind != "playlist" {
 			continue
 		}
-		rows, err := s.read().Query(`SELECT pid(part.public_id) FROM catalog_playlists p JOIN catalog_playlist_entries member ON member.playlist_id=p.id JOIN catalog_entities part ON part.id=member.item_id WHERE p.token=? AND part.retired=0 AND `+visible+` ORDER BY member.order_key,member.id LIMIT 4`, append([]any{entry.ID}, args...)...)
+		rows, err := s.read().Query(`SELECT pid(part.public_id),COALESCE(detail.poster_url,'') FROM catalog_playlists p JOIN catalog_playlist_entries member ON member.playlist_id=p.id JOIN catalog_entities part ON part.id=member.item_id LEFT JOIN catalog_item_details detail ON detail.entity_id=part.id WHERE p.token=? AND part.retired=0 AND `+visible+` ORDER BY member.order_key,member.id LIMIT 4`, append([]any{entry.ID}, args...)...)
 		if err != nil {
 			return err
 		}
-		ids := []string{}
+		targets := []artworkTarget{}
+		legacy := map[string]string{}
 		for rows.Next() {
-			var id string
-			if err = rows.Scan(&id); err != nil {
+			var id, poster string
+			if err = rows.Scan(&id, &poster); err != nil {
 				break
 			}
-			ids = append(ids, id)
+			targets = append(targets, artworkTarget{Kind: "item", ID: id})
+			if poster != "" {
+				legacy[id] = "/v1/items/" + id + "/art/poster"
+			}
 		}
 		if err == nil {
 			err = rows.Err()
@@ -972,13 +976,19 @@ func (s *Service) ProjectPlaylistSamples(v Viewer, entries []ContentEntry) error
 		if err != nil {
 			return err
 		}
-		samples, err := s.WithRecommendationRestrictions(v.Restrictions).homeEngineEntries(v.Profile, ids)
+		// Directory art does not require a published playable-page projection.
+		// A permitted entry awaiting ingestion or without artwork stays readable.
+		art, err := s.resolveArtwork(targets)
 		if err != nil {
 			return err
 		}
-		for _, sample := range samples {
-			if sample.PosterURL != "" {
-				entry.ArtworkPaths = append(entry.ArtworkPaths, sample.PosterURL)
+		for _, target := range targets {
+			poster := art[target].PosterURL
+			if poster == "" {
+				poster = legacy[target.ID]
+			}
+			if poster != "" {
+				entry.ArtworkPaths = append(entry.ArtworkPaths, poster)
 			}
 		}
 	}

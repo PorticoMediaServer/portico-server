@@ -358,3 +358,39 @@ func TestHomeCoverSamplesUseCurrentViewerOnDirectBrowse(t *testing.T) {
 		t.Fatal("restricted cover leaked in direct browse", covers, want)
 	}
 }
+
+func TestHomePlaylistCoverSamplesAreBoundedAndViewerFiltered(t *testing.T) {
+	c := catalogtest.Open(t)
+	library := c.Library("movies", "Movies", "movie", "/movies")
+	owner := ResourceActor{"local", "owner", "profile"}
+	s := New(c.DB)
+	name := "Saved covers"
+	made, err := s.MutatePlaylist(owner, "", "create", "", PlaylistMutation{OperationID: "create", Name: &name}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{}
+	for i, title := range []string{"Restricted", "Alpha", "Beta", "Gamma", "Delta", "Fifth"} {
+		movie := c.Movie(library, "/movies/"+title+".mkv", title, 2026)
+		c.Fields(movie.ID, map[string]any{"poster_url": "/" + title})
+		if i == 0 {
+			c.Attributes(movie.ID, "label", "adult")
+		} else if i <= 4 {
+			want = append(want, "/v1/items/"+movie.Public+"/art/poster")
+		}
+		_, err = s.MutatePlaylist(owner, made.PlaylistID, "add", "", PlaylistMutation{OperationID: title, ExpectedRevision: int64(i + 1), ItemID: movie.Public}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.Drain()
+	v := Viewer{Profile: "profile", Fence: "f", Libraries: []string{"movies"}, Restrictions: identity.ContentRestrictions{BlockedLabels: []string{"adult"}}}
+	entries := []ContentEntry{{ID: made.PlaylistID, Kind: "playlist"}}
+	if err = s.ProjectPlaylistSamples(v, entries); err != nil {
+		t.Fatal(err)
+	}
+	got := entries[0].ArtworkPaths
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatal("expected first four permitted real covers", got, want)
+	}
+}
