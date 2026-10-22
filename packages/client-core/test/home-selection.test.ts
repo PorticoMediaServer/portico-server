@@ -70,16 +70,35 @@ test('aggregate Delete retains the displayed target and never counts or substitu
   }
 });
 
-test('device runtimes narrow server grants and TV hides owner actions',()=>{
+test('device runtimes narrow grants while TV retains authorized title Edit',()=>{
   const value=entry('movie',{homeActions:actions({play:true,queue:true,download:true,editMetadata:true,refreshMetadata:true,delete:true})});
   const blocked=homeEntrySelection(value,{platform:'phone-app'})!.capabilities;
   assert.equal(blocked.play,false);assert.equal(blocked.queue,false);assert.equal(blocked.download,false);
   assert.equal(homeEntrySelection(value,phone)!.capabilities.download,true);
   assert.equal(homeEntrySelection(value,web)!.capabilities.download,false);
   const tv=homeEntrySelection(value,{platform:'tv',playbackAvailable:true,queueAvailable:true})!.capabilities;
-  assert.equal(tv.edit,false);assert.equal(tv.refresh,false);assert.equal(tv.delete,false);assert.equal(tv.play,true);
+  assert.equal(tv.edit,true);assert.equal(tv.refresh,false);assert.equal(tv.delete,false);assert.equal(tv.play,true);
+  assert.equal(homeEntryCapabilities(value,{platform:'tv'}).editMetadata,true);
   assert.equal(homeEntryCapabilities(value,{...phone,nativeDownloadsAvailable:false}).download,undefined);
   assert.equal(homeEntrySelection(entry('movie',{homeActions:actions()}),phone)!.capabilities.play,false);
+});
+
+test('TV Edit requires its independent selection or More grant on every supported title kind',()=>{
+  const tv:HomeActionPlatform={platform:'tv'};
+  for(const kind of ['movie','episode','song','audiobook_file','show','season','album','artist','book']){
+    const denied=entry(kind,{homeActions:actions()});
+    assert.equal(homeEntrySelection(denied,tv)!.capabilities.edit,false);
+    assert.equal(homeEntryCapabilities(denied,tv).editMetadata,false);
+    const selectionOnly=entry(kind,{homeActions:actions({selection:{...actions().selection,edit:true}})});
+    assert.equal(homeEntrySelection(selectionOnly,tv)!.capabilities.edit,true);
+    assert.equal(homeEntryCapabilities(selectionOnly,tv).editMetadata,false);
+    const moreOnly=entry(kind,{homeActions:actions({editMetadata:true,selection:{...actions().selection}})});
+    assert.equal(homeEntrySelection(moreOnly,tv)!.capabilities.edit,false);
+    assert.equal(homeEntryCapabilities(moreOnly,tv).editMetadata,true);
+  }
+  const malformed=entry('movie',{role:'owner',homeActions:{...actions(),editMetadata:'owner',selection:{edit:'true'}}});
+  assert.equal(homeEntrySelection(malformed,tv)!.capabilities.edit,false);
+  assert.equal(homeEntryCapabilities(malformed,tv).editMetadata,false);
 });
 
 function channel(sourceId:string,play=true,favorite=true):HomeChannel {

@@ -22,7 +22,10 @@ export type HomeActions = Readonly<{
  play:boolean;queue:boolean;playlist:boolean;collection:boolean;myList:boolean;favorite:boolean;watched:boolean;played:boolean;rating:boolean;
  editMetadata:boolean;refreshMetadata:boolean;delete:boolean;download:boolean;details:boolean;state:HomeActionState;selection:HomeSelectionActions;
 }>;
-export type HomeEntry = ContentEntry & Readonly<{homeActions?:HomeActions}>;
+/** Genuine parent-show facts for a returned Home episode, independent of the
+ * episode's own year/genres and of its selection or playback identity. */
+export type HomeTitleContext = Readonly<{kind:'show';year?:number;genres:readonly string[];seasonCount?:number}>;
+export type HomeEntry = ContentEntry & Readonly<{homeActions?:HomeActions;homeTitleContext?:HomeTitleContext}>;
 export type HomeChannelActions = Readonly<{play:boolean;favorite:boolean}>;
 /** A server-authored label (CON-19): a catalogue message id, its parameters, and the US English
  * fallback for a code this client doesn't know. Name rows with `serverTextLabel`. */
@@ -94,10 +97,21 @@ export function parseHomeActions(value:unknown):HomeActions|undefined {
   return Object.freeze({...offers,selection,state:Object.freeze({watchlisted:s.watchlisted,favorite:s.favorite,watched:s.watched,rating:s.rating as number|null,personalRevision:s.personalRevision,containerRevision:s.containerRevision})});
 }
 
+function parseHomeTitleContext(value:unknown):HomeTitleContext|undefined {
+  if(value===undefined||value===null)return undefined;
+  if(!object(value)||value.kind!=='show'||!Array.isArray(value.genres)||value.genres.length>2||value.genres.some(genre=>!id(genre))||
+    value.year!==undefined&&(!whole(value.year)||value.year<1)||value.seasonCount!==undefined&&!whole(value.seasonCount)){
+    noteSkipped('home','titleContext');return undefined;
+  }
+  return Object.freeze({kind:'show',genres:Object.freeze([...value.genres] as string[]),
+    ...(value.year===undefined?{}:{year:value.year as number}),...(value.seasonCount===undefined?{}:{seasonCount:value.seasonCount as number})});
+}
+
 export function validateHomeEntry(value:unknown):HomeEntry {
   const entry=validateContentEntry(value);
   const actions=object(value)?parseHomeActions(value.homeActions):undefined;
-  return Object.freeze({...entry,...(actions?{homeActions:actions}:{})});
+  const context=entry.kind==='episode'&&object(value)?parseHomeTitleContext(value.homeTitleContext):undefined;
+  return Object.freeze({...entry,...(actions?{homeActions:actions}:{}),...(context?{homeTitleContext:context}:{})});
 }
 
 /**

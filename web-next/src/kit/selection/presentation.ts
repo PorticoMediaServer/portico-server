@@ -1,8 +1,9 @@
 import {defaultI18n} from '@i18n';
+import type {BulkReceipt, BulkResult} from '@core/metadata-bulk';
 import {validBulkListEntry} from '@core/metadata-bulk';
 import type {RepairFieldSpec} from '@core/metadata-repair';
 import type {DeletePreview} from '@core/administration';
-import type {BulkEditorDraft, BulkEditorProps, BulkFieldValues, BulkListDraft, PickerFailure, SelectionCount, SelectionMediaKind} from './types';
+import type {BulkEditorDraft, BulkFieldValues, BulkListDraft, BulkResultView, PickerResult, PickerFailure, SelectionCount, SelectionMediaKind} from './types';
 import {selectionText} from './copy';
 
 export function selectionCountText({count, kind}: SelectionCount): string {
@@ -10,10 +11,9 @@ export function selectionCountText({count, kind}: SelectionCount): string {
   return selectionText(key, {count});
 }
 
-/** Order only the fields the real registry permits. Genres is an existing separate bulk capability. */
-export function bulkEditorSchema(schema: readonly RepairFieldSpec[], kind: SelectionMediaKind, genres?: BulkEditorProps['genres']): readonly RepairFieldSpec[] {
-  const fields = schema.filter(spec => spec.bulk && spec.field !== 'genres');
-  if (genres?.allowed) fields.push({field: 'genres', label: selectionText('next.selection.genres'), group: 'general', type: 'list', bulk: true});
+/** Order only the bulk fields in the actual preview registry. */
+export function bulkEditorSchema(schema: readonly RepairFieldSpec[], kind: SelectionMediaKind): readonly RepairFieldSpec[] {
+  const fields = schema.filter(spec => spec.bulk);
   const order = kind === 'movie' ? ['contentRating', 'studio', 'country', 'year', 'edition', 'metadataLanguage', 'genres', 'tags', 'labels'] : kind === 'episode' ? ['contentRating', 'network', 'year', 'metadataLanguage', 'tags', 'labels'] : kind === 'song' ? ['year', 'metadataLanguage', 'genres', 'tags', 'labels'] : [];
   return [...fields].sort((left, right) => {
     const a = order.indexOf(left.field), b = order.indexOf(right.field);
@@ -59,7 +59,7 @@ export function bulkDraftValid(schema: readonly RepairFieldSpec[], values: Reado
   }
   for (const [name, list] of Object.entries(draft.lists)) {
     const spec = fields.get(name);
-    if (!spec || spec.type !== 'list' || values[name]?.kind !== 'list' || list.add.length > 64 || list.remove.length > 64 || ![...list.add, ...list.remove].every(validBulkListEntry)) return false;
+    if (!spec || spec.type !== 'list' || !values[name] || list.add.length > 64 || list.remove.length > 64 || ![...list.add, ...list.remove].every(validBulkListEntry)) return false;
     if (new Set(list.add).size !== list.add.length || new Set(list.remove).size !== list.remove.length || list.add.some(value => list.remove.includes(value))) return false;
     if (list.add.length || list.remove.length) changes++;
   }
@@ -72,8 +72,8 @@ export function bulkSummary(schema: readonly RepairFieldSpec[], values: Readonly
   for (const spec of schema.filter(field => field.bulk)) {
     if (Object.hasOwn(draft.fields, spec.field)) {
       const value = draft.fields[spec.field]!, original = values[spec.field];
-      const same = original?.kind === 'scalar' ? original.values.find(entry => entry.value === value)?.count ?? 0 : undefined;
-      rows.push({id: spec.field, text: selectionText('next.selection.scalarChange', {field: spec.label, value: value || selectionText('next.selection.notSet'), count}), changedCount: same === undefined ? undefined : count - same, changedTitles: original?.kind === 'scalar' ? original.values.filter(entry => entry.value !== value).flatMap(entry => entry.titles ?? []) : undefined});
+      const same = spec.type === 'list' || !original ? undefined : original.values.find(entry => entry.value === value)?.count ?? (original.truncated || original.state === 'shared' && original.value === undefined ? undefined : 0);
+      rows.push({id: spec.field, text: selectionText('next.selection.scalarChange', {field: spec.label, value: value || selectionText('next.selection.notSet'), count}), changedCount: same === undefined ? undefined : count - same, changedTitles: original && !original.truncated && original.values.every(entry => entry.titles?.length === entry.count) ? original.values.filter(entry => entry.value !== value).flatMap(entry => entry.titles ?? []) : undefined});
     }
     const list = draft.lists[spec.field];
     if (list?.add.length) rows.push({id: `${spec.field}-add`, text: selectionText('next.selection.listAdd', {field: spec.label, values: defaultI18n.list(list.add), count})});
@@ -85,4 +85,18 @@ export function bulkSummary(schema: readonly RepairFieldSpec[], values: Readonly
 /** The supplied preview remains authoritative. Destructive selections are never chunked. */
 export function deletePermission(owner: boolean, count: number, preview: DeletePreview | null, confirmation: string, busy = false): boolean {
   return owner && !busy && Number.isSafeInteger(count) && count > 0 && count <= 200 && preview !== null && preview.targets.length === count && new Set(preview.targets.map(target => target.itemId)).size === count && preview.confirmation.length > 0 && preview.blocked.length === 0 && preview.targets.every(target => target.allowMediaDeletion) && new Set(preview.targets.map(target => target.libraryId)).size === 1 && confirmation === preview.confirmation;
+}
+
+/** Receipts remain with the controller; only each target's latest real outcome is displayed. */
+export function bulkReceiptView(receipts: readonly BulkReceipt[]): BulkResultView {
+  const latest = new Map<string, BulkResult>();
+  for (const receipt of receipts) for (const row of receipt.results) latest.set(JSON.stringify([row.kind, row.id]), row);
+  const results = [...latest.values()];
+  const updated = results.filter(row => row.ok).length;
+  return {results, updated, failed: results.length - updated};
+}
+
+/** Complete observations may still contain failures; missing counters prove no success. */
+export function pickerResultSucceeded(result: PickerResult): boolean {
+  return result.complete && result.inserted !== undefined && result.failed === 0 && (result.unknown === undefined || result.unknown === 0) && result.pending !== true && result.failures.length === 0;
 }

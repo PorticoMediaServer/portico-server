@@ -9,6 +9,8 @@ type Arguments = {
   'next.kit.duration.hoursMinutes': {hours: number; minutes: number}; 'next.kit.duration.hours': {hours: number};
   'next.kit.duration.minutes': {minutes: number}; 'next.kit.duration.seconds': {seconds: number};
   'next.kit.remaining': {time: string}; 'next.kit.range': {start: string; end: string}; 'next.kit.started': {time: string};
+  'next.kit.genres.append': {list: string; genre: string};
+  'next.kit.collection.filmsOnServer': {count: number}; 'next.kit.collection.filmsFromTo': {count: number; year: number; title: string};
   'next.kit.filter.decade': {year: string}; 'next.kit.track': {number: number}; 'next.kit.version': {number: number}; 'next.kit.ordinal': {number: number};
   'next.kit.surround': {layout: string}; 'next.kit.channels': {count: number}; 'next.kit.height': {height: number};
   'next.kit.bytes': {count: number}; 'next.kit.kib': {value: string}; 'next.kit.mib': {value: string}; 'next.kit.gib': {value: string}; 'next.kit.tib': {value: string};

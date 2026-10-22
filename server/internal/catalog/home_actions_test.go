@@ -15,6 +15,36 @@ import (
 	"portico.local/server/internal/identity"
 )
 
+// A fresh catalog Service in a settled snapshot first resolves whether serving
+// overlays must be retained. The other statement is the action batch, including
+// viewer/library/restriction predicates and indexed availability EXISTS. BEGIN
+// is a transaction/acquisition, not a statement; no per-card or per-member read
+// is allowed. Further batches on the same scoped Service reuse that resolution.
+func assertHomeActionSnapshotQueries(t *testing.T, cost dbwork.Cost, queries []string, batches int) {
+	t.Helper()
+	if cost.Statements != int64(1+batches) || cost.Transactions != 1 || cost.Acquisitions != 1 || len(queries) != 1+batches {
+		t.Fatalf("one snapshot/generation read plus %d action batches: cost=%+v queries=%v", batches, cost, queries)
+	}
+	if queries[0] != "SELECT retaining FROM catalog_generations WHERE singleton=1" {
+		t.Fatalf("unexpected snapshot serving-generation read: %s", queries[0])
+	}
+	for _, query := range queries[1:] {
+		for _, constraint := range []string{
+			"FROM json_each(?) requested CROSS JOIN catalog_entities e ON e.public_id=pid_blob(requested.value)",
+			"home_member.entity_id=e.id AND available.available=1 AND available.retired=0",
+			"visible_library.library_id IN(SELECT value FROM json_each(?))",
+			"WHERE e.retired=0 AND l.retired=0 AND CASE WHEN k.playable=1",
+		} {
+			if !strings.Contains(query, constraint) {
+				t.Fatalf("action batch lost its returned-ID/current-policy constraint %q: %s", constraint, query)
+			}
+		}
+		if strings.Contains(query, "LIMIT 64") {
+			t.Fatal("action availability regained a member correctness cap")
+		}
+	}
+}
+
 func TestHomeActionProjectionUsesDisplayedEntitiesAndBatchesReturnedItems(t *testing.T) {
 	db := homeFixture(t)
 	s := New(db)
@@ -33,18 +63,44 @@ func TestHomeActionProjectionUsesDisplayedEntitiesAndBatchesReturnedItems(t *tes
 		}, Resumes: []HomeResume{{EntryID: show.Public, Target: ContentEntry{ID: episode.Public, LibraryID: "tv", Kind: "episode"}}}}}
 	}
 	rows := makeRows()
+	duplicates := []HomeRow{{}}
+	for range 40 {
+		duplicates[0].Entries = append(duplicates[0].Entries, rows[0].Entries[1])
+	}
 	deletionReads := 0
-	authority := HomeActionAuthority{Personal: true, Organize: true, Bulk: true, Playback: true, Queue: true, Metadata: true, Refresh: true, Downloads: true, DeleteLibrary: func(library string) (bool, error) { deletionReads++; return library == "movies", nil }}
+	deletionLibraries := map[string]int{}
+	authority := HomeActionAuthority{Personal: true, Organize: true, Bulk: true, Playback: true, Queue: true, Metadata: true, Refresh: true, Downloads: true, DeleteLibrary: func(library string) (bool, error) {
+		deletionReads++
+		deletionLibraries[library]++
+		return library == "movies", nil
+	}}
 	ctx, cost := dbwork.Measure(context.Background())
+	ctx, queries := dbwork.TraceQueryPlans(ctx)
 	if err := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error {
-		return s.WithContext(ctx).ProjectHomeActions(homeRequestFixture().Viewer, authority, rows, nil)
+		scoped := s.WithContext(ctx)
+		if err := scoped.ProjectHomeActions(homeRequestFixture().Viewer, authority, rows, nil); err != nil {
+			return err
+		}
+		assertHomeActionSnapshotQueries(t, cost(), queries(), 1)
+		// Forty copies still use one returned-key batch; no authority from the
+		// first call is retained, nor is the generation queried a second time.
+		return scoped.ProjectHomeActions(homeRequestFixture().Viewer, HomeActionAuthority{}, duplicates, nil)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// One exact-key SQL batch, independent of duplicate cards and the number
-	// of descendants under the returned aggregate titles.
-	if cost().Statements != 1 || deletionReads != 4 {
-		t.Fatalf("statements=%d deletion policies=%d", cost().Statements, deletionReads)
+	assertHomeActionSnapshotQueries(t, cost(), queries(), 2)
+	if deletionReads != 4 || len(deletionLibraries) != 4 {
+		t.Fatalf("deletion policies=%d libraries=%v", deletionReads, deletionLibraries)
+	}
+	for _, library := range []string{"movies", "tv", "music", "books"} {
+		if deletionLibraries[library] != 1 {
+			t.Fatalf("deletion policy not cached for returned library %q: %v", library, deletionLibraries)
+		}
+	}
+	for _, entry := range duplicates[0].Entries {
+		if a := entry.HomeActions; a == nil || a.Play || a.Delete || a.Selection != (HomeSelectionActions{}) {
+			t.Fatalf("repeated batch borrowed previous authority: %+v", a)
+		}
 	}
 	a := rows[0].Entries[0].HomeActions
 	if a == nil || !a.MyList || !a.Favorite || !a.EditMetadata || a.Delete || !a.State.Watchlisted || !a.State.Favorite || a.State.Rating != nil || a.State.PersonalRevision != 7 {
@@ -193,14 +249,13 @@ func TestHomeActionSpotlightKeepsAggregateGrantsSeparateFromResume(t *testing.T)
 	c.Drain()
 	spotlight := []HomeSpotlight{{Entry: ContentEntry{ID: show.Public, LibraryID: "tv", Kind: "show"}, ResumeTarget: &ContentEntry{ID: episode.Public, LibraryID: "tv", Kind: "episode", Playback: &ContentPlayback{ItemID: episode.Public}}}}
 	ctx, cost := dbwork.Measure(context.Background())
+	ctx, queries := dbwork.TraceQueryPlans(ctx)
 	if err := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error {
 		return s.WithContext(ctx).ProjectHomeActions(homeRequestFixture("tv").Viewer, HomeActionAuthority{Personal: true, Playback: true, Queue: true, Metadata: true}, nil, spotlight)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if cost().Statements != 1 {
-		t.Fatalf("spotlight cost %d statements", cost().Statements)
-	}
+	assertHomeActionSnapshotQueries(t, cost(), queries(), 1)
 	if a := spotlight[0].Entry.HomeActions; a == nil || !a.MyList || !a.State.Watchlisted || a.State.PersonalRevision != 5 || !a.EditMetadata {
 		t.Fatalf("displayed spotlight offers: %+v", a)
 	}
@@ -222,17 +277,8 @@ func TestHomeActionAvailabilityFindsPermittedMemberBeyond64AndRechecksCurrentPol
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {
 		return compactcatalog.SetAssetAvailableTx(ctx, tx, unavailable.Asset, false)
 	})
-	var hidden catalogtest.Item
-	for number := 2; number <= 81; number++ {
-		hidden = c.Episode(show, season, number, fmt.Sprintf("/tv/private-episode-%d.mkv", number))
-		c.Attributes(hidden.ID, "label", "adult")
-	}
-	permitted := c.Episode(show, season, 82, "/tv/permitted-available.mkv")
 	c.Drain()
-	var before int
-	if err := db.QueryRow(`SELECT count(DISTINCT item_id) FROM catalog_browse_memberships WHERE entity_id=? AND item_id<?`, show.ID, permitted.ID).Scan(&before); err != nil || before <= 64 {
-		t.Fatalf("fixture did not place permitted availability past 64: %d %v", before, err)
-	}
+	var hidden, permitted catalogtest.Item
 	v := homeRequestFixture("tv").Viewer
 	v.Restrictions = visibilityRestrictionOf(nil, false, "adult")
 	read := func() []HomeRow {
@@ -244,14 +290,13 @@ func TestHomeActionAvailabilityFindsPermittedMemberBeyond64AndRechecksCurrentPol
 			{ID: season.Public, LibraryID: "tv", Kind: "season"},
 		}}}
 		ctx, measured := dbwork.Measure(context.Background())
+		ctx, queries := dbwork.TraceQueryPlans(ctx)
 		if err := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error {
 			return s.WithContext(ctx).ProjectHomeActions(v, HomeActionAuthority{Personal: true, Bulk: true, Playback: true, Queue: true, Downloads: true}, rows, nil)
 		}); err != nil {
 			t.Fatal(err)
 		}
-		if measured().Statements != 1 {
-			t.Fatalf("member count changed projection statement count: %d", measured().Statements)
-		}
+		assertHomeActionSnapshotQueries(t, measured(), queries(), 1)
 		return rows
 	}
 	check := func(want bool) {
@@ -268,10 +313,21 @@ func TestHomeActionAvailabilityFindsPermittedMemberBeyond64AndRechecksCurrentPol
 			t.Fatal(err)
 		}
 		for _, secret := range []string{hidden.Public, permitted.Public, "/tv/private-episode", "sourcePath", "filePath"} {
-			if strings.Contains(string(raw), secret) {
+			if secret != "" && strings.Contains(string(raw), secret) {
 				t.Fatalf("member identity/path leaked into offers: %s", secret)
 			}
 		}
+	}
+	check(false) // One unavailable member: the same two-statement snapshot cost.
+	for number := 2; number <= 81; number++ {
+		hidden = c.Episode(show, season, number, fmt.Sprintf("/tv/private-episode-%d.mkv", number))
+		c.Attributes(hidden.ID, "label", "adult")
+	}
+	permitted = c.Episode(show, season, 82, "/tv/permitted-available.mkv")
+	c.Drain()
+	var before int
+	if err := db.QueryRow(`SELECT count(DISTINCT item_id) FROM catalog_browse_memberships WHERE entity_id=? AND item_id<?`, show.ID, permitted.ID).Scan(&before); err != nil || before != 81 {
+		t.Fatalf("fixture did not place permitted availability behind 81 members: %d %v", before, err)
 	}
 	check(true)
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {

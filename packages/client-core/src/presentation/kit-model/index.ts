@@ -2,6 +2,8 @@ export type {KitMessageId, KitMessageValues, KitTranslate, FactRole, FactPart, T
 export {timelineFacts} from './text.ts';
 export {cardText, titleFactParts, episodeLabel, playbackIdentity} from './facts.ts';
 export type {TitleKind, EpisodeNumbering, CardContext, TitleFactContext, TitleFacts, CardSubject, CardTextModel, PlaybackSubject, PlaybackIdentityModel} from './facts.ts';
+export {collectionCaptionParts} from './collections.ts';
+export type {CollectionCaptionFacts} from './collections.ts';
 export {cardGeometry, hasUniformGeometry} from './geometry.ts';
 export type {GeometrySubject, GeometryContext, CardGeometry} from './geometry.ts';
 export {appliedFilterParts} from './filters.ts';

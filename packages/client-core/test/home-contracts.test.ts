@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {appendHomeRowPage,validateHomeDocument,validateHomeRow,validateHomeSeeAll,fetchHomeRow,type HomeApi} from '../src/home.ts';
+import {appendHomeRowPage,validateHomeDocument,validateHomeEntry,validateHomeRow,validateHomeSeeAll,fetchHomeRow,type HomeApi} from '../src/home.ts';
+import {validateContentEntry} from '../src/library-content.ts';
 import {HomeService} from '../src/home-service.ts';
 import {homeRowPresentation,homeSpotlightModels} from '../src/presentation/home-spotlight.ts';
 import {homeContractsMessages} from '../../i18n/src/catalog/en-US/next/home-contracts.ts';
@@ -14,6 +15,29 @@ const channel=(id:string,mark='SS')=>({source,channel:{id,sourceId:source.id,pro
 const live=(channels:unknown[],more:Record<string,unknown>={})=>({revision:'directory-guide-preferences',observedAt:'2026-10-22T00:30:00Z',expiresAt:'2026-10-22T00:31:00Z',sort:'favorites',group:'Sports',groups:[{name:'Sports',count:2000}],channels,...more});
 const api=(read:(path:string)=>unknown):HomeApi=>({request:async<T>(path:string)=>await read(path) as T});
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
+
+test('Home episodes retain authorized parent facts without substituting child metadata or identity',()=>{
+  const parent={kind:'show',year:2020,genres:['Drama','Mystery'],seasonCount:2};
+  const episode=entry('episode','episode',{year:2026,genres:['Comedy'],seasonNumber:2,episodeNumber:3,durationMs:3000000,homeTitleContext:{...parent,privatePath:'/private/show'}});
+  const parsed=validateHomeRow(row('continue',{entries:[episode],total:1})).entries[0];
+  assert.deepEqual(parsed.homeTitleContext,parent);
+  assert.ok(Object.isFrozen(parsed.homeTitleContext)&&Object.isFrozen(parsed.homeTitleContext!.genres));
+  assert.equal(parsed.id,'episode');assert.equal(parsed.navigation!.entityId,'episode');assert.equal(parsed.playback!.itemId,'episode');
+  assert.equal(parsed.year,2026);assert.deepEqual(parsed.genres,['Comedy']);assert.equal(parsed.duration,3000);
+  assert.equal('homeTitleContext' in validateContentEntry(episode),false,'generic catalogue metadata stays unchanged');
+  assert.equal(validateHomeEntry(entry('without','episode',{year:2026,genres:['Comedy']})).homeTitleContext,undefined);
+  const sparse=validateHomeEntry({...episode,homeTitleContext:{kind:'show',genres:[],seasonCount:0}}).homeTitleContext!;
+  assert.deepEqual(sparse,{kind:'show',genres:[],seasonCount:0});assert.equal(sparse.year,undefined);
+  const resume={...episode,show:{id:'show',name:'Show'}};
+  const document=validateHomeDocument(doc([],{spotlight:[{entry:entry('show','show'),reason:{kind:'recent',text:{code:'next.home.reason.recentTo',fallback:'Recently added'}},resumeTarget:resume}]}));
+  assert.deepEqual(document.spotlight[0].resumeTarget!.homeTitleContext,parent);
+  assert.equal(document.spotlight[0].entry.homeTitleContext,undefined);
+  for(const broken of [{kind:'album',genres:[]},{kind:'show',genres:['a','b','c']},{kind:'show',genres:[1]},{kind:'show',genres:[],year:0},{kind:'show',genres:[],seasonCount:-1},{kind:'show',genres:[],seasonCount:1.5}]){
+    const value=validateHomeEntry({...episode,homeTitleContext:broken});
+    assert.equal(value.id,'episode');assert.equal(value.homeTitleContext,undefined);
+  }
+  assert.equal(validateHomeEntry(entry('movie','movie',{homeTitleContext:parent})).homeTitleContext,undefined);
+});
 
 test('spotlight preserves server reasons and order, real show resume identity and normalized runtime',()=>{
   const spotlight=[

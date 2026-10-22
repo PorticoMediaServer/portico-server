@@ -2,6 +2,37 @@
 import type {HomeDocument, HomeRow, HomeSpotlight} from '../home.ts';
 import type {ContentEntry} from '../library-content.ts';
 import type {HomeContractsMessageId} from '../../../i18n/src/catalog/en-US/next/home-contracts.ts';
+import {collectionCaptionParts, titleFactParts, type FactPart, type TextEnvironment, type TitleFactContext} from './kit-model/index.ts';
+
+/** Optional genuine parent facts are projected by Home, never fetched or inferred here. */
+export type HomeTitlePresentationEntry = ContentEntry & Readonly<{
+  homeTitleContext?:Readonly<{kind:'show';year?:number;genres:readonly string[];seasonCount?:number}>;
+}>;
+/** Home metadata belongs to the supplied display context, independently of the playable/resume target. */
+export function homeTitleFactParts(entry:HomeTitlePresentationEntry,env:TextEnvironment):readonly FactPart[] {
+  if(entry.kind==='episode'&&entry.homeTitleContext){
+    const context=entry.homeTitleContext;
+    return titleFactParts({year:context.year,genres:context.genres,seasonCount:context.seasonCount},env,'home-show');
+  }
+  let context:TitleFactContext;
+  switch(entry.kind){
+    case 'movie':case 'extra':context='home-movie';break;
+    case 'show':case 'season':case 'episode':context='home-show';break;
+    case 'artist':case 'album':case 'song':case 'disc':context='music';break;
+    case 'book':case 'audiobook_file':case 'chapter':context='audiobook';break;
+    default:return Object.freeze([]);
+  }
+  return titleFactParts({year:entry.year,genres:entry.genres,durationSeconds:entry.duration,seasonCount:entry.seasonCount,
+    artist:entry.artist?.name,album:entry.album?.name,author:entry.author},env,context);
+}
+
+/** Semantic input only: the Home contract/parser owner supplies authoritative mediaKind. */
+export type HomeCollectionCaptionSource = Readonly<{
+  collection:Readonly<{itemCount:number}>;mediaKind?:string;firstYear?:number;lastTitle?:string;
+}>;
+export function homeCollectionCaption(source:HomeCollectionCaptionSource,env:TextEnvironment):readonly FactPart[] {
+  return collectionCaptionParts({mediaKind:source.mediaKind,itemCount:source.collection.itemCount,firstYear:source.firstYear,lastTitle:source.lastTitle},env);
+}
 
 export type HomeMessage = Readonly<{key:HomeContractsMessageId;params?:Readonly<Record<string,string|number>>}>;
 export type HomeSpotlightModel = Readonly<{

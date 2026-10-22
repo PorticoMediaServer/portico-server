@@ -198,6 +198,13 @@
 .songText b { display: block; font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .songText small { display: flex; gap: 12px; font-size: 13px; color: var(--browse-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .songDuration { font-size: 13px; color: var(--browse-muted); font-variant-numeric: tabular-nums; flex: none; }
+.songRow[data-context="search"] { height: 58px; padding: 0 12px 0 6px; }
+.songRow[data-context="search"]:hover, .songRow[data-context="search"]:focus-within { background: var(--color-raised); }
+.songRow[data-context="search"] .songArtwork { width: 44px; height: 44px; }
+.songRow[data-context="search"] .songArtwork::after { content: ''; position: absolute; inset: 0; background: color-mix(in srgb, var(--color-ink) 55%, transparent); opacity: 0; transition: opacity 160ms var(--ease-out); }
+.songArtworkPlay { position: absolute; inset: 11px; color: var(--color-white); z-index: 1; opacity: 0; transition: opacity 160ms var(--ease-out); }
+.songRow:hover .songArtworkPlay, .songRow:focus-within .songArtworkPlay, .songRow:hover .songArtwork::after, .songRow:focus-within .songArtwork::after { opacity: 1; }
+.songSelection { position: absolute; inset: 0; display: grid; place-items: center; z-index: 2; }
 .songRow[data-playing] b { color: var(--color-accent-strong); }
 .trackTable[data-platform=phone] .trackRow { height: 56px; }
 .trackTable[data-platform=phone] .trackHeading { display: none; }
@@ -205,5 +212,5 @@
 .trackTable[data-platform=phone] .trackText b { font-size: 15px; }
 @media (hover: none) { .trackActions, .trackRow[data-favorite] .trackActions > button:not(.favoriteAction) { opacity: 1; } .trackSelection { display: grid; } }
 @media (max-width: 599px) { .filteredEmpty { padding-inline: 20px; } .filteredEmpty h2 { font-size: 28px; } }
-@media (prefers-reduced-motion: reduce) { .appliedChip, .fieldTile, .trackRow, .trackActions, .songRow { transition: none; } }
-[data-reduce-motion=true] .appliedChip, [data-reduce-motion=true] .fieldTile, [data-reduce-motion=true] .trackRow, [data-reduce-motion=true] .trackActions, [data-reduce-motion=true] .songRow { transition: none; }
+@media (prefers-reduced-motion: reduce) { .appliedChip, .fieldTile, .trackRow, .trackActions, .songRow, .songArtworkPlay { transition: none; } }
+[data-reduce-motion=true] .appliedChip, [data-reduce-motion=true] .fieldTile, [data-reduce-motion=true] .trackRow, [data-reduce-motion=true] .trackActions, [data-reduce-motion=true] .songRow, .songArtworkPlay { transition: none; }

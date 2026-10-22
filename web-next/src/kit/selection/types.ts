@@ -1,6 +1,6 @@
 import type {ReactNode, RefObject} from 'react';
 import type {RepairFieldSpec} from '@core/metadata-repair';
-import type {BulkReceipt, BulkResult} from '@core/metadata-bulk';
+import type {BulkReceipt} from '@core/metadata-bulk';
 import type {DeletePreview, DeleteResult} from '@core/administration';
 import type {SelectionKind} from '@core/selection-model';
 import type {OverlayChange} from '../overlays';
@@ -41,10 +41,16 @@ export type SelectionBarProps = Readonly<{
 }>;
 
 /** Aggregates are supplied by the caller's real schema/preview, never read or guessed by the kit. */
-export type BulkFieldValues = Readonly<
-  | {kind: 'scalar'; values: readonly Readonly<{value: string; count: number; titles?: readonly string[]}>[]}
-  | {kind: 'list'; entries: readonly Readonly<{value: string; count: number}>[]}
->;
+export type BulkFieldValues = Readonly<{
+  state: 'shared' | 'mixed';
+  distinctCount: number;
+  truncated: boolean;
+  value?: string;
+  values: readonly Readonly<{value: string; count: number; titles?: readonly string[]}>[];
+  entries: readonly Readonly<{value: string; count: number}>[];
+}>;
+/** A presentation of latest target outcomes, never a new operation receipt. */
+export type BulkResultView = Pick<BulkReceipt, 'results' | 'updated' | 'failed'>;
 export type BulkListDraft = Readonly<{add: readonly string[]; remove: readonly string[]}>;
 export type BulkEditorDraft = Readonly<{
   fields: Readonly<Record<string, string>>;
@@ -54,17 +60,17 @@ export type BulkEditorDraft = Readonly<{
 export type BulkEditorProps = SelectionSurface & Readonly<{
   selection: SelectionCount & {kind: SelectionMediaKind};
   schema: readonly RepairFieldSpec[];
+  /** Actual complete registry (or exact excludedFields); only !bulk fields are described. */
+  singleItemFields: readonly RepairFieldSpec[];
   values: Readonly<Record<string, BulkFieldValues>>;
-  /** Existing BulkEdit.genres capability is separate from RepairFieldSpec on today's server. */
-  genres?: Readonly<{allowed: boolean; values: Extract<BulkFieldValues, {kind: 'list'}>}>;
   draft: BulkEditorDraft;
   onDraftChange: (draft: BulkEditorDraft) => void;
   onSave: (draft: BulkEditorDraft) => void;
-  onRetry: (failed: readonly BulkResult[], draft: BulkEditorDraft) => void;
+  onRetry: (failedTargetIds: readonly string[], draft: BulkEditorDraft) => void;
   /** Include a title/art projection for every returned result id; never display internal ids. */
   targets: readonly SelectionItemDisplay[];
   resultDescriptions?: Readonly<Record<string, string>>;
-  result?: BulkReceipt;
+  result?: BulkResultView;
   busy?: boolean;
   error?: string;
   ownerTag: ReactNode;
@@ -72,17 +78,33 @@ export type BulkEditorProps = SelectionSurface & Readonly<{
   description?: string;
 }>;
 
-export type PickerEntry = Readonly<{id: string; name: string; size: number; alreadyIn?: number; artwork?: ReactNode}>;
+export type PickerEntry = Readonly<{id: string; name: string; size: number; canAdd: boolean; alreadyIn?: number; artwork?: ReactNode}>;
 export type PickerFailure = Readonly<{id: string; title: string; reason: string}>;
-export type PickerResult = Readonly<{destination: PickerEntry; added: number; total: number; alreadyIn: number; failures: readonly PickerFailure[]}>;
+/** Counters describe actual membership writes; processed does not imply inserted. */
+export type PickerResult = Readonly<{
+  destination: Readonly<{id: string; name: string; size?: number; artwork?: ReactNode}>;
+  inserted?: number;
+  processed?: number;
+  failed?: number;
+  unknown?: number;
+  pending?: boolean;
+  total?: number;
+  alreadyIn?: number;
+  failures: readonly PickerFailure[];
+  complete: boolean;
+  jobFacts?: readonly Readonly<{id: string; text: string}>[];
+}>;
 export type SelectionPickerProps = SelectionSurface & Readonly<{
   selection: SelectionCount;
   anchorRef: RefObject<HTMLElement | null>;
   entries: readonly PickerEntry[];
   query?: string;
   onQueryChange?: (query: string) => void;
-  hasMore?: boolean;
-  onLoadMore?: () => void;
+  hasNext?: boolean;
+  hasPrevious?: boolean;
+  onNext?: () => void;
+  onPrevious?: () => void;
+  loading?: boolean;
   mode: 'choose' | 'new';
   onModeChange: (mode: 'choose' | 'new') => void;
   name: string;
@@ -90,6 +112,10 @@ export type SelectionPickerProps = SelectionSurface & Readonly<{
   onAdd: (destinationId: string) => void;
   onCreateAndAdd: (name: string) => void;
   onRetry: (missingIds: readonly string[]) => void;
+  /** Present only for a genuine uncertain original operation, not a failed-target retry. */
+  onRetryOperation?: () => void;
+  /** Present only for a genuine read or confirmed command error on the retained picker. */
+  onRetryError?: () => void;
   result?: PickerResult;
   busy?: boolean;
   error?: string;

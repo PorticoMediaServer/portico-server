@@ -25,7 +25,7 @@ import {documentVisibility} from './page-visibility.ts';
 import {SubtitleSurface, type SubtitleHost} from './subtitle-surface.ts';
 import {entrySubject, itemSubject} from './subject.ts';
 import {browserClientProfile} from './client-profile.ts';
-import {selectionSegments} from './selection.ts';
+import {selectionSegments, selectionStartSeconds} from './selection.ts';
 import type {VideoLike} from './web-media-player.ts';
 import type {WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart} from './types.ts';
 
@@ -261,7 +261,7 @@ export class WebShellPlaybackRuntime {
     } };
     request.signal.addEventListener('abort', cancel, {once: true});
     try {
-      const queue = await stack.queue.playSegments(segments, {startSeconds: request.items[0]!.target.startSeconds, signal: request.signal, isCurrent: () => this.current(stack) && serial === this.operation && current(request.context)});
+      const queue = await stack.queue.playSegments(segments, {startSeconds: selectionStartSeconds(request.items), signal: request.signal, isCurrent: () => this.current(stack) && serial === this.operation && current(request.context)});
       this.selectionCurrent(request.context, request.signal, current);
       if (!this.current(stack) || serial !== this.operation) problem('stale_selection_context');
       this.sync();

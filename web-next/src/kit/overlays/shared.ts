@@ -110,7 +110,7 @@ export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel
     const initialTransform = kind === 'dialog' ? 'scale(.98)' : kind === 'menu' ? 'translateY(-4px) scale(.98)' : kind === 'panel' ? 'translateX(24px)' : kind === 'toast' ? 'translateY(24px)' : kind === 'banner' ? 'translateY(-100%)' : 'none';
     const from = {opacity: first.current && entering ? 0 : Number(style.opacity), transform: reduced ? 'none' : first.current && entering ? initialTransform : style.transform};
     animation.current?.cancel(); first.current = false;
-    const targetTransform = reduced || entering ? 'none' : exitTransform?.current ?? from.transform;
+    const targetTransform = reduced || entering ? 'none' : exitTransform?.current ?? (kind === 'panel' ? initialTransform : from.transform);
     const current = element.animate([from, {opacity: entering ? 1 : 0, transform: targetTransform}], {duration: reduced ? reducedMotion.durationMs : entering ? motion.standard : motion.quick, easing: entering ? easings.out : easings.in, fill: 'both'});
     animation.current = current;
     current.onfinish = () => {

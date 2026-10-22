@@ -2,8 +2,9 @@ import {playbackIdentity, type TextEnvironment} from '@core/presentation/kit-mod
 import type {WebPlaybackRuntimeSnapshot} from '../platform/playback';
 import type {DockPresentation} from '../kit/dock';
 import type {ShellArtwork} from './artwork';
+import {playbackFence} from '../../../packages/player-core/src/index.ts';
 
-export const fenceKey = (fence: NonNullable<WebPlaybackRuntimeSnapshot['fence']>) => JSON.stringify(fence);
+export const fenceKey = (fence: NonNullable<WebPlaybackRuntimeSnapshot['fence']>) => JSON.stringify(playbackFence(fence));
 export function playbackPresentation(snapshot: WebPlaybackRuntimeSnapshot, environment: TextEnvironment, artwork: ShellArtwork, skips: {back: number; forward: number}): DockPresentation | undefined {
   const current = snapshot.presentation;
   if (!current) return undefined;
