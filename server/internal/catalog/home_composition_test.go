@@ -271,8 +271,10 @@ func TestHomeBooksContinuationFiltersMusicBeforeItsPageLimit(t *testing.T) {
 	s := New(db)
 	r := homeRequestFixture("music", "books")
 	part := homeItem(t, db, "p2")
+	book := homeItem(t, db, "book")
 	c.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,playback_id)VALUES('p',?,120000,0,'book')`, part.ID)
 	c.Exec(`INSERT INTO progress_activity VALUES('p','books',?,?,'paused')`, part.ID, r.Now.Add(-2*time.Hour).Format(time.RFC3339))
+	c.Exec(`INSERT INTO book_resume(profile_id,book_id,item_id,playback_id,position,unit,completed) VALUES('p',?,?,'book',120000,0,0)`, book.ID, part.ID)
 	for i := 0; i < 45; i++ {
 		song := c.Song(homeItem(t, db, "album"), i+10, fmt.Sprintf("/music/busy-%02d.flac", i), fmt.Sprintf("Busy %02d", i))
 		c.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,playback_id)VALUES('p',?,120000,0,'music')`, song.ID)
