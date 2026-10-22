@@ -7,4 +7,6 @@ export const referenceColours = {
   genrePhone: '#2f6f9a',
   series: '#a45f27',
   channel: '#315c79',
+  sessionFace: '#3f8f6e',
+  sessionChannelFace: '#c27a3a',
 } as const;
