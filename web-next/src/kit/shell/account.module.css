@@ -70,6 +70,7 @@
 .notice { position: relative; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 14px; padding: 14px 20px 16px; border-top: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent); color: var(--color-text); line-height: normal; }
 .notice[data-unread]::before { content: ''; position: absolute; left: 8px; top: 34px; width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent-strong); }
 .subject { width: 52px; height: 52px; border-radius: 10px; overflow: hidden; display: grid; place-items: center; background: var(--color-raised-high); color: var(--color-text-secondary); }
+.subject[data-kind='artwork'] img { height: auto; }
 .subject[data-kind='channel'] { background: var(--subject-tint); color: var(--color-white); font-size: 16px; font-weight: 800; }
 .notice b { display: block; font-size: 15px; font-weight: 700; padding-right: 64px; }
 .notice:not([data-unread]) b { color: var(--color-text-secondary); }
