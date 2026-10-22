@@ -171,7 +171,7 @@
 .trackRow:hover .trackActions, .trackRow:focus-within .trackActions, .trackRow[data-playing] .trackActions { opacity: 1; }
 .trackRow[data-favorite] .trackActions { opacity: 1; }
 .trackRow[data-favorite] .trackActions > button:not(.favoriteAction) { opacity: 0; }
-.trackRow[data-favorite]:hover .trackActions > button, .trackRow[data-favorite]:focus-within .trackActions > button, .trackRow[data-playing] .trackActions > button { opacity: 1; }
+.trackRow[data-favorite]:hover .trackActions > button, .trackRow[data-favorite]:focus-within .trackActions > button, .trackRow[data-playing][data-favorite] .trackActions > button { opacity: 1; }
 .trackTable[data-variant=songs] .trackRow { height: 56px; }
 .trackTable[data-variant=songs] .trackArtwork { width: 40px; height: 40px; }
 .trackTable[data-variant=songs] .trackText b { font-size: 15px; }
