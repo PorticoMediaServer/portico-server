@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 
 	"portico.local/server/internal/identity"
@@ -27,7 +28,7 @@ func TestBackupRejectsStructurallyValidDatabaseCorruption(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			folder := filepath.Join(state, BackupsDir, id)
+			folder := storagepaths.Path(state, BackupsDir, id)
 			manifest, err := readManifest(folder)
 			if err != nil {
 				t.Fatal(err)
@@ -51,13 +52,13 @@ func TestBackupRejectsStructurallyValidDatabaseCorruption(t *testing.T) {
 				t.Fatal("audit payload not unique")
 			}
 			raw = bytes.Replace(raw, []byte("AUDIT_ORIGINAL_VALUE"), []byte("BUDIT_ORIGINAL_VALUE"), 1)
-			if err = os.WriteFile(path, raw, 0600); err != nil {
+			if err = writeTestFile(path, raw, 0600); err != nil {
 				t.Fatal(err)
 			}
 			// Run SQLite inspection on a separate copy; inspection can checkpoint or
 			// rewrite bytes, and must not alter the source whose hashes are tested.
 			candidate := filepath.Join(t.TempDir(), DatabaseName)
-			if err = os.WriteFile(candidate, raw, 0600); err != nil {
+			if err = writeTestFile(candidate, raw, 0600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err = persistence.InspectCandidate(context.Background(), candidate); err != nil {
@@ -68,7 +69,7 @@ func TestBackupRejectsStructurallyValidDatabaseCorruption(t *testing.T) {
 					t.Fatalf("corrupt source accepted: %+v %v", source, err)
 				}
 			}
-			if _, err = os.Stat(filepath.Join(state, RestoreStagedDir, RestoreMarkerFile)); !os.IsNotExist(err) {
+			if _, err = os.Stat(storagepaths.Path(state, RestoreStagedDir, RestoreMarkerFile)); !os.IsNotExist(err) {
 				t.Fatalf("corruption was staged: %v", err)
 			}
 		})
@@ -83,7 +84,7 @@ func TestBackupDatabaseManifestVersionsAndStructuralChecks(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			folder := filepath.Join(state, BackupsDir, id)
+			folder := storagepaths.Path(state, BackupsDir, id)
 			manifest, err := readManifest(folder)
 			if err != nil {
 				t.Fatal(err)
@@ -104,7 +105,7 @@ func TestBackupDatabaseManifestVersionsAndStructuralChecks(t *testing.T) {
 				t.Fatalf("legacy backup compatibility: %v", err)
 			}
 			// A legacy backup's missing database hash cannot waive SQLite validation.
-			if err = os.WriteFile(filepath.Join(folder, DatabaseName), []byte("not a SQLite database"), 0600); err != nil {
+			if err = writeTestFile(filepath.Join(folder, DatabaseName), []byte("not a SQLite database"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err = svc.Stage(context.Background(), Source{Path: folder}); !errors.Is(err, persistence.ErrCandidateNotPortico) {
@@ -118,8 +119,8 @@ func TestBackupDatabaseManifestVersionsAndStructuralChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	folder := filepath.Join(state, BackupsDir, id)
-	if err = os.WriteFile(filepath.Join(folder, DatabaseName), []byte("not SQLite"), 0600); err != nil {
+	folder := storagepaths.Path(state, BackupsDir, id)
+	if err = writeTestFile(filepath.Join(folder, DatabaseName), []byte("not SQLite"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	manifest, err := readManifest(folder)
@@ -168,7 +169,7 @@ func TestBackupFinalizesScrubberWALBeforeHashing(t *testing.T) {
 	if err = writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	folder := filepath.Join(state, BackupsDir, id)
+	folder := storagepaths.Path(state, BackupsDir, id)
 	manifest, err := readManifest(folder)
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +183,7 @@ func TestBackupFinalizesScrubberWALBeforeHashing(t *testing.T) {
 	if _, err = svc.Stage(context.Background(), Source{BackupID: id}); err != nil {
 		t.Fatal(err)
 	}
-	staged := openReadOnly(t, filepath.Join(state, RestoreStagedDir, DatabaseName))
+	staged := openReadOnly(t, storagepaths.Path(state, RestoreStagedDir, DatabaseName))
 	var value string
 	if err = staged.QueryRow(`SELECT value FROM configuration WHERE key='wal_marker'`).Scan(&value); err != nil || value != "scrubbed WAL content" {
 		t.Fatalf("WAL content lost: %q %v", value, err)
@@ -197,7 +198,7 @@ func TestBackupRejectsUnlistedWAL(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			folder := filepath.Join(state, BackupsDir, id)
+			folder := storagepaths.Path(state, BackupsDir, id)
 			manifest, err := readManifest(folder)
 			if err != nil {
 				t.Fatal(err)

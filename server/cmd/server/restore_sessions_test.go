@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 
 	"portico.local/server/internal/backup"
@@ -20,7 +21,7 @@ import (
 func writeRestoreResult(t *testing.T, state, outcome, at string) {
 	t.Helper()
 	body := `{"at":"` + at + `","outcome":"` + outcome + `"}` + "\n"
-	if err := os.WriteFile(filepath.Join(state, backup.RestoreResultFile), []byte(body), 0600); err != nil {
+	if err := writePathFixture(storagepaths.Path(state, backup.RestoreResultFile), []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -30,7 +31,7 @@ func writeRestoreResult(t *testing.T, state, outcome, at string) {
 func TestStartAfterARestoreSignsEveryoneOutAndScrubsTheSetAsideCopy(t *testing.T) {
 	ctx := context.Background()
 	state := t.TempDir()
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,8 +49,8 @@ func TestStartAfterARestoreSignsEveryoneOutAndScrubsTheSetAsideCopy(t *testing.T
 	}
 	// The copy of the previous database a restore sets aside: a real database
 	// with a live session in it, in a "-pre-restore" backup folder.
-	setAside := filepath.Join(state, backup.BackupsDir, "2026-10-13T100000Z-pre-restore")
-	if err = os.MkdirAll(setAside, 0700); err != nil {
+	setAside := storagepaths.Path(state, backup.BackupsDir, "2026-10-13T100000Z-pre-restore")
+	if err = os.MkdirAll(filepath.Join(setAside, "Database"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`VACUUM INTO ?`, filepath.Join(setAside, backup.DatabaseName)); err != nil {
@@ -105,7 +106,7 @@ func TestStartAfterARestoreSignsEveryoneOutAndScrubsTheSetAsideCopy(t *testing.T
 		if _, err = svc.Stage(ctx, source); err != nil {
 			t.Fatalf("scrubbed pre-restore backup cannot be staged (%+v): %v", source, err)
 		}
-		if err = os.RemoveAll(filepath.Join(state, backup.RestoreStagedDir)); err != nil {
+		if err = os.RemoveAll(storagepaths.Path(state, backup.RestoreStagedDir)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -125,7 +126,7 @@ func TestStartAfterARestoreSignsEveryoneOutAndScrubsTheSetAsideCopy(t *testing.T
 func TestUnreadableRestoreResultStopsStartup(t *testing.T) {
 	state := t.TempDir()
 	for _, body := range []string{"broken", `{}`, `{"outcome":"restored","at":""}`, `{"outcome":"unexpected","at":"2026-10-13T10:05:00Z"}`} {
-		if err := os.WriteFile(filepath.Join(state, backup.RestoreResultFile), []byte(body), 0600); err != nil {
+		if err := writePathFixture(storagepaths.Path(state, backup.RestoreResultFile), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
 		if err := signOutAfterRestore(context.Background(), nil, state); err == nil {
@@ -137,7 +138,7 @@ func TestUnreadableRestoreResultStopsStartup(t *testing.T) {
 func TestRestoreScrubbingRetriesAFailedSetAsideCopy(t *testing.T) {
 	ctx := context.Background()
 	state := t.TempDir()
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,12 +153,12 @@ func TestRestoreScrubbingRetriesAFailedSetAsideCopy(t *testing.T) {
 	if _, err = ident.Issue("account", "profile", "local", "owner", 1); err != nil {
 		t.Fatal(err)
 	}
-	intact := filepath.Join(state, "intact.db")
+	intact := storagepaths.Path(state, "intact.db")
 	if _, err = db.Exec(`VACUUM INTO ?`, intact); err != nil {
 		t.Fatal(err)
 	}
-	folder := filepath.Join(state, backup.BackupsDir, "2026-10-13T100000Z-pre-restore")
-	if err = os.MkdirAll(folder, 0700); err != nil {
+	folder := storagepaths.Path(state, backup.BackupsDir, "2026-10-13T100000Z-pre-restore")
+	if err = os.MkdirAll(filepath.Join(folder, "Database"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	copyPath := filepath.Join(folder, backup.DatabaseName)
@@ -209,7 +210,7 @@ func writePreRestoreManifest(t *testing.T, folder string) {
 func TestRealRestoreKeepsItsScrubbedRollbackBackupRestorable(t *testing.T) {
 	ctx := context.Background()
 	state := t.TempDir()
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +239,7 @@ func TestRealRestoreKeepsItsScrubbedRollbackBackupRestorable(t *testing.T) {
 	if err = backup.ApplyStaged(ctx, state, nil); err != nil {
 		t.Fatal(err)
 	}
-	db, err = persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, err = persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,11 +261,11 @@ func TestRealRestoreKeepsItsScrubbedRollbackBackupRestorable(t *testing.T) {
 			continue
 		}
 		found = true
-		for _, source := range []backup.Source{{BackupID: entry.ID}, {Path: filepath.Join(state, backup.BackupsDir, entry.ID)}} {
+		for _, source := range []backup.Source{{BackupID: entry.ID}, {Path: storagepaths.Path(state, backup.BackupsDir, entry.ID)}} {
 			if _, err = svc.Stage(ctx, source); err != nil {
 				t.Fatalf("real scrubbed rollback backup cannot stage: %v", err)
 			}
-			if err = os.RemoveAll(filepath.Join(state, backup.RestoreStagedDir)); err != nil {
+			if err = os.RemoveAll(storagepaths.Path(state, backup.RestoreStagedDir)); err != nil {
 				t.Fatal(err)
 			}
 		}

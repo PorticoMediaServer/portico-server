@@ -1,9 +1,10 @@
 package main
 
 import (
+	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 
@@ -19,7 +20,7 @@ func TestRecoverOwnerCLINeedsNoKey(t *testing.T) {
 	if err := os.Chmod(state, 0700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(state, "server.sqlite")
+	path := storagepaths.Path(state, "server.sqlite")
 	db, err := persistence.Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +41,7 @@ func TestRecoverOwnerCLINeedsNoKey(t *testing.T) {
 	if err = db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = os.Stat(filepath.Join(state, "authorization-replay.key")); !os.IsNotExist(err) {
+	if _, err = os.Stat(storagepaths.Path(state, "authorization-replay.key")); !os.IsNotExist(err) {
 		t.Fatal("key file present")
 	}
 	binary := serverBinary(t)
@@ -77,5 +78,22 @@ func TestRecoverOwnerCLINeedsNoKey(t *testing.T) {
 	defer db.Close()
 	if err = db.QueryRow(`SELECT count(*) FROM identity_account_factors`).Scan(&factors); err != nil || factors != 0 {
 		t.Fatalf("reset-mfa left factors: %d %v", factors, err)
+	}
+}
+
+func TestRecoverOwnerSharesTheServerDataLock(t *testing.T) {
+	state := t.TempDir()
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	lock, err := acquireInstanceLock(storagepaths.Path(state, "server.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err := recoverOwner([]string{"--state", state}, io.Discard); err == nil || !strings.Contains(err.Error(), "stop Portico") {
+		t.Fatalf("recovery did not share the server lock: %v", err)
 	}
 }

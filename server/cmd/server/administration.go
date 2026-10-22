@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"log"
 	"os"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"time"
 
 	"portico.local/server/internal/access"
@@ -40,7 +40,7 @@ func initializeAdministration(ctx context.Context, db *sql.DB, console *operatio
 		recorder = existing[0]
 	}
 	if recorder == nil {
-		recorder = servicelog.New(servicelog.Options{Directory: filepath.Join(state, "logs")})
+		recorder = servicelog.New(servicelog.Options{Directory: storagepaths.Path(state, "logs")})
 	}
 	installMessageLogOutput(recorder)
 	advertiser := connectivity.NewAdvertiser(connectivity.AdvertiserOptions{Instance: ident.Name(), Host: ident.Name(), Port: port,

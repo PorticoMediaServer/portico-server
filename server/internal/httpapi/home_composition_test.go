@@ -73,8 +73,8 @@ func TestHomeOnNowHTTPComposesCurrentProgrammeAndFencesPages(t *testing.T) {
 	}{
 		{"200", false, 2, "Summit Sports Extra", "SSE"}, // Insert renumber override.
 		{"199", false, 2, "Summit Sports Extra", "SSE"}, // Update the number.
-		{"199", true, 1, "Summit Sports", "SS"},        // Hide the overridden channel.
-		{"", false, 2, "Summit Sports", "SS"},          // Clear the override row.
+		{"199", true, 1, "Summit Sports", "SS"},         // Hide the overridden channel.
+		{"", false, 2, "Summit Sports", "SS"},           // Clear the override row.
 	} {
 		configuration, e := admin.LiveSourceConfiguration(context.Background(), authority, source)
 		if e != nil {

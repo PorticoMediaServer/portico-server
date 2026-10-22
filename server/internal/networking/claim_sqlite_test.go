@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,9 @@ type sqlFixture struct {
 }
 
 func openFixtureDB(t *testing.T, path string) *sql.DB {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
 	t.Helper()
 	db, e := sql.Open("sqlite", path)
 	if e != nil {
@@ -434,7 +438,7 @@ func TestClaimSQLitePlaintextCredentialAndNoKey(t *testing.T) {
 	if _, e = f.store.InstalledCredential(fixtureClaimContext(t), installed); !errors.Is(e, ErrUnavailable) {
 		t.Fatal("corrupt credential accepted", e)
 	}
-	if _, e = os.Stat(filepath.Join(f.dir, "networking-claim-credentials.key")); !os.IsNotExist(e) {
+	if _, e = os.Stat(storagepaths.Path(f.dir, "networking-claim-credentials.key")); !os.IsNotExist(e) {
 		t.Fatal("key file present")
 	}
 	if _, e = OpenClaimCipher(fixtureClaimContext(t), f.db, f.dir); e != nil {
@@ -672,7 +676,7 @@ func TestClaimCredentialsMigrateToPlain(t *testing.T) {
 	if _, e = f.db.Exec(`UPDATE networking_claim_credentials SET nonce=?,ciphertext=?`, nonce, sealed); e != nil {
 		t.Fatal(e)
 	}
-	if e = os.WriteFile(filepath.Join(f.dir, "networking-claim-credentials.key"), key, 0600); e != nil {
+	if e = writePathFixture(storagepaths.Path(f.dir, "networking-claim-credentials.key"), key, 0600); e != nil {
 		t.Fatal(e)
 	}
 	if e = migrateClaimCredentials(fixtureClaimContext(t), f.db, f.dir); e != nil {
@@ -685,7 +689,7 @@ func TestClaimCredentialsMigrateToPlain(t *testing.T) {
 	if len(nonceAfter) != 0 || !bytes.Equal(after, plain) {
 		t.Fatal("sealed credential not migrated to plaintext")
 	}
-	if _, e = os.Stat(filepath.Join(f.dir, "networking-claim-credentials.key")); !os.IsNotExist(e) {
+	if _, e = os.Stat(storagepaths.Path(f.dir, "networking-claim-credentials.key")); !os.IsNotExist(e) {
 		t.Fatal("key file left behind")
 	}
 	if _, e = f.store.InstalledCredential(fixtureClaimContext(t), installed); e != nil {

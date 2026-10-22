@@ -169,7 +169,7 @@ func (b *NativeBackend) runOwned(ctx context.Context, relative, operation, lane 
 	if err != nil || digest != b.digest {
 		return storage.ErrRemoteBinary
 	}
-	data, _ := json.Marshal(nativeRequest{b.executable, b.digest, target, b.config, b.service.private, "", operation, offset, count})
+	data, _ := json.Marshal(nativeRequest{b.executable, b.digest, target, b.config, b.service.work, "", operation, offset, count})
 	cmd := exec.Command(b.service.helper, "--portico-rclone-native")
 	cmd.Stdin = bytes.NewReader(data)
 	supervisor := b.service.nativeInventory
@@ -279,7 +279,7 @@ func (s *Service) approveExecutable(ctx context.Context, executable string) (str
 // ValidateConfiguration tests an already private candidate. No database write
 // transaction or mount/service lock is held while the provider is contacted.
 func (s *Service) validateCandidate(ctx context.Context, executable, digest, remote, file string) error {
-	data, _ := json.Marshal(nativeRequest{Executable: executable, Digest: digest, Remote: remote, ConfigPath: file, PrivateHome: s.private, Password: "", Operation: "stat"})
+	data, _ := json.Marshal(nativeRequest{Executable: executable, Digest: digest, Remote: remote, ConfigPath: file, PrivateHome: s.work, Password: "", Operation: "stat"})
 	cmd := exec.Command(s.helper, "--portico-rclone-native")
 	cmd.Stdin = bytes.NewReader(data)
 	check, cancel := context.WithTimeout(ctx, 25*time.Second)
@@ -303,7 +303,7 @@ func (s *Service) validateCandidate(ctx context.Context, executable, digest, rem
 
 func (s *Service) candidateFile(raw []byte) (string, error) {
 	// Plain rclone config format: folder permissions are the protection.
-	f, err := os.OpenFile(filepath.Join(s.private, identity.Token()+".candidate"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(filepath.Join(s.work, identity.Token()+".candidate"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return "", err
 	}
@@ -320,7 +320,7 @@ func (s *Service) candidateFile(raw []byte) (string, error) {
 		os.Remove(name)
 		return "", err
 	}
-	if err = syncDirectory(s.private); err != nil {
+	if err = syncDirectory(s.work); err != nil {
 		os.Remove(name)
 		return "", err
 	}

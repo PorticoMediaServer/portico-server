@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 	"time"
 )
@@ -15,7 +16,7 @@ func TestBackupReleasesSnapshotUnderWALPressure(t *testing.T) {
 		t.Fatal(err)
 	}
 	wrote := false
-	err := copyDatabaseLimited(context.Background(), db, filepath.Join(state, "pressure-copy.sqlite"), func(done, total int64) {
+	err := copyDatabaseLimited(context.Background(), db, storagepaths.Path(state, "pressure-copy.sqlite"), func(done, total int64) {
 		if !wrote {
 			wrote = true
 			if _, err := db.Exec(`INSERT INTO pressure_data(body) VALUES(zeroblob(65536))`); err != nil {
@@ -44,7 +45,7 @@ func TestBackupSnapshotHasTimeBound(t *testing.T) {
 	if _, err := db.Exec(`CREATE TABLE slow_data(body BLOB);INSERT INTO slow_data VALUES(zeroblob(1048576))`); err != nil {
 		t.Fatal(err)
 	}
-	err := copyDatabaseLimited(context.Background(), db, filepath.Join(state, "slow-copy.sqlite"), func(done, total int64) { time.Sleep(300 * time.Millisecond) }, copyLimits{250 * time.Millisecond, 128 << 20, 0})
+	err := copyDatabaseLimited(context.Background(), db, storagepaths.Path(state, "slow-copy.sqlite"), func(done, total int64) { time.Sleep(300 * time.Millisecond) }, copyLimits{250 * time.Millisecond, 128 << 20, 0})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("snapshot exceeded time limit: %v", err)
 	}

@@ -39,6 +39,21 @@ func missingReporter(context.Context, string, ...string) (string, error) {
 	return "", errors.New("not installed")
 }
 
+func TestCapacityProbesTheExactEffectiveProducerDirectory(t *testing.T) {
+	root := t.TempDir()
+	c := &Capacity{Directory: &root, State: root, Run: workingReporter}
+	s := settingsFor(t)
+	report := c.Report(context.Background(), s, SessionCounts{})
+	if report.TemporaryDirectory.Path != root || !report.TemporaryDirectory.Ready {
+		t.Fatal(report.TemporaryDirectory)
+	}
+	for _, unwanted := range []string{filepath.Join(root, "hls"), filepath.Join(s.TemporaryDirectory, "portico-hls")} {
+		if _, err := os.Stat(unwanted); !os.IsNotExist(err) {
+			t.Fatal("probed an unused directory", unwanted, err)
+		}
+	}
+}
+
 func TestCapacityResolvesAutoToTheFirstSupportedBackend(t *testing.T) {
 	probes := &fakeProbes{supported: map[string]bool{"vaapi": true, "nvenc": true}}
 	c := &Capacity{Probes: probes, Run: workingReporter}

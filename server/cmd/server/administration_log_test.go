@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"log"
 	"os"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 
 	"portico.local/server/internal/servicelog"
@@ -32,7 +32,7 @@ func TestPackagedMessageLogDoesNotDuplicateRuntimeOutput(t *testing.T) {
 			if bytes.Contains(stderr.Bytes(), []byte("runtime-evidence")) != (setting != "off") {
 				t.Fatalf("runtime output duplicated: %s", stderr.String())
 			}
-			data, err := os.ReadFile(filepath.Join(state, "messages.log"))
+			data, err := os.ReadFile(storagepaths.Path(state, "messages.log"))
 			if err != nil || !bytes.Contains(data, []byte("runtime-evidence")) {
 				t.Fatalf("runtime evidence not persisted: %s %v", data, err)
 			}

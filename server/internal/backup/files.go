@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"sort"
 	"strings"
 )
@@ -19,28 +20,14 @@ import (
 // Anything absent is skipped; rebuildable data (transcodes, caches, artwork,
 // logs, prepared media) and the backups and restore-staged folders themselves
 // are never carried.
-func stateFiles() []string {
-	return []string{
-		// The server identity.
-		"networking-keys",
-		// The TLS private key as a normal .pem file (§6 plain state).
-		"networking-tls.pem",
-		// The current server authority incarnation.
-		"supervisor/authority-incarnation.v1",
-		// Rclone's plain mount configs (§6 plain state).
-		"managed-storage",
-		// Owner-supplied, non-rebuildable files.
-		"channel-logos",
-		"subtitles",
-	}
-}
+func stateFiles() []string { return []string{"portico.toml", "Metadata", "Keys"} }
 
 // copyStateFiles copies the state file set from state into the staging folder
 // at the same relative paths, and returns the manifest entries. Names use "/".
 func copyStateFiles(state, partial string) ([]FileEntry, error) {
 	entries := []FileEntry{}
 	for _, rel := range stateFiles() {
-		src := filepath.Join(state, filepath.FromSlash(rel))
+		src := storagepaths.Path(state, filepath.FromSlash(rel))
 		info, err := os.Lstat(src)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -233,13 +220,13 @@ func readManifest(dir string) (Manifest, error) {
 // files. The free-space check multiplies this by 1.1.
 func (s *Service) estimate() (int64, error) {
 	var total int64
-	for _, name := range []string{"server.sqlite", "server.sqlite-wal"} {
-		if info, err := os.Stat(filepath.Join(s.state, name)); err == nil && info.Mode().IsRegular() {
+	for _, name := range []string{"Database/server.sqlite", "Database/server.sqlite-wal"} {
+		if info, err := os.Stat(storagepaths.Path(s.state, name)); err == nil && info.Mode().IsRegular() {
 			total += info.Size()
 		}
 	}
 	for _, rel := range stateFiles() {
-		src := filepath.Join(s.state, filepath.FromSlash(rel))
+		src := storagepaths.Path(s.state, filepath.FromSlash(rel))
 		info, err := os.Lstat(src)
 		if err != nil || !info.Mode().IsRegular() && !info.IsDir() {
 			continue
@@ -307,6 +294,9 @@ func checkManifestHashes(dir string, files []FileEntry) error {
 }
 
 func durableFile(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return err

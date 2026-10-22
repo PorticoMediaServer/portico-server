@@ -129,6 +129,9 @@ func (s *Service) StateDirectory() string {
 		var name, file string
 		if rows.Scan(&seq, &name, &file) == nil && name == "main" && file != "" {
 			s.state = filepath.Dir(file)
+			if filepath.Base(s.state) == "Database" {
+				s.state = filepath.Dir(s.state)
+			}
 		}
 	}
 	return s.state

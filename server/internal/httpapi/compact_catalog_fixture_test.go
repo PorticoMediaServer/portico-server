@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strconv"
 	"strings"
 	"testing"
@@ -119,7 +120,7 @@ func newTL6V1Fixture(t *testing.T, films int) *tl6V1Fixture {
 	f.deps = Dependencies{DB: db, Identity: id, Catalog: cat, Playback: playback.New(db), Hosted: host, PlaybackV1: f.v1}
 	f.handler = New(f.deps)
 	f.deps.v1 = f.v1
-	secret, err := os.ReadFile(filepath.Join(root, "setup-token"))
+	secret, err := os.ReadFile(storagepaths.Path(root, "setup-token"))
 	if err != nil {
 		t.Fatal(err)
 	}

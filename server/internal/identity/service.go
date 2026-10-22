@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storagepaths"
 	"time"
 )
 
@@ -156,7 +157,10 @@ func New(db *sql.DB, state string) (*Service, error) {
 			return nil, e
 		}
 	}
-	s := &Service{db: db, serverID: id, setupPath: filepath.Join(state, "setup-token"), hashSlots: make(chan struct{}, 2)}
+	if err := os.MkdirAll(filepath.Dir(storagepaths.Path(state, "setup-token")), 0700); err != nil {
+		return nil, err
+	}
+	s := &Service{db: db, serverID: id, setupPath: storagepaths.Path(state, "setup-token"), hashSlots: make(chan struct{}, 2)}
 	if err := s.initSetupHashKey(state); err != nil {
 		return nil, err
 	}

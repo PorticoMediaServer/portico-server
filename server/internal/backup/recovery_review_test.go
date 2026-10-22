@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 	"time"
@@ -41,7 +42,7 @@ func TestRestoreManifestCannotReplaceTheLiveDatabaseAsAStateFile(t *testing.T) {
 	db.Close()
 	injected := errors.New("verification refused")
 	_ = ApplyStaged(context.Background(), state, func(context.Context, string) error { return injected })
-	if _, err = os.Stat(filepath.Join(state, "server.sqlite")); err != nil {
+	if _, err = os.Stat(storagepaths.Path(state, "server.sqlite")); err != nil {
 		t.Fatalf("malformed manifest deleted the live database during rollback: %v", err)
 	}
 	t.Fatal("staging accepted a reserved live-database state entry")
@@ -49,7 +50,7 @@ func TestRestoreManifestCannotReplaceTheLiveDatabaseAsAStateFile(t *testing.T) {
 
 func TestRollbackResultFailureCanResume(t *testing.T) {
 	f := stageAfterWrite(t)
-	blocker := filepath.Join(f.state, RestoreResultFile+".next")
+	blocker := storagepaths.Path(f.state, RestoreResultFile+".next")
 	if err := os.Mkdir(blocker, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +65,7 @@ func TestRollbackResultFailureCanResume(t *testing.T) {
 	if RestoreUnresolved(f.state) {
 		t.Fatal("rollback could not resume after result storage was repaired")
 	}
-	if got := probe(t, filepath.Join(f.state, "server.sqlite")); got != "live" {
+	if got := probe(t, storagepaths.Path(f.state, "server.sqlite")); got != "live" {
 		t.Fatalf("previous data = %q", got)
 	}
 	last, err := f.svc.LastRestore()
@@ -112,9 +113,9 @@ func TestExternalDestinationIncludesLocalRecoveryCopies(t *testing.T) {
 		t.Fatal("could not stage the listed recovery copy by id", err)
 	}
 	// Pruning must also find old local copies even when scheduled backups are external.
-	original := filepath.Join(state, BackupsDir, recovery)
+	original := storagepaths.Path(state, BackupsDir, recovery)
 	for i := 0; i < 4; i++ {
-		dir := filepath.Join(state, BackupsDir, time.Date(2020, 1, i+1, 0, 0, 0, 0, time.UTC).Format(timestampLayout)+"-pre-restore")
+		dir := storagepaths.Path(state, BackupsDir, time.Date(2020, 1, i+1, 0, 0, 0, 0, time.UTC).Format(timestampLayout)+"-pre-restore")
 		if err = os.MkdirAll(dir, 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +123,7 @@ func TestExternalDestinationIncludesLocalRecoveryCopies(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		if err = os.WriteFile(filepath.Join(dir, ManifestName), raw, 0600); err != nil {
+		if err = writeTestFile(filepath.Join(dir, ManifestName), raw, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -153,13 +154,13 @@ func TestFailedAppliedRestoreWithMissingRecoveryCopyStaysUnresolved(t *testing.T
 	if err := ApplyStaged(context.Background(), f.state, nil); !errors.Is(err, errCrash) {
 		t.Fatal(err)
 	}
-	entries, err := os.ReadDir(filepath.Join(f.state, BackupsDir))
+	entries, err := os.ReadDir(storagepaths.Path(f.state, BackupsDir))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, entry := range entries {
 		if strings.HasSuffix(entry.Name(), "-pre-restore") {
-			if err = os.RemoveAll(filepath.Join(f.state, BackupsDir, entry.Name())); err != nil {
+			if err = os.RemoveAll(storagepaths.Path(f.state, BackupsDir, entry.Name())); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -187,11 +188,11 @@ func TestCompletedRestoreCleanupReplayKeepsItsResultAndNewerState(t *testing.T) 
 			if err != nil || first == nil {
 				t.Fatal(first, err)
 			}
-			if _, err = os.Stat(filepath.Join(f.state, RestoreStagedDir, RestoreMarkerFile)); err != nil {
+			if _, err = os.Stat(storagepaths.Path(f.state, RestoreStagedDir, RestoreMarkerFile)); err != nil {
 				t.Fatal("completion journal lost before cleanup", err)
 			}
 			// A durable completed journal must not mistake later writes for a new restore.
-			db := openReadOnly(t, filepath.Join(f.state, "server.sqlite"))
+			db := openReadOnly(t, storagepaths.Path(f.state, "server.sqlite"))
 			if _, err = db.Exec(`UPDATE configuration SET value='newer' WHERE key='crash_probe'`); err != nil {
 				t.Fatal(err)
 			}
@@ -203,7 +204,7 @@ func TestCompletedRestoreCleanupReplayKeepsItsResultAndNewerState(t *testing.T) 
 			if called {
 				t.Fatal("completed restore was verified again")
 			}
-			if got := probe(t, filepath.Join(f.state, "server.sqlite")); got != "newer" {
+			if got := probe(t, storagepaths.Path(f.state, "server.sqlite")); got != "newer" {
 				t.Fatal("newer state was rolled back", got)
 			}
 			last, err := f.svc.LastRestore()
@@ -228,7 +229,7 @@ func TestRestoreNamesAndLinkedManifestFilesAreRefused(t *testing.T) {
 	}
 	root := t.TempDir()
 	target := filepath.Join(t.TempDir(), "target")
-	if err := os.WriteFile(target, []byte("x"), 0600); err != nil {
+	if err := writeTestFile(target, []byte("x"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, filepath.Join(root, "link")); err != nil {

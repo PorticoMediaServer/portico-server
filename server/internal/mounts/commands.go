@@ -333,7 +333,7 @@ func (s *Service) removePending(ctx context.Context, m Mount) {
 			}
 		}
 	}
-	cache := filepath.Join(s.private, m.ID+".cache")
+	cache := filepath.Join(s.cache, m.ID+".cache")
 	// A symlink itself is removed, never followed into its target.
 	if e = os.RemoveAll(cache); e != nil {
 		return

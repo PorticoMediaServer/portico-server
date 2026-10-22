@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"sort"
 	"strings"
 	"testing"
@@ -140,7 +141,7 @@ func hostileFixture(t *testing.T) (http.Handler, string, func() string) {
 	}
 	handler := New(Dependencies{Administration: admin, Scheduler: operations.NewScheduler(operations.New(db)), Access: AccessArea{Access: access.New(db), ClientLogs: servicelog.NewClientLogStore(db)}, DB: db, Identity: ident, Catalog: cat, Hosted: host,
 		Ingestion: ingestion.New(db, cat, assets.Probe{}), Playback: playback.New(db), Console: operations.New(db)})
-	secret, err := os.ReadFile(filepath.Join(root, "setup-token"))
+	secret, err := os.ReadFile(storagepaths.Path(root, "setup-token"))
 	if err != nil {
 		t.Fatal(err)
 	}

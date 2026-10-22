@@ -143,8 +143,8 @@ func linuxArgv(bwrap string, job Job, disableUserns bool) ([]string, error) {
 	if disableUserns {
 		args = append(args, "--disable-userns")
 	}
-	args = append(args, "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv", "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "HOME", "/tmp")
-	args = append(args, "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--chdir", "/tmp")
+	args = append(args, "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv", "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "TMPDIR", os.TempDir(), "--setenv", "TMP", os.TempDir(), "--setenv", "TEMP", os.TempDir(), "--setenv", "HOME", os.TempDir())
+	args = append(args, "--proc", "/proc", "--dev", "/dev", "--tmpfs", os.TempDir(), "--chdir", os.TempDir())
 	if job.Hardware {
 		args = append(args, LinuxHardwareSandboxArgs(hardwareEnvironment())...)
 	}

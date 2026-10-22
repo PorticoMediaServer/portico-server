@@ -29687,6 +29687,72 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetDataStorageUsageRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetDataStorageUsageResponse": {
+    "properties": {
+      "dataDirectory": {
+        "type": "string"
+      },
+      "folders": {
+        "items": {
+          "properties": {
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "bytes"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "notices": {
+        "items": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "transcodeBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "transcodeDirectory": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "dataDirectory",
+      "transcodeDirectory",
+      "transcodeBytes",
+      "folders",
+      "notices"
+    ],
+    "type": "object"
+  },
   "GetDeviceCapabilitiesRequest": {
     "properties": {},
     "required": [],
@@ -139326,6 +139392,22 @@ export const schemas = {
       "protocolVersion",
       "serverId",
       "result"
+    ],
+    "type": "object"
+  },
+  "PostEmptyDataCacheRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostEmptyDataCacheResponse": {
+    "properties": {
+      "scheduled": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "scheduled"
     ],
     "type": "object"
   },

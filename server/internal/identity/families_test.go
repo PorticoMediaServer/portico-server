@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"sync"
 	"testing"
 	"time"
@@ -280,7 +281,7 @@ func TestAuthorizationFamiliesPlainReplaySurvivesRestart(t *testing.T) {
 		t.Fatal("flipped token accepted as a bearer")
 	}
 	// No key file exists, and none is created.
-	if _, e := os.Stat(filepath.Join(dir, "authorization-replay.key")); !errors.Is(e, os.ErrNotExist) {
+	if _, e := os.Stat(storagepaths.Path(dir, "authorization-replay.key")); !errors.Is(e, os.ErrNotExist) {
 		t.Fatal("key file present")
 	}
 }

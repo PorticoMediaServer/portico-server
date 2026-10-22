@@ -10,7 +10,10 @@ require (
 	modernc.org/sqlite v1.58.0
 )
 
-require gopkg.in/yaml.v3 v3.0.1 // indirect
+require (
+	github.com/pelletier/go-toml/v2 v2.2.4
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

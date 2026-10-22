@@ -10,7 +10,7 @@ import (
 	"errors"
 	"log"
 	"os"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -23,7 +23,7 @@ import (
 // topshelf capabilities) are not migrated: they expire within minutes, and
 // clients retry them in the clear.
 func (s *Service) migrateSealedToPlain(state string) error {
-	raw, err := os.ReadFile(filepath.Join(state, "authorization-replay.key"))
+	raw, err := os.ReadFile(storagepaths.Path(state, "authorization-replay.key"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -76,7 +76,7 @@ func (s *Service) migrateSealedToPlain(state string) error {
 		return nil
 	}
 	// Best effort: a leftover file is inert and migrates again next start.
-	_ = os.Remove(filepath.Join(state, "authorization-replay.key"))
+	_ = os.Remove(storagepaths.Path(state, "authorization-replay.key"))
 	return nil
 }
 

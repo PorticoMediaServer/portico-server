@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 	"time"
 
@@ -285,7 +286,7 @@ func qcSetupFixture(t *testing.T) (*tl6V1Fixture, string) {
 	item := c.Movie(c.Handle(lib.ID), path, "Film 00", 2000)
 	c.Drain()
 	f.items = []string{item.Public}
-	secret, err := os.ReadFile(filepath.Join(root, "setup-token"))
+	secret, err := os.ReadFile(storagepaths.Path(root, "setup-token"))
 	if err != nil {
 		t.Fatal(err)
 	}

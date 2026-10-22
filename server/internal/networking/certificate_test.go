@@ -20,7 +20,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strconv"
 	"strings"
 	"testing"
@@ -231,7 +231,7 @@ func TestCertificatePauseAndCurrentRevisionGuard(t *testing.T) {
 func TestCertificateKeyFilePlainAndStable(t *testing.T) {
 	f, m, ctx := certificateFixture(t)
 	installSyntheticCertificate(t, m, ctx)
-	path := filepath.Join(f.dir, "networking-tls.pem")
+	path := storagepaths.Path(f.dir, "networking-tls.pem")
 	info, e := os.Stat(path)
 	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
 		t.Fatal("TLS key not a private PEM file", e)
@@ -239,7 +239,7 @@ func TestCertificateKeyFilePlainAndStable(t *testing.T) {
 	if _, e = loadTLSKey(path); e != nil {
 		t.Fatal("TLS key unreadable", e)
 	}
-	if _, e = os.Stat(filepath.Join(f.dir, "networking-tls-seal.key")); !os.IsNotExist(e) {
+	if _, e = os.Stat(storagepaths.Path(f.dir, "networking-tls-seal.key")); !os.IsNotExist(e) {
 		t.Fatal("seal key file present")
 	}
 	hello := &tls.ClientHelloInfo{ServerName: "current." + fixtureCertificateNamespace + ".direct.getportico.tv"}

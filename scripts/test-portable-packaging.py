@@ -27,7 +27,7 @@ class PortablePackagingTests(unittest.TestCase):
             (self.stage / name).write_text("fixture")
         (self.web / "index.html").write_text("fixture web")
         binary = self.stage / "portico-server"
-        binary.write_text('#!/bin/sh\nprintf "%s\\n" "$PORTICO_WEB_DIR" "$PORTICO_STATE_DIR" "$1"\n')
+        binary.write_text('#!/bin/sh\nprintf "%s\\n" "$PORTICO_WEB_DIR" "$PORTICO_DATA_DIR" "$1"\n')
         binary.chmod(0o700)
         (self.stage / "portico-server.exe").write_text("fixture executable")
         for name in ["nfpm", "makensis"]:
@@ -39,7 +39,7 @@ class PortablePackagingTests(unittest.TestCase):
             tool.chmod(0o700)
         self.env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"])
         self.env.pop("PORTICO_WEB_DIR", None)
-        self.env.pop("PORTICO_STATE_DIR", None)
+        self.env.pop("PORTICO_DATA_DIR", None)
 
     def package(self, platform):
         subprocess.run(["bash", str(ROOT / "scripts/package-release.sh"), platform, "amd64",
@@ -56,12 +56,12 @@ class PortablePackagingTests(unittest.TestCase):
         self.assertTrue(launcher.is_file(), "archive must supply a configured launcher")
         output = subprocess.check_output([str(launcher), "argument"], cwd=self.root,
                                          env=self.env, text=True).splitlines()
-        self.assertEqual(output, [str(unpacked / "web"), str(unpacked / "state"), "argument"])
-        override = dict(self.env, PORTICO_STATE_DIR=str(self.root / "owner-state"),
+        self.assertEqual(output, [str(unpacked / "web"), "", "argument"])
+        override = dict(self.env, PORTICO_DATA_DIR=str(self.root / "owner-state"),
                         PORTICO_WEB_DIR=str(self.root / "owner-web"))
         output = subprocess.check_output([str(launcher), "argument"], cwd="/tmp",
                                          env=override, text=True).splitlines()
-        self.assertEqual(output, [override["PORTICO_WEB_DIR"], override["PORTICO_STATE_DIR"], "argument"])
+        self.assertEqual(output, [override["PORTICO_WEB_DIR"], override["PORTICO_DATA_DIR"], "argument"])
         self.assertTrue((unpacked / "README.txt").is_file())
 
     @unittest.skipUnless(shutil.which("zip"), "zip is unavailable")

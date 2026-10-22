@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 
@@ -43,8 +43,8 @@ func stageAfterWrite(t *testing.T) crashFixture {
 		t.Fatal(err)
 	}
 	db.Close()
-	checkpointDB(t, filepath.Join(state, "server.sqlite"))
-	return crashFixture{state: state, liveHash: fileHashOrEmpty(t, filepath.Join(state, "server.sqlite")), svc: svc}
+	checkpointDB(t, storagepaths.Path(state, "server.sqlite"))
+	return crashFixture{state: state, liveHash: fileHashOrEmpty(t, storagepaths.Path(state, "server.sqlite")), svc: svc}
 }
 
 func crashAt(t *testing.T, step string) {
@@ -85,12 +85,12 @@ func probe(t *testing.T, path string) string {
 
 func preRestoreHolding(t *testing.T, state, hash string) bool {
 	t.Helper()
-	entries, err := os.ReadDir(filepath.Join(state, BackupsDir))
+	entries, err := os.ReadDir(storagepaths.Path(state, BackupsDir))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, entry := range entries {
-		if strings.HasSuffix(entry.Name(), "-pre-restore") && fileHashOrEmpty(t, filepath.Join(state, BackupsDir, entry.Name(), DatabaseName)) == hash {
+		if strings.HasSuffix(entry.Name(), "-pre-restore") && fileHashOrEmpty(t, storagepaths.Path(state, BackupsDir, entry.Name(), DatabaseName)) == hash {
 			return true
 		}
 	}
@@ -103,7 +103,7 @@ func TestApplyStagedCrashWhilePreparingKeepsTheLiveDatabase(t *testing.T) {
 	if err := ApplyStaged(context.Background(), f.state, nil); !errors.Is(err, errCrash) {
 		t.Fatalf("crash: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(f.state, "server.sqlite")); !os.IsNotExist(err) {
+	if _, err := os.Stat(storagepaths.Path(f.state, "server.sqlite")); !os.IsNotExist(err) {
 		t.Fatal("the crash point is wrong: the database should be in the pre-restore folder")
 	}
 	if !preRestoreHolding(t, f.state, f.liveHash) {
@@ -114,7 +114,7 @@ func TestApplyStagedCrashWhilePreparingKeepsTheLiveDatabase(t *testing.T) {
 	if err := restart(t, f.state, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := probe(t, filepath.Join(f.state, "server.sqlite")); got != "backup" {
+	if got := probe(t, storagepaths.Path(f.state, "server.sqlite")); got != "backup" {
 		t.Fatalf("restored probe %q", got)
 	}
 	if !preRestoreHolding(t, f.state, f.liveHash) {
@@ -134,7 +134,7 @@ func TestApplyStagedCrashWhileSwitchingFinishes(t *testing.T) {
 	if err := restart(t, f.state, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := probe(t, filepath.Join(f.state, "server.sqlite")); got != "backup" {
+	if got := probe(t, storagepaths.Path(f.state, "server.sqlite")); got != "backup" {
 		t.Fatalf("restored probe %q", got)
 	}
 	if !preRestoreHolding(t, f.state, f.liveHash) {
@@ -152,10 +152,10 @@ func TestApplyStagedCrashThenFailedVerificationRollsBack(t *testing.T) {
 	if err := restart(t, f.state, func(context.Context, string) error { return injected }); !errors.Is(err, injected) {
 		t.Fatalf("apply: %v", err)
 	}
-	if got := fileHashOrEmpty(t, filepath.Join(f.state, "server.sqlite")); got != f.liveHash {
+	if got := fileHashOrEmpty(t, storagepaths.Path(f.state, "server.sqlite")); got != f.liveHash {
 		t.Fatal("the live database was not put back")
 	}
-	if got := probe(t, filepath.Join(f.state, "server.sqlite")); got != "live" {
+	if got := probe(t, storagepaths.Path(f.state, "server.sqlite")); got != "live" {
 		t.Fatalf("probe after rollback %q", got)
 	}
 	if last, _ := f.svc.LastRestore(); last == nil || last.Outcome != "rolled_back" {
@@ -172,7 +172,7 @@ func TestApplyStagedCrashAfterSwitchVerifies(t *testing.T) {
 	if err := restart(t, f.state, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := probe(t, filepath.Join(f.state, "server.sqlite")); got != "backup" {
+	if got := probe(t, storagepaths.Path(f.state, "server.sqlite")); got != "backup" {
 		t.Fatalf("restored probe %q", got)
 	}
 }
@@ -189,7 +189,7 @@ func TestApplyStagedCrashDuringRollbackResumes(t *testing.T) {
 			if err := ApplyStaged(context.Background(), f.state, func(context.Context, string) error { return injected }); !errors.Is(err, errCrash) {
 				t.Fatalf("crash: %v", err)
 			}
-			raw, err := os.ReadFile(filepath.Join(f.state, RestoreStagedDir, RestoreMarkerFile))
+			raw, err := os.ReadFile(storagepaths.Path(f.state, RestoreStagedDir, RestoreMarkerFile))
 			if err != nil || !strings.Contains(string(raw), `"rolling_back"`) {
 				t.Fatalf("the marker isn't rolling_back after the crash: %s %v", raw, err)
 			}
@@ -202,19 +202,19 @@ func TestApplyStagedCrashDuringRollbackResumes(t *testing.T) {
 			if verified {
 				t.Fatal("a resumed rollback verified the database in place")
 			}
-			if got := fileHashOrEmpty(t, filepath.Join(f.state, "server.sqlite")); got != f.liveHash {
+			if got := fileHashOrEmpty(t, storagepaths.Path(f.state, "server.sqlite")); got != f.liveHash {
 				t.Fatal("the live database was not put back byte for byte")
 			}
-			if got := probe(t, filepath.Join(f.state, "server.sqlite")); got != "live" {
+			if got := probe(t, storagepaths.Path(f.state, "server.sqlite")); got != "live" {
 				t.Fatalf("probe after the resumed rollback %q", got)
 			}
 			if last, _ := f.svc.LastRestore(); last == nil || last.Outcome != "rolled_back" {
 				t.Fatalf("last restore %+v", last)
 			}
-			if _, err = os.Stat(filepath.Join(f.state, RestoreStagedDir)); !os.IsNotExist(err) {
+			if _, err = os.Stat(storagepaths.Path(f.state, RestoreStagedDir)); !os.IsNotExist(err) {
 				t.Fatal("the staged folder is still there after the rollback finished")
 			}
-			entries, _ := os.ReadDir(filepath.Join(f.state, BackupsDir))
+			entries, _ := os.ReadDir(storagepaths.Path(f.state, BackupsDir))
 			for _, entry := range entries {
 				if strings.HasSuffix(entry.Name(), "-pre-restore") {
 					t.Fatalf("the pre-restore folder %s is left after a complete rollback", entry.Name())
@@ -244,13 +244,13 @@ func TestRollbackRemovesTheRestoredWALFirst(t *testing.T) {
 	if !errors.Is(err, errCrash) {
 		t.Fatalf("crash: %v", err)
 	}
-	if _, err = os.Stat(filepath.Join(f.state, "server.sqlite-wal")); !os.IsNotExist(err) {
+	if _, err = os.Stat(storagepaths.Path(f.state, "server.sqlite-wal")); !os.IsNotExist(err) {
 		t.Fatal("the restored WAL is still beside the database at the rename")
 	}
 	if err = restart(t, f.state, nil); err == nil {
 		t.Fatal("a resumed rollback reported success")
 	}
-	if got := probe(t, filepath.Join(f.state, "server.sqlite")); got != "live" {
+	if got := probe(t, storagepaths.Path(f.state, "server.sqlite")); got != "live" {
 		t.Fatalf("probe after rollback %q", got)
 	}
 }

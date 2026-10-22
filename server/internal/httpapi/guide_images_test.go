@@ -21,6 +21,7 @@ import (
 	"portico.local/server/internal/ingestion"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storagepaths"
 )
 
 // Programme images check current source access and rating before serving bytes.
@@ -83,10 +84,10 @@ func TestGuideImageServing(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO live_programme_images(url,digest,media_type,width,height,stored_ms) VALUES(?,?,?,?,?,?)`, "https://img.invalid/kept.png", digest, "image/png", 64, 64, time.Now().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.MkdirAll(filepath.Join(root, "guide-images"), 0700); err != nil {
+	if err = os.MkdirAll(storagepaths.Path(root, "guide-images"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(root, "guide-images", digest+".png"), image, 0600); err != nil {
+	if err = os.WriteFile(storagepaths.Path(root, "guide-images", digest+".png"), image, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if w := request("GET", imagePath, ""); w.Code != 401 {
