@@ -1,0 +1,102 @@
+import {useState, type ButtonHTMLAttributes, type ReactNode} from 'react';
+import {defaultI18n} from '@i18n';
+import type {BrowseSortCapability, BrowseSortSelection} from '@core/browse';
+import {sortDirectionKind} from '@core/presentation/browse-toolbar';
+import type {BrowseToolbarModel} from '@core/presentation/kit-model';
+import {Button, Chip, Segmented} from '../controls';
+import {MenuRow, Popover} from '../overlays';
+import {Icon, type IconName} from '../Icon';
+import type {AppliedChip, BrowseLabels, BrowsePlatform, BrowseView, CardSizeControl, SaveViewControl} from './types';
+import styles from './browse.module.css';
+import {nextBrowseSort} from './model';
+
+const t = defaultI18n.t;
+export function sortDirectionLabel(field: string, direction: 'asc' | 'desc'): string {
+  return t(`next.browse.${direction}.${sortDirectionKind(field)}`);
+}
+export type FiltersButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & Readonly<{count?: number; open?: boolean}>;
+export function FiltersButton({count = 0, open = false, className, ...props}: FiltersButtonProps) {
+  return <Button {...props} variant="glass" size="small" icon="i-filter" className={[styles.filtersButton, className].filter(Boolean).join(' ')} aria-expanded={open}>
+    {t('next.browse.filters')}{count > 0 && <span className={styles.filterBadge} aria-label={t('next.browse.filterCount', {count})}>{defaultI18n.number(count)}</span>}
+  </Button>;
+}
+export type QuickToggleProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onChange'> & Readonly<{
+  selected: boolean; onCheckedChange: (checked: boolean) => void; icon?: IconName; count?: number;
+}>;
+export function QuickToggle({selected, onCheckedChange, icon, count, children, className, ...props}: QuickToggleProps) {
+  return <Chip {...props} variant="quick" selected={selected} icon={icon} count={count} onClick={event => { props.onClick?.(event); if (!event.defaultPrevented) onCheckedChange(!selected); }} className={[styles.quickToggle, className].filter(Boolean).join(' ')}>{children}</Chip>;
+}
+export type SortMenuProps = Readonly<{
+  sorts: readonly BrowseSortCapability[]; value: BrowseToolbarModel['sort']; onValueChange: (value: BrowseSortSelection) => void;
+  label: BrowseLabels['sort']; open?: boolean; onOpenChange?: (open: boolean) => void; onReshuffle?: () => void;
+}>;
+export function SortMenu({sorts, value, onValueChange, label, open: controlledOpen, onOpenChange, onReshuffle}: SortMenuProps) {
+  const [localOpen, setLocalOpen] = useState(false), open = controlledOpen ?? localOpen;
+  const setOpen = (next: boolean) => { setLocalOpen(next); onOpenChange?.(next); };
+  const selected = sorts.find(sort => sort.id === value.field), showOrder = value.flippable && selected;
+  const pick = (sort: BrowseSortCapability) => {
+    if (sort.id === value.field && value.reshufflable) { onReshuffle?.(); setOpen(false); return; }
+    const next = nextBrowseSort(sorts, value, sort.id);
+    if (next) onValueChange(next);
+    setOpen(false);
+  };
+  return <Popover open={open} onOpenChange={setOpen} title={t('next.browse.sortBy')} accessibilityLabel={t('next.browse.sortBy')} placement="bottom-end" width={300} className={styles.sortMenu}
+    trigger={<Chip variant="default" icon="i-sort" className={styles.sortTrigger} aria-expanded={open}>{selected ? label(selected) : t('next.browse.sort')}{showOrder && <span className={styles.direction}>{sortDirectionLabel(value.field, value.direction)}</span>}<Icon name="i-down" size={14}/></Chip>}>
+    <div className={styles.menuHeading}>{t('next.browse.sortBy')}</div>
+    {sorts.map(sort => <MenuRow key={sort.id} selected={sort.id === value.field} onClick={() => pick(sort)} description={sort.expensive ? t('next.browse.expensive') : undefined}>{label(sort)}</MenuRow>)}
+    {showOrder && <div className={styles.sortOrder}><div className={styles.menuHeading}>{t('next.browse.order')}</div>
+      <Segmented variant="browse" value={value.direction} aria-label={t('next.browse.order')} onValueChange={direction => { if ((direction === 'asc' || direction === 'desc') && selected.directions.includes(direction)) onValueChange({field: value.field, direction}); }}
+        items={selected.directions.map(direction => ({value: direction, label: sortDirectionLabel(value.field, direction)}))}/></div>}
+  </Popover>;
+}
+export function ViewToggle({value, onValueChange}: BrowseView) {
+  return <div className={styles.viewToggle} role="group" aria-label={t('next.browse.view')}>
+    <Button variant="icon" size="small" icon="i-grid" iconOnly aria-label={t('next.browse.grid')} aria-pressed={value === 'grid'} onClick={() => onValueChange('grid')}/>
+    <Button variant="icon" size="small" icon="i-list" iconOnly aria-label={t('next.browse.list')} aria-pressed={value === 'list'} onClick={() => onValueChange('list')}/>
+  </div>;
+}
+export function CardSizeButton({value, options, onValueChange}: CardSizeControl) {
+  const [open, setOpen] = useState(false);
+  return <Popover open={open} onOpenChange={setOpen} title={t('next.browse.cardSize')} accessibilityLabel={t('next.browse.cardSize')} placement="bottom-end" width={180}
+    trigger={<Button variant="icon" size="small" icon="i-size" iconOnly aria-label={t('next.browse.cardSize')}/>}>
+    {options.map(option => <MenuRow key={option.value} selected={option.value === value} onClick={() => { onValueChange(option.value); setOpen(false); }}>{option.label}</MenuRow>)}
+  </Popover>;
+}
+export function SaveViewButton({canSave, onSave}: SaveViewControl) {
+  return <Button variant="text" size="small" icon="i-save" className={styles.saveView} disabled={!canSave} onClick={onSave}>{t('next.browse.saveView')}</Button>;
+}
+export type AppliedFilterChipsProps = Readonly<{items: readonly AppliedChip[]; onRemove: (id: string) => void; onClear: () => void; className?: string}>;
+export function AppliedFilterChips({items, onRemove, onClear, className}: AppliedFilterChipsProps) {
+  if (!items.length) return null;
+  return <div className={[styles.applied, className].filter(Boolean).join(' ')} aria-label={t('next.browse.applied')}>
+    {items.map(({id, parts}) => <button type="button" className={styles.appliedChip} key={id} aria-label={t('next.browse.removeFilter', {field: parts.field.text})} onClick={() => onRemove(id)}>
+      <span className={styles.appliedField}>{parts.field.text}</span>
+      {parts.operator !== 'equals' && parts.operator !== 'in' && !(parts.operator === 'contains-any' && parts.values.length === 1) && <span className={styles.appliedOperator}>{parts.operatorPart.text}</span>}
+      {parts.values.map(value => <span key={value.id} className={styles.appliedValue}>{value.text}</span>)}<span className={styles.removeIcon}><Icon name="i-x" size={12}/></span>
+    </button>)}
+    <Button variant="text" size="xs" onClick={onClear}>{t('next.browse.clearAll')}</Button>
+  </div>;
+}
+export type BrowseToolbarProps = Readonly<{
+  model: BrowseToolbarModel; labels: BrowseLabels; resultCount: ReactNode; platform?: BrowsePlatform; sticky?: boolean; topInset?: number;
+  onQuickChange: (id: string, checked: boolean) => void; onFilters: () => void; filtersOpen?: boolean;
+  onSortChange: (value: BrowseSortSelection) => void; onReshuffle?: () => void; view?: BrowseView; cardSize?: CardSizeControl;
+  save?: SaveViewControl; applied?: readonly AppliedChip[]; onRemoveFilter?: (id: string) => void; onClearFilters?: () => void;
+  onJump?: () => void; selection?: ReactNode; actions?: ReactNode; className?: string;
+}>;
+const quickIcons: Readonly<Record<string, IconName>> = {favorites: 'i-heart', watchlist: 'i-bookmark'};
+export function BrowseToolbar({model, labels, resultCount, platform = 'desktop', sticky = false, topInset = 76, onQuickChange, onFilters, filtersOpen,
+  onSortChange, onReshuffle, view, cardSize, save, applied = [], onRemoveFilter, onClearFilters, onJump, selection, actions, className}: BrowseToolbarProps) {
+  const sort = <SortMenu sorts={model.sorts} value={model.sort} onValueChange={onSortChange} label={labels.sort} onReshuffle={onReshuffle}/>;
+  const filters = <FiltersButton count={applied.length} open={filtersOpen} onClick={onFilters}/>;
+  return <div className={[styles.toolbar, className].filter(Boolean).join(' ')} data-platform={platform} data-sticky={sticky || undefined} style={{top: topInset}}>
+    {selection ?? <><div className={styles.toolbarMain}>
+      {platform === 'tv' ? <>{sort}{filters}{onJump && <Chip onClick={onJump}>{t('next.browse.jump')}<Icon name="i-down" size={16}/></Chip>}</> : filters}
+      {platform === 'phone' && sort}<span className={styles.separator} aria-hidden="true"/>
+      {actions}{model.quick.map(quick => <QuickToggle key={quick.id} selected={quick.active} onCheckedChange={checked => onQuickChange(quick.id, checked)} icon={quickIcons[quick.id]}>{quick.label?.text ?? labels.quick(quick)}</QuickToggle>)}
+      {platform !== 'phone' && <div className={styles.toolbarEnd}><span className={styles.resultCount}>{resultCount}</span>{platform === 'desktop' && sort}
+        {view && <ViewToggle {...view}/>} {cardSize && <CardSizeButton {...cardSize}/>} {save && <SaveViewButton {...save}/>}</div>}
+    </div>{platform === 'phone' && <div className={styles.phoneCount}><span>{resultCount}</span>{save && <SaveViewButton {...save}/>}<span className={styles.phoneView}>{view && <ViewToggle {...view}/>}</span></div>}
+    {applied.length > 0 && onRemoveFilter && onClearFilters && <AppliedFilterChips items={applied} onRemove={onRemoveFilter} onClear={onClearFilters}/>}</>}
+  </div>;
+}
