@@ -340,6 +340,7 @@ var routeLanes = map[string]string{
 	"GET /v1/shows/{id}/seasons":                                                 "browsing",
 	"GET /v1/storage/mounts":                                                     "default",
 	"GET /v1/storage/operations/{id}":                                            "default",
+	"GET /v1/storage/rclone/bundled":                                             "default",
 	"GET /v1/storage/source-operations/{id}":                                     "default",
 	"GET /v1/storage/sources":                                                    "default",
 	"GET /v1/subtitle-fonts/cjk":                                                 "media-body",

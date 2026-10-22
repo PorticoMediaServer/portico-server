@@ -79,6 +79,15 @@ RUN if [ -d "/bundle/${TARGETOS}-${TARGETARCH}" ]; then mv "/bundle/${TARGETOS}-
 COPY scripts/verify-ffmpeg-manifest.py scripts/verify-ffmpeg-bundle.sh /tmp/
 RUN bash /tmp/verify-ffmpeg-bundle.sh /ffmpeg full
 
+# Fetch only the pinned architecture, verify the upstream signature and every payload byte.
+FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS rclone
+RUN apt-get update && apt-get install --yes --no-install-recommends python3 curl gnupg ca-certificates && rm -rf /var/lib/apt/lists/*
+ARG TARGETOS
+ARG TARGETARCH
+COPY scripts/rclone-bundle.py /src/scripts/rclone-bundle.py
+COPY third_party/rclone/ /src/third_party/rclone/
+RUN python3 /src/scripts/rclone-bundle.py prepare /rclone --target "${TARGETOS}-${TARGETARCH}" --execute-version
+
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 ARG TARGETARCH
 RUN apt-get update \
@@ -97,6 +106,9 @@ COPY server/internal/mediaexec/fonts/LICENSE /usr/share/doc/portico/licenses/dec
 COPY third_party/hls.js/LICENSE /usr/share/doc/portico/licenses/hls-js.txt
 COPY web/src/ui/fonts/OFL.txt /usr/share/doc/portico/licenses/manrope.txt
 COPY packages/design/LICENSE-LUCIDE /usr/share/doc/portico/licenses/lucide.txt
+COPY --from=rclone /rclone/LICENSE /usr/share/doc/portico/licenses/rclone.txt
+COPY --from=rclone /rclone/DEPENDENCY-NOTICES.txt /usr/share/doc/portico/licenses/rclone-dependencies.txt
+COPY --from=rclone /rclone/ /opt/portico/third_party/rclone/
 COPY --from=build /out/portico-server /usr/local/bin/portico-server
 COPY --from=web /out/web /opt/portico/web
 COPY --from=web /out/release.json /opt/portico/release.json
@@ -107,6 +119,7 @@ COPY --from=ffmpeg /ffmpeg/ /opt/portico/third_party/ffmpeg/
 ENV PORTICO_WEB_DIR=/opt/portico/web \
     PORTICO_STATE_DIR=/var/lib/portico \
     PORTICO_BIND=[::]:32500 \
+    PORTICO_RCLONE=/opt/portico/third_party/rclone/rclone \
     PORTICO_FFMPEG=/opt/portico/third_party/ffmpeg/bin/ffmpeg \
     PORTICO_FFPROBE=/opt/portico/third_party/ffmpeg/bin/ffprobe
 VOLUME ["/var/lib/portico"]

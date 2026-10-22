@@ -15,7 +15,7 @@ cp -R "$PAYLOAD/." "$APP/Contents/Resources/server/"
 cp "$ROOT/packaging/macos/tv.getportico.server.service.plist" "$ROOT/packaging/macos/uninstall.sh" "$APP/Contents/Resources/launchd/"
 sed -e "s/__PORTICO_VERSION__/$VERSION/g" -e "s/__PORTICO_BUILD__/$BUILD_NUMBER/g" "$ROOT/packaging/macos/Info.plist" > "$APP/Contents/Info.plist"
 cp "$ROOT/packaging/macos/launcher.sh" "$APP/Contents/MacOS/Portico Media Server"
-chmod +x "$APP/Contents/MacOS/Portico Media Server" "$APP/Contents/Resources/server/portico-server" "$APP/Contents/Resources/server/third_party/ffmpeg/bin/"*
+chmod +x "$APP/Contents/MacOS/Portico Media Server" "$APP/Contents/Resources/server/portico-server" "$APP/Contents/Resources/server/third_party/ffmpeg/bin/"* "$APP/Contents/Resources/server/third_party/rclone/rclone"
 icon="$(find "$APP/Contents/Resources/server/web" -name 'portico-app-icon-512.png' -print -quit)"
 if [[ -n "$icon" ]]; then
   iconset="$OUT/PorticoServer.iconset"

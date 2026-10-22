@@ -103240,6 +103240,38 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetStorageRcloneBundledRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageRcloneBundledResponse": {
+    "properties": {
+      "available": {
+        "type": "boolean"
+      },
+      "errorCode": {
+        "type": "string"
+      },
+      "included": {
+        "type": "boolean"
+      },
+      "minimumVersion": {
+        "type": "string"
+      },
+      "version": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "included",
+      "available",
+      "version",
+      "minimumVersion",
+      "errorCode"
+    ],
+    "type": "object"
+  },
   "GetStorageSourceOperationsIdRequest": {
     "properties": {},
     "required": [],

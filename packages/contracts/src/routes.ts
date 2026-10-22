@@ -6886,6 +6886,27 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "get_storage_rclone_bundled",
+    "method": "GET",
+    "path": "/v1/storage/rclone/bundled",
+    "summary": "Read bundled rclone startup status",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "get_storage_source_operations_id",
     "method": "GET",
     "path": "/v1/storage/source-operations/{id}",
@@ -16666,6 +16687,7 @@ export const routePaths = {
   "get_shows_screen_metadata": "/v1/shows/{id}/metadata/screen",
   "get_storage_mounts": "/v1/storage/mounts",
   "get_storage_operations_id": "/v1/storage/operations/{id}",
+  "get_storage_rclone_bundled": "/v1/storage/rclone/bundled",
   "get_storage_source_operations_id": "/v1/storage/source-operations/{id}",
   "get_storage_sources": "/v1/storage/sources",
   "get_storage_status": "/v1/admin/storage/status",
