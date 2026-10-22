@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -40,6 +41,7 @@ func (d Dependencies) acrossViewer(r *http.Request) (identity.Principal, catalog
 // resolveHomeRows reads the Home rows a query names through Home itself, so a
 // homeRow condition holds exactly the titles the viewer's row shows.
 func (d Dependencies) resolveHomeRows(r *http.Request, p identity.Principal, viewer catalog.Viewer, query *catalog.BrowseNode, cat *catalog.Service) (map[string]catalog.HomeRowMembership, error) {
+	r = r.WithContext(cat.Context())
 	ids := catalog.BrowseHomeRows(query)
 	if len(ids) == 0 {
 		return nil, nil
@@ -79,16 +81,31 @@ func (d Dependencies) browseAcrossHandler(w http.ResponseWriter, r *http.Request
 		browseFailure(w, e)
 		return
 	}
+	if e = catalog.ValidateHomeRowDisplay(query, body.HomeRowDisplay); e != nil {
+		browseFailure(w, e)
+		return
+	}
+	if e = catalog.ValidateHomeRowDisplayQueryLimit(body.HomeRowDisplay, body.Limit); e != nil {
+		browseFailure(w, e)
+		return
+	}
 	var out catalog.BrowseResult
 	e = d.compose(r, viewer.Restrictions, func(cat *catalog.Service) error {
 		rows, err := d.resolveHomeRows(r, p, viewer, query, cat)
 		if err != nil {
 			return err
 		}
-		out, err = cat.BrowseAcross(viewer, catalog.AcrossRequest{ServerID: d.Identity.ID(), Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, RowSources: rows})
-		return err
+		out, err = cat.BrowseAcross(viewer, catalog.AcrossRequest{ServerID: d.Identity.ID(), HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, RowSources: rows})
+		if err != nil {
+			return err
+		}
+		return d.projectBrowseDisplay(r, p, viewer, cat, body.HomeRowDisplay, query, &out)
 	})
 	if e != nil {
+		browseFailure(w, e)
+		return
+	}
+	if e = d.browseAuthorityAfter(r, p, viewer); e != nil {
 		browseFailure(w, e)
 		return
 	}
@@ -118,7 +135,7 @@ func (d Dependencies) browseAcrossCapabilitiesHandler(w http.ResponseWriter, r *
 func (d Dependencies) browseAcrossFacetsHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	for key, values := range q {
-		if (key != "field" && key != "q" && key != "limit" && key != "group" && key != "value") || len(values) != 1 {
+		if (key != "field" && key != "q" && key != "limit" && key != "group" && key != "value" && key != "query" && key != "pivot") || len(values) != 1 {
 			failure(w, catalog.ErrCursor)
 			return
 		}
@@ -150,20 +167,30 @@ func (d Dependencies) browseAcrossFacetsHandler(w http.ResponseWriter, r *http.R
 			group.Operator, group.Value = "is-present", nil
 		}
 	}
+	query, e := catalog.ParseBrowseQuery(json.RawMessage(q.Get("query")), "query")
+	if e != nil {
+		browseFailure(w, e)
+		return
+	}
+	query = catalog.BrowseConjunction(group, query)
 	var out catalog.FacetPage
 	e = d.compose(r, viewer.Restrictions, func(cat *catalog.Service) error {
 		var rows map[string]catalog.HomeRowMembership
-		if group != nil {
+		if query != nil {
 			var err error
-			if rows, err = d.resolveHomeRows(r, p, viewer, group, cat); err != nil {
+			if rows, err = d.resolveHomeRows(r, p, viewer, query, cat); err != nil {
 				return err
 			}
 		}
 		var err error
-		out, err = cat.FacetsAcross(viewer, catalog.FacetRequest{Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Group: group, RowSources: rows})
+		out, err = cat.FacetsAcross(viewer, catalog.FacetRequest{Pivot: q.Get("pivot"), Query: query, Field: q.Get("field"), Q: q.Get("q"), Limit: limit, RowSources: rows})
 		return err
 	})
 	if e != nil {
+		browseFailure(w, e)
+		return
+	}
+	if e = d.browseAuthorityAfter(r, p, viewer); e != nil {
 		browseFailure(w, e)
 		return
 	}

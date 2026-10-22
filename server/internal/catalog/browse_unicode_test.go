@@ -38,3 +38,26 @@ func TestBrowseTextPredicatesFoldUnicodeAndAccents(t *testing.T) {
 		})
 	}
 }
+
+func TestBrowseFilteredRailRetainsUnicodeAndPositions(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("movies", "Movies", "movie", "/movies")
+	for i, title := range []string{"Alpha", "Ωμέγα", "Жизнь", "東京", "Beta"} {
+		c.Movie(lib, "/movies/"+title+".mkv", title, 2000+i)
+	}
+	c.Drain()
+	s := New(c.DB)
+	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"movies"}}
+	q := &BrowseNode{Field: "year", Operator: "at-least", Value: float64(2001)}
+	page, err := s.BrowseEntities(v, BrowseRequest{Library: "movies", Pivot: "movies", Query: q, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []BrowsePositionAnchor{}
+	for i, entry := range page.Entries {
+		got = append(got, BrowsePositionAnchor{Key: entry.SortLetter, Index: i})
+	}
+	if len(page.PositionIndex) != 4 || !reflect.DeepEqual(page.PositionIndex, got) {
+		t.Fatalf("filtered Unicode positions %+v want %+v", page.PositionIndex, got)
+	}
+}

@@ -71,3 +71,13 @@ test('an episode group and a Home row play whole through the server, in their ow
   assert.equal(homeRowQuery('recent_songs', ['song', 'album']).pivot, 'items');
   assert.deepEqual(homeRowQuery('trending_now', ['movie', 'show']), {libraryId: '*', pivot: 'titles', query: {all: [{field: 'homeRow', operator: 'equals', value: 'trending_now'}]}, sort: [{field: 'groupOrder', direction: 'asc'}]});
 });
+
+test('Home display mode is explicit and bound to a positive row with at most 60 entries',async()=>{
+ const {BrowseQueryBuilder}=await import('../src/browse.ts');
+ const caps=parseBrowseCapabilities({library:{id:'',kind:'',name:''},pivots:[{id:'titles',labelKey:'library.titles',entityKinds:['show'],defaultSort:[{field:'title',direction:'asc'}],supportedViews:['grid'],browsable:true}],fields:[{id:'homeRow',labelKey:'browse.field.homeRow',type:'identity-set',operators:['equals'],controlHint:'text',complexity:'standard',cost:'indexed-join',applicableKinds:['show']}],sorts:[],quickFilters:[],queryLimits:{maximumDepth:5,maximumClauses:40,maximumBytes:65536,maximumSorts:1,defaultLimit:40,maximumLimit:100,cursorTtlMs:1800000}});
+ const generic=new BrowseQueryBuilder(caps,'titles').where('homeRow','equals','new_on_server').limit(37).build();assert.equal(generic.homeRowDisplay,undefined);
+ const display=new BrowseQueryBuilder(caps,'titles').where('homeRow','equals','new_on_server').limit(37).displayHomeRow('new_on_server').build();assert.equal(display.homeRowDisplay,'new_on_server');
+ assert.throws(()=>new BrowseQueryBuilder(caps,'titles').where('homeRow','equals','different').displayHomeRow('new_on_server').build());
+ assert.throws(()=>new BrowseQueryBuilder(caps,'titles').where('homeRow','equals','new_on_server').limit(61).displayHomeRow('new_on_server').build());
+ assert.throws(()=>new BrowseQueryBuilder(caps,'titles').add({not:{field:'homeRow',operator:'equals',value:'new_on_server'}}).displayHomeRow('new_on_server').build());
+});

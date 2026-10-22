@@ -23,6 +23,11 @@ import {secureConnectionMessages} from './en-US/secure-connection.ts';
 
 export const enUS = {
   'browse.field.search': 'Search',
+  'browse.field.library': 'Library',
+  'browse.field.match': 'Match',
+  'browse.field.actor': 'Actor',
+  'browse.field.director': 'Director',
+  'browse.field.writer': 'Writer',
   'sort.releaseDate': 'Release date',
   'sort.criticRating': 'Critic rating',
   'sort.episodeCount': 'Episode count',

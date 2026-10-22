@@ -6,10 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"portico.local/server/internal/sorttext"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -26,19 +23,16 @@ import (
 // libraries; here they are sorted and filtered as one list, with the same
 // vocabulary as a library's own.
 //
-// A list across libraries is always a group: the query names the group
-// (acrossAnchor), and its members are read first, bounded by acrossMaximum
-// and by the group's own size, never by the size of the libraries. Every
-// other condition, the restriction and the order are then applied to those
-// members alone.
+// A list across libraries is always a group. Its indexed SQL membership
+// remains intact through filtering, sorting, facets and whole-view commands;
+// per-request pages and capped counts never become source-length ceilings.
 
 // AcrossLibraries is the library a queue selector names for a list across
 // the viewer's libraries (clients' acrossLibraries).
 const AcrossLibraries = "*"
 
-// acrossMaximum bounds the members one list across libraries reads. Past it
-// the list holds the group's first acrossMaximum members in its own order and
-// says its total is a lower bound.
+// acrossMaximum bounds count cost only. It never truncates membership,
+// sorting, paging, facets or selection. Larger totals are honest lower bounds.
 var acrossMaximum = 10000
 
 // acrossPivots are the two shapes a list across libraries is read as: the
@@ -101,14 +95,9 @@ func acrossAnchor(node *BrowseNode) *BrowseNode {
 }
 
 // acrossMembers is SQL yielding (id, pos): the entities the group names, in
-// its own order where it has one (a playlist's positions, a row's order, the
-// history's most recent first), at most acrossMaximum+1 of them.
+// its own order where it has one. The relation has no total-source ceiling.
 func acrossMembers(anchor *BrowseNode, profile string, rows map[string][]int64, sources ...map[string]HomeRowMembership) (string, []any, bool, error) {
 	value, _ := anchor.Value.(string)
-	limit := ""
-	if anchor.Field == "person" || anchor.Field == "cast" || anchor.Field == "crew" {
-		limit = ` LIMIT ` + strconv.Itoa(acrossMaximum+1)
-	}
 	switch anchor.Field {
 	case "person", "cast", "crew":
 		role := ""
@@ -118,12 +107,12 @@ func acrossMembers(anchor *BrowseNode, profile string, rows map[string][]int64, 
 		case "crew":
 			role = ` AND NOT ` + castDepartment
 		}
-		return `SELECT credit.entity_id AS id,min(credit.ord) AS pos FROM catalog_people person CROSS JOIN catalog_credits credit INDEXED BY catalog_credits_person ON credit.person_id=person.id JOIN catalog_credit_labels dept ON dept.id=credit.department_id WHERE person.token=?` + role + ` GROUP BY credit.entity_id` + limit, []any{value}, false, nil
+		return `SELECT credit.entity_id AS id,min(credit.ord) AS pos FROM catalog_people person CROSS JOIN catalog_credits credit INDEXED BY catalog_credits_person ON credit.person_id=person.id JOIN catalog_credit_labels dept ON dept.id=credit.department_id WHERE person.token=?` + role + ` GROUP BY credit.entity_id`, []any{value}, false, nil
 	case "list":
 		// A playlist's order is its order keys (a reorder moves keys, not positions).
-		return `SELECT entry.item_id AS id,ROW_NUMBER() OVER (ORDER BY entry.order_key,entry.id) AS pos FROM catalog_playlists list JOIN catalog_playlist_entries entry INDEXED BY catalog_playlist_entries_page ON entry.playlist_id=list.id WHERE list.token=? AND list.deleted=0 AND entry.item_id IS NOT NULL ORDER BY entry.order_key,entry.id` + limit, []any{value}, true, nil
+		return `SELECT entry.item_id AS id,ROW_NUMBER() OVER (ORDER BY entry.order_key,entry.id) AS pos FROM catalog_playlists list JOIN catalog_playlist_entries entry INDEXED BY catalog_playlist_entries_page ON entry.playlist_id=list.id WHERE list.token=? AND list.deleted=0 AND entry.item_id IS NOT NULL ORDER BY entry.order_key,entry.id`, []any{value}, true, nil
 	case "savedCollection":
-		return `SELECT sre.item_id AS id,ROW_NUMBER() OVER (ORDER BY sre.order_key,sre.id) AS pos FROM saved_resource_entries sre INDEXED BY saved_resource_entries_order WHERE sre.resource_id=? AND sre.item_id IS NOT NULL ORDER BY sre.order_key,sre.id` + limit, []any{value}, true, nil
+		return `SELECT sre.item_id AS id,ROW_NUMBER() OVER (ORDER BY sre.order_key,sre.id) AS pos FROM saved_resource_entries sre INDEXED BY saved_resource_entries_order WHERE sre.resource_id=? AND sre.item_id IS NOT NULL ORDER BY sre.order_key,sre.id`, []any{value}, true, nil
 	case "homeRow":
 		if len(sources) > 0 {
 			if source, ok := sources[0][value]; ok {
@@ -135,32 +124,33 @@ func acrossMembers(anchor *BrowseNode, profile string, rows map[string][]int64, 
 			return "", nil, false, ErrBrowseHomeRow
 		}
 		raw, _ := json.Marshal(ids)
-		return `SELECT value AS id,key AS pos FROM json_each(?)` + limit, []any{string(raw)}, true, nil
+		return `SELECT value AS id,key AS pos FROM json_each(?)`, []any{string(raw)}, true, nil
 	case "watchlisted":
-		return `SELECT pi.item_id AS id,0 AS pos FROM personal_items pi WHERE pi.profile_id=? AND pi.watchlisted=1` + limit, []any{profile}, false, nil
+		return `SELECT pi.item_id AS id,0 AS pos FROM personal_items pi WHERE pi.profile_id=? AND pi.watchlisted=1`, []any{profile}, false, nil
 	case "favorite":
-		return `SELECT pi.item_id AS id,0 AS pos FROM personal_items pi WHERE pi.profile_id=? AND pi.favorite=1` + limit, []any{profile}, false, nil
+		return `SELECT pi.item_id AS id,0 AS pos FROM personal_items pi WHERE pi.profile_id=? AND pi.favorite=1`, []any{profile}, false, nil
 	case "lastPlayedAt":
-		return `SELECT pi.item_id AS id,ROW_NUMBER() OVER (ORDER BY pi.last_played_at DESC,pi.item_id DESC) AS pos FROM personal_items pi INDEXED BY personal_last_played WHERE pi.profile_id=? AND pi.last_played_at>'' ORDER BY pi.last_played_at DESC,pi.item_id DESC` + limit, []any{profile}, true, nil
+		return `SELECT pi.item_id AS id,ROW_NUMBER() OVER (ORDER BY pi.last_played_at DESC,pi.item_id DESC) AS pos FROM personal_items pi INDEXED BY personal_last_played WHERE pi.profile_id=? AND pi.last_played_at>'' ORDER BY pi.last_played_at DESC,pi.item_id DESC`, []any{profile}, true, nil
 	}
 	return "", nil, false, ErrBrowseAcrossGroup
 }
 
 // AcrossRequest is one page of a list across the viewer's libraries.
 type AcrossRequest struct {
-	ServerID    string
-	Pivot       string
-	Query       *BrowseNode
-	Sort        []BrowseSortSelection
-	Limit       int
-	Cursor      string
-	Range       *BrowseRange
-	Rows        map[string][]int64
-	RowSources  map[string]HomeRowMembership
-	profile     string
-	fence       string
-	libraries   []string
-	restriction identity.ContentRestrictions
+	ServerID       string
+	HomeRowDisplay string
+	Pivot          string
+	Query          *BrowseNode
+	Sort           []BrowseSortSelection
+	Limit          int
+	Cursor         string
+	Range          *BrowseRange
+	Rows           map[string][]int64
+	RowSources     map[string]HomeRowMembership
+	profile        string
+	fence          string
+	libraries      []string
+	restriction    identity.ContentRestrictions
 }
 
 // acrossKinds is the pivot's kinds as compact kind numbers.
@@ -197,20 +187,23 @@ func (s *Service) BrowseAcross(viewer Viewer, request AcrossRequest) (BrowseResu
 	if err != nil {
 		return out, err
 	}
-	if len(rows) == 0 {
-		return out, nil
+	if len(rows) > 0 {
+		entries, err := s.browseProjection(request.profile, rows)
+		if err != nil {
+			return out, err
+		}
+		if err = s.attachViewerRatings(request.profile, entries); err != nil {
+			return out, err
+		}
+		if err = s.nameEntryLibraries(rows, entries); err != nil {
+			return out, err
+		}
+		out.Entries = entries
 	}
-	entries, err := s.browseProjection(request.profile, rows)
+	out.PageInfo.DurationMs, out.PageInfo.DurationIsLowerBound, err = s.browseQueryDuration(viewer, FacetRequest{Pivot: out.Pivot, Query: request.Query, Rows: request.Rows, RowSources: request.RowSources})
 	if err != nil {
 		return out, err
 	}
-	if err = s.attachViewerRatings(request.profile, entries); err != nil {
-		return out, err
-	}
-	if err = s.nameEntryLibraries(rows, entries); err != nil {
-		return out, err
-	}
-	out.Entries = entries
 	return out, nil
 }
 
@@ -225,7 +218,7 @@ func (s *Service) acrossRevision(request AcrossRequest, pivot browsePivot, sorts
 	if err != nil {
 		return "", err
 	}
-	digest := sha256.Sum256([]byte(fmt.Sprintf("across\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s", pivot.ID, request.fence, queryFingerprint(request.Query), canonicalSort(sorts), state.String, group)))
+	digest := sha256.Sum256([]byte(fmt.Sprintf("across\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s", pivot.ID, request.fence, queryFingerprint(request.Query)+"\x00display:"+request.HomeRowDisplay, canonicalSort(sorts), state.String, group)))
 	return "browse_" + hex.EncodeToString(digest[:]), nil
 }
 
@@ -271,22 +264,8 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 	// The group's members, and the titles that hold them or that they hold
 	// (a show for a saved episode, a saved show's episodes), each at its first
 	// member's place. The pivot's kinds then choose among them.
-	var capped bool
-	if err = s.read().QueryRow(`SELECT count(*)>? FROM (`+members+`)`, append([]any{acrossMaximum}, memberArgs...)...).Scan(&capped); err != nil {
-		return out, nil, err
-	}
-	if capped && anchor.Field == "lastPlayedAt" && sorts[0].Field == "title" {
-		// A history longer than the members a list reads is read in title
-		// order from the profile's own rows, past any length.
-		return s.acrossHistory(request, pivot, sorts[0], out, limit)
-	}
-	membershipLimit := ""
-	if anchor.Field == "person" || anchor.Field == "cast" || anchor.Field == "crew" {
-		membershipLimit = ` LIMIT ` + strconv.Itoa(acrossMaximum)
-	} else {
-		capped = false
-	}
-	group := `WITH anchor(id,pos) AS MATERIALIZED (SELECT id,pos FROM (` + members + `)` + membershipLimit + `),
+	countLimit := min(acrossMaximum, browseTotalThreshold)
+	group := `WITH anchor(id,pos) AS MATERIALIZED (SELECT id,pos FROM (` + members + `)),
  ord(id,pos) AS MATERIALIZED (SELECT id,min(pos) FROM (SELECT id,pos FROM anchor
   UNION ALL SELECT bm.entity_id,anchor.pos FROM anchor CROSS JOIN catalog_browse_memberships bm INDEXED BY catalog_browse_membership_item ON bm.item_id=anchor.id
   UNION ALL SELECT bm.item_id,anchor.pos FROM anchor CROSS JOIN catalog_browse_memberships bm ON bm.entity_id=anchor.id) GROUP BY id)`
@@ -311,7 +290,7 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 	scoped := append(append([]any{}, memberArgs...), args...)
 
 	start, total, counted := 0, 0, false
-	scope := cursorScope{Viewer: request.fence, Profile: request.profile, View: "across:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query), Limit: limit}
+	scope := cursorScope{Viewer: request.fence, Profile: request.profile, View: "across:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query) + "\x00display:" + request.HomeRowDisplay, Limit: limit}
 	expires := time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()
 	if request.Cursor != "" {
 		// The revision fingerprint stands for every library's revisions at once.
@@ -331,15 +310,19 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		if request.Range.Start < 0 || len(request.Range.Revision) > 128 || len(request.Range.AnchorID) > 256 {
 			return out, nil, browseIssue("range", "range identity is invalid")
 		}
+		if request.Range.Revision != "" && request.Range.Revision != out.PageInfo.Revision {
+			return out, nil, ErrStaleContinuation
+		}
 		start = request.Range.Start
 	}
 	if !counted {
-		if err = s.read().QueryRow(group+` SELECT count(*) FROM `+from+` WHERE `+where, scoped...).Scan(&total); err != nil {
+		if err = s.read().QueryRow(group+` SELECT count(*) FROM (SELECT 1 FROM `+from+` WHERE `+where+` LIMIT ?)`, append(append([]any{}, scoped...), countLimit+1)...).Scan(&total); err != nil {
 			return out, nil, err
 		}
 	}
-	out.PageInfo.Total, out.PageInfo.TotalIsLowerBound = total, capped
-	if start > 0 && start >= total {
+	capped := total > countLimit
+	out.PageInfo.Total, out.PageInfo.TotalIsLowerBound = min(total, countLimit), capped
+	if !capped && start > 0 && start >= total {
 		start = max(0, total-1)
 	}
 	out.PageInfo.Start = start
@@ -354,12 +337,23 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 	}
 	query := group + ` SELECT ` + browseRowColumns + `,` + key + ` FROM ` + from + ` WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?`
 	bound := append(append(append([]any{}, memberArgs...), keyArgs...), args...)
-	bound = append(append(bound, orderArgs...), limit, start)
+	selectedLimit := limit
+	if capped {
+		selectedLimit++
+	}
+	bound = append(append(bound, orderArgs...), selectedLimit, start)
 	selected, err := s.queryBrowseKeyRows(query, sorts[0].Field, bound...)
 	if err != nil {
 		return out, nil, err
 	}
-	out.PageInfo.HasMore = start+len(selected) < total
+	if capped {
+		out.PageInfo.HasMore = len(selected) > limit
+		if out.PageInfo.HasMore {
+			selected = selected[:limit]
+		}
+	} else {
+		out.PageInfo.HasMore = start+len(selected) < total
+	}
 	if out.PageInfo.HasMore && request.Range == nil && len(selected) > 0 {
 		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: revision, Total: total, Expires: expires}, ContentRevision{})
 		if err != nil {
@@ -439,7 +433,7 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 	index, column, direction := historyOrder(selection)
 	from := `catalog_personal_sort_rows personal INDEXED BY ` + index + ` CROSS JOIN catalog_browse_rows e ON e.entity_id=personal.entity_id CROSS JOIN catalog_entities ce ON ce.id=e.entity_id`
 	start, counted, total := 0, false, 0
-	scope := cursorScope{Viewer: request.fence, Profile: request.profile, View: "across:history:" + pivot.ID, Sort: canonicalSort([]BrowseSortSelection{selection}), Category: queryFingerprint(request.Query), Limit: limit}
+	scope := cursorScope{Viewer: request.fence, Profile: request.profile, View: "across:history:" + pivot.ID, Sort: canonicalSort([]BrowseSortSelection{selection}), Category: queryFingerprint(request.Query) + "\x00display:" + request.HomeRowDisplay, Limit: limit}
 	expires := time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()
 	if request.Cursor != "" {
 		cursor, err := s.decodeRevisionCursor(request.Cursor, scope, ContentRevision{})
@@ -457,6 +451,9 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 	if request.Range != nil {
 		if request.Range.Start < 0 || len(request.Range.Revision) > 128 || len(request.Range.AnchorID) > 256 {
 			return out, nil, browseIssue("range", "range identity is invalid")
+		}
+		if request.Range.Revision != "" && request.Range.Revision != out.PageInfo.Revision {
+			return out, nil, ErrStaleContinuation
 		}
 		start = request.Range.Start
 	}
@@ -585,6 +582,10 @@ func (s *Service) BrowseAcrossCapabilities(viewer Viewer, pivot string) (BrowseC
 		}
 		return ids
 	}
+	var online bool
+	if err := s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_metadata_agents a ON a.library_id=l.id WHERE l.id IN(SELECT value FROM json_each(?)) AND l.kind IN('movie','tv','anime','music') AND COALESCE(a.agent,'online')='online')`, viewer.librariesJSON()).Scan(&online); err != nil {
+		return out, err
+	}
 	fieldsFor := func(entry browsePivot) []string {
 		allowed := map[string]bool{}
 		for _, kind := range entityKindMembers(entry) {
@@ -592,6 +593,9 @@ func (s *Service) BrowseAcrossCapabilities(viewer Viewer, pivot string) (BrowseC
 		}
 		ids := []string{}
 		for _, field := range browseFields {
+			if field.ID == "match" && !online {
+				continue
+			}
 			if anyKind(field.ApplicableKinds, allowed) && field.ID != "memberOf" && field.ID != "collection" && field.ID != "episodeGroup" {
 				ids = append(ids, field.ID)
 			}
@@ -617,7 +621,7 @@ func (s *Service) BrowseAcrossCapabilities(viewer Viewer, pivot string) (BrowseC
 	}
 	for _, id := range out.ResolvedPivot.Sorts {
 		entry, _ := browseSortByID(id)
-		out.Sorts = append(out.Sorts, BrowseSortCapability{ID: entry.ID, LabelKey: entry.LabelKey, Directions: entry.Directions, DefaultDirection: entry.DefaultDirection, Seeded: entry.ID == "random", RequiresGroup: entry.Ordering == -3, ApplicableKinds: entry.ApplicableKinds})
+		out.Sorts = append(out.Sorts, BrowseSortCapability{ID: entry.ID, LabelKey: entry.LabelKey, Directions: entry.Directions, DefaultDirection: entry.DefaultDirection, Seeded: entry.ID == "random", OwnerOnly: entry.ID == "fileSize", RequiresGroup: entry.Ordering == -3, ApplicableKinds: entry.ApplicableKinds})
 	}
 	for _, quick := range BrowseQuickFilters() {
 		if containsString(filters, quick.Query.Field) {
@@ -634,50 +638,7 @@ func (s *Service) BrowseAcrossCapabilities(viewer Viewer, pivot string) (BrowseC
 // library's maintained counts, added together by value. A list's own facets
 // (request.Group) are counted over the list's titles instead.
 func (s *Service) FacetsAcross(viewer Viewer, request FacetRequest) (FacetPage, error) {
-	out := FacetPage{Field: request.Field, Values: []FacetValue{}}
-	limit := request.Limit
-	if limit < 1 || limit > browseFacetLimit {
-		limit = browseFacetLimit
-	}
-	if request.Group != nil {
-		return s.facetsInGroup(viewer, request, limit)
-	}
-	merged := map[string]*FacetValue{}
-	for _, library := range viewer.Libraries {
-		page, err := s.Facets(viewer, FacetRequest{Library: library, Field: request.Field, Q: request.Q, Limit: browseFacetLimit})
-		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, ErrBrowsePivot) {
-			continue
-		}
-		var issue *BrowseValidationError
-		if errors.As(err, &issue) && issue.Path == "field" {
-			return out, err
-		}
-		if err != nil {
-			// A library still being prepared is left out; the rest answer.
-			continue
-		}
-		for _, value := range page.Values {
-			key := strings.ToLower(value.Value)
-			if found, ok := merged[key]; ok {
-				found.Count += value.Count
-				continue
-			}
-			copied := value
-			merged[key] = &copied
-		}
-	}
-	for _, value := range merged {
-		out.Values = append(out.Values, *value)
-	}
-	sort.Slice(out.Values, func(i, j int) bool {
-		a, b := out.Values[i], out.Values[j]
-		return a.Count > b.Count || a.Count == b.Count && strings.ToLower(a.Label) < strings.ToLower(b.Label)
-	})
-	out.Total = len(out.Values)
-	if len(out.Values) > limit {
-		out.Values = out.Values[:limit]
-	}
-	return out, nil
+	return s.contextualFacets(viewer, request)
 }
 
 // acrossQueue is what playing a list across libraries plays: its titles in
@@ -725,7 +686,7 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 	}
 	_, _, order, orderArgs := acrossOrder(sorts[0], viewer.Profile)
 	visible, visibleArgs := viewer.itemVisibilitySQL("i.id")
-	group := `WITH anchor(id,pos) AS MATERIALIZED (SELECT id,pos FROM (` + members + `) LIMIT ` + strconv.Itoa(acrossMaximum) + `),
+	group := `WITH anchor(id,pos) AS MATERIALIZED (SELECT id,pos FROM (` + members + `)),
  ord(id,pos) AS MATERIALIZED (SELECT id,min(pos) FROM (SELECT id,pos FROM anchor
   UNION ALL SELECT bm.entity_id,anchor.pos FROM anchor CROSS JOIN catalog_browse_memberships bm INDEXED BY catalog_browse_membership_item ON bm.item_id=anchor.id
   UNION ALL SELECT bm.item_id,anchor.pos FROM anchor CROSS JOIN catalog_browse_memberships bm ON bm.entity_id=anchor.id) GROUP BY id)`
@@ -755,66 +716,8 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 	return QueueSelection{SQL: served, Args: bound, Revision: revision}, err
 }
 
-// facetsInGroup counts a facet's values over one list's titles: its members
-// (at most acrossMaximum+1, as its pages read them) that the viewer may see,
-// a container counted by its own values. The cost follows the list, never the
-// libraries it spans.
+// facetsInGroup uses the same canonical pivot and filtered scope as browse.
 func (s *Service) facetsInGroup(viewer Viewer, request FacetRequest, limit int) (FacetPage, error) {
-	out := FacetPage{Field: request.Field, Values: []FacetValue{}}
-	if err := s.prepareViewer(viewer); err != nil {
-		return out, err
-	}
-	source, ok := facetSources[request.Field]
-	if !ok {
-		return out, browseIssue("field", "field is not a counted facet")
-	}
-	if len(request.Q) > 100 {
-		return out, browseIssue("q", "facet filter exceeds 100 characters")
-	}
-	anchor := acrossAnchor(request.Group)
-	if anchor == nil {
-		return out, ErrBrowseAcrossGroup
-	}
-	members, memberArgs, _, err := acrossMembers(anchor, viewer.Profile, request.Rows, request.RowSources)
-	if err != nil {
-		return out, err
-	}
-	restriction, restrictionArgs := EntityRestrictionSQL("r.entity_id", viewer.EffectiveRestrictions())
-	where := "1"
-	if request.Field == "decade" || request.Field == "year" {
-		where = `e.year BETWEEN 1800 AND 2199`
-	}
-	// The list's rows are read by key on their own (the serving rows are two
-	// generations, read whole inside a join), then their values counted.
-	query := `WITH e AS MATERIALIZED (SELECT r.entity_id,COALESCE(r.item_id,r.entity_id) AS item_id,r.year FROM catalog_browse_rows r
-	 WHERE r.entity_id IN(SELECT id FROM (` + members + `)) AND r.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND ` + restriction + `)
-	 SELECT ` + source.Value + ` AS facet_value,` + source.Label + ` AS facet_label,count(DISTINCT e.entity_id) AS facet_count FROM e ` + source.Join + ` WHERE ` + where + `
-	 GROUP BY facet_value ORDER BY facet_count DESC,facet_label COLLATE NOCASE`
-	args := append(append(append([]any{}, memberArgs...), viewer.librariesJSON()), restrictionArgs...)
-	rows, err := s.read().Query(query, args...)
-	if err != nil {
-		return out, err
-	}
-	needle := sorttext.Fold(request.Q)
-	for rows.Next() {
-		var value FacetValue
-		if err = rows.Scan(&value.Value, &value.Label, &value.Count); err != nil {
-			rows.Close()
-			return out, err
-		}
-		if value.Value == "" || needle != "" && !strings.Contains(sorttext.Fold(value.Label), needle) {
-			continue
-		}
-		out.Values = append(out.Values, value)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return out, err
-	}
-	out.Total = len(out.Values)
-	if len(out.Values) > limit {
-		out.Values = out.Values[:limit]
-	}
-	return out, nil
+	request.Limit = limit
+	return s.contextualFacets(viewer, request)
 }

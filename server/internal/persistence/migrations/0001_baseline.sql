@@ -8325,3 +8325,35 @@ CREATE INDEX dvr_programme_images_url ON dvr_programme_images(url);
 
 CREATE INDEX identity_devices_people_name ON identity_devices(name,id);
 CREATE INDEX identity_devices_people_first_seen ON identity_devices(first_seen DESC,id DESC);
+
+-- Browse match predicates read attention even after Keep as is. Source choice
+-- and attention changes therefore invalidate open queries/cached aggregates.
+CREATE TRIGGER screen_metadata_attention_browse_insert AFTER INSERT ON screen_metadata_attention WHEN NEW.retired=0 AND NEW.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply') BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=NEW.library_id;
+END;
+CREATE TRIGGER screen_metadata_attention_browse_update AFTER UPDATE ON screen_metadata_attention WHEN (OLD.retired=0 AND OLD.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')) OR (NEW.retired=0 AND NEW.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')) BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(OLD.library_id,NEW.library_id);
+END;
+CREATE TRIGGER screen_metadata_attention_browse_delete AFTER DELETE ON screen_metadata_attention WHEN OLD.retired=0 AND OLD.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply') BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=OLD.library_id;
+END;
+CREATE TRIGGER listening_metadata_attention_browse_insert AFTER INSERT ON listening_metadata_attention WHEN NEW.retired=0 AND NEW.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply') AND NEW.kind IN('album','song') BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=NEW.library_id;
+END;
+CREATE TRIGGER listening_metadata_attention_browse_update AFTER UPDATE ON listening_metadata_attention WHEN (OLD.retired=0 AND OLD.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply') AND OLD.kind IN('album','song')) OR (NEW.retired=0 AND NEW.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply') AND NEW.kind IN('album','song')) BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(OLD.library_id,NEW.library_id);
+END;
+CREATE TRIGGER listening_metadata_attention_browse_delete AFTER DELETE ON listening_metadata_attention WHEN OLD.retired=0 AND OLD.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply') AND OLD.kind IN('album','song') BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=OLD.library_id;
+END;
+CREATE TRIGGER library_metadata_agents_browse_insert AFTER INSERT ON library_metadata_agents BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=NEW.library_id;
+END;
+CREATE TRIGGER library_metadata_agents_browse_update AFTER UPDATE ON library_metadata_agents BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(OLD.library_id,NEW.library_id);
+END;
+CREATE TRIGGER library_metadata_agents_browse_delete AFTER DELETE ON library_metadata_agents BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=OLD.library_id;
+END;
+CREATE INDEX screen_metadata_attention_browse ON screen_metadata_attention(library_id,entity_id,generation) WHERE retired=0 AND reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply');
+CREATE INDEX listening_metadata_attention_browse ON listening_metadata_attention(library_id,entity_id) WHERE retired=0 AND kind IN('album','song') AND reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply');

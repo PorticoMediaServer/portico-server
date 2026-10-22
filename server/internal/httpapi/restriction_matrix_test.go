@@ -736,7 +736,14 @@ func restrictionReadPOSTs(m *restrictionEnv) map[string][]postProbe {
 			pickers = append(pickers, postProbe{"/v1/home/destination-picker", fmt.Sprintf(`{"kind":%q,"limit":40,"itemIds":[%q,%q]}`, kind, m.visibleMovie, m.hiddenItems["movie"][0])})
 		}
 	}
-	return map[string][]postProbe{"POST /v1/libraries/{id}/browse": browse, "POST /v1/browse": across, "POST /v1/jobs": jobs, "POST /v1/home/destination-picker": pickers}
+	counts, acrossCounts := []postProbe{}, []postProbe{}
+	if m != nil {
+		for _, library := range m.libraries {
+			counts = append(counts, postProbe{"/v1/libraries/" + library + "/browse/counts", `{"queries":[{"id":"clear","query":null},{"id":"rating","query":{"field":"year","operator":"at-least","value":1900}}]}`})
+		}
+		acrossCounts = append(acrossCounts, postProbe{"/v1/browse/counts", `{"pivot":"titles","queries":[{"id":"my-list","query":{"field":"watchlisted","operator":"equals","value":true}},{"id":"favorites","query":{"field":"favorite","operator":"equals","value":true}}]}`})
+	}
+	return map[string][]postProbe{"POST /v1/libraries/{id}/browse/counts": counts, "POST /v1/browse/counts": acrossCounts, "POST /v1/libraries/{id}/browse": browse, "POST /v1/browse": across, "POST /v1/jobs": jobs, "POST /v1/home/destination-picker": pickers}
 }
 
 func prefixed(prefix string, ids []string, suffix ...string) []string {
