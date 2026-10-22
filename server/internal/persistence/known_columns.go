@@ -3406,6 +3406,10 @@ personal_job_failures.ordinal
 personal_job_items.item_id
 personal_job_items.job_id
 personal_job_items.ordinal
+personal_job_membership_outcomes.code
+personal_job_membership_outcomes.item_public_id
+personal_job_membership_outcomes.job_id
+personal_job_membership_outcomes.outcome
 personal_jobs.args
 personal_jobs.command
 personal_jobs.created_ms

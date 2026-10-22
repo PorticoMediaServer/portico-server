@@ -1071,6 +1071,7 @@ table personal_job_destinations
 table personal_job_details
 table personal_job_failures
 table personal_job_items
+table personal_job_membership_outcomes
 table personal_jobs
 table personal_play_counts
 table personal_receipts
