@@ -296,6 +296,7 @@
 .sessionTitle { display:block; margin-top:2px; font-size:16px; font-weight:700; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .sessionSubtitle { font-size:13px; color:var(--color-text-secondary); margin-top:2px; white-space:nowrap; overflow:hidden; }
 .viewer { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; color:var(--color-text-secondary); }
+.sessionFace { font-size:10.5px; letter-spacing:0; }
 .viewer strong { color:var(--color-text); font-weight:700; }
 .sessionFacts { flex-wrap:wrap; gap:6px; margin-top:10px; }
 .sessionFacts > span { font-size:12px; font-weight:700; padding:3px 8px; border-radius:6px; background:rgba(237,245,250,.07); color:var(--color-text-secondary); }
