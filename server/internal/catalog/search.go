@@ -532,10 +532,11 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 			filterArgs = append(filterArgs, word)
 		}
 	}
-	// A match must have a live container on both sides of the link.
+	// Placed media needs a live container. A source-backed episode with no
+	// placement is independently playable until its show/number is identified.
 	switch g.kind {
 	case "episode":
-		where += ` AND EXISTS(SELECT 1 FROM catalog_episodes ep JOIN catalog_entities sh ON sh.id=ep.show_id WHERE ep.entity_id=e.id AND sh.library_id=e.library_id AND sh.retired=0)`
+		where += ` AND ((e.parent_id IS NULL AND NOT EXISTS(SELECT 1 FROM catalog_episodes loose WHERE loose.entity_id=e.id)) OR EXISTS(SELECT 1 FROM catalog_episodes ep JOIN catalog_entities sh ON sh.id=ep.show_id WHERE ep.entity_id=e.id AND sh.library_id=e.library_id AND sh.retired=0))`
 	case "song":
 		where += ` AND EXISTS(SELECT 1 FROM catalog_songs s JOIN catalog_entities a ON a.id=s.album_id WHERE s.entity_id=e.id AND a.library_id=e.library_id AND a.retired=0)`
 	}

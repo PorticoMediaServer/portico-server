@@ -26,6 +26,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/dlna"
 	"portico.local/server/internal/enrichment"
+	"portico.local/server/internal/rcloneprogram"
 	"runtime"
 
 	"portico.local/server/internal/decoder"
@@ -264,6 +265,12 @@ func run() (runErr error) {
 			log.Printf("error: [server] Portico stopped: %v", runErr)
 		}
 	}()
+	rcloneStatus := rcloneprogram.Inspect(ctx)
+	if rcloneStatus.Available {
+		log.Printf("rclone version %s", rcloneStatus.Version)
+	} else {
+		log.Print("Can't start rclone")
+	}
 	cache, e := startupDirectory("PORTICO_CACHE_DIR", state)
 	if e != nil {
 		return e
@@ -868,6 +875,27 @@ func run() (runErr error) {
 			return 0
 		})
 	})
+	supervise.Supervise(ctx, "cmd.automatic-collections", func(life context.Context) {
+		wake := worker.NewSignal()
+		unregister := dbwork.WakeOnTables(wake, "catalog_automatic_collections")
+		defer unregister()
+		worker.Run(life, "cmd.automatic-collections", wake, func(ctx context.Context) time.Duration {
+			if err := cat.PruneRemovedTitles(ctx); err != nil {
+				log.Printf("Removed titles: %v", err)
+				return 15 * time.Second
+			}
+			more, err := cat.SyncAutomaticCollections(ctx)
+			if err != nil {
+				log.Printf("Automatic collections: %v", err)
+				return 15 * time.Second
+			}
+			if more {
+				return time.Millisecond
+			}
+			return time.Hour
+		})
+	})
+
 	// Audio facts for client-side decoding (spec §18.7): a background pass over
 	// the library's audio assets, woken by catalog changes, one measurement at a
 	// time; a play measures a missing one itself (bounded).
@@ -1105,7 +1133,7 @@ func run() (runErr error) {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
 	var transport *cappedListener
-	handler := httpapi.New(httpapi.Dependencies{CacheDirectory: cache, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
+	handler := httpapi.New(httpapi.Dependencies{RcloneProgram: &rcloneStatus, CacheDirectory: cache, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
 		held, _ := transport.Held()
 		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
 	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {

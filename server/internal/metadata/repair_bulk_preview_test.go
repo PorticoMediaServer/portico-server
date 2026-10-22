@@ -10,6 +10,7 @@ import (
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/dbwork"
 	"testing"
+	"time"
 )
 
 func TestBulkMetadataPreviewUsesActualSnapshotsAndCASDigests(t *testing.T) {
@@ -105,5 +106,41 @@ func TestBulkMetadataPreviewRechecksAuthorityInsideSnapshot(t *testing.T) {
 	})
 	if !errors.Is(err, denied) || calls != 2 {
 		t.Fatalf("authority not rechecked: %d %v", calls, err)
+	}
+}
+
+func TestBulkMetadataPreviewWholeView48000(t *testing.T) {
+	service, db := editorFixture(t)
+	err := dbwork.WithWriteTx(context.Background(), db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`WITH RECURSIVE n(x) AS(VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<48000) INSERT INTO catalog_entities(public_id,library_id,kind,title,sort_key,sort_head,year) SELECT randomblob(16),(SELECT id FROM catalog_libraries WHERE library_id='movies'),1,'Whole view '||x,'whole view '||x,'W',2020+(x%2) FROM n`)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(`INSERT INTO catalog_item_details(entity_id) SELECT id FROM catalog_entities WHERE title LIKE 'Whole view %'`)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	snapshot, err := dbwork.BeginSnapshot(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snapshot.Rollback()
+	preview, err := service.BulkPreviewTx(ctx, snapshot.Tx(), catalog.BulkMetadataSelection{SQL: `SELECT id FROM catalog_entities WHERE title LIKE 'Whole view %'`, Revision: "whole-view-48000"}, allowAll)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Total != 48000 || len(preview.Targets) != 0 || preview.SelectionRevision != "whole-view-48000" {
+		t.Fatalf("whole-view selection was enumerated/capped %+v", preview)
+	}
+	year := preview.Fields["year"]
+	if year.State != "mixed" || year.DistinctCount != 2 || len(year.Values) != 2 || year.Values[0].Count != 24000 || year.Values[1].Count != 24000 {
+		t.Fatalf("inexact whole-view aggregate %+v", year)
+	}
+	if len(preview.Tabs) == 0 {
+		t.Fatal("bulk schema tabs absent")
 	}
 }

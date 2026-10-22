@@ -280,3 +280,46 @@ func TestHomeHasOneComposedEndpoint(t *testing.T) {
 		}
 	}
 }
+
+func TestHomeSavedSummaryShapeAndLayoutConflictHTTP(t *testing.T) {
+	handler, owner, _ := homeAPIFixture(t)
+	w := homeAPIRequest(t, handler, "", "GET", "/v1/me/saved/summary", "")
+	if w.Code != 401 {
+		t.Fatal("anonymous summary", w.Code)
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/me/saved/summary", "")
+	var summary catalog.SavedSummary
+	if err := json.Unmarshal(w.Body.Bytes(), &summary); err != nil || w.Code != 200 || summary.MyList.Posters != 3 || summary.MyList.Squares != 0 {
+		t.Fatal(w.Code, w.Body.String(), err)
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/content?view=watchlist&shape=squares&limit=1", "")
+	var content catalog.ContentEnvelope
+	if err := json.Unmarshal(w.Body.Bytes(), &content); err != nil || w.Code != 200 || len(content.Sections) != 0 || content.ShapeCounts == nil || content.ShapeCounts.Posters != 3 {
+		t.Fatal(w.Code, w.Body.String(), err)
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "PUT", "/v1/home/layout", `{"expectedRevision":1,"idempotencyKey":"first-layout","rowOrder":["continue_books"],"hiddenRowIds":[]}`)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "PUT", "/v1/home/layout", `{"expectedRevision":1,"idempotencyKey":"stale-layout","rowOrder":["continue"],"hiddenRowIds":[]}`)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "home_layout_conflict") {
+		t.Fatal("layout conflict", w.Code, w.Body.String())
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/layout", "")
+	var layout catalog.HomeLayoutView
+	if err := json.Unmarshal(w.Body.Bytes(), &layout); err != nil || w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String(), err)
+	}
+	found := false
+	for _, row := range layout.Rows {
+		if row.ID == "continue_books" {
+			found = true
+			if row.AvailabilityText == nil || row.AvailabilityText.Fallback != "Shown when a book is in progress" {
+				t.Fatal(row)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("empty books descriptor absent")
+	}
+}

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Build only from an isolated source snapshot; never seal a supplied executable."""
+import runpy
 import argparse,datetime,hashlib,json,os,pathlib,shutil,subprocess,uuid,shlex,re,base64
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,Ed25519PublicKey
 ROOT=pathlib.Path(__file__).resolve().parent.parent
+RCLONE=runpy.run_path(str(ROOT/'scripts/rclone-bundle.py'))
 
 def official_root():
     path=pathlib.Path(os.environ.get('PORTICO_ROOT_PUBLIC_KEY_FILE',str(ROOT/'trust/hosted-root-public-key.pem')))
@@ -26,6 +28,7 @@ TEST_INPUTS = (
     'web/src/player/Player.tsx',
     'web/src/shell/Shell.tsx',
     'web/public',
+    'third_party/rclone/bundle.lock.json',
 )
 
 def input_inventory(source, siblings):
@@ -72,7 +75,7 @@ def capture_source(live,stage,root_pem):
 def controlled_env():
     env=os.environ.copy()
     for key in ('GOOS','GOARCH','GOEXPERIMENT','GOROOT','GOTOOLDIR','GOTMPDIR','CC','CXX','CGO_CFLAGS','CGO_CPPFLAGS','CGO_CXXFLAGS','CGO_LDFLAGS'):env.pop(key,None)
-    env.update({'GOMAXPROCS':'2','GOFLAGS':'-p=2','GOWORK':'off','GOENV':'off','GOTOOLCHAIN':'local','GOPROXY':'https://proxy.golang.org','GOSUMDB':'sum.golang.org','GOPRIVATE':'','GONOSUMDB':'','GONOPROXY':''})
+    env.update({'GOWORK':'off','GOENV':'off','GOTOOLCHAIN':'local','GOPROXY':'https://proxy.golang.org','GOSUMDB':'sum.golang.org','GOPRIVATE':'','GONOSUMDB':'','GONOPROXY':''})
     return env
 
 def signing_key():
@@ -137,6 +140,9 @@ def verify_manifest(directory,expected_source,trusted_public_key):
         bundle=directory/'third_party/ffmpeg'
         subprocess.run(['python3',str(ROOT/'scripts/verify-ffmpeg-manifest.py'),str(bundle)],check=True)
         if hashlib.sha256((bundle/'toolchain-manifest.json').read_bytes()).hexdigest()!=manifest.get('toolchainManifestSha256'):raise ValueError('Toolchain manifest changed')
+        rclone=directory/'third_party/rclone'
+        RCLONE['verify'](rclone,manifest['target'])
+        if hashlib.sha256((rclone/'bundle-manifest.json').read_bytes()).hexdigest()!=manifest.get('rcloneManifestSha256'):raise ValueError('rclone manifest changed')
     return manifest
 
 def release_version(value):
@@ -156,6 +162,9 @@ def main():
         toolchain=json.loads((bundle/'toolchain-manifest.json').read_text())
         target={'darwin':'macos','linux':'linux','windows':'windows'}[args.os]+'-'+{'amd64':'x64','arm64':'arm64'}[args.arch]
         if toolchain['target']!=target:raise SystemExit('FFmpeg bundle target does not match server')
+    rclone_bundle=args.ffmpeg_bundle.resolve().parent/('rclone-'+args.os+'-'+args.arch)
+    if not rclone_bundle.exists():RCLONE['prepare'](rclone_bundle,args.os+'-'+args.arch,ROOT/'.cache/rclone')
+    RCLONE['verify'](rclone_bundle,args.os+'-'+args.arch)
     builder_digest=hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()
     build_id=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8]
     stage=ROOT/'runtime'/'releases'/build_id;source=stage/'source'
@@ -195,6 +204,8 @@ def main():
         if toolchain['target']!=target:raise SystemExit('FFmpeg bundle target does not match server')
         shutil.copytree(bundle,stage/'third_party/ffmpeg')
         manifest['toolchainManifestSha256']=hashlib.sha256((bundle/'toolchain-manifest.json').read_bytes()).hexdigest()
+        shutil.copytree(rclone_bundle,stage/'third_party/rclone')
+        manifest['rcloneManifestSha256']=hashlib.sha256((rclone_bundle/'bundle-manifest.json').read_bytes()).hexdigest()
     (stage/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n');(stage/'manifest.sig').write_bytes(key.sign((stage/'manifest.json').read_bytes()));verify_manifest(stage,snapshot,key.public_key().public_bytes_raw())
     print(json.dumps({'directory':str(stage),'sourceDigest':snapshot,'artifactSha256':manifest['artifact']['sha256'],'buildId':build_id}))
 if __name__=='__main__':main()

@@ -58,6 +58,8 @@ func (HomeRow) JSONSchema() map[string]any {
 	}
 	childProperties := child["properties"].(map[string]any)
 	childProperties["entries"].(map[string]any)["maxItems"] = 200
+	childProperties["whyTitles"].(map[string]any)["maxItems"] = 3
+	childProperties["displayTargets"].(map[string]any)["maxItems"] = HomeRowMaxLimit
 	childProperties["deferred"] = map[string]any{"type": "boolean", "enum": []bool{false}}
 	properties := map[string]any{}
 	for key, value := range childProperties {

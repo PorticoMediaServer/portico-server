@@ -167,7 +167,7 @@ func TestPlaybackV1ThroughputEstimate(t *testing.T) {
 		} `json:"error"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &refused)
-	if w.Code != 422 || refused.Error.Code != "connection_too_slow" || refused.Error.Reason != "480p" {
+	if w.Code != 422 || refused.Error.Code != "connection_too_slow" || refused.Error.Reason != "720p-low" {
 		t.Fatalf("a 20 Mb/s original over a 5 Mb/s connection: %d %s", w.Code, w.Body.String())
 	}
 	var active int

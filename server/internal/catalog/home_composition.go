@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"portico.local/server/internal/access"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/personalstate"
 )
@@ -294,61 +297,27 @@ func (s *Service) homeBecause(r HomeRequest) (*ContentEntityRef, []recCandidate,
 }
 
 func (s *Service) homeAudioSource(r HomeRequest, booksOnly bool) (homeSource, error) {
-	// Preserve the existing bounded continuation membership and ordering; group
-	// its files into the real album/book containers before selecting additions.
 	base := homeContinueBase("continue_listening")
-	restriction, args := r.Viewer.itemVisibilitySQL("candidate.entity")
+	visible, args := r.Viewer.itemVisibilitySQL("candidate.entity")
+	kind := "i.kind=7"
 	if booksOnly {
-		restriction = "(" + restriction + ") AND i.kind=9"
+		kind = "i.kind=9"
 	}
-	bind := append([]any{r.Profile, r.Profile, idsJSON(r.Libraries)}, args...)
-	rows, err := s.read().Query(`SELECT candidate.id,candidate.ord,CASE i.kind WHEN 9 THEN pid(book.public_id) WHEN 7 THEN pid(album.public_id) END,i.kind
- FROM (`+base+`) candidate CROSS JOIN catalog_entities i ON i.public_id=pid_blob(candidate.id)
- LEFT JOIN catalog_book_files bf ON bf.entity_id=i.id LEFT JOIN catalog_entities book ON book.id=bf.book_id
- LEFT JOIN catalog_songs sg ON sg.entity_id=i.id LEFT JOIN catalog_entities album ON album.id=sg.album_id
- WHERE `+restriction+` ORDER BY candidate.ord DESC,candidate.id DESC LIMIT 40`, bind...)
-	if err != nil {
-		return homeSource{}, err
-	}
-	candidates := []recCandidate{}
-	seen := map[string]bool{}
-	for rows.Next() {
-		var file, at, parent string
-		var kind int
-		if err = rows.Scan(&file, &at, &parent, &kind); err != nil {
-			break
-		}
-		if !booksOnly || kind == 9 {
-			if !seen[parent] {
-				seen[parent] = true
-				candidates = append(candidates, recCandidate{ID: parent})
-			}
-		}
-	}
-	if e := rows.Err(); err == nil {
-		err = e
-	}
-	rows.Close()
-	if err != nil {
-		return homeSource{}, err
-	}
+	source := `SELECT pid(parent.public_id) AS id,'1:'||max(candidate.ord) AS ord FROM (` + base + `) candidate
+ CROSS JOIN catalog_entities i ON i.public_id=pid_blob(candidate.id)
+ LEFT JOIN catalog_book_files bf ON bf.entity_id=i.id LEFT JOIN catalog_songs sg ON sg.entity_id=i.id
+ JOIN catalog_entities parent ON parent.id=CASE i.kind WHEN 9 THEN bf.book_id WHEN 7 THEN sg.album_id END
+ WHERE ` + visible + ` AND ` + kind + ` GROUP BY parent.id`
+	bound := append([]any{r.Profile, r.Profile, idsJSON(r.Libraries)}, args...)
 	if !booksOnly {
-		recent, err := s.homeMergedRecent(r, true)
+		recent, err := s.homeRecentPagedSource(r, true)
 		if err != nil {
 			return homeSource{}, err
 		}
-		// Recent works retain server newest-first order, with resumes leading.
-		for _, v := range recent {
-			if !seen[v[0]] {
-				seen[v[0]] = true
-				candidates = append(candidates, recCandidate{ID: v[0]})
-			}
-			if len(candidates) == homeCompositionMaximum {
-				break
-			}
-		}
+		source = `SELECT id,max(ord) AS ord FROM (` + source + ` UNION ALL SELECT id,'0:'||ord AS ord FROM (` + recent.base + `)) GROUP BY id`
+		bound = append(bound, recent.args...)
 	}
-	return candidateSource(candidates), nil
+	return homeSource{base: source, args: bound, selfRestricted: true}, nil
 }
 
 func (s *Service) homeCollection(r HomeRequest) (*HomeCollection, error) {
@@ -584,8 +553,10 @@ func (s *Service) homeSpotlight(r HomeRequest) ([]HomeSpotlight, error) {
 	return out, nil
 }
 
-func (s *Service) homeNewBadges(r HomeRequest, entries []ContentEntry, src homeSource) error {
-	rows, err := s.read().Query(`SELECT id,ord FROM (`+src.base+`)`, src.args...)
+func (s *Service) homeNewBadges(r HomeRequest, entries []ContentEntry, src homeSource, sourceIDs []string) error {
+	ids := make([]string, 0, len(entries))
+	ids = append(ids, sourceIDs...)
+	rows, err := s.read().Query(`SELECT id,ord FROM (`+src.base+`) WHERE id IN(SELECT value FROM json_each(?))`, append(append([]any{}, src.args...), idsJSON(ids))...)
 	if err != nil {
 		return err
 	}
@@ -606,7 +577,7 @@ func (s *Service) homeNewBadges(r HomeRequest, entries []ContentEntry, src homeS
 	}
 	for i := range entries {
 		entry := &entries[i]
-		stamp := added[entry.ID]
+		stamp := added[sourceIDs[i]]
 		entry.AddedAt = &stamp
 		at, e := time.Parse(time.RFC3339Nano, stamp)
 		if e != nil || at.After(r.now()) || r.now().Sub(at) > homeNewWindow {
@@ -646,7 +617,7 @@ func (s *Service) homeAudioResume(r HomeRequest, entries []ContentEntry) ([]Home
  CROSS JOIN catalog_entities i ON i.public_id=pid_blob(candidate.id)
  LEFT JOIN catalog_book_files bf ON bf.entity_id=i.id LEFT JOIN catalog_songs sg ON sg.entity_id=i.id
  JOIN catalog_entities parent ON parent.id=CASE i.kind WHEN 9 THEN bf.book_id WHEN 7 THEN sg.album_id END
- WHERE parent.public_id IN(SELECT pid_blob(value) FROM json_each(?)) AND `+restriction+` ORDER BY candidate.ord DESC,candidate.id DESC LIMIT 40`, append([]any{r.Profile, r.Profile, idsJSON(r.Libraries), idsJSON(ids)}, args...)...)
+ WHERE parent.public_id IN(SELECT pid_blob(value) FROM json_each(?)) AND `+restriction+` ORDER BY candidate.ord DESC,candidate.id DESC`, append([]any{r.Profile, r.Profile, idsJSON(r.Libraries), idsJSON(ids)}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -755,4 +726,164 @@ func (s *Service) homeSpotlightSeasonCounts(r HomeRequest, entries []ContentEntr
 		}
 	}
 	return nil
+}
+
+// homeRecommendationWhy names only the current viewer's actual positive seeds
+// from the same bounded pool and eligibility relation as Recommended. It never
+// discloses another profile's history or calls providers to explain a row.
+func (s *Service) homeRecommendationWhy(r HomeRequest) (*ServerText, []ContentEntityRef, error) {
+	fallback := &ServerText{Code: "next.home.whyRecommended", Fallback: "Chosen from your viewing activity and available libraries."}
+	candidates, _, err := s.recommendationPool(r)
+	if err != nil || len(candidates) == 0 {
+		return fallback, nil, err
+	}
+	base, args := recBase(r, candidates)
+	rows, err := s.read().Query(base+` SELECT pid(e.public_id),e.title FROM seeds seed JOIN works w ON w.work=seed.work JOIN catalog_entities e ON e.id=w.id
+ WHERE w.kind IN('movie','show') AND EXISTS(SELECT 1 FROM members m WHERE m.work=seed.work AND EXISTS(SELECT 1 FROM personal_items p WHERE p.item_id=m.id AND p.profile_id=? AND (p.last_played_at<>'' OR p.watched=1)))
+ ORDER BY seed.weight DESC,w.work LIMIT 3`, append(args, r.Profile)...)
+	if err != nil {
+		return nil, nil, err
+	}
+	titles := []ContentEntityRef{}
+	for rows.Next() {
+		var title ContentEntityRef
+		if err = rows.Scan(&title.ID, &title.Name); err != nil {
+			break
+		}
+		titles = append(titles, title)
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(titles) == 0 {
+		return fallback, nil, nil
+	}
+	names := make([]string, len(titles))
+	for i, title := range titles {
+		names[i] = title.Name
+	}
+	list := names[0]
+	if len(names) > 1 {
+		list = strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	}
+	return &ServerText{Code: "next.home.whyRecommendedFromActivity", Params: map[string]string{"titles": list}, Fallback: "Because you’ve been watching " + list + ". Titles you’ve finished are left out."}, titles, nil
+}
+
+const homeWeeklyTrendingWindow = 7 * 24 * time.Hour
+
+// homeWeeklyTrendingSource is Home's local activity rail (collections f47,
+// design d610, Root ruling 22 October). Provider discovery remains separate.
+// A work needs three distinct currently eligible profiles. Replays by one
+// profile do not increase its rank. No actor identity or activity count leaves
+// this source; the public row contains authorized titles and ordinal positions.
+func (s *Service) homeWeeklyTrendingSource(r HomeRequest) (homeSource, error) {
+	if !r.CommunityActivity {
+		return candidateSource(nil), nil
+	}
+	eligible, err := s.communityEligibleProfiles(r.now())
+	if err != nil {
+		return homeSource{}, err
+	}
+	type policyGroup struct {
+		viewer   Viewer
+		profiles []string
+	}
+	groups := map[string]*policyGroup{}
+	for _, key := range eligible {
+		who, ok := viewerFromPersonalKey(key)
+		if !ok || who.Authority != "local" {
+			continue
+		}
+		all, libraries, _, _, e := identity.DirectAccess(s.read(), identity.Principal{Viewer: who})
+		if errors.Is(e, identity.ErrUnauthorized) {
+			continue
+		}
+		if e != nil {
+			return homeSource{}, e
+		}
+		permitted := []string{}
+		for _, library := range r.Libraries {
+			if all || containsString(libraries, library) {
+				permitted = append(permitted, library)
+			}
+		}
+		if len(permitted) == 0 {
+			continue
+		}
+		restrictions, e := identity.RestrictionsForViewerTx(s.Context(), dbwork.Snapshot(s.Context()), who)
+		if e != nil {
+			return homeSource{}, e
+		}
+		content, e := access.ContentLimitsTx(s.Context(), dbwork.Snapshot(s.Context()), who.AccountID, restrictions.Content())
+		if e != nil {
+			return homeSource{}, e
+		}
+		actor := Viewer{Libraries: permitted, Restrictions: content}
+		predicate, args := actor.itemVisibilitySQL("i.id")
+		// Group identical predicates and values, rather than one SQL arm per actor.
+		encoded, _ := json.Marshal([]any{predicate, args, content.BlockRecordings})
+		group := groups[string(encoded)]
+		if group == nil {
+			group = &policyGroup{viewer: actor}
+			groups[string(encoded)] = group
+		}
+		group.profiles = append(group.profiles, key)
+	}
+	if len(eligible) < communityViewers || len(groups) == 0 {
+		return candidateSource(nil), nil
+	}
+	clauses := []string{}
+	actorArgs := []any{}
+	keys := make([]string, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		group := groups[key]
+		visible, args := group.viewer.itemVisibilitySQL("i.id")
+		clauses = append(clauses, `(h.profile_id IN(SELECT value FROM json_each(?)) AND `+visible+recordingsClause("i.id", group.viewer.Restrictions)+`)`)
+		actorArgs = append(actorArgs, idsJSON(group.profiles))
+		actorArgs = append(actorArgs, args...)
+	}
+	visible, args := r.Viewer.itemVisibilitySQL("i.id")
+	query := `WITH signals AS (
+ SELECT ` + homeRecentWorkKeySQL("i") + ` AS work,
+ CASE i.kind WHEN 4 THEN ep.show_id ELSE i.id END AS title_id,h.profile_id,h.updated_at
+ FROM personal_history h INDEXED BY personal_history_recent
+ CROSS JOIN catalog_entities i ON i.id=h.item_id LEFT JOIN catalog_episodes ep ON ep.entity_id=i.id
+ WHERE h.updated_at>=? AND h.updated_at<=? AND i.kind IN(1,4) AND ` + visible + recordingsClause("i.id", r.Restrictions) + `
+ AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=i.id)
+ AND EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id WHERE link.entity_id=i.id AND link.available=1 AND asset.available=1)
+ AND (h.completed=1 OR h.position>=30000 AND h.position>=(SELECT max(asset.duration)*50 FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id WHERE link.entity_id=i.id AND asset.available=1 AND asset.duration>0))
+ AND (` + strings.Join(clauses, " OR ") + `)
+ ), ranked AS (SELECT work,min(title_id) AS title_id,count(DISTINCT profile_id) AS viewers,max(updated_at) AS recent FROM signals GROUP BY work HAVING count(DISTINCT profile_id)>=` + strconv.Itoa(communityViewers) + `)
+ SELECT pid(title.public_id),ranked.work FROM ranked JOIN catalog_entities title ON title.id=ranked.title_id WHERE title.retired=0 ORDER BY viewers DESC,recent DESC,pid(title.public_id) LIMIT ` + strconv.Itoa(recCandidateLimit)
+	bound := []any{r.now().Add(-homeWeeklyTrendingWindow).UTC().Format("2006-01-02T15:04:05.000Z"), r.now().UTC().Format("2006-01-02T15:04:05.000Z")}
+	bound = append(bound, args...)
+	bound = append(bound, actorArgs...)
+	rows, err := s.read().Query(query, bound...)
+	if err != nil {
+		return homeSource{}, err
+	}
+	candidates := []recCandidate{}
+	for rows.Next() {
+		var candidate recCandidate
+		if err = rows.Scan(&candidate.ID, &candidate.Work); err != nil {
+			break
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		return homeSource{}, err
+	}
+	return candidateSource(candidates), nil
 }

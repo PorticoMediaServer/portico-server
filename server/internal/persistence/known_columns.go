@@ -7,8 +7,7 @@ package persistence
 // It exists so a database can be asked whether it still has the columns this
 // build's statements name, without anything to compare it against but the
 // build itself.
-const knownSchemaColumns = `
-access_invitations.accepted_ms
+const knownSchemaColumns = `access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
 access_invitations.bound_username
@@ -473,6 +472,22 @@ catalog_attribute_fields.id
 catalog_attribute_terms.field_id
 catalog_attribute_terms.id
 catalog_attribute_terms.value_key
+catalog_automatic_collections.dirty
+catalog_automatic_collections.entity_id
+catalog_automatic_collections.library_id
+catalog_automatic_collections.name
+catalog_automatic_collections.owner_edited
+catalog_automatic_collections.provider
+catalog_automatic_collections.provider_id
+catalog_automatic_collections.removed
+catalog_automatic_member_overrides.collection_id
+catalog_automatic_member_overrides.item_id
+catalog_automatic_member_overrides.present
+catalog_automatic_members.item_id
+catalog_automatic_members.library_id
+catalog_automatic_members.name
+catalog_automatic_members.provider
+catalog_automatic_members.provider_id
 catalog_book_chapters.chapter_index
 catalog_book_chapters.end_seconds
 catalog_book_chapters.file_id
@@ -1077,7 +1092,9 @@ catalog_movie_category_visible_summaries.posters_json
 catalog_movie_category_visible_summaries.total
 catalog_movie_category_visible_summaries.value
 catalog_people.biography
+catalog_people.biography_source
 catalog_people.birth_date
+catalog_people.birth_place
 catalog_people.death_date
 catalog_people.id
 catalog_people.identity_key
@@ -1227,6 +1244,8 @@ catalog_related_facets_previous.present
 catalog_related_facets_previous.provider
 catalog_related_facets_previous.relation
 catalog_related_facets_previous.year
+catalog_removed_title_revisions.profile_id
+catalog_removed_title_revisions.revision
 catalog_retention_cursors.after_id
 catalog_retention_cursors.after_key
 catalog_retention_cursors.after_root
@@ -1388,6 +1407,23 @@ catalog_title_grams_docsize.sz
 catalog_title_grams_idx.pgno
 catalog_title_grams_idx.segid
 catalog_title_grams_idx.term
+catalog_title_tombstone_attributes.field_id
+catalog_title_tombstone_attributes.public_id
+catalog_title_tombstone_attributes.source_value
+catalog_title_tombstone_attributes.value_key
+catalog_title_tombstone_viewers.activity_at
+catalog_title_tombstone_viewers.continuing
+catalog_title_tombstone_viewers.profile_id
+catalog_title_tombstone_viewers.public_id
+catalog_title_tombstones.backdrop_url
+catalog_title_tombstones.expires_at
+catalog_title_tombstones.kind
+catalog_title_tombstones.library_id
+catalog_title_tombstones.poster_url
+catalog_title_tombstones.public_id
+catalog_title_tombstones.recording
+catalog_title_tombstones.removed_at
+catalog_title_tombstones.title
 catalog_visibility_sort_buckets.axis
 catalog_visibility_sort_buckets.class_id
 catalog_visibility_sort_buckets.generation
@@ -2923,6 +2959,8 @@ metadata_jobs.error
 metadata_jobs.item_id
 metadata_jobs.next_attempt
 metadata_jobs.status
+metadata_kept_files.entity_id
+metadata_kept_files.files_fingerprint
 metadata_movie_candidates.item_id
 metadata_movie_candidates.observed_at
 metadata_movie_candidates.payload
@@ -4857,5 +4895,4 @@ webhooks.name
 webhooks.revision
 webhooks.secret
 webhooks.updated_ms
-webhooks.url
-`
+webhooks.url`

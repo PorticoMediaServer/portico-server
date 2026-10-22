@@ -72,6 +72,8 @@ index catalog_asset_links_order
 index catalog_assets_duration
 index catalog_assets_height
 index catalog_attribute_ambiguous_restrictions
+index catalog_automatic_collection_entity
+index catalog_automatic_members_group
 index catalog_book_context_author
 index catalog_book_context_series
 index catalog_book_evidence_jobs_turn
@@ -174,6 +176,7 @@ index catalog_entities_fact_gaps
 index catalog_entities_genreless
 index catalog_entities_library
 index catalog_entities_parent
+index catalog_entities_summary_added
 index catalog_entities_title
 index catalog_episodes_position
 index catalog_episodes_season
@@ -237,6 +240,7 @@ index catalog_term_sources_name_seek
 index catalog_term_sources_overrides
 index catalog_term_sources_provider
 index catalog_term_sources_term
+index catalog_title_tombstones_expiry
 index catalog_visibility_sort_edge_entity
 index catalogue_failures_recent
 index client_log_uploads_account_day
@@ -627,6 +631,9 @@ table catalog_asset_links
 table catalog_assets
 table catalog_attribute_fields
 table catalog_attribute_terms
+table catalog_automatic_collections
+table catalog_automatic_member_overrides
+table catalog_automatic_members
 table catalog_book_chapters
 table catalog_book_context
 table catalog_book_evidence_clock
@@ -755,6 +762,7 @@ table catalog_rec_member_work
 table catalog_rec_postings
 table catalog_related_facets
 table catalog_related_facets_previous
+table catalog_removed_title_revisions
 table catalog_retention_cursors
 table catalog_search_documents
 table catalog_search_documents_next
@@ -788,6 +796,9 @@ table catalog_title_grams_config
 table catalog_title_grams_data
 table catalog_title_grams_docsize
 table catalog_title_grams_idx
+table catalog_title_tombstone_attributes
+table catalog_title_tombstone_viewers
+table catalog_title_tombstones
 table catalog_visibility_sort_buckets
 table catalog_visibility_sort_edges
 table catalog_visibility_sort_entity_jobs
@@ -1009,6 +1020,7 @@ table metadata_discovery_items
 table metadata_discovery_refresh
 table metadata_document_freshness
 table metadata_jobs
+table metadata_kept_files
 table metadata_movie_candidates
 table metadata_movie_selections
 table metadata_operation_identities
@@ -1364,6 +1376,11 @@ trigger catalog_attribute_fields_bound_insert
 trigger catalog_attribute_revision_delete
 trigger catalog_attribute_revision_insert
 trigger catalog_attribute_revision_update
+trigger catalog_automatic_fields_delete
+trigger catalog_automatic_fields_insert
+trigger catalog_automatic_fields_update
+trigger catalog_automatic_member_delete
+trigger catalog_automatic_member_insert
 trigger catalog_availability_object_delete
 trigger catalog_availability_object_insert
 trigger catalog_availability_object_update
@@ -1669,6 +1686,9 @@ trigger catalog_rec_ratings_update
 trigger catalog_related_facets_retain_delete
 trigger catalog_related_facets_retain_insert
 trigger catalog_related_facets_retain_update
+trigger catalog_removed_title_reference_delete
+trigger catalog_removed_title_reference_insert
+trigger catalog_removed_title_reference_update
 trigger catalog_search_documents_index_delete
 trigger catalog_search_documents_index_insert
 trigger catalog_search_documents_index_update
@@ -1693,6 +1713,7 @@ trigger catalog_sort_plays_update
 trigger catalog_title_grams_delete
 trigger catalog_title_grams_insert
 trigger catalog_title_grams_update
+trigger catalog_title_removed
 trigger catalog_visibility_sort_browse_delete
 trigger catalog_visibility_sort_browse_insert
 trigger catalog_visibility_sort_browse_update

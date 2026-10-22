@@ -34,6 +34,17 @@ func newReplanFixture(t *testing.T, bitrate int64) *replanFixture {
 	return &replanFixture{t: t, db: db, s: s, h: h, p: p, item: item}
 }
 
+// A copy admitted under the canonical 2 Mbit/s preset must fit its 720p
+// height as well as its bitrate. Other fixtures retain their 1080p source.
+func new720pReplanFixture(t *testing.T, bitrate int64) *replanFixture {
+	t.Helper()
+	f := newReplanFixture(t, bitrate)
+	updateCatalogAsset(t, f.db, firstCatalogAssetToken(t, f.db), func(a *compactcatalog.Asset) {
+		a.Width, a.Height = 1280, 720
+	})
+	return f
+}
+
 func (f *replanFixture) configure(cfg DeliveryConfiguration) {
 	f.s.ConfigureDelivery(fixedSettings{cfg}, nil, nil, "")
 	f.h.ConfigureSettings(fixedSettings{cfg})
@@ -151,8 +162,14 @@ func TestConversionFallbackKeepsThePresentationCeilings(t *testing.T) {
 		{"the viewer's limit", V1Choice{Limit: true, MaxVideoBitrateBPS: 2_000_000, MaxVideoHeight: 1080}, 2_000_000},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			// 1.6 Mbit/s: within the ceiling, so the picture is copied.
-			f := newReplanFixture(t, 1_600_000)
+			// The remote preset requires 720p; the explicit viewer limit keeps
+			// its original 1080p source and independently supplied height.
+			var f *replanFixture
+			if test.choice.Remote {
+				f = new720pReplanFixture(t, 1_600_000)
+			} else {
+				f = newReplanFixture(t, 1_600_000)
+			}
 			session := f.start("copied", test.choice)
 			started := f.plan(session.ID)
 			if started.VideoAction != "copy" || started.Target == nil {
@@ -175,6 +192,15 @@ func TestConversionFallbackKeepsThePresentationCeilings(t *testing.T) {
 			}
 		})
 	}
+	t.Run("canonical remote cap converts a taller source at admission", func(t *testing.T) {
+		f := newReplanFixture(t, 1_600_000)
+		session := f.start("taller-than-preset", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 2_000_000})
+		plan := f.plan(session.ID)
+		if plan.VideoAction != "convert" || plan.TargetHeight != 720 || plan.VideoBitrateBPS < 1 || plan.VideoBitrateBPS > 2_000_000 || plan.Target == nil {
+			t.Fatalf("1080p source bypassed the canonical 2 Mbit/s 720p cap: %+v", plan)
+		}
+	})
+
 }
 
 // A re-plan never plans above what the presentation started under, whatever
@@ -494,7 +520,7 @@ func TestConversionFallbackAppliesTheMembersCurrentCap(t *testing.T) {
 		return asked
 	}
 	t.Run("admitted at 2 Mbit/s, capped at 1 Mbit/s since", func(t *testing.T) {
-		f := newReplanFixture(t, 1_600_000)
+		f := new720pReplanFixture(t, 1_600_000)
 		session := f.start("tightened", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 2_000_000})
 		started := f.plan(session.ID)
 		if started.VideoAction != "copy" {
@@ -521,7 +547,7 @@ func TestConversionFallbackAppliesTheMembersCurrentCap(t *testing.T) {
 		}
 	})
 	t.Run("a limit that cannot be read", func(t *testing.T) {
-		f := newReplanFixture(t, 1_600_000)
+		f := new720pReplanFixture(t, 1_600_000)
 		session := f.start("unreadable", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 2_000_000})
 		started := f.plan(session.ID)
 		unreadable := errors.New("limits unreadable")

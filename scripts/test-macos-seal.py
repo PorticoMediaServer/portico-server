@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import pathlib
+import runpy
 import subprocess
 import tempfile
 import unittest
@@ -10,6 +11,7 @@ import unittest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+RCLONE = runpy.run_path(str(ROOT / "scripts/rclone-bundle.py"))
 
 
 def digest(path):
@@ -34,6 +36,8 @@ class MacOSSealTests(unittest.TestCase):
         files = {str(p.relative_to(bundle)): digest(p) for p in bundle.rglob("*") if p.is_file()}
         (bundle / "toolchain-manifest.json").write_text(json.dumps({
             "schemaVersion": 1, "licenseMode": "gpl3", "target": "macos-arm64", "files": files}))
+        rclone = self.payload / "third_party/rclone"
+        RCLONE["prepare"](rclone, "darwin-arm64", pathlib.Path(os.environ.get("PORTICO_RCLONE_TEST_CACHE", ROOT / ".cache/rclone")))
         (self.payload / "portico-server").write_text("fixture server")
         self.key = Ed25519PrivateKey.generate()
         self.keyfile = self.root / "release-key"
@@ -42,7 +46,8 @@ class MacOSSealTests(unittest.TestCase):
         manifest = {"schema": 1, "component": "server", "target": "darwin-arm64", "version": "0.1.0",
                     "sourceDigest": "a" * 64, "buildId": "fixture", "officialRoot": "fixture-root",
                     "artifact": {"path": "portico-server", "sha256": digest(self.payload / "portico-server")},
-                    "toolchainManifestSha256": digest(bundle / "toolchain-manifest.json")}
+                    "toolchainManifestSha256": digest(bundle / "toolchain-manifest.json"),
+                    "rcloneManifestSha256": digest(rclone / "bundle-manifest.json")}
         raw = json.dumps(manifest).encode()
         (self.payload / "manifest.json").write_bytes(raw)
         (self.payload / "manifest.sig").write_bytes(self.key.sign(raw))
@@ -50,6 +55,7 @@ class MacOSSealTests(unittest.TestCase):
         self.publicfile.write_bytes(self.key.public_key().public_bytes_raw())
         self.original_manifest = raw
         self.original_toolchain = (bundle / "toolchain-manifest.json").read_bytes()
+        self.original_rclone = (rclone / "bundle-manifest.json").read_bytes()
         self.sign_log = self.root / "codesign.log"
         codesign = self.tools / "codesign"
         codesign.write_text("""#!/usr/bin/env python3
@@ -101,6 +107,10 @@ if '--force' in sys.argv:
                         str(server / "third_party/ffmpeg")], check=True, stdout=subprocess.PIPE)
         self.assertEqual((server / "source-seal/manifest.json").read_bytes(), self.original_manifest)
         self.assertEqual((server / "source-seal/toolchain-manifest.json").read_bytes(), self.original_toolchain)
+        self.assertEqual((server / "source-seal/rclone-manifest.json").read_bytes(), self.original_rclone)
+        self.assertEqual(manifest["rcloneManifestSha256"], digest(server / "third_party/rclone/bundle-manifest.json"))
+        self.assertIn("third_party/rclone/rclone", self.sign_log.read_text())
+        RCLONE["verify"](server / "third_party/rclone", "darwin-arm64", codesigned=True)
         self.key.public_key().verify((server / "source-seal/manifest.sig").read_bytes(), self.original_manifest)
 
     def test_verification_needs_only_public_material(self):
@@ -164,6 +174,23 @@ if '--force' in sys.argv:
                                 env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Original source seal changed", result.stderr)
+
+    def test_rclone_tamper_is_rejected_before_signing(self):
+        with (self.payload / "third_party/rclone/rclone").open("ab") as stream:
+            stream.write(b"tampered rclone")
+        result = self.package()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.sign_log.exists())
+
+    def test_signed_rclone_tamper_is_rejected(self):
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        server = self.root / "out/pkg-root/Applications/Portico Media Server.app/Contents/Resources/server"
+        with (server / "third_party/rclone/rclone").open("ab") as stream:
+            stream.write(b"post-signing tamper")
+        result = subprocess.run(["python3", str(ROOT / "scripts/seal-macos-payload.py"), str(server), "--public-key", str(self.publicfile), "--verify"], env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("modified rclone payload", result.stderr)
 
     def test_missing_release_key_does_not_generate_a_replacement(self):
         self.keyfile.unlink()

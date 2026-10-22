@@ -24,6 +24,8 @@ func publicErrorMessage(code string) string {
 		return "This information changed. Refresh and try again."
 	case "administration_capacity", "console_capacity", "playback_command_capacity", "download_capacity", "lyrics_capacity", "storage_command_capacity", "source_capacity_unavailable":
 		return "There are too many requests. Try again shortly."
+	case "home_layout_conflict":
+		return "Home changed on another device. Reload the layout before saving."
 	case "invalid_administration_input", "invalid_pivot", "invalid_home_layout", "invalid_activity_request", "invalid_library_channel", "invalid_lyrics", "invalid_analysis", "storage_config_invalid", "storage_executable_invalid", "invalid_request", "invalid_download_receipt":
 		return "Check the request and try again."
 	case "download_not_ready", "administration_busy":

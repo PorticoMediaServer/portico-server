@@ -14,6 +14,7 @@ registerHooks({
   resolve(specifier, context, next) {
     if (context.parentURL?.endsWith('/src/shell/Shell.tsx')) {
       if (specifier === './viewport') return {url: 'mobile-activity:viewport', shortCircuit: true};
+      if (specifier === '../kit/theme') return {url: 'mobile-activity:theme', shortCircuit: true};
       if (specifier === '@tanstack/react-router') return {url: 'mobile-activity:router', shortCircuit: true};
       if (specifier === '../kit/shell') return {url: 'mobile-activity:account', shortCircuit: true};
     }
@@ -21,6 +22,7 @@ registerHooks({
   },
   load(url, context, next) {
     if (url === 'mobile-activity:viewport') return {format: 'module', source: 'export const useShellWidth = () => globalThis.__mobileActivityTest.width; export const useShellScrolled = () => false;', shortCircuit: true};
+    if (url === 'mobile-activity:theme') return {format: 'module', source: "export const useSizeClass=()=>globalThis.__mobileActivityTest.width<600?'compact':globalThis.__mobileActivityTest.width<1024?'medium':'expanded'; export const useCoarsePointer=()=>false; export const useWindowScrollAnchor=()=>{};", shortCircuit: true};
     if (url === 'mobile-activity:router') return {format: 'module', source: `
       import {createElement} from ${JSON.stringify(import.meta.resolve('react'))};
       export const Link = ({children, to, activeProps, activeOptions, params, search, ...props}) => createElement('a', {...props, href: to}, children);
@@ -63,14 +65,23 @@ function find(node: ReactNode, predicate: (element: ReactElement<Record<string, 
   }
 }
 
-test('phone and tablet owner Home has one statically labelled Activity glyph beside the avatar without mounting private Activity reads', () => {
-  for (const width of [390, 844, 1023]) {
+test('compact owner Home has one statically labelled Activity glyph beside the avatar without mounting private Activity reads', () => {
+  for (const width of [390, 599]) {
     const {html, mounts} = render('owner', width);
     assert.equal(mounts, 0);
     assert.match(html, /<header[^>]*>.*class="phoneTools".*aria-label="Server activity".*i-activity.*aria-label="Actual profile, account menu"/s);
     assert.equal((html.match(/aria-label="Server activity"/g) ?? []).length, 1);
     assert.doesNotMatch(html, /Owner-only reads|data-busy|streamCount|updateDot|Running normally|No streams/);
     assert.match(html, />Libraries<\/span>/);
+  }
+});
+test('medium owner rail keeps its named Dashboard action and profile at the bottom without private Activity reads', () => {
+  for (const width of [600, 844, 1023]) {
+    const {html, mounts} = render('owner', width);
+    assert.equal(mounts, 0);
+    assert.match(html, /data-navigation="rail"/);
+    assert.match(html, /class="railBottom".*Server activity.*Settings.*Actual profile, account menu/s);
+    assert.doesNotMatch(html, /Owner-only reads|class="phoneHeader"/);
   }
 });
 test('administrator, member and unknown roles never get the owner Home glyph or its private component', () => {

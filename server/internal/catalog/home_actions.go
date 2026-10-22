@@ -3,6 +3,7 @@ package catalog
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/personalstate"
@@ -12,22 +13,23 @@ import (
 // Device support is deliberately separate; these facts never grant a write.
 // Every command rechecks its own authority and current target on execution.
 type HomeActions struct {
-	Play            bool                 `json:"play"`
-	Queue           bool                 `json:"queue"`
-	Playlist        bool                 `json:"playlist"`
-	Collection      bool                 `json:"collection"`
-	MyList          bool                 `json:"myList"`
-	Favorite        bool                 `json:"favorite"`
-	Watched         bool                 `json:"watched"`
-	Played          bool                 `json:"played"`
-	Rating          bool                 `json:"rating"`
-	EditMetadata    bool                 `json:"editMetadata"`
-	RefreshMetadata bool                 `json:"refreshMetadata"`
-	Delete          bool                 `json:"delete"`
-	Download        bool                 `json:"download"`
-	Details         bool                 `json:"details"`
-	State           HomeActionState      `json:"state"`
-	Selection       HomeSelectionActions `json:"selection"`
+	RemoveFromContinue bool                 `json:"removeFromContinue,omitempty"`
+	Play               bool                 `json:"play"`
+	Queue              bool                 `json:"queue"`
+	Playlist           bool                 `json:"playlist"`
+	Collection         bool                 `json:"collection"`
+	MyList             bool                 `json:"myList"`
+	Favorite           bool                 `json:"favorite"`
+	Watched            bool                 `json:"watched"`
+	Played             bool                 `json:"played"`
+	Rating             bool                 `json:"rating"`
+	EditMetadata       bool                 `json:"editMetadata"`
+	RefreshMetadata    bool                 `json:"refreshMetadata"`
+	Delete             bool                 `json:"delete"`
+	Download           bool                 `json:"download"`
+	Details            bool                 `json:"details"`
+	State              HomeActionState      `json:"state"`
+	Selection          HomeSelectionActions `json:"selection"`
 }
 
 // HomeSelectionActions is the authority for selection commands, independently
@@ -189,6 +191,19 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 	}
 	deletion := map[string]bool{}
 	for _, entry := range entries {
+		if entry.Removed {
+			removed, err := s.RemovedTitle(v, entry.ID)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if removed.Kind == entry.Kind {
+				entry.HomeActions = &HomeActions{Details: true, RemoveFromContinue: authority.Personal && removed.CanRemoveFromContinue}
+			}
+			continue
+		}
 		f, ok := facts[entry.ID]
 		if !ok || f.kind != entry.Kind || f.library != entry.LibraryID || !v.AllowsLibrary(f.library) {
 			continue

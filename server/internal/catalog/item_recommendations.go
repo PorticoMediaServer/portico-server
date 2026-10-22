@@ -3,7 +3,9 @@ package catalog
 import (
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // One recommendation engine serves per-item rows, detail.related and the
@@ -217,6 +219,13 @@ func (s *Service) itemRecommendations(viewer Viewer, item Item, genres []Genre, 
 		return nil, e
 	}
 	for index := range out {
+		if out[index].Relation == "more_like" {
+			page, err := s.DetailMoreLike(viewer, item.ID, "", limit)
+			if err != nil {
+				return nil, err
+			}
+			out[index] = page
+		}
 		out[index].Priority = index * 10
 	}
 	return out, nil
@@ -590,4 +599,180 @@ func relatedRowText(relation, heading string) ServerText {
 		return ServerText{Code: spec.code, Fallback: heading}
 	}
 	return ServerText{Code: spec.code, Params: map[string]string{spec.param: strings.TrimPrefix(heading, spec.prefix)}, Fallback: heading}
+}
+
+// DetailMoreLike pages every eligible local recommendation. Ranking is the
+// number of shared catalogue facets, then catalogue quality and stable id.
+// The revision pins both the ranking inputs and the viewer's access/preferences;
+// a later publication is an explicit stale continuation, never a reorder.
+func (s *Service) DetailMoreLike(viewer Viewer, item, cursor string, limit int) (HomeRow, error) {
+	out := HomeRow{Entries: []ContentEntry{}}
+	if err := s.VisibleItem(s.Context(), viewer, item); err != nil {
+		return out, err
+	}
+	source, err := s.Get(viewer.Profile, item)
+	if err != nil {
+		return out, err
+	}
+	if limit == 0 {
+		limit = 37
+	}
+	if limit < 1 || limit > 200 {
+		return out, ErrCursor
+	}
+	revision, err := s.ContentRevision(source.LibraryID, viewer.Profile)
+	if err != nil {
+		return out, err
+	}
+	scope := cursorScope{Library: source.LibraryID, Profile: viewer.Profile, Viewer: viewer.Fence, View: "detail_more_like", Entity: item, Limit: limit}
+	offset := 0
+	if cursor != "" {
+		c, e := s.decodeDetailCursor(cursor, scope, revision)
+		if e != nil {
+			return out, e
+		}
+		offset, e = strconv.Atoi(c.Value)
+		if e != nil || offset < 0 {
+			return out, ErrCursor
+		}
+	}
+	work, _, err := s.recTitleWork(source)
+	if err != nil {
+		return out, err
+	}
+	visible, args := viewer.entityVisibilitySQL("i.id", "l.library_id")
+	visible += ` AND NOT EXISTS(SELECT 1 FROM personal_items negative WHERE negative.item_id=i.id AND negative.profile_id=? AND (negative.not_interested=1 OR negative.rating<=4))`
+	args = append(args, viewer.Profile)
+	query := `SELECT i.id,pid(i.public_id) public,count(DISTINCT seed.facet) score,max(candidate.quality) quality FROM catalog_rec_facets seed JOIN catalog_rec_postings candidate ON candidate.facet=seed.facet JOIN catalog_entities i ON i.id=candidate.entity_id JOIN catalog_libraries l ON l.id=i.library_id WHERE seed.entity_id=? AND i.library_id=(SELECT library_id FROM catalog_entities WHERE id=?) AND i.id<>? AND ` + visible + ` GROUP BY i.id`
+	values := append([]any{work, work, work}, args...)
+	if err = s.read().QueryRow(`SELECT count(*) FROM (`+query+`)`, values...).Scan(&out.Total); err != nil {
+		return out, err
+	}
+	rows, err := s.read().Query(`SELECT public FROM (`+query+`) ORDER BY score DESC,quality DESC,id LIMIT ? OFFSET ?`, append(values, limit, offset)...)
+	if err != nil {
+		return out, err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return out, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
+	}
+	entries, err := s.homeEngineEntries(viewer.Profile, ids)
+	if err != nil {
+		return out, err
+	}
+	out.ID = "more_like:local:" + item
+	out.Relation = "more_like"
+	out.Provider = "local"
+	out.EvidenceID = item
+	out.Title = "More like " + source.Title
+	out.TitleText = relatedRowText("more_like", out.Title)
+	out.Kind = "related"
+	out.ArtworkShape = recommendationRowShape(source.Kind)
+	out.Endpoint = "/v1/items/" + item + "/recommendations/rows/more_like"
+	out.LibraryID = source.LibraryID
+	out.ViewerFence = viewer.Fence
+	out.PrivacySensitivity = "personal"
+	out.PolicyState = "available"
+	out.Revision = revision
+	out.CursorCapable = true
+	out.Start = offset
+	out.Limit = limit
+	out.Entries = entries
+	out.HasMore = offset+len(ids) < out.Total
+	if out.HasMore {
+		out.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(offset + len(ids)), Expires: time.Now().Add(30 * time.Minute).Unix()}, revision)
+		if err != nil {
+			return out, err
+		}
+	}
+	after, err := s.ContentRevision(source.LibraryID, viewer.Profile)
+	if err != nil {
+		return out, err
+	}
+	if after != revision {
+		return out, ErrStaleContinuation
+	}
+	return out, nil
+}
+
+type DetailCollection struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	MemberCount int      `json:"memberCount"`
+	Position    int      `json:"position"`
+	YearFrom    int      `json:"yearFrom,omitempty"`
+	YearTo      int      `json:"yearTo,omitempty"`
+	PosterURLs  []string `json:"posterUrls"`
+}
+
+func (s *Service) detailCollections(viewer Viewer, item string) ([]DetailCollection, error) {
+	rows, err := s.read().Query(`SELECT pid(e.public_id),e.title,m.order_key FROM catalog_entities item JOIN catalog_collection_members m ON m.item_id=item.id JOIN catalog_entities e ON e.id=m.collection_id JOIN catalog_collections c ON c.entity_id=e.id WHERE item.public_id=pid_blob(?) AND `+collectionHeadFence+` ORDER BY c.name_key,e.id LIMIT 2`, item)
+	if err != nil {
+		return nil, err
+	}
+	out := []DetailCollection{}
+	orders := []string{}
+	for rows.Next() {
+		var c DetailCollection
+		var order string
+		if err = rows.Scan(&c.ID, &c.Name, &order); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		c.PosterURLs = []string{}
+		out = append(out, c)
+		orders = append(orders, order)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		c := &out[i]
+		visible, args := viewer.itemVisibilitySQL("member.id")
+		values := append([]any{orders[i], c.ID}, args...)
+		from := ` FROM catalog_collection_members m JOIN catalog_entities member ON member.id=m.item_id WHERE m.collection_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND ` + visible
+		if err = s.read().QueryRow(`SELECT count(*),COALESCE(min(NULLIF(member.year,0)),0),COALESCE(max(NULLIF(member.year,0)),0),COALESCE(sum(m.order_key<=?),0)`+from, values...).Scan(&c.MemberCount, &c.YearFrom, &c.YearTo, &c.Position); err != nil {
+			return nil, err
+		}
+		ids := []string{}
+		page, err := s.read().Query(`SELECT pid(member.public_id)`+from+` ORDER BY m.order_key,member.id LIMIT 4`, append([]any{c.ID}, args...)...)
+		if err != nil {
+			return nil, err
+		}
+		for page.Next() {
+			var id string
+			if err = page.Scan(&id); err != nil {
+				page.Close()
+				return nil, err
+			}
+			ids = append(ids, id)
+		}
+		err = page.Err()
+		page.Close()
+		if err != nil {
+			return nil, err
+		}
+		entries, err := s.homeEngineEntries(viewer.Profile, ids)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if entry.PosterURL != "" {
+				c.PosterURLs = append(c.PosterURLs, entry.PosterURL)
+			}
+		}
+	}
+	return out, nil
 }

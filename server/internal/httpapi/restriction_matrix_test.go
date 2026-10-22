@@ -289,6 +289,9 @@ const (
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
 	return map[string]restrictionRoute{
+		"GET /v1/me/saved/summary":                                                   static("/v1/me/saved/summary"),
+		"GET /v1/me/removed-titles/{id}":                                             probe(func(m *restrictionEnv) []string { return prefixed("/v1/me/removed-titles/", m.hiddenItemSamples()) }),
+		"GET /v1/admin/activity":                                                     exempt(reasonAdmin),
 		"GET /v1/admin/playback/route-failures":                                      exempt(reasonAdmin),
 		"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
 		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
@@ -457,6 +460,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/downloads/receipts/revocations":        exempt(reasonNoTitles),
 		"GET /v1/cast/configuration":                    exempt(reasonNoTitles),
 		"GET /v1/storage/mounts":                        exempt(reasonAdmin),
+		"GET /v1/storage/rclone/bundled":                exempt(reasonAdmin),
 		"GET /v1/storage/sources":                       exempt(reasonAdmin),
 		"GET /v1/storage/operations/{id}":               exempt(reasonAdmin),
 		"GET /v1/storage/source-operations/{id}":        exempt(reasonAdmin),
@@ -472,18 +476,25 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/downloads/preparations/{id}": probe(func(m *restrictionEnv) []string {
 			return prefixed("/v1/downloads/preparations/", m.preparations)
 		}),
-		"GET /v1/groups/{id}":                                           exempt(reasonGrant),
-		"GET /v1/groups/{id}/queue":                                     exempt(reasonGrant),
-		"GET /v1/handoffs/{id}":                                         exempt(reasonGrant),
-		"GET /v1/media/{grant}":                                         exempt(reasonGrant),
-		"GET /v1/media/{grant}/audio":                                   exempt(reasonGrant),
-		"GET /v1/media/{grant}/audio-converted":                         exempt(reasonGrant),
-		"GET /v1/media/{grant}/audio-index":                             exempt(reasonGrant),
-		"GET /v1/media/subtitles/{grant}/{resource}/{revision}":         exempt(reasonGrant),
-		"GET /v1/media/{grant}/{file}":                                  exempt(reasonGrant),
-		"GET /v1/playback/sessions/{id}":                                exempt(reasonGrant),
-		"GET /v1/playback/sessions/{id}/chapters":                       exempt(reasonGrant),
-		"GET /v1/queues/{id}":                                           exempt(reasonGrant),
+		"GET /v1/groups/{id}":                                   exempt(reasonGrant),
+		"GET /v1/groups/{id}/queue":                             exempt(reasonGrant),
+		"GET /v1/handoffs/{id}":                                 exempt(reasonGrant),
+		"GET /v1/media/{grant}":                                 exempt(reasonGrant),
+		"GET /v1/media/{grant}/audio":                           exempt(reasonGrant),
+		"GET /v1/media/{grant}/audio-converted":                 exempt(reasonGrant),
+		"GET /v1/media/{grant}/audio-index":                     exempt(reasonGrant),
+		"GET /v1/media/subtitles/{grant}/{resource}/{revision}": exempt(reasonGrant),
+		"GET /v1/media/{grant}/{file}":                          exempt(reasonGrant),
+		"GET /v1/playback/sessions/{id}":                        exempt(reasonGrant),
+		"GET /v1/playback/sessions/{id}/chapters":               exempt(reasonGrant),
+		"GET /v1/queues/{id}":                                   exempt(reasonGrant),
+		"GET /v1/queues/{id}/entry": probe(func(m *restrictionEnv) []string {
+			out := []string{}
+			for _, id := range m.hiddenItemSamples() {
+				out = append(out, "/v1/queues/matrix-unknown/entry?itemId="+url.QueryEscape(id))
+			}
+			return out
+		}),
 		"GET /v1/queues/{id}/entries":                                   exempt(reasonGrant),
 		"GET /v1/queues/{id}/window":                                    exempt(reasonGrant),
 		"GET /v1/receivers/{id}/grants":                                 exempt(reasonGrant),
@@ -597,6 +608,8 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/items/{id}/listening":                        perItem("/listening"),
 		"GET /v1/items/{id}/playback-offers":                  perItem("/playback-offers"),
 		"GET /v1/items/{id}/recommendations":                  perItem("/recommendations"),
+		"GET /v1/items/{id}/file-info":                        perItem("/file-info"),
+		"GET /v1/items/{id}/recommendations/rows/{row}":       perItem("/recommendations/rows/more_like"),
 		"GET /v1/items/{id}/source-availability":              perItem("/source-availability"),
 		"GET /v1/items/{id}/trickplay":                        perItem("/trickplay"),
 		"GET /v1/items/{id}/trickplay/{set}/thumbnails.vtt":   perItem("/trickplay/set/thumbnails.vtt"),
@@ -708,7 +721,13 @@ func restrictionReadPOSTs(m *restrictionEnv) map[string][]postProbe {
 			}
 		}
 	}
-	return map[string][]postProbe{"POST /v1/libraries/{id}/browse": browse, "POST /v1/browse": across, "POST /v1/jobs": jobs}
+	pickers := []postProbe{}
+	if m != nil {
+		for _, kind := range []string{"playlist", "collection"} {
+			pickers = append(pickers, postProbe{"/v1/home/destination-picker", fmt.Sprintf(`{"kind":%q,"limit":40,"itemIds":[%q,%q]}`, kind, m.visibleMovie, m.hiddenItems["movie"][0])})
+		}
+	}
+	return map[string][]postProbe{"POST /v1/libraries/{id}/browse": browse, "POST /v1/browse": across, "POST /v1/jobs": jobs, "POST /v1/home/destination-picker": pickers}
 }
 
 func prefixed(prefix string, ids []string, suffix ...string) []string {
@@ -770,7 +789,7 @@ func (m *restrictionEnv) hiddenItemSamples() []string {
 }
 
 func (m *restrictionEnv) homeRows() []string {
-	rows := []string{"continue", "continue_listening", "ondeck", "recommended", "trending"}
+	rows := []string{"continue", "new_on_server", "because_you_watched", "listen_next", "continue_books", "recommended", "trending_now", "community_watching"}
 	for _, library := range m.libraries {
 		rows = append(rows, "recent_"+library)
 	}

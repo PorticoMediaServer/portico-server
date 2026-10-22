@@ -56,6 +56,11 @@ func registerBulkJobs(r *apikit.Registry, d Dependencies) {
 			if e != nil {
 				return catalog.BulkJob{}, e
 			}
+			if in.Command == "metadata-edit" || in.Command == "refresh" {
+				if e = registryScopeGate(q, apikit.ScopeLibrary); e != nil {
+					return catalog.BulkJob{}, e
+				}
+			}
 			if !rate.allow(viewerScope(p)) {
 				return catalog.BulkJob{}, &apierror.Error{Code: "rate_limited"}
 			}

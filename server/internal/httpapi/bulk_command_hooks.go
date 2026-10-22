@@ -39,7 +39,8 @@ func (d Dependencies) bulkCommandHooks() catalog.BulkCommandHooks {
 			}
 		},
 		Authorize: func(ctx context.Context, tx *sql.Tx, p identity.Principal, command string) error {
-			return d.ownerAuthorityTx(ctx, tx, p)
+			_, err := d.tierAuthorityTx(ctx, tx, p, identity.TierAdmin)
+			return err
 		},
 		Capture: func(ctx context.Context, tx *sql.Tx, p identity.Principal, command, item string, a catalog.JobArguments) (string, error) {
 			if command != "metadata-edit" {
@@ -59,7 +60,14 @@ func (d Dependencies) bulkCommandHooks() catalog.BulkCommandHooks {
 			case "refresh":
 				e = d.Metadata.QueueRefreshTx(ctx, tx, item)
 			case "metadata-edit":
-				_, e = d.Metadata.ApplyBulkTargetTx(ctx, tx, metadata.RepairTarget{Kind: "item", ID: item}, expected, metadataJobEdit(a), metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, func(tx *sql.Tx) error { return d.ownerAuthorityTx(ctx, tx, p) })
+				target, err := d.Metadata.JobEditTarget(ctx, tx, item)
+				if err != nil {
+					return err
+				}
+				_, e = d.Metadata.ApplyBulkTargetTx(ctx, tx, target, expected, metadataJobEdit(a), metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, func(tx *sql.Tx) error {
+					_, err := d.tierAuthorityTx(ctx, tx, p, identity.TierAdmin)
+					return err
+				})
 			default:
 				return errors.New("command worker unavailable")
 			}

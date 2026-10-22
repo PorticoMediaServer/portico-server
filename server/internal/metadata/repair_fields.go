@@ -154,12 +154,16 @@ func readRepairEntity(ctx context.Context, tx *sql.Tx, t RepairTarget) (repairEn
 		}
 	}
 	if t.Kind != "item" {
-		var rev int64
-		err = tx.QueryRowContext(ctx, `SELECT revision FROM library_revisions WHERE library_id=?`, e.library).Scan(&rev)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		// A bulk job captures independent target fences before it applies any
+		// edits. A library-wide revision would stale every remaining sibling
+		// after the first edit. Fence the target's source files and publication
+		// heads instead; repairRevision also includes its full snapshot/history.
+		err = tx.QueryRowContext(ctx, `SELECT json_array(e.parent_id,e.retired,`+attentionFileFingerprint("e.id")+`,
+ (SELECT h.incarnation||':'||h.source_revision||':'||h.hierarchy_revision||':'||h.selection_revision||':'||h.descriptive_revision FROM tvdb_publication_heads h WHERE h.show_id=e.id),
+ (SELECT h.incarnation||':'||h.revision||':'||h.membership_revision FROM mb_album_heads h WHERE h.album_id=e.id)) FROM catalog_entities e WHERE e.id=?`, entity).Scan(&e.stamp)
+		if err != nil {
 			return e, err
 		}
-		e.stamp = strconv.FormatInt(rev, 10)
 	}
 	return e, nil
 }

@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -226,19 +227,29 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nearFound := false
-	for _, section := range nearHome.Rows {
-		if section.ID == "continue_listening" {
-			for _, entry := range section.Entries {
-				if entry.ID == files[0].ID && *entry.ProgressSeconds == 3.9 {
-					nearFound = true
-				}
+	// Home now displays a book, with its real playable part in the resume
+	// target. The retired file-level continue_listening row is not the contract.
+	checkBookResume := func(home catalog.HomeDocument, item string, partPosition, bookPosition float64) {
+		t.Helper()
+		for _, row := range home.Rows {
+			if row.ID != "continue_books" {
+				continue
 			}
+			if row.Total != 1 || len(row.Entries) != 1 || len(row.Resumes) != 1 {
+				t.Fatalf("book continuation: %+v", row)
+			}
+			book, resume := row.Entries[0], row.Resumes[0]
+			if book.Kind != "book" || book.ID != bookRows[0].ID || book.Playback == nil || book.Playback.ItemID != item || book.Playback.StartSeconds == nil || *book.Playback.StartSeconds != partPosition || book.ProgressSeconds == nil || math.Abs(*book.ProgressSeconds-bookPosition) > 0.000001 || book.Duration == nil || math.Abs(*book.Duration-(files[0].Duration+files[1].Duration)) > 0.000001 {
+				t.Fatalf("whole-book bookmark: %+v", book)
+			}
+			if resume.EntryID != book.ID || resume.Target.ID != item || resume.Target.ProgressSeconds == nil || *resume.Target.ProgressSeconds != partPosition {
+				t.Fatalf("real part bookmark: %+v", resume)
+			}
+			return
 		}
+		t.Fatal("book bookmark missing from Home")
 	}
-	if !nearFound {
-		t.Fatal("near-end book bookmark missing from Home", nearHome)
-	}
+	checkBookResume(nearHome, files[0].ID, 3.9, 3.9)
 	second, err := player.Create(p, files[1].ID, "automatic", "second")
 	if err != nil {
 		t.Fatal(err)
@@ -268,30 +279,38 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 	if err != nil {
 		t.Fatal("audio Home", home, err)
 	}
-	listening := []catalog.ContentEntry{}
-	for _, section := range home.Rows {
-		if section.ID == "continue_listening" {
-			listening = section.Entries
-			if section.Total != 2 {
-				t.Fatal("listening count", section)
+	checkBookResume(home, files[1].ID, 1, files[0].Duration+1)
+	// Music remains resumable as its album independently of the book row.
+	var musicResumes []catalog.HomeResume
+	for _, row := range home.Rows {
+		if row.ID == "listen_next" {
+			for _, resume := range row.Resumes {
+				if resume.EntryID == albums[0].ID {
+					musicResumes = append(musicResumes, resume)
+				}
 			}
 		}
 	}
-	if len(listening) != 2 {
-		t.Fatal("missing music/book continuation", home)
-	}
-	for _, entry := range listening {
-		if entry.ID == files[0].ID || entry.LibraryID == "" {
-			t.Fatal("old book file or missing library", entry)
-		}
+	if len(musicResumes) != 1 || musicResumes[0].Target.ID != songs[0].ID || musicResumes[0].Target.ProgressSeconds == nil || *musicResumes[0].Target.ProgressSeconds != 0.5 {
+		t.Fatalf("music bookmark missing from Home: %+v", musicResumes)
 	}
 	otherHome, err := cat.HomeRows(catalog.HomeRequest{Viewer: catalog.Viewer{Profile: "other-profile", Fence: "other", Libraries: []string{musicLib.ID, bookLib.ID}}, Profile: "other-profile", ViewerFence: "other", Libraries: []string{musicLib.ID, bookLib.ID}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, section := range otherHome.Rows {
-		if section.ID == "continue_listening" && len(section.Entries) > 0 {
+		if section.ID != "listen_next" && section.ID != "continue_books" {
+			continue
+		}
+		if len(section.Resumes) > 0 || section.ID == "continue_books" && len(section.Entries) > 0 {
 			t.Fatal("Home progress leaked", section)
+		}
+		// Listen next also includes recent additions for a new profile. Those
+		// titles must not inherit another profile's position or resume target.
+		for _, entry := range section.Entries {
+			if entry.ProgressSeconds != nil && *entry.ProgressSeconds != 0 || entry.Playback != nil && entry.Playback.StartSeconds != nil && *entry.Playback.StartSeconds != 0 {
+				t.Fatal("recent title inherited another profile's bookmark", entry)
+			}
 		}
 	}
 	var mbTags int

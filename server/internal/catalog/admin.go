@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
@@ -49,13 +50,16 @@ type AdminJob struct {
 	Actions     []string `json:"actions"`
 }
 type AdminLibrary struct {
-	ID       string      `json:"id"`
-	Name     string      `json:"name"`
-	Kind     string      `json:"kind"`
-	Revision int64       `json:"revision"`
-	Source   AdminSource `json:"source"`
-	LastScan *AdminJob   `json:"lastScan"`
-	Actions  []string    `json:"actions"`
+	FilesSkipped int64            `json:"filesSkipped"`
+	Summary      *LibrarySummary  `json:"summary,omitempty"`
+	Audience     *LibraryAudience `json:"audience,omitempty"`
+	ID           string           `json:"id"`
+	Name         string           `json:"name"`
+	Kind         string           `json:"kind"`
+	Revision     int64            `json:"revision"`
+	Source       AdminSource      `json:"source"`
+	LastScan     *AdminJob        `json:"lastScan"`
+	Actions      []string         `json:"actions"`
 	// Attention counts the files the library couldn't turn into items (an
 	// episode name that needs assignment; GET /v1/libraries/{id}/episode-issues
 	// lists them), so a problem never hides behind a clean scan. Absent when
@@ -86,6 +90,7 @@ type AdminJobs struct {
 	NextCursor string     `json:"nextCursor"`
 }
 type AdminRequest struct {
+	Restrictions identity.ContentRestrictions
 	Authorize    func(context.Context, *sql.Tx, string) error
 	LibraryScope func(context.Context, *sql.Tx) ([]string, error)
 
@@ -322,6 +327,27 @@ func (s *Service) adminLibraries(ctx context.Context, r AdminRequest) (AdminLibr
 		out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: last.Name, ID: last.ID, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
 		if e != nil {
 			return out, e
+		}
+	}
+	for i := range out.Items {
+		library := &out.Items[i]
+		summary, err := s.librarySummary(ctx, Viewer{Libraries: []string{library.ID}, Restrictions: r.Restrictions}, Library{ID: library.ID, Kind: library.Kind})
+		if err != nil {
+			return out, err
+		}
+		library.Summary = &summary
+		tx := dbwork.Snapshot(ctx)
+		if tx != nil {
+			count, err := LastSkippedCount(ctx, tx, library.ID)
+			if err != nil {
+				return out, err
+			}
+			library.FilesSkipped = count
+			audience, err := libraryAudience(ctx, tx, library.ID)
+			if err != nil {
+				return out, err
+			}
+			library.Audience = &audience
 		}
 	}
 	for i := range out.Items {

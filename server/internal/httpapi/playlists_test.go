@@ -148,6 +148,18 @@ func TestPlaylistHTTPShareNeverGrantsMedia(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	// Saved directory cards may contain canonical entries awaiting browse
+	// publication. Missing artwork must not turn the directory into a 409.
+	if bytes.Contains(w.Body.Bytes(), []byte("/art/poster")) {
+		t.Fatal("invented artwork for unmaterialized entries", w.Body.String())
+	}
+	if _, e = db.Exec(`UPDATE catalog_item_details SET poster_url='/fixture-poster' WHERE entity_id IN(SELECT id FROM catalog_entities WHERE public_id IN(pid_blob(?),pid_blob(?)))`, aItem, bItem); e != nil {
+		t.Fatal(e)
+	}
+	w = request("GET", "/v1/content?view=playlists", member.AccessToken, nil)
+	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("/v1/items/"+aItem+"/art/poster")) || bytes.Contains(w.Body.Bytes(), []byte(bItem)) {
+		t.Fatal("playlist directory art lost current media access", w.Code, w.Body.String())
+	}
 	if w = request("DELETE", "/v1/playlists/"+id+"/shares", owner.AccessToken, map[string]any{"operationId": "remove-share", "expectedRevision": 4, "authority": "local", "accountId": "member", "profileId": "member-p"}); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}

@@ -296,3 +296,42 @@ func (s *Service) homeRecentAddition(r HomeRequest, show int64) (string, error) 
 	}
 	return "", nil
 }
+
+// homeRecentPageTargets preserves the established delivery card (one episode,
+// one season, or the whole show), while SQL pages canonical works. Only the
+// requested page is inspected; no source member list is built in memory.
+func (s *Service) homeRecentPageTargets(r HomeRequest, ids []string) ([]string, error) {
+	out := append([]string{}, ids...)
+	rows, err := s.read().Query(`SELECT pid(e.public_id),e.id FROM json_each(?) requested JOIN catalog_entities e ON e.public_id=pid_blob(requested.value) WHERE e.kind=2`, idsJSON(ids))
+	if err != nil {
+		return nil, err
+	}
+	shows := map[string]int64{}
+	for rows.Next() {
+		var id string
+		var entity int64
+		if err = rows.Scan(&id, &entity); err != nil {
+			break
+		}
+		shows[id] = entity
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	for i, id := range ids {
+		if entity, ok := shows[id]; ok {
+			target, e := s.homeRecentAddition(r, entity)
+			if e != nil {
+				return nil, e
+			}
+			if target != "" {
+				out[i] = target
+			}
+		}
+	}
+	return out, nil
+}

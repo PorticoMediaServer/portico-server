@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/persistence"
 )
 
 // A narrow serving-index fixture: retired facts can outpace the derived worker
@@ -24,7 +26,7 @@ func TestRecentlyAddedBoundsExaminedCandidates(t *testing.T) {
 	}
 	for _, n := range sizes {
 		t.Run(fmt.Sprint(n), func(t *testing.T) {
-			db, err := dbwork.OpenHandle(filepath.Join(t.TempDir(), "recent.sqlite"), dbwork.DefaultPolicy())
+			db, err := persistence.Open(filepath.Join(t.TempDir(), "recent.sqlite"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -35,27 +37,12 @@ func TestRecentlyAddedBoundsExaminedCandidates(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			for _, q := range []string{
-				`CREATE TABLE catalog_generations(singleton INTEGER PRIMARY KEY,retaining INTEGER);INSERT INTO catalog_generations VALUES(1,0)`,
-				`CREATE TABLE catalog_libraries(id INTEGER PRIMARY KEY,library_id TEXT);INSERT INTO catalog_libraries VALUES(1,'m')`,
-				`CREATE TABLE catalog_entities(id INTEGER PRIMARY KEY,public_id BLOB,kind INTEGER,retired INTEGER)`,
-				`CREATE TABLE catalog_browse_rows(entity_id INTEGER PRIMARY KEY,library_id INTEGER,recent_text TEXT,added_text TEXT,item_id INTEGER)`,
-				`CREATE INDEX catalog_browse_recent_works ON catalog_browse_rows(library_id,recent_text DESC,entity_id DESC) WHERE recent_text IS NOT NULL`,
-				`CREATE INDEX catalog_browse_recent_undated ON catalog_browse_rows(library_id,entity_id DESC) WHERE item_id IS NOT NULL AND added_text IS NULL`,
-				`CREATE TABLE catalog_browse_member_metrics(entity_id INTEGER,item_id INTEGER,added TEXT)`,
-				`CREATE INDEX catalog_browse_metric_added ON catalog_browse_member_metrics(entity_id,added DESC) WHERE added IS NOT NULL`,
-				`CREATE TABLE metadata_details(item_id INTEGER,provider TEXT,provider_id TEXT,PRIMARY KEY(item_id,provider))`,
-				`CREATE TABLE catalog_episodes(entity_id INTEGER PRIMARY KEY,show_id INTEGER)`,
-				`CREATE TABLE catalog_songs(entity_id INTEGER PRIMARY KEY,album_id INTEGER)`,
-				`CREATE TABLE catalog_book_files(entity_id INTEGER PRIMARY KEY,book_id INTEGER)`,
-				`CREATE TABLE catalog_kinds(id INTEGER PRIMARY KEY,playable INTEGER);INSERT INTO catalog_kinds VALUES(1,1)`,
-				`CREATE TABLE catalog_item_availability(entity_id INTEGER PRIMARY KEY,available INTEGER,retired INTEGER)`,
-			} {
-				exec(q)
-			}
+			// Install the real baseline, including retirement and policy tables.
+			// Seed a deliberately stale serving projection without draining its worker.
+			library := catalogtest.New(t, db).Library("m", "Movies", "movie", "/movies")
 			for after := 0; after < n; after += 10000 {
-				exec(`WITH RECURSIVE ids(i) AS(SELECT ? UNION ALL SELECT i+1 FROM ids WHERE i<?) INSERT INTO catalog_entities SELECT i,randomblob(16),1,1 FROM ids`, after+1, min(n, after+10000))
-				exec(`INSERT INTO catalog_browse_rows SELECT id,1,'2026-01-01','2026-01-01',id FROM catalog_entities WHERE id>? AND id<=?`, after, min(n, after+10000))
+				exec(`WITH RECURSIVE ids(i) AS(SELECT ? UNION ALL SELECT i+1 FROM ids WHERE i<?) INSERT INTO catalog_entities(id,public_id,library_id,kind,title,sort_key,sort_head,retired) SELECT i,randomblob(16),?,1,'Movie','Movie','M',1 FROM ids`, after+1, min(n, after+10000), library)
+				exec(`INSERT INTO catalog_browse_rows(entity_id,library_id,kind,title,sort_key,head,year,recent_text,added_text,item_id,rating_key,label_key,available,recent,backdrop) SELECT id,library_id,kind,title,sort_key,sort_head,year,'2026-01-01','2026-01-01',id,'','',1,1,0 FROM catalog_entities WHERE id>? AND id<=?`, after, min(n, after+10000))
 			}
 			exec(`ANALYZE`)
 			s := New(db)
@@ -80,6 +67,17 @@ func TestRecentlyAddedBoundsExaminedCandidates(t *testing.T) {
 				t.Fatalf("bounded recent preview took %s", elapsed)
 			}
 			t.Logf("rows=%d preview=%s statements=%d", n, elapsed, statements)
+			// A live row in the same stale projection must still be found. This
+			// rules out an empty fixture or a reader that always returns no works.
+			exec(`UPDATE catalog_entities SET retired=0 WHERE id=?`, n)
+			found, err := s.homeRecentWorks(HomeRequest{}, "m")
+			if err != nil || len(found) != 1 {
+				t.Fatalf("live control: %v %v", found, err)
+			}
+			var public string
+			if err = db.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE id=?`, n).Scan(&public); err != nil || found[0][0] != public {
+				t.Fatal("wrong live work", found, public, err)
+			}
 		})
 	}
 }

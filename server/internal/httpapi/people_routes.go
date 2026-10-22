@@ -52,7 +52,7 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 	d.projectedHandle(mux, "GET /v1/people/{id}", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		for key, values := range q {
-			if len(values) != 1 || (key != "cursor" && key != "limit" && key != "role") {
+			if len(values) != 1 || (key != "cursor" && key != "limit" && key != "role" && key != "department" && key != "kind") {
 				failure(w, catalog.ErrPersonQuery)
 				return
 			}
@@ -76,7 +76,22 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.WithContext(r.Context()).Person(viewer, d.Identity.ID(), r.PathValue("id"), q.Get("role"), q.Get("cursor"), limit)
+		filter := q.Get("role")
+		if q.Has("department") {
+			if filter != "" || q.Has("kind") {
+				failure(w, catalog.ErrPersonQuery)
+				return
+			}
+			filter = "department:" + q.Get("department")
+		}
+		if q.Has("kind") {
+			if filter != "" {
+				failure(w, catalog.ErrPersonQuery)
+				return
+			}
+			filter = "kind:" + q.Get("kind")
+		}
+		out, e := d.Catalog.WithContext(r.Context()).Person(viewer, d.Identity.ID(), r.PathValue("id"), filter, q.Get("cursor"), limit)
 		if e != nil {
 			failure(w, e)
 			return

@@ -2039,3 +2039,10 @@ export * from './playback-controls.ts';
 export {PeopleInvitationsClient,parsePublicInvitation,privatePersonNotes,personIdentity} from './direct-account.ts';
 export type {ServerInvitation,PeopleMember,PublicInvitation} from './direct-account.ts';
 export {highestRatingChoices} from './profile-limits.ts';
+export {sizeClassForWidth, type SizeClass} from './presentation/size-class.ts';
+
+export {readLibrarySummaries,parseLibrarySummary} from './library-summary.ts';
+export type {LibrarySummary} from './library-summary.ts';
+
+export {browseServerFilesystem} from './library-management.ts';
+export {libraryNavigationIcon} from './presentation/library-navigation.ts';

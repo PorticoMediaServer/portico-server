@@ -125,6 +125,7 @@ func TestVerifySchemaObjectsNamesAMissingObjectOfEachKind(t *testing.T) {
 	ctx := context.Background()
 	for _, object := range []struct{ kind, name, statement string }{
 		{"table", "dvr_retention_retry", `DROP TABLE dvr_retention_retry`},
+		{"table", "personal_job_membership_outcomes", `DROP TABLE personal_job_membership_outcomes`},
 		{"index", "dvr_recordings_due", `DROP INDEX dvr_recordings_due`},
 		{"trigger", "networking_identity_no_delete", `DROP TRIGGER networking_identity_no_delete`},
 		{"view", "inventory_item_availability", `DROP VIEW inventory_item_availability`},
@@ -132,6 +133,7 @@ func TestVerifySchemaObjectsNamesAMissingObjectOfEachKind(t *testing.T) {
 		// column fails all the same.
 		{"column", "dvr_retention_retry.not_before_ms", `ALTER TABLE dvr_retention_retry RENAME COLUMN not_before_ms TO later_ms`},
 		{"column", "managed_mounts.observed", `ALTER TABLE managed_mounts RENAME COLUMN observed TO seen`},
+		{"column", "personal_job_membership_outcomes.code", `ALTER TABLE personal_job_membership_outcomes RENAME COLUMN code TO missing_code`},
 	} {
 		t.Run(object.kind+" "+object.name, func(t *testing.T) {
 			db, err := OpenFresh(filepath.Join(t.TempDir(), "fresh.sqlite"))

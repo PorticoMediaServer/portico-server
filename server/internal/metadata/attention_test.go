@@ -40,8 +40,21 @@ func TestAttentionDismissalAndLowConfidenceSurviveRefresh(t *testing.T) {
 		t.Fatal(e)
 	}
 	page, e = s.Attention(ctx, "lib", "", 25)
+	if e != nil || len(page.Entries) != 0 {
+		t.Fatal("provider retry undid Keep as is", page, e)
+	}
+	publicationExec(t, db, `UPDATE catalog_assets SET size=size+1 WHERE id IN(SELECT asset_id FROM catalog_asset_links WHERE entity_id=?)`, item.ID)
+	page, e = s.Attention(ctx, "lib", "", 25)
 	if e != nil || len(page.Entries) != 1 || page.Entries[0].Reason != "low_confidence" {
-		t.Fatal("refresh promoted a guess to certainty", page, e)
+		t.Fatal("changed files did not return to review", page, e)
+	}
+	publicationExec(t, db, `UPDATE screen_metadata_work SET status='pending',generation=generation+1 WHERE target_id=?`, item.ID)
+	if e = s.ScreenStep(ctx); e != nil {
+		t.Fatal(e)
+	}
+	page, e = s.Attention(ctx, "lib", "", 25)
+	if e != nil || len(page.Entries) != 1 {
+		t.Fatal(page, e)
 	}
 	entry = page.Entries[0]
 	if e = s.AttentionAction(ctx, "lib", AttentionCommand{Kind: entry.Kind, EntityID: entry.EntityID, ExpectedRevision: entry.Revision, Action: "accept", CandidateKey: entry.Candidates[0].Key, Order: "official"}, MBActor{Authority: "direct", AccountID: "owner"}, nil); e != nil {

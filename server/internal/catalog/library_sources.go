@@ -507,3 +507,50 @@ func (s *Service) AdoptRootIdentity(ctx context.Context, job string, source Libr
 		return err
 	})
 }
+
+// CreateFoldersAuthorizedThen validates every source before creating anything,
+// then commits all folders, metadata configuration and queued scans together.
+// It never deletes, renames or modifies the selected media directories.
+func (s *Service) CreateFoldersAuthorizedThen(ctx context.Context, name, kind string, folders []string, authorize func(*sql.Tx) error, created func(*sql.Tx, Library) error) (Library, error) {
+	if len(folders) < 1 || len(folders) > 64 {
+		return Library{}, ErrAdminQuery
+	}
+	return s.createFolders(ctx, name, kind, folders, authorize, created)
+}
+func (s *Service) createFolders(ctx context.Context, name, kind string, folders []string, authorize func(*sql.Tx) error, created func(*sql.Tx, Library) error) (Library, error) {
+	type source struct{ configured, path, identity, classification, kind string }
+	sources := make([]source, 0, len(folders))
+	for _, folder := range folders {
+		if !filepath.IsAbs(folder) || len(folder) > 8192 || strings.IndexFunc(folder, unicode.IsControl) >= 0 {
+			return Library{}, ErrAdminQuery
+		}
+		if s.storage != nil && s.storage.SourceGuard != nil && !s.storage.IsRemote(folder) {
+			if err := s.storage.SourceGuard(folder); err != nil {
+				return Library{}, err
+			}
+		}
+		observed, err := s.inspectSource(ctx, folder)
+		if err != nil || storage.RootIdentity(observed) == "" {
+			return Library{}, ErrAdminQuery
+		}
+		for _, prior := range sources {
+			a, _ := filepath.Rel(prior.path, observed.Path)
+			b, _ := filepath.Rel(observed.Path, prior.path)
+			if filepath.IsLocal(a) || filepath.IsLocal(b) {
+				return Library{}, ErrSourceAlreadyConfigured
+			}
+		}
+		sources = append(sources, source{folder, observed.Path, storage.RootIdentity(observed), s.sourceClassification(observed.Path), s.sourceKind(observed.Path)})
+	}
+	return s.CreateAuthorizedThen(ctx, name, kind, folders[0], authorize, func(tx *sql.Tx, library Library) error {
+		for _, source := range sources[1:] {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,name,configured_root,root,classification,root_identity,identity_confirmed,kind) VALUES(?,?,?,?,?,?,?,1,?)`, identity.Token(), library.ID, filepath.Base(source.path), source.configured, source.path, source.classification, source.identity, source.kind); err != nil {
+				return err
+			}
+		}
+		if created != nil {
+			return created(tx, library)
+		}
+		return nil
+	})
+}

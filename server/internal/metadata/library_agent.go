@@ -69,7 +69,7 @@ var ScreenMetadataLanguages = []string{"en", "ja", "fr", "de", "es", "it", "pt",
 // agent listing and the create path share one definition instead of two lists.
 func ValidLibraryKind(kind string) bool {
 	switch kind {
-	case "movie", "tv", "anime", "music", "audiobook":
+	case "movie", "tv", "anime", "music", "audiobook", "book", "comic":
 		return true
 	}
 	return false
@@ -95,6 +95,9 @@ func LibraryLanguageOffered(kind, agent, language string) bool {
 // LibraryAgentOptions lists the sources a library of this kind can choose, the
 // default first. New agents (another provider set) are added here.
 func LibraryAgentOptions(kind string) []LibraryAgentOption {
+	if kind == "book" || kind == "comic" || kind == "audiobook" {
+		return []LibraryAgentOption{{ID: AgentLocal, Name: "Local files only", Description: "Uses local files and embedded metadata without online lookups.", Providers: []string{}, Languages: []string{}}}
+	}
 	online := LibraryAgentOption{ID: AgentOnline, Name: "Portico online metadata", Languages: []string{}}
 	switch kind {
 	case "movie":
@@ -136,6 +139,9 @@ func readLibraryAgent(ctx context.Context, tx *sql.Tx, library string) (LibraryA
 	var lang sql.NullString
 	err := tx.QueryRowContext(ctx, `SELECT l.kind,a.revision,a.agent,p.language FROM libraries l JOIN library_metadata_agents a ON a.library_id=l.id LEFT JOIN screen_metadata_policies p ON p.library_id=l.id WHERE l.id=?`, library).Scan(&out.LibraryKind, &out.Revision, &out.Agent, &lang)
 	out.Agents = LibraryAgentOptions(out.LibraryKind)
+	if out.LibraryKind == "book" || out.LibraryKind == "comic" || out.LibraryKind == "audiobook" {
+		out.Agent = AgentLocal
+	}
 	if err != nil {
 		return out, err
 	}

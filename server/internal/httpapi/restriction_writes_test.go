@@ -396,6 +396,36 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
+		"DELETE /v1/me/removed-titles/{id}": perHidden("DELETE", "/v1/me/removed-titles/ID", "", "item"),
+		"POST /v1/home/destination-picker": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for _, kind := range []string{"playlist", "collection"} {
+				for _, id := range m.hiddenItemSamples() {
+					out = append(out, idProbe{hidden: id, method: "POST", path: "/v1/home/destination-picker", body: fmt.Sprintf(`{"kind":%q,"limit":40,"itemIds":[%q]}`, kind, id)})
+				}
+			}
+			return out
+		}),
+		"POST /v1/home/destination-receipt": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for kind, destination := range map[string]string{"playlist": m.playlist, "collection": m.savedResource} {
+				for _, id := range m.hiddenSamples() {
+					out = append(out,
+						idProbe{hidden: id, method: "POST", path: "/v1/home/destination-receipt", body: fmt.Sprintf(`{"kind":%q,"destinationId":%q,"jobIds":[%q]}`, kind, destination, id)},
+						idProbe{hidden: id, method: "POST", path: "/v1/home/destination-receipt", body: fmt.Sprintf(`{"kind":%q,"destinationId":%q,"jobIds":["matrix-foreign-job"]}`, kind, id)},
+					)
+				}
+			}
+			return out
+		}),
+		"POST /v1/metadata/bulk/preview": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for _, library := range []string{"private-library", "matrix-movies"} {
+				body := fmt.Sprintf(`{"targets":[{"kind":"item","contentKind":"movie","id":"ID","libraryId":%q}]}`, library)
+				out = append(out, perHidden("POST", "/v1/metadata/bulk/preview", body, "item").probes(m)...)
+			}
+			return out
+		}),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.mks": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.sub": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
@@ -540,8 +570,18 @@ func restrictionWriteRoutes() map[string]writeRoute {
 			}
 			return out
 		}),
-		"POST /v1/downloads/preparations":             perHidden("POST", "/v1/downloads/preparations", `{"operationId":"OP","mediaId":"ID","quality":"original"}`, "item"),
-		"POST /v1/playback/sessions":                  perHidden("POST", "/v1/playback/sessions", `{"itemId":"ID","startFrom":"beginning"}`, "item"),
+		"POST /v1/downloads/preparations":      perHidden("POST", "/v1/downloads/preparations", `{"operationId":"OP","mediaId":"ID","quality":"original"}`, "item"),
+		"POST /v1/playback/sessions":           perHidden("POST", "/v1/playback/sessions", `{"itemId":"ID","startFrom":"beginning"}`, "item"),
+		"POST /v1/playback/controls/{id}:stop": writeExempt("account-scoped opaque playback session stop; no catalogue ID or title response (TestPlaybackV1AccountPlaybackListHidesRestrictedTitlesAndStopsOwnSlots)"),
+		"POST /v1/downloads/options": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for _, kind := range []string{"show", "season", "album", "book"} {
+				body := fmt.Sprintf(`{"target":{"kind":%q,"id":"ID"},"deviceId":%q,"policy":{"episodes":"all"}}`, kind, m.device)
+				out = append(out, perHidden("POST", "/v1/downloads/options", body, kind).probes(m)...)
+			}
+			return out
+		}),
+		"POST /v1/queues/{id}/batch":                  perHidden("POST", "/v1/queues/matrix-unknown/batch", `{"placement":"end","source":{"items":{"ids":["ID"]}}}`, "item"),
 		"POST /v1/queues":                             perHidden("POST", "/v1/queues", `{"segments":[{"source":{"items":{"ids":["ID"]}}}],"startPlayback":{"state":"playing"}}`, "item"),
 		"PATCH /v1/dvr/recordings/{id}":               perHidden("PATCH", "/v1/dvr/recordings/ID", `{"expectedRevision":0}`, "item"),
 		"DELETE /v1/dvr/recordings/{id}":              perHidden("DELETE", "/v1/dvr/recordings/ID", "", "item"),

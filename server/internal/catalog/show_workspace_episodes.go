@@ -14,13 +14,13 @@ func (s *Service) workspaceEpisodes(r ShowWorkspaceRequest, w ShowWorkspace, tar
 		view, entity, section, title = "season", season, "episodes", seasonTitle(seasonNumber)
 	}
 	out := ContentEnvelope{Scope: ContentScope{r.ServerID, r.Library, w.Show.LibraryKind, view, entity, r.ViewerFence}, Revision: revision, Heading: ContentHeading{Key: "entity.title", Fallback: w.Show.Title + " · " + title}, Navigation: []ContentTab{{"discover", "library.discover", "discover"}, {"browse", "library.shows", "browse"}}, Query: ContentQuery{"episode", "asc", "", "", r.Limit, "none"}, Sorts: []ContentSort{{"episode", "sort.episode", []string{"asc"}}}, Filters: []ContentFilter{}, Sections: []ContentSection{}}
-	scope := cursorScope{Library: r.Library, Viewer: r.ViewerFence, Profile: r.Profile, View: "show_workspace_episodes", Entity: show, Section: section + ":" + season, Search: r.EpisodeID, Sort: "episode", Direction: "asc", Limit: r.Limit}
+	scope := cursorScope{Library: r.Library, Viewer: r.ViewerFence, Profile: r.Profile, View: "show_workspace_episodes", Entity: show, Section: section + ":" + season + ":" + r.PlayState, Search: r.EpisodeID, Sort: "episode", Direction: "asc", Limit: r.Limit}
 	after := 0
 	if r.EpisodeID != "" {
 		after = targetNumber - 1
 	}
 	if r.Cursor != "" {
-		c, e := s.decodeRevisionCursor(r.Cursor, scope, revision)
+		c, e := s.decodeDetailCursor(r.Cursor, scope, revision)
 		if e != nil {
 			return out, e
 		}
@@ -39,6 +39,12 @@ func (s *Service) workspaceEpisodes(r ShowWorkspaceRequest, w ShowWorkspace, tar
 	restriction, bound := ItemRestrictionSQL("item.id", r.Viewer.EffectiveRestrictions())
 	where += ` AND ` + restriction
 	args = append(args, bound...)
+	stateSQL, stateArgs, err := episodePlayStateSQL(r.Profile, r.PlayState)
+	if err != nil {
+		return out, err
+	}
+	where += stateSQL
+	args = append(args, stateArgs...)
 	from := ` FROM catalog_episodes ep JOIN catalog_entities item ON item.id=ep.entity_id JOIN catalog_entities sh ON sh.id=ep.show_id LEFT JOIN catalog_entities se ON se.id=ep.season_id WHERE `
 	var count int
 	if e := s.read().QueryRow(`SELECT count(*)`+from+where, args...).Scan(&count); e != nil {

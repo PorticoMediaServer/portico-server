@@ -42,6 +42,7 @@ export function decodeDeleteDirectTwoFactorResponse(input: unknown): types.Delet
 export function decodeDeleteDvrRecordingsIdResponse(input: unknown): types.DeleteDvrRecordingsIdResponse { return decode("DeleteDvrRecordingsIdResponse", input) as types.DeleteDvrRecordingsIdResponse; }
 export function decodeDeleteDvrRulesIdResponse(input: unknown): types.DeleteDvrRulesIdResponse { return decode("DeleteDvrRulesIdResponse", input) as types.DeleteDvrRulesIdResponse; }
 export function decodeDeleteItemsIdLyricsResourceResponse(input: unknown): types.DeleteItemsIdLyricsResourceResponse { return decode("DeleteItemsIdLyricsResourceResponse", input) as types.DeleteItemsIdLyricsResourceResponse; }
+export function decodeDeleteMeRemovedTitlesIdResponse(input: unknown): types.DeleteMeRemovedTitlesIdResponse { return decode("DeleteMeRemovedTitlesIdResponse", input) as types.DeleteMeRemovedTitlesIdResponse; }
 export function decodeDeleteMetadataKindIdArtRoleUploadCandidateIdResponse(input: unknown): types.DeleteMetadataKindIdArtRoleUploadCandidateIdResponse { return decode("DeleteMetadataKindIdArtRoleUploadCandidateIdResponse", input) as types.DeleteMetadataKindIdArtRoleUploadCandidateIdResponse; }
 export function decodeDeletePlaylistsIdResponse(input: unknown): types.DeletePlaylistsIdResponse { return decode("DeletePlaylistsIdResponse", input) as types.DeletePlaylistsIdResponse; }
 export function decodeDeletePlaylistsIdEntriesEntryIdResponse(input: unknown): types.DeletePlaylistsIdEntriesEntryIdResponse { return decode("DeletePlaylistsIdEntriesEntryIdResponse", input) as types.DeletePlaylistsIdEntriesEntryIdResponse; }
@@ -205,6 +206,7 @@ export function decodeGetItemsIdAnalysisArtifactsArtifactResponse(input: unknown
 export function decodeGetItemsIdArtKindResponse(input: unknown): types.GetItemsIdArtKindResponse { return decode("GetItemsIdArtKindResponse", input) as types.GetItemsIdArtKindResponse; }
 export function decodeGetItemsIdCreditsResponse(input: unknown): types.GetItemsIdCreditsResponse { return decode("GetItemsIdCreditsResponse", input) as types.GetItemsIdCreditsResponse; }
 export function decodeGetItemsIdDetailResponse(input: unknown): types.GetItemsIdDetailResponse { return decode("GetItemsIdDetailResponse", input) as types.GetItemsIdDetailResponse; }
+export function decodeGetItemsIdFileInfoResponse(input: unknown): types.GetItemsIdFileInfoResponse { return decode("GetItemsIdFileInfoResponse", input) as types.GetItemsIdFileInfoResponse; }
 export function decodeGetItemsIdListeningResponse(input: unknown): types.GetItemsIdListeningResponse { return decode("GetItemsIdListeningResponse", input) as types.GetItemsIdListeningResponse; }
 export function decodeGetItemsIdLyricsResponse(input: unknown): types.GetItemsIdLyricsResponse { return decode("GetItemsIdLyricsResponse", input) as types.GetItemsIdLyricsResponse; }
 export function decodeGetItemsIdLyricsResourceRevisionsRevisionResponse(input: unknown): types.GetItemsIdLyricsResourceRevisionsRevisionResponse { return decode("GetItemsIdLyricsResourceRevisionsRevisionResponse", input) as types.GetItemsIdLyricsResourceRevisionsRevisionResponse; }
@@ -213,6 +215,7 @@ export function decodeGetItemsIdMetadataMusicbrainzResponse(input: unknown): typ
 export function decodeGetItemsIdPlaybackOffersResponse(input: unknown): types.GetItemsIdPlaybackOffersResponse { return decode("GetItemsIdPlaybackOffersResponse", input) as types.GetItemsIdPlaybackOffersResponse; }
 export function decodeGetItemsIdPreparedVersionsResponse(input: unknown): types.GetItemsIdPreparedVersionsResponse { return decode("GetItemsIdPreparedVersionsResponse", input) as types.GetItemsIdPreparedVersionsResponse; }
 export function decodeGetItemsIdRecommendationsResponse(input: unknown): types.GetItemsIdRecommendationsResponse { return decode("GetItemsIdRecommendationsResponse", input) as types.GetItemsIdRecommendationsResponse; }
+export function decodeGetItemsIdRecommendationsRowResponse(input: unknown): types.GetItemsIdRecommendationsRowResponse { return decode("GetItemsIdRecommendationsRowResponse", input) as types.GetItemsIdRecommendationsRowResponse; }
 export function decodeGetItemsIdSourceAvailabilityResponse(input: unknown): types.GetItemsIdSourceAvailabilityResponse { return decode("GetItemsIdSourceAvailabilityResponse", input) as types.GetItemsIdSourceAvailabilityResponse; }
 export function decodeGetItemsIdTrickplayResponse(input: unknown): types.GetItemsIdTrickplayResponse { return decode("GetItemsIdTrickplayResponse", input) as types.GetItemsIdTrickplayResponse; }
 export function decodeGetItemsIdTrickplaySetThumbnailsVttResponse(input: unknown): types.GetItemsIdTrickplaySetThumbnailsVttResponse { return decode("GetItemsIdTrickplaySetThumbnailsVttResponse", input) as types.GetItemsIdTrickplaySetThumbnailsVttResponse; }
@@ -248,6 +251,8 @@ export function decodeGetLiveSourceConfigurationResponse(input: unknown): types.
 export function decodeGetLiveTunersResponse(input: unknown): types.GetLiveTunersResponse { return decode("GetLiveTunersResponse", input) as types.GetLiveTunersResponse; }
 export function decodeGetMeResponse(input: unknown): types.GetMeResponse { return decode("GetMeResponse", input) as types.GetMeResponse; }
 export function decodeGetMeLibraryNavigationResponse(input: unknown): types.GetMeLibraryNavigationResponse { return decode("GetMeLibraryNavigationResponse", input) as types.GetMeLibraryNavigationResponse; }
+export function decodeGetMeRemovedTitlesIdResponse(input: unknown): types.GetMeRemovedTitlesIdResponse { return decode("GetMeRemovedTitlesIdResponse", input) as types.GetMeRemovedTitlesIdResponse; }
+export function decodeGetMeSavedSummaryResponse(input: unknown): types.GetMeSavedSummaryResponse { return decode("GetMeSavedSummaryResponse", input) as types.GetMeSavedSummaryResponse; }
 export function decodeGetMediaGrantResponse(input: unknown): types.GetMediaGrantResponse { return decode("GetMediaGrantResponse", input) as types.GetMediaGrantResponse; }
 export function decodeGetMediaGrantAudioResponse(input: unknown): types.GetMediaGrantAudioResponse { return decode("GetMediaGrantAudioResponse", input) as types.GetMediaGrantAudioResponse; }
 export function decodeGetMediaGrantAudioConvertedResponse(input: unknown): types.GetMediaGrantAudioConvertedResponse { return decode("GetMediaGrantAudioConvertedResponse", input) as types.GetMediaGrantAudioConvertedResponse; }
@@ -306,6 +311,7 @@ export function decodeGetShowsIdSeasonsResponse(input: unknown): types.GetShowsI
 export function decodeGetShowsScreenMetadataResponse(input: unknown): types.GetShowsScreenMetadataResponse { return decode("GetShowsScreenMetadataResponse", input) as types.GetShowsScreenMetadataResponse; }
 export function decodeGetStorageMountsResponse(input: unknown): types.GetStorageMountsResponse { return decode("GetStorageMountsResponse", input) as types.GetStorageMountsResponse; }
 export function decodeGetStorageOperationsIdResponse(input: unknown): types.GetStorageOperationsIdResponse { return decode("GetStorageOperationsIdResponse", input) as types.GetStorageOperationsIdResponse; }
+export function decodeGetStorageRcloneBundledResponse(input: unknown): types.GetStorageRcloneBundledResponse { return decode("GetStorageRcloneBundledResponse", input) as types.GetStorageRcloneBundledResponse; }
 export function decodeGetStorageSourceOperationsIdResponse(input: unknown): types.GetStorageSourceOperationsIdResponse { return decode("GetStorageSourceOperationsIdResponse", input) as types.GetStorageSourceOperationsIdResponse; }
 export function decodeGetStorageSourcesResponse(input: unknown): types.GetStorageSourcesResponse { return decode("GetStorageSourcesResponse", input) as types.GetStorageSourcesResponse; }
 export function decodeGetStorageStatusResponse(input: unknown): types.GetStorageStatusResponse { return decode("GetStorageStatusResponse", input) as types.GetStorageStatusResponse; }
