@@ -9,7 +9,7 @@ export const artworkMessages = {
   'next.artwork.who': 'Who’s watching?',
   'next.artwork.pin': 'PIN',
   'next.artwork.case.ambient': 'Ambient artwork',
-  'next.artwork.case.colour': 'Colour backdrop',
+  'next.artwork.case.colour': 'Color backdrop',
   'next.artwork.case.generated': 'Generated artwork',
   'next.artwork.case.cover': 'Generated cover',
   'next.artwork.case.artist': 'Artist circle',
