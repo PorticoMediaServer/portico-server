@@ -27,4 +27,6 @@ export const statesNativeFixtures = {
   oldServer: '1.2.6',
   minimumServer: '1.3',
   diagnosticCode: 'lease_expired',
+  diagnosticTime: '4:05 PM',
+  uploadRate: '4 Mb/s',
 } as const;

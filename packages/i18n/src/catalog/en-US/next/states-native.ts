@@ -11,6 +11,8 @@ export const statesNativeMessages = {
   'next.states.native.inlineEmpty': 'Nothing shared yet',
   'next.states.native.playerFailure': 'Playback stopped',
   'next.states.native.crash': 'Something went wrong',
+  'next.states.native.removed': 'A removed title',
+  'next.states.native.restricted': "Outside this profile's limits",
   'next.states.native.phoneConnectionHelp': 'If the server is asleep or switched off, it may need waking. Check this phone is on the same network, or that the server can be reached from outside.',
   'next.states.native.tvConnectionHelp': 'If the server is asleep or switched off, it may need waking. Check that this TV is on the same network as the server.',
   'next.states.native.phoneCrashBody': "Portico ran into a problem it couldn't recover from. Trying again usually fixes it, and nothing you saved was lost.",
