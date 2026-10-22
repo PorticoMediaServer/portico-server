@@ -2,6 +2,8 @@ package playbackv1
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"testing"
 	"time"
 )
@@ -58,5 +60,34 @@ func TestRefusedMutationsKeepPreparedPlayback(t *testing.T) {
 				t.Fatalf("refused mutation canceled preparation: %s", state)
 			}
 		})
+	}
+}
+
+func TestSourceSessionCommittedIdentityAndProfileFence(t *testing.T) {
+	db := pausedTestDB(t)
+	now := time.Now()
+	s := &Service{DB: db, Now: func() time.Time { return now }}
+	insertPausedSession(t, db, "source", "vod", "playing", now.UnixMilli(), 0)
+	if _, err := db.Exec(`UPDATE playback_v1_sessions SET media_session_id='media-real',generation=7,media_generation=11,revision=3 WHERE id='source'`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	p := pausedCaller().Principal
+	got, err := s.SourceSessionTx(context.Background(), tx, p, "source")
+	if err != nil || got.MediaID != "media-real" || got.PresentationGeneration != 7 || got.MediaGeneration != 11 || got.Revision != 3 || !got.Live {
+		t.Fatalf("committed identity: %+v %v", got, err)
+	}
+	p.ProfileID = "child"
+	if _, err = s.SourceSessionTx(context.Background(), tx, p, "source"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("other profile: %v", err)
+	}
+	p = pausedCaller().Principal
+	p.Authority = "hosted"
+	if _, err = s.SourceSessionTx(context.Background(), tx, p, "source"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("other authority: %v", err)
 	}
 }

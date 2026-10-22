@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net/url"
+	"portico.local/server/internal/identity"
 	"time"
 
 	"portico.local/server/internal/compactcatalog"
@@ -454,6 +456,15 @@ func (s *Service) withNext(ctx context.Context, c Caller, v *QueueView, q queueR
 		}
 	}
 	v.Next = &next
+
+	// A growing capture has no invented duration total.
+	if len(l.building) == 0 {
+		if summary, err := s.queueDuration(ctx, l, c.Principal); err == nil {
+			v.TotalDurationMs = &summary.ms
+			v.DurationKnown = summary.known
+		}
+	}
+
 	if policy, err := s.postPlayPolicy(ctx, tx, c, l); err == nil {
 		v.PostPlay = &policy
 	}
@@ -580,4 +591,70 @@ func currentEpisode(ctx context.Context, tx *sql.Tx, l *layout) bool {
 		return false
 	}
 	return episode
+}
+
+// CollectionSuccessor is the genuine next available film in a collection's
+// saved order. A missing successor is absent, never inferred from a year.
+type CollectionSuccessor struct {
+	ID    string              `json:"id"`
+	Title string              `json:"title"`
+	Next  CollectionNextTitle `json:"next"`
+}
+type CollectionNextTitle struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Year        int      `json:"year,omitempty"`
+	Genres      []string `json:"genres"`
+	BackdropURL string   `json:"backdropUrl,omitempty"`
+}
+
+func (s *Service) collectionSuccessor(ctx context.Context, tx *sql.Tx, p identity.Principal, item string) (*CollectionSuccessor, error) {
+	visible, args := "1=1", []any{}
+	if s.Visibility != nil {
+		var err error
+		visible, args, err = s.Visibility(ctx, tx, p, "i.id")
+		if err != nil {
+			return nil, err
+		}
+	}
+	out := &CollectionSuccessor{Next: CollectionNextTitle{Genres: []string{}}}
+	var entity int64
+	var backdrop bool
+	var library string
+	err := tx.QueryRowContext(ctx, `SELECT pid(c.public_id),c.title,library.library_id,pid(i.public_id),i.id,i.title,i.year,
+ EXISTS(SELECT 1 FROM artwork_selections art JOIN artwork_objects obj ON obj.digest=art.digest AND obj.status='ready' WHERE art.kind='item' AND art.entity_id=i.id AND art.role='backdrop' AND art.subject='')
+ FROM catalog_entities current JOIN catalog_collection_members anchor ON anchor.item_id=current.id
+ JOIN catalog_entities c ON c.id=anchor.collection_id AND c.retired=0
+ JOIN catalog_libraries library ON library.id=c.library_id AND library.retired=0
+ JOIN catalog_collection_members member ON member.collection_id=anchor.collection_id AND (member.order_key,member.item_id)>(anchor.order_key,anchor.item_id)
+ JOIN catalog_entities i ON i.id=member.item_id AND i.kind=1 AND i.retired=0
+ WHERE current.public_id=pid_blob(?) AND current.kind=1 AND (`+visible+`) AND EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=i.id AND a.available=1)
+ ORDER BY c.id,member.order_key,member.item_id LIMIT 1`, append([]any{item}, args...)...).Scan(&out.ID, &out.Title, &library, &out.Next.ID, &entity, &out.Next.Title, &out.Next.Year, &backdrop)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if s.LibraryCheck != nil {
+		if err := s.LibraryCheck(ctx, tx, p, library); err != nil {
+			return nil, nil
+		}
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT COALESCE(src.label_override,term.label) FROM catalog_term_sources src JOIN catalog_terms term ON term.id=src.term_id WHERE src.entity_id=? AND term.vocab=? ORDER BY 1`, entity, compactcatalog.VocabGenre)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		out.Next.Genres = append(out.Next.Genres, name)
+	}
+	if backdrop {
+		out.Next.BackdropURL = "/v1/items/" + url.PathEscape(out.Next.ID) + "/art/backdrop"
+	}
+	return out, rows.Err()
 }

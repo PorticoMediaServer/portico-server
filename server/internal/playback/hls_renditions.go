@@ -40,6 +40,7 @@ type AudioRenditionPlan struct {
 	ChannelLayout string `json:"channelLayout,omitempty"`
 	Language      string `json:"language"`
 	Label         string `json:"label"`
+	Title         string `json:"title,omitempty"`
 	Default       bool   `json:"default"`
 	Commentary    bool   `json:"commentary,omitempty"`
 }
@@ -75,7 +76,12 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 		}
 	}
 	for _, a := range tracks {
-		r := AudioRenditionPlan{Ordinal: len(out), StreamIndex: a.Index, Action: "copy", Codec: a.Codec, Channels: a.Channels, BitrateBPS: int(a.BitRate), Language: manifestAudioLanguage(a.Language), Default: a.Index == p.AudioStream, Commentary: a.Commentary}
+		r := AudioRenditionPlan{Ordinal: len(out), StreamIndex: a.Index, Action: "copy", Codec: a.Codec, Channels: a.Channels, BitrateBPS: int(a.BitRate), Language: manifestAudioLanguage(a.Language), Default: a.Index == p.AudioStream, Commentary: a.Commentary, Title: strings.TrimSpace(strings.Map(func(r rune) rune {
+			if r < 32 || r == 127 {
+				return ' '
+			}
+			return r
+		}, a.Title))}
 		r.Packaging = "mpegts_hls"
 		if kind == TransportHLSFMP4 {
 			r.Packaging = "fmp4_hls"

@@ -5,18 +5,18 @@
   "auth": "device",
   "status": 200,
   "response": {
-    "itemId": "N0AfeetlQ23lEjcxkLSl1w",
+    "itemId": "vOs-4rlk4C5_obYhRFupHw",
     "kind": "movie",
     "versions": [
       {
-        "id": "teBUakQ-1zlO_JJsKRtyLkixUX3v4XsTdhqozSP-Q9c",
+        "id": "pDLG7a4pH2yInLVlKcwvZSkzTE3OiUQysQsy_kCOsns",
         "label": "1080p · MP4",
         "container": "mp4",
         "sizeBytes": 10,
         "durationMs": 600000,
         "parts": [
           {
-            "id": "teBUakQ-1zlO_JJsKRtyLkixUX3v4XsTdhqozSP-Q9c",
+            "id": "pDLG7a4pH2yInLVlKcwvZSkzTE3OiUQysQsy_kCOsns",
             "index": 0,
             "durationMs": 600000,
             "sizeBytes": 10
@@ -35,20 +35,26 @@
       }
     ],
     "preferred": {
-      "versionId": "teBUakQ-1zlO_JJsKRtyLkixUX3v4XsTdhqozSP-Q9c",
+      "versionId": "pDLG7a4pH2yInLVlKcwvZSkzTE3OiUQysQsy_kCOsns",
       "reason": "default",
       "quality": {
         "mode": "original"
       }
     },
     "plan": {
-      "versionId": "teBUakQ-1zlO_JJsKRtyLkixUX3v4XsTdhqozSP-Q9c",
+      "versionId": "pDLG7a4pH2yInLVlKcwvZSkzTE3OiUQysQsy_kCOsns",
       "mode": "direct",
       "engine": "native",
       "streams": [],
       "quality": {
         "mode": "original"
       }
-    }
+    },
+    "alternatives": [
+      {
+        "versionId": "pDLG7a4pH2yInLVlKcwvZSkzTE3OiUQysQsy_kCOsns",
+        "label": "1080p · MP4"
+      }
+    ]
   }
 }

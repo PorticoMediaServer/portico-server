@@ -75,6 +75,7 @@ type Span struct {
 // For HLS, every nested URI is replaced by an opaque private route and independently
 // passes the same DNS-pinned policy. No source URL escapes in an error/header.
 type Gateway struct {
+	captions      CaptionDeclarations
 	rawTimes      []time.Time
 	resourceSlots chan struct{}
 	gapBaseline   int

@@ -383,6 +383,11 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 			c := d.v1ServiceCaller(q, callerFrom(ctx))
 			v, preparing, err := d.playbackV1().Start(ctx, c, q.Header.Get("Idempotency-Key"), in)
 			if err != nil {
+				if errors.Is(err, playback.ErrOwnerAccountCap) {
+					if detail, e := d.playbackV1().AccountStreamLimit(ctx, c); e == nil {
+						return v, &apierror.Error{Code: "stream_limit_reached", Reason: "owner_account_cap", Current: detail, Cause: err}
+					}
+				}
 				return v, err
 			}
 			if preparing {
@@ -460,7 +465,7 @@ func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 		})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "get_playback_options", Method: "GET", Path: "/v1/items/{itemId}/playback-options", Summary: "Read what a title offers and what this device would get",
 		Access: apikit.ViewerItem, Requires: apikit.ScopeRead, Lane: apikit.Media, Cost: apikit.Constant, Status: 200,
-		Query:  []string{"versionId", "partId", "audioId", "subtitleId", "quality", "qualityId", "maxVideoBitrateKbps", "maxHeight", "maxAudioBitrateKbps"},
+		Query:  []string{"versionId", "partId", "audioId", "subtitleId", "quality", "qualityId", "maxVideoBitrateKbps", "maxHeight", "maxAudioBitrateKbps", "throughputKbps"},
 		Errors: []string{"invalid_request", "unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.Options, error) {
 			c := callerFrom(ctx)
@@ -488,6 +493,9 @@ func previewFrom(q *http.Request) (playbackv1.Preview, error) {
 		return n, nil
 	}
 	var err error
+	if p.ThroughputKbps, err = number("throughputKbps"); err != nil {
+		return p, err
+	}
 	if p.Quality.MaxVideoBitrateKbps, err = number("maxVideoBitrateKbps"); err != nil {
 		return p, err
 	}
@@ -585,6 +593,14 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 		}
 		return n, nil
 	}
+
+	v1Route(r, apikit.Metadata{Admission: laneBrowsing, ID: "get_queue_entry_for_item", Method: "GET", Path: "/v1/queues/{id}/entry", Summary: "Resolve a visible episode outside the loaded queue window for an in-player jump", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.SelectionAsync, Status: 200, Query: []string{"itemId"}, Errors: []string{"invalid_request", "unauthorized", "not_found", "queue_building"}}, func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.QueueItemView, error) {
+		item := q.URL.Query().Get("itemId")
+		if item == "" || len(item) > 128 {
+			return playbackv1.QueueItemView{}, &playbackv1.FieldError{Path: "itemId"}
+		}
+		return d.playbackV1().EntryForItem(ctx, caller(ctx, q), q.PathValue("id"), item)
+	})
 	v1Route(r, apikit.Metadata{Admission: laneBrowsing, ID: "get_queue_window", Method: "GET", Path: "/v1/queues/{id}/window", Summary: "Read the entries around the current one (at most 200)",
 		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"around", "before", "after"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.EntryPage, error) {
@@ -620,6 +636,15 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 			}
 			return d.playbackV1().Entries(ctx, caller(ctx, q), q.PathValue("id"), from, int(limit))
 		})
+
+	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "batch_queue", Method: "POST", Path: "/v1/queues/{id}/batch", Summary: "Play a mixed selection next or later in its source order", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 32 << 10, Status: 200, Errors: command}, func(ctx context.Context, q *http.Request, in playbackv1.BatchQueueRequest) (playbackv1.BatchQueueResult, error) {
+		ctx, err := d.withQueueHomeRows(ctx, q, &in.Source)
+		if err != nil {
+			return playbackv1.BatchQueueResult{}, err
+		}
+		out, err := d.playbackV1().BatchQueue(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), in)
+		return reply(ctx, out, err)
+	})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "add_queue_segment", Method: "POST", Path: "/v1/queues/{id}/segments", Summary: "Play next, add to the queue, or insert after an entry",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 32 << 10, Status: 200, Errors: command},
 		func(ctx context.Context, q *http.Request, in playbackv1.AddSegmentRequest) (playbackv1.QueueReply, error) {

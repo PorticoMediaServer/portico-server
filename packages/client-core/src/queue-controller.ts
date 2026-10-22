@@ -8,7 +8,7 @@ import type {QueueIntent, QueueItemInput, QueueSnapshot, QueueState} from './que
 
 /** The queue as the player shows it: the snapshot, what is playing, what comes next, and the
  * titles of its visible window. */
-export type QueuePlaybackView=Readonly<{queue:QueueSnapshot;highestSequence:string;current:Readonly<{id:string;generation:number;state:string}>|null;next:Readonly<{entryId:string|null;available:boolean;reason:'ready'|'end'|'unavailable'}>;items:readonly Readonly<{entryId:string;itemId:string;title:string;kind:string;libraryId:string;posterUrl?:string;stillUrl?:string}>[];postPlay:QueuePostPlay}>;
+export type QueuePlaybackView=Readonly<{queue:QueueSnapshot;highestSequence:string;current:Readonly<{id:string;generation:number;state:string}>|null;next:Readonly<{entryId:string|null;available:boolean;reason:'ready'|'end'|'unavailable'}>;items:readonly Readonly<{entryId:string;itemId:string;title:string;kind:string;libraryId:string;posterUrl?:string;stillUrl?:string;backdropUrl?:string;durationMs?:number;segmentId?:string;albumId?:string;album?:string;artistId?:string;artist?:string;showId?:string;seasonId?:string;episode?:Readonly<{seasonNumber:number;number:number}>}>[];total?:number;remainingCount?:number;totalDurationMs?:number;durationKnown?:boolean;postPlay:QueuePostPlay}>;
 /** A completion the player holds for the post-play card instead of advancing. */
 export type HeldCompletion=Readonly<{sessionId:string;intentId:number;nextEntryId:string|null;nextAvailable:boolean;reason:'ready'|'end'|'unavailable';postPlay:QueuePostPlay}>;
 export type CompletionPolicy=(context:Readonly<{kind:string;itemId:string}>)=>'advance'|'hold';
@@ -33,6 +33,9 @@ export interface QueueController {
   /** Re-plans the live session with a new quality, version or audio track: the same session on the
    * same queue entry. Absent where the queue cannot. */
   changePlayback?(choices: PlaybackChoices): Promise<void>;
+  /** Outside-player episode start captures the full show; an in-player selection continues the current run. */
+  playEpisode(showId:string,episodeId:string,startSeconds?:number):Promise<void>;
+  selectEpisode(episodeId:string):Promise<void>;
   playEntries(entries: readonly QueueItemInput[], options?: {shuffle?: boolean; startSeconds?: number}): Promise<void>;
   journey(target: ListeningTarget, action: 'play' | 'shuffle' | 'mix' | 'enqueue', resume?: boolean, options?: {signal?: AbortSignal; startItem?: string; startSeconds?: number}): Promise<unknown>;
   enqueue(item: QueueItemInput, next?: boolean): Promise<void>;

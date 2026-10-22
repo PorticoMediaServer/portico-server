@@ -31,12 +31,15 @@ func newShortID(prefix string) string {
 
 // QueueView is the queue header (spec §8, §17.9): constant size.
 type QueueView struct {
-	ID       string        `json:"id"`
-	Revision string        `json:"revision"`
-	Total    int64         `json:"total"`
-	Current  *QueueCurrent `json:"current,omitempty"`
-	Repeat   string        `json:"repeat"`
-	Shuffle  *QueueShuffle `json:"shuffle,omitempty"`
+	ID              string        `json:"id"`
+	Revision        string        `json:"revision"`
+	Total           int64         `json:"total"`
+	TotalDurationMs *int64        `json:"totalDurationMs,omitempty"`
+	DurationKnown   bool          `json:"durationKnown"`
+	RemainingCount  int64         `json:"remainingCount"`
+	Current         *QueueCurrent `json:"current,omitempty"`
+	Repeat          string        `json:"repeat"`
+	Shuffle         *QueueShuffle `json:"shuffle,omitempty"`
 	// Segments lists at most HeaderSegments of them, from the one holding the
 	// current entry; SegmentCount is how many there are.
 	Segments     []SegmentView `json:"segments"`
@@ -65,6 +68,7 @@ type SegmentView struct {
 // QueueEntry is one window entry (ARCH-MEDIA-03 delivery).
 type QueueEntry struct {
 	EntryID    string `json:"entryId"`
+	SegmentID  string `json:"segmentId"`
 	Position   int64  `json:"position"`
 	ItemID     string `json:"itemId"`
 	Kind       string `json:"kind"`
@@ -74,14 +78,26 @@ type QueueEntry struct {
 	// AlbumID, Disc and Track place a song on its album (a book file in its
 	// book), so a client joins consecutive tracks of one album gaplessly rather
 	// than crossfading them (Plexamp's behavior, Plan §9.6). Absent when unknown.
-	AlbumID string `json:"albumId,omitempty"`
-	Disc    int    `json:"disc,omitempty"`
-	Track   int    `json:"track,omitempty"`
+	AlbumID     string        `json:"albumId,omitempty"`
+	Album       string        `json:"album,omitempty"`
+	ArtistID    string        `json:"artistId,omitempty"`
+	Artist      string        `json:"artist,omitempty"`
+	ShowID      string        `json:"showId,omitempty"`
+	SeasonID    string        `json:"seasonId,omitempty"`
+	Episode     *QueueEpisode `json:"episode,omitempty"`
+	BackdropURL string        `json:"backdropUrl,omitempty"`
+	Disc        int           `json:"disc,omitempty"`
+	Track       int           `json:"track,omitempty"`
 	// PosterURL is the title's poster (an episode's season or show poster, a
 	// song's album cover, a book file's cover), present only when one exists.
 	// StillURL is an episode's own still. A client's Up next card shows them.
 	PosterURL string `json:"posterUrl,omitempty"`
 	StillURL  string `json:"stillUrl,omitempty"`
+}
+
+type QueueEpisode struct {
+	SeasonNumber int `json:"seasonNumber"`
+	Number       int `json:"number"`
 }
 
 // Page is the style guide's collection envelope for queue entries (§17.9).
@@ -544,7 +560,7 @@ func (l *layout) positionOf(entry string) (int64, bool) {
 }
 
 func (s *Service) header(l *layout) QueueView {
-	v := QueueView{ID: l.q.id, Revision: strconv.FormatInt(l.q.revision, 10), Total: l.total(), Repeat: l.q.repeat, Segments: []SegmentView{}}
+	v := QueueView{ID: l.q.id, Revision: strconv.FormatInt(l.q.revision, 10), Total: l.total(), Repeat: l.q.repeat, Segments: []SegmentView{}, RemainingCount: max(0, l.total()-l.q.current-1)}
 	// While a start waits for its snapshot (P16) there's no current entry; a
 	// current entry that's still pending has its id and position already.
 	if entry, _, err := l.entryAtErr(l.q.current); !l.waiting() && (err == nil || errors.Is(err, ErrQueueBuilding)) {
@@ -628,15 +644,19 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 	keys := make([]string, 0, n)
 	for i := int64(0); i < n; i++ {
 		entry, key, err := l.entryAtErr(from + i)
+		segmentID := ""
+		if si, _, ok := l.sourceAt(l.orderToSource(from + i)); ok {
+			segmentID = l.segments[si].id
+		}
 		if errors.Is(err, ErrQueueBuilding) {
 			// Still being snapshotted (P16): a placeholder that fills in shortly.
-			out = append(out, QueueEntry{EntryID: entry, Position: from + i, Kind: "pending"})
+			out = append(out, QueueEntry{EntryID: entry, SegmentID: segmentID, Position: from + i, Kind: "pending"})
 			continue
 		}
 		if err != nil {
 			continue
 		}
-		out = append(out, QueueEntry{EntryID: entry, Position: from + i, ItemID: key})
+		out = append(out, QueueEntry{EntryID: entry, SegmentID: segmentID, Position: from + i, ItemID: key})
 		keys = append(keys, key)
 	}
 	if len(keys) == 0 {
@@ -644,27 +664,37 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 	}
 	// Facts only (entities, songs, book files, links, assets): no wait.
 	type info struct {
-		kind, title, album, still string
-		duration                  float64
-		disc, track               int
-		poster                    bool
+		entity                                     int64
+		kind, title, album, still                  string
+		albumTitle, artistID, artist, show, season string
+		seasonNumber, episodeNumber                int
+		backdrop                                   bool
+		duration                                   float64
+		disc, track                                int
+		poster                                     bool
 	}
 	found := map[string]info{}
 	// Artwork is keyed lookups on the selection's primary key: the item's own
 	// still, and whether the poster the item art route would serve exists (its
 	// own, else its album's or book's cover, else its season's or show's).
-	rows, err := l.tx.QueryContext(ctx, `SELECT pid(i.public_id),k.name,i.title,
+	rows, err := l.tx.QueryContext(ctx, `SELECT pid(i.public_id),i.id,k.name,i.title,
  COALESCE((SELECT a.duration FROM catalog_asset_links x JOIN catalog_assets a ON a.id=x.asset_id WHERE x.entity_id=i.id ORDER BY x.part_index,a.id LIMIT 1),0),
  COALESCE(pid(album.public_id),pid(book.public_id),''),COALESCE(s.disc_number,b.disc_number,0),COALESCE(s.track_number,b.part_number,0),
  COALESCE((SELECT a.role||'/'||a.digest FROM artwork_selections a JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE a.kind='item' AND a.entity_id=i.id AND a.role IN('still','thumbnail') AND a.subject='' ORDER BY a.role LIMIT 1),''),
  EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE a.subject='' AND (
   (a.kind='item' AND a.entity_id=i.id AND a.role IN('poster','cover')) OR (a.kind='album' AND a.entity_id=s.album_id AND a.role='cover') OR
   (a.kind='book' AND a.entity_id=b.book_id AND a.role='cover') OR (a.kind='season' AND a.entity_id=ep.season_id AND a.role='poster') OR
-  (a.kind='show' AND a.entity_id=ep.show_id AND a.role='poster')))
+  (a.kind='show' AND a.entity_id=ep.show_id AND a.role='poster'))),
+ COALESCE(album.title,book.title,''),COALESCE(pid(artist.public_id),''),COALESCE(artist.title,''),
+ COALESCE(pid(show.public_id),''),COALESCE(pid(season.public_id),''),COALESCE(sn.number,0),COALESCE(ep.number,0),
+ EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE a.subject='' AND a.role='backdrop' AND ((a.kind='item' AND a.entity_id=i.id) OR (a.kind='show' AND a.entity_id=ep.show_id)))
 	FROM catalog_entities i JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1
 	LEFT JOIN catalog_songs s ON s.entity_id=i.id LEFT JOIN catalog_entities album ON album.id=s.album_id
 	LEFT JOIN catalog_book_files b ON b.entity_id=i.id LEFT JOIN catalog_entities book ON book.id=b.book_id
 	LEFT JOIN catalog_episodes ep ON ep.entity_id=i.id
+ LEFT JOIN catalog_albums al ON al.entity_id=s.album_id LEFT JOIN catalog_entities artist ON artist.id=al.artist_id
+ LEFT JOIN catalog_entities show ON show.id=ep.show_id LEFT JOIN catalog_entities season ON season.id=ep.season_id
+ LEFT JOIN catalog_seasons sn ON sn.entity_id=ep.season_id
 	WHERE i.public_id IN (SELECT pid_blob(value) FROM json_each(?))`, jsonList(keys))
 	if err != nil {
 		return nil, err
@@ -672,13 +702,25 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 	for rows.Next() {
 		var id string
 		var v info
-		if err = rows.Scan(&id, &v.kind, &v.title, &v.duration, &v.album, &v.disc, &v.track, &v.still, &v.poster); err != nil {
+		if err = rows.Scan(&id, &v.entity, &v.kind, &v.title, &v.duration, &v.album, &v.disc, &v.track, &v.still, &v.poster, &v.albumTitle, &v.artistID, &v.artist, &v.show, &v.season, &v.seasonNumber, &v.episodeNumber, &v.backdrop); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		found[id] = v
 	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
+	wanted := make([]durationKey, 0, len(found))
+	for _, v := range found {
+		wanted = append(wanted, durationKey{entity: v.entity})
+	}
+	lengths, err := durationsOf(ctx, l.tx, wanted)
+	if err != nil {
+		return nil, err
+	}
 	filter, err := s.visibleFilter(ctx, l.tx, p)
 	if err != nil {
 		return nil, err
@@ -697,9 +739,17 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 		}
 		v, ok := found[out[i].ItemID]
 		if ok && visible[out[i].ItemID] {
-			out[i].Kind, out[i].Title, out[i].DurationMs, out[i].Available = v1Kind(v.kind), v.title, int64(v.duration*1000), true
+			out[i].Kind, out[i].Title, out[i].DurationMs, out[i].Available = v1Kind(v.kind), v.title, lengths[durationKey{entity: v.entity}], true
+			out[i].Album, out[i].ArtistID, out[i].Artist = v.albumTitle, v.artistID, v.artist
+			out[i].ShowID, out[i].SeasonID = v.show, v.season
+			if v.kind == "episode" {
+				out[i].Episode = &QueueEpisode{SeasonNumber: v.seasonNumber, Number: v.episodeNumber}
+			}
 			out[i].AlbumID, out[i].Disc, out[i].Track = v.album, max(v.disc, 0), max(v.track, 0)
 			escaped := url.PathEscape(out[i].ItemID)
+			if v.backdrop {
+				out[i].BackdropURL = "/v1/items/" + escaped + "/art/backdrop"
+			}
 			if v.poster {
 				out[i].PosterURL = "/v1/items/" + escaped + "/art/poster"
 			}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/personalstate"
 
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/decoder"
@@ -89,8 +90,17 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	if e != nil {
 		return out, e
 	}
-	tx := gated.Tx()
 	defer gated.Rollback()
+	out, e = s.optionsTx(ctx, gated.Tx(), p, item, owner)
+	if e != nil {
+		return out, e
+	}
+	return out, gated.Commit()
+}
+
+func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item string, owner bool) (DownloadOptionsView, error) {
+	out := DownloadOptionsView{ItemID: item, Options: []QualityOption{}}
+	var e error
 	if e = s.visibleItem(ctx, tx, p, item); e != nil {
 		if errors.Is(e, identity.ErrContentRestricted) {
 			return out, ErrNotFound
@@ -234,7 +244,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 		out.Options = append(out.Options, decorate(option, live))
 	}
-	return out, gated.Commit()
+	return out, nil
 }
 
 func decorate(option QualityOption, live map[string][2]string) QualityOption {
@@ -265,4 +275,132 @@ func selectableVersionForSource(versions []preparedmedia.Version, profile, sourc
 		}
 	}
 	return selectableVersion(selected, profile)
+}
+
+// ContainerOptionsRequest reads exactly the members a container download would
+// admit. It creates no preparation or durable request.
+type ContainerOptionsRequest struct {
+	Target   ContainerTarget `json:"target"`
+	DeviceID string          `json:"deviceId"`
+	Policy   EpisodePolicy   `json:"policy"`
+}
+type ContainerQualityOption struct {
+	Quality          string `json:"quality"`
+	Label            string `json:"label"`
+	EstimatedBytes   int64  `json:"estimatedBytes"`
+	Estimated        bool   `json:"estimated"`
+	Available        bool   `json:"available"`
+	UnavailableCount int    `json:"unavailableCount"`
+	UnknownSizeCount int    `json:"unknownSizeCount"`
+}
+type ContainerOptionsView struct {
+	Target  ContainerTarget          `json:"target"`
+	Total   int                      `json:"total"`
+	Options []ContainerQualityOption `json:"options"`
+}
+
+// ContainerOptions aggregates every selected member within one database
+// snapshot. Keyset batches keep memory bounded independently of season size;
+// each member uses the same policy, recipe and exact/prepared-size producer as
+// the one-title sheet. An incomplete estimate explicitly names unknown sizes.
+func (s *Service) ContainerOptions(ctx context.Context, p identity.Principal, in ContainerOptionsRequest, owner bool) (ContainerOptionsView, error) {
+	out := ContainerOptionsView{Target: in.Target, Options: []ContainerQualityOption{}}
+	normalized := ContainerRequest{OperationID: "options", Target: in.Target, DeviceID: in.DeviceID, Quality: QualityOriginal, Policy: in.Policy}
+	if err := normalizeContainerRequest(&normalized); err != nil {
+		return out, err
+	}
+	in.Policy = normalized.Policy
+	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return out, err
+	}
+	defer snapshot.Rollback()
+	tx := snapshot.Tx()
+	visible, args, err := s.requestAccess(ctx, tx, p, in.DeviceID)
+	if err != nil {
+		return out, err
+	}
+	if _, err = requestFence(ctx, tx, p, in.Target, in.Policy.Episodes, visible, args); err != nil {
+		return out, err
+	}
+	query, bound := requestSelection(in.Target)
+	query += ` AND (` + visible + `) AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements d WHERE d.item_id=i.id)`
+	bound = append(bound, args...)
+	if in.Policy.Episodes != "all" {
+		query += ` AND NOT (` + personalstate.SQL("?", "i.id") + `)`
+		bound = append(bound, identity.PersonalKey(p.Viewer))
+	}
+	byQuality := map[string]int{}
+	coverage := map[string]int{}
+	key, after := "", ""
+	for {
+		limit := requestBatchSize
+		if in.Policy.Episodes == "next" {
+			limit = min(limit, in.Policy.KeepNext-out.Total)
+			if limit <= 0 {
+				break
+			}
+		}
+		rows, e := tx.QueryContext(ctx, `SELECT id,position FROM (`+query+`) WHERE (position,id)>(?,?) ORDER BY position,id LIMIT ?`, append(append([]any{}, bound...), key, after, limit)...)
+		if e != nil {
+			return out, e
+		}
+		type member struct{ id, key string }
+		batch := []member{}
+		for rows.Next() {
+			var m member
+			if e = rows.Scan(&m.id, &m.key); e != nil {
+				rows.Close()
+				return out, e
+			}
+			batch = append(batch, m)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return out, e
+		}
+		if len(batch) == 0 {
+			break
+		}
+		observeRequestBatch(ctx, "options", len(batch))
+		for _, m := range batch {
+			options, e := s.optionsTx(ctx, tx, p, m.id, owner)
+			if e != nil {
+				return out, e
+			}
+			out.Total++
+			key, after = m.key, m.id
+			for _, option := range options.Options {
+				index, exists := byQuality[option.Quality]
+				if !exists {
+					index = len(out.Options)
+					byQuality[option.Quality] = index
+					out.Options = append(out.Options, ContainerQualityOption{Quality: option.Quality, Label: option.Label, Available: true})
+				}
+				sum := &out.Options[index]
+				coverage[option.Quality]++
+				sum.EstimatedBytes += option.Bytes
+				sum.Estimated = sum.Estimated || option.Estimated
+				if option.Bytes <= 0 {
+					sum.UnknownSizeCount++
+				}
+				if !option.Available {
+					sum.UnavailableCount++
+				}
+			}
+		}
+	}
+	if out.Total == 0 {
+		return out, ErrNotFound
+	}
+	for i := range out.Options {
+		q := &out.Options[i]
+		missing := out.Total - coverage[q.Quality]
+		q.UnavailableCount += missing
+		q.UnknownSizeCount += missing
+		q.Available = q.UnavailableCount == 0
+	}
+	// Do not retain any per-title credential, path or preparation identity.
+	return out, snapshot.Commit()
 }

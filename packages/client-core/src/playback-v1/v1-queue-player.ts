@@ -312,10 +312,10 @@ export class V1QueuePlayer implements QueueController {
       repeat: header.repeat, shuffled: !!header.shuffle, currentEntryId: current?.entryId ?? null, currentPlaybackId: this.session?.id ?? null, entries: Object.freeze(entries),
     });
     const view: QueuePlaybackView = Object.freeze({
-      queue, highestSequence: '0',
+      queue, highestSequence: '0', total:header.total, remainingCount:header.remainingCount, totalDurationMs:header.totalDurationMs, durationKnown:header.durationKnown,
       current: this.session ? Object.freeze({id: this.session.id, generation: this.session.presentation.generation, state: this.session.state}) : null,
       next,
-      items: Object.freeze(this.window.filter(e => e.itemId).map(e => Object.freeze({entryId: e.entryId, itemId: e.itemId, title: e.title, kind: e.kind, libraryId: '', ...(e.posterUrl ? {posterUrl: e.posterUrl} : {}), ...(e.stillUrl ? {stillUrl: e.stillUrl} : {})}))),
+      items: Object.freeze(this.window.filter(e => e.itemId).map(e => Object.freeze({...e, libraryId: ''}))),
       postPlay,
     });
     this.publish({view, error: null});
@@ -337,6 +337,21 @@ export class V1QueuePlayer implements QueueController {
     const current = this.currentEntry();
     if (current && current.itemId === itemId && this.session?.itemId === itemId && !this.nativeOwns()) return this.restartCurrent(startSeconds, chosen);
     return this.play(segments([itemId], false), itemId, {startSeconds}, chosen).then(() => {});
+  }
+
+  /** A fresh start outside the player captures the entire show on the server.
+   * An in-player episode pick then jumps in this queue and retains this run. */
+  playEpisode(showId: string, episodeId: string, startSeconds?: number): Promise<void> {
+    return this.play([{source:{container:{kind:'show',id:showId}},anchor:{itemId:episodeId}}],episodeId,{startSeconds}).then(()=>{});
+  }
+
+  /** Resolve beyond the resident window before using the ordinary run-preserving jump. */
+  async selectEpisode(episodeId: string): Promise<void> {
+    const header=this.header;
+    if(!header)throw new PlaybackApiError(404,'not_found','never');
+    const found=await this.client.entryForItem(header.id,episodeId);
+    if(this.disposed||this.header?.id!==header.id)return;
+    await this.playEntry(header.id,found.entry.entryId,found.revision);
   }
 
   // ── Changing what is playing ────────────────────────────────────────

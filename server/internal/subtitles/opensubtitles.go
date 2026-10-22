@@ -631,7 +631,35 @@ func (p *OpenSubtitles) Status() ProviderStatus {
 	if p.loginRejected.Load() {
 		return ProviderStatus{ID: p.ID(), Reason: ReasonSignInFailed}
 	}
-	return ProviderStatus{ID: p.ID(), Enabled: true}
+	p.observedMu.Lock()
+	o := p.observed
+	p.observedMu.Unlock()
+	status := ProviderStatus{ID: p.ID(), Enabled: true}
+	now := p.clock()
+	reason := o.problem
+	if reason == "" && o.quotaKnown && o.remaining == 0 && o.resetAt.After(now) {
+		reason = ReasonQuotaExhausted
+	}
+	switch reason {
+	case ReasonQuotaExhausted:
+		if !o.resetAt.After(now) {
+			reason = ""
+		} else {
+			status.ResetsAt = o.resetAt.UTC().Format(time.RFC3339)
+		}
+	case ReasonRateLimited:
+		if !o.retryAt.After(now) {
+			reason = ""
+		}
+	}
+	if reason != "" {
+		status.Enabled = false
+		status.Reason = reason
+		if o.retryAt.After(now) {
+			status.RetryAt = o.retryAt.UTC().Format(time.RFC3339)
+		}
+	}
+	return status
 }
 
 // OwnerStatus says where the credentials come from and how OpenSubtitles last

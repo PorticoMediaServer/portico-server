@@ -1,3 +1,5 @@
+import {unreadableServerResponse} from './server-messages.ts';
+import {decodeGetContainerDownloadOptionsResponse} from "../../contracts/src/decoders.ts";
 import {routeBody} from "../../contracts/src/routes.ts";
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
@@ -165,6 +167,13 @@ export class DownloadsService{
  async options(itemId:string,signal?:AbortSignal):Promise<DownloadOptionsView>{
   return parseDownloadOptions(await this.api.request<RouteResponse<"get_download_options">>(encodedRoutePath("get_download_options", {"itemId": encodeURIComponent(itemId)}),'GET',undefined,signal),itemId);
  }
+ /** Combined sizes for the same visible selection a container request admits. */
+ async containerOptions(target:ContainerDownloadTarget,deviceId:string,policy:ContainerDownloadPolicy,signal?:AbortSignal){
+  const result=decodeGetContainerDownloadOptionsResponse(await this.api.request<unknown>(routePath("get_container_download_options"),'POST',routeBody("get_container_download_options",{target:{kind:target.kind,id:target.id},deviceId,policy:{...policy}}),signal));
+  if(result.target.id!==target.id||result.target.kind!==target.kind)throw new Error(unreadableServerResponse);
+  return result;
+ }
+
  /** The qualities a whole show, season, album, book or playlist may be asked for: the original,
   * and each smaller quality this server can make. The server decides; nothing is assumed here. */
  async revokeProfile(profileKey:string){return parseDownloadProfileRevocation(await this.api.request<RouteResponse<"revoke_profile_downloads">>(routePath("revoke_profile_downloads"),'POST',routeBody("revoke_profile_downloads", {profileKey,operationId:this.operationId()})));}

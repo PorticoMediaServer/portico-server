@@ -71,9 +71,12 @@ func TestRemoteControlDocumentHidesATitleWhenProfileAccessChanges(t *testing.T) 
 	if err := json.Unmarshal(w.Body.Bytes(), &document); err != nil {
 		t.Fatal(err)
 	}
-	if len(document.Items) != 1 || document.Items[0].SessionID != session.ID || document.Items[0].Item != nil || len(document.Items[0].Actions) != 0 {
+	if len(document.Items) != 1 || document.Items[0].SessionID != session.ID || document.Items[0].Item != nil || len(document.Items[0].Actions) != 1 || document.Items[0].Actions[0] != "stop" || document.Items[0].Next != nil || document.Items[0].DurationMs != 0 || document.Items[0].PositionMs != 0 {
 		t.Fatal(document)
 	}
+	// PP11/SE3: a hidden title still occupies this account's slot. The viewer
+	// can release that slot without regaining media or transport access.
+	f.callAs(member, "POST", "/v1/playback/controls/"+session.ID+":stop", nil, map[string]any{}, 204, nil)
 }
 
 func TestAdministratorPauseIsKeptWhileTheSessionIsPreparing(t *testing.T) {

@@ -80,6 +80,29 @@ export const routes = [
     "admission": "playback"
   },
   {
+    "id": "batch_queue",
+    "method": "POST",
+    "path": "/v1/queues/{id}/batch",
+    "summary": "Play a mixed selection next or later in its source order",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "selection_sized_async",
+    "bodyLimit": 32768,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "unsupported_selector",
+      "queue_too_large",
+      "queue_building"
+    ],
+    "status": 200,
+    "admission": "playback"
+  },
+  {
     "id": "browse_across",
     "method": "POST",
     "path": "/v1/browse",
@@ -3284,6 +3307,29 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_container_download_options",
+    "method": "POST",
+    "path": "/v1/downloads/options",
+    "summary": "Read combined per-quality sizes for the visible members of a container",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "selection_sized_async",
+    "bodyLimit": 8192,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "idempotency_key_reused",
+      "rate_limited",
+      "internal",
+      "downloads_unavailable"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
     "id": "get_container_personal_state",
     "method": "GET",
     "path": "/v1/containers/{kind}/{id}/personal-state",
@@ -6271,7 +6317,8 @@ export const routes = [
       "qualityId",
       "maxVideoBitrateKbps",
       "maxHeight",
-      "maxAudioBitrateKbps"
+      "maxAudioBitrateKbps",
+      "throughputKbps"
     ],
     "errors": [
       "invalid_request",
@@ -6489,6 +6536,28 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_queue_entry_for_item",
+    "method": "GET",
+    "path": "/v1/queues/{id}/entry",
+    "summary": "Resolve a visible episode outside the loaded queue window for an in-player jump",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "selection_sized_async",
+    "bodyLimit": 0,
+    "query": [
+      "itemId"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_found",
+      "queue_building"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
     "id": "get_queue_window",
     "method": "GET",
     "path": "/v1/queues/{id}/window",
@@ -6556,7 +6625,7 @@ export const routes = [
     "id": "get_remote_playback_controls",
     "method": "GET",
     "path": "/v1/playback/controls",
-    "summary": "Read what this profile is playing on each device and the controls it may use",
+    "summary": "Read this account’s playback on each device and the controls it may use",
     "access": "device",
     "requires": "playback",
     "lane": "media",
@@ -16371,6 +16440,29 @@ export const routes = [
     "admission": "playback"
   },
   {
+    "id": "stop_account_playback",
+    "method": "POST",
+    "path": "/v1/playback/controls/{id}:stop",
+    "summary": "Stop playback belonging to this account without disclosing a hidden title",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_required",
+      "revision_mismatch",
+      "session_ended",
+      "internal"
+    ],
+    "status": 204,
+    "admission": "security-fence"
+  },
+  {
     "id": "stop_playback_session",
     "method": "DELETE",
     "path": "/v1/playback/sessions/{id}",
@@ -16537,6 +16629,7 @@ export const routePaths = {
   "act_on_download_preparation": "/v1/downloads/preparations/{id}/actions",
   "add_queue_segment": "/v1/queues/{id}/segments",
   "advance_queue": "/v1/queues/{id}:advance",
+  "batch_queue": "/v1/queues/{id}/batch",
   "browse_across": "/v1/browse",
   "browse_library": "/v1/libraries/{id}/browse",
   "change_connectivity_policy": "/v1/admin/connectivity/policy",
@@ -16683,6 +16776,7 @@ export const routePaths = {
   "get_connectivity_status": "/v1/admin/connectivity/status",
   "get_console_registry": "/v1/console/registry",
   "get_console_settings": "/v1/admin/console/settings",
+  "get_container_download_options": "/v1/downloads/options",
   "get_container_personal_state": "/v1/containers/{kind}/{id}/personal-state",
   "get_device_capabilities": "/v1/me/devices/current/capabilities",
   "get_devices": "/v1/devices",
@@ -16818,6 +16912,7 @@ export const routePaths = {
   "get_preferences": "/v1/preferences",
   "get_profiles_id_avatar": "/v1/profiles/{id}/avatar",
   "get_queue": "/v1/queues/{id}",
+  "get_queue_entry_for_item": "/v1/queues/{id}/entry",
   "get_queue_window": "/v1/queues/{id}/window",
   "get_rating_systems": "/v1/rating-systems",
   "get_readiness": "/v1/readiness",
@@ -17180,6 +17275,7 @@ export const routePaths = {
   "start_app_setup": "/v1/setup/app",
   "start_browser_setup": "/v1/setup/browser",
   "start_playback_session": "/v1/playback/sessions",
+  "stop_account_playback": "/v1/playback/controls/{id}:stop",
   "stop_playback_session": "/v1/playback/sessions/{id}",
   "sync_download_progress": "/v1/downloads/progress",
   "terminate_admin_session": "/v1/admin/sessions/{id}:terminate",

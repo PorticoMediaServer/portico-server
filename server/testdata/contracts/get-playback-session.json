@@ -5,21 +5,21 @@
   "auth": "device",
   "status": 200,
   "response": {
-    "id": "ps_Tjqh94zOfO7-zEATOfJo",
+    "id": "ps_95aTvfELKlh3DwLdRJqb",
     "revision": "1",
     "kind": "vod",
     "role": "local",
     "state": "playing",
-    "itemId": "N0AfeetlQ23lEjcxkLSl1w",
-    "versionId": "teBUakQ-1zlO_JJsKRtyLkixUX3v4XsTdhqozSP-Q9c",
+    "itemId": "vOs-4rlk4C5_obYhRFupHw",
+    "versionId": "pDLG7a4pH2yInLVlKcwvZSkzTE3OiUQysQsy_kCOsns",
     "lease": {
-      "expiresAt": "2026-10-13T04:49:32.497Z",
+      "expiresAt": "2026-10-22T21:17:28.411Z",
       "reportEveryMs": 10000
     },
     "presentation": {
       "generation": 1,
       "mode": "direct",
-      "url": "/v1/media/-10C98IMySUd9WC4bzOXmZhv1xSCS6I8efIzlGh-sWY",
+      "url": "/v1/media/g-hpBj1V87ycD-ajNO4P1Y6y0b8DAk8ex7Okh_pgG9c",
       "engine": "native",
       "startPositionMs": 0,
       "subtitles": [],

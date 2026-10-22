@@ -109,6 +109,14 @@ func (g *Gateway) rewrite(data []byte, base string, depth int) ([]byte, error) {
 	if variant {
 		return nil, ErrFormat
 	}
+	// Only the selected input master declares this source's caption group.
+	// Nested audio/subtitle masters must never replace the video declaration.
+	if depth == 0 {
+		declarations, _ := selectedCaptions(lines)
+		g.mu.Lock()
+		g.captions = declarations
+		g.mu.Unlock()
+	}
 	return []byte(strings.Join(lines, "\n")), nil
 }
 

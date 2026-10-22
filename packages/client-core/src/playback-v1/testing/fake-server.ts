@@ -677,6 +677,13 @@ export class FakePlaybackServer {
     const q = this.queues.get(id);
     if (!q || !this.ownsQueue(q)) return m === 'DELETE' && rest === '' ? {status: 204, headers: {}} : this.error(404, 'queue_not_found');
     if (m === 'GET' && rest === '') return {status: 200, headers: {ETag: etag(q.revision)}, body: this.header(q)};
+
+    if (m==='GET'&&rest==='/entry') {
+      const item=qs.get('itemId');
+      if(!item)return this.error(400,'invalid_request');
+      for(let position=0;position<this.total(q);position++){const entry=this.entryAt(q,position);if(entry?.itemId===item)return {status:200,headers:{},body:{revision:String(q.revision),entry}};}
+      return this.error(404,'not_found');
+    }
     if (m === 'GET' && rest === '/entries') {
       const limit = Number(qs.get('limit') ?? 50);
       if (!(limit >= 1)) return this.error(400, 'invalid_limit');

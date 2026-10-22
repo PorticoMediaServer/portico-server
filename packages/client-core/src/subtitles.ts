@@ -30,7 +30,7 @@ export type SubtitleCatalog = Readonly<{
  version:1;itemId:string;revision:number;canShare:boolean;
  sources:readonly Readonly<{id:string;durationUs:string;inventoryRevision:number;available:boolean;timingKnown:boolean}>[];
  resources:readonly SubtitleResource[];discovered:readonly SubtitleDiscovery[];
- provider:Readonly<{id:string;enabled:boolean;reason?:string}>;
+ provider:Readonly<{id:string;enabled:boolean;reason?:string;resetsAt?:string;retryAt?:string}>;
 }>;
 /** `italic` and `top` are the two presentation facts every player can honour:
  * a cue that is wholly italic, and a cue authored at the top of the picture. */
@@ -78,7 +78,7 @@ export function validateSubtitlePlan(v:unknown):SubtitlePlan{
  return Object.freeze({...v,selected,resources:Object.freeze(resources),discovered:Object.freeze(discovered)}) as SubtitlePlan;
 }
 export function validateSubtitleCatalog(v:unknown):SubtitleCatalog{
- if(!record(v)||v.version!==1||!id(v.itemId)||!integer(v.revision)||typeof v.canShare!=='boolean'||!record(v.provider)||!text(v.provider.id,64)||typeof v.provider.enabled!=='boolean'||v.provider.reason!==undefined&&!text(v.provider.reason,128))invalid();
+ if(!record(v)||v.version!==1||!id(v.itemId)||!integer(v.revision)||typeof v.canShare!=='boolean'||!record(v.provider)||!text(v.provider.id,64)||typeof v.provider.enabled!=='boolean'||v.provider.reason!==undefined&&!text(v.provider.reason,128)||v.provider.resetsAt!==undefined&&(!text(v.provider.resetsAt,64)||!Number.isFinite(Date.parse(v.provider.resetsAt as string)))||v.provider.retryAt!==undefined&&(!text(v.provider.retryAt,64)||!Number.isFinite(Date.parse(v.provider.retryAt as string))))invalid();
  const sources=array(v.sources,32).map(s=>{if(!record(s)||!id(s.id)||!decimal(s.durationUs)||!integer(s.inventoryRevision,0)||typeof s.available!=='boolean'||typeof s.timingKnown!=='boolean')invalid();return Object.freeze({...s});});
  const resources=keepReadable('subtitle-catalog','resources',array(v.resources,128),resource),discovered=keepReadable('subtitle-catalog','discovered',array(v.discovered,1024),discovery);
  if(resources.some(r=>!sources.some(s=>s.id===r.sourceId))||discovered.some(r=>!sources.some(s=>s.id===r.sourceId)))invalid();
