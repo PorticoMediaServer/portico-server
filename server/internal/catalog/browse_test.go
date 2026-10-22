@@ -693,6 +693,20 @@ func TestBrowseMatchUsesCurrentOnlineAttentionIncludingKept(t *testing.T) {
 			t.Fatalf("album-only attention on %s: %+v %v", pivot, page, err)
 		}
 	}
+	otherAlbum := c.Album(artist, "Visible sibling album", 2026)
+	c.Song(otherAlbum, 1, "/mu/visible.flac", "Visible sibling song")
+	c.Attributes(song.ID, "label", "private")
+	c.Drain()
+	limited := v
+	limited.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"private"}}
+	visibleArtist, err := s.BrowseEntities(limited, BrowseRequest{Library: "mu", Pivot: "artists"})
+	if err != nil || len(visibleArtist.Entries) != 1 {
+		t.Fatalf("visible sibling fixture %+v %v", visibleArtist, err)
+	}
+	hiddenFact, err := s.BrowseEntities(limited, BrowseRequest{Library: "mu", Pivot: "artists", Query: q})
+	if err != nil || len(hiddenFact.Entries) != 0 {
+		t.Fatalf("hidden album attention leaked through visible artist: %+v %v", hiddenFact, err)
+	}
 	caps, err := s.BrowseCapabilitiesFor("local", "movies")
 	if err != nil {
 		t.Fatal(err)
