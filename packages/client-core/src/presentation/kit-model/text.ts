@@ -4,7 +4,7 @@ export type KitMessageId = keyof typeof shared;
 type Arguments = {
   'next.kit.episode': {number: number}; 'next.kit.episodeCode': {season: number; episode: number};
   'next.kit.season': {number: number}; 'next.kit.seasons': {count: number};
-  'next.kit.songs': {count: number}; 'next.kit.albums': {count: number}; 'next.kit.items': {count: number}; 'next.kit.itemsAtLeast': {count: number};
+  'next.kit.songs': {count: number}; 'next.kit.albums': {count: number}; 'next.kit.books': {count: number}; 'next.kit.items': {count: number}; 'next.kit.itemsAtLeast': {count: number};
   'next.kit.chapter': {number: number}; 'next.kit.chapters': {count: number}; 'next.kit.chapterOf': {number: number; total: number}; 'next.kit.readBy': {name: string};
   'next.kit.duration.hoursMinutes': {hours: number; minutes: number}; 'next.kit.duration.hours': {hours: number};
   'next.kit.duration.minutes': {minutes: number}; 'next.kit.duration.seconds': {seconds: number};

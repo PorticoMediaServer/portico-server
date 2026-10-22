@@ -17,6 +17,8 @@ test('all owned generated wording parses as ICU and uses sentence case without m
   assert.equal(formatMessage(shared['next.kit.episodeCode'], {season: 1, episode: 1043}), 'S1 E1043');
   assert.equal(formatMessage(shared['next.kit.songs'], {count: 1}), '1 song');
   assert.equal(formatMessage(shared['next.kit.songs'], {count: 4}), '4 songs');
+  assert.equal(formatMessage(shared['next.kit.books'], {count: 1}), '1 book');
+  assert.equal(formatMessage(shared['next.kit.books'], {count: 2}), '2 books');
 });
 
 test('model translation calls supply exactly the declared ICU arguments', () => {
@@ -31,6 +33,9 @@ test('model translation calls supply exactly the declared ICU arguments', () => 
   titleFactParts({year: 2024, durationSeconds: 9960, seasonCount: 3}, env);
   for (const seconds of [1, 60, 3600, 3660]) titleFactParts({durationSeconds: seconds}, env);
   for (const kind of ['artist', 'category', 'album', 'book'] as const) cardText({id: 'a', kind, title: 'Title', artist: 'Artist', author: 'Author', narrator: 'Narrator', chapterNumber: 2, chapterCount: 3, songCount: 4, albumCount: 1, itemCount: 10000, countIsLowerBound: true, durationSeconds: 1000, positionSeconds: 60}, 'continuation', env);
+  cardText({id: 'author', kind: 'author', title: 'Author', bookCount: 2}, 'ordinary', env);
+  titleFactParts({author: 'Author', narrator: 'Narrator', durationSeconds: 1000, chapterCount: 3}, env, 'audiobook');
+  titleFactParts({chapterNumber: 2, chapterCount: 3}, env, 'audiobook-chapters');
   episodeLabel({mode: 'absolute', number: 37}, 'in-show', env);
   episodeLabel({mode: 'seasonal', season: 1, episode: 2}, 'search', env);
   episodeLabel({mode: 'special'}, 'in-show', env);
@@ -70,6 +75,11 @@ function translationTypes(t: KitTranslate): void {
   const values: KitMessageValues<'next.kit.episodeCode'> = {season: 1, episode: 2};
   t('next.kit.episodeCode', values);
   t('next.kit.live');
+  t('next.kit.books', {count: 2});
+  // @ts-expect-error a book count requires its genuine numeric count
+  t('next.kit.books');
+  // @ts-expect-error a book count cannot be an item-label string
+  t('next.kit.books', {count: '2 items'});
   // @ts-expect-error an episode requires its number
   t('next.kit.episode');
   // @ts-expect-error height cannot be an arbitrary string

@@ -8,6 +8,7 @@ export const shared = {
   'next.kit.seasons': '{count, plural, one {# season} other {# seasons}}',
   'next.kit.songs': '{count, plural, one {# song} other {# songs}}',
   'next.kit.albums': '{count, plural, one {# album} other {# albums}}',
+  'next.kit.books': '{count, plural, one {# book} other {# books}}',
   'next.kit.items': '{count, plural, one {# item} other {# items}}',
   'next.kit.itemsAtLeast': '{count, number}+ items',
   'next.kit.chapter': 'Chapter {number, number, ::group-off}',
