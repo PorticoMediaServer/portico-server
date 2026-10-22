@@ -55,7 +55,7 @@ func filesystemWritable(path string) bool {
 	if e != nil {
 		return false
 	}
-	h, e := windows.CreateFile(p, windows.FILE_ADD_FILE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	h, e := windows.CreateFile(p, windows.FILE_WRITE_DATA, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
 	if e != nil {
 		return false
 	}

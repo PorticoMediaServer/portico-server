@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,5 +84,55 @@ func TestFilesystemFlagsReasonsAndCursorScope(t *testing.T) {
 	cancel()
 	if _, err = s.Browse(ctx, root, "", 200, false); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel: %v", err)
+	}
+}
+
+func TestFilesystemPermissionRefusalIsRealAndReadOnly(t *testing.T) {
+	s, _, _ := newService(t)
+	root := t.TempDir()
+	s.PickerRoots = []string{root}
+	denied := filepath.Join(root, "denied")
+	if err := os.Mkdir(denied, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(denied, 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(denied, 0700)
+	page, err := s.Browse(context.Background(), root, "", 200, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Readable || page.Entries[0].Reason != "permission" {
+		t.Fatalf("unreadable folder: %+v", page)
+	}
+	page, err = s.Browse(context.Background(), denied, "", 200, false, BrowseOptions{CheckWritable: true})
+	if !errors.Is(err, ErrDenied) || page.Reason != "permission" || page.Writable {
+		t.Fatalf("selected folder: %+v %v", page, err)
+	}
+}
+
+func TestFilesystemPrefixFindsNameBeyondOrdinaryCap(t *testing.T) {
+	s, _, _ := newService(t)
+	root := t.TempDir()
+	s.PickerRoots = []string{root}
+	for n := 0; n < maxDirectoryNames+5; n++ {
+		if err := os.Mkdir(filepath.Join(root, fmt.Sprintf("folder-%05d", n)), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dir, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names, err := dir.Readdirnames(maxDirectoryNames + 5)
+	dir.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := names[len(names)-1]
+	page, err := s.Browse(context.Background(), root, "", 200, false, BrowseOptions{Prefix: target})
+	if err != nil || page.Truncated || len(page.Entries) != 1 || page.Entries[0].Name != target {
+		t.Fatalf("beyond-cap prefix %+v %v", page, err)
 	}
 }

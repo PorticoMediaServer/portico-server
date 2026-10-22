@@ -14430,6 +14430,7 @@
               ],
               "type": "object"
             },
+            "maxItems": 200,
             "type": "array"
           },
           "nextCursor": {
@@ -14490,6 +14491,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 8,
             "type": "array"
           },
           "truncated": {
@@ -19963,6 +19965,7 @@
                   ],
                   "type": "object"
                 },
+                "maxItems": 200,
                 "type": "array"
               },
               "nextCursor": {
@@ -20023,6 +20026,7 @@
                 "items": {
                   "type": "string"
                 },
+                "maxItems": 8,
                 "type": "array"
               },
               "truncated": {
@@ -20454,6 +20458,28 @@
                 ],
                 "type": "object"
               },
+              "audience": {
+                "properties": {
+                  "accounts": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "everyone": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "everyone",
+                  "accounts"
+                ],
+                "type": "object"
+              },
+              "filesSkipped": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "id": {
                 "type": "string"
               },
@@ -20595,9 +20621,65 @@
                   "basis"
                 ],
                 "type": "object"
+              },
+              "summary": {
+                "properties": {
+                  "counts": {
+                    "items": {
+                      "properties": {
+                        "atLeast": {
+                          "type": "boolean"
+                        },
+                        "count": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "count",
+                        "atLeast"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "coverUrls": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "empty": {
+                    "type": "boolean"
+                  },
+                  "emptyKnown": {
+                    "type": "boolean"
+                  },
+                  "firstScan": {
+                    "type": "boolean"
+                  },
+                  "latestArtwork": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "counts",
+                  "coverUrls",
+                  "latestArtwork",
+                  "firstScan",
+                  "emptyKnown",
+                  "empty"
+                ],
+                "type": "object"
               }
             },
             "required": [
+              "filesSkipped",
               "id",
               "name",
               "kind",
@@ -20661,6 +20743,28 @@
                     "files"
                   ],
                   "type": "object"
+                },
+                "audience": {
+                  "properties": {
+                    "accounts": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "everyone": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "everyone",
+                    "accounts"
+                  ],
+                  "type": "object"
+                },
+                "filesSkipped": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "id": {
                   "type": "string"
@@ -20803,9 +20907,65 @@
                     "basis"
                   ],
                   "type": "object"
+                },
+                "summary": {
+                  "properties": {
+                    "counts": {
+                      "items": {
+                        "properties": {
+                          "atLeast": {
+                            "type": "boolean"
+                          },
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "count",
+                          "atLeast"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "coverUrls": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "empty": {
+                      "type": "boolean"
+                    },
+                    "emptyKnown": {
+                      "type": "boolean"
+                    },
+                    "firstScan": {
+                      "type": "boolean"
+                    },
+                    "latestArtwork": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "counts",
+                    "coverUrls",
+                    "latestArtwork",
+                    "firstScan",
+                    "emptyKnown",
+                    "empty"
+                  ],
+                  "type": "object"
                 }
               },
               "required": [
+                "filesSkipped",
                 "id",
                 "name",
                 "kind",
@@ -26856,6 +27016,61 @@
                 },
                 "pinned": {
                   "type": "boolean"
+                },
+                "summary": {
+                  "properties": {
+                    "counts": {
+                      "items": {
+                        "properties": {
+                          "atLeast": {
+                            "type": "boolean"
+                          },
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "count",
+                          "atLeast"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "coverUrls": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "empty": {
+                      "type": "boolean"
+                    },
+                    "emptyKnown": {
+                      "type": "boolean"
+                    },
+                    "firstScan": {
+                      "type": "boolean"
+                    },
+                    "latestArtwork": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "counts",
+                    "coverUrls",
+                    "latestArtwork",
+                    "firstScan",
+                    "emptyKnown",
+                    "empty"
+                  ],
+                  "type": "object"
                 }
               },
               "required": [
@@ -27219,6 +27434,61 @@
               },
               "pinned": {
                 "type": "boolean"
+              },
+              "summary": {
+                "properties": {
+                  "counts": {
+                    "items": {
+                      "properties": {
+                        "atLeast": {
+                          "type": "boolean"
+                        },
+                        "count": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "count",
+                        "atLeast"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "coverUrls": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "empty": {
+                    "type": "boolean"
+                  },
+                  "emptyKnown": {
+                    "type": "boolean"
+                  },
+                  "firstScan": {
+                    "type": "boolean"
+                  },
+                  "latestArtwork": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "counts",
+                  "coverUrls",
+                  "latestArtwork",
+                  "firstScan",
+                  "emptyKnown",
+                  "empty"
+                ],
+                "type": "object"
               }
             },
             "required": [
@@ -71146,6 +71416,61 @@
               },
               "pinned": {
                 "type": "boolean"
+              },
+              "summary": {
+                "properties": {
+                  "counts": {
+                    "items": {
+                      "properties": {
+                        "atLeast": {
+                          "type": "boolean"
+                        },
+                        "count": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "count",
+                        "atLeast"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "coverUrls": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "empty": {
+                    "type": "boolean"
+                  },
+                  "emptyKnown": {
+                    "type": "boolean"
+                  },
+                  "firstScan": {
+                    "type": "boolean"
+                  },
+                  "latestArtwork": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "counts",
+                  "coverUrls",
+                  "latestArtwork",
+                  "firstScan",
+                  "emptyKnown",
+                  "empty"
+                ],
+                "type": "object"
               }
             },
             "required": [
@@ -74451,6 +74776,61 @@
               },
               "pinned": {
                 "type": "boolean"
+              },
+              "summary": {
+                "properties": {
+                  "counts": {
+                    "items": {
+                      "properties": {
+                        "atLeast": {
+                          "type": "boolean"
+                        },
+                        "count": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "count",
+                        "atLeast"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "coverUrls": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "empty": {
+                    "type": "boolean"
+                  },
+                  "emptyKnown": {
+                    "type": "boolean"
+                  },
+                  "firstScan": {
+                    "type": "boolean"
+                  },
+                  "latestArtwork": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "counts",
+                  "coverUrls",
+                  "latestArtwork",
+                  "firstScan",
+                  "emptyKnown",
+                  "empty"
+                ],
+                "type": "object"
               }
             },
             "required": [
@@ -80072,6 +80452,61 @@
                 },
                 "pinned": {
                   "type": "boolean"
+                },
+                "summary": {
+                  "properties": {
+                    "counts": {
+                      "items": {
+                        "properties": {
+                          "atLeast": {
+                            "type": "boolean"
+                          },
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "count",
+                          "atLeast"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "coverUrls": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "empty": {
+                      "type": "boolean"
+                    },
+                    "emptyKnown": {
+                      "type": "boolean"
+                    },
+                    "firstScan": {
+                      "type": "boolean"
+                    },
+                    "latestArtwork": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "counts",
+                    "coverUrls",
+                    "latestArtwork",
+                    "firstScan",
+                    "emptyKnown",
+                    "empty"
+                  ],
+                  "type": "object"
                 }
               },
               "required": [
@@ -96818,12 +97253,20 @@
       },
       "GetScanIssuesResponse": {
         "properties": {
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "hasMore": {
             "type": "boolean"
           },
           "items": {
             "items": {
               "properties": {
+                "category": {
+                  "type": "string"
+                },
                 "line": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -96848,6 +97291,7 @@
                 }
               },
               "required": [
+                "category",
                 "line",
                 "sequence",
                 "path",
@@ -96869,6 +97313,7 @@
           }
         },
         "required": [
+          "count",
           "jobId",
           "items",
           "nextSequence",
@@ -123540,6 +123985,28 @@
                 ],
                 "type": "object"
               },
+              "audience": {
+                "properties": {
+                  "accounts": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "everyone": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "everyone",
+                  "accounts"
+                ],
+                "type": "object"
+              },
+              "filesSkipped": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "id": {
                 "type": "string"
               },
@@ -123681,9 +124148,65 @@
                   "basis"
                 ],
                 "type": "object"
+              },
+              "summary": {
+                "properties": {
+                  "counts": {
+                    "items": {
+                      "properties": {
+                        "atLeast": {
+                          "type": "boolean"
+                        },
+                        "count": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "count",
+                        "atLeast"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "coverUrls": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "empty": {
+                    "type": "boolean"
+                  },
+                  "emptyKnown": {
+                    "type": "boolean"
+                  },
+                  "firstScan": {
+                    "type": "boolean"
+                  },
+                  "latestArtwork": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "counts",
+                  "coverUrls",
+                  "latestArtwork",
+                  "firstScan",
+                  "emptyKnown",
+                  "empty"
+                ],
+                "type": "object"
               }
             },
             "required": [
+              "filesSkipped",
               "id",
               "name",
               "kind",
@@ -140145,13 +140668,23 @@
       },
       "PostLibrariesRequest": {
         "properties": {
+          "folders": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "type": "array"
+          },
           "kind": {
             "enum": [
               "movie",
               "tv",
               "anime",
               "music",
-              "audiobook"
+              "audiobook",
+              "book",
+              "comic"
             ],
             "type": "string"
           },
@@ -140170,8 +140703,7 @@
         },
         "required": [
           "name",
-          "kind",
-          "path"
+          "kind"
         ],
         "type": "object"
       },
@@ -140191,6 +140723,61 @@
           },
           "pinned": {
             "type": "boolean"
+          },
+          "summary": {
+            "properties": {
+              "counts": {
+                "items": {
+                  "properties": {
+                    "atLeast": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "atLeast"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "coverUrls": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "empty": {
+                "type": "boolean"
+              },
+              "emptyKnown": {
+                "type": "boolean"
+              },
+              "firstScan": {
+                "type": "boolean"
+              },
+              "latestArtwork": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "counts",
+              "coverUrls",
+              "latestArtwork",
+              "firstScan",
+              "emptyKnown",
+              "empty"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -186894,6 +187481,7 @@
                             ],
                             "type": "object"
                           },
+                          "maxItems": 200,
                           "type": "array"
                         },
                         "nextCursor": {
@@ -186954,6 +187542,7 @@
                           "items": {
                             "type": "string"
                           },
+                          "maxItems": 8,
                           "type": "array"
                         },
                         "truncated": {
@@ -188006,6 +188595,28 @@
                             ],
                             "type": "object"
                           },
+                          "audience": {
+                            "properties": {
+                              "accounts": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "everyone": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "everyone",
+                              "accounts"
+                            ],
+                            "type": "object"
+                          },
+                          "filesSkipped": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -188147,9 +188758,65 @@
                               "basis"
                             ],
                             "type": "object"
+                          },
+                          "summary": {
+                            "properties": {
+                              "counts": {
+                                "items": {
+                                  "properties": {
+                                    "atLeast": {
+                                      "type": "boolean"
+                                    },
+                                    "count": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "count",
+                                    "atLeast"
+                                  ],
+                                  "type": "object"
+                                },
+                                "type": "array"
+                              },
+                              "coverUrls": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "empty": {
+                                "type": "boolean"
+                              },
+                              "emptyKnown": {
+                                "type": "boolean"
+                              },
+                              "firstScan": {
+                                "type": "boolean"
+                              },
+                              "latestArtwork": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "counts",
+                              "coverUrls",
+                              "latestArtwork",
+                              "firstScan",
+                              "emptyKnown",
+                              "empty"
+                            ],
+                            "type": "object"
                           }
                         },
                         "required": [
+                          "filesSkipped",
                           "id",
                           "name",
                           "kind",
@@ -188489,6 +189156,28 @@
                           ],
                           "type": "object"
                         },
+                        "audience": {
+                          "properties": {
+                            "accounts": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "everyone",
+                            "accounts"
+                          ],
+                          "type": "object"
+                        },
+                        "filesSkipped": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -188630,9 +189319,65 @@
                             "basis"
                           ],
                           "type": "object"
+                        },
+                        "summary": {
+                          "properties": {
+                            "counts": {
+                              "items": {
+                                "properties": {
+                                  "atLeast": {
+                                    "type": "boolean"
+                                  },
+                                  "count": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "count",
+                                  "atLeast"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "coverUrls": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "empty": {
+                              "type": "boolean"
+                            },
+                            "emptyKnown": {
+                              "type": "boolean"
+                            },
+                            "firstScan": {
+                              "type": "boolean"
+                            },
+                            "latestArtwork": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "counts",
+                            "coverUrls",
+                            "latestArtwork",
+                            "firstScan",
+                            "emptyKnown",
+                            "empty"
+                          ],
+                          "type": "object"
                         }
                       },
                       "required": [
+                        "filesSkipped",
                         "id",
                         "name",
                         "kind",
@@ -188780,6 +189525,28 @@
                           ],
                           "type": "object"
                         },
+                        "audience": {
+                          "properties": {
+                            "accounts": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "everyone",
+                            "accounts"
+                          ],
+                          "type": "object"
+                        },
+                        "filesSkipped": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -188921,9 +189688,65 @@
                             "basis"
                           ],
                           "type": "object"
+                        },
+                        "summary": {
+                          "properties": {
+                            "counts": {
+                              "items": {
+                                "properties": {
+                                  "atLeast": {
+                                    "type": "boolean"
+                                  },
+                                  "count": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "count",
+                                  "atLeast"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "coverUrls": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "empty": {
+                              "type": "boolean"
+                            },
+                            "emptyKnown": {
+                              "type": "boolean"
+                            },
+                            "firstScan": {
+                              "type": "boolean"
+                            },
+                            "latestArtwork": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "counts",
+                            "coverUrls",
+                            "latestArtwork",
+                            "firstScan",
+                            "emptyKnown",
+                            "empty"
+                          ],
+                          "type": "object"
                         }
                       },
                       "required": [
+                        "filesSkipped",
                         "id",
                         "name",
                         "kind",
@@ -189769,12 +190592,20 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "hasMore": {
                       "type": "boolean"
                     },
                     "items": {
                       "items": {
                         "properties": {
+                          "category": {
+                            "type": "string"
+                          },
                           "line": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -189799,6 +190630,7 @@
                           }
                         },
                         "required": [
+                          "category",
                           "line",
                           "sequence",
                           "path",
@@ -189820,6 +190652,7 @@
                     }
                   },
                   "required": [
+                    "count",
                     "jobId",
                     "items",
                     "nextSequence",
@@ -214855,6 +215688,61 @@
                           },
                           "pinned": {
                             "type": "boolean"
+                          },
+                          "summary": {
+                            "properties": {
+                              "counts": {
+                                "items": {
+                                  "properties": {
+                                    "atLeast": {
+                                      "type": "boolean"
+                                    },
+                                    "count": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "count",
+                                    "atLeast"
+                                  ],
+                                  "type": "object"
+                                },
+                                "type": "array"
+                              },
+                              "coverUrls": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "empty": {
+                                "type": "boolean"
+                              },
+                              "emptyKnown": {
+                                "type": "boolean"
+                              },
+                              "firstScan": {
+                                "type": "boolean"
+                              },
+                              "latestArtwork": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "counts",
+                              "coverUrls",
+                              "latestArtwork",
+                              "firstScan",
+                              "emptyKnown",
+                              "empty"
+                            ],
+                            "type": "object"
                           }
                         },
                         "required": [
@@ -216609,6 +217497,61 @@
                         },
                         "pinned": {
                           "type": "boolean"
+                        },
+                        "summary": {
+                          "properties": {
+                            "counts": {
+                              "items": {
+                                "properties": {
+                                  "atLeast": {
+                                    "type": "boolean"
+                                  },
+                                  "count": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "count",
+                                  "atLeast"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "coverUrls": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "empty": {
+                              "type": "boolean"
+                            },
+                            "emptyKnown": {
+                              "type": "boolean"
+                            },
+                            "firstScan": {
+                              "type": "boolean"
+                            },
+                            "latestArtwork": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "counts",
+                            "coverUrls",
+                            "latestArtwork",
+                            "firstScan",
+                            "emptyKnown",
+                            "empty"
+                          ],
+                          "type": "object"
                         }
                       },
                       "required": [
@@ -299146,6 +300089,61 @@
                           },
                           "pinned": {
                             "type": "boolean"
+                          },
+                          "summary": {
+                            "properties": {
+                              "counts": {
+                                "items": {
+                                  "properties": {
+                                    "atLeast": {
+                                      "type": "boolean"
+                                    },
+                                    "count": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "count",
+                                    "atLeast"
+                                  ],
+                                  "type": "object"
+                                },
+                                "type": "array"
+                              },
+                              "coverUrls": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "empty": {
+                                "type": "boolean"
+                              },
+                              "emptyKnown": {
+                                "type": "boolean"
+                              },
+                              "firstScan": {
+                                "type": "boolean"
+                              },
+                              "latestArtwork": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "counts",
+                              "coverUrls",
+                              "latestArtwork",
+                              "firstScan",
+                              "emptyKnown",
+                              "empty"
+                            ],
+                            "type": "object"
                           }
                         },
                         "required": [
@@ -299221,13 +300219,23 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "folders": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array"
+                  },
                   "kind": {
                     "enum": [
                       "movie",
                       "tv",
                       "anime",
                       "music",
-                      "audiobook"
+                      "audiobook",
+                      "book",
+                      "comic"
                     ],
                     "type": "string"
                   },
@@ -299246,8 +300254,7 @@
                 },
                 "required": [
                   "name",
-                  "kind",
-                  "path"
+                  "kind"
                 ],
                 "type": "object"
               }
@@ -299275,6 +300282,61 @@
                     },
                     "pinned": {
                       "type": "boolean"
+                    },
+                    "summary": {
+                      "properties": {
+                        "counts": {
+                          "items": {
+                            "properties": {
+                              "atLeast": {
+                                "type": "boolean"
+                              },
+                              "count": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "count",
+                              "atLeast"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "coverUrls": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "empty": {
+                          "type": "boolean"
+                        },
+                        "emptyKnown": {
+                          "type": "boolean"
+                        },
+                        "firstScan": {
+                          "type": "boolean"
+                        },
+                        "latestArtwork": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "counts",
+                        "coverUrls",
+                        "latestArtwork",
+                        "firstScan",
+                        "emptyKnown",
+                        "empty"
+                      ],
+                      "type": "object"
                     }
                   },
                   "required": [
@@ -301736,6 +302798,61 @@
                         },
                         "pinned": {
                           "type": "boolean"
+                        },
+                        "summary": {
+                          "properties": {
+                            "counts": {
+                              "items": {
+                                "properties": {
+                                  "atLeast": {
+                                    "type": "boolean"
+                                  },
+                                  "count": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "count",
+                                  "atLeast"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "coverUrls": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "empty": {
+                              "type": "boolean"
+                            },
+                            "emptyKnown": {
+                              "type": "boolean"
+                            },
+                            "firstScan": {
+                              "type": "boolean"
+                            },
+                            "latestArtwork": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "counts",
+                            "coverUrls",
+                            "latestArtwork",
+                            "firstScan",
+                            "emptyKnown",
+                            "empty"
+                          ],
+                          "type": "object"
                         }
                       },
                       "required": [
@@ -305144,6 +306261,61 @@
                         },
                         "pinned": {
                           "type": "boolean"
+                        },
+                        "summary": {
+                          "properties": {
+                            "counts": {
+                              "items": {
+                                "properties": {
+                                  "atLeast": {
+                                    "type": "boolean"
+                                  },
+                                  "count": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "count",
+                                  "atLeast"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "coverUrls": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "empty": {
+                              "type": "boolean"
+                            },
+                            "emptyKnown": {
+                              "type": "boolean"
+                            },
+                            "firstScan": {
+                              "type": "boolean"
+                            },
+                            "latestArtwork": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "counts",
+                            "coverUrls",
+                            "latestArtwork",
+                            "firstScan",
+                            "emptyKnown",
+                            "empty"
+                          ],
+                          "type": "object"
                         }
                       },
                       "required": [

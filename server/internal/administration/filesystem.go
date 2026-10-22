@@ -102,7 +102,10 @@ func filesystemReason(err error, link bool) string {
 	if errors.Is(err, os.ErrPermission) {
 		return "permission"
 	}
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, syscall.ELOOP) {
+		return "broken-link"
+	}
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
 		if link {
 			return "broken-link"
 		}
@@ -193,7 +196,7 @@ func (s *Service) Browse(ctx context.Context, path, token string, limit int, inc
 					for _, name := range names {
 						if strings.EqualFold(name, filepath.Base(requested)) && !blockedName(resolved, name) && (!hiddenName(resolved, name) || opt.ShowHidden) {
 							candidate := filepath.Join(resolved, name)
-							if policy.CheckBrowse(candidate) == nil {
+							if info, e := os.Stat(candidate); e == nil && info.IsDir() && policy.CheckBrowse(candidate) == nil {
 								out.Suggestions = append(out.Suggestions, candidate)
 							}
 							if len(out.Suggestions) == 8 {
@@ -215,6 +218,9 @@ func (s *Service) Browse(ctx context.Context, path, token string, limit int, inc
 	info, err := os.Stat(clean)
 	if err != nil || !info.IsDir() {
 		out.Reason = filesystemReason(err, false)
+		if err == nil {
+			out.Reason = "missing"
+		}
 		return out, ErrNotFound
 	}
 	out.Path = clean

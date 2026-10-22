@@ -312,14 +312,13 @@ func TestScanLoopIgnoreFilesApplyAndReconcileOldFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
 	for _, issue := range issues.Items {
-		if issue.Reason == "invalid_ignore_pattern" && issue.Line == 2 {
-			found = true
+		if issue.Reason == "invalid_ignore_pattern" {
+			t.Fatal("log-only ignore diagnostic leaked into Files skipped")
 		}
 	}
-	if !found {
-		t.Fatal("invalid ignore line not reported")
+	if n := f.count(`SELECT COUNT(*) FROM inventory_scan_issues WHERE job_id=? AND reason='invalid_ignore_pattern' AND line=2`, job.ID); n != 1 {
+		t.Fatalf("ignore diagnostic was not retained for logs: %d", n)
 	}
 }
 func TestScanLoopAliasesStaySafeAcrossTwoScans(t *testing.T) {

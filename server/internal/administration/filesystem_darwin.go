@@ -16,13 +16,18 @@ func FilesystemRoots() []FilesystemRoot {
 	out := []FilesystemRoot{{Path: "/", Name: "Macintosh HD", Kind: "root", Description: "The boot volume"}}
 	if info, err := os.Stat("/Volumes"); err == nil && info.IsDir() {
 		out = append(out, FilesystemRoot{Path: "/Volumes", Name: "Volumes", Kind: "volumes", Description: "External and network volumes"})
-		if entries, e := os.ReadDir("/Volumes"); e == nil {
+		if directory, e := os.Open("/Volumes"); e == nil {
+			entries, _ := directory.Readdir(65)
+			directory.Close()
 			for _, entry := range entries {
 				if entry.IsDir() {
-					out = append(out, FilesystemRoot{Path: filepath.Join("/Volumes", entry.Name()), Name: entry.Name(), Kind: "volume", Description: "Mounted volume"})
-				}
-				if len(out) >= 63 {
-					break
+					path := filepath.Join("/Volumes", entry.Name())
+					description := "Mounted volume"
+					var fs unix.Statfs_t
+					if unix.Statfs(path, &fs) == nil {
+						description = "Mounted " + unix.ByteSliceToString(fs.Fstypename[:])
+					}
+					out = append(out, FilesystemRoot{Path: path, Name: entry.Name(), Kind: "volume", Description: description})
 				}
 			}
 		}

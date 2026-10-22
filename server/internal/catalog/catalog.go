@@ -32,10 +32,11 @@ func DefaultLibraryView(kind string) string {
 }
 
 type Library struct {
-	DefaultView string `json:"defaultView"`
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Kind        string `json:"kind"`
+	Summary     *LibrarySummary `json:"summary,omitempty"`
+	DefaultView string          `json:"defaultView"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Kind        string          `json:"kind"`
 	// Pinned reflects the viewer's navigation arrangement; it is false on the
 	// unscoped administrative listing.
 	Pinned bool `json:"pinned"`
@@ -137,7 +138,7 @@ func (s *Service) CreateAuthorized(ctx context.Context, name, kind, path string,
 // with it or not at all. A library is never left configured with nothing queued.
 func (s *Service) CreateAuthorizedThen(ctx context.Context, name, kind, path string, authorize func(*sql.Tx) error, created func(*sql.Tx, Library) error) (Library, error) {
 	l := Library{ID: identity.Token(), Name: strings.TrimSpace(name), Kind: kind, DefaultView: DefaultLibraryView(kind)}
-	if kind != "movie" && kind != "tv" && kind != "anime" && kind != "music" && kind != "audiobook" || l.Name == "" || len(l.Name) > 100 || !utf8.ValidString(l.Name) || strings.IndexFunc(l.Name, unicode.IsControl) >= 0 {
+	if kind != "movie" && kind != "tv" && kind != "anime" && kind != "music" && kind != "audiobook" && kind != "book" && kind != "comic" || l.Name == "" || len(l.Name) > 100 || !utf8.ValidString(l.Name) || strings.IndexFunc(l.Name, unicode.IsControl) >= 0 {
 		return l, ErrAdminQuery
 	}
 	if s.storage != nil && s.storage.SourceGuard != nil && !s.storage.IsRemote(path) {
