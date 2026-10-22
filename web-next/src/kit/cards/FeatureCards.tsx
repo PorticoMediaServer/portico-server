@@ -5,6 +5,7 @@ import {ChannelMark, type ArtworkSource} from '../artwork';
 import {Icon} from '../Icon';
 import {Button} from '../controls';
 import {usePhone} from '../overlays/shared';
+import {differingProfileName} from '../shell/model';
 import {CardFrame, Facts, Progress, cx, tintStyle} from './CardFrame';
 import {BoundedCovers, CardArtwork, CardAmbient, type CardCover} from './MediaCards';
 import {boundedProgress} from './interaction';
@@ -79,17 +80,20 @@ export function QuickTile({playing, onPause, ...props}: QuickTileProps) {
 
 export type SessionChannel = Readonly<{mark: ChannelMarkModel; logo?: ArtworkSource; tint?: string; facts: readonly FactPart[]}>;
 export type SessionCardProps = NavigationCardProps & Readonly<{
-  viewer: Readonly<{name: string; device: string; avatar?: ReactNode}>;
+  /** name remains the actual profile label; username is genuine supplied account identity. */
+  viewer: Readonly<{name: string; username?: string; device: string; avatar?: ReactNode}>;
   facts: readonly FactPart[];
   paused?: boolean;
   onStop?: () => void;
 }> & (Readonly<{media?: 'video' | 'audio'; channel?: never}> | Readonly<{media: 'channel'; channel: SessionChannel}>);
 export function SessionCard({viewer, facts, paused, media = 'video', channel, onStop, onMore, moreExpanded, ...props}: SessionCardProps) {
+  const username = viewer.username?.trim() ? viewer.username : undefined;
+  const profile = username ? differingProfileName(viewer.name, username) : undefined;
   return <CardFrame {...props} onPlay={undefined} onMore={undefined} kind="session" className={cx(paused && styles.paused, props.className)} overlay={<>
     <Progress value={props.model.progress} edge />
     {paused && <span className={styles.sessionState}><Icon name="i-pause" size={12} />{defaultI18n.t('next.cards.paused')}</span>}
     {(onStop || onMore) && <span className={styles.sessionActions}>{onStop && <Button disabled={props.disabled} variant="glass" size="xs" icon="i-stop" onClick={onStop}>{defaultI18n.t('next.cards.stop')}</Button>}{onMore && <Button disabled={props.disabled} variant="glass" size="xs" icon="i-more" iconOnly aria-label={defaultI18n.t('next.cards.more')} aria-haspopup="menu" aria-expanded={moreExpanded} onClick={event => onMore(event.currentTarget)} />}</span>}
   </>}>
-    <span className={cx(styles.sessionArt, media === 'audio' && styles.sessionAudio, media === 'channel' && styles.sessionChannel)} style={tintStyle(channel?.tint)}>{channel ? <><ChannelMark mark={channel.mark} source={channel.logo} tint={channel.tint} size={32} visible={props.visible} /><Facts parts={channel.facts} /></> : <>{media === 'audio' && <CardAmbient {...props} treatment="session-audio" />}<span className={styles.sessionForeground}><CardArtwork {...props} /></span></>}</span><span className={styles.sessionCopy}><span className={styles.sessionTitle}>{props.model.title}</span><Facts parts={props.model.caption} className={styles.sessionSubtitle} /><span className={styles.viewer}>{viewer.avatar}<strong>{viewer.name}</strong><span>{viewer.device}</span></span><Facts parts={facts} className={styles.sessionFacts} /></span>
+    <span className={cx(styles.sessionArt, media === 'audio' && styles.sessionAudio, media === 'channel' && styles.sessionChannel)} style={tintStyle(channel?.tint)}>{channel ? <><ChannelMark mark={channel.mark} source={channel.logo} tint={channel.tint} size={32} visible={props.visible} /><Facts parts={channel.facts} /></> : <>{media === 'audio' && <CardAmbient {...props} treatment="session-audio" />}<span className={styles.sessionForeground}><CardArtwork {...props} /></span></>}</span><span className={styles.sessionCopy}><span className={styles.sessionTitle}>{props.model.title}</span><Facts parts={props.model.caption} className={styles.sessionSubtitle} /><span className={styles.viewer}>{viewer.avatar}<strong>{username ?? viewer.name}</strong>{profile && <span className={styles.sessionProfile}>{profile}</span>}<span>{viewer.device}</span></span><Facts parts={facts} className={styles.sessionFacts} /></span>
   </CardFrame>;
 }
