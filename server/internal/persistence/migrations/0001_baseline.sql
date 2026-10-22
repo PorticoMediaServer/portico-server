@@ -3120,10 +3120,12 @@ CREATE TABLE direct_memberships(
  -- empty while the account is on; the direct_membership_disabled trigger keeps
  -- them so whichever statement flips "disabled".
  disabled_ms INTEGER NOT NULL DEFAULT 0 CHECK(disabled_ms>=0),
- disabled_reason TEXT NOT NULL DEFAULT '' CHECK(disabled_reason IN('','owner','left'))
+ disabled_reason TEXT NOT NULL DEFAULT '' CHECK(disabled_reason IN('','owner','left')),
+ notes TEXT CHECK(notes IS NULL OR length(notes)<=500),
+ joined_via TEXT NOT NULL DEFAULT '', joined_ms INTEGER NOT NULL DEFAULT 0 CHECK(joined_ms>=0)
 ) STRICT;
 CREATE TABLE access_invitations(
- id TEXT PRIMARY KEY, email TEXT NOT NULL, code_hash TEXT NOT NULL UNIQUE,
+ id TEXT PRIMARY KEY, notes TEXT CHECK(notes IS NULL OR length(notes)<=500), code_hash TEXT NOT NULL UNIQUE,
  role TEXT NOT NULL CHECK(role IN('admin','member')),
  allowed_libraries TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(allowed_libraries)),
  state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN('pending','accepted','revoked')),
@@ -4511,7 +4513,6 @@ CREATE INDEX playback_channel_sessions_live ON playback_channel_sessions(session
 CREATE INDEX playback_v1_sessions_created ON playback_v1_sessions(created_ms,id);
 CREATE INDEX hosted_identity_nonces_expiry ON hosted_identity_nonces(expires_ms);
 CREATE INDEX hosted_identity_challenges_expiry ON hosted_identity_challenges(expires_ms);
-CREATE UNIQUE INDEX access_invitation_pending ON access_invitations(email) WHERE state='pending' AND email<>'';
 CREATE INDEX live_programme_icons_url ON live_programme_icons(url);
 CREATE INDEX live_programme_images_digest ON live_programme_images(digest);
 CREATE INDEX live_icon_jobs_due ON live_icon_jobs(state,next_attempt_ms,source_id);
@@ -8189,3 +8190,6 @@ CREATE TABLE segment_catchup (
 CREATE INDEX segment_files_work ON segment_files(state,next_ms,show_id,object_id);
 CREATE INDEX segment_files_show ON segment_files(show_id,state);
 CREATE INDEX segment_shows_dirty ON segment_shows(dirty,show_id) WHERE dirty=1;
+
+CREATE INDEX identity_devices_people_name ON identity_devices(name,id);
+CREATE INDEX identity_devices_people_first_seen ON identity_devices(first_seen DESC,id DESC);

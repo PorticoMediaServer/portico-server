@@ -62,7 +62,7 @@ export const webMessages = {
   'web.profile.repeatPin': 'Repeat the PIN',
   'web.profile.pictureTooLarge': 'Choose a picture smaller than 4 MB.',
   'web.profile.nameRequired': 'Enter a name.',
-  'web.profile.pinRecoveryUnavailableWeb': 'A forgotten PIN is reset with your password plus a code from two-step verification, which this account hasn’t turned on. The main profile can change the PIN here in Settings › Account.',
+  'web.profile.pinRecoveryUnavailableWeb': 'Sign in to your account again to reset this profile’s PIN.',
   'web.profile.checking': 'Checking',
   'web.settings.direct': 'Server account',
   'web.settings.serverFallback': 'Server',

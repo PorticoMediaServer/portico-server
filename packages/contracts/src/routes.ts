@@ -1313,7 +1313,8 @@ export const routes = [
       "cursor",
       "limit",
       "trust",
-      "account"
+      "account",
+      "sort"
     ],
     "errors": [
       "unauthorized",
@@ -8897,6 +8898,28 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "post_admin_access_invitation_link",
+    "method": "POST",
+    "path": "/v1/admin/access/invitations/{id}/link",
+    "summary": "Manage invitation or private person notes",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 8192,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
     "id": "post_admin_access_invitations",
     "method": "POST",
     "path": "/v1/admin/access/invitations",
@@ -12365,6 +12388,50 @@ export const routes = [
       "revision_required"
     ],
     "status": 200,
+    "admission": "security-fence"
+  },
+  {
+    "id": "put_admin_access_invitation",
+    "method": "PUT",
+    "path": "/v1/admin/access/invitations/{id}",
+    "summary": "Manage invitation or private person notes",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 8192,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "put_admin_access_member_notes",
+    "method": "PUT",
+    "path": "/v1/admin/access/members/{id}/notes",
+    "summary": "Manage invitation or private person notes",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 8192,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
     "admission": "security-fence"
   },
   {
@@ -16831,6 +16898,7 @@ export const routePaths = {
   "patch_preferences": "/v1/preferences",
   "patch_saved_resources_id": "/v1/saved-resources/{id}",
   "post_access_invitations_accept": "/v1/access/invitations/accept",
+  "post_admin_access_invitation_link": "/v1/admin/access/invitations/{id}/link",
   "post_admin_access_invitations": "/v1/admin/access/invitations",
   "post_admin_access_invitations_id_revoke": "/v1/admin/access/invitations/{id}/revoke",
   "post_admin_background_pause": "/v1/admin/maintenance/background-pause",
@@ -16988,6 +17056,8 @@ export const routePaths = {
   "prove_network_identity": "/v1/networking/identity-proof",
   "publish_remote_live_source": "/v1/admin/live-sources/remote/save",
   "put_admin_access_device_trust": "/v1/admin/access/devices/{id}/trust",
+  "put_admin_access_invitation": "/v1/admin/access/invitations/{id}",
+  "put_admin_access_member_notes": "/v1/admin/access/members/{id}/notes",
   "put_admin_access_members_id_limits": "/v1/admin/access/members/{id}/limits",
   "put_admin_access_members_id_role": "/v1/admin/access/members/{id}/role",
   "put_admin_console_schedules": "/v1/admin/console/schedules",
