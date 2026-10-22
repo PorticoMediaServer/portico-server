@@ -1051,7 +1051,7 @@ func run() (runErr error) {
 	bindPortNumber, _ := strconv.Atoi(bindPort)
 	doneAdministration := reporter.step("administration", "Open administration and access")
 	administration, closeAdministration := initializeAdministration(ctx, db, console, ident, state, bindPortNumber, startupLog)
-	if err := administration.Access.LoadInvitationKey(state); err != nil {
+	if err := administration.Access.LoadInvitationKey(layout.Keys); err != nil {
 		log.Fatalf("Invitation key: %v", err)
 	}
 	doneAdministration(nil)

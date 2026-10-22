@@ -198,3 +198,28 @@ func TestNativeVolumeRootIsNeverADataOrSpillFolder(t *testing.T) {
 		t.Fatal("volume root accepted for spill")
 	}
 }
+
+// A pre-layout invitation key must never be silently replaced by a fresh key,
+// which would invalidate pending invitations without moving the old data.
+func TestLegacyInvitationKeyIsRefusedWithoutMutation(t *testing.T) {
+	data := t.TempDir()
+	old := filepath.Join(data, "invitation-link.key")
+	before := []byte(strings.Repeat("k", 32))
+	if err := os.WriteFile(old, before, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := At(data).Prepare(); err == nil {
+		t.Fatal("legacy invitation key accepted")
+	}
+	after, err := os.ReadFile(old)
+	if err != nil || string(after) != string(before) {
+		t.Fatal("legacy invitation key changed", err)
+	}
+	entries, err := os.ReadDir(data)
+	if err != nil || len(entries) != 1 {
+		t.Fatal("new layout created over legacy key", entries, err)
+	}
+	if got := Path(data, "invitation-link.key"); got != filepath.Join(data, "Keys", "invitation-link.key") {
+		t.Fatal("invitation key mapping", got)
+	}
+}
