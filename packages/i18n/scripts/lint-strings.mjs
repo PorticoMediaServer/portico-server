@@ -49,7 +49,80 @@ export function countLiterals(source, {jsx = true} = {}) {
   }
   const parse = text => parseSync(jsx ? 'strings.tsx' : 'strings.ts', text, {sourceType: 'unambiguous'});
   function scan(program, shift = 0) {
-    function visit(node, copy = false, parent) {
+    // Follow local values that reach a checked sink, including helper returns.
+    // Writes are conservative alternatives, not execution-order simulation.
+    const scopes = new WeakMap(), active = new Set(), writes = [];
+    const isFunction = node => node && ['ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration'].includes(node.type);
+    function bind(scope, pattern, value) {
+      if (!pattern) return;
+      if (pattern.type === 'Identifier') {
+        const binding = scope.bindings.get(pattern.name) ?? {values: []};
+        if (value) binding.values.push(value);
+        scope.bindings.set(pattern.name, binding);
+      } else if (pattern.type === 'AssignmentPattern') bind(scope, pattern.left, pattern.right);
+      else if (pattern.type === 'RestElement') bind(scope, pattern.argument);
+      else if (pattern.type === 'ObjectPattern') pattern.properties.forEach(property => bind(scope, property.value ?? property.argument));
+      else if (pattern.type === 'ArrayPattern') pattern.elements.forEach(element => bind(scope, element));
+    }
+    function index(node, scope = {bindings: new Map(), hoist: true}, parent) {
+      if (!node || typeof node !== 'object' || !node.type) return;
+      if (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') bind(scope, node.id, isFunction(node) ? node : undefined);
+      if (isFunction(node) || ['Program', 'BlockStatement', 'CatchClause', 'ForStatement', 'ForInStatement', 'ForOfStatement', 'SwitchStatement'].includes(node.type)) {
+        scope = {bindings: new Map(), parent: scope, hoist: isFunction(node) || node.type === 'Program'};
+        if (isFunction(node)) { bind(scope, node.id, node); node.params.forEach(parameter => bind(scope, parameter)); }
+        if (node.type === 'CatchClause') bind(scope, node.param);
+      }
+      scopes.set(node, scope);
+      if (node.type === 'VariableDeclarator') {
+        let owner = scope;
+        if (parent?.kind === 'var') while (!owner.hoist) owner = owner.parent;
+        bind(owner, node.id, node.init);
+      }
+      if (node.type === 'ImportDeclaration') node.specifiers.forEach(specifier => bind(scope, specifier.local));
+      if (node.type === 'AssignmentExpression' && node.left.type === 'Identifier') writes.push(node);
+      for (const [key, value] of Object.entries(node)) if (key !== 'parent') {
+        if (Array.isArray(value)) value.forEach(child => index(child, scope, node));
+        else if (value && typeof value === 'object') index(value, scope, node);
+      }
+    }
+    function bindingFor(identifier) {
+      for (let scope = scopes.get(identifier); scope; scope = scope.parent) {
+        if (scope.bindings.has(identifier.name)) return scope.bindings.get(identifier.name);
+      }
+    }
+    index(program);
+    for (const write of writes) bindingFor(write.left)?.values.push(write.right);
+    function follow(identifier, args) {
+      const binding = bindingFor(identifier);
+      if (!binding || active.has(binding)) return;
+      active.add(binding);
+      try {
+        for (const value of binding.values) {
+          if (args && isFunction(value)) invoke(value, args);
+          else if (!args) visit(value, true);
+        }
+      } finally { active.delete(binding); }
+    }
+    function invoke(fn, args) {
+      const bindings = scopes.get(fn).bindings, saved = [];
+      fn.params.forEach((parameter, index) => {
+        const target = parameter.type === 'AssignmentPattern' ? parameter.left : parameter;
+        if (target.type !== 'Identifier' || !args[index]) return;
+        saved.push([target.name, bindings.get(target.name)]);
+        bindings.set(target.name, {values: [args[index]]});
+      });
+      try { visit(fn, true); }
+      finally { for (const [name, binding] of saved) bindings.set(name, binding); }
+    }
+    // A call's scalar inputs are not its output. Structured inputs can contain
+    // copy fields, interpolation values or render callbacks, so keep checking
+    // those without treating selectors and predicate arguments as display text.
+    function structuredInput(node) {
+      if (!node) return false;
+      if (node.type.startsWith('TS') || node.type === 'ParenthesizedExpression' || node.type === 'SpreadElement') return structuredInput(node.expression ?? node.argument);
+      return ['ObjectExpression', 'ArrayExpression', 'ArrowFunctionExpression', 'FunctionExpression'].includes(node.type);
+    }
+    function visit(node, copy = false, parent, returnsCopy = false) {
       if (!node || typeof node !== 'object' || !node.type) return;
       // Type names, literal types and import specifiers never render. Assertions
       // still contain a runtime expression, which keeps its surrounding context.
@@ -61,6 +134,7 @@ export function countLiterals(source, {jsx = true} = {}) {
         return;
       }
       if (node.type === 'ImportDeclaration' || node.type === 'ExportAllDeclaration') return;
+      if (node.type === 'Identifier') { if (copy) follow(node); return; }
       if (node.type === 'JSXText') {
         if (jsx) {
           let offset = node.start + shift;
@@ -80,6 +154,59 @@ export function countLiterals(source, {jsx = true} = {}) {
       if (node.type === 'JSXExpressionContainer') {
         visit(node.expression, copy || jsx && (parent?.type === 'JSXElement' || parent?.type === 'JSXFragment'), node); return;
       }
+      if (node.type === 'ConditionalExpression') {
+        visit(node.test, false, node);
+        visit(node.consequent, copy, node); visit(node.alternate, copy, node); return;
+      }
+      if (node.type === 'LogicalExpression') {
+        visit(node.left, copy && node.operator !== '&&', node);
+        visit(node.right, copy, node); return;
+      }
+      if (node.type === 'SequenceExpression') {
+        node.expressions.forEach((expression, index) => visit(expression, copy && index === node.expressions.length - 1, node)); return;
+      }
+      if (node.type === 'BinaryExpression') {
+        // Only addition can produce text. Comparison operands and predicates
+        // never become visible just because their boolean result is rendered.
+        visit(node.left, copy && node.operator === '+', node);
+        visit(node.right, copy && node.operator === '+', node); return;
+      }
+      if (node.type === 'UnaryExpression' || node.type === 'UpdateExpression') {
+        visit(node.argument, false, node); return;
+      }
+      if (node.type === 'MemberExpression') {
+        visit(node.object, false, node); if (node.computed) visit(node.property, false, node); return;
+      }
+      if (node.type === 'CallExpression' || node.type === 'NewExpression') {
+        if (copy && node.type === 'CallExpression' && node.callee.type === 'Identifier') follow(node.callee, node.arguments);
+        if (copy && isFunction(node.callee)) invoke(node.callee, node.arguments);
+        else if (node.callee.type === 'MemberExpression') {
+          visit(node.callee.object, copy && structuredInput(node.callee.object), node.callee);
+          if (node.callee.computed) visit(node.callee.property, false, node.callee);
+        } else visit(node.callee, copy && structuredInput(node.callee), node);
+        node.arguments.forEach(argument => visit(argument, copy && structuredInput(argument), node)); return;
+      }
+      if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration') {
+        node.params.forEach(parameter => visit(parameter, false, node));
+        if (node.body?.type === 'BlockStatement') visit(node.body, false, node, copy);
+        else visit(node.body, copy, node);
+        return;
+      }
+      if (node.type === 'ReturnStatement') { visit(node.argument, returnsCopy, node); return; }
+      if (node.type === 'ThrowStatement') return; // Developer diagnostics are not rendered callback returns.
+      if (node.type === 'IfStatement') {
+        visit(node.test, false, node);
+        visit(node.consequent, false, node, returnsCopy); visit(node.alternate, false, node, returnsCopy); return;
+      }
+      if (node.type === 'SwitchStatement') {
+        visit(node.discriminant, false, node);
+        node.cases.forEach(branch => visit(branch, false, node, returnsCopy)); return;
+      }
+      if (node.type === 'SwitchCase') {
+        visit(node.test, false, node);
+        node.consequent.forEach(statement => visit(statement, false, node, returnsCopy)); return;
+      }
+      if (node.type === 'ExpressionStatement') { visit(node.expression, false, node); return; }
       if (node.type === 'Property' || node.type === 'PropertyDefinition') {
         const name = node.computed ? undefined : node.key.name ?? node.key.value;
         visit(node.value, copy || copyNames.has(name), node); return;
@@ -87,12 +214,14 @@ export function countLiterals(source, {jsx = true} = {}) {
       if (node.type === 'VariableDeclarator' || node.type === 'AssignmentExpression' || node.type === 'AssignmentPattern') {
         const target = node.id ?? node.left;
         const name = target?.type === 'Identifier' ? target.name : target?.type === 'MemberExpression' && !target.computed ? target.property.name : undefined;
-        visit(node.init ?? node.right, copy || copyNames.has(name), node);
+        // A local declaration in a render callback is not itself returned.
+        // Preserve the independently checked named copy positions.
+        visit(node.init ?? node.right, (node.type !== 'VariableDeclarator' && copy) || copyNames.has(name), node);
         visit(target, false, node); return;
       }
       for (const [key, value] of Object.entries(node)) if (key !== 'parent') {
-        if (Array.isArray(value)) value.forEach(child => visit(child, copy, node));
-        else if (value && typeof value === 'object') visit(value, copy, node);
+        if (Array.isArray(value)) value.forEach(child => visit(child, copy, node, returnsCopy));
+        else if (value && typeof value === 'object') visit(value, copy, node, returnsCopy);
       }
     }
     visit(program);
