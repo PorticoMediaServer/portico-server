@@ -155,7 +155,7 @@
 .trackRow:hover .trackOrdinal, .trackRow:focus-within .trackOrdinal { display: none; }
 .trackRow:hover .trackPlay > .ordinalPlay, .trackRow:focus-within .trackPlay > .ordinalPlay { display: block; color: var(--browse-text); }
 .trackSelection { position: absolute; z-index: 1; inset: 0; display: none; place-items: center; background: var(--color-raised); }
-.trackRow:hover .trackSelection, .trackRow:focus-within .trackSelection, .trackSelection:has([aria-checked=true]) { display: grid; }
+.trackRow:hover .trackSelection, .trackRow:focus-within .trackSelection, .trackSelection:has([aria-pressed=true]) { display: grid; }
 .trackNumber:has(.trackSelection:hover) .trackPlay { visibility: hidden; }
 .trackTitle { display: flex; align-items: center; gap: 14px; min-width: 0; width: 100%; text-align: left; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
 .trackText { min-width: 0; flex: 1; }
