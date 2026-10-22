@@ -67,9 +67,9 @@ export function SeriesTile({covers, segments, tint, ...props}: SeriesTileProps) 
   return <CardFrame {...props} onPlay={undefined} kind="series" style={{...tintStyle(tint), ...props.style}}><BoundedCovers covers={covers} visible={props.visible} arrivalDurationMs={props.arrivalDurationMs} className={styles.seriesFan} /><span className={styles.seriesCopy}><span className={styles.seriesTitle}>{props.model.title}</span><Facts parts={props.model.caption} className={styles.seriesFacts} /><span className={styles.segments} aria-hidden="true">{segments.map(segment => <span key={segment.id}><span style={{width: `${(segment.state === 'read' ? 1 : segment.state === 'in-progress' ? boundedProgress(segment.progress) ?? 0 : 0) * 100}%`}} /></span>)}</span></span></CardFrame>;
 }
 
-export type QuickTileProps = MediaCardProps & Readonly<{playing?: boolean}>;
-export function QuickTile({playing, ...props}: QuickTileProps) {
-  return <CardFrame {...props} kind="quick" className={cx(playing && styles.playing, props.className)} playIcon={playing ? 'i-pause' : 'i-play'}><span className={styles.quickCover}><CardArtwork {...props} /></span><span className={styles.quickCopy}><span className={styles.quickTitle}>{props.model.title}</span><span className={styles.quickSubtitle}>{playing && <span className={styles.levelMeter} aria-hidden="true"><i /><i /><i /><i /></span>}<Facts parts={props.model.caption} /></span></span></CardFrame>;
+export type QuickTileProps = MediaCardProps & Readonly<{playing?: boolean; onPause?: () => void}>;
+export function QuickTile({playing, onPause, ...props}: QuickTileProps) {
+  return <CardFrame {...props} onPlay={playing ? onPause : props.onPlay} kind="quick" className={cx(playing && styles.playing, props.className)} playIcon={playing ? 'i-pause' : 'i-play'}><span className={styles.quickCover}><CardArtwork {...props} /></span><span className={styles.quickCopy}><span className={styles.quickTitle}>{props.model.title}</span><span className={styles.quickSubtitle}>{playing && <span className={styles.levelMeter} aria-hidden="true"><i /><i /><i /><i /></span>}<Facts parts={props.model.caption} /></span></span></CardFrame>;
 }
 
 export type SessionChannel = Readonly<{mark: ChannelMarkModel; logo?: ArtworkSource; tint?: string; facts: readonly FactPart[]}>;
