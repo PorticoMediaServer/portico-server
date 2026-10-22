@@ -31,6 +31,9 @@ func NewTranscodePool(memory, disk string, availableRAM int64, mounts []Mount) (
 	if !filepath.IsAbs(disk) || disk == string(os.PathSeparator) {
 		return nil, errors.New("disk spill needs a dedicated absolute directory")
 	}
+	if memory != "" && Filesystem(disk, mounts) == "tmpfs" {
+		return nil, errors.New("disk spill must be on a separate disk filesystem, not RAM")
+	}
 	if err := canonicalParents(disk); err != nil {
 		return nil, err
 	}
@@ -40,9 +43,6 @@ func NewTranscodePool(memory, disk string, availableRAM int64, mounts []Mount) (
 	p := &TranscodePool{disk: disk}
 	if memory == "" {
 		return p, nil
-	}
-	if Filesystem(disk, mounts) == "tmpfs" {
-		return nil, errors.New("disk spill must be on a separate disk filesystem, not RAM")
 	}
 	if Filesystem(memory, mounts) != "tmpfs" {
 		return nil, errors.New("memory transcodes require a verified tmpfs or /dev/shm filesystem")
