@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseSprite, renderNative, renderShared} from './next-icons.mjs';
+import {nextIcons, iconNames, nextIconSprite} from '../src/next-icons.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const svg = readFileSync(path.resolve(here, '../src/next-icons.svg'), 'utf8');
@@ -15,7 +16,7 @@ const symbol = '<symbol id="i-test" viewBox="0 0 24 24"><path fill="currentColor
 
 test('every canonical symbol has the same faithful ID and geometry in both outputs', () => {
   const web = renderShared(icons), native = renderNative(icons);
-  assert.equal(icons.length, 244);
+  assert.equal(icons.length, 245);
   assert.equal(new Set(icons.map(i => i.attrs.id)).size, icons.length);
   assert.equal((native.match(/case "/g) || []).length, icons.length);
   for (const icon of icons) {
@@ -53,6 +54,24 @@ test('selection queue choices preserve the exact next and later source geometry'
   assert.equal(later.children[0].children[0].attrs.d, 'M4 6.5h16M4 11.5h16M4 16.5h8M17 14v6M14 17h6');
 });
 
+test('selection Keep only registers the exact drawn album in the shared and native outputs', () => {
+  // select.html:1660 at design/ui-v1 8377791ae573e17b0fc5199ae87f7ad3feee0f16.
+  const album = icons.find(i => i.attrs.id === 'i-album');
+  assert.deepEqual(album, {
+    tag: 'symbol', attrs: {id: 'i-album', viewBox: '0 0 24 24'}, children: [{
+      tag: 'g', attrs: {fill: 'none', stroke: 'currentColor', 'stroke-width': '2'}, children: [
+        {tag: 'rect', attrs: {x: '4', y: '4', width: '16', height: '16', rx: '3'}, children: []},
+        {tag: 'circle', attrs: {cx: '12', cy: '12', r: '3.6'}, children: []},
+      ],
+    }],
+  });
+  const body = '<g fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3"></rect><circle cx="12" cy="12" r="3.6"></circle></g>';
+  assert.deepEqual(nextIcons['i-album'], {viewBox: '0 0 24 24', body});
+  assert.equal(iconNames.filter(name => name === 'i-album').length, 1);
+  assert.ok(nextIconSprite.includes(`<symbol id="i-album" viewBox="0 0 24 24">${body}</symbol>`));
+  assert.ok(renderNative(icons).includes('case "i-album": return <G><G fill="none" stroke="currentColor" strokeWidth="2"><Rect x="4" y="4" width="16" height="16" rx="3" /><Circle cx="12" cy="12" r="3.6" /></G></G>;'));
+});
+
 test('unsupported SVG features, unsafe attributes and malformed geometry fail closed', () => {
   for (const invalid of [
     symbol + symbol,
@@ -83,6 +102,6 @@ test('generation is deterministic and check detects stale or missing native outp
     writeFileSync(target, renderNative(icons) + '\n');
     assert.notEqual(run([]).status, 0);
     assert.match(run([]).stderr, /Stale icon output/);
-    assert.equal(execFileSync(process.execPath, [path.join(here, 'next-icons.mjs'), '--check'], {encoding: 'utf8'}).trim(), 'next-icons: 244 symbols; 1 output(s) verified');
+    assert.equal(execFileSync(process.execPath, [path.join(here, 'next-icons.mjs'), '--check'], {encoding: 'utf8'}).trim(), 'next-icons: 245 symbols; 1 output(s) verified');
   } finally { rmSync(temp, {recursive: true, force: true}); }
 });
