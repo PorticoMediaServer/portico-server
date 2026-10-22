@@ -37,6 +37,9 @@ type HomePeriod struct {
 	Text   ServerText `json:"text"`
 }
 type HomeCollection struct {
+	Actions *HomeActions `json:"actions,omitempty"`
+	// Featured Home collections are selected only from movie libraries.
+	MediaKind   string         `json:"mediaKind"`
 	Collection  Collection     `json:"collection"`
 	Members     []ContentEntry `json:"members"`
 	BackdropURL string         `json:"backdropUrl,omitempty"`
@@ -46,6 +49,7 @@ type HomeCollection struct {
 	LastTitle string `json:"lastTitle,omitempty"`
 }
 type HomeChannel struct {
+	Actions HomeChannelActions       `json:"actions"`
 	Channel livechannels.Channel     `json:"channel"`
 	Source  livechannels.GuideSource `json:"source"`
 }
@@ -270,7 +274,7 @@ func (s *Service) homeCollection(r HomeRequest) (*HomeCollection, error) {
 			if err = s.homeEnrich(r.Profile, members); err != nil {
 				return nil, err
 			}
-			out := &HomeCollection{Collection: collection, Members: members}
+			out := &HomeCollection{Collection: collection, MediaKind: "movie", Members: members}
 			for _, member := range members {
 				if out.BackdropURL == "" {
 					out.BackdropURL = member.BackdropURL
