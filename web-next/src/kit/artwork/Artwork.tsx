@@ -54,6 +54,13 @@ export function Artwork({source, alt, fit = 'cover', position, zoom = 1, saturat
     {fallback != null && <span className={styles.artworkFallback}>{fallback}</span>}
     {read.image && !failed && <img key={source?.key} src={read.image.src} alt="" draggable={false} className={artClass(styles.image, ready && styles.decoded)}
       style={{objectFit: fit, objectPosition: position, transform: zoom === 1 ? undefined : `scale(${zoom})`, filter: saturation === 1 && brightness === 1 ? undefined : `saturate(${saturation}) brightness(${brightness})`}}
-      onLoad={() => setDecoded({image: read.image, scheduler: source?.scheduler, key: source?.key, failed: false})} onError={() => setDecoded({image: read.image, scheduler: source?.scheduler, key: source?.key, failed: true})} />}
+      onLoad={event => {
+        const element = event.currentTarget;
+        void element.decode().then(() => {
+          if (element.isConnected) setDecoded({image: read.image, scheduler: source?.scheduler, key: source?.key, failed: false});
+        }, () => {
+          if (element.isConnected) setDecoded({image: read.image, scheduler: source?.scheduler, key: source?.key, failed: true});
+        });
+      }} onError={() => setDecoded({image: read.image, scheduler: source?.scheduler, key: source?.key, failed: true})} />}
   </span>;
 }
