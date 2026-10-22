@@ -30865,6 +30865,9 @@
                 "available": {
                   "type": "boolean"
                 },
+                "dataGBPerHour": {
+                  "type": "number"
+                },
                 "estimated": {
                   "type": "boolean"
                 },
@@ -30876,8 +30879,16 @@
                 "label": {
                   "type": "string"
                 },
+                "maxVideoBitrateBps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "quality": {
                   "type": "string"
+                },
+                "sameAsOriginal": {
+                  "type": "boolean"
                 },
                 "unavailableCount": {
                   "maximum": 9007199254740991,
@@ -30892,6 +30903,7 @@
               },
               "required": [
                 "quality",
+                "sameAsOriginal",
                 "label",
                 "estimatedBytes",
                 "estimated",
@@ -32830,6 +32842,12 @@
                 "available": {
                   "type": "boolean"
                 },
+                "dataGBPerHour": {
+                  "type": "number"
+                },
+                "effectiveQuality": {
+                  "type": "string"
+                },
                 "estimated": {
                   "type": "boolean"
                 },
@@ -32875,6 +32893,9 @@
                 "requiresPreparation": {
                   "type": "boolean"
                 },
+                "sameAsOriginal": {
+                  "type": "boolean"
+                },
                 "targetDisplayHeight": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -32888,7 +32909,9 @@
                 "estimatedBytes",
                 "estimated",
                 "available",
-                "requiresPreparation"
+                "requiresPreparation",
+                "sameAsOriginal",
+                "effectiveQuality"
               ],
               "type": "object"
             },
@@ -33509,11 +33532,24 @@
           "qualities": {
             "items": {
               "properties": {
+                "dataGBPerHour": {
+                  "type": "number"
+                },
                 "kind": {
                   "type": "string"
                 },
                 "label": {
                   "type": "string"
+                },
+                "maxAudioBitrateBps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "maxVideoBitrateBps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "quality": {
                   "type": "string"
@@ -61281,6 +61317,9 @@
                 "qualities": {
                   "items": {
                     "properties": {
+                      "dataGBPerHour": {
+                        "type": "number"
+                      },
                       "enabled": {
                         "type": "boolean"
                       },
@@ -61306,6 +61345,9 @@
                       "reason": {
                         "type": "string"
                       },
+                      "sameAsOriginal": {
+                        "type": "boolean"
+                      },
                       "targetDisplayHeight": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -61316,7 +61358,8 @@
                       "id",
                       "kind",
                       "label",
-                      "enabled"
+                      "enabled",
+                      "sameAsOriginal"
                     ],
                     "type": "object"
                   },
@@ -87999,6 +88042,9 @@
           "ladder": {
             "items": {
               "properties": {
+                "dataGBPerHour": {
+                  "type": "number"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -88026,7 +88072,8 @@
                 "label",
                 "targetDisplayHeight",
                 "maxVideoBitrateBps",
-                "maxAudioBitrateBps"
+                "maxAudioBitrateBps",
+                "dataGBPerHour"
               ],
               "type": "object"
             },
@@ -88435,6 +88482,12 @@
           "qualities": {
             "items": {
               "properties": {
+                "applicable": {
+                  "type": "boolean"
+                },
+                "dataGBPerHour": {
+                  "type": "number"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -88455,10 +88508,15 @@
                 },
                 "mode": {
                   "type": "string"
+                },
+                "sameAsOriginal": {
+                  "type": "boolean"
                 }
               },
               "required": [
-                "mode"
+                "mode",
+                "sameAsOriginal",
+                "applicable"
               ],
               "type": "object"
             },
@@ -153073,11 +153131,24 @@
           "qualities": {
             "items": {
               "properties": {
+                "dataGBPerHour": {
+                  "type": "number"
+                },
                 "kind": {
                   "type": "string"
                 },
                 "label": {
                   "type": "string"
+                },
+                "maxAudioBitrateBps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "maxVideoBitrateBps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "quality": {
                   "type": "string"
@@ -231174,6 +231245,9 @@
                           "available": {
                             "type": "boolean"
                           },
+                          "dataGBPerHour": {
+                            "type": "number"
+                          },
                           "estimated": {
                             "type": "boolean"
                           },
@@ -231185,8 +231259,16 @@
                           "label": {
                             "type": "string"
                           },
+                          "maxVideoBitrateBps": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "quality": {
                             "type": "string"
+                          },
+                          "sameAsOriginal": {
+                            "type": "boolean"
                           },
                           "unavailableCount": {
                             "maximum": 9007199254740991,
@@ -231201,6 +231283,7 @@
                         },
                         "required": [
                           "quality",
+                          "sameAsOriginal",
                           "label",
                           "estimatedBytes",
                           "estimated",
@@ -235351,11 +235434,24 @@
                     "qualities": {
                       "items": {
                         "properties": {
+                          "dataGBPerHour": {
+                            "type": "number"
+                          },
                           "kind": {
                             "type": "string"
                           },
                           "label": {
                             "type": "string"
+                          },
+                          "maxAudioBitrateBps": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "maxVideoBitrateBps": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           },
                           "quality": {
                             "type": "string"
@@ -235498,11 +235594,24 @@
                     "qualities": {
                       "items": {
                         "properties": {
+                          "dataGBPerHour": {
+                            "type": "number"
+                          },
                           "kind": {
                             "type": "string"
                           },
                           "label": {
                             "type": "string"
+                          },
+                          "maxAudioBitrateBps": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "maxVideoBitrateBps": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           },
                           "quality": {
                             "type": "string"
@@ -286954,6 +287063,9 @@
                           "qualities": {
                             "items": {
                               "properties": {
+                                "dataGBPerHour": {
+                                  "type": "number"
+                                },
                                 "enabled": {
                                   "type": "boolean"
                                 },
@@ -286979,6 +287091,9 @@
                                 "reason": {
                                   "type": "string"
                                 },
+                                "sameAsOriginal": {
+                                  "type": "boolean"
+                                },
                                 "targetDisplayHeight": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -286989,7 +287104,8 @@
                                 "id",
                                 "kind",
                                 "label",
-                                "enabled"
+                                "enabled",
+                                "sameAsOriginal"
                               ],
                               "type": "object"
                             },
@@ -296859,6 +296975,12 @@
                           "available": {
                             "type": "boolean"
                           },
+                          "dataGBPerHour": {
+                            "type": "number"
+                          },
+                          "effectiveQuality": {
+                            "type": "string"
+                          },
                           "estimated": {
                             "type": "boolean"
                           },
@@ -296904,6 +297026,9 @@
                           "requiresPreparation": {
                             "type": "boolean"
                           },
+                          "sameAsOriginal": {
+                            "type": "boolean"
+                          },
                           "targetDisplayHeight": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -296917,7 +297042,9 @@
                           "estimatedBytes",
                           "estimated",
                           "available",
-                          "requiresPreparation"
+                          "requiresPreparation",
+                          "sameAsOriginal",
+                          "effectiveQuality"
                         ],
                         "type": "object"
                       },
@@ -297444,6 +297571,12 @@
                     "qualities": {
                       "items": {
                         "properties": {
+                          "applicable": {
+                            "type": "boolean"
+                          },
+                          "dataGBPerHour": {
+                            "type": "number"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -297464,10 +297597,15 @@
                           },
                           "mode": {
                             "type": "string"
+                          },
+                          "sameAsOriginal": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
-                          "mode"
+                          "mode",
+                          "sameAsOriginal",
+                          "applicable"
                         ],
                         "type": "object"
                       },
@@ -333620,6 +333758,9 @@
                     "ladder": {
                       "items": {
                         "properties": {
+                          "dataGBPerHour": {
+                            "type": "number"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -333647,7 +333788,8 @@
                           "label",
                           "targetDisplayHeight",
                           "maxVideoBitrateBps",
-                          "maxAudioBitrateBps"
+                          "maxAudioBitrateBps",
+                          "dataGBPerHour"
                         ],
                         "type": "object"
                       },

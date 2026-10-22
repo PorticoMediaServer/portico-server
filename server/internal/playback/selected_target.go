@@ -48,7 +48,7 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 	t := decoder.ConversionTarget{VideoCodec: p.OutputVideoCodec, BitDepth: p.OutputBitDepth, DynamicRange: p.OutputRange, ToneMap: p.ToneMap, Unmapped: p.ToneMapOff, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
 	if p.VideoAction == "convert" {
 		t.RateControl = "bitrate"
-		if p.QualityID == "original" || p.QualityID == "auto" || p.QualityID == "automatic" || p.QualityID == "" {
+		if p.QualityID == "original" || p.QualityID == "automatic" || p.QualityID == "" {
 			t.RateControl = "quality"
 		}
 	}

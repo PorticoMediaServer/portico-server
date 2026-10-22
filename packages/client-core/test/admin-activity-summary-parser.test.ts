@@ -98,12 +98,12 @@ test('no unexpected private fields, capability URLs, absolute files, invalid sco
 });
 test('quality request is validated independently of committed conversion height', () => {
   const raw = document();
-  for (const quality of [{mode: 'original'}, {mode: 'fixed', id: '720p'}, {mode: 'automatic'}, {mode: 'automatic', id: '1080p'}, {mode: 'limit', maxHeight: 1080}]) {
+  for (const quality of [{mode: 'original'}, {mode: 'fixed', id: '720p-high'}, {mode: 'automatic'}, {mode: 'automatic', id: '1080p-low'}, {mode: 'limit', maxHeight: 1080}]) {
     raw.streams.items[0].quality = quality; assert.equal(parseActivitySummary(raw).streams.items[0].videoHeight, 720);
   }
   for (const change of [
     (raw: any) => {raw.streams.items[0].quality = {mode: 'fixed', maxHeight: 720};},
-    (raw: any) => {raw.streams.items[0].quality = {mode: 'original', id: '1080p'};},
+    (raw: any) => {raw.streams.items[0].quality = {mode: 'original', id: '1080p-low'};},
     (raw: any) => {raw.streams.items[0].quality = {mode: 'automatic', step: 'down'};},
     (raw: any) => {raw.streams.items[0].videoHeight = NaN;},
     (raw: any) => {raw.update.available = false;}, (raw: any) => {delete raw.update.latest;},

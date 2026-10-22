@@ -56,7 +56,7 @@ test('requests validate the target, device, quality and policy', async () => {
 test('a reused operationId with a different body fails as idempotency_key_reused', async () => {
   const api = fakeApi({'POST /v1/downloads/requests': () => { throw Object.assign(new Error('reused'), {status: 422, code: 'idempotency_key_reused'}); }});
   await assert.rejects(
-    createDownloadRequest(api, {operationId: 'op-1', target: {kind: 'show', id: 's'}, deviceId: 'dev-1', quality: '720p', policy: {episodes: 'unwatched'}}),
+    createDownloadRequest(api, {operationId: 'op-1', target: {kind: 'show', id: 's'}, deviceId: 'dev-1', quality: '720p-high', policy: {episodes: 'unwatched'}}),
     (e: any) => e.code === 'idempotency_key_reused',
   );
 });

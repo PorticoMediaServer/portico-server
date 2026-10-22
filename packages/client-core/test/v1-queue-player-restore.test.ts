@@ -164,7 +164,7 @@ test('restorePaused keeps the original queue and position, with paused intent at
 
 test('restorePaused reads Settings again and drops choices from the old playback', async t => {
   const f = setup(t), saved = await f.seed();
-  await f.playback.changePlayback({quality: {mode: 'fixed', id: '720p'}, audioTrackId: 'a2', subtitleTrackId: 's4'});
+  await f.playback.changePlayback({quality: {mode: 'fixed', id: '720p-high'}, audioTrackId: 'a2', subtitleTrackId: 's4'});
   const before = f.log.length;
   await f.player.restorePaused(saved.queueId, saved.entryId, 44);
   const body = f.log.slice(before).find(r => r.method === 'POST' && r.path === '/v1/playback/sessions')!.body as Record<string, unknown>;
@@ -217,7 +217,7 @@ for (const separateStart of [false, true]) {
   });
 }
 
-for (const choice of [{mode: 'original'}, {mode: 'fixed', id: '720p'}] as const) {
+for (const choice of [{mode: 'original'}, {mode: 'fixed', id: '720p-high'}] as const) {
   test(`restorePaused quality regression: an explicit ${choice.mode} overrides Settings until a fresh playback`, async t => {
     let saved: QualityRequest | undefined = {mode: 'automatic'};
     const f = setup(t, () => saved);
@@ -232,7 +232,7 @@ for (const choice of [{mode: 'original'}, {mode: 'fixed', id: '720p'}] as const)
     await f.player.restorePaused(queue.id, queue.currentEntryId!, 9);
     starts = f.log.filter(r => r.method === 'POST' && r.path === '/v1/playback/sessions');
     assert.equal(Object.hasOwn(starts.at(-1)!.body as object, 'quality'), false, 'fresh restore reads Settings rather than carrying the previous override');
-    saved = {mode: 'fixed', id: '1080p'};
+    saved = {mode: 'fixed', id: '1080p-low'};
     await f.player.playItem('different', 10);
     starts = f.log.filter(r => r.method === 'POST' && r.path === '/v1/playback/sessions');
     assert.deepEqual((starts.at(-1)!.body as {quality: unknown}).quality, saved, 'a fresh item uses the current explicit saved preference');

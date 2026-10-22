@@ -60,7 +60,7 @@ func TestCapacityResolvesAutoToTheFirstSupportedBackend(t *testing.T) {
 	if report.Sessions.Active != nil {
 		t.Fatal("an unpublished session count must stay null, never zero")
 	}
-	if len(report.Presets) == 0 || report.Presets[0].Height != 2160 {
+	if len(report.Presets) != 9 || report.Presets[0].ID != "original" || report.Presets[1].ID != "automatic" || report.Presets[2].Height != 2160 || report.Presets[2].VideoKbps != 40000 {
 		t.Fatal("the ladder must be published by the server", report.Presets)
 	}
 	if !report.Dependencies["ffmpeg"].OK || !strings.Contains(report.Dependencies["ffmpeg"].Version, "version 7.1") {

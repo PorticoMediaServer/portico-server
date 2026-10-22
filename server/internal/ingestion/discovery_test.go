@@ -165,7 +165,7 @@ func TestRealMovieScanDiscoveryPaginationAndCollections(t *testing.T) {
 	}
 	player := playback.New(db)
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
-	session, err := player.Create(p, first[0].ID, "auto", "watch")
+	session, err := player.Create(p, first[0].ID, "automatic", "watch")
 	if err != nil {
 		t.Fatal(err)
 	}

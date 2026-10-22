@@ -503,6 +503,14 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 	if e = retireStrays(ctx, tx, key, entity, item, now); e != nil {
 		return "", "", e
 	}
+	source, e := resolveSource(ctx, tx, item)
+	if reason := sourceReason(source, e); reason != "" {
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return "", "", e
+		}
+		return "", reason, nil
+	}
+	quality = resolvedQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), quality, source)
 	existing, e := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND state IN('queued','running','ready','paused','failed')`, key, entity, quality))
 	if e == nil {
 		// Asking for the whole season again is asking for the episode that
@@ -518,13 +526,6 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 	}
 	if !errors.Is(e, sql.ErrNoRows) {
 		return "", "", e
-	}
-	source, e := resolveSource(ctx, tx, item)
-	if reason := sourceReason(source, e); reason != "" {
-		if e != nil && !errors.Is(e, sql.ErrNoRows) {
-			return "", "", e
-		}
-		return "", reason, nil
 	}
 	recipe := chooseRecipe(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), quality, source)
 	if reason := qualityReason(ctx, tx, quality, recipe, source); reason != "" {

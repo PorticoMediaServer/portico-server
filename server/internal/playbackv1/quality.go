@@ -7,7 +7,7 @@ import (
 // Quality is what a viewer asks a presentation's quality to be (spec §5.2).
 //
 //   - original: the file as it is. This is the default.
-//   - fixed: one step of the published ladder, named by id ("1080p"). A step is
+//   - fixed: one step of the published ladder, named by id ("1080p-low"). A step is
 //     a ceiling, not a target: a file already within it still plays as it is.
 //   - automatic: starts at the original and moves down, and back up, as the
 //     connection requires. The client asks for each move (step "down" or "up")
@@ -123,21 +123,10 @@ type SourceFacts struct {
 	BitrateKbps int
 }
 
-// ladderFor is the ladder steps that apply to a source, widest first: every
-// step no taller than the picture (all of them when the height is unknown).
-// A source shorter than every step keeps the smallest one.
+// ladderFor returns the complete canonical menu. Automatic separately narrows
+// these ceilings to genuinely smaller steps evidenced by source facts.
 func ladderFor(source SourceFacts) []playback.QualityPreset {
-	out := []playback.QualityPreset{}
-	for _, preset := range playback.QualityLadder {
-		if source.Height > 0 && preset.Height > source.Height {
-			continue
-		}
-		out = append(out, preset)
-	}
-	if len(out) == 0 {
-		out = append(out, playback.QualityLadder[len(playback.QualityLadder)-1])
-	}
-	return out
+	return playback.QualityLadder
 }
 
 // presetKbps is everything a ladder step delivers at most, picture and sound.
@@ -151,18 +140,21 @@ func presetKbps(p playback.QualityPreset) int {
 // that cannot be made (already at the smallest step, already at the original)
 // returns the quality unchanged.
 func stepAutomatic(current Quality, direction string, source SourceFacts) Quality {
+	if source.Height <= 0 || source.BitrateKbps <= 0 {
+		return Quality{Mode: QualityAutomatic}
+	}
 	steps := ladderFor(source)
 	// Steps that would not make the stream smaller than the original are not
 	// steps down at all.
 	useful := steps[:0:0]
 	for _, preset := range steps {
-		if source.BitrateKbps > 0 && presetKbps(preset) >= source.BitrateKbps {
+		if source.Height > 0 && preset.Height > source.Height && !(source.Height < playback.QualityLadder[len(playback.QualityLadder)-1].Height && preset.ID == playback.QualityLadder[len(playback.QualityLadder)-1].ID) || source.BitrateKbps > 0 && presetKbps(preset) >= source.BitrateKbps {
 			continue
 		}
 		useful = append(useful, preset)
 	}
 	if len(useful) == 0 {
-		useful = steps[len(steps)-1:]
+		return Quality{Mode: QualityAutomatic}
 	}
 	at := -1
 	for i, preset := range useful {
@@ -216,10 +208,18 @@ func fitAutomatic(throughputKbps int, source SourceFacts) Quality {
 	if source.BitrateKbps <= budget {
 		return out
 	}
-	steps := ladderFor(source)
+	steps := []playback.QualityPreset{}
+	for _, p := range ladderFor(source) {
+		if source.Height > 0 && (p.Height <= source.Height || source.Height < playback.QualityLadder[len(playback.QualityLadder)-1].Height && p.ID == playback.QualityLadder[len(playback.QualityLadder)-1].ID) && presetKbps(p) < source.BitrateKbps {
+			steps = append(steps, p)
+		}
+	}
+	if len(steps) == 0 {
+		return out
+	}
 	out.ID = steps[len(steps)-1].ID
 	for _, preset := range steps {
-		if presetKbps(preset) <= budget && (source.BitrateKbps == 0 || presetKbps(preset) < source.BitrateKbps) {
+		if presetKbps(preset) <= budget {
 			out.ID = preset.ID
 			break
 		}
@@ -230,22 +230,21 @@ func fitAutomatic(throughputKbps int, source SourceFacts) Quality {
 // QualityOption is one entry of the quality menu for a title (playback
 // options `qualities`). Original and automatic are always first.
 type QualityOption struct {
-	Mode                string `json:"mode"`
-	ID                  string `json:"id,omitempty"`
-	MaxHeight           int    `json:"maxHeight,omitempty"`
-	MaxVideoBitrateKbps int    `json:"maxVideoBitrateKbps,omitempty"`
-	MaxAudioBitrateKbps int    `json:"maxAudioBitrateKbps,omitempty"`
+	Mode                string  `json:"mode"`
+	ID                  string  `json:"id,omitempty"`
+	MaxHeight           int     `json:"maxHeight,omitempty"`
+	MaxVideoBitrateKbps int     `json:"maxVideoBitrateKbps,omitempty"`
+	MaxAudioBitrateKbps int     `json:"maxAudioBitrateKbps,omitempty"`
+	SameAsOriginal      bool    `json:"sameAsOriginal"`
+	DataGBPerHour       float64 `json:"dataGBPerHour,omitempty"`
+	Applicable          bool    `json:"applicable"`
 }
 
 // qualityOptions is the menu for one source.
 func qualityOptions(source SourceFacts, audioOnly bool) []QualityOption {
-	out := []QualityOption{{Mode: QualityOriginal}}
-	if audioOnly {
-		return out
-	}
-	out = append(out, QualityOption{Mode: QualityAutomatic})
-	for _, preset := range ladderFor(source) {
-		out = append(out, QualityOption{Mode: QualityFixed, ID: preset.ID, MaxHeight: preset.Height, MaxVideoBitrateKbps: preset.VideoBitrateBPS / 1000, MaxAudioBitrateKbps: preset.MaxAudioBitrateBPS / 1000})
+	out := []QualityOption{{Mode: QualityOriginal, Applicable: true}, {Mode: QualityAutomatic, Applicable: true}}
+	for _, preset := range playback.QualityLadder {
+		out = append(out, QualityOption{Mode: QualityFixed, ID: preset.ID, MaxHeight: preset.Height, MaxVideoBitrateKbps: preset.VideoBitrateBPS / 1000, MaxAudioBitrateKbps: preset.MaxAudioBitrateBPS / 1000, DataGBPerHour: preset.DataGBPerHour, SameAsOriginal: !audioOnly && preset.SameAsSource(source.Height, int64(source.BitrateKbps)*1000), Applicable: !audioOnly})
 	}
 	return out
 }

@@ -658,6 +658,9 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	}
 	video := kind != "song" && kind != "track" && kind != "audiobook_file"
 	request := t.request.normalized()
+	if !video && request.Quality.Mode == QualityFixed {
+		return playback.Session{}, Presentation{}, &FieldError{Path: "quality"}
+	}
 	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation}
 	request.Quality.apply(&base)
 	version := t.version

@@ -321,7 +321,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		p.Engine = EngineNative
 	}
 	if p.QualityID == "" {
-		p.QualityID = "auto"
+		p.QualityID = "automatic"
 	}
 	defer func() {
 		if err == nil {
@@ -412,7 +412,6 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if video != nil && video.DynamicRange == assets.RangeDolbyVision && dolbyVisionFallback(video) == assets.RangeSDR {
 		hdr = false
 	}
-	rungFixed := in.Target.Kind == QualityFixed
 	overHeight := in.Target.MaxVideoHeight > 0 && height > in.Target.MaxVideoHeight
 	ceiling := in.Target.MaxVideoBitrateBPS
 	if client.MaxBitrateBPS > 0 && (ceiling == 0 || client.MaxBitrateBPS < ceiling) {
@@ -435,9 +434,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if in.BurnIn {
 		pictureRules = append(pictureRules, RouteRejection{ReasonSubtitleBurnIn, ""})
 	}
-	if rungFixed {
-		pictureRules = append(pictureRules, RouteRejection{ReasonQualityRungSelected, in.Target.RungID})
-	}
+
 	if overHeight {
 		pictureRules = append(pictureRules, RouteRejection{ReasonHeightExceedsPolicy, fmt.Sprintf("%d>%d", height, in.Target.MaxVideoHeight)})
 	}
@@ -658,10 +655,8 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			if overHeight {
 				codes = append(codes, ReasonHeightExceedsPolicy)
 			}
-			if rungFixed {
-				codes = append(codes, ReasonQualityRungSelected)
-			}
-			if overBitrate || (rungFixed && in.Target.MaxVideoBitrateBPS > 0) {
+
+			if overBitrate {
 				codes = append(codes, ReasonBitrateExceedsPolicy)
 			}
 			if len(codes) == 0 {
@@ -824,7 +819,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if encoded != nil && encoded.MaxBitrateBPS > 0 {
 		p.VideoBitrateBPS = min(p.VideoBitrateBPS, encoded.MaxBitrateBPS)
 	}
-	if !rungFixed && !overHeight && in.Target.MaxVideoHeight == 0 && (p.QualityID == "original" || p.QualityID == "auto" || p.QualityID == "automatic" || p.QualityID == "") {
+	if !overHeight && in.Target.MaxVideoHeight == 0 && (p.QualityID == "original" || p.QualityID == "automatic" || p.QualityID == "") {
 		p.VideoBitrateBPS = ceiling
 		if encoded != nil {
 			p.VideoBitrateBPS = narrowCeiling(p.VideoBitrateBPS, encoded.MaxBitrateBPS)
@@ -958,9 +953,9 @@ func videoBudget(t QualityTarget, sourceHeight int) int {
 		height = sourceHeight
 	}
 	if height <= 0 {
-		// An unmeasured source is planned as 1080p rather than as the smallest
-		// rung: guessing small would quietly degrade every unprobed title.
-		return 8_000_000
+		// No source resolution is invented. Use the widest canonical ceiling
+		// only if another observed device/policy reason requires conversion.
+		return QualityLadder[0].VideoBitrateBPS
 	}
 	for i := len(QualityLadder) - 1; i >= 0; i-- {
 		if QualityLadder[i].Height >= height {

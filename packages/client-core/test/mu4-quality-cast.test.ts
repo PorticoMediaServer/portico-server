@@ -5,8 +5,8 @@ import {noteCastMeta, castMeta} from '../src/presentation/cast-meta.ts';
 
 test('MU4 CON-26: ladder rungs dedupe by id, Convert excludes Automatic/Original', () => {
   const sources = [
-    {qualities: [{id: 'auto', kind: 'automatic', label: 'Automatic', enabled: true}, {id: 'o', kind: 'original', label: 'Original', enabled: true}, {id: 'h', kind: 'fixed', label: '1080p', enabled: true}]},
-    {qualities: [{id: 'h', kind: 'fixed', label: '1080p', enabled: true}, {id: 'm', kind: 'fixed', label: '720p', enabled: false}]},
+    {qualities: [{id: 'auto', kind: 'automatic', label: 'Automatic', enabled: true}, {id: 'o', kind: 'original', label: 'Original', enabled: true}, {id: 'h', kind: 'fixed', label: '1080p-low', enabled: true}]},
+    {qualities: [{id: 'h', kind: 'fixed', label: '1080p-low', enabled: true}, {id: 'm', kind: 'fixed', label: '720p-high', enabled: false}]},
   ];
   assert.deepEqual(dedupQualityRungs(sources).map(q => q.id), ['auto', 'o', 'h', 'm']);
   assert.deepEqual(convertQualityRungs(dedupQualityRungs(sources)).map(q => q.id), ['h', 'm']);

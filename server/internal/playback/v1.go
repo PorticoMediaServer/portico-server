@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/qualityladder"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -90,6 +91,12 @@ func (c *V1Choice) target(policy ResolvedDeliveryPolicy, cfg DeliveryConfigurati
 	}
 	out.MaxAudioBitrateBPS = narrowCeiling(out.MaxAudioBitrateBPS, cfg.MaxAudioBitrateBPS)
 	out.MaxVideoHeight = narrowCeiling(out.MaxVideoHeight, cfg.MaxVideoHeight)
+	if c.remote(policy) {
+		remoteBits := narrowCeiling(c.AdminMaxVideoBitrateBPS, cfg.MaxVideoBitrateBPS)
+		if step, ok := qualityladder.AtBitrate(remoteBits); ok {
+			out.MaxVideoHeight = narrowCeiling(out.MaxVideoHeight, step.Height)
+		}
+	}
 	return out
 }
 

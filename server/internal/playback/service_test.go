@@ -17,18 +17,18 @@ func TestSingleOfferAndStaleSessionProgress(t *testing.T) {
 	id, item, _ := catalogFixture(t, db, "lib", "/test", compactcatalog.Movie, "item", "Film", compactcatalog.Asset{Path: "/test/file.mp4", Size: 1, ModifiedNS: 1, Container: "mp4", VideoCodec: "h264", AudioCodec: "aac", Width: 1920, Height: 1080, Duration: 100})
 	s := New(db)
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
-	a, e := s.Create(p, item, "auto", "one")
+	a, e := s.Create(p, item, "automatic", "one")
 	if e != nil || a.Mode != "direct" {
 		t.Fatalf("single offer %+v %v", a, e)
 	}
-	again, e := s.Create(p, item, "auto", "one")
+	again, e := s.Create(p, item, "automatic", "one")
 	if e != nil || again.ID != a.ID {
 		t.Fatal("creation was not idempotent", e)
 	}
 	if e = s.Progress(p, a.ID, a.Generation, 10, 30, "playing"); e != nil {
 		t.Fatal(e)
 	}
-	b, e := s.Create(p, item, "auto", "two")
+	b, e := s.Create(p, item, "automatic", "two")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -73,7 +73,7 @@ func TestSingleOfferAndStaleSessionProgress(t *testing.T) {
 		t.Fatal(e)
 	}
 	p.Hash = "new-login-session"
-	replayed, e := s.Create(p, item, "auto", "two")
+	replayed, e := s.Create(p, item, "automatic", "two")
 	if e != nil || replayed.ID != b.ID || replayed.State != "stopped" {
 		t.Fatalf("durable stopped receipt lost after cleanup %+v %v", replayed, e)
 	}
@@ -95,14 +95,14 @@ func TestSharedEpisodeBoundaryAndIndependentWholeSourceProgress(t *testing.T) {
 	}
 	s := New(db)
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
-	first, err := s.Create(p, ep1, "auto", "first")
+	first, err := s.Create(p, ep1, "automatic", "first")
 	if err != nil || first.SourceBoundary != "unknown_multi_episode" || first.Duration != 120 {
 		t.Fatal(first, err)
 	}
 	if err = s.Progress(p, first.ID, first.Generation, 1, 90, "paused"); err != nil {
 		t.Fatal(err)
 	}
-	second, err := s.Create(p, ep2, "auto", "second")
+	second, err := s.Create(p, ep2, "automatic", "second")
 	if err != nil || second.ResumeSeconds != 0 || second.Duration != 120 {
 		t.Fatal(second, err)
 	}
@@ -123,7 +123,7 @@ func TestSharedEpisodeBoundaryAndIndependentWholeSourceProgress(t *testing.T) {
 	if err != nil || current.SourceBoundary != "unknown_multi_episode" {
 		t.Fatal(current, err)
 	}
-	repeated, err := s.Create(p, ep1, "auto", "first")
+	repeated, err := s.Create(p, ep1, "automatic", "first")
 	if err != nil || repeated.SourceBoundary != "unknown_multi_episode" || repeated.ID != first.ID {
 		t.Fatal(repeated, err)
 	}

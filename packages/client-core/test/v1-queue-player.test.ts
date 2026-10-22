@@ -740,14 +740,14 @@ test('republishing capabilities re-plans the same session without remembering th
     await player.playEntries(['a', 'b'].map(queueItemInput));
     const session = playback.getSnapshot().session!;
     const queue = player.getSnapshot().view!.queue.id;
-    await playback.changePlayback({quality: {mode: 'fixed', id: '720p'}, audioTrackId: 'a2'});
+    await playback.changePlayback({quality: {mode: 'fixed', id: '720p-high'}, audioTrackId: 'a2'});
     await playback.changePlayback({replan: true});
     const patch = log.filter(r => r.method === 'PATCH' && r.path === `/v1/playback/sessions/${session.id}`).at(-1)!;
     assert.equal((patch.body as {replan?: boolean}).replan, true);
     assert.equal(playback.getSnapshot().session!.id, session.id);
     assert.equal(player.getSnapshot().view!.queue.id, queue);
     assert.equal(playback.playbackChoices().audioTrackId, 'a2');
-    assert.deepEqual(playback.playbackChoices().quality, {mode: 'fixed', id: '720p'});
+    assert.deepEqual(playback.playbackChoices().quality, {mode: 'fixed', id: '720p-high'});
     assert.equal(playback.playbackChoices().replan, undefined);
     assert.equal(log.filter(r => r.method === 'POST' && r.path === '/v1/queues').length, 1);
   } finally { stop(); }

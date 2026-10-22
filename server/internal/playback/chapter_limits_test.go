@@ -39,7 +39,7 @@ func TestChapterPageContinuesBeyondFourThousand(t *testing.T) {
 	}
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"}}
 	s := New(db)
-	session, err := s.Create(p, item, "auto", "chapter-limit")
+	session, err := s.Create(p, item, "automatic", "chapter-limit")
 	if err != nil {
 		t.Fatal(err)
 	}

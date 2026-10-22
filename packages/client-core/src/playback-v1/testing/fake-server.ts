@@ -1,3 +1,4 @@
+import {canonicalQualityLadder} from '../../../../contracts/src/types.ts';
 import {routePath, encodedRoutePath} from "../../../../contracts/src/routes.ts";
 /**
  * A fake Portico playback server built from `Spec — Playback Protocol v1.md` (§3–§9, §14, §15, §16)
@@ -234,7 +235,7 @@ export class FakePlaybackServer {
       }],
       chapters: [{startMs: 0, title: 'Opening'}, {startMs: 600_000, title: 'Act II'}],
       markers: [{type: 'intro', startMs: 10_000, endMs: 70_000, confidence: 'detected'}, {type: 'mystery', startMs: 1, endMs: 2, confidence: 'unheard-of'}],
-      qualities: [{mode: 'original'}, {mode: 'automatic'}, {mode: 'fixed', id: '2160p', maxHeight: 2160, maxVideoBitrateKbps: 20_000, maxAudioBitrateKbps: 192}, {mode: 'fixed', id: '1080p', maxHeight: 1080, maxVideoBitrateKbps: 8000, maxAudioBitrateKbps: 192}, {mode: 'fixed', id: '720p', maxHeight: 720, maxVideoBitrateKbps: 4000, maxAudioBitrateKbps: 128}],
+      qualities: canonicalQualityLadder.map(q=>q.height?{mode:'fixed',id:q.id,maxHeight:q.height,maxVideoBitrateKbps:q.videoKbps,maxAudioBitrateKbps:q.audioKbps,dataGBPerHour:q.dataGBPerHour,sameAsOriginal:false,applicable:true}:{mode:q.id,applicable:true}),
       preferred: {versionId: 'v1', audioId: 'a1', reason: 'profile_language', quality: {mode: this.o.savedQuality ?? 'original'}},
       plan: {versionId: 'v1', mode: 'stream', engine: this.o.engine ?? 'native', streams: [{id: 'v0', action: limited ? 'transcode' : 'copy', reasons: limited ? ['bitrate_above_request'] : []}, {id: audio, action: audio === 'a1' ? 'transcode' : 'copy', to: audio === 'a1' ? 'eac3' : undefined, reasons: audio === 'a1' ? ['audio_codec_unsupported'] : []}], quality: {mode, ...(qualityId ? {id: qualityId} : {})}},
     };

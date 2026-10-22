@@ -91,7 +91,7 @@ func renditionFixtureAudio(t *testing.T, mixed bool) (context.Context, *Service,
 			t.Fatal(err)
 		}
 	}
-	session, e := s.Create(p, item, "auto", "renditions")
+	session, e := s.Create(p, item, "automatic", "renditions")
 	if e != nil {
 		t.Fatal(e)
 	}

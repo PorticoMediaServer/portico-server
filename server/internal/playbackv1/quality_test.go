@@ -10,9 +10,9 @@ import (
 func TestQualityValidation(t *testing.T) {
 	for name, q := range map[string]Quality{
 		"original":             {Mode: QualityOriginal},
-		"fixed":                {Mode: QualityFixed, ID: "1080p"},
+		"fixed":                {Mode: QualityFixed, ID: "1080p-low"},
 		"automatic":            {Mode: QualityAutomatic},
-		"automatic on a step":  {Mode: QualityAutomatic, ID: "720p"},
+		"automatic on a step":  {Mode: QualityAutomatic, ID: "720p-high"},
 		"automatic step down":  {Mode: QualityAutomatic, Step: "down"},
 		"limit":                {Mode: QualityLimit, MaxVideoBitrateKbps: 3000, MaxHeight: 720},
 		"limit with no number": {Mode: QualityLimit},
@@ -25,13 +25,13 @@ func TestQualityValidation(t *testing.T) {
 		"no mode":                  {},
 		"unknown mode":             {Mode: "best"},
 		"original with a number":   {Mode: QualityOriginal, MaxHeight: 720},
-		"original with an id":      {Mode: QualityOriginal, ID: "720p"},
+		"original with an id":      {Mode: QualityOriginal, ID: "720p-high"},
 		"fixed without an id":      {Mode: QualityFixed},
 		"fixed with an unknown id": {Mode: QualityFixed, ID: "900p"},
-		"fixed with a step":        {Mode: QualityFixed, ID: "720p", Step: "down"},
+		"fixed with a step":        {Mode: QualityFixed, ID: "720p-high", Step: "down"},
 		"automatic sideways":       {Mode: QualityAutomatic, Step: "sideways"},
 		"automatic with numbers":   {Mode: QualityAutomatic, MaxHeight: 720},
-		"limit with an id":         {Mode: QualityLimit, ID: "720p"},
+		"limit with an id":         {Mode: QualityLimit, ID: "720p-high"},
 		"limit out of range":       {Mode: QualityLimit, MaxHeight: 100000},
 	} {
 		if err := q.Validate("quality"); err == nil {
@@ -43,8 +43,8 @@ func TestQualityValidation(t *testing.T) {
 // A quality is ceilings, never a forced conversion, and the plan keeps its name.
 func TestQualityAppliesCeilings(t *testing.T) {
 	var c playback.V1Choice
-	Quality{Mode: QualityFixed, ID: "720p"}.apply(&c)
-	if !c.Limit || c.MaxVideoHeight != 720 || c.MaxVideoBitrateBPS != 4_000_000 || c.MaxAudioBitrateBPS != 128_000 || c.QualityID != "720p" {
+	Quality{Mode: QualityFixed, ID: "720p-high"}.apply(&c)
+	if !c.Limit || c.MaxVideoHeight != 720 || c.MaxVideoBitrateBPS != 4_000_000 || c.MaxAudioBitrateBPS != 128_000 || c.QualityID != "720p-high" {
 		t.Fatalf("fixed: %+v", c)
 	}
 	Quality{Mode: QualityOriginal}.apply(&c)
@@ -63,7 +63,7 @@ func TestQualityAppliesCeilings(t *testing.T) {
 	if !c.Limit || c.MaxVideoBitrateBPS != 1_500_000 || c.MaxAudioBitrateBPS != 96_000 || c.MaxVideoHeight != 540 || c.QualityID != "limit" {
 		t.Fatalf("limit: %+v", c)
 	}
-	for name, want := range map[string]Quality{"": {Mode: QualityOriginal}, "original": {Mode: QualityOriginal}, "automatic": {Mode: QualityAutomatic}, "1080p": {Mode: QualityFixed, ID: "1080p"}, "data-saver": {Mode: QualityOriginal}} {
+	for name, want := range map[string]Quality{"": {Mode: QualityOriginal}, "original": {Mode: QualityOriginal}, "automatic": {Mode: QualityAutomatic}, "1080p-low": {Mode: QualityFixed, ID: "1080p-low"}, "data-saver": {Mode: QualityOriginal}} {
 		if got := savedQuality(name); got != want {
 			t.Errorf("saved %q is %+v, want %+v", name, got, want)
 		}
@@ -75,13 +75,13 @@ func TestQualityAppliesCeilings(t *testing.T) {
 func TestAutomaticQualitySteps(t *testing.T) {
 	film := SourceFacts{Height: 1080, BitrateKbps: 12_000}
 	at := Quality{Mode: QualityAutomatic}
-	for _, want := range []string{"1080p", "720p", "480p", "360p", "360p"} {
+	for _, want := range []string{"1080p-low", "720p-high", "720p-low", "480p", "240p", "240p"} {
 		at = stepAutomatic(at, "down", film)
 		if at.Mode != QualityAutomatic || at.ID != want || at.Step != "" {
 			t.Fatalf("down: %+v, want %s", at, want)
 		}
 	}
-	for _, want := range []string{"480p", "720p", "1080p", "", ""} {
+	for _, want := range []string{"480p", "720p-low", "720p-high", "1080p-low", "", ""} {
 		at = stepAutomatic(at, "up", film)
 		if at.ID != want {
 			t.Fatalf("up: %+v, want %q", at, want)
@@ -89,22 +89,22 @@ func TestAutomaticQualitySteps(t *testing.T) {
 	}
 	// A 1080p file at 5 Mb/s: the 1080p step (8 Mb/s) is no step down at all.
 	small := SourceFacts{Height: 1080, BitrateKbps: 5000}
-	if got := stepAutomatic(Quality{Mode: QualityAutomatic}, "down", small); got.ID != "720p" {
+	if got := stepAutomatic(Quality{Mode: QualityAutomatic}, "down", small); got.ID != "720p-high" {
 		t.Fatalf("first useful step: %+v", got)
 	}
-	if got := stepAutomatic(Quality{Mode: QualityAutomatic, ID: "720p"}, "up", small); got.ID != "" {
+	if got := stepAutomatic(Quality{Mode: QualityAutomatic, ID: "720p-high"}, "up", small); got.ID != "" {
 		t.Fatalf("up from the widest useful step is the original: %+v", got)
 	}
 	// A step that does not apply to this file (carried over from another title).
-	if got := stepAutomatic(Quality{Mode: QualityAutomatic, ID: "1440p"}, "down", small); got.ID != "720p" {
+	if got := stepAutomatic(Quality{Mode: QualityAutomatic, ID: "1080p-high"}, "down", small); got.ID != "720p-high" {
 		t.Fatalf("down from a step above the file: %+v", got)
 	}
 	// Nothing known about the file: the whole ladder, widest first.
-	if got := stepAutomatic(Quality{Mode: QualityAutomatic}, "down", SourceFacts{}); got.ID != "2160p" {
+	if got := stepAutomatic(Quality{Mode: QualityAutomatic}, "down", SourceFacts{}); got.ID != "" {
 		t.Fatalf("unknown file: %+v", got)
 	}
 	// A picture smaller than every step keeps the smallest one.
-	if got := stepAutomatic(Quality{Mode: QualityAutomatic}, "down", SourceFacts{Height: 240, BitrateKbps: 3000}); got.ID != "360p" {
+	if got := stepAutomatic(Quality{Mode: QualityAutomatic}, "down", SourceFacts{Height: 240, BitrateKbps: 3000}); got.ID != "240p" {
 		t.Fatalf("tiny picture: %+v", got)
 	}
 }
@@ -113,7 +113,7 @@ func TestAutomaticQualitySteps(t *testing.T) {
 // fifths of it, and names the quality a refused start could use instead.
 func TestAutomaticQualityFitsTheConnection(t *testing.T) {
 	film := SourceFacts{Height: 2160, BitrateKbps: 40_000}
-	for throughput, want := range map[int]string{0: "", 60_000: "", 30_000: "2160p", 12_000: "1080p", 6000: "720p", 3000: "480p", 1500: "360p", 300: "360p"} {
+	for throughput, want := range map[int]string{0: "", 60_000: "", 30_000: "1080p-high", 12_000: "1080p-low", 6000: "720p-high", 3000: "720p-low", 1500: "240p", 300: "240p"} {
 		if got := fitAutomatic(throughput, film); got.Mode != QualityAutomatic || got.ID != want {
 			t.Errorf("%d kbps: %+v, want %q", throughput, got, want)
 		}
@@ -122,31 +122,43 @@ func TestAutomaticQualityFitsTheConnection(t *testing.T) {
 	if got := fitAutomatic(2000, SourceFacts{Height: 1080}); got.ID != "" {
 		t.Fatalf("unknown bitrate: %+v", got)
 	}
-	if got := suggestedQuality(6000, film); got != "720p" {
+	if got := suggestedQuality(6000, film); got != "720p-high" {
 		t.Fatalf("suggestion: %q", got)
 	}
 }
 
 func TestQualityMenu(t *testing.T) {
 	menu := qualityOptions(SourceFacts{Height: 1080, BitrateKbps: 9000}, false)
-	want := []string{"original", "automatic", "1080p", "720p", "480p", "360p"}
+	want := []string{"original", "automatic", "2160p", "1080p-high", "1080p-low", "720p-high", "720p-low", "480p", "240p"}
 	if len(menu) != len(want) {
 		t.Fatalf("menu %+v", menu)
 	}
-	for i, option := range menu {
-		name := option.Mode
-		if option.Mode == QualityFixed {
-			name = option.ID
+	for i, o := range menu {
+		name := o.Mode
+		if o.Mode == QualityFixed {
+			name = o.ID
 		}
 		if name != want[i] {
-			t.Fatalf("menu[%d] is %s, want %s", i, name, want[i])
+			t.Fatalf("menu[%d]=%s", i, name)
 		}
 	}
-	if menu[2].MaxHeight != 1080 || menu[2].MaxVideoBitrateKbps != 8000 || menu[2].MaxAudioBitrateKbps != 192 {
-		t.Fatalf("a step does not say what it allows: %+v", menu[2])
+	if !menu[2].SameAsOriginal || !menu[3].SameAsOriginal || menu[4].SameAsOriginal || menu[4].MaxVideoBitrateKbps != 8000 {
+		t.Fatalf("partial ordering %+v", menu)
 	}
-	if music := qualityOptions(SourceFacts{}, true); len(music) != 1 || music[0].Mode != QualityOriginal {
-		t.Fatalf("music has one quality: %+v", music)
+	if qualityOptions(SourceFacts{Height: 1080}, false)[2].SameAsOriginal {
+		t.Fatal("guessed missing bitrate")
+	}
+	if qualityOptions(SourceFacts{BitrateKbps: 1000}, false)[2].SameAsOriginal {
+		t.Fatal("guessed missing resolution")
+	}
+	music := qualityOptions(SourceFacts{}, true)
+	if len(music) != 9 || !music[1].Applicable {
+		t.Fatalf("audio menu %+v", music)
+	}
+	for _, q := range music[2:] {
+		if q.Applicable || q.SameAsOriginal {
+			t.Fatal("invented video quality for audio")
+		}
 	}
 }
 

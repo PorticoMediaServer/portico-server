@@ -54,7 +54,7 @@ func TestActivityPaginationReportsAndScope(t *testing.T) {
 	var last Session
 	for i := 0; i < 85; i++ {
 		var e error
-		last, e = s.Create(p, item, "auto", fmt.Sprint(i))
+		last, e = s.Create(p, item, "automatic", fmt.Sprint(i))
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -76,7 +76,7 @@ func TestActivityPaginationReportsAndScope(t *testing.T) {
 	if e != nil || len(now.Items) != 40 || now.Items[0].SessionID != last.ID || now.Items[0].ReportedAt == nil || *now.Items[0].PositionMs != 17000 {
 		t.Fatal(now, e)
 	}
-	if _, e = s.Create(p, item, "auto", "new-after-first-page"); e != nil {
+	if _, e = s.Create(p, item, "automatic", "new-after-first-page"); e != nil {
 		t.Fatal(e)
 	}
 	second, e := s.Activity(ctx, p, scope, "recent", 40, first.NextCursor)
@@ -116,7 +116,7 @@ func TestActivityPaginationReportsAndScope(t *testing.T) {
 func TestActivityStopReplayConflictExpiryAndGrant(t *testing.T) {
 	db, s, p, scope, item, _ := activityFixture(t)
 	ctx := context.Background()
-	a, e := s.Create(p, item, "auto", "a")
+	a, e := s.Create(p, item, "automatic", "a")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -131,7 +131,7 @@ func TestActivityStopReplayConflictExpiryAndGrant(t *testing.T) {
 	if _, _, _, e = s.ResolveGrant(strings.TrimPrefix(a.StreamURL, "/v1/media/")); e == nil {
 		t.Fatal("grant survived stop")
 	}
-	b, e := s.Create(p, item, "auto", "b")
+	b, e := s.Create(p, item, "automatic", "b")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -169,7 +169,7 @@ func TestActivityStopReplayConflictExpiryAndGrant(t *testing.T) {
 }
 func TestActivityCleanupAndOwnerBoundary(t *testing.T) {
 	db, s, p, scope, item, _ := activityFixture(t)
-	a, e := s.Create(p, item, "auto", "a")
+	a, e := s.Create(p, item, "automatic", "a")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -201,7 +201,7 @@ func TestActivityCleanupAndOwnerBoundary(t *testing.T) {
 func TestActivityReceiptCapacityAndFreshRecovery(t *testing.T) {
 	db, s, p, scope, item, _ := activityFixture(t)
 	ctx := context.Background()
-	a, e := s.Create(p, item, "auto", "a")
+	a, e := s.Create(p, item, "automatic", "a")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -227,7 +227,7 @@ func TestActivityReceiptCapacityAndFreshRecovery(t *testing.T) {
 
 func TestActivityStopOwnedSupervisorCleanup(t *testing.T) {
 	db, s, p, scope, item, _ := activityFixture(t)
-	a, e := s.Create(p, item, "auto", "a")
+	a, e := s.Create(p, item, "automatic", "a")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -282,7 +282,7 @@ func TestActivityStopOwnedSupervisorCleanup(t *testing.T) {
 
 func TestActivityCleanupFailureRetainsEvidence(t *testing.T) {
 	db, s, p, scope, item, _ := activityFixture(t)
-	a, e := s.Create(p, item, "auto", "a")
+	a, e := s.Create(p, item, "automatic", "a")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -310,7 +310,7 @@ func TestActivityFailedAndExpiredCleanup(t *testing.T) {
 	for _, condition := range []string{"failed", "expired"} {
 		t.Run(condition, func(t *testing.T) {
 			db, s, p, scope, item, _ := activityFixture(t)
-			a, e := s.Create(p, item, "auto", "cleanup")
+			a, e := s.Create(p, item, "automatic", "cleanup")
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -382,7 +382,7 @@ func TestActivityFailedAndExpiredCleanup(t *testing.T) {
 func TestActivityDeletionBetweenPages(t *testing.T) {
 	db, s, p, scope, item, _ := activityFixture(t)
 	for i := 0; i < 45; i++ {
-		if _, e := s.Create(p, item, "auto", fmt.Sprint(i)); e != nil {
+		if _, e := s.Create(p, item, "automatic", fmt.Sprint(i)); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -467,7 +467,7 @@ func TestActivityVideoHeightFollowsActualClientCappedPlan(t *testing.T) {
 		}
 		p := decide(t, videoSource("mkv", "vc1", detail, SourceAudio{Index: 1, Codec: "aac", Channels: 2}), client, func(in *DeliveryInput) {
 			in.Server = plannerToolchain()
-			in.Target = QualityTarget{RungID: "1080p", MaxVideoHeight: 1080, AllowHDR: true}
+			in.Target = QualityTarget{RungID: "1080p-low", MaxVideoHeight: 1080, AllowHDR: true}
 		})
 		if p.VideoAction != "convert" || p.TargetHeight > 720 {
 			t.Fatalf("client ceiling was not committed: %+v", p)

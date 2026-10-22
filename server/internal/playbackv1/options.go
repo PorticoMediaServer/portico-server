@@ -609,6 +609,9 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	facts := SourceFacts{BitrateKbps: version.BitrateKbps}
 	if len(version.Video) > 0 {
 		facts.Height = version.Video[0].Height
+		if version.Video[0].BitrateKbps > 0 {
+			facts.BitrateKbps = version.Video[0].BitrateKbps
+		}
 	}
 	out.Qualities = qualityOptions(facts, audioOnly || len(version.Video) == 0)
 	// Chapters and markers are the chosen version's, part after part on one
@@ -742,6 +745,9 @@ func (s *Service) choice(o Options, preview Preview, reach Reach) (playback.V1Ch
 			return playback.V1Choice{}, Version{}, &FieldError{Path: "audioId"}
 		}
 		c.AudioStream = &index
+	}
+	if len(version.Video) == 0 && preview.Quality.Mode == QualityFixed {
+		return playback.V1Choice{}, Version{}, &FieldError{Path: "quality"}
 	}
 	preview.Quality.apply(&c)
 	return c, version, nil

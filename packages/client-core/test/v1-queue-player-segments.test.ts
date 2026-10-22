@@ -54,7 +54,7 @@ test('playSegments explicit position starts the real selected queue entry separa
 
 test('playSegments clears retry choices from a previous playback even when the first title is the same', async t => {
   const f = setup(t); await f.playback.play('first', 0);
-  await f.playback.changePlayback({quality: {mode: 'fixed', id: '720p'}, audioTrackId: 'a2'});
+  await f.playback.changePlayback({quality: {mode: 'fixed', id: '720p-high'}, audioTrackId: 'a2'});
   await f.player.playSegments(mixed);
   assert.deepEqual(f.playback.playbackChoices(), {});
   const create = f.log.filter(r => r.path === '/v1/queues' && r.method === 'POST').at(-1)!;
