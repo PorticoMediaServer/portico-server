@@ -7,7 +7,7 @@ export const shellFixtures = {
 } as const;
 
 export const shellReference = {
-  current: {id: 'demo', name: 'Demo', initial: 'D', art: 'blue'},
+  current: {id: 'demo', username: 'demo', name: 'Demo', initial: 'D', art: 'blue'},
   profiles: [{id: 'alex', name: 'Alex', initial: 'A', art: 'violet', pinRequired: true}, {id: 'kids', name: 'Kids', initial: 'K', art: 'mint'}],
   accountFacts: [{id: 'server', text: 'Portico demo', role: 'context'}, {id: 'kind', text: 'Server account', role: 'context'}],
   accountDescription: 'Signed in to Portico demo as demo',
@@ -17,10 +17,12 @@ export const shellReference = {
   lastScan: 'today at 3:12 PM',
   latest: '0.2.0', currentVersion: '0.1.0',
   streams: [
-    {id: 'sam', showId: 'tlou', name: 'Sam', initial: 'S', art: 'mint', device: 'Living room TV', title: 'The Last of Us', episodeTitle: 'Long, Long Time', season: 1, episode: 3, positionMs: 420, durationMs: 1000},
-    {id: 'priya', name: 'Priya', initial: 'P', art: 'violet', device: 'iPhone', title: 'Spirited Away', year: 2001, positionMs: 430, durationMs: 1000},
+    {id: 'sam', username: 'sam', startedAt: '2026-10-22T12:00:00Z', showId: 'tlou', name: 'Sam', initial: 'S', art: 'mint', device: 'Living room TV', title: 'The Last of Us', episodeTitle: 'Long, Long Time', season: 1, episode: 3, positionMs: 420, durationMs: 1000},
+    {id: 'priya', username: 'priya', startedAt: '2026-10-22T11:00:00Z', name: 'Priya', initial: 'P', art: 'violet', device: 'iPhone', title: 'Spirited Away', year: 2001, positionMs: 430, durationMs: 1000},
   ],
-  activityCounts: {overflowStreams: 7, overflowTasks: 6},
+  activityCounts: {overflowStreams: 24, overflowTasks: 6},
+  activityProblem: 'Buffering',
+  longUsername: 'a-username-with-a-long-identity', longProfile: 'A different family profile with a long name', longDevice: 'The living room television with a long device name',
   conversion: 'Converting to 1080p',
   scan: {id: 'movies', title: 'Movies', current: 'Practical Magic 2 (2026).mkv', processed: 51, total: 80, discovered: 80},
   tasks: [{id: 'previews', title: 'Seek-bar pictures', detail: 'TV Shows', progressText: '38 of 96 episodes', processed: 38, total: 96, icon: 'i-image'}, {id: 'intros', title: 'Finding intros and credits', detail: 'Anime', progressText: '9 of 32 episodes', processed: 9, total: 32, icon: 'i-skip'}],
@@ -34,7 +36,7 @@ export const shellReference = {
     {id: 'recording', title: 'Recording started late', body: 'Harbor City This Morning started late because every tuner was being used to watch live TV. The start of the programme is missing.', when: 'Today, 3:00 PM', action: 'Review recordings', icon: 'i-rec', warning: true},
     {id: 'feedback', title: 'New viewer feedback', body: 'A viewer reported a problem and it is waiting for review.', when: 'Yesterday', action: 'Open report', icon: 'i-lyrics'},
   ],
-  editor: {title: 'Edit 4 movies', description: 'Changes apply to all four. A field that differs shows Mixed and is left alone unless you change it.', phoneDescription: 'Changes apply to all four. Mixed fields are left alone unless you change them.'},
+  editor: {assets: ['pool/movies/toy-story.jpg', 'pool/movies/toy-story-2.jpg', 'pool/movies/toy-story-3.jpg', 'pool/movies/toy-story-5.jpg'], targets: 'Toy Story, Toy Story 2, Toy Story 3, Toy Story 5', title: 'Edit 4 movies', description: 'Changes apply to all four. A field that differs shows Mixed and is left alone unless you change it.', phoneDescription: 'Changes apply to all four. Mixed fields are left alone unless you change them.'},
   accountNav: [
     {id: 'profile', label: 'Profile & account', icon: 'i-user'}, {id: 'playback', label: 'Playback', icon: 'i-playc'},
     {id: 'languages', label: 'Audio & subtitles', icon: 'i-cc'}, {id: 'quality', label: 'Quality & data', icon: 'i-gauge'},
@@ -69,7 +71,7 @@ export const shellReference = {
   statistics: [{id: 'plays', label: 'Plays', value: '46'}, {id: 'people', label: 'People', value: '4'}, {id: 'hours', label: 'Hours watched', value: '31'}, {id: 'converted', label: 'Converted', value: '7'}],
   segmentStatistics: [{id: 'measured', label: 'Files measured', value: '124'}, {id: 'waiting', label: 'Waiting', value: '4'}, {id: 'unreadable', label: 'Couldn’t be read', value: '0'}, {id: 'status', label: 'Status', value: 'Working in the background', status: true}],
   barTitle: 'Most played', bars: [{id: 'tlou', label: 'The Last of Us', value: 12, valueText: '12'}, {id: 'severance', label: 'Severance', value: 9, valueText: '9'}, {id: 'spirited', label: 'Spirited Away', value: 6, valueText: '6'}, {id: 'abbey', label: 'Abbey Road (2019 Mix)', value: 5, valueText: '5'}, {id: 'solo', label: 'Solo Leveling', value: 4, valueText: '4'}],
-  personBarTitle: 'By person', personBars: [{id: 'sam', name: 'Sam', initial: 'S', art: 'mint', value: 18, valueText: '18'}, {id: 'demo', name: 'Demo', initial: 'D', art: 'blue', value: 14, valueText: '14'}, {id: 'priya', name: 'Priya', initial: 'P', art: 'violet', value: 9, valueText: '9'}, {id: 'nana', name: 'Nana', initial: 'N', art: 'gold', value: 5, valueText: '5'}],
+  personBarTitle: 'Most active', personBars: [{id: 'sam', name: 'Sam', initial: 'S', art: 'mint', value: 18, valueText: '18'}, {id: 'demo', name: 'Demo', initial: 'D', art: 'blue', value: 14, valueText: '14'}, {id: 'priya', name: 'Priya', initial: 'P', art: 'violet', value: 9, valueText: '9'}, {id: 'nana', name: 'Nana', initial: 'N', art: 'gold', value: 5, valueText: '5'}],
   segmentDuration: 2832,
   opening: [{id: 'recap', kind: 'recap', label: 'Recap', start: 0, end: 38, suggested: false, trust: 'Can skip automatically', trustTone: 'automatic', facts: [{id: 'basis', text: 'Matched across episodes', role: 'supplement'}]}, {id: 'intro', kind: 'intro', label: 'Intro', start: 130, end: 201.5, suggested: false, trust: 'Adjusting', trustTone: 'suggested', facts: [{id: 'basis', text: 'Matched across episodes', role: 'supplement'}]}],
   ending: [{id: 'credits', kind: 'credits', label: 'Credits', start: 2720, end: 2832, suggested: false, trust: 'Can skip automatically', trustTone: 'automatic', facts: [{id: 'basis', text: 'Matched across episodes', role: 'supplement'}]}],
