@@ -40,7 +40,7 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
     activateCard(onNavigate, selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});
   };
   return <article className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, props.next && styles.next, className)} style={style} data-card-kind={kind}>
-    <button type="button" ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click}
+    <button type="button" ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={props.onFocus} onBlur={props.onBlur}
       onKeyDown={event => { if (event.key === 'Escape' && selection?.active) { event.preventDefault(); event.stopPropagation(); selection.onExit(); } }}
       onPointerDown={event => {
         if (!event.isPrimary) return;

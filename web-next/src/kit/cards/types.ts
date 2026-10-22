@@ -1,4 +1,4 @@
-import type {CSSProperties, ReactNode, Ref} from 'react';
+import type {CSSProperties, FocusEventHandler, ReactNode, Ref} from 'react';
 import type {CardTextModel, FactPart} from '@portico/client-core/kit-model';
 import type {ArtworkSource, AmbientArtSource} from '../artwork';
 
@@ -27,6 +27,9 @@ export type CardProps = Readonly<{
   className?: string;
   style?: CSSProperties;
   primaryRef?: Ref<HTMLButtonElement>;
+  onFocus?: FocusEventHandler<HTMLButtonElement>;
+  onBlur?: FocusEventHandler<HTMLButtonElement>;
+  visible?: boolean;
   context?: 'shelf' | 'grid' | 'search' | 'detail';
   density?: 'shelf' | 'grid';
 }>;
