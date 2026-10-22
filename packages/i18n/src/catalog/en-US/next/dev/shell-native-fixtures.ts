@@ -21,6 +21,7 @@ export const shellNativeCases = {
   ],
   currentProfileId: 'demo',
   group: {name: 'Movie night', status: 'In step', waiting: false},
+  groupStates: [{status: 'In step', waiting: false}, {status: 'Waiting for Sam…', waiting: true}, {status: 'Reconnecting…', waiting: true}, {status: 'Host reconnecting', waiting: true}],
   notification: {id: 'reference-download-ready', title: 'Download ready', body: 'Work Drinks finished downloading and is ready to play offline.', when: '12 min ago', read: false, archived: false, severity: 'info'},
   avatarSubject: {uri: 'http://100.120.50.24:8787/assets/pool/tv/severance.jpg', cacheKey: 'reference-severance-subject'},
   subtitleSource: {uri: 'http://100.120.50.24:8787/assets/pool/movies/dune-part-two--bd.jpg', cacheKey: 'reference-dune-backdrop'},
