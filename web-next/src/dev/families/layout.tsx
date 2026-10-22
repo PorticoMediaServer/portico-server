@@ -2,7 +2,7 @@ import {useEffect, useMemo, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {cardText, type CardSubject} from '@portico/client-core/kit-model';
 import {createWindowedCollection} from '@core/collections/windowed';
-import {AmbientArt, Artwork, createArtworkRuntime} from '../../kit/artwork';
+import {AmbientArt, Artwork, createArtworkRuntime, type AmbientArtSource} from '../../kit/artwork';
 import {PosterCard, WideCard, CircleCard, SquareCard, type CardContent} from '../../kit/cards';
 import {Button} from '../../kit/controls';
 import {SongRow, type TrackRowData} from '../../kit/browse';
@@ -40,6 +40,23 @@ import tvRick from '../../../../../../design-ui-v1/design/ui-v1/assets/pool/tv/r
 import tvSolo from '../../../../../../design-ui-v1/design/ui-v1/assets/pool/anime/solo-leveling--bd.jpg';
 
 // Reference content is dev-only. Production discovery emits an empty family list.
+export type LayoutArtworkEvidence = Readonly<{ambients: Readonly<Record<string, AmbientArtSource>>}>;
+declare global { interface Window { __porticoLayoutArtworkEvidence?: LayoutArtworkEvidence } }
+/** Only current-authority sources constructed through the actual artwork runtime belong here. */
+export function bindLayoutArtworkEvidence(evidence?: LayoutArtworkEvidence) {
+  window.__porticoLayoutArtworkEvidence = evidence;
+  window.dispatchEvent(new Event('portico-layout-artwork-evidence'));
+}
+function useLayoutArtworkEvidence() {
+  const [evidence, setEvidence] = useState(window.__porticoLayoutArtworkEvidence);
+  useEffect(() => {
+    const update = () => setEvidence(window.__porticoLayoutArtworkEvidence);
+    window.addEventListener('portico-layout-artwork-evidence', update);
+    update();
+    return () => window.removeEventListener('portico-layout-artwork-evidence', update);
+  }, []);
+  return evidence;
+}
 const reference = new DOMParser().parseFromString(referenceHtml, 'text/html');
 const slides = [...reference.querySelectorAll('#hero .slide')];
 type Candidate = HeroCandidate & {url: string; poster: string};
@@ -75,6 +92,7 @@ const tvDocument = new DOMParser().parseFromString(tvHtml, 'text/html');
 const tvShelf = referenceShelf([...tvDocument.querySelector('#f1 .trk')!.querySelectorAll('.card.wide')], [continueLastOfUs, tvInsideOut, tvRick, tvSolo]);
 
 function useReferenceArtwork() {
+  const evidence = useLayoutArtworkEvidence();
   const runtime = useMemo(() => createArtworkRuntime({scopeKey: 'layout-reference-gallery',
     load: async ({url}, signal) => {
       const response = await fetch(url, {signal});
@@ -86,8 +104,8 @@ function useReferenceArtwork() {
   }), []);
   useEffect(() => () => runtime.dispose(), [runtime]);
   return useMemo(() => ({runtime, backgrounds: candidates.map(item => runtime.source({url: item.url, cacheKey: item.url})), posters: candidates.map(item => runtime.source({url: item.poster, cacheKey: item.poster})), searchMovies: searchMoviePictures.map(url => runtime.source({url, cacheKey: url})), album: runtime.source({url: rumours, cacheKey: rumours}), abbeyRoad: runtime.source({url: abbeyRoad, cacheKey: abbeyRoad}), preview: runtime.source({url: lastOfUs, cacheKey: lastOfUs}),
-    shelf: new Map([...desktopShelf, ...phoneShelf, ...tvShelf].map(item => [item.url, runtime.source({url: item.url, cacheKey: item.url})])),
-  }), [runtime]);
+    shelf: new Map([...desktopShelf, ...phoneShelf, ...tvShelf].map(item => [item.url, runtime.source({url: item.url, cacheKey: item.url})])), ambients: evidence?.ambients,
+  }), [runtime, evidence]);
 }
 
 function LockupDesktop() { return <Lockup title={candidates[0].title} />; }
@@ -97,7 +115,7 @@ function LockupTv() { const title = (JSON.parse(manifestJson) as {tv: {title: st
 
 function HeroCase({platform = 'desktop', reduced = false}: {platform?: LayoutPlatform; reduced?: boolean}) {
   const art = useReferenceArtwork(), [index, setIndex] = useState(platform.startsWith('phone') ? 1 : 0), [saved, setSaved] = useState<ReadonlySet<string>>(new Set()), [playing, setPlaying] = useState<string | null>(null);
-  const artwork = (item: Candidate, context: HeroRenderContext) => <AmbientArt foreground={art.backgrounds[candidates.indexOf(item)]} treatment={context.platform.startsWith('phone') ? 'phone' : 'hero'} visible={context.visible} onReady={context.onReady} onError={context.onError} />;
+  const artwork = (item: Candidate, context: HeroRenderContext) => <AmbientArt source={art.ambients?.[item.id]} foreground={art.backgrounds[candidates.indexOf(item)]} treatment={context.platform.startsWith('phone') ? 'phone' : 'hero'} visible={context.visible} onReady={context.onReady} onError={context.onError} />;
   return <div data-gallery-playing={playing ?? undefined}><Hero candidates={candidates} activeIndex={index} onIndexChange={setIndex} platform={platform} reducedMotion={reduced} renderArtwork={artwork}
     renderThumbnail={(item, context) => <Artwork source={art.backgrounds[candidates.indexOf(item)]} visible={context.visible} alt="" />}
     renderActions={(item, context) => <><Button variant="primary" icon="i-play" phone={context.platform.startsWith('phone')} onClick={() => setPlaying(previous => previous === item.id ? null : item.id)} aria-pressed={playing === item.id}>
@@ -112,7 +130,7 @@ function HeroReduced() { return <HeroCase reduced />; }
 function PreviewCase() {
   const art = useReferenceArtwork(), [index, setIndex] = useState(0);
   const source = (item: Candidate) => item.id === tvEntry.id ? art.preview : art.backgrounds[candidates.indexOf(item)];
-  return <div className={styles.previewFixture}><FocusPreviewHero entry={previewCandidates[index]} renderArtwork={(item, context) => <AmbientArt foreground={source(item)} foregroundFrameStyle={{width: 1500, height: 900}} treatment="hero" arrivalDurationMs={0} visible={context.visible} onReady={context.onReady} onError={context.onError} />}
+  return <div className={styles.previewFixture}><FocusPreviewHero entry={previewCandidates[index]} renderArtwork={(item, context) => <AmbientArt source={art.ambients?.[item.id]} foreground={source(item)} foregroundFrameStyle={{width: 1500, height: 900}} treatment="hero" arrivalDurationMs={0} visible={context.visible} onReady={context.onReady} onError={context.onError} />}
     renderReason={item => item.id === tvEntry.id ? tvReason.map(part => <span key={part.id}>{part.text}</span>) : item.reason}
     renderMetadata={item => <HeroFacts parts={item.facts ?? []} platform="tv">{item.id === tvEntry.id && <HeroProgress progress={tvProgress} remaining={tvRemaining} />}</HeroFacts>}
     renderSupplement={() => <div className={styles.remoteHint}><span>{t('next.layout.ok')}</span>{t('next.layout.resume')}<span>{t('next.layout.holdOk')}</span>{t('next.layout.moreOptions')}</div>} />
