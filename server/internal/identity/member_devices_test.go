@@ -150,7 +150,7 @@ func TestTurningApprovalOffAdmitsWaitingDevicesButNotBlockedOnes(t *testing.T) {
 func TestAnAdministratorDecidesOnlyAboutMembersDevices(t *testing.T) {
 	ctx := context.Background()
 	s, owner, member, _ := memberWithSession(t)
-	admin, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "admin", Password: "Testing6!", Name: "Admin", AllowedLibraries: []string{}})
+	admin, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "admin", Password: "Testing6!", Name: "Admin", AllowedLibraries: []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}

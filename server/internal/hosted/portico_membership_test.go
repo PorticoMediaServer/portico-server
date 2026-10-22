@@ -113,6 +113,11 @@ func TestPorticoIdentityAdmitsOnlyMembers(t *testing.T) {
 	// member, its session stops working at once, and it cannot sign back in.
 	var revision int64
 	f.db.QueryRow(`SELECT revision FROM direct_memberships WHERE account_id='local-m'`).Scan(&revision)
+	// Nor can anyone give a Portico member a password.
+	f.db.QueryRow(`SELECT revision FROM direct_memberships WHERE account_id='local-m'`).Scan(&revision)
+	if _, e = f.id.MakeMemberResetCode(ctx, f.owner.AccessToken, "local-m", identity.MemberResetRequest{ExpectedRevision: revision}); !errors.Is(e, identity.ErrForbidden) {
+		t.Fatal("password set on a Portico member", e)
+	}
 	if e = f.id.UpdateDirectMember(ctx, f.owner.AccessToken, "local-m", identity.DirectMemberInput{ExpectedRevision: revision, Disabled: true}); e != nil {
 		t.Fatal(e)
 	}
@@ -128,11 +133,7 @@ func TestPorticoIdentityAdmitsOnlyMembers(t *testing.T) {
 	if journalled < 2 {
 		t.Fatal("membership changes were not journalled for Hosted", journalled)
 	}
-	// Nor can anyone give a Portico member a password.
-	f.db.QueryRow(`SELECT revision FROM direct_memberships WHERE account_id='local-m'`).Scan(&revision)
-	if e = f.id.UpdateDirectMember(ctx, f.owner.AccessToken, "local-m", identity.DirectMemberInput{ExpectedRevision: revision, Password: "a-long-password"}); !errors.Is(e, identity.ErrDirectInput) {
-		t.Fatal("password set on a Portico member", e)
-	}
+
 }
 
 // A session that migration 0120 ended refreshes to session_migrated, not to a
@@ -399,7 +400,7 @@ func TestIdentityAssertionChallengeSkewAndConsent(t *testing.T) {
 // An owner linked to a Portico Account who set up a second factor here keeps
 // it; and only a session admitted through Portico escapes the recovery
 // owner's private-network rule (INT M9).
-func TestPorticoSignInKeepsLocalSecondFactorAndRecoveryScope(t *testing.T) {
+func TestPorticoSignInKeepsLocalSecondFactor(t *testing.T) {
 	f := newClaimFixture(t)
 	ctx := context.Background()
 	owner := f.owner.Viewer.AccountID
@@ -422,29 +423,15 @@ func TestPorticoSignInKeepsLocalSecondFactorAndRecoveryScope(t *testing.T) {
 	if _, e = f.db.Exec(`DELETE FROM identity_account_factors`); e != nil {
 		t.Fatal(e)
 	}
-	// Make the owner the recovery owner with remote recovery off.
-	if _, e = f.db.Exec(`INSERT INTO onboarding_state_v1(singleton,auth_mode,operation_id,request_hash,setup_hash,receipt,receipt_until,ready,recovery_account,recovery_confirmed,remote_recovery,revision) VALUES(1,'local','op','h','h',X'',0,1,?,1,0,1) ON CONFLICT(singleton) DO UPDATE SET recovery_account=excluded.recovery_account,remote_recovery=0`, owner); e != nil {
-		t.Fatal(e)
-	}
 	who, _ = verify(f, freshClaims(f, "account"))
 	in, e = f.id.PorticoSignIn(ctx, who)
 	if e != nil || in.Session == nil {
-		t.Fatalf("portico sign-in: %+v %v", in, e)
+		t.Fatalf("Portico sign-in after local factor removed: %v", e)
 	}
-	portico, e := f.id.AuthenticateContext(ctx, in.Session.AccessToken)
-	if e != nil {
+	if _, e = f.id.AuthenticateContext(ctx, in.Session.AccessToken); e != nil {
 		t.Fatal(e)
 	}
-	if e = f.id.CheckRecoveryRoute(ctx, portico, false); e != nil {
-		t.Fatal("a Portico-admitted session refused off the private network", e)
-	}
-	password, e := f.id.AuthenticateContext(ctx, f.owner.AccessToken)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if e = f.id.CheckRecoveryRoute(ctx, password, false); !errors.Is(e, identity.ErrUnauthorized) {
-		t.Fatal("a recovery-password session escaped the private-network rule", e)
-	}
+
 }
 
 // Hosted lists a member only with its consent; one it skipped is left out of

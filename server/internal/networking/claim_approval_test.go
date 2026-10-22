@@ -32,7 +32,7 @@ func approvalFixture(t *testing.T) (string, ed25519.PublicKey, ed25519.PrivateKe
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 9, 6, 3, 1, 0, 0, time.UTC)
-	raw := `{"kind":"portico.claim.approval","version":"1","audience":"https://hosted.example","operationId":"op","serverId":"server","accountId":"account","publicKey":"` + base64.RawURLEncoding.EncodeToString(make([]byte, 32)) + `","localGeneration":"0","approvalRevision":"1","issuedAt":"2026-09-06T03:00:00Z","expiresAt":"2026-09-06T03:05:00Z"}`
+	raw := `{"kind":"portico.claim.approval","version":"2","audience":"https://hosted.example","operationId":"op","serverId":"server","accountId":"account","publicKey":"` + base64.RawURLEncoding.EncodeToString(make([]byte, 32)) + `","localGeneration":"0","approvalRevision":"1","purpose":"setup","currentOwnerAccountId":"","previousOwnerRole":"","returnRegistrationId":"","issuedAt":"2026-09-06T03:00:00Z","expiresAt":"2026-09-06T03:05:00Z"}`
 	return raw, pub, key, now
 }
 func TestClaimApprovalExactSignedBinding(t *testing.T) {
@@ -56,7 +56,7 @@ func TestClaimApprovalExactSignedBinding(t *testing.T) {
 }
 func TestClaimApprovalRejectsSignedNoncanonicalPayload(t *testing.T) {
 	raw, pub, key, now := approvalFixture(t)
-	cases := map[string]string{"duplicate": strings.Replace(raw, `"version":"1"`, `"version":"1","version":"1"`, 1), "numeric_alias": strings.Replace(raw, `"localGeneration":"0"`, `"localGeneration":"00"`, 1), "unknown": strings.TrimSuffix(raw, "}") + `,"unexpected":true}`, "offset_time": strings.Replace(raw, "03:00:00Z", "03:00:00+00:00", 1), "wrong_kind": strings.Replace(raw, "portico.claim.approval", "portico.claim.proof", 1), "zero_revision": strings.Replace(raw, `"approvalRevision":"1"`, `"approvalRevision":"0"`, 1), "trailing_document": raw + `{}`}
+	cases := map[string]string{"duplicate": strings.Replace(raw, `"version":"2"`, `"version":"2","version":"2"`, 1), "numeric_alias": strings.Replace(raw, `"localGeneration":"0"`, `"localGeneration":"00"`, 1), "unknown": strings.TrimSuffix(raw, "}") + `,"unexpected":true}`, "offset_time": strings.Replace(raw, "03:00:00Z", "03:00:00+00:00", 1), "wrong_kind": strings.Replace(raw, "portico.claim.approval", "portico.claim.proof", 1), "zero_revision": strings.Replace(raw, `"approvalRevision":"1"`, `"approvalRevision":"0"`, 1), "trailing_document": raw + `{}`}
 	for name, candidate := range cases {
 		t.Run(name, func(t *testing.T) {
 			if _, e := verifyApprovalAt(context.Background(), "https://hosted.example", trust.KeyID(pub), pub, signedApprovalFixture(candidate, key), now); e == nil {

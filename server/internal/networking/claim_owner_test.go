@@ -79,3 +79,33 @@ func TestClaimOwnerCanceledTransaction(t *testing.T) {
 		t.Fatalf("cancellation lost: %v", e)
 	}
 }
+
+func TestClaimOwnerPendingSetupNeverBecomesLocalMembership(t *testing.T) {
+	db, e := persistence.Open(filepath.Join(t.TempDir(), "pending.sqlite"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	const op = "33333333-3333-4333-8333-333333333333"
+	if _, e = db.Exec(`INSERT INTO onboarding_state_v1(singleton,auth_mode,operation_id,request_hash,setup_hash,receipt_until) VALUES(1,'hosted',?,'hash','hash',0)`, op); e != nil {
+		t.Fatal(e)
+	}
+	tx, e := db.BeginTx(context.Background(), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback()
+	actor := LocalOwner{SetupOperationID: op, Epoch: 1}
+	if e = GuardLocalOwner(context.Background(), tx, actor); e != nil {
+		t.Fatal("pending setup refused", e)
+	}
+	if validOwner(LocalOwner{SetupOperationID: op, Epoch: 1, AccountID: "fake", ProfileID: "fake"}) {
+		t.Fatal("pending setup accepted fake member/profile")
+	}
+	if _, e = tx.Exec(`UPDATE onboarding_state_v1 SET auth_mode='local',revision=revision+1`); e != nil {
+		t.Fatal(e)
+	}
+	if e = GuardLocalOwner(context.Background(), tx, actor); !errors.Is(e, ErrStale) {
+		t.Fatal("method change retained pending claim authority", e)
+	}
+}

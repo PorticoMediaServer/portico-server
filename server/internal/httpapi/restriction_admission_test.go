@@ -55,7 +55,7 @@ func newTL11AdmissionFixture(t *testing.T, kind string) *tl11AdmissionFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setup := httptest.NewRequest("POST", "/v1/setup", bytes.NewBufferString(`{"setupToken":"`+string(secret)+`","username":"owner","password":"long-test-password","name":"Test"}`))
+	setup := httptest.NewRequest("POST", "/v1/setup", bytes.NewBufferString(`{"authMode":"local","setupToken":"`+string(secret)+`","username":"owner","password":"long-test-password","name":"Test"}`))
 	setup.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, setup)

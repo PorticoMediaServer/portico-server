@@ -226,7 +226,7 @@ func TestQCFamilySetupRenews(t *testing.T) {
 	installation := identity.Token()
 	var owner identity.Envelope
 	f.callAs("", "POST", "/v1/setup", qcInstallHeaders(installation), map[string]string{
-		"setupToken": token, "username": "owner", "password": "long-test-password", "name": "Test",
+		"authMode": "local", "setupToken": token, "username": "owner", "password": "long-test-password", "name": "Test",
 	}, 201, &owner)
 	if owner.RefreshToken == "" {
 		t.Fatal("setup returned no refresh credential")

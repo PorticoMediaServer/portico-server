@@ -7,6 +7,9 @@ import (
 )
 
 func registerIdentityHTTPContracts(registry *apikit.Registry) error {
+	if err := registerResetFileHTTPContracts(registry); err != nil {
+		return err
+	}
 	// internal/httpapi/direct_identity.go:30
 	if err := apikit.RegisterHTTP[struct {
 		Nonce string "json:\"nonce\""
@@ -79,7 +82,7 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:225
-	if err := apikit.RegisterHTTP[identity.DirectMemberInput, identity.DirectAccount](registry, apikit.Metadata{ID: "post_direct_members", Method: "POST", Path: "/v1/direct/members", Summary: "Run account members", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[identity.DirectMemberCreate, identity.DirectAccount](registry, apikit.Metadata{ID: "post_direct_members", Method: "POST", Path: "/v1/direct/members", Summary: "Run account members", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:238

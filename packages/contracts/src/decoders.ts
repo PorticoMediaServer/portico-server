@@ -132,6 +132,7 @@ export function decodeGetApiAccessOptionsResponse(input: unknown): types.GetApiA
 export function decodeGetArtistsIdAlbumsResponse(input: unknown): types.GetArtistsIdAlbumsResponse { return decode("GetArtistsIdAlbumsResponse", input) as types.GetArtistsIdAlbumsResponse; }
 export function decodeGetAttributionResponse(input: unknown): types.GetAttributionResponse { return decode("GetAttributionResponse", input) as types.GetAttributionResponse; }
 export function decodeGetAuthCapabilitiesResponse(input: unknown): types.GetAuthCapabilitiesResponse { return decode("GetAuthCapabilitiesResponse", input) as types.GetAuthCapabilitiesResponse; }
+export function decodeGetAuthServicesReachabilityResponse(input: unknown): types.GetAuthServicesReachabilityResponse { return decode("GetAuthServicesReachabilityResponse", input) as types.GetAuthServicesReachabilityResponse; }
 export function decodeGetBooksIdChaptersResponse(input: unknown): types.GetBooksIdChaptersResponse { return decode("GetBooksIdChaptersResponse", input) as types.GetBooksIdChaptersResponse; }
 export function decodeGetBooksIdFilesResponse(input: unknown): types.GetBooksIdFilesResponse { return decode("GetBooksIdFilesResponse", input) as types.GetBooksIdFilesResponse; }
 export function decodeGetBootstrapResponse(input: unknown): types.GetBootstrapResponse { return decode("GetBootstrapResponse", input) as types.GetBootstrapResponse; }
@@ -420,6 +421,9 @@ export function decodePostAdminStorageUsageCategoryCleanupResponse(input: unknow
 export function decodePostAlbumsIdMetadataMusicbrainzPolicyResponse(input: unknown): types.PostAlbumsIdMetadataMusicbrainzPolicyResponse { return decode("PostAlbumsIdMetadataMusicbrainzPolicyResponse", input) as types.PostAlbumsIdMetadataMusicbrainzPolicyResponse; }
 export function decodePostAlbumsIdMetadataMusicbrainzRetryResponse(input: unknown): types.PostAlbumsIdMetadataMusicbrainzRetryResponse { return decode("PostAlbumsIdMetadataMusicbrainzRetryResponse", input) as types.PostAlbumsIdMetadataMusicbrainzRetryResponse; }
 export function decodePostAlbumsIdMetadataMusicbrainzSearchResponse(input: unknown): types.PostAlbumsIdMetadataMusicbrainzSearchResponse { return decode("PostAlbumsIdMetadataMusicbrainzSearchResponse", input) as types.PostAlbumsIdMetadataMusicbrainzSearchResponse; }
+export function decodePostAuthOwnerResetRequestResponse(input: unknown): types.PostAuthOwnerResetRequestResponse { return decode("PostAuthOwnerResetRequestResponse", input) as types.PostAuthOwnerResetRequestResponse; }
+export function decodePostAuthOwnerResetVerifyResponse(input: unknown): types.PostAuthOwnerResetVerifyResponse { return decode("PostAuthOwnerResetVerifyResponse", input) as types.PostAuthOwnerResetVerifyResponse; }
+export function decodePostAuthPorticoReturnExchangeResponse(input: unknown): types.PostAuthPorticoReturnExchangeResponse { return decode("PostAuthPorticoReturnExchangeResponse", input) as types.PostAuthPorticoReturnExchangeResponse; }
 export function decodePostAuthRefreshResponse(input: unknown): types.PostAuthRefreshResponse { return decode("PostAuthRefreshResponse", input) as types.PostAuthRefreshResponse; }
 export function decodePostAuthRegisterResponse(input: unknown): types.PostAuthRegisterResponse { return decode("PostAuthRegisterResponse", input) as types.PostAuthRegisterResponse; }
 export function decodePostAuthRememberedAccountsResponse(input: unknown): types.PostAuthRememberedAccountsResponse { return decode("PostAuthRememberedAccountsResponse", input) as types.PostAuthRememberedAccountsResponse; }
@@ -431,9 +435,11 @@ export function decodePostDeviceResponse(input: unknown): types.PostDeviceRespon
 export function decodePostDeviceApprovalResponse(input: unknown): types.PostDeviceApprovalResponse { return decode("PostDeviceApprovalResponse", input) as types.PostDeviceApprovalResponse; }
 export function decodePostDeviceSessionBindingResponse(input: unknown): types.PostDeviceSessionBindingResponse { return decode("PostDeviceSessionBindingResponse", input) as types.PostDeviceSessionBindingResponse; }
 export function decodePostDirectMembersResponse(input: unknown): types.PostDirectMembersResponse { return decode("PostDirectMembersResponse", input) as types.PostDirectMembersResponse; }
+export function decodePostDirectMembersIdResetCodeResponse(input: unknown): types.PostDirectMembersIdResetCodeResponse { return decode("PostDirectMembersIdResetCodeResponse", input) as types.PostDirectMembersIdResetCodeResponse; }
 export function decodePostDirectOwnershipResponse(input: unknown): types.PostDirectOwnershipResponse { return decode("PostDirectOwnershipResponse", input) as types.PostDirectOwnershipResponse; }
 export function decodePostDirectOwnershipCustodyResponse(input: unknown): types.PostDirectOwnershipCustodyResponse { return decode("PostDirectOwnershipCustodyResponse", input) as types.PostDirectOwnershipCustodyResponse; }
 export function decodePostDirectPasswordResponse(input: unknown): types.PostDirectPasswordResponse { return decode("PostDirectPasswordResponse", input) as types.PostDirectPasswordResponse; }
+export function decodePostDirectPasswordResetResponse(input: unknown): types.PostDirectPasswordResetResponse { return decode("PostDirectPasswordResetResponse", input) as types.PostDirectPasswordResetResponse; }
 export function decodePostDirectPorticoChallengeResponse(input: unknown): types.PostDirectPorticoChallengeResponse { return decode("PostDirectPorticoChallengeResponse", input) as types.PostDirectPorticoChallengeResponse; }
 export function decodePostDirectProfilePinResetResponse(input: unknown): types.PostDirectProfilePinResetResponse { return decode("PostDirectProfilePinResetResponse", input) as types.PostDirectProfilePinResetResponse; }
 export function decodePostDirectProfileSwitchResponse(input: unknown): types.PostDirectProfileSwitchResponse { return decode("PostDirectProfileSwitchResponse", input) as types.PostDirectProfileSwitchResponse; }
@@ -507,8 +513,8 @@ export function decodePostQuickConnectDecisionResponse(input: unknown): types.Po
 export function decodePostQuickConnectReviewResponse(input: unknown): types.PostQuickConnectReviewResponse { return decode("PostQuickConnectReviewResponse", input) as types.PostQuickConnectReviewResponse; }
 export function decodePostQuickConnectTokenResponse(input: unknown): types.PostQuickConnectTokenResponse { return decode("PostQuickConnectTokenResponse", input) as types.PostQuickConnectTokenResponse; }
 export function decodePostSavedResourcesResponse(input: unknown): types.PostSavedResourcesResponse { return decode("PostSavedResourcesResponse", input) as types.PostSavedResourcesResponse; }
+export function decodePostSetupAccountCompleteResponse(input: unknown): types.PostSetupAccountCompleteResponse { return decode("PostSetupAccountCompleteResponse", input) as types.PostSetupAccountCompleteResponse; }
 export function decodePostSetupFinishResponse(input: unknown): types.PostSetupFinishResponse { return decode("PostSetupFinishResponse", input) as types.PostSetupFinishResponse; }
-export function decodePostSetupRemoteRecoveryResponse(input: unknown): types.PostSetupRemoteRecoveryResponse { return decode("PostSetupRemoteRecoveryResponse", input) as types.PostSetupRemoteRecoveryResponse; }
 export function decodePostSetupResumeResponse(input: unknown): types.PostSetupResumeResponse { return decode("PostSetupResumeResponse", input) as types.PostSetupResumeResponse; }
 export function decodePostShowsIdMetadataScreenRetryResponse(input: unknown): types.PostShowsIdMetadataScreenRetryResponse { return decode("PostShowsIdMetadataScreenRetryResponse", input) as types.PostShowsIdMetadataScreenRetryResponse; }
 export function decodePostShowsIdMetadataScreenSearchResponse(input: unknown): types.PostShowsIdMetadataScreenSearchResponse { return decode("PostShowsIdMetadataScreenSearchResponse", input) as types.PostShowsIdMetadataScreenSearchResponse; }

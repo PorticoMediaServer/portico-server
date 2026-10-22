@@ -50,9 +50,6 @@ func (d Dependencies) manualMetadataAuthorize(ctx context.Context, tx *sql.Tx, p
 		if _, err := d.Identity.ReauthorizeTx(ctx, tx, p); err != nil {
 			return err
 		}
-		if err := d.Identity.CheckRecoveryRouteTx(ctx, tx, p); err != nil {
-			return err
-		}
 		return manualMetadataAuthorize(ctx, tx, p)
 	}
 	return identity.ErrForbidden

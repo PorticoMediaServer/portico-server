@@ -111,14 +111,14 @@ func (f *sqlFixture) storeFor(t *testing.T, db *sql.DB, cipher *ClaimCipher) *SQ
 			Signature []byte
 		}
 		if e := ctx.Err(); e != nil {
-			return ApprovalFacts{}, e
+			return ApprovalFacts{ClaimPurpose: ClaimPurpose{Purpose: "setup"}}, e
 		}
 		if json.Unmarshal(raw, &envelope) != nil || !ed25519.Verify(f.hostedKey.Public().(ed25519.PublicKey), envelope.Payload, envelope.Signature) {
-			return ApprovalFacts{}, ErrInvalid
+			return ApprovalFacts{ClaimPurpose: ClaimPurpose{Purpose: "setup"}}, ErrInvalid
 		}
 		var facts ApprovalFacts
 		if json.Unmarshal(envelope.Payload, &facts) != nil {
-			return ApprovalFacts{}, ErrInvalid
+			return ApprovalFacts{ClaimPurpose: ClaimPurpose{Purpose: "setup"}}, ErrInvalid
 		}
 		return facts, nil
 	}
@@ -131,7 +131,7 @@ func (f *sqlFixture) storeFor(t *testing.T, db *sql.DB, cipher *ClaimCipher) *SQ
 }
 func (f *sqlFixture) approval(t *testing.T, b Binding, revision int64, issued, expiry time.Time) []byte {
 	t.Helper()
-	raw, e := json.Marshal(ApprovalFacts{Binding: b, Revision: revision, IssuedAt: issued, ExpiresAt: expiry})
+	raw, e := json.Marshal(ApprovalFacts{ClaimPurpose: ClaimPurpose{Purpose: "setup"}, Binding: b, Revision: revision, IssuedAt: issued, ExpiresAt: expiry})
 	if e != nil {
 		t.Fatal(e)
 	}

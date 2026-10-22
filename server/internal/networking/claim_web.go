@@ -50,7 +50,7 @@ func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address stri
 	if account == UnboundAccount {
 		account = ""
 	}
-	q := claimweb.Request{Kind: "portico.claim.web.v1", Audience: transport.origin, OperationID: v.OperationID, ServerID: v.ServerID, AccountID: account, PublicKey: base64.RawURLEncoding.EncodeToString(v.PublicKey), LocalGeneration: v.LocalGeneration, Name: h.name(), Address: address, IssuedAt: now, ExpiresAt: now.Add(webClaimLifetime)}
+	q := claimweb.Request{Kind: "portico.claim.web.v2", Audience: transport.origin, OperationID: v.OperationID, ServerID: v.ServerID, AccountID: account, PublicKey: base64.RawURLEncoding.EncodeToString(v.PublicKey), LocalGeneration: v.LocalGeneration, Name: h.name(), Address: address, Purpose: v.Purpose, CurrentOwnerAccountID: v.CurrentOwnerAccountID, PreviousOwnerRole: v.PreviousOwnerRole, ReturnRegistrationID: v.ReturnRegistrationID, IssuedAt: now, ExpiresAt: now.Add(webClaimLifetime)}
 	raw, _ := json.Marshal(q)
 	signature, e := h.signer.Sign(ctx, v.Binding, raw)
 	if e != nil {
@@ -64,7 +64,7 @@ func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address stri
 	if e = transport.call(ctx, "pending", out.Signed, &pending, nil); e != nil {
 		return out, e
 	}
-	fragment := url.Values{"code": {pending.Code}, "server": {q.Name}, "return": {address}}
+	fragment := url.Values{"code": {pending.Code}, "server": {q.Name}, "operation": {v.OperationID}}
 	out.Code = pending.Code
 	out.URL = transport.origin + "/claim#" + fragment.Encode()
 	out.ExpiresAt = q.ExpiresAt

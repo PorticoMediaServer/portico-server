@@ -96,7 +96,7 @@ func TestSetupRangePlaybackStopAndOrigin(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	w := request("POST", "/v1/setup", "", map[string]string{"setupToken": string(secret), "username": "owner", "password": "long-test-password", "name": "Test"})
+	w := request("POST", "/v1/setup", "", map[string]string{"authMode": "local", "setupToken": string(secret), "username": "owner", "password": "long-test-password", "name": "Test"})
 	if w.Code != 201 {
 		t.Fatalf("setup %d %s", w.Code, w.Body.String())
 	}

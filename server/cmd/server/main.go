@@ -82,13 +82,6 @@ func main() {
 		}
 		os.Exit(1)
 	}
-	if len(os.Args) > 1 && os.Args[1] == "recover-owner" {
-		if err := recoverOwner(os.Args[2:], os.Stdout); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		return
-	}
 	if handled, e := decoder.RunHelper(os.Args[1:]); handled {
 		if e != nil {
 			os.Exit(1)
@@ -132,6 +125,10 @@ func main() {
 			os.Exit(1)
 		}
 		return
+	}
+	if len(os.Args) > 1 {
+		fmt.Fprintln(os.Stderr, "Unrecognized command or argument.")
+		os.Exit(2)
 	}
 	if os.Getenv(supervise.WorkerEnvironment) != "1" {
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -448,6 +445,15 @@ func run() (runErr error) {
 	ident, e := identity.New(db, state)
 	doneIdentity(e)
 	if e != nil {
+		return e
+	}
+	container := false
+	for _, marker := range []string{"/.dockerenv", "/run/.containerenv"} {
+		if _, err := os.Stat(marker); err == nil {
+			container = true
+		}
+	}
+	if e = ident.ConfigureResetFile(state, filepath.Join(state, "Keys"), container); e != nil {
 		return e
 	}
 	wireNativeServerIdentity(ident)

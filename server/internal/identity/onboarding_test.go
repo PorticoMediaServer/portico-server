@@ -207,53 +207,7 @@ func TestP09QuickConnectReplayCannotRestoreRotatedAuthority(t *testing.T) {
 		t.Fatal("current family was lost", e)
 	}
 }
-func TestP09HostedInitializationResumeAndPrivateRecovery(t *testing.T) {
-	s, db, dir := familyFixture(t)
-	ctx := context.Background()
-	if _, e := db.Exec(`DELETE FROM accounts`); e != nil {
-		t.Fatal(e)
-	}
-	token, e := os.ReadFile(filepath.Join(dir, "setup-token"))
-	if e != nil {
-		t.Fatal(e)
-	}
-	q := SetupOptions{RequestID: "33333333-3333-4333-8333-333333333333", SetupToken: string(token), Username: "owner", Name: "Home", Password: "Long-Private-Password9", AuthMode: "hosted", RecoverySaved: true}
-	out, e := s.SetupWithOptions(ctx, q, true)
-	if e != nil {
-		t.Fatal(e)
-	}
-	again, e := s.ResumeSetup(ctx, q.RequestID, q.SetupToken, true)
-	if e != nil || !reflect.DeepEqual(out, again) {
-		t.Fatal("initialization result not recoverable", e)
-	}
-	p, e := s.Authenticate(out.AccessToken)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if e = s.CheckRecoveryRoute(ctx, p, false); !errors.Is(e, ErrUnauthorized) {
-		t.Fatal("remote recovery default open", e)
-	}
-	state, e := s.Onboarding(ctx, p)
-	if e != nil || state.Ready || !state.RecoveryOwner || !state.RecoveryConfirmed {
-		t.Fatal(state, e)
-	}
-	if _, e = s.FinishSetup(ctx, p, state.Revision); e == nil {
-		t.Fatal("uninstalled claim marked ready")
-	}
-	// No checklist asks the owner to finish: an installed claim makes it ready.
-	s.SetupClaimReadyTx = func(context.Context, *sql.Tx) (bool, error) { return true, nil }
-	if claimed, e := s.Onboarding(ctx, p); e != nil || !claimed.Ready || claimed.Phase != "ready" {
-		t.Fatal("installed claim did not make hosted setup ready", claimed, e)
-	}
-	s.SetupClaimReadyTx = nil
-	if _, e = s.SetRemoteRecovery(ctx, p, state.Revision, true, false); e == nil {
-		t.Fatal("remote recovery enabled without warning")
-	}
-	enabled, e := s.SetRemoteRecovery(ctx, p, state.Revision, true, true)
-	if e != nil || !enabled.RemoteRecovery {
-		t.Fatal(enabled, e)
-	}
-}
+
 func TestP09RecoveryPasswordAndHumanCodePolicy(t *testing.T) {
 	// One rule for every local password: 8+ characters (bcrypt caps input at 72 bytes).
 	for _, password := range []string{"short9!", strings.Repeat("a", 73), "abcdefg\xff"} {
@@ -279,31 +233,7 @@ func TestP09RecoveryPasswordAndHumanCodePolicy(t *testing.T) {
 
 // Setup from outside the LAN is allowed (no setup code), and the recovery owner
 // it creates stays reachable from there so the person setting up is never locked out.
-func TestRemoteHostedSetupKeepsRecoveryReachable(t *testing.T) {
-	s, db, dir := familyFixture(t)
-	ctx := context.Background()
-	if _, e := db.Exec(`DELETE FROM accounts`); e != nil {
-		t.Fatal(e)
-	}
-	token, e := os.ReadFile(filepath.Join(dir, "setup-token"))
-	if e != nil {
-		t.Fatal(e)
-	}
-	q := SetupOptions{RequestID: "44444444-4444-4444-8444-444444444444", SetupToken: string(token), Username: "owner", Name: "Home", Password: "simple12", AuthMode: "hosted", RecoverySaved: true}
-	if _, e = s.SetupWithOptions(ctx, q, false); e != nil {
-		t.Fatal("remote setup refused", e)
-	}
-	if _, e = s.ResumeSetup(ctx, q.RequestID, q.SetupToken, false); e != nil {
-		t.Fatal("remote resume refused", e)
-	}
-	var remote bool
-	if e = db.QueryRow(`SELECT remote_recovery FROM onboarding_state_v1 WHERE singleton=1`).Scan(&remote); e != nil || !remote {
-		t.Fatal("remote recovery off after remote setup", remote, e)
-	}
-}
 
-// A code that was approved but never collected by its device has no session to
-// revoke. Clean-up must expire it and carry on with the rest of its work.
 func TestPruneSetupExpiresApprovedCodeThatWasNeverCollected(t *testing.T) {
 	s, db, _ := familyFixture(t)
 	ctx := context.Background()

@@ -14,7 +14,7 @@ import (
 
 // Updating the pre-release schema means directly editing the baseline and this
 // expected digest. Existing state must then be reset, never upgraded.
-const schemaSourceDigest = "aeb240399b31dd9729917b66b41ef8e07acc49700d4e99ccb8138fbe6da230c4"
+const schemaSourceDigest = "3bdf3ff88fd1151e09d93e24ed52d0ed45e4fcd13cfd4615d975a425371d2659"
 
 func TestSchemaBaselineDigest(t *testing.T) {
 	if BaselineDigest() != schemaSourceDigest {
@@ -150,8 +150,8 @@ func TestFreshBaselineIncludesSegmentAndGatedSchema(t *testing.T) {
 	}
 	for _, column := range []string{"recovery_account", "recovery_confirmed", "remote_recovery"} {
 		var count int
-		if err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('onboarding_state_v1') WHERE name=?`, column).Scan(&count); err != nil || count != 1 {
-			t.Errorf("early owner-setup removal %s: %d %v", column, count, err)
+		if err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('onboarding_state_v1') WHERE name=?`, column).Scan(&count); err != nil || count != 0 {
+			t.Errorf("retired owner-setup column remains %s: %d %v", column, count, err)
 		}
 	}
 	if err = VerifySchemaObjects(context.Background(), db); err != nil {

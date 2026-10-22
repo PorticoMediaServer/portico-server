@@ -12,9 +12,10 @@ import (
 )
 
 type LocalOwner struct {
-	AccountID string
-	ProfileID string
-	Epoch     int64
+	SetupOperationID string
+	AccountID        string
+	ProfileID        string
+	Epoch            int64
 }
 type OwnerIntentGuard func(context.Context, *sql.Tx, LocalOwner) error
 
@@ -29,6 +30,7 @@ type InstalledAuthorityGuard func(context.Context, *sql.Tx, Intent) error
 // configured trust and return only this immutable projection. It performs no
 // network I/O. Caller JSON is never accepted as verified approval facts.
 type ApprovalFacts struct {
+	ClaimPurpose
 	Binding
 	Revision  int64
 	IssuedAt  time.Time
@@ -67,14 +69,14 @@ type storedIntent struct {
 	approvalIssued time.Time
 }
 
-const intentColumns = `operation_id,server_id,account_id,public_key,local_generation,revision,stage,owner_id,owner_profile_id,owner_epoch,approval_revision,approval_issued_at,approval_expires_at,claim_generation,credential_generation,installation_acknowledged`
+const intentColumns = `operation_id,server_id,account_id,public_key,local_generation,revision,stage,owner_id,owner_profile_id,owner_epoch,approval_revision,approval_issued_at,approval_expires_at,claim_generation,credential_generation,installation_acknowledged,setup_operation_id,purpose,current_owner_account_id,previous_owner_role,return_registration_id`
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanIntent(row rowScanner) (storedIntent, error) {
 	var v storedIntent
 	var issued, expires string
-	e := row.Scan(&v.OperationID, &v.ServerID, &v.AccountID, &v.PublicKey, &v.LocalGeneration, &v.Revision, &v.Stage, &v.owner.AccountID, &v.owner.ProfileID, &v.owner.Epoch, &v.ApprovalRevision, &issued, &expires, &v.ClaimGeneration, &v.CredentialGeneration, &v.InstallationAcknowledged)
+	e := row.Scan(&v.OperationID, &v.ServerID, &v.AccountID, &v.PublicKey, &v.LocalGeneration, &v.Revision, &v.Stage, &v.owner.AccountID, &v.owner.ProfileID, &v.owner.Epoch, &v.ApprovalRevision, &issued, &expires, &v.ClaimGeneration, &v.CredentialGeneration, &v.InstallationAcknowledged, &v.owner.SetupOperationID, &v.Purpose, &v.CurrentOwnerAccountID, &v.PreviousOwnerRole, &v.ReturnRegistrationID)
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, ErrStale
 	}
@@ -99,6 +101,9 @@ func scanIntent(row rowScanner) (storedIntent, error) {
 	return v, validateIntent(v.Intent, v.OperationID)
 }
 func validOwner(v LocalOwner) bool {
+	if v.SetupOperationID != "" {
+		return validID(v.SetupOperationID) && v.AccountID == "" && v.ProfileID == "" && v.Epoch > 0
+	}
 	return validID(v.AccountID) && validID(v.ProfileID) && v.Epoch >= 0
 }
 func (s *SQLiteStore) tx(ctx context.Context) (*dbwork.Write, error) {
@@ -175,7 +180,7 @@ func (s *SQLiteStore) positive(ctx context.Context, tx *sql.Tx, expected Intent)
 	if e != nil {
 		return v, e
 	}
-	if !sameBinding(expected.Binding, v.Binding) || expected.Revision != v.Revision || expected.Stage != v.Stage || expected.ApprovalRevision != v.ApprovalRevision || !expected.ApprovalExpiresAt.Equal(v.ApprovalExpiresAt) || expected.ClaimGeneration != v.ClaimGeneration || expected.CredentialGeneration != v.CredentialGeneration || v.Stage == CancelPending || v.Stage == Cancelled || id.server != v.ServerID || !bytes.Equal(id.key, v.PublicKey) || id.generation != v.LocalGeneration || !id.active.Valid || id.active.String != v.OperationID {
+	if expected.ClaimPurpose != v.ClaimPurpose || !sameBinding(expected.Binding, v.Binding) || expected.Revision != v.Revision || expected.Stage != v.Stage || expected.ApprovalRevision != v.ApprovalRevision || !expected.ApprovalExpiresAt.Equal(v.ApprovalExpiresAt) || expected.ClaimGeneration != v.ClaimGeneration || expected.CredentialGeneration != v.CredentialGeneration || v.Stage == CancelPending || v.Stage == Cancelled || id.server != v.ServerID || !bytes.Equal(id.key, v.PublicKey) || id.generation != v.LocalGeneration || !id.active.Valid || id.active.String != v.OperationID {
 		return v, ErrStale
 	}
 	if v.Stage == Installed {
@@ -236,6 +241,12 @@ func (s *SQLiteStore) EstablishIdentity(ctx context.Context, server string, key 
 // Prepare receives verified local-owner intent from root's authenticated setup
 // transaction and invokes the mandatory guard again inside its own mutation.
 func (s *SQLiteStore) Prepare(ctx context.Context, b Binding, owner LocalOwner) (Intent, error) {
+	return s.PreparePurpose(ctx, b, owner, ClaimPurpose{Purpose: "setup"})
+}
+func (s *SQLiteStore) PreparePurpose(ctx context.Context, b Binding, owner LocalOwner, purpose ClaimPurpose) (Intent, error) {
+	if !purpose.Valid() {
+		return Intent{}, ErrInvalid
+	}
 	if !validBinding(b) || !validOwner(owner) {
 		return Intent{}, ErrInvalid
 	}
@@ -251,7 +262,7 @@ func (s *SQLiteStore) Prepare(ctx context.Context, b Binding, owner LocalOwner) 
 	}
 	old, e := loadIntentTx(ctx, tx, b.OperationID)
 	if e == nil {
-		if !sameBinding(old.Binding, b) || old.owner != owner {
+		if !sameBinding(old.Binding, b) || old.owner != owner || old.ClaimPurpose != purpose {
 			return Intent{}, ErrStale
 		}
 		if e = s.ownerGuard(ctx, tx, owner); e != nil {
@@ -262,6 +273,26 @@ func (s *SQLiteStore) Prepare(ctx context.Context, b Binding, owner LocalOwner) 
 	if !errors.Is(e, ErrStale) {
 		return Intent{}, e
 	}
+	if purpose.Purpose != "setup" {
+		if !id.installed.Valid || !id.active.Valid || id.active.String != id.installed.String || owner.SetupOperationID != "" {
+			return Intent{}, ErrStale
+		}
+		var current string
+		if e = tx.QueryRowContext(ctx, `SELECT hosted_account_id FROM account_portico_links WHERE account_id=?`, owner.AccountID).Scan(&current); e != nil || current != purpose.CurrentOwnerAccountID {
+			return Intent{}, ErrStale
+		}
+		if e = s.ownerGuard(ctx, tx, owner); e != nil {
+			return Intent{}, e
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE networking_claim_intents SET stage='cancelled',revision=revision+1 WHERE operation_id=? AND stage='installed'`, id.installed.String); e != nil {
+			return Intent{}, e
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE networking_claim_identity SET active_operation_id=NULL,installed_operation_id=NULL WHERE singleton=1`); e != nil {
+			return Intent{}, e
+		}
+		id.active.Valid = false
+		id.installed.Valid = false
+	}
 	if id.active.Valid || id.installed.Valid || id.server != b.ServerID || !bytes.Equal(id.key, b.PublicKey) || id.generation != b.LocalGeneration {
 		return Intent{}, ErrStale
 	}
@@ -269,7 +300,7 @@ func (s *SQLiteStore) Prepare(ctx context.Context, b Binding, owner LocalOwner) 
 		return Intent{}, e
 	}
 	now := s.now().UTC().Format(time.RFC3339Nano)
-	_, e = tx.ExecContext(ctx, `INSERT INTO networking_claim_intents(operation_id,server_id,account_id,public_key,local_generation,revision,stage,owner_id,owner_profile_id,owner_epoch,created_at,updated_at) VALUES(?,?,?,?,?,1,'prepared',?,?,?,?,?)`, b.OperationID, b.ServerID, b.AccountID, b.PublicKey, b.LocalGeneration, owner.AccountID, owner.ProfileID, owner.Epoch, now, now)
+	_, e = tx.ExecContext(ctx, `INSERT INTO networking_claim_intents(operation_id,server_id,account_id,public_key,local_generation,revision,stage,owner_id,owner_profile_id,owner_epoch,setup_operation_id,created_at,updated_at,purpose,current_owner_account_id,previous_owner_role,return_registration_id) VALUES(?,?,?,?,?,1,'prepared',?,?,?,?,?,?,?,?,?,?)`, b.OperationID, b.ServerID, b.AccountID, b.PublicKey, b.LocalGeneration, owner.AccountID, owner.ProfileID, owner.Epoch, owner.SetupOperationID, now, now, purpose.Purpose, purpose.CurrentOwnerAccountID, purpose.PreviousOwnerRole, purpose.ReturnRegistrationID)
 	if e != nil {
 		return Intent{}, e
 	}
@@ -289,6 +320,10 @@ func (s *SQLiteStore) Approve(ctx context.Context, expected Intent, proof []byte
 	facts, e := s.verifyApproval(ctx, append([]byte(nil), proof...))
 	if e != nil {
 		return Intent{}, e
+	}
+
+	if facts.ClaimPurpose != expected.ClaimPurpose {
+		return Intent{}, ErrApprovalRequired
 	}
 	adopt := expected.AccountID == UnboundAccount && validID(facts.AccountID) && facts.AccountID != UnboundAccount
 	if adopt {

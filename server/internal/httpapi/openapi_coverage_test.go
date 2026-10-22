@@ -36,7 +36,6 @@ var (
 var composedRoutes = []string{
 	// onboarding.go: "POST /v1/setup/" + action, "POST /v1/quick-connect/" + action.
 	"POST /v1/setup/finish",
-	"POST /v1/setup/remote-recovery",
 	"POST /v1/quick-connect/token",
 	"POST /v1/quick-connect/cancel",
 	// admin.go: "GET /v1/admin/" + kind.

@@ -43,7 +43,30 @@ type Binding struct {
 	PublicKey       []byte
 	LocalGeneration int64
 }
+type ClaimPurpose struct {
+	Purpose               string `json:"purpose"`
+	CurrentOwnerAccountID string `json:"currentOwnerAccountId"`
+	PreviousOwnerRole     string `json:"previousOwnerRole"`
+	ReturnRegistrationID  string `json:"returnRegistrationId"`
+}
+
+func (p ClaimPurpose) Valid() bool {
+	if p.ReturnRegistrationID != "" && !validID(p.ReturnRegistrationID) {
+		return false
+	}
+	switch p.Purpose {
+	case "setup":
+		return p.CurrentOwnerAccountID == "" && p.PreviousOwnerRole == ""
+	case "switch":
+		return validID(p.CurrentOwnerAccountID) && p.PreviousOwnerRole == ""
+	case "change-owner":
+		return validID(p.CurrentOwnerAccountID) && (p.PreviousOwnerRole == "admin" || p.PreviousOwnerRole == "member" || p.PreviousOwnerRole == "remove")
+	}
+	return false
+}
+
 type Intent struct {
+	ClaimPurpose
 	Binding
 	Revision                 int64
 	Stage                    Stage

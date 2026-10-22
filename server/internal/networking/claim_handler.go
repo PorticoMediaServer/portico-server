@@ -38,6 +38,7 @@ type ClaimIdentityExpected struct {
 	LocalGeneration int64  `json:"localGeneration,string"`
 }
 type ClaimApprovalRequest struct {
+	ClaimPurpose
 	OperationID      string `json:"operationId"`
 	ServerID         string `json:"serverId"`
 	PublicKey        string `json:"publicKey"`
@@ -169,8 +170,11 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 		// request with its own re-encoding, so a body without one, which is what
 		// the web console's Plex-style Connect sends, must re-encode without one.
 		var body struct {
-			AccountID string                `json:"accountId,omitempty"`
-			Expected  ClaimIdentityExpected `json:"expected"`
+			AccountID            string                `json:"accountId,omitempty"`
+			Purpose              string                `json:"purpose,omitempty"`
+			PreviousOwnerRole    string                `json:"previousOwnerRole,omitempty"`
+			ReturnRegistrationID string                `json:"returnRegistrationId,omitempty"`
+			Expected             ClaimIdentityExpected `json:"expected"`
 		}
 		if e := readClaimBody(w, r, &body); e != nil {
 			return ClaimStatus{}, e
@@ -193,7 +197,7 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 		if e != nil {
 			return ClaimStatus{}, e
 		}
-		if active.Valid || installed.Valid || identity.ServerID != body.Expected.ServerID || identity.ResetGeneration != body.Expected.LocalGeneration {
+		if (active.Valid || installed.Valid) && body.Purpose != "change-owner" && body.Purpose != "switch" || identity.ServerID != body.Expected.ServerID || identity.ResetGeneration != body.Expected.LocalGeneration {
 			return ClaimStatus{}, ErrStale
 		}
 		nonce := make([]byte, 24)
@@ -201,7 +205,19 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 			return ClaimStatus{}, e
 		}
 		binding := Binding{OperationID: base64.RawURLEncoding.EncodeToString(nonce), ServerID: identity.ServerID, AccountID: body.AccountID, PublicKey: identity.PublicKey, LocalGeneration: identity.ResetGeneration}
-		if _, e = h.store.Prepare(ctx, binding, owner); e != nil {
+		purpose := ClaimPurpose{Purpose: body.Purpose, PreviousOwnerRole: body.PreviousOwnerRole, ReturnRegistrationID: body.ReturnRegistrationID}
+		if purpose.Purpose == "" {
+			purpose.Purpose = "setup"
+		}
+		if purpose.Purpose != "setup" {
+			if purpose.Purpose == "change-owner" && purpose.PreviousOwnerRole == "" {
+				purpose.PreviousOwnerRole = "admin"
+			}
+			if e = h.store.db.QueryRowContext(ctx, `SELECT hosted_account_id FROM account_portico_links WHERE account_id=?`, owner.AccountID).Scan(&purpose.CurrentOwnerAccountID); e != nil {
+				return ClaimStatus{}, ErrClaimOwnerRequired
+			}
+		}
+		if _, e = h.store.PreparePurpose(ctx, binding, owner, purpose); e != nil {
 			return ClaimStatus{}, e
 		}
 		return h.snapshot(ctx)
@@ -337,7 +353,7 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 			return ClaimStatus{}, ErrInvalid
 		}
 		result.Actions = append(result.Actions, "approve")
-		result.ApprovalRequest = &ClaimApprovalRequest{v.OperationID, v.ServerID, base64.RawURLEncoding.EncodeToString(v.PublicKey), v.LocalGeneration, name, v.ApprovalRevision}
+		result.ApprovalRequest = &ClaimApprovalRequest{v.ClaimPurpose, v.OperationID, v.ServerID, base64.RawURLEncoding.EncodeToString(v.PublicKey), v.LocalGeneration, name, v.ApprovalRevision}
 	} else {
 		result.Actions = append(result.Actions, "continue")
 	}

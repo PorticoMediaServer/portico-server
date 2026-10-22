@@ -415,7 +415,6 @@ func (s *Service) SelectDirectProfile(ctx context.Context, bearer, id string, q 
 	return s.SelectDirectProfileFrom(ctx, bearer, id, q, true)
 }
 func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string, q DirectSelection, private bool) (DirectSelectionResult, error) {
-	ctx = WithRecoveryLocality(ctx, private)
 	out := DirectSelectionResult{}
 	if !validFamilyID(id) || len(q.PIN) > 4 || len(q.TrustToken) > 128 || len(q.InstallationID) > 128 || q.Trust && !validFamilyID(q.InstallationID) {
 		return out, ErrDirectInput
@@ -504,9 +503,6 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 	role := c.account.Role
 	if primary == 0 {
 		role = "member"
-	}
-	if e = s.recoveryAllowedTx(ctx, tx, c.account.ID, c.familyID, private); e != nil {
-		return out, e
 	}
 	// Choosing a profile continues the sign-in this device already holds; the
 	// remote sign-in policy judged that sign-in when it was made.

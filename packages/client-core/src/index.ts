@@ -2039,3 +2039,6 @@ export * from './playback-controls.ts';
 export {PeopleInvitationsClient,parsePublicInvitation,privatePersonNotes,personIdentity} from './direct-account.ts';
 export type {ServerInvitation,PeopleMember,PublicInvitation} from './direct-account.ts';
 export {highestRatingChoices} from './profile-limits.ts';
+
+export * from './account-reset.ts';
+export * from './same-tab-return.ts';

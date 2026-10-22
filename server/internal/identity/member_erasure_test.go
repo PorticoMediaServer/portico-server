@@ -94,7 +94,7 @@ func TestDeletingAMemberRemovesThePersonAndKeepsTheirPlaysWithoutTheirName(t *te
 		t.Fatalf("%d plays remain, want all 3", seen)
 	}
 	// The username is free again.
-	if _, err = s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "member", Password: "Testing4!", Name: "Someone new", AllowedLibraries: []string{}}); err != nil {
+	if _, err = s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "member", Password: "Testing4!", Name: "Someone new", AllowedLibraries: []string{}}); err != nil {
 		t.Fatalf("the deleted member's username is still taken: %v", err)
 	}
 }
@@ -102,7 +102,7 @@ func TestDeletingAMemberRemovesThePersonAndKeepsTheirPlaysWithoutTheirName(t *te
 func TestWhoMayDeleteWhom(t *testing.T) {
 	ctx := context.Background()
 	s, owner, member, login := memberWithSession(t)
-	other, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "other", Password: "Testing3!", Name: "Other", AllowedLibraries: []string{}})
+	other, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "other", Password: "Testing3!", Name: "Other", AllowedLibraries: []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestWhoMayDeleteWhom(t *testing.T) {
 	if err = RetierFamiliesForTest(ctx, s, member.ID, TierAdmin); err != nil {
 		t.Fatal(err)
 	}
-	second, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "second", Password: "Testing5!", Name: "Second", AllowedLibraries: []string{}})
+	second, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "second", Password: "Testing5!", Name: "Second", AllowedLibraries: []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}

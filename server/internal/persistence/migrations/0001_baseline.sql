@@ -3260,7 +3260,6 @@ CREATE TABLE quick_connect_v1(
 CREATE TABLE setup_rate_limits_v1(subject_hash TEXT NOT NULL,kind TEXT NOT NULL,window_start INTEGER NOT NULL,attempts INTEGER NOT NULL,PRIMARY KEY(subject_hash,kind)) STRICT;
 CREATE TABLE onboarding_state_v1(singleton INTEGER PRIMARY KEY CHECK(singleton=1),auth_mode TEXT NOT NULL CHECK(auth_mode IN ('hosted','local')),
  operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,setup_hash TEXT NOT NULL,receipt BLOB,receipt_until INTEGER NOT NULL,
- recovery_account TEXT NOT NULL DEFAULT '',recovery_confirmed INTEGER NOT NULL DEFAULT 0,remote_recovery INTEGER NOT NULL DEFAULT 0,
  ready INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE TABLE identity_account_attempt_budget(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
@@ -3347,8 +3346,13 @@ CREATE TABLE networking_claim_intents(
  local_generation INTEGER NOT NULL CHECK(local_generation>=0),
  revision INTEGER NOT NULL CHECK(revision>0),
  stage TEXT NOT NULL CHECK(stage IN('prepared','approved','finalizing','retrieving','installed','cancel_pending','cancelled')),
- owner_id TEXT NOT NULL CHECK(length(owner_id) BETWEEN 1 AND 128),
- owner_profile_id TEXT NOT NULL CHECK(length(owner_profile_id) BETWEEN 1 AND 128),
+ owner_id TEXT NOT NULL,
+ owner_profile_id TEXT NOT NULL,
+ setup_operation_id TEXT NOT NULL DEFAULT '',
+ purpose TEXT NOT NULL DEFAULT 'setup' CHECK(purpose IN('setup','switch','change-owner')),
+ current_owner_account_id TEXT NOT NULL DEFAULT '',
+ previous_owner_role TEXT NOT NULL DEFAULT '',
+ return_registration_id TEXT NOT NULL DEFAULT '',
  owner_epoch INTEGER NOT NULL CHECK(owner_epoch>=0),
  approval_revision INTEGER NOT NULL DEFAULT 0 CHECK(approval_revision>=0),
  approval_issued_at TEXT NOT NULL DEFAULT '',
@@ -3359,6 +3363,7 @@ CREATE TABLE networking_claim_intents(
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
  FOREIGN KEY(server_id,public_key) REFERENCES networking_server_identities(server_id,public_key),
  UNIQUE(operation_id,server_id,account_id,local_generation,claim_generation,credential_generation),
+ CHECK((setup_operation_id='' AND length(owner_id) BETWEEN 1 AND 128 AND length(owner_profile_id) BETWEEN 1 AND 128) OR (length(setup_operation_id) BETWEEN 1 AND 128 AND owner_id='' AND owner_profile_id='' AND owner_epoch>0)),
  CHECK((claim_generation='')=(credential_generation='')),
  CHECK(stage NOT IN('retrieving','installed') OR claim_generation<>''),
  CHECK(installation_acknowledged=0 OR stage IN('installed','cancel_pending','cancelled'))
@@ -8193,3 +8198,7 @@ CREATE INDEX segment_shows_dirty ON segment_shows(dirty,show_id) WHERE dirty=1;
 
 CREATE INDEX identity_devices_people_name ON identity_devices(name,id);
 CREATE INDEX identity_devices_people_first_seen ON identity_devices(first_seen DESC,id DESC);
+
+CREATE TABLE owner_reset_file(singleton INTEGER PRIMARY KEY CHECK(singleton=1),account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,epoch INTEGER NOT NULL,portico INTEGER NOT NULL CHECK(portico IN(0,1)),code_hash TEXT NOT NULL,issued_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK(failed_attempts BETWEEN 0 AND 5)) STRICT;
+CREATE TABLE member_password_resets(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,code_hash TEXT NOT NULL,epoch INTEGER NOT NULL,expires_at INTEGER NOT NULL,failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK(failed_attempts BETWEEN 0 AND 5),turn_off_two_step INTEGER NOT NULL CHECK(turn_off_two_step IN(0,1)),membership_revision INTEGER NOT NULL,issuer_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,issuer_epoch INTEGER NOT NULL) STRICT;
+CREATE TABLE reset_file_sessions(family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,kind TEXT NOT NULL CHECK(kind IN('owner','password'))) STRICT;
