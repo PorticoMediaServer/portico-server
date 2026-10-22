@@ -37,15 +37,16 @@ const defaultColumns: Readonly<Record<TrackTableProps['variant'], readonly Track
 function rowDuration(row: TrackRowData): string | undefined { return row.duration?.text ?? row.text.detail.find(part => part.id === 'duration')?.text; }
 function Levels() { return <span className={styles.levels} role="img" aria-label={t('next.browse.playing')}><i/><i/><i/><i/></span>; }
 function Parts({parts}: Readonly<{parts: readonly FactPart[]}>) { return <>{parts.map(part => <span key={part.id}>{part.text}</span>)}</>; }
-function RowActions({row, onMore, onFavorite, onAddPlaylist}: Pick<TrackActions, 'onMore' | 'onFavorite' | 'onAddPlaylist'> & Readonly<{row: TrackRowData}>) {
+function RowActions({row, onMore, onFavorite, onAddPlaylist, compact = false}: Pick<TrackActions, 'onMore' | 'onFavorite' | 'onAddPlaylist'> & Readonly<{row: TrackRowData; compact?: boolean}>) {
   return <div className={styles.trackActions}>
-    {onFavorite && <Button variant="icon" size="xs" icon={row.favorite ? 'i-heart-f' : 'i-heart'} iconOnly aria-pressed={!!row.favorite}
+    {onFavorite && !compact && <Button variant="icon" size="xs" icon={row.favorite ? 'i-heart-f' : 'i-heart'} iconOnly aria-pressed={!!row.favorite}
       className={styles.favoriteAction} aria-label={t(row.favorite ? 'next.browse.unfavorite' : 'next.browse.favorite', {title: row.text.title})} onClick={() => onFavorite(row.id, !row.favorite)}/>}
-    {onAddPlaylist && <Button variant="icon" size="xs" icon="i-listadd" iconOnly aria-label={t('next.browse.addPlaylist', {title: row.text.title})} onClick={() => onAddPlaylist(row.id)}/>}
+    {onAddPlaylist && !compact && <Button variant="icon" size="xs" icon="i-listadd" iconOnly aria-label={t('next.browse.addPlaylist', {title: row.text.title})} onClick={() => onAddPlaylist(row.id)}/>}
     <Button variant="icon" size="xs" icon="i-more" iconOnly aria-label={t('next.browse.moreFor', {title: row.text.title})} onClick={() => onMore(row.id)}/>
   </div>;
 }
-export function TrackTable({rows, variant, label, platform = 'desktop', columns = defaultColumns[variant], sort, onSort, startIndex = 0, totalCount = rows.length, height, onWindowChange, className, discNumber, ...actions}: TrackTableProps) {
+export function TrackTable({rows, variant, label, platform = 'desktop', columns: suppliedColumns, sort, onSort, startIndex = 0, totalCount = rows.length, height, onWindowChange, className, discNumber, ...actions}: TrackTableProps) {
+  const columns = suppliedColumns ?? (platform === 'phone' ? [{id: 'number', width: '22px'}, {id: 'title', width: 'minmax(0,1fr)'}, {id: 'duration', width: '52px'}, {id: 'actions', width: '32px'}] as const : defaultColumns[variant]);
   const viewport = useRef<HTMLDivElement>(null), lastWindow = useRef<TrackWindow | null>(null);
   const rowHeight = platform === 'phone' ? 56 : variant === 'songs' ? 56 : 60;
   const windowed = height !== undefined;
@@ -72,7 +73,7 @@ export function TrackTable({rows, variant, label, platform = 'desktop', columns 
       case 'plays': return row.plays === undefined ? undefined : defaultI18n.number(row.plays);
       case 'duration': return rowDuration(row);
       case 'added': return row.addedAt ? defaultI18n.date(row.addedAt, 'medium') : undefined;
-      case 'actions': return variant === 'chapters' ? <div className={styles.trackActions}><Button variant="icon" size="xs" icon="i-play" iconOnly aria-label={t(row.current ? 'next.browse.resume' : 'next.browse.play', {title: row.text.title})} onClick={() => actions.onPlay(row.id)}/></div> : <RowActions row={row} {...actions}/>;
+      case 'actions': return variant === 'chapters' ? <div className={styles.trackActions}><Button variant="icon" size="xs" icon="i-play" iconOnly aria-label={t(row.current ? 'next.browse.resume' : 'next.browse.play', {title: row.text.title})} onClick={() => actions.onPlay(row.id)}/></div> : <RowActions row={row} compact={platform === 'phone'} {...actions}/>;
     }
   };
   return <div className={[styles.trackTable, className].filter(Boolean).join(' ')} data-variant={variant} data-platform={platform} role="table" aria-label={label} aria-rowcount={totalCount + (variant === 'chapters' || platform === 'phone' ? 0 : 1)}>
@@ -92,10 +93,11 @@ export function TrackTable({rows, variant, label, platform = 'desktop', columns 
 }
 export type SongRowProps = Omit<HTMLAttributes<HTMLDivElement>, 'onPlay'> & Readonly<{row: TrackRowData; onPlay: (id: string) => void; onMore?: (id: string) => void; selection?: ReactNode; context?: 'list' | 'search'}>;
 export function SongRow({row, onPlay, onMore, selection, context = 'list', className, ...props}: SongRowProps) {
-  return <div {...props} className={[styles.songRow, className].filter(Boolean).join(' ')} data-playing={row.playing || undefined} data-context={context}>
+  return <div {...props} className={[styles.songRow, className].filter(Boolean).join(' ')} data-playing={row.playing || undefined} data-context={context} data-selectable={!!selection || undefined} data-artwork={!!row.artwork || undefined}>
     {context !== 'search' && <span className={styles.songNumber}>{selection ?? (row.playing ? <Levels/> : row.number === undefined ? undefined : defaultI18n.number(row.number))}</span>}
-    <button type="button" className={styles.songMain} onClick={() => onPlay(row.id)}>{row.artwork && <span className={styles.songArtwork}>{row.artwork}{context === 'search' && <Icon name="i-play" size={22} className={styles.songArtworkPlay} />}{context === 'search' && selection && <span className={styles.songSelection}>{selection}</span>}</span>}
+    <button type="button" className={styles.songMain} onClick={() => onPlay(row.id)}>{row.artwork && <span className={styles.songArtwork}>{row.artwork}{context === 'search' && <Icon name="i-play" size={22} className={styles.songArtworkPlay} />}</span>}
       <span className={styles.songText}><b>{row.text.title}</b>{row.text.caption.length > 0 && <small><Parts parts={row.text.caption}/></small>}</span><span className={styles.songDuration}>{rowDuration(row)}</span></button>
+    {context === 'search' && selection && <span className={styles.songSelection}>{selection}</span>}
     {onMore && <Button variant="icon" size="xs" icon="i-more" iconOnly aria-label={t('next.browse.moreFor', {title: row.text.title})} onClick={() => onMore(row.id)}/>}
   </div>;
 }

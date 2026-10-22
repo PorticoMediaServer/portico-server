@@ -1,4 +1,4 @@
-import {useState, type ButtonHTMLAttributes, type ReactNode} from 'react';
+import {useRef, useState, type ButtonHTMLAttributes, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {BrowseSortCapability, BrowseSortSelection} from '@core/browse';
 import {sortDirectionKind} from '@core/presentation/browse-toolbar';
@@ -17,7 +17,7 @@ export function sortDirectionLabel(field: string, direction: 'asc' | 'desc'): st
 export type FiltersButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & Readonly<{count?: number; open?: boolean}>;
 export function FiltersButton({count = 0, open = false, className, ...props}: FiltersButtonProps) {
   return <Button {...props} variant="glass" size="small" icon="i-filter" className={[styles.filtersButton, className].filter(Boolean).join(' ')} aria-expanded={open}>
-    {t('next.browse.filters')}{count > 0 && <span className={styles.filterBadge} aria-label={t('next.browse.filterCount', {count})}>{defaultI18n.number(count)}</span>}
+    <span className={styles.filtersLabel}>{t('next.browse.filters')}{count > 0 && <span className={styles.filterBadge} aria-label={t('next.browse.filterCount', {count})}>{defaultI18n.number(count)}</span>}</span>
   </Button>;
 }
 export type QuickToggleProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onChange'> & Readonly<{
@@ -31,22 +31,26 @@ export type SortMenuProps = Readonly<{
   label: BrowseLabels['sort']; open?: boolean; onOpenChange?: (open: boolean) => void; onReshuffle?: () => void;
 }>;
 export function SortMenu({sorts, value, onValueChange, label, open: controlledOpen, onOpenChange, onReshuffle}: SortMenuProps) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [localOpen, setLocalOpen] = useState(false), open = controlledOpen ?? localOpen;
   const setOpen = (next: boolean) => { setLocalOpen(next); onOpenChange?.(next); };
   const selected = sorts.find(sort => sort.id === value.field), showOrder = value.flippable && selected;
   const pick = (sort: BrowseSortCapability) => {
-    if (sort.id === value.field && value.reshufflable) { onReshuffle?.(); setOpen(false); return; }
+    if (sort.id === value.field && value.reshufflable) {
+      if (onReshuffle) onReshuffle(); else onValueChange({field: value.field, direction: value.direction, seed: (value.seed ?? 0) + 1});
+      setOpen(false); return;
+    }
     const next = nextBrowseSort(sorts, value, sort.id);
     if (next) onValueChange(next);
     setOpen(false);
   };
-  return <Popover open={open} onOpenChange={setOpen} title={t('next.browse.sortBy')} accessibilityLabel={t('next.browse.sortBy')} placement="bottom-end" width={300} className={styles.sortMenu}
-    trigger={<Chip variant="default" icon="i-sort" className={styles.sortTrigger} aria-expanded={open}>{selected ? label(selected) : t('next.browse.sort')}{showOrder && <span className={styles.direction}>{sortDirectionLabel(value.field, value.direction)}</span>}<Icon name="i-down" size={14}/></Chip>}>
+  return <Popover returnFocusRef={triggerRef} open={open} onOpenChange={setOpen} title={t('next.browse.sortBy')} accessibilityLabel={t('next.browse.sortBy')} placement="bottom-end" width={300} className={styles.sortMenu}
+    trigger={<Chip ref={triggerRef} variant="default" icon="i-sort" trailingIcon="i-down" className={styles.sortTrigger} aria-expanded={open}><span className={styles.sortLabel}>{selected ? label(selected) : t('next.browse.sort')}{showOrder && <span className={styles.direction}>{sortDirectionLabel(value.field, value.direction)}</span>}</span></Chip>}>
     <div className={styles.menuHeading}>{t('next.browse.sortBy')}</div>
     {sorts.map(sort => <MenuRow key={sort.id} selected={sort.id === value.field} onClick={() => pick(sort)} description={sort.expensive ? t('next.browse.expensive') : undefined}>{label(sort)}</MenuRow>)}
     {showOrder && <div className={styles.sortOrder}><div className={styles.menuHeading}>{t('next.browse.order')}</div>
       <Segmented variant="browse" value={value.direction} aria-label={t('next.browse.order')} onValueChange={direction => { if ((direction === 'asc' || direction === 'desc') && selected.directions.includes(direction)) onValueChange({field: value.field, direction}); }}
-        items={selected.directions.map(direction => ({value: direction, label: sortDirectionLabel(value.field, direction)}))}/></div>}
+        items={[...selected.directions].sort(direction => direction === selected.defaultDirection ? -1 : 1).map(direction => ({value: direction, label: sortDirectionLabel(value.field, direction)}))}/></div>}
   </Popover>;
 }
 export function ViewToggle({value, onValueChange}: BrowseView) {
@@ -84,7 +88,6 @@ export type BrowseToolbarProps = Readonly<{
   save?: SaveViewControl; applied?: readonly AppliedChip[]; onRemoveFilter?: (id: string) => void; onClearFilters?: () => void;
   onJump?: () => void; selection?: ReactNode; actions?: ReactNode; className?: string;
 }>;
-const quickIcons: Readonly<Record<string, IconName>> = {favorites: 'i-heart', watchlist: 'i-bookmark'};
 export function BrowseToolbar({model, labels, resultCount, platform = 'desktop', sticky = false, topInset = 76, onQuickChange, onFilters, filtersOpen,
   onSortChange, onReshuffle, view, cardSize, save, applied = [], onRemoveFilter, onClearFilters, onJump, selection, actions, className}: BrowseToolbarProps) {
   const sort = <SortMenu sorts={model.sorts} value={model.sort} onValueChange={onSortChange} label={labels.sort} onReshuffle={onReshuffle}/>;
@@ -93,10 +96,10 @@ export function BrowseToolbar({model, labels, resultCount, platform = 'desktop',
     {selection ?? <><div className={styles.toolbarMain}>
       {platform === 'tv' ? <>{sort}{filters}{onJump && <Chip onClick={onJump}>{t('next.browse.jump')}<Icon name="i-down" size={16}/></Chip>}</> : filters}
       {platform === 'phone' && sort}<span className={styles.separator} aria-hidden="true"/>
-      {actions}{model.quick.map(quick => <QuickToggle key={quick.id} selected={quick.active} onCheckedChange={checked => onQuickChange(quick.id, checked)} icon={quickIcons[quick.id]}>{quick.label?.text ?? labels.quick(quick)}</QuickToggle>)}
-      {platform !== 'phone' && <div className={styles.toolbarEnd}><span className={styles.resultCount}>{resultCount}</span>{platform === 'desktop' && sort}
+      {actions}{model.quick.map(quick => <QuickToggle key={quick.id} selected={quick.active} onCheckedChange={checked => onQuickChange(quick.id, checked)}>{quick.label?.text ?? labels.quick(quick)}</QuickToggle>)}
+      {platform !== 'phone' && <div className={styles.toolbarEnd}>{platform === 'desktop' && <span className={styles.resultCount}>{resultCount}</span>}{platform === 'desktop' && sort}
         {view && <ViewToggle {...view}/>} {cardSize && <CardSizeButton {...cardSize}/>} {save && <SaveViewButton {...save}/>}</div>}
     </div>{platform === 'phone' && <div className={styles.phoneCount}><span>{resultCount}</span>{save && <SaveViewButton {...save}/>}<span className={styles.phoneView}>{view && <ViewToggle {...view}/>}</span></div>}
-    {applied.length > 0 && onRemoveFilter && onClearFilters && <AppliedFilterChips items={applied} onRemove={onRemoveFilter} onClear={onClearFilters}/>}</>}
+    {applied.length > 0 && onRemoveFilter && onClearFilters && <div className={platform === 'tv' ? styles.tvAppliedRow : undefined}><AppliedFilterChips items={applied} onRemove={onRemoveFilter} onClear={onClearFilters}/>{platform === 'tv' && <span className={styles.resultCount}>{resultCount}</span>}</div>}</>}
   </div>;
 }
