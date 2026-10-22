@@ -23,7 +23,7 @@ const parsedMovies = parseBrowseCapabilities(JSON.parse(movieCapabilities)), par
 const movies: BrowseCapabilities = {...parsedMovies, resolvedPivot: parsedMovies.pivots.find(pivot => pivot.id === 'movies')!};
 const music: BrowseCapabilities = {...parsedMusic, resolvedPivot: parsedMusic.pivots.find(pivot => pivot.id === 'songs')!};
 const songs = parseBrowseResult(JSON.parse(songResponse)).entries, albums = parseBrowseResult(JSON.parse(albumResponse)).entries;
-const name = (value: {id: string; labelKey: string}) => { const key = browseNameId(value.id, value.labelKey); return key ? t(key) : value.labelKey; };
+const name = (value: {id: string; labelKey: string}) => { const key = browseNameId(value.id, value.labelKey, defaultI18n.has); return key && defaultI18n.has(key) ? t(key) : value.labelKey; };
 const labels: BrowseLabels = {field: name, sort: name, quick: quick => defaultI18n.has(quick.labelKey) ? t(quick.labelKey) : quick.labelKey};
 const genreKeys = ['animation', 'adventure', 'action', 'scifi', 'family', 'comedy', 'drama', 'fantasy', 'romance', 'horror', 'crime', 'documentary', 'thriller'] as const;
 const genreCounts = [6, 8, 6, 6, 4, 2, 2, 1, 1, 6, 2, 1, 2];
@@ -177,7 +177,7 @@ function tableCase(variant: 'album' | 'top-songs' | 'songs' | 'chapters' | 'comp
         const album = albums.find(album => album.id === entry.album?.id), source = entry.album && sources.get(entry.album.id);
         return {id: entry.id, number: variant === 'songs' ? index + 1 : entry.trackNumber, text: cardText({id: entry.id, kind: entry.kind, title: entry.title,
           artist: variant === 'sparse' ? undefined : album?.artist?.name, album: variant === 'sparse' ? undefined : entry.album?.name, year: entry.year, durationSeconds: variant === 'sparse' ? undefined : entry.duration}, 'song-row', env),
-          plays: entry.plays, addedAt: entry.addedAt, playing: playing === entry.id, favorite: favorites.includes(entry.id),
+          plays: entry.plays, addedAt: entry.addedAt ?? undefined, playing: playing === entry.id, favorite: favorites.includes(entry.id),
           artwork: ['top-songs', 'songs', 'compact'].includes(variant) && source ? <Artwork source={source} alt="" className={styles.trackArt}/> : undefined};
       });
     }, [favorites, playing, sources]);

@@ -1,10 +1,10 @@
-import {useId, type HTMLAttributes, type ReactNode} from 'react';
+import {useId, type ComponentPropsWithoutRef, type ReactNode} from 'react';
 import {Tabs as TabsPrimitive, RadioGroup} from 'radix-ui';
 import {Icon, type IconName} from '../Icon';
 import styles from './controls.module.css';
 
 export type ChoiceItem = Readonly<{value: string; label: ReactNode; disabled?: boolean}>;
-export type TabsProps = Omit<HTMLAttributes<HTMLDivElement>, 'defaultValue' | 'onChange'> & {
+export type TabsProps = Omit<ComponentPropsWithoutRef<typeof TabsPrimitive.Root>, 'children' | 'defaultValue' | 'onChange'> & {
   items: readonly (ChoiceItem & {panel?: ReactNode})[];
   value?: string;
   defaultValue?: string;
@@ -23,7 +23,7 @@ export function Tabs({items, value, defaultValue, onValueChange, phone, classNam
   </TabsPrimitive.Root>;
 }
 
-export type SegmentedProps = Omit<HTMLAttributes<HTMLDivElement>, 'defaultValue' | 'onChange'> & {
+export type SegmentedProps = Omit<ComponentPropsWithoutRef<typeof RadioGroup.Root>, 'children' | 'defaultValue' | 'onChange'> & {
   items: readonly (ChoiceItem & {icon?: IconName; accessibleLabel?: string})[];
   value?: string;
   defaultValue?: string;

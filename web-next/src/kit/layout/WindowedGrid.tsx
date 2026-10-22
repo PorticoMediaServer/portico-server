@@ -27,7 +27,7 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
   const range = gridWindow(total, columns, pitch, logicalTop, usableHeight, overscanRows);
   const firstPage = collection.pageOf(range.renderFirst), lastPage = collection.pageOf(Math.max(range.renderFirst, range.renderLast));
   const subscribePages = useCallback((changed: () => void) => {
-    const unsubscribers = [];
+    const unsubscribers: (() => void)[] = [];
     for (let page = firstPage; page <= lastPage; page++) unsubscribers.push(collection.subscribePage(page, changed));
     return () => { for (const unsubscribe of unsubscribers) unsubscribe(); };
   }, [collection, firstPage, lastPage]);

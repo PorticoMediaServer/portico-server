@@ -1,4 +1,4 @@
-import {Fragment, forwardRef, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode, type CSSProperties, type RefObject} from 'react';
+import {Fragment, forwardRef, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode, type CSSProperties, type RefObject, type RefCallback} from 'react';
 import {Select as SelectPrimitive} from 'radix-ui';
 import {defaultI18n} from '@i18n';
 import {Dialog} from '../overlays/Dialog';
@@ -63,7 +63,8 @@ const ChoiceSelect = forwardRef<HTMLButtonElement, ChoiceSelectProps>(function C
   const changeOpen = (next: boolean) => {if (open === undefined) setLocalOpen(next); onOpenChange?.(next);};
   const bindTrigger = useCallback((element: HTMLButtonElement | null) => {
     trigger.current = element;
-    const cleanup = typeof ref === 'function' ? ref(element) : undefined;
+    const callback = typeof ref === 'function' ? ref as RefCallback<HTMLButtonElement> : undefined;
+    const cleanup = callback?.(element);
     if (ref && typeof ref !== 'function') ref.current = element;
     if (element) return () => {
       trigger.current = null;
