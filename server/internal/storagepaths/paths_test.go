@@ -174,3 +174,20 @@ func TestEveryLegacyCategoryIsRefusedWithoutMutation(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeVolumeRootIsNeverADataOrSpillFolder(t *testing.T) {
+	directory := t.TempDir()
+	root := filepath.VolumeName(directory) + string(os.PathSeparator)
+	if !filesystemRoot(root) || filesystemRoot(directory) {
+		t.Fatal(root, directory)
+	}
+	if err := At(root).ResetTemp(); err == nil {
+		t.Fatal("volume root accepted for Temp cleanup")
+	}
+	if err := At(root).Prepare(); err == nil {
+		t.Fatal("volume root accepted as data")
+	}
+	if _, err := NewTranscodePool("", root, 0, nil); err == nil {
+		t.Fatal("volume root accepted for spill")
+	}
+}

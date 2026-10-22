@@ -64,7 +64,7 @@ func Resolve(o Options) (Layout, error) {
 		data = o.DataDirectory
 	}
 	if platform != "windows" || runtime.GOOS == "windows" {
-		if !filepath.IsAbs(data) || filepath.Clean(data) == string(os.PathSeparator) {
+		if !filepath.IsAbs(data) || filesystemRoot(data) {
 			return Layout{}, errors.New("PORTICO_DATA_DIR must name an absolute data directory, not the filesystem root")
 		}
 		data = filepath.Clean(data)
@@ -108,7 +108,7 @@ func Path(data string, parts ...string) string {
 
 // Prepare refuses an old installation without copying, rewriting, or removing it.
 func (l Layout) Prepare() error {
-	if !filepath.IsAbs(l.Data) || filepath.Clean(l.Data) == string(os.PathSeparator) {
+	if !filepath.IsAbs(l.Data) || filesystemRoot(l.Data) {
 		return errors.New("invalid data directory")
 	}
 	if err := canonicalParents(l.Data); err != nil {
@@ -144,6 +144,11 @@ func (l Layout) Prepare() error {
 	}
 	return f.Close()
 }
+func filesystemRoot(path string) bool {
+	clean := filepath.Clean(path)
+	return clean == filepath.VolumeName(clean)+string(os.PathSeparator)
+}
+
 func canonicalParents(path string) error {
 	for p := filepath.Clean(path); ; p = filepath.Dir(p) {
 		info, err := os.Lstat(p)
@@ -168,7 +173,7 @@ func (l Layout) EmptyOwned(name string) error {
 	if name != "Temp" && name != "Cache" {
 		return errors.New("only the owned Temp or Cache may be emptied")
 	}
-	if !filepath.IsAbs(l.Data) || filepath.Clean(l.Data) == string(os.PathSeparator) {
+	if !filepath.IsAbs(l.Data) || filesystemRoot(l.Data) {
 		return errors.New("invalid data directory")
 	}
 	if err := canonicalParents(l.Data); err != nil {

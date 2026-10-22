@@ -333,9 +333,6 @@ func run() (runErr error) {
 		defer instance.Close()
 	}
 	doneInstance(nil)
-	if lockErr != nil {
-		return fmt.Errorf("data folder must support single-instance locking before Temp can be reset: %w", lockErr)
-	}
 	if e = layout.ResetTemp(); e != nil {
 		return e
 	}

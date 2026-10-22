@@ -16,6 +16,11 @@ fi
 if [ "$(id -u)" = 0 ]; then
  chown "$uid:$gid" /config
  if awk '$5 == "/transcode" { found=1 } END { exit !found }' /proc/self/mountinfo; then chown "$uid:$gid" /transcode; fi
- exec gosu "$uid:$gid" "$@"
+ # Preserve explicit Docker --group-add device groups while dropping group 0.
+ groups="$gid"
+ for group in $(id -G); do
+  if [ "$group" != 0 ] && [ "$group" != "$gid" ]; then groups="$groups,$group"; fi
+ done
+ exec setpriv --reuid="$uid" --regid="$gid" --groups="$groups" "$@"
 fi
 exec "$@"

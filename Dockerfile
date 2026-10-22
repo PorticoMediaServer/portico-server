@@ -82,7 +82,7 @@ RUN bash /tmp/verify-ffmpeg-bundle.sh /ffmpeg full
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 ARG TARGETARCH
 RUN apt-get update \
- && apt-get install --yes --no-install-recommends bubblewrap ca-certificates gosu tini tzdata libva2 libva-drm2 mesa-va-drivers \
+ && apt-get install --yes --no-install-recommends bubblewrap ca-certificates util-linux tini tzdata libva2 libva-drm2 mesa-va-drivers \
  && if [ "$TARGETARCH" = amd64 ]; then apt-get install --yes --no-install-recommends intel-media-va-driver i965-va-driver; fi \
  && rm -rf /var/lib/apt/lists/*
 

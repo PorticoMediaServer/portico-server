@@ -28,7 +28,7 @@ type SpillFile struct {
 }
 
 func NewTranscodePool(memory, disk string, availableRAM int64, mounts []Mount) (*TranscodePool, error) {
-	if !filepath.IsAbs(disk) || disk == string(os.PathSeparator) {
+	if !filepath.IsAbs(disk) || filesystemRoot(disk) {
 		return nil, errors.New("disk spill needs a dedicated absolute directory")
 	}
 	if memory != "" && Filesystem(disk, mounts) == "tmpfs" {
