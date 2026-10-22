@@ -4,6 +4,12 @@ import {PlaybackDock, type DockPlayback, type PlaybackFence, type QueuePlaybackF
 import {dockView, commandFor, dispatchDockAction, actionCurrent, seekTarget, progressOf} from '../../src/kit/dock/model.ts';
 import {PlayerMorph, GestureRelease} from '../../src/kit/dock/motion.ts';
 import type {DockAction, DockPresentation} from '../../src/kit/dock/types.ts';
+import {playbackIdentity} from '../../../packages/client-core/src/presentation/kit-model/index.ts';
+import {defaultI18n} from '@i18n';
+import {registerHooks} from 'node:module';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {transformTsx} from '../transform-tsx.mjs';
 
 const scope = {serverId: 'server', authority: 'local' as const, accountId: 'viewer', profileId: 'profile', controllerId: 'controller', controllerEpoch: 'epoch', commandLaneId: 'lane'};
 const fence: QueuePlaybackFence = {kind: 'queue', playback: {scope, run: 1}, sessionId: 'session', itemId: 'item', sourceId: 'source', entryId: 'entry', generation: 1};
@@ -86,4 +92,68 @@ test('dock release commits by authored distance or velocity and can reverse a ne
   assert.equal(GestureRelease.dismiss(120, 0, 374).dismiss, false);
   assert.equal(GestureRelease.dismiss(125, 0, 374).dismiss, true);
   assert.deepEqual(GestureRelease.dismiss(5, -801, 374), {dismiss: true, target: -374, velocity: -801});
+});
+
+test('a finished dock offers Replay and Next while preventing Forward past the end', async () => {
+  registerHooks({load(url, context, next) {
+    if (url.endsWith('.module.css')) return {format: 'module', source: 'export default new Proxy({}, {get: (_, key) => String(key)});', shortCircuit: true};
+    if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
+    return next(url, context);
+  }});
+  const {DockBar} = await import('../../src/kit/dock/DockBar.tsx');
+  const dock = new PlaybackDock(scope); dock.start(playback('video', {positionSeconds: 100, playing: false}));
+  const view = dockView(dock.getSnapshot(), [{...presentation(), finished: true, controls: ['play', 'pause', 'replay', 'previous', 'next', 'seek']}])!;
+  const props = {view, binding: {getSnapshot: dock.getSnapshot, onAction() {}}, videoSurface: true};
+  const html = renderToStaticMarkup(createElement(DockBar, props));
+  assert.match(html, /aria-label="Replay"/);
+  assert.match(html, /aria-label="Forward 30 seconds"[^>]*disabled/);
+  assert.doesNotMatch(html, /aria-label="Next"[^>]*disabled/);
+  assert.throws(() => renderToStaticMarkup(createElement(DockBar, {...props, videoSurface: false})), /persistent media surface/);
+});
+
+test('a bookmark notice appears after300ms and expires after its eight-second action lifetime', async () => {
+  const {DockNotice} = await import('../../src/kit/dock/DockNotice.tsx');
+  const dock = new PlaybackDock(scope), saved = playback('music');
+  dock.start(saved); dock.start(playback('video', {fence: {...fence, playback: {...fence.playback, run: 2}}}));
+  const props = {notice: {kind: 'paused-audio' as const, playback: saved, presentation: presentation(), changedAtMs: 100}, binding: {getSnapshot: dock.getSnapshot, onAction() {}}};
+  assert.equal(renderToStaticMarkup(createElement(DockNotice, {...props, nowMs: 399})), '');
+  assert.match(renderToStaticMarkup(createElement(DockNotice, {...props, nowMs: 400})), /Resume music/);
+  assert.match(renderToStaticMarkup(createElement(DockNotice, {...props, nowMs: 8399})), /Resume music/);
+  assert.equal(renderToStaticMarkup(createElement(DockNotice, {...props, nowMs: 8400})), '');
+});
+
+test('a restored paused phone song states Paused beside its canonical artist', async () => {
+  const {Identity} = await import('../../src/kit/dock/parts.tsx');
+  const dock = new PlaybackDock(scope); dock.start(playback('music', {playing: false}));
+  const view = dockView(dock.getSnapshot(), [{...presentation(), identity: {id: fence.itemId, kind: 'music', title: 'Song', subtitle: [{id: 'artist', role: 'identity', text: 'Artist'}]}}])!;
+  const html = renderToStaticMarkup(createElement(Identity, {view, binding: {getSnapshot: dock.getSnapshot, onAction() {}}, phone: true}));
+  assert.match(html, /Artist/);
+  assert.match(html, /data-fact-role="status">Paused/);
+});
+
+test('desktop subtitle tools select the exact canonical reference glyph for local and remote playback', async () => {
+  const {EndControls} = await import('../../src/kit/dock/parts.tsx');
+  const dock = new PlaybackDock(scope); dock.start(playback());
+  const model = {...presentation(), controls: ['subtitles-audio'] as const};
+  for (const remote of [false, true]) {
+    if (remote) dock.beginRemote({id: 'receiver', kind: 'cast', sequence: '1', phase: 'playing', playback: playback(), positionSeconds: 14}, 0);
+    const view = dockView(dock.getSnapshot(), [model])!;
+    const html = renderToStaticMarkup(createElement(EndControls, {view, binding: {getSnapshot: dock.getSnapshot, onAction() {}}}));
+    assert.match(html, /aria-label="Subtitles and audio"/);
+    assert.match(html, /href="#d-cc"/);
+    assert.doesNotMatch(html, /href="#i-cc"/);
+  }
+});
+
+test('desktop paused music punctuates the canonical artist and omits punctuation when artist is absent', async () => {
+  const {DockNotice} = await import('../../src/kit/dock/DockNotice.tsx');
+  const dock = new PlaybackDock(scope), saved = playback('music');
+  dock.start(saved); dock.start(playback('video', {fence: {...fence, playback: {...fence.playback, run: 2}}}));
+  for (const artist of ['The Weeknd', undefined]) {
+    const identity = playbackIdentity({kind: 'music', item: {kind: 'song', id: 'song', title: 'Hardest To Love', artist}}, 'dock', {t: defaultI18n.t});
+    const html = renderToStaticMarkup(createElement(DockNotice, {notice: {kind: 'paused-audio', playback: saved, presentation: {...presentation(), identity}, changedAtMs: 100}, binding: {getSnapshot: dock.getSnapshot, onAction() {}}, nowMs: 400}));
+    if (artist) assert.match(html, /Hardest To Love, The Weeknd/);
+    else assert.doesNotMatch(html, /Hardest To Love,/);
+    assert.match(html, /Resume music/);
+  }
 });

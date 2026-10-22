@@ -1,5 +1,6 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
+import {registerHooks} from 'node:module';
 import {HttpLocalApi} from '@core/index.ts';
 import {FakePlaybackServer, fakeHttp} from '@core/playback-v1/testing/fake-server.ts';
 import type {V1Request, V1Response} from '@core/playback-v1/http.ts';
@@ -11,6 +12,10 @@ import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {HomeSelectionPlaybackItem} from '@core/home-selection/types.ts';
 import type {HomeChannel} from '@core/home.ts';
 import type {PlayerOffersService} from '@core/player-offers.ts';
+import {transformTsx} from './transform-tsx.mjs';
+import {playbackPresentation} from '../src/shell/playback-model.ts';
+import {dockView} from '../src/kit/dock/model.ts';
+import type {DockAction} from '../src/kit/dock/types.ts';
 
 /**
  * A media element and an hls.js that do only what a test tells them to, for the web media
@@ -301,6 +306,208 @@ test('runtime commands pause and resume the real element; seek waits for the act
   f.video.land(60); await settle();
   assert.equal(f.runtime.getSnapshot().playback.pendingSeek, undefined);
   assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 60);
+});
+
+test('dock completion waits for the actual end receipt and Replay restarts the fenced queue occurrence', async t => {
+  const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
+  const fence = f.runtime.getSnapshot().fence!, queue = f.runtime.getSnapshot().session!.queue!, held = deferred();
+  f.intercept(async (request, response) => {
+    if (request.path.endsWith('/timeline') && (request.body as {state?: string})?.state === 'ended') await held.hold();
+    return response;
+  });
+  f.video.finish(); await held.started;
+  assert.equal(f.runtime.getSnapshot().playback.phase, 'ended');
+  const pending = f.runtime.getSnapshot().presentation!;
+  held.resolve(); await settle();
+  assert.equal(pending.finished, false, 'a raw media end is provisional while the queue confirms it');
+  assert.equal(pending.controls.includes('replay'), false);
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, true);
+  assert.ok(f.runtime.getSnapshot().presentation!.controls.includes('replay'));
+  assert.ok(f.server.session(fence.sessionId)!.reports.some(report => report.state === 'ended'));
+  const before = f.log.length;
+  await f.runtime.onAction({kind: 'replay', fence}); await f.arrive();
+  const replayed = f.runtime.getSnapshot();
+  assert.notEqual(replayed.fence!.sessionId, fence.sessionId);
+  assert.deepEqual(replayed.session!.queue, queue);
+  assert.equal(replayed.playback.positionSeconds, 0);
+  assert.equal(replayed.presentation!.finished, false);
+  assert.equal(f.hls.instances.at(-1)!.config.startPosition, 0);
+  assert.equal(f.log.slice(before).filter(request => request.method === 'POST' && request.path === '/v1/queues').length, 0);
+  await assert.rejects(f.runtime.onAction({kind: 'replay', fence}), /stale_playback_command/);
+});
+
+test('dock completion never offers final Replay during the actual next-episode countdown or advance', async t => {
+  const f = setup(t), port = f.runtime.selectionPlayback(() => true);
+  await port.play({context: selectionContext, items: [selectionLeaf('episode-first'), selectionLeaf('episode-next')], signal: new AbortController().signal});
+  await f.arrive();
+  const first = f.runtime.getSnapshot().fence!, seen: {finished: boolean; replay: boolean}[] = [], held = deferred();
+  const off = f.runtime.subscribe(() => {
+    const current = f.runtime.getSnapshot().presentation;
+    if (current?.fence.sessionId === first.sessionId) seen.push({finished: current.finished, replay: current.controls.includes('replay')});
+  });
+  t.after(off);
+  f.intercept(async (request, response) => { if (request.path.endsWith(':advance')) await held.hold(); return response; });
+  f.video.finish(); await settle();
+  assert.equal(f.runtime.getSnapshot().playback.phase, 'ended');
+  assert.equal(f.runtime.getSnapshot().queueView!.next.available, true);
+  f.clock.advance(10_250); await settle();
+  assert.ok(f.log.some(request => request.path.endsWith(':advance')), 'the actual core queue must advance automatically');
+  await held.started;
+  const during = f.runtime.getSnapshot().presentation!;
+  held.resolve(); await f.arrive();
+  assert.equal(during.finished, false);
+  assert.ok(seen.length > 0); assert.ok(seen.every(value => !value.finished && !value.replay));
+  assert.equal(f.runtime.getSnapshot().playback.itemId, 'episode-next');
+  assert.notEqual(f.runtime.getSnapshot().fence!.sessionId, first.sessionId);
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, false);
+  assert.equal(f.video.paused, false);
+});
+
+test('dock completion keeps real listening auto-advance and marks only the confirmed final item', async t => {
+  const f = setup(t), port = f.runtime.selectionPlayback(() => true);
+  await port.play({context: selectionContext, items: [selectionLeaf('song-first'), selectionLeaf('song-last')], signal: new AbortController().signal});
+  await f.arrive();
+  const first = f.runtime.getSnapshot().fence!, finishedSessions: string[] = [];
+  const off = f.runtime.subscribe(() => { const p = f.runtime.getSnapshot().presentation; if (p?.finished) finishedSessions.push(p.fence.sessionId); });
+  t.after(off);
+  f.video.finish(); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().playback.itemId, 'song-last');
+  assert.ok(!finishedSessions.includes(first.sessionId), 'an advancing track must never advertise final Replay');
+  const last = f.runtime.getSnapshot().fence!;
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, false, 'being the last queue entry is not completion');
+  f.video.finish(); await settle();
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, true);
+  assert.ok(finishedSessions.includes(last.sessionId));
+});
+
+test('dock completion with zero countdown advances only after the real controller publishes its held completion', async t => {
+  const f = setup(t);
+  f.intercept(async (request, response) => request.method === 'GET' && /^\/v1\/queues\/[^/]+$/.test(request.path)
+    ? {...response, body: {...response.body as object, postPlay: {autoplay: true, countdownMs: 0}}} : response);
+  await f.runtime.selectionPlayback(() => true).play({context: selectionContext, items: [selectionLeaf('first'), selectionLeaf('next')], signal: new AbortController().signal});
+  await f.arrive(); const first = f.runtime.getSnapshot().fence!;
+  f.video.finish(); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().playback.itemId, 'next');
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, false);
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 1);
+  await assert.rejects(f.runtime.onAction({kind: 'replay', fence: first}), /stale_playback_command/);
+});
+
+test('dock completion with autoplay disabled offers Replay after confirmation and does not advance', async t => {
+  const f = setup(t);
+  f.intercept(async (request, response) => request.method === 'GET' && /^\/v1\/queues\/[^/]+$/.test(request.path)
+    ? {...response, body: {...response.body as object, postPlay: {autoplay: false, countdownMs: 0}}} : response);
+  await f.runtime.selectionPlayback(() => true).play({context: selectionContext, items: [selectionLeaf('first'), selectionLeaf('next')], signal: new AbortController().signal});
+  await f.arrive(); f.video.finish(); await settle(); f.clock.advance(15_000); await settle();
+  assert.equal(f.runtime.getSnapshot().playback.itemId, 'first');
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, true);
+  assert.ok(f.runtime.getSnapshot().presentation!.controls.includes('replay'));
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 0);
+});
+
+test('dock completion restores the actual parked listening queue paused only after confirmed final video end', async t => {
+  const f = setup(t); await f.runtime.play('song', 35); await f.arrive();
+  const originalQueue = f.runtime.getSnapshot().session!.queue!.queueId;
+  await f.runtime.play('movie', 20); await f.arrive();
+  const held = deferred();
+  f.intercept(async (request, response) => {
+    if (request.path.endsWith('/timeline') && (request.body as {state?: string})?.state === 'ended') await held.hold();
+    return response;
+  });
+  f.video.finish(); await held.started;
+  const provisional = f.runtime.getSnapshot();
+  held.resolve(); await f.arrive();
+  assert.equal(provisional.playback.itemId, 'movie');
+  assert.equal(provisional.presentation!.finished, false);
+  const restored = f.runtime.getSnapshot();
+  assert.equal(restored.playback.itemId, 'song');
+  assert.equal(restored.session!.queue!.queueId, originalQueue);
+  assert.equal(restored.playback.positionSeconds, 35);
+  assert.equal(restored.playback.intent, 'paused'); assert.equal(f.video.paused, true);
+  assert.equal(restored.presentation!.finished, false);
+});
+
+test('dock completion does not infer an end from duration, pause, failure, or a stale replacement event', async t => {
+  const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
+  const fence = f.runtime.getSnapshot().fence!;
+  f.video.advance(f.video.duration); await f.runtime.pause(fence); await settle();
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, false);
+  assert.equal(f.runtime.getSnapshot().presentation!.controls.includes('replay'), false);
+  await f.runtime.play('replacement', 12); await f.arrive();
+  const replacement = f.runtime.getSnapshot().fence!;
+  f.video.fire('ended'); await settle();
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, false);
+  assert.equal(f.runtime.getSnapshot().fence!.sessionId, replacement.sessionId);
+  f.video.fail(3); await settle();
+  assert.notEqual(f.runtime.getSnapshot().presentation?.finished, true);
+  await assert.rejects(f.runtime.onAction({kind: 'replay', fence}), /stale_playback_command/);
+});
+
+test('dock completion ignores an old confirmed end after replacement and authority retirement', async t => {
+  const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
+  const held = deferred();
+  f.intercept(async (request, response) => {
+    if (request.path.endsWith('/timeline') && (request.body as {state?: string})?.state === 'ended') await held.hold();
+    return response;
+  });
+  f.video.finish(); await held.started;
+  await f.runtime.play('replacement', 12); await f.arrive();
+  const replacement = f.runtime.getSnapshot().fence!;
+  held.resolve(); await settle();
+  assert.equal(f.runtime.getSnapshot().fence!.sessionId, replacement.sessionId);
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, false);
+  f.invalidate(); f.video.fire('volumechange');
+  assert.equal(f.runtime.getSnapshot().disposed, true);
+  assert.equal(f.runtime.getSnapshot().presentation, undefined);
+  assert.deepEqual(f.runtime.getSnapshot().presentations, []);
+});
+
+test('dock completion never reinterprets a live-source end as a queue Replay', async t => {
+  const f = setup(t);
+  await f.runtime.selectionPlayback(() => true).playChannel(homeChannel, selectionContext, new AbortController().signal);
+  await f.arriveLive(); const fence = f.runtime.getSnapshot().fence!;
+  f.video.finish(); await settle();
+  assert.notEqual(f.runtime.getSnapshot().presentation?.finished, true);
+  assert.equal(f.runtime.getSnapshot().presentation?.controls.includes('replay'), false);
+  await assert.rejects(f.runtime.onAction({kind: 'replay', fence}), /playback_command_unavailable/);
+});
+
+test('dock completion actual renderer Replay dispatches through the shell presentation to the fenced runtime API', async t => {
+  // Execute the unchanged real Transport/Control callbacks. Leaf icons/artwork are not part
+  // of this controlled event test; it makes no React DOM, browser or pixel claim.
+  const loader = registerHooks({load(url, context, next) {
+    const leaf = url.endsWith('/kit/Icon.tsx') ? 'Icon' : url.endsWith('/kit/artwork/index.ts') ? 'Artwork' : url.endsWith('/kit/controls/Slider.tsx') ? 'Slider' : url.endsWith('/kit/controls/Button.tsx') ? 'Button' : null;
+    if (leaf) return {format: 'module', source: `export const ${leaf} = '${leaf}';`, shortCircuit: true};
+    if (url.endsWith('.module.css')) return {format: 'module', source: 'export default new Proxy({}, {get: (_, key) => String(key)});', shortCircuit: true};
+    if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
+    return next(url, context);
+  }});
+  t.after(() => loader.deregister());
+  const {Transport} = await import('../src/kit/dock/parts.tsx');
+  const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
+  f.runtime.collapse(f.runtime.getSnapshot().fence!); f.video.finish(); await settle();
+  const state = f.runtime.getSnapshot();
+  const presentation = playbackPresentation(state, {t: id => id}, {foreground: () => null, ambient: () => null} as never, {back: 10, forward: 30})!;
+  const view = dockView(state.dock, [presentation])!, actions: DockAction[] = [];
+  let result: Promise<void> | undefined;
+  const tree = Transport({view, binding: {getSnapshot: f.runtime.dock.getSnapshot, onAction: action => { actions.push(action); result = f.runtime.onAction(action); }}});
+  const replay = (tree.props.children as any[]).find(child => child?.props?.primary);
+  assert.equal(replay.props.label, 'Replay'); assert.equal(replay.props.disabled, false);
+  replay.props.onClick(); assert.ok(result); await result; await f.arrive();
+  assert.deepEqual(actions, [{kind: 'replay', fence: state.fence}]);
+  assert.notEqual(f.runtime.getSnapshot().fence!.sessionId, state.fence!.sessionId);
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 0);
+  replay.props.onClick(); assert.equal(actions.length, 1, 'the old rendered callback is rejected after actual replacement');
+});
+
+test('dock completion cannot publish Finished when the actual end report fails', async t => {
+  const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
+  f.intercept(async (request, response) => request.path.endsWith('/timeline') && (request.body as {state?: string})?.state === 'ended'
+    ? {status: 503, headers: {}, body: {error: {code: 'temporarily_unavailable'}}} : response);
+  f.video.finish(); await settle();
+  assert.equal(f.runtime.getSnapshot().playback.phase, 'ended');
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, false);
+  assert.equal(f.runtime.getSnapshot().presentation!.controls.includes('replay'), false);
 });
 
 test('runtime rejects an old source callback after replacement and releases the previous network', async t => {

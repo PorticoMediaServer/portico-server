@@ -36,7 +36,7 @@ export function activityView(document: OwnerActivitySummary, time: TimeEnvironme
         : stream.converting ? {id: 'delivery', text: t(video ? 'web.nowPlaying.delivery.convertVideo' : 'web.nowPlaying.delivery.convertAudio'), role: 'status' as const} : undefined;
       return {id: stream.id, identity: subject ? playbackIdentity(subject, 'dock', time) : undefined, title: stream.item?.title, username: stream.user.username, name: stream.profile.name, device: stream.device.name,
         startedAt: stream.startedAt, initial: Array.from(stream.profile.name.trim())[0] ?? '', positionMs: stream.positionMs, durationMs: stream.durationMs, paused: stream.state === 'paused',
-        problem: stream.problem ? {id: 'problem', text: t('next.shell.activityProblem'), role: 'status' as const} : undefined,
+        problem: stream.problem ? {id: 'problem', text: t(stream.state === 'buffering' ? 'web.together.loading' : 'next.shell.activityProblem'), role: 'status' as const} : undefined,
         conversion, onOpen: () => actions.onDashboard('streams')};
     }),
     scans: document.scans.map(scan => ({id: scan.libraryId, title: scan.libraryName, detail: scanStepName(t, defaultI18n.has, scan.phase), current: scan.current,

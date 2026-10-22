@@ -16,7 +16,7 @@ const symbol = '<symbol id="i-test" viewBox="0 0 24 24"><path fill="currentColor
 
 test('every canonical symbol has the same faithful ID and geometry in both outputs', () => {
   const web = renderShared(icons), native = renderNative(icons);
-  assert.equal(icons.length, 245);
+  assert.equal(icons.length, 249);
   assert.equal(new Set(icons.map(i => i.attrs.id)).size, icons.length);
   assert.equal((native.match(/case "/g) || []).length, icons.length);
   for (const icon of icons) {
@@ -72,6 +72,75 @@ test('selection Keep only registers the exact drawn album in the shared and nati
   assert.ok(renderNative(icons).includes('case "i-album": return <G><G fill="none" stroke="currentColor" strokeWidth="2"><Rect x="4" y="4" width="16" height="16" rx="3" /><Circle cx="12" cy="12" r="3.6" /></G></G>;'));
 });
 
+test('context variants preserve pinned selection and guide geometry without replacing global icons', () => {
+  // design/ui-v1 8377791ae573e17b0fc5199ae87f7ad3feee0f16:
+  // select.html:1657 i-eyeoff; phone-guide.html:375 i-list (List / Guide control).
+  // Context IDs are additive: only the ID differs from each literal source symbol.
+  const variants = [
+    {
+      id: 'i-eyeoff-selection', original: 'i-eyeoff',
+      source: '<symbol id="i-eyeoff" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12s3.2-6 9-6c1.6 0 3 .5 4.2 1.2M21 12s-3.2 6-9 6c-1.6 0-3-.5-4.2-1.2"/><circle cx="12" cy="12" r="2.6"/><path d="m4 4 16 16"/></g></symbol>',
+      body: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12s3.2-6 9-6c1.6 0 3 .5 4.2 1.2M21 12s-3.2 6-9 6c-1.6 0-3-.5-4.2-1.2"></path><circle cx="12" cy="12" r="2.6"></circle><path d="m4 4 16 16"></path></g>',
+      native: 'case "i-eyeoff-selection": return <G><G fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><Path d="M3 12s3.2-6 9-6c1.6 0 3 .5 4.2 1.2M21 12s-3.2 6-9 6c-1.6 0-3-.5-4.2-1.2" /><Circle cx="12" cy="12" r="2.6" /><Path d="m4 4 16 16" /></G></G>;',
+    },
+    {
+      id: 'i-list-guide', original: 'i-list',
+      source: '<symbol id="i-list" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9 6.5h11M9 12h11M9 17.5h11M4.5 6.5h.1M4.5 12h.1M4.5 17.5h.1"/></symbol>',
+      body: '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9 6.5h11M9 12h11M9 17.5h11M4.5 6.5h.1M4.5 12h.1M4.5 17.5h.1"></path>',
+      native: 'case "i-list-guide": return <G><Path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M9 6.5h11M9 12h11M9 17.5h11M4.5 6.5h.1M4.5 12h.1M4.5 17.5h.1" /></G>;',
+    },
+  ];
+  const native = renderNative(icons);
+  for (const {id, original, source, body, native: glyph} of variants) {
+    const literal = source.replace(`id="${original}"`, `id="${id}"`);
+    assert.ok(svg.includes(literal), `${id}: exact source bytes with only ID changed`);
+    const expected = parseSprite(document(literal))[0];
+    assert.deepEqual(icons.find(icon => icon.attrs.id === id), expected);
+    assert.deepEqual(nextIcons[id], {viewBox: '0 0 24 24', body});
+    assert.equal(iconNames.filter(name => name === id).length, 1);
+    assert.ok(nextIconSprite.includes(`<symbol id="${id}" viewBox="0 0 24 24">${body}</symbol>`));
+    assert.ok(native.includes(glyph), `${id}: complete native geometry and stroke inheritance`);
+    assert.notDeepEqual(nextIcons[id], nextIcons[original], `${original} remains a distinct global glyph`);
+  }
+  assert.equal(nextIcons['i-eyeoff'].body, '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M3.5 3.5l17 17M10.4 6.1A10 10 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-2.7 3.4M6.7 6.8C3.8 8.5 2 12 2 12s3.5 6 10 6c1.7 0 3.2-.4 4.5-1M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></g>');
+  assert.equal(nextIcons['i-list'].body, '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"><path d="M9.5 6.5H20M9.5 12H20M9.5 17.5H20"></path><path d="M4.5 6.5h.5M4.5 12h.5M4.5 17.5h.5" stroke-width="2.6"></path></g>');
+});
+
+test('phone File info registers its exact server glyph without changing the global server', () => {
+  // design/ui-v1 5cbcc03681b22a4593b3e7c5c6878ae74ace22d1 phone-detail.html:732.
+  // Only the source symbol ID changes; desktop-detail.html:384 remains the global glyph.
+  const id = 'i-server-file-info-phone';
+  const source = '<symbol id="i-server" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4.5" width="16" height="6.5" rx="1.8"/><rect x="4" y="13" width="16" height="6.5" rx="1.8"/><path d="M8 7.8h.1M8 16.3h.1"/></g></symbol>';
+  const literal = source.replace('id="i-server"', `id="${id}"`);
+  assert.ok(svg.includes(literal), 'exact phone source bytes with only the ID changed');
+  assert.deepEqual(icons.find(icon => icon.attrs.id === id), parseSprite(document(literal))[0]);
+  const body = '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4.5" width="16" height="6.5" rx="1.8"></rect><rect x="4" y="13" width="16" height="6.5" rx="1.8"></rect><path d="M8 7.8h.1M8 16.3h.1"></path></g>';
+  assert.deepEqual(nextIcons[id], {viewBox: '0 0 24 24', body});
+  assert.equal(iconNames.filter(name => name === id).length, 1);
+  assert.ok(nextIconSprite.includes(`<symbol id="${id}" viewBox="0 0 24 24">${body}</symbol>`));
+  assert.ok(renderNative(icons).includes('case "i-server-file-info-phone": return <G><G fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><Rect x="4" y="4.5" width="16" height="6.5" rx="1.8" /><Rect x="4" y="13" width="16" height="6.5" rx="1.8" /><Path d="M8 7.8h.1M8 16.3h.1" /></G></G>;'));
+  assert.equal(nextIcons['i-server'].body, '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"><rect height="7" rx="2" width="16" x="4" y="4"></rect><rect height="7" rx="2" width="16" x="4" y="13"></rect><path d="M8 7.5h.01M8 16.5h.01M12 7.5h4M12 16.5h4"></path></g>');
+  assert.notDeepEqual(nextIcons[id], nextIcons['i-server']);
+});
+
+test('Activity registers the exact chosen static Levels glyph without changing i-act', () => {
+  // design/ui-v1 5cbcc03681b22a4593b3e7c5c6878ae74ace22d1 desktop-activity.html:198.
+  // Chosen A / Levels:258-260; idle:278 and quiet:309 use this same static symbol.
+  const id = 'i-activity';
+  const source = '<symbol id="i-act" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.25 16v-3.5M12 16V8M15.75 16v-5.5"/></g></symbol>';
+  const literal = source.replace('id="i-act"', `id="${id}"`);
+  assert.ok(svg.includes(literal), 'exact chosen Levels source bytes with only the ID changed');
+  const expected = parseSprite(document(literal))[0];
+  assert.deepEqual(icons.find(icon => icon.attrs.id === id), expected);
+  assert.deepEqual({...expected, attrs: {...expected.attrs, id: 'i-act'}}, icons.find(icon => icon.attrs.id === 'i-act'));
+  const body = '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M8.25 16v-3.5M12 16V8M15.75 16v-5.5"></path></g>';
+  assert.deepEqual(nextIcons[id], {viewBox: '0 0 24 24', body});
+  assert.equal(iconNames.filter(name => name === id).length, 1);
+  assert.ok(nextIconSprite.includes(`<symbol id="${id}" viewBox="0 0 24 24">${body}</symbol>`));
+  assert.ok(renderNative(icons).includes('case "i-activity": return <G><G fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><Circle cx="12" cy="12" r="9" /><Path d="M8.25 16v-3.5M12 16V8M15.75 16v-5.5" /></G></G>;'));
+  assert.equal(nextIcons['i-act'].body, '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M8.25 16v-3.5M12 16V8M15.75 16v-5.5"></path></g>');
+});
+
 test('unsupported SVG features, unsafe attributes and malformed geometry fail closed', () => {
   for (const invalid of [
     symbol + symbol,
@@ -102,6 +171,6 @@ test('generation is deterministic and check detects stale or missing native outp
     writeFileSync(target, renderNative(icons) + '\n');
     assert.notEqual(run([]).status, 0);
     assert.match(run([]).stderr, /Stale icon output/);
-    assert.equal(execFileSync(process.execPath, [path.join(here, 'next-icons.mjs'), '--check'], {encoding: 'utf8'}).trim(), 'next-icons: 245 symbols; 1 output(s) verified');
+    assert.equal(execFileSync(process.execPath, [path.join(here, 'next-icons.mjs'), '--check'], {encoding: 'utf8'}).trim(), 'next-icons: 249 symbols; 1 output(s) verified');
   } finally { rmSync(temp, {recursive: true, force: true}); }
 });

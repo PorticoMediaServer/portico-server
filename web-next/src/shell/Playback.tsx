@@ -82,7 +82,7 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
     {snapshot && dockBinding && <><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} />
       <DockNotice notice={currentNotice} nowMs={now} binding={dockBinding} phone={phone} /></>}
     <div ref={expandedSlot} className={styles.expandedSlot} hidden={!expanded || !activeVideo} data-foundation-media-host />
-    <MediaSurface expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} className={styles.surface}>
+    <MediaSurface finished={snapshot?.presentation?.finished} expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} className={styles.surface}>
       <video ref={video} controls={expanded} playsInline preload="none" aria-label={playbackIdentityLabel(presentations, snapshot?.fence && fenceKey(snapshot.fence))} />
     </MediaSurface>
     {expanded && <Button variant="glass" size="compact" icon="i-down" iconOnly className={styles.collapse} aria-label={defaultI18n.t('next.home.shell.collapsePlayer')} onClick={collapse} />}

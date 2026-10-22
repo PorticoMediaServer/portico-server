@@ -32,13 +32,16 @@
 .button[data-variant="icon"]:hover:not(:disabled) {background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--color-text);}
 .button[data-variant="text"] {--control-height: 32px; --control-radius: 8px; --control-inset: 10px; --control-gap: 6px; --control-icon: 16px; font-size: 13.5px; color: var(--color-text-secondary);}
 .button[data-variant="text"]:hover:not(:disabled) {background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text);}
+.button[data-variant="ghost"] {--control-height: 40px; --control-radius: 10px; --control-inset: 12px; --control-gap: 8px; --control-icon: 20px; font-size: 14.5px; color: var(--color-text-secondary);}
+.button[data-variant="ghost"]:hover:not(:disabled) {background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text);}
+.button[data-variant="ghost"]:disabled {color: var(--color-text-tertiary); opacity: .5;}
 .button[data-phone][data-size="hero"]:is([data-variant="primary"], [data-variant="glass"]) {--control-height: var(--spec-button-hero-height-phone); --control-radius: var(--spec-button-hero-radius-phone); --control-inset: var(--spec-button-hero-padding-x-phone); --control-gap: 8px; --control-icon: 20px; font-size: 15px;}
 .spinner {display: inline-block; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: working 900ms linear infinite;}
 @keyframes working {to {transform: rotate(360deg);}}
-.resume {overflow: hidden;}
+.resume {overflow: hidden; max-width: none;}
 .resume .buttonLabel {display: contents;}
 .resumeLabel {min-width: 0; overflow: hidden; text-overflow: ellipsis;}
-.remaining {margin-left: 12px; font-weight: 600; color: color-mix(in srgb, var(--color-ink) 60%, transparent);}
+.remaining {margin-left: calc(var(--control-gap) + 2px); font-weight: 600; color: color-mix(in srgb, var(--color-ink) 60%, transparent);}
 .resume[data-variant="glass"] .remaining {color: var(--color-text-tertiary);}
 .progress {position: absolute; inset: auto 0 0; height: 4px; background: color-mix(in srgb, var(--color-ink) 14%, transparent); pointer-events: none;}
 .progress > span {display: block; width: 100%; height: 100%; background: var(--color-accent); transform-origin: left center;}
@@ -51,6 +54,7 @@
 .chip:where(:hover):not(:disabled) {background: var(--color-raised-bright);}
 .chip[data-selected] {background: color-mix(in srgb, var(--color-accent) 28%, transparent); box-shadow: inset 0 0 0 1px var(--color-accent);}
 .dim, .count, .trailing {color: var(--color-text-tertiary);}
+.chip[data-variant="default"] .trailing {color: inherit;}
 .chip[data-dim] {background: transparent; color: var(--color-text-tertiary); box-shadow: inset 0 0 0 1px var(--color-line); opacity: .5;}
 .chip[data-dim]:hover:not(:disabled) {background: transparent;}
 .dim {font-weight: 600;}
@@ -69,18 +73,19 @@
 .removeGlyph {width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--color-text-secondary);}
 .chip[data-variant="applied"]:hover:not(:disabled) {background: #24445a;}
 .chip[data-variant="applied"]:hover:not(:disabled) .removeGlyph {background: color-mix(in srgb, var(--color-text) 14%, transparent); color: var(--color-text);}
-.chip[data-variant="pill"] {height: 34px; padding: 0 12px; border-radius: 17px; gap: 6px; background: color-mix(in srgb, var(--color-text) 10%, transparent); font-size: 13.5px;}
+.chip[data-variant="pill"] {height: 34px; padding: 0 12px; margin: 0 3px; border-radius: 17px; gap: 6px; background: color-mix(in srgb, var(--color-text) 10%, transparent); font-size: 13.5px; font-variant-numeric: tabular-nums;}
 .chip[data-variant="pill"]:hover:not(:disabled) {background: color-mix(in srgb, var(--color-text) 20%, transparent);}
 .chip[data-phone] {height: 34px; padding: 0 13px; border-radius: 9px; font-size: 13.5px; gap: 6px;}
 .chip[data-phone] .count {font-size: 12px; font-weight: 700;}
-.chip[data-variant="search"] .count {font-size: inherit;}
+.chip[data-variant="search"] .count {font-size: inherit; font-variant-numeric: tabular-nums;}
 .chip[data-variant="search"][data-selected] {background: color-mix(in srgb, var(--color-accent) 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent-strong) 62%, transparent);}
 .chip[data-retry] {box-shadow: inset 0 0 0 1px var(--color-line-strong);}
 .chip[data-retry] > svg {color: var(--color-text-tertiary);}
 .chip[data-variant="download"] {height: 30px; padding: 0 11px; font-size: 13px; gap: 6px; box-shadow: none;}
 .chip[data-variant="download"] > svg {width: 14px; height: 14px; color: var(--color-text);}
 
-.tabs {display: flex; gap: 34px; padding: 0; border-bottom: 1px solid var(--color-line); overflow-x: auto; scrollbar-width: none;}
+.tabStrip {position: relative; z-index: var(--layer-content); border-bottom: 1px solid var(--color-line);}
+.tabs {display: flex; gap: 34px; padding: 0 0 1px; margin-bottom: -1px; overflow-x: auto; scrollbar-width: none;}
 .tabs::-webkit-scrollbar {display: none;}
 .tab {position: relative; flex: none; padding: 16px 0 14px; font-size: var(--type-tab-size); line-height: var(--type-tab-line); font-weight: var(--type-tab-weight); color: var(--color-text-tertiary); white-space: nowrap;}
 .tab:hover:not(:disabled) {color: var(--color-text-secondary);}
@@ -92,6 +97,7 @@
 @keyframes tabIn {from {opacity: 0;} to {opacity: 1;}}
 .tabs[data-phone] {gap: 24px;}
 .tabs[data-phone] .tab {font-size: 15.5px; padding: 12px 0 11px;}
+.tabs[data-phone] .tab[data-state="active"]::after {clip-path: inset(0 0 1px);}
 .segmented {display: inline-flex; padding: 3px; border-radius: 11px; background: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line);}
 .segment {height: 34px; padding: 0 14px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--color-text-tertiary); white-space: nowrap; transition: background 160ms var(--ease-out), color 160ms var(--ease-out);}
 .segment:hover:not(:disabled) {color: var(--color-text);}
@@ -102,6 +108,10 @@
 .segmented[data-variant="browse"] .segment[data-state="checked"] {background: var(--color-raised-bright); box-shadow: 0 1px 2px color-mix(in srgb, var(--color-shadow) 30%, transparent);}
 .segmented[data-variant="phone"] {border-radius: 9px; background: var(--color-raised-bright); box-shadow: none;}
 .segmented[data-variant="phone"] .segment {height: auto; min-height: 28px; padding: 5px 11px; border-radius: 7px; font-size: 13px;}
+.segmented[data-variant="view"] {display: flex; border-radius: 10px; background: var(--color-raised-high); box-shadow: none;}
+.segmented[data-variant="view"] .segment {height: 32px; padding: 0 11px 0 9px; font-size: 13.5px;}
+.segmented[data-variant="view"] .segment > svg {width: 16px; height: 16px;}
+.segmented[data-variant="view"] .segment:focus-visible {outline-offset: 2px;}
 
 .switch {--switch-width: 38px; --switch-height: 22px; --switch-thumb: 16px; --switch-distance: 16px; appearance: none; margin: 0; position: relative; width: var(--switch-width); height: var(--switch-height); flex: none; border: 0; border-radius: 999px; background: var(--color-raised-bright); cursor: pointer; transition: background 160ms var(--ease-out);}
 .switch::after {content: ''; position: absolute; left: 3px; top: 3px; width: var(--switch-thumb); height: var(--switch-thumb); border-radius: 50%; background: var(--color-text-tertiary); transition: transform 160ms var(--ease-out), background 160ms var(--ease-out);}
@@ -119,6 +129,7 @@
 .input {appearance: none; flex: 1; width: 100%; min-width: 0; height: 100%; padding: 0; margin: 0; border: 0; outline: 0; background: none; color: var(--color-text); font-family: var(--font); font-size: 16px; font-weight: 600; line-height: normal; text-overflow: ellipsis;}
 .input::placeholder {color: var(--color-text-tertiary); font-weight: 500; opacity: 1;}
 .input:focus-visible {outline: none;}
+.input[type="search"]::-webkit-search-cancel-button {appearance: none;}
 .inputShell:focus-within {box-shadow: inset 0 0 0 1px var(--color-line-strong), 0 0 0 3px var(--color-focus);}
 .field[data-variant="compact"] .inputShell {height: 44px; border-radius: 10px; padding: 0 14px; background: var(--color-ink);}
 .field[data-variant="compact"] .input {font-size: 15px;}
@@ -126,13 +137,18 @@
 .field[data-variant="auth"] .input {font-size: 17px;}
 .field[data-variant="auth"] .fieldLabel {font-size: 14px;}
 .field[data-variant="code"] .inputShell {height: 50px;}
-.field[data-variant="code"] .input {font-size: 17px; font-weight: 700; letter-spacing: .16em; font-variant-numeric: tabular-nums;}
+.field[data-variant="code"] .input {font-size: 17px; font-weight: 700; letter-spacing: .16em; font-variant-numeric: tabular-nums; caret-color: var(--color-accent-strong);}
 .field[data-variant="large-search"] .inputShell {height: 80px; border-radius: 18px; padding: 0 18px 0 26px; gap: 18px; background: color-mix(in srgb, var(--color-raised) 80%, transparent); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 10%, transparent), 0 30px 60px -36px var(--color-shadow); color: var(--color-text-secondary);}
 .field[data-variant="large-search"] .input {font-size: 30px; font-weight: 700; letter-spacing: -.02em;}
-.field[data-variant="large-search"] .input::placeholder {font-weight: 600;}
+.searchValue {position: relative; flex: 1; min-width: 0; height: 100%;}
+.field[data-variant="large-search"] .input {caret-color: var(--color-accent-strong);}
+.field[data-variant="large-search"] .input::placeholder {color: transparent;}
+.largeSearchPlaceholder {display: none; position: absolute; inset: 50% 0 auto 0; transform: translateY(-50%); overflow: hidden; white-space: nowrap; pointer-events: none; font-size: 30px; font-weight: 600; line-height: normal; letter-spacing: -.02em; color: var(--color-text-tertiary);}
+.searchValue:has(.input:placeholder-shown) .largeSearchPlaceholder {display: block;}
+.inputShell:focus-within .largeSearchPlaceholder {left: 8px;}
 .field[data-variant="large-search"] .inputShell:focus-within {box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent-strong) 60%, transparent), 0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent), 0 30px 60px -36px var(--color-shadow);}
 .field[data-variant="search"] .inputShell {height: 46px; border-radius: 12px; padding: 0 12px 0 14px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line);}
-.field[data-variant="search"] .input {font-size: 15px;}
+.field[data-variant="search"] .input {padding: 1px 2px; font-size: 15px;}
 .field[data-variant="search"] .input::placeholder {font-weight: 600;}
 .field[data-variant="search"] .inputShell:focus-within {box-shadow: inset 0 0 0 1px var(--color-line), 0 0 0 3px var(--color-focus);}
 .field[data-invalid] .inputShell {box-shadow: inset 0 0 0 1.5px var(--color-danger);}
@@ -147,7 +163,7 @@
 .field[data-variant="code"][data-invalid] .inputShell {box-shadow: inset 0 0 0 1.5px var(--color-record);}
 
 .select {height: 40px; min-width: 176px; max-width: 100%; padding: 0 12px 0 16px; border-radius: 10px; background: var(--color-raised-bright); display: inline-flex; align-items: center; justify-content: space-between; gap: 14px; font-size: 15px; font-weight: 700; transition: background 160ms var(--ease-out);}
-.select > span:last-child {color: var(--color-text-tertiary); flex: none;}
+.select > span:last-child {display: flex; align-items: center; color: var(--color-text-tertiary); flex: none;}
 .selectValue {min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left;}
 .selectField[data-rich] .select {min-width: 220px;}
 .select:hover:not(:disabled) {background: #24445a;}
@@ -192,10 +208,14 @@
 @media (max-width: 1023px) {
   .button[data-size="hero"]:is([data-variant="primary"], [data-variant="glass"]) {--control-height: var(--spec-button-hero-height-phone); --control-radius: var(--spec-button-hero-radius-phone); --control-inset: var(--spec-button-hero-padding-x-phone); --control-gap: 8px; --control-icon: 20px;}
   .chip[data-variant="default"] {height: 34px; padding: 0 13px; border-radius: 9px; font-size: 13.5px; gap: 6px;}
+  .chip[data-variant="default"] .trailing {width: 16px; height: 16px;}
   .tabs {gap: 24px;}
   .tab {font-size: 15.5px; padding: 12px 0 11px;}
+  .tab[data-state="active"]::after {clip-path: inset(0 0 1px);}
   .field[data-variant="large-search"] .inputShell {height: 44px; border-radius: 12px; padding: 0 12px; gap: 10px;}
   .field[data-variant="large-search"] .input {font-size: 17px; letter-spacing: 0;}
+  .largeSearchPlaceholder {font-size: 17px; letter-spacing: 0;}
+  .inputShell:focus-within .largeSearchPlaceholder {left: 0;}
   .field[data-variant="large-search"] .inputShell > svg {width: 22px; height: 22px;}
   .field[data-variant="auth"] .inputShell {height: 48px; border-radius: 11px; padding: 0 14px;}
   .field[data-variant="auth"] .input {font-size: 16px;}

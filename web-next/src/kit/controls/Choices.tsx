@@ -16,9 +16,15 @@ export type TabsProps = Omit<ComponentPropsWithoutRef<typeof TabsPrimitive.Root>
 export function Tabs({items, value, defaultValue, onValueChange, phone, className, listClassName, 'aria-label': label, ...props}: TabsProps) {
   const initial = defaultValue ?? items.find(item => !item.disabled)?.value;
   return <TabsPrimitive.Root {...props} value={value} defaultValue={initial} onValueChange={onValueChange} className={className}>
-    <TabsPrimitive.List className={[styles.tabs, listClassName].filter(Boolean).join(' ')} data-phone={phone || undefined} aria-label={label}>
-      {items.map(item => <TabsPrimitive.Trigger key={item.value} value={item.value} disabled={item.disabled} className={styles.tab}>{item.label}</TabsPrimitive.Trigger>)}
-    </TabsPrimitive.List>
+    <div className={styles.tabStrip}><TabsPrimitive.List className={[styles.tabs, listClassName].filter(Boolean).join(' ')} data-phone={phone || undefined} aria-label={label}>
+      {items.map(item => <TabsPrimitive.Trigger key={item.value} value={item.value} disabled={item.disabled} className={styles.tab} onFocus={event => {
+        const list = event.currentTarget.parentElement;
+        if (!list) return;
+        const tab = event.currentTarget.getBoundingClientRect(), viewport = list.getBoundingClientRect();
+        const left = tab.left < viewport.left ? tab.left - viewport.left : tab.right > viewport.right ? tab.right - viewport.right : 0;
+        if (left) list.scrollBy({left, behavior: 'instant'});
+      }}>{item.label}</TabsPrimitive.Trigger>)}
+    </TabsPrimitive.List></div>
     {items.map(item => item.panel !== undefined && <TabsPrimitive.Content key={item.value} value={item.value} className={styles.tabPanel}>{item.panel}</TabsPrimitive.Content>)}
   </TabsPrimitive.Root>;
 }
@@ -28,7 +34,7 @@ export type SegmentedProps = Omit<ComponentPropsWithoutRef<typeof RadioGroup.Roo
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
-  variant?: 'glass' | 'browse' | 'phone';
+  variant?: 'glass' | 'browse' | 'phone' | 'view';
   name?: string;
   disabled?: boolean;
 };

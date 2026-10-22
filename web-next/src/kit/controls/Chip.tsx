@@ -35,6 +35,6 @@ export const Chip = forwardRef<HTMLButtonElement, ChipProps>(function Chip({vari
     {count !== undefined && count !== null && <span className={countStyle === 'badge' ? styles.countBadge : styles.count}>{count}</span>}
     {trailing && (variant === 'applied'
       ? <span className={styles.removeGlyph}><Icon name={trailing} size={14} /></span>
-      : <Icon className={styles.trailing} name={trailing} size={16} />)}
+      : <Icon className={styles.trailing} name={trailing} size={variant === 'default' && !phone ? 18 : 16} />)}
   </button>;
 });

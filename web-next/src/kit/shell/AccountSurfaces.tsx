@@ -1,4 +1,4 @@
-import {forwardRef, type ButtonHTMLAttributes, type CSSProperties, type ReactElement} from 'react';
+import {forwardRef, type ButtonHTMLAttributes, type CSSProperties, type ReactElement, type ReactNode} from 'react';
 import {createI18n} from '@i18n';
 import type {FactPart} from '@core/presentation/kit-model';
 import {Icon, type IconName} from '../Icon';
@@ -46,9 +46,9 @@ export type AccountMenuActions = Readonly<{
 export type AccountMenuProps = Readonly<{
   open: boolean; onOpenChange: OverlayChange; trigger: ReactElement; current: ProfileIdentity;
   primary: boolean; accountFacts: readonly FactPart[]; profiles: readonly ProfileIdentity[];
-  actions: AccountMenuActions; notificationCount?: number; notificationDot?: boolean; t?: ShellTranslate;
+  actions: AccountMenuActions; serverAction?: ReactNode; notificationCount?: number; notificationDot?: boolean; t?: ShellTranslate;
 }>;
-export function AccountMenu({open, onOpenChange, trigger, current, primary, accountFacts, profiles, actions, notificationCount, notificationDot = false, t = tDefault}: AccountMenuProps) {
+export function AccountMenu({open, onOpenChange, trigger, current, primary, accountFacts, profiles, actions, serverAction, notificationCount, notificationDot = false, t = tDefault}: AccountMenuProps) {
   const choose = (profile: ProfileIdentity) => actions.switchProfile(profile);
   return <><ShellScrim open={open} context="account" /><Menu open={open} onOpenChange={onOpenChange} trigger={trigger} title={t('next.shell.profileMenu', {name: current.name})} width={340} sideOffset={17} alignOffset={-24} modal className={styles.accountMenu}>
     <div className={styles.who}><ProfileAvatarFace initial={current.initial} art={current.art} size={48} /><div><b><IdentityName person={current} /></b>{primary && <small>{t('next.shell.mainProfile')}</small>}<small className={styles.factParts}>{accountFacts.map(fact => <span key={fact.id}>{fact.text}</span>)}</small></div></div>
@@ -57,6 +57,7 @@ export function AccountMenu({open, onOpenChange, trigger, current, primary, acco
         {actions.addProfile && <MenuItem className={styles.addProfile} onSelect={actions.addProfile}><span className={styles.addFace}><Icon name="i-plus" size={22} /></span>{t('next.shell.add')}</MenuItem>}
       </div>
     </div>
+    {serverAction}
     <MenuSeparator />
     <MenuItem className={styles.menuAction} icon="i-server" onSelect={actions.switchServer}>{t('next.shell.switchServerMenu')}</MenuItem>
     <MenuItem className={styles.menuAction} icon="i-gear" onSelect={actions.settings}>{t('next.shell.settings')}</MenuItem>

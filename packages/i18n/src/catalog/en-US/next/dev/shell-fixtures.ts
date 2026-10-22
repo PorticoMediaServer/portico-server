@@ -101,3 +101,15 @@ export function shellReferenceSamples(now: number, seed: number, wobble: number)
   let value = seed;
   return Array.from({length: 30}, (_, index) => { value = (value * 9301 + 49297) % 233280; return now + (value / 233280 - .5) * wobble * .9 + Math.sin(index / 5 + seed) * wobble * .8; });
 }
+
+/** Literal values from desktop-activity.html at 5cbcc036; serve-only, never wire data. */
+export const activityR7Reference = {
+  streams: {
+    priya: {id: 'priya', username: 'priya.n', name: 'priya.n', initial: 'P', art: 'violet', device: 'iPhone', title: 'Spirited Away', subtitle: [{id: 'year', text: '2001', role: 'context'}], progress: 43, conversion: 'Converting to 1080p'},
+    sam: {id: 'sam', username: 'sam_k', name: 'Sam', initial: 'S', art: 'mint', device: 'Living room TV', title: 'The Last of Us', subtitle: [{id: 'episode-label', text: 'S1 E3', role: 'context'}, {id: 'episode-title', text: 'Long, Long Time', role: 'context'}], progress: 42},
+    nana: {id: 'nana', username: 'nana_r', name: 'Nana', initial: 'N', art: 'gold', device: 'Kitchen iPad', title: 'World Tonight', subtitle: [{id: 'channel', text: 'Northwind News', role: 'context'}], progress: 50},
+    alex: {id: 'alex', username: 'alex_m', name: 'Alex', initial: 'A', art: 'rose', device: 'Pixel 8', title: 'Barbie', subtitle: [{id: 'year', text: '2023', role: 'context'}], progress: 61, problem: 'Buffering'},
+    jordan: {id: 'jordan', username: 'jordan', name: 'Kids', initial: 'K', art: 'sky', device: 'Bedroom TV', title: 'Inside Out', subtitle: [{id: 'year', text: '2015', role: 'context'}], progress: 34, conversion: 'Converting to 720p'},
+    dana: {id: 'dana', username: 'dana', name: 'dana', initial: 'D', art: 'slate', device: 'Fire TV', title: 'Reacher', subtitle: [{id: 'episode-label', text: 'S2 E5', role: 'context'}], progress: 12, conversion: 'Converting to 1080p'},
+  },
+} as const;

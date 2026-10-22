@@ -10,6 +10,7 @@ import {Select} from '../../kit/controls/Select';
 import {createArtworkRuntime} from '../../kit/artwork/source';
 import styles from '../../kit/shell/gallery.module.css';
 import activityStyles from '../../kit/shell/activity.module.css';
+import {activityR7Cases} from '../ActivityReference';
 
 const t = createI18n().t;
 const facts = [
@@ -111,6 +112,7 @@ function ActivityCase({mode = 'watching', trigger = false, initialOpen = false, 
 }
 
 const extraCases: GalleryCase[] = [
+  ...activityR7Cases,
   {id: 'profile-current', labelKey: 'next.shell.currentProfile', width: 64, height: 64, render: () => <AvatarCase current />},
   {id: 'profile-pin', labelKey: 'next.shell.protected', width: 64, height: 64, render: () => <AvatarCase locked />},
   ...([84, 168] as const).flatMap(size => [{id: `profile-${size}`, labelKey: 'next.shell.currentProfile' as const, width: size + 32, height: size + 32, render: () => <AvatarCase size={size} current={size === 84} />}, {id: `profile-${size}-pin`, labelKey: 'next.shell.protected' as const, width: size + 32, height: size + 32, render: () => <AvatarCase size={size} locked />}, {id: `profile-${size}-restricted`, labelKey: 'next.shell.currentProfile' as const, width: size + 32, height: size + 32, render: () => <AvatarCase size={size} restricted />}]),

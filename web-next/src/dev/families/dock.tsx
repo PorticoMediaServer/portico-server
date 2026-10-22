@@ -44,23 +44,23 @@ function fence(kind: Exclude<FixtureKind, 'live'>, run = 1): QueuePlaybackFence 
 function liveFence(run: number): ChannelPlaybackFence { return {kind: 'channel', channelKind: 'live-source', playback: {scope, run}, sessionId: `reference-live-${run}`, sourceId: 'reference-live-source', channelId: 'reference-live-channel', channelGeneration: 'reference-guide-1', generation: 1}; }
 function subject(kind: FixtureKind, options: Options): PlaybackSubject {
   if (kind === 'live') return {kind: 'channel', id: 'reference-live-channel', sourceId: 'reference-live-source', channelName: formatMessage(cardsFixtureMessages['next.cards.fixture.channel']), programmeTitle: formatMessage(cardsFixtureMessages['next.cards.fixture.programme']), live: true};
-  if (kind === 'music') return {kind, item: {id: 'reference-music', kind: 'song', title: f(options.layout === 'tv' ? 'next.dock.fixture.dna' : 'next.dock.fixture.song'), artist: f(options.layout === 'tv' ? 'next.dock.fixture.kendrick' : 'next.dock.fixture.artist'), album: f('next.dock.fixture.album')}};
+  if (kind === 'music') return {kind, item: {id: 'reference-music', kind: 'song', title: f(options.layout === 'tv' ? 'next.dock.fixture.dna' : options.layout === 'phone' ? 'next.dock.fixture.tooLate' : 'next.dock.fixture.song'), artist: f(options.layout === 'tv' ? 'next.dock.fixture.kendrick' : 'next.dock.fixture.artist'), album: f('next.dock.fixture.album')}};
   if (kind === 'audiobook') return {kind, item: {id: 'reference-audiobook', kind: 'book', title: f('next.dock.fixture.martian'), author: f('next.dock.fixture.weir'), chapterNumber: 15}};
-  if (options.variant === 'film') return {kind, item: {id: 'reference-video', kind: 'movie', title: f('next.dock.fixture.insideOut'), year: 2015}};
+  if ((options.variant === 'film' || options.variant === 'notice-audio' && options.layout !== 'phone')) return {kind, item: {id: 'reference-video', kind: 'movie', title: f('next.dock.fixture.insideOut'), year: 2015}};
   return {kind, item: {id: 'reference-video', kind: 'episode', title: f(options.variant === 'long' ? 'next.dock.fixture.longEpisode' : options.layout === 'phone' ? 'next.dock.fixture.failure' : options.variant === 'next' ? 'next.dock.fixture.longTime' : 'next.dock.fixture.infected'), show: {title: f(options.variant === 'long' ? 'next.dock.fixture.longShow' : options.layout === 'phone' ? 'next.dock.fixture.slow' : 'next.dock.fixture.show')}, episode: {mode: 'seasonal', season: 1, episode: options.layout === 'phone' ? 1 : options.variant === 'next' ? 3 : options.variant === 'long' ? 12 : 2}}};
 }
 const audioControls: readonly DockControl[] = ['play', 'pause', 'replay', 'previous', 'next', 'seek', 'play-on', 'volume'];
 function makePlayback(kind: FixtureKind, options: Options, run = 1): DockPlayback {
-  const state = {positionSeconds: kind === 'live' ? 950 : options.variant === 'film' ? 511 : options.variant === 'finished' ? 3186 : options.variant === 'next' ? 3 : options.variant === 'ask' || options.variant === 'auto' ? 605 : kind === 'music' ? options.layout === 'tv' ? 96 : 107 : options.layout === 'phone' || kind === 'audiobook' ? 724 : 845, playing: options.variant !== 'paused' && options.variant !== 'finished' && options.variant !== 'restored', expanded: !!options.morph};
+  const state = {positionSeconds: kind === 'live' ? 950 : (options.variant === 'film' || options.variant === 'notice-audio' && options.layout !== 'phone') ? 511 : options.variant === 'finished' ? 3186 : options.variant === 'next' ? 4 : options.variant === 'ask' || options.variant === 'auto' ? 605 : kind === 'music' ? options.layout === 'tv' ? options.expanded ? 96 : 88.8 : options.variant === 'notice-video' || options.layout === 'phone' ? 4 : 107 : kind === 'audiobook' && options.layout === 'tv' ? 1102 : options.layout === 'phone' || kind === 'audiobook' ? 724 : 845, playing: options.variant !== 'paused' && options.variant !== 'finished' && options.variant !== 'restored', expanded: !!options.morph};
   return kind === 'live' ? {...state, kind, fence: liveFence(run), queue: null} : {...state, kind, fence: fence(kind, run), queue: null};
 }
 function galleryCase(options: Options): ComponentType {
   return function DockCase() {
-    const {kind = 'video', layout = 'desktop', variant = 'default'} = options, refs = useArt(), evidence = useEvidence(), video = useRef<HTMLVideoElement | null>(null), slot = useRef<HTMLSpanElement | null>(null), full = useRef<HTMLDivElement | null>(null);
+    const {kind = 'video', layout = 'desktop', variant = 'default'} = options, refs = useArt(), evidence = useEvidence(), stage = useRef<HTMLDivElement | null>(null), video = useRef<HTMLVideoElement | null>(null), slot = useRef<HTMLSpanElement | null>(null), full = useRef<HTMLDivElement | null>(null);
     const dock = useMemo(() => {
       const model = new PlaybackDock(scope), active = makePlayback(kind, options);
-      if (variant === 'notice-audio' || variant === 'restored') model.start(makePlayback('music', {}, 2));
-      if (variant === 'notice-video') model.start(makePlayback('video', {}, 2));
+      if (variant === 'notice-audio' || variant === 'restored') model.start(makePlayback('music', {layout}, 2));
+      if (variant === 'notice-video') model.start(makePlayback('video', {layout}, 2));
       model.start(active);
       if (variant === 'restored') { model.start(makePlayback('video', {}, 3)); model.close(fence('video', 3)); }
       if (options.remote) model.beginRemote({id: 'reference-remote', kind: options.remoteKind ?? 'cast', phase: options.remote, sequence: '1', playback: active, positionSeconds: layout === 'phone' ? 1420 : options.remote === 'stopped' ? 1872 : 845}, 0);
@@ -73,15 +73,28 @@ function galleryCase(options: Options): ComponentType {
     }, [kind, layout, variant]);
     const [state, setState] = useState(dock.getSnapshot()), [tvExpanded, setTVExpanded] = useState(options.expanded ?? false), [lastAction, setLastAction] = useState<DockAction | null>(null), [count, setCount] = useState(0), [controlValues, setControlValues] = useState({shuffle: false, repeat: 'all' as 'off' | 'all' | 'one', volume: .72, muted: false});
     const p = state.remote?.playback ?? state.local ?? makePlayback(kind, options);
+    const mediaKind = state.local?.kind, mediaPosition = state.local?.positionSeconds, mediaPlaying = state.local?.playing;
+    const mediaFence = state.local ? JSON.stringify(state.local.fence) : undefined, mediaRemote = state.remote?.id;
+    useEffect(() => {
+      const element = video.current;
+      if (!element || !evidence?.videoSource || !mediaFence) return;
+      const sync = () => {
+        if (mediaRemote || (mediaKind !== 'video' && mediaKind !== 'live')) { element.pause(); return; }
+        if (Number.isFinite(element.duration) && mediaPosition !== undefined) element.currentTime = Math.min(element.duration, mediaPosition);
+        if (mediaPlaying) void element.play().catch(() => {}); else element.pause();
+      };
+      if (element.readyState) sync(); else element.addEventListener('loadedmetadata', sync, {once: true});
+      return () => element.removeEventListener('loadedmetadata', sync);
+    }, [evidence?.videoSource, mediaFence, mediaKind, mediaPosition, mediaPlaying, mediaRemote]);
     const activeKind = p.kind;
     const identity = playbackIdentity(subject(activeKind, options), 'dock', {t: defaultI18n.t});
-    const presentation: DockPresentation = {fence: p.fence, identity, artwork: evidence?.artwork ?? (activeKind === 'live' ? undefined : variant === 'film' ? refs.film : layout === 'tv' && activeKind === 'music' ? refs.tv : layout === 'phone' && activeKind === 'video' ? refs.phoneVideo : refs[activeKind]), ambient: evidence?.ambient,
-      palette: activeKind === 'live' ? undefined : {first: dockReferenceColors[activeKind], second: dockReferenceColors.ink},
-      durationSeconds: activeKind === 'live' ? undefined : variant === 'film' ? 5713 : activeKind === 'music' ? layout === 'tv' ? 185 : 211 : activeKind === 'audiobook' ? 1900 : layout === 'phone' ? 2940 : 3186,
+    const presentation: DockPresentation = {fence: p.fence, identity, artwork: evidence?.artwork ?? (activeKind === 'live' ? undefined : (activeKind === 'video' && (variant === 'film' || variant === 'notice-audio' && layout !== 'phone')) ? refs.film : layout === 'tv' && activeKind === 'music' ? refs.tv : layout === 'phone' && activeKind === 'video' ? refs.phoneVideo : refs[activeKind]), ambient: evidence?.ambient,
+      palette: activeKind === 'live' ? undefined : {first: activeKind === 'video' && (variant === 'film' || variant === 'notice-audio' && layout !== 'phone') ? dockReferenceColors.film : dockReferenceColors[activeKind], second: dockReferenceColors.ink},
+      durationSeconds: activeKind === 'live' ? undefined : (activeKind === 'video' && (variant === 'film' || variant === 'notice-audio' && layout !== 'phone')) ? 5713 : variant === 'next' ? 4580 : activeKind === 'music' ? layout === 'tv' ? 185 : layout === 'phone' ? 239 : 211 : activeKind === 'audiobook' ? 1900 : layout === 'phone' ? 2940 : 3186,
       seekWindow: activeKind === 'live' ? {startSeconds: 900, endSeconds: 1000} : undefined,
       skipBackSeconds: activeKind === 'audiobook' ? 15 : 10, skipForwardSeconds: 30, finished: variant === 'finished', ...controlValues, rate: 1.25, sleepLabel: f('next.dock.fixture.sleep'), deviceName: f('next.dock.fixture.device'),
-      album: layout === 'tv' ? [{id: 'album', text: f('next.dock.fixture.damn'), role: 'context'}, {id: 'year', text: f('next.dock.fixture.year'), role: 'supplement'}] : undefined,
-      controls: [...audioControls.filter(control => variant !== 'film' || (control !== 'previous' && control !== 'next')), ...(activeKind === 'music' ? ['shuffle', 'repeat', 'lyrics', 'queue'] as const : activeKind === 'audiobook' ? ['speed', 'sleep', 'chapters'] as const : ['subtitles-audio', 'options'] as const)]};
+      album: layout === 'tv' && activeKind === 'music' ? [{id: 'album', text: f('next.dock.fixture.damn'), role: 'context'}, {id: 'year', text: f('next.dock.fixture.year'), role: 'supplement'}] : undefined,
+      controls: [...audioControls.filter(control => !(activeKind === 'video' && (variant === 'film' || variant === 'notice-audio' && layout !== 'phone')) || (control !== 'previous' && control !== 'next')), ...(activeKind === 'music' ? ['shuffle', 'repeat', 'lyrics', 'queue'] as const : activeKind === 'audiobook' ? ['speed', 'sleep', 'chapters'] as const : ['subtitles-audio', 'options'] as const)]};
     const binding: DockBinding = {getSnapshot: dock.getSnapshot, onAction: action => {
       setLastAction(action); setCount(value => value + 1); window.dispatchEvent(new CustomEvent('portico-dock-action', {detail: action}));
       const local = dock.getSnapshot().local;
@@ -93,7 +106,7 @@ function galleryCase(options: Options): ComponentType {
       else if (action.kind === 'restore-audio') dock.restoreAudio();
       else if (action.kind === 'restore-video') dock.restoreVideo();
       else if (local && (action.kind === 'play' || action.kind === 'pause' || action.kind === 'replay' || action.kind === 'seek')) {
-        const seconds = action.kind === 'replay' ? 0 : action.kind === 'seek' ? action.seconds! : local.positionSeconds;
+        const seconds = action.kind === 'replay' ? 0 : action.kind === 'seek' ? action.seconds! : video.current && evidence?.videoSource && (local.kind === 'video' || local.kind === 'live') ? video.current.currentTime : local.positionSeconds;
         dock.update({...local, playing: action.kind === 'play' || action.kind === 'replay' ? true : action.kind === 'pause' ? false : local.playing, positionSeconds: seconds});
         if (video.current && evidence?.videoSource) { if (action.kind === 'seek' || action.kind === 'replay') video.current.currentTime = seconds; if (action.kind === 'pause') video.current.pause(); if (action.kind === 'play' || action.kind === 'replay') void video.current.play(); }
       } else if (action.kind === 'volume' && action.volume !== undefined) { setControlValues(value => ({...value, volume: action.volume!, muted: false})); if (video.current) video.current.volume = action.volume; }
@@ -103,10 +116,10 @@ function galleryCase(options: Options): ComponentType {
       setState(dock.getSnapshot());
     }};
     const bookmark = state.parkedAudio ?? state.resumeVideo;
-    const notice: DockNoticeData | null = bookmark && (variant === 'notice-audio' || variant === 'notice-video') ? {kind: state.parkedAudio ? 'paused-audio' : 'stopped-video', playback: bookmark, presentation: {...presentation, fence: bookmark.fence, identity: playbackIdentity(subject(bookmark.kind, {}), 'dock', {t: defaultI18n.t}), artwork: state.parkedAudio ? refs.music : refs.video}, changedAtMs: 0} : null;
-    return <div className={[styles.stage, layout === 'phone' && styles.phone, layout === 'tv' && styles.tv, options.morph && styles.morph].filter(Boolean).join(' ')} data-reduce-motion={options.reduced || undefined} data-last-action={lastAction?.kind} data-action-count={count} data-real-media={!!evidence?.videoSource}>
-      {<><div ref={full} className={styles.expandedSlot} /><MediaSurface expanded={!!state.local?.expanded} hidden={!state.local || !!state.remote || (state.local.kind !== 'video' && state.local.kind !== 'live')} dockSlot={slot} expandedSlot={full}><video ref={video} playsInline preload="metadata" src={evidence?.videoSource} /></MediaSurface>{options.morph && <div className={styles.morphTools}><Button size="small" onClick={() => binding.onAction({kind: state.local?.expanded ? 'collapse' : 'expand', fence: p.fence})}>{dockText(state.local?.expanded ? 'next.dock.fold' : 'next.dock.expand')}</Button></div>}</>}
-      <DockHost state={state} presentations={[presentation]} binding={binding} layout={layout} tvExpanded={tvExpanded} onTVExpandedChange={setTVExpanded} artSlotRef={slot} videoSurface className={layout === 'tv' ? styles.tvSpecimen : undefined} style={layout === 'phone' ? {bottom: options.web ? 64 : options.morph || variant.startsWith('notice-') ? 92 : 0} : undefined} />
+    const notice: DockNoticeData | null = bookmark && (variant === 'notice-audio' || variant === 'notice-video') ? {kind: state.parkedAudio ? 'paused-audio' : 'stopped-video', playback: bookmark, presentation: {...presentation, fence: bookmark.fence, identity: playbackIdentity(subject(bookmark.kind, {layout}), 'dock', {t: defaultI18n.t}), artwork: state.parkedAudio ? refs.music : refs.video}, changedAtMs: 0} : null;
+    return <div ref={stage} tabIndex={layout === 'tv' ? -1 : undefined} className={[styles.stage, layout === 'phone' && styles.phone, layout === 'tv' && styles.tv, options.morph && styles.morph].filter(Boolean).join(' ')} data-reduce-motion={options.reduced || undefined} data-last-action={lastAction?.kind} data-action-count={count} data-real-media={!!evidence?.videoSource} data-local-kind={state.local?.kind} data-local-playing={state.local?.playing} data-local-position={state.local?.positionSeconds} data-local-expanded={state.local?.expanded}>
+      {<><div ref={full} className={styles.expandedSlot} /><MediaSurface finished={variant === 'finished'} expanded={!!state.local?.expanded} hidden={!state.local || !!state.remote || (state.local.kind !== 'video' && state.local.kind !== 'live')} dockSlot={slot} expandedSlot={full}><video ref={video} playsInline preload="metadata" src={evidence?.videoSource} /></MediaSurface>{options.morph && <div className={styles.morphTools}><Button size="small" onClick={() => binding.onAction({kind: state.local?.expanded ? 'collapse' : 'expand', fence: p.fence})}>{dockText(state.local?.expanded ? 'next.dock.fold' : 'next.dock.expand')}</Button></div>}</>}
+      <DockHost state={state} presentations={[presentation]} binding={binding} layout={layout} tvReturnFocusRef={stage} tvExpanded={tvExpanded} onTVExpandedChange={setTVExpanded} artSlotRef={slot} videoSurface className={layout === 'tv' ? styles.tvSpecimen : undefined} style={layout === 'phone' ? {bottom: options.web ? 64 : options.morph || variant.startsWith('notice-') ? 92 : 0} : undefined} />
       <DockNotice notice={notice} binding={binding} nowMs={500} phone={layout === 'phone'} />
       <output className={styles.result} data-remote-sequence={state.remote?.sequence} />
     </div>;
@@ -116,11 +129,11 @@ const cases: GalleryCase[] = [];
 function add(id: string, labelKey: GalleryCase['labelKey'], options: Options, width = options.layout === 'phone' ? 390 : options.layout === 'tv' ? options.expanded ? 700 : 440 : 1440, height = options.layout === 'phone' ? options.morph ? 844 : 62 : options.layout === 'tv' ? options.expanded ? 470 : 84 : options.morph ? 900 : options.variant?.startsWith('notice-') ? 220 : 92) { cases.push({id, labelKey, width, height, render: galleryCase(options)}); }
 add('desktop-video', 'next.dock.case.video', {});
 add('desktop-live', 'next.kit.live', {kind: 'live'});
-add('desktop-video-hover', 'next.dock.case.hover', {});
+add('desktop-video-hover', 'next.dock.case.hover', {}, 1440, 132);
 add('desktop-intro-ask', 'next.dock.case.ask', {variant: 'ask'});
 add('desktop-intro-auto', 'next.dock.case.automatic', {variant: 'auto'});
-add('desktop-next', 'next.dock.case.next', {variant: 'next'});
-add('desktop-finished', 'next.dock.case.finished', {variant: 'finished'});
+add('desktop-next', 'next.dock.case.next', {variant: 'next'}, 1360);
+add('desktop-finished', 'next.dock.case.finished', {variant: 'finished'}, 1360);
 add('desktop-music', 'next.dock.case.music', {kind: 'music'});
 add('desktop-music-paused', 'next.dock.case.paused', {kind: 'music', variant: 'paused'});
 add('desktop-audiobook', 'next.dock.case.audiobook', {kind: 'audiobook'});
@@ -131,7 +144,7 @@ add('desktop-long', 'next.dock.case.long', {variant: 'long'});
 add('desktop-film', 'next.dock.case.video', {variant: 'film'});
 for (const remoteKind of ['cast', 'play-on'] as const) for (const phase of ['connecting', 'pairing', 'waiting', 'playing', 'stopped', 'replaced', 'error'] as const) {
   const labelKey = phase === 'pairing' ? 'next.dock.case.connecting' : `next.dock.case.${phase}` as DockMessageId;
-  add(`desktop-${remoteKind}-${phase}`, labelKey, {remote: phase, remoteKind});
+  add(`desktop-${remoteKind}-${phase}`, labelKey, {remote: phase, remoteKind}, 1360);
   add(`phone-${remoteKind}-${phase}`, labelKey, {layout: 'phone', remote: phase, remoteKind});
 }
 add('phone-video', 'next.dock.case.video', {layout: 'phone'});
