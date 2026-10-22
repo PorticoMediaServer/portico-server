@@ -5,9 +5,14 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/url"
+	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/recordingaccess"
 	"strconv"
+	"strings"
 	"time"
 
 	"portico.local/server/internal/identity"
@@ -153,6 +158,7 @@ func (d Dependencies) guideDeliveryAvailability() (bool, string) {
 }
 
 func (d Dependencies) guideDirectoryRoutes(mux *http.ServeMux, store *livechannels.Store, handle func(bool, func(context.Context, http.ResponseWriter, *http.Request, identity.Principal) (any, error)) http.HandlerFunc) {
+	d.guideFeatureRoutes(mux, store, handle)
 	d.httpHandle(mux, "GET /v1/guide/channels", handle(false, func(ctx context.Context, _ http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := directoryQuery(r.URL.Query())
 		if err != nil {
@@ -170,7 +176,7 @@ func (d Dependencies) guideDirectoryRoutes(mux *http.ServeMux, store *livechanne
 		if err != nil {
 			return nil, err
 		}
-		if err = d.annotateDirectory(ctx, directory.Channels); err != nil {
+		if err = d.annotateViewerDirectory(ctx, p, directory.Channels); err != nil {
 			return nil, err
 		}
 		_, current, err := d.viewerRestrictions(r, p)
@@ -207,7 +213,14 @@ func (d Dependencies) guideDirectoryRoutes(mux *http.ServeMux, store *livechanne
 		available, reason := d.guideDeliveryAvailability()
 		for i := range summary.Sources {
 			s := &summary.Sources[i]
-			s.RecordAvailable = s.Provenance == livechannels.LiveSource && d.DVR != nil && d.DVR.CaptureAvailable()
+			s.RecordAvailable = false
+			if s.Provenance == livechannels.LiveSource {
+				channels := []livechannels.Channel{{SourceID: s.ID, Provenance: s.Provenance, Generation: s.Generation}}
+				if err = d.annotateViewerDirectory(ctx, p, channels); err != nil {
+					return nil, err
+				}
+				s.RecordAvailable = channels[0].RecordAvailable
+			}
 			if !available {
 				s.UnavailableReasons[reason] = s.ChannelCount
 			}
@@ -221,4 +234,216 @@ func (d Dependencies) guideDirectoryRoutes(mux *http.ServeMux, store *livechanne
 		}
 		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "viewerFence": summary.ViewerFence, "revision": summary.Revision, "sources": summary.Sources}, nil
 	}))
+}
+
+func (d Dependencies) guideFeatureRoutes(mux *http.ServeMux, store *livechannels.Store, handle func(bool, func(context.Context, http.ResponseWriter, *http.Request, identity.Principal) (any, error)) http.HandlerFunc) {
+	for _, route := range []string{"on-now", "now-next"} {
+		onNow := route == "on-now"
+		d.httpHandle(mux, "GET /v1/guide/"+route, handle(false, func(ctx context.Context, _ http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+			q := r.URL.Query()
+			for k, v := range q {
+				if len(v) != 1 || !strings.Contains("|kind|sourceId|group|cursor|limit|", "|"+k+"|") {
+					return nil, livechannels.ErrInvalid
+				}
+			}
+			query := livechannels.DirectoryQuery{Kind: q.Get("kind"), SourceID: q.Get("sourceId"), Group: q.Get("group"), Limit: 37}
+			if query.Kind == "" {
+				query.Kind = "all"
+			}
+			if q.Has("limit") {
+				n, e := strconv.Atoi(q.Get("limit"))
+				if e != nil {
+					return nil, livechannels.ErrInvalid
+				}
+				query.Limit = n
+			}
+			restrictions, fence, e := d.viewerRestrictions(r, p)
+			if e != nil {
+				return nil, e
+			}
+			read := func(ctx context.Context, gq livechannels.GuideQuery) (livechannels.Guide, error) {
+				gq.Viewer = channelSubject(p)
+				if restrictions.Active() {
+					gq.ProgrammeAllowed = func(rating string) bool { return catalog.RatingAllowed(restrictions, rating) }
+				}
+				if gq.Kind == livechannels.LibraryChannel {
+					if d.LibraryChannels == nil {
+						return livechannels.Guide{}, livechannels.ErrUnavailable
+					}
+					return d.LibraryChannels.Guide(ctx, d.libraryAuthority(p), gq, store.ContinuationKey("library-guide-v1"))
+				}
+				guide, err := store.Guide(ctx, d.liveAuthority(p), gq)
+				if err == nil && d.DVR != nil && d.featureAllowed(ctx, p, "dvr") == nil {
+					err = d.DVR.AnnotateGuide(ctx, d.liveAuthority(p), channelSubject(p), &guide)
+				}
+				return guide, err
+			}
+			page, e := store.NowNextPage(ctx, d.guideDirectoryAuthority(p, fence), read, livechannels.GuidePageQuery{Directory: query, Cursor: q.Get("cursor"), OnNow: onNow})
+			if e != nil {
+				return nil, e
+			}
+			if e = d.annotateViewerDirectory(ctx, p, page.Channels); e != nil {
+				return nil, e
+			}
+			_, after, e := d.viewerRestrictions(r, p)
+			if e != nil {
+				return nil, e
+			}
+			if after != fence {
+				return nil, livechannels.ErrCursor
+			}
+			return struct {
+				ProtocolVersion string                 `json:"protocolVersion"`
+				ServerID        string                 `json:"serverId"`
+				Page            livechannels.GuidePage `json:"page"`
+			}{"1.0", d.Identity.ID(), page}, nil
+		}))
+	}
+	d.httpHandle(mux, "GET /v1/guide/airings", handle(false, func(ctx context.Context, _ http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+		q := r.URL.Query()
+		for k, v := range q {
+			if len(v) != 1 || !strings.Contains("|search|seriesId|title|channelId|sourceId|kind|start|end|cursor|limit|", "|"+k+"|") {
+				return nil, livechannels.ErrInvalid
+			}
+		}
+		query := livechannels.AiringsQuery{Search: q.Get("search"), SeriesID: q.Get("seriesId"), Title: q.Get("title"), ChannelID: q.Get("channelId"), SourceID: q.Get("sourceId"), Kind: q.Get("kind"), Cursor: q.Get("cursor"), Limit: 30}
+		var e error
+		query.Start, e = time.Parse(time.RFC3339, q.Get("start"))
+		if e != nil {
+			return nil, livechannels.ErrInvalid
+		}
+		query.End, e = time.Parse(time.RFC3339, q.Get("end"))
+		if e != nil {
+			return nil, livechannels.ErrInvalid
+		}
+		if q.Has("limit") {
+			query.Limit, e = strconv.Atoi(q.Get("limit"))
+			if e != nil {
+				return nil, livechannels.ErrInvalid
+			}
+		}
+		restrictions, fence, e := d.viewerRestrictions(r, p)
+		if e != nil {
+			return nil, e
+		}
+		if restrictions.Active() {
+			query.ProgrammeAllowed = func(rating string) bool { return catalog.RatingAllowed(restrictions, rating) }
+		}
+		page, e := store.Airings(ctx, d.guideDirectoryAuthority(p, fence), d.airingProjection(p), query)
+		if e != nil {
+			return nil, e
+		}
+		_, after, e := d.viewerRestrictions(r, p)
+		if e != nil {
+			return nil, e
+		}
+		if after != fence {
+			return nil, livechannels.ErrCursor
+		}
+		return struct {
+			ProtocolVersion string                   `json:"protocolVersion"`
+			ServerID        string                   `json:"serverId"`
+			Airings         livechannels.AiringsPage `json:"airings"`
+		}{"1.0", d.Identity.ID(), page}, nil
+	}))
+	for _, method := range []string{"GET", "PUT", "DELETE"} {
+		pattern := method + " /v1/guide/reminders"
+		if method == "DELETE" {
+			pattern += "/{id}"
+		}
+		d.httpHandle(mux, pattern, handle(false, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+			restrictions, fence, e := d.viewerRestrictions(r, p)
+			if e != nil {
+				return nil, e
+			}
+			predicate := func(rating string) bool { return catalog.RatingAllowed(restrictions, rating) }
+			a := d.guideDirectoryAuthority(p, fence)
+			var result any
+			if r.Method == "GET" {
+				q := r.URL.Query()
+				for k, v := range q {
+					if len(v) != 1 || k != "cursor" && k != "limit" {
+						return nil, livechannels.ErrInvalid
+					}
+				}
+				limit := 30
+				if q.Has("limit") {
+					limit, e = strconv.Atoi(q.Get("limit"))
+					if e != nil {
+						return nil, livechannels.ErrInvalid
+					}
+				}
+				result, e = store.Reminders(ctx, a, d.airingProjection(p), q.Get("cursor"), limit, predicate)
+			} else {
+				if r.URL.RawQuery != "" {
+					return nil, livechannels.ErrInvalid
+				}
+				if r.Method == "PUT" {
+					var in livechannels.ReminderInput
+					if e = liveDecode(w, r, &in, 4096); e != nil {
+						return nil, e
+					}
+					result, e = store.SaveReminder(ctx, a, d.airingProjection(p), in, predicate)
+				} else {
+					var in struct {
+						ExpectedRevision int64 `json:"expectedRevision"`
+					}
+					if e = liveDecode(w, r, &in, 4096); e != nil {
+						return nil, e
+					}
+					e = store.DeleteReminder(ctx, a, r.PathValue("id"), in.ExpectedRevision)
+					result = map[string]bool{"deleted": e == nil}
+				}
+			}
+			if e != nil {
+				return nil, e
+			}
+			_, after, e := d.viewerRestrictions(r, p)
+			if e != nil {
+				return nil, e
+			}
+			if after != fence {
+				return nil, livechannels.ErrCursor
+			}
+			return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "result": result}, nil
+		}))
+	}
+}
+func (d Dependencies) airingProjection(p identity.Principal) livechannels.AiringProjection {
+	return func(ctx context.Context, tx *sql.Tx, v []livechannels.Airing) ([]livechannels.Airing, error) {
+		if d.LibraryChannels == nil {
+			return nil, livechannels.ErrDenied
+		}
+		return d.LibraryChannels.ProjectAiringsTx(ctx, tx, d.libraryAuthority(p), v)
+	}
+}
+
+// Source presence and a running capture adapter do not grant recording rights.
+func (d Dependencies) annotateViewerDirectory(ctx context.Context, p identity.Principal, channels []livechannels.Channel) error {
+	if e := d.annotateDirectory(ctx, channels); e != nil {
+		return e
+	}
+	gate, e := dbwork.BeginSnapshot(ctx, d.DB)
+	if e != nil {
+		return e
+	}
+	defer gate.Rollback()
+	policy := recordingaccess.Policy{}
+	if d.Hosted != nil {
+		policy.Cached = d.Hosted
+	}
+	for i := range channels {
+		ch := &channels[i]
+		if !ch.RecordAvailable {
+			continue
+		}
+		e = policy.Durable(ctx, gate.Tx(), channelSubject(p), ch.SourceID, ch.ID)
+		if errors.Is(e, livechannels.ErrDenied) {
+			ch.RecordAvailable = false
+			ch.RecordUnavailableReason = "recording-not-permitted"
+		} else if e != nil {
+			return e
+		}
+	}
+	return nil
 }

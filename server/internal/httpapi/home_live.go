@@ -103,7 +103,7 @@ func (d Dependencies) homeOnNow(r *http.Request, p identity.Principal, page cata
 	if page.Revision != "" && page.Revision != directory.Revision {
 		return out, catalog.ErrStaleContinuation
 	}
-	if err = d.annotateDirectory(r.Context(), directory.Channels); err != nil {
+	if err = d.annotateViewerDirectory(r.Context(), p, directory.Channels); err != nil {
 		return out, err
 	}
 	at := time.Unix(cursor.At, 0).UTC()

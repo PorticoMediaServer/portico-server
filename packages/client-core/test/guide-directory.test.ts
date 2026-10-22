@@ -107,3 +107,14 @@ test('neighbor retries one stale revision and unknown anchors never trigger lega
  const value={protocolVersion:'1.0',serverId:'s',directory:{viewerFence:'f',revision:'r',total:1,offset:1,limit:1,channels:[],sources:[]}};
  assert.throws(()=>parseGuideDirectory(value,'s',undefined,1));
 });
+
+test('programme airings keep real live flags and episode facts, bound pages and cancel the entire viewer on refusal',async()=>{
+ const {GuideFeatureClient,parseGuideAirings}=await import('../src/guide/directory.ts');
+ const p={id:'p',channelId:'c',title:'Show',subtitle:'Episode name',start:'2026-10-09T12:00:00Z',end:'2026-10-09T13:00:00Z',lineage:'interval-only',newEvidence:'unknown',flags:{live:false,new:false,premiere:false,repeat:false},categories:['Live'],image:'/v1/items/item/art/poster'};
+ const a={channel:{id:'c',sourceId:'s',generation:'g',provenance:'live-source',name:'Channel',number:'1',group:'News',privateURL:'secret'},programme:p};
+ const page={groups:[{key:'title:show',title:'Show',airings:[a]}],nextCursor:'next',revision:'r',viewerFence:'f',start:'2026-10-09T00:00:00Z',end:'2026-10-10T00:00:00Z',timezone:'UTC',today:'2026-10-09'};
+ const parsed=parseGuideAirings(page);assert.equal(parsed.groups[0].airings[0].programme.flags?.live,false,'a Live category is never a live flag');assert.equal(parsed.groups[0].airings[0].programme.subtitle,'Episode name');assert.ok(!JSON.stringify(parsed).includes('secret'));
+ assert.throws(()=>parseGuideAirings({...page,groups:[{...page.groups[0],airings:Array(51).fill(a)}]}));
+ const api:ChannelApi={async request(){throw {status:403}}};const client=new GuideFeatureClient(api,'server');await assert.rejects(client.airings({start:page.start,end:page.end,search:'Episode'}));await assert.rejects(client.reminders());
+ const foreign=new GuideFeatureClient({async request<T>(){return {protocolVersion:'1.0',serverId:'foreign',airings:page} as T}},'server');await assert.rejects(foreign.airings({start:page.start,end:page.end}));foreign.dispose();
+});

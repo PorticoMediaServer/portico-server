@@ -1823,6 +1823,9 @@ dvr_private_libraries.account_id
 dvr_private_libraries.authority
 dvr_private_libraries.library_id
 dvr_private_libraries.profile_id
+dvr_programme_images.digest
+dvr_programme_images.recording_id
+dvr_programme_images.url
 dvr_receipts.created_ms
 dvr_receipts.digest
 dvr_receipts.owner_key
@@ -1891,6 +1894,8 @@ dvr_rules.config_json
 dvr_rules.deleted
 dvr_rules.enabled
 dvr_rules.id
+dvr_rules.match_channel
+dvr_rules.match_title
 dvr_rules.owner_key
 dvr_rules.profile_id
 dvr_rules.revision
@@ -2456,6 +2461,15 @@ live_programmes.lineage
 live_programmes.provider_key
 live_programmes.start_utc
 live_programmes.title
+live_reminders.channel_id
+live_reminders.generation_id
+live_reminders.id
+live_reminders.kind
+live_reminders.owner_key
+live_reminders.programme_id
+live_reminders.revision
+live_reminders.source_id
+live_reminders.start_utc
 live_remote_configs.error_code
 live_remote_configs.failures
 live_remote_configs.lease_token

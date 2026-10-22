@@ -11,6 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"database/sql"
+	"portico.local/server/internal/access"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/livechannels/dvr"
@@ -66,6 +69,11 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 				dvrFailure(w, dvr.ErrUnavailable)
 				return
 			}
+			_, before, e := d.viewerRestrictions(r, p)
+			if e != nil {
+				dvrFailure(w, e)
+				return
+			}
 			result, e := fn(ctx, p, r)
 			if e != nil {
 				dvrFailure(w, e)
@@ -76,13 +84,88 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 				dvrFailure(w, identity.ErrUnauthorized)
 				return
 			}
+			_, after, e := d.viewerRestrictions(r, p)
+			if e != nil {
+				dvrFailure(w, e)
+				return
+			}
+			if before != after {
+				dvrFailure(w, livechannels.ErrCursor)
+				return
+			}
 			write(w, 200, map[string]any{"protocolVersion": dvr.Version, "serverId": d.Identity.ID(), "result": result})
 		}
 	}
+	d.httpHandle(mux, "GET /v1/dvr/summary", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+		if r.URL.RawQuery != "" {
+			return nil, dvr.ErrInvalid
+		}
+		if e := d.featureAllowed(ctx, p, "live_tv"); e != nil {
+			return nil, e
+		}
+		return d.DVR.Summary(ctx, d.dvrAuthority(p), channelSubject(p))
+	}))
+	d.httpHandle(mux, "GET /v1/dvr/groups", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+		if e := d.featureAllowed(ctx, p, "live_tv"); e != nil {
+			return nil, e
+		}
+		q := r.URL.Query()
+		for k, v := range q {
+			if len(v) != 1 || k != "sort" && k != "cursor" && k != "limit" {
+				return nil, dvr.ErrInvalid
+			}
+		}
+		limit := 30
+		if q.Has("limit") {
+			n, e := strconv.Atoi(q.Get("limit"))
+			if e != nil {
+				return nil, dvr.ErrInvalid
+			}
+			limit = n
+		}
+		return d.DVR.Groups(ctx, d.dvrAuthority(p), channelSubject(p), q.Get("sort"), q.Get("cursor"), limit)
+	}))
+	d.httpHandle(mux, "GET /v1/dvr/recordings/{id}/image", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		p, e := d.channelPrincipal(r.Context(), r, false)
+		if e != nil {
+			dvrFailure(w, e)
+			return
+		}
+		if d.DVR == nil || d.Administration == nil {
+			dvrFailure(w, dvr.ErrUnavailable)
+			return
+		}
+		digest, e := d.DVR.ImageDigest(r.Context(), d.dvrAuthority(p), channelSubject(p), r.PathValue("id"))
+		if e != nil {
+			dvrFailure(w, e)
+			return
+		}
+		raw, mime, e := d.Administration.GuideImageBytes(r.Context(), digest)
+		if e != nil {
+			dvrFailure(w, e)
+			return
+		}
+		current, e := d.channelPrincipal(r.Context(), r, false)
+		if e != nil || current != p {
+			dvrFailure(w, dvr.ErrDenied)
+			return
+		}
+		again, e := d.DVR.ImageDigest(r.Context(), d.dvrAuthority(p), channelSubject(p), r.PathValue("id"))
+		if e != nil || again != digest {
+			dvrFailure(w, dvr.ErrDenied)
+			return
+		}
+		w.Header().Set("Content-Type", mime)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(200)
+		_, _ = w.Write(raw)
+	})
+
 	d.httpHandle(mux, "GET /v1/dvr", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		q := r.URL.Query()
 		for k, v := range q {
-			if (k != "state" && k != "cursor" && k != "limit") || len(v) != 1 {
+			if (k != "state" && k != "cursor" && k != "limit" && k != "sort" && k != "group") || len(v) != 1 {
 				return nil, dvr.ErrInvalid
 			}
 		}
@@ -98,7 +181,7 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 				return nil, dvr.ErrInvalid
 			}
 		}
-		return d.DVR.List(ctx, d.liveAuthority(p), channelSubject(p), dvr.Query{State: state, Cursor: q.Get("cursor"), Limit: limit})
+		return d.DVR.List(ctx, d.dvrAuthority(p), channelSubject(p), dvr.Query{State: state, Cursor: q.Get("cursor"), Limit: limit, Sort: q.Get("sort"), Group: q.Get("group")})
 	}))
 	d.httpHandle(mux, "GET /v1/dvr/recordings/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		for k, v := range r.URL.Query() {
@@ -106,7 +189,7 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 				return nil, dvr.ErrInvalid
 			}
 		}
-		return d.DVR.Detail(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), r.URL.Query().Get("after"))
+		return d.DVR.Detail(ctx, d.dvrAuthority(p), channelSubject(p), r.PathValue("id"), r.URL.Query().Get("after"))
 	}))
 	d.httpHandle(mux, "GET /v1/dvr/channels", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		for k, v := range r.URL.Query() {
@@ -115,7 +198,7 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 			}
 		}
 		q := r.URL.Query()
-		return d.DVR.ChannelChoices(ctx, d.liveAuthority(p), channelSubject(p), q.Get("sourceId"), q.Get("search"), q.Get("cursor"))
+		return d.DVR.ChannelChoices(ctx, d.dvrAuthority(p), channelSubject(p), q.Get("sourceId"), q.Get("search"), q.Get("cursor"))
 	}))
 	d.httpHandle(mux, "POST /v1/dvr/recordings", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var body struct {
@@ -131,45 +214,45 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 		if body.Options != nil {
 			in.Options = *body.Options
 		}
-		return d.DVR.Schedule(ctx, d.liveAuthority(p), channelSubject(p), in)
+		return d.DVR.Schedule(ctx, d.dvrAuthority(p), channelSubject(p), in)
 	}))
 	d.httpHandle(mux, "PATCH /v1/dvr/recordings/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.UpdateInput
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
-		return d.DVR.Update(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), in)
+		return d.DVR.Update(ctx, d.dvrAuthority(p), channelSubject(p), r.PathValue("id"), in)
 	}))
 	d.httpHandle(mux, "POST /v1/dvr/recordings/{id}/cancel", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.Mutation
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
-		return d.DVR.Cancel(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), in)
+		return d.DVR.Cancel(ctx, d.dvrAuthority(p), channelSubject(p), r.PathValue("id"), in)
 	}))
 	d.httpHandle(mux, "PUT /v1/dvr/recordings/{id}/keep", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.KeepInput
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
-		return d.DVR.SetKeep(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), in)
+		return d.DVR.SetKeep(ctx, d.dvrAuthority(p), channelSubject(p), r.PathValue("id"), in)
 	}))
 	d.httpHandle(mux, "GET /v1/dvr/recordings/{id}/delete-preview", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
-		return d.DVR.PreviewDelete(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"))
+		return d.DVR.PreviewDelete(ctx, d.dvrAuthority(p), channelSubject(p), r.PathValue("id"))
 	}))
 	d.httpHandle(mux, "DELETE /v1/dvr/recordings/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.Mutation
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
-		return d.DVR.Delete(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), in)
+		return d.DVR.Delete(ctx, d.dvrAuthority(p), channelSubject(p), r.PathValue("id"), in)
 	}))
 	d.httpHandle(mux, "POST /v1/dvr/rules/preview", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.RuleConfig
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
-		return d.DVR.PreviewRule(ctx, d.liveAuthority(p), channelSubject(p), in)
+		return d.DVR.PreviewRule(ctx, d.dvrAuthority(p), channelSubject(p), in)
 	}))
 	d.httpHandle(mux, "PUT /v1/dvr/rules/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.RuleInput
@@ -179,25 +262,25 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 		if in.ID != r.PathValue("id") {
 			return nil, dvr.ErrInvalid
 		}
-		return d.DVR.SaveRule(ctx, d.liveAuthority(p), channelSubject(p), in)
+		return d.DVR.SaveRule(ctx, d.dvrAuthority(p), channelSubject(p), in)
 	}))
 	d.httpHandle(mux, "DELETE /v1/dvr/rules/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.DeleteRuleInput
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
-		e := d.DVR.DeleteRule(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), in)
+		e := d.DVR.DeleteRule(ctx, d.dvrAuthority(p), channelSubject(p), r.PathValue("id"), in)
 		return map[string]bool{"deleted": e == nil}, e
 	}))
 	d.httpHandle(mux, "GET /v1/dvr/storage", wrap(true, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
-		return d.DVR.StorageStatus(ctx, d.liveAuthority(p))
+		return d.DVR.StorageStatus(ctx, d.dvrAuthority(p))
 	}))
 	d.httpHandle(mux, "PUT /v1/dvr/storage", wrap(true, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.StoragePolicyInput
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
-		return d.DVR.SetStoragePolicy(ctx, d.liveAuthority(p), channelSubject(p), in)
+		return d.DVR.SetStoragePolicy(ctx, d.dvrAuthority(p), channelSubject(p), in)
 	}))
 }
 
@@ -227,4 +310,25 @@ func liveBody(r *http.Request, value any) error {
 		return dvr.ErrInvalid
 	}
 	return nil
+}
+
+func (d Dependencies) dvrAuthority(p identity.Principal) livechannels.Authority {
+	return func(ctx context.Context, tx *sql.Tx, owner bool) (string, func(string, string) bool, error) {
+		fence, allowed, e := d.liveAuthority(p)(ctx, tx, owner)
+		if e != nil {
+			return "", nil, e
+		}
+		policy, e := identity.RestrictionsForViewerTx(ctx, tx, p.Viewer)
+		if e != nil {
+			return "", nil, e
+		}
+		if !policy.AllowDVR {
+			return "", nil, livechannels.ErrDenied
+		}
+		content, e := access.ContentLimitsTx(ctx, tx, p.AccountID, policy.Content())
+		if e != nil {
+			return "", nil, e
+		}
+		return fence + ":" + catalog.RestrictionFence(content), allowed, nil
+	}
 }

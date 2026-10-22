@@ -20,7 +20,7 @@ import (
 // Guide uses the same consumer DTO/window model, but never shares a tuner source.
 func (s *Store) Guide(ctx context.Context, a Authority, q livechannels.GuideQuery, key []byte) (livechannels.Guide, error) {
 	out := livechannels.Guide{Sources: []livechannels.GuideSource{}, Channels: []livechannels.Channel{}, Timezone: q.Timezone, Start: q.Start.UTC().Format(time.RFC3339), End: q.End.UTC().Format(time.RFC3339), ObservedAt: s.now().UTC().Format(time.RFC3339)}
-	if q.Kind != livechannels.LibraryChannel || q.Start.IsZero() || !q.End.After(q.Start) || q.End.Sub(q.Start) > 24*time.Hour || q.Limit < 1 || q.Limit > 50 || len(q.ChannelIDs) > 50 || len(q.Group) > 120 || len(q.Search) > 120 || len(key) < 32 {
+	if q.Kind != livechannels.LibraryChannel || q.Start.IsZero() || !q.End.After(q.Start) || (!q.Compact && q.End.Sub(q.Start) > 24*time.Hour || q.End.Sub(q.Start) > 14*24*time.Hour) || q.Limit < 1 || q.Limit > 50 || len(q.ChannelIDs) > 50 || len(q.Group) > 120 || len(q.Search) > 120 || len(key) < 32 {
 		return out, ErrInvalid
 	}
 	if _, e := time.LoadLocation(q.Timezone); e != nil {
@@ -137,7 +137,19 @@ func (s *Store) Guide(ctx context.Context, a Authority, q livechannels.GuideQuer
 				args = append(args, g)
 			}
 			args = append(args, q.End.UnixMilli(), q.Start.UnixMilli())
-			rows, e := tx.QueryContext(ctx, `SELECT occurrence_id,channel_id,start_ms,end_ms,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=lc_entries.item_id),''),asset_id,library_id,source_fence,title,rule_id,block_id,source_offset_ms,slate_reason,generation_id FROM lc_entries WHERE generation_id IN (`+marks+`) AND start_ms<? AND end_ms>? ORDER BY generation_id,start_ms`, args...)
+			query := `SELECT occurrence_id,channel_id,start_ms,end_ms,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=lc_entries.item_id),''),asset_id,library_id,source_fence,title,rule_id,block_id,source_offset_ms,slate_reason,generation_id FROM lc_entries WHERE generation_id IN (` + marks + `) AND start_ms<? AND end_ms>? ORDER BY generation_id,start_ms`
+			if q.Compact {
+				query = ""
+				args = []any{}
+				for _, p := range page {
+					if query != "" {
+						query += " UNION ALL "
+					}
+					query += `SELECT * FROM (SELECT occurrence_id,channel_id,start_ms,end_ms,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=lc_entries.item_id),''),asset_id,library_id,source_fence,title,rule_id,block_id,source_offset_ms,slate_reason,generation_id FROM lc_entries WHERE generation_id=? AND start_ms<? AND end_ms>? ORDER BY start_ms LIMIT 3)`
+					args = append(args, p.channel.Generation, q.End.UnixMilli(), q.Start.UnixMilli())
+				}
+			}
+			rows, e := tx.QueryContext(ctx, query, args...)
 			if e != nil {
 				return unavailable(e)
 			}
@@ -539,4 +551,61 @@ func (s *Store) CheckRetainedTx(ctx context.Context, tx *sql.Tx, scope Scope, id
 		return Config{}, e
 	}
 	return c.Config, nil
+}
+
+// ProjectAiringsTx is the guide's item-level admission seam for programme
+// Search. It runs in the caller's directory snapshot; denied entries are omitted.
+func (s *Store) ProjectAiringsTx(ctx context.Context, tx *sql.Tx, a Authority, values []livechannels.Airing) ([]livechannels.Airing, error) {
+	scope, e := a(ctx, tx, false)
+	if e != nil {
+		return nil, e
+	}
+	out := []livechannels.Airing{}
+	for _, v := range values {
+		if v.Channel.Provenance != livechannels.LibraryChannel {
+			out = append(out, v)
+			continue
+		}
+		c, e := readChannel(ctx, tx, v.Channel.ID)
+		if e != nil {
+			return nil, e
+		}
+		if !scope.permits(c.Config) || c.Generation != v.Channel.Generation {
+			continue
+		}
+		entries, e := entriesWindow(ctx, tx, c.Generation, mustAiringTime(v.Programme.Start), mustAiringTime(v.Programme.End), 4)
+		if e != nil {
+			return nil, e
+		}
+		for _, entry := range entries {
+			if entry.ID != v.Programme.ID {
+				continue
+			}
+			access, e := windowAccess(ctx, tx, scope, []Entry{entry})
+			if e != nil {
+				return nil, e
+			}
+			if access(entry) != "" {
+				continue
+			}
+			programmes := []livechannels.Programme{v.Programme}
+			if e = libraryFacts(ctx, tx, programmes, map[string]string{v.Programme.ID: entry.ItemID}); e != nil {
+				return nil, e
+			}
+			v.Programme = programmes[0]
+			out = append(out, v)
+		}
+	}
+	current, e := a(ctx, tx, false)
+	if e != nil {
+		return nil, e
+	}
+	if current.Fence != scope.Fence {
+		return nil, livechannels.ErrCursor
+	}
+	return out, nil
+}
+func mustAiringTime(raw string) int64 {
+	v, _ := time.Parse(time.RFC3339Nano, raw)
+	return v.UnixMilli()
 }

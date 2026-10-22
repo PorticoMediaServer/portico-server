@@ -9,8 +9,58 @@ import (
 )
 
 func registerLiveHTTPContracts(registry *apikit.Registry) error {
+	if err := apikit.RegisterHTTP[struct{}, struct {
+		ProtocolVersion string                 `json:"protocolVersion"`
+		ServerID        string                 `json:"serverId"`
+		Value           livechannels.GuidePage `json:"page"`
+	}](registry, apikit.Metadata{ID: "get_guide_on_now", Method: "GET", Path: "/v1/guide/on-now", Summary: "Read guide on-now", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"kind", "sourceId", "group", "cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+		return err
+	}
+
+	if err := apikit.RegisterHTTP[struct{}, struct {
+		ProtocolVersion string                 `json:"protocolVersion"`
+		ServerID        string                 `json:"serverId"`
+		Value           livechannels.GuidePage `json:"page"`
+	}](registry, apikit.Metadata{ID: "get_guide_now_next", Method: "GET", Path: "/v1/guide/now-next", Summary: "Read guide now-next", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"kind", "sourceId", "group", "cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+		return err
+	}
+
+	if err := apikit.RegisterHTTP[struct{}, struct {
+		ProtocolVersion string                   `json:"protocolVersion"`
+		ServerID        string                   `json:"serverId"`
+		Value           livechannels.AiringsPage `json:"airings"`
+	}](registry, apikit.Metadata{ID: "get_guide_airings", Method: "GET", Path: "/v1/guide/airings", Summary: "Read guide airings", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"search", "seriesId", "title", "channelId", "sourceId", "kind", "start", "end", "cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+		return err
+	}
+
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[livechannels.ReminderPage]](registry, apikit.Metadata{ID: "get_guide_reminders", Method: "GET", Path: "/v1/guide/reminders", Summary: "Get guide reminders", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 0, Query: []string{"cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+		return err
+	}
+
+	if err := apikit.RegisterHTTP[livechannels.ReminderInput, LiveOwnerResult[livechannels.Reminder]](registry, apikit.Metadata{ID: "put_guide_reminders", Method: "PUT", Path: "/v1/guide/reminders", Summary: "Put guide reminders", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 4096, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+		return err
+	}
+
+	if err := apikit.RegisterHTTP[struct {
+		ExpectedRevision int64 `json:"expectedRevision"`
+	}, LiveOwnerResult[map[string]bool]](registry, apikit.Metadata{ID: "delete_guide_reminders_id", Method: "DELETE", Path: "/v1/guide/reminders/{id}", Summary: "Delete guide reminders", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 4096, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+		return err
+	}
+
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.Summary]](registry, apikit.Metadata{ID: "get_dvr_summary", Method: "GET", Path: "/v1/dvr/summary", Summary: "Read recording summary", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+		return err
+	}
+
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.GroupPage]](registry, apikit.Metadata{ID: "get_dvr_groups", Method: "GET", Path: "/v1/dvr/groups", Summary: "Read recording groups", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Query: []string{"sort", "cursor", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}); err != nil {
+		return err
+	}
+
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_dvr_recordings_id_image", Method: "GET", Path: "/v1/dvr/recordings/{id}/image", Summary: "Read retained recording programme image", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.Constant, Status: 200, ResponseContentType: "application/octet-stream", Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+
 	// internal/httpapi/dvr.go:82
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.Page]](registry, apikit.Metadata{ID: "get_dvr", Method: "GET", Path: "/v1/dvr", Summary: "Read dvr", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "state"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.Page]](registry, apikit.Metadata{ID: "get_dvr", Method: "GET", Path: "/v1/dvr", Summary: "Read dvr", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "state", "sort", "group"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:103

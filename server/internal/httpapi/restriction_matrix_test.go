@@ -665,9 +665,18 @@ func restrictionRoutes() map[string]restrictionRoute {
 		// Live TV, guide and recordings: channels and recordings carry their own
 		// restriction (channel_restriction_test, recordings_switch_test); the
 		// matrix still checks that no catalogue title leaks through them.
-		"GET /v1/guide":          static("/v1/guide?kind=live-source&start=2026-09-19T12:00:00Z&end=2026-09-19T14:00:00Z&timezone=UTC&limit=30"),
-		"GET /v1/guide/channels": static("/v1/guide/channels?kind=all&sort=number&offset=0&limit=50"),
-		"GET /v1/guide/sources":  static("/v1/guide/sources"),
+		"GET /v1/guide":           static("/v1/guide?kind=live-source&start=2026-09-19T12:00:00Z&end=2026-09-19T14:00:00Z&timezone=UTC&limit=30"),
+		"GET /v1/guide/channels":  static("/v1/guide/channels?kind=all&sort=number&offset=0&limit=50"),
+		"GET /v1/guide/sources":   static("/v1/guide/sources"),
+		"GET /v1/guide/on-now":    static("/v1/guide/on-now"),
+		"GET /v1/guide/now-next":  static("/v1/guide/now-next"),
+		"GET /v1/guide/airings":   static("/v1/guide/airings?start=2026-09-19T12:00:00Z&end=2026-09-20T12:00:00Z&search=Programme"),
+		"GET /v1/guide/reminders": static("/v1/guide/reminders"),
+		"GET /v1/dvr/summary":     static("/v1/dvr/summary"),
+		"GET /v1/dvr/groups":      static("/v1/dvr/groups"),
+		"GET /v1/dvr/recordings/{id}/image": probe(func(m *restrictionEnv) []string {
+			return prefixed("/v1/dvr/recordings/", m.hiddenItemSamples(), "/image")
+		}),
 		"GET /v1/guide/programme-images/{generation}/{programme}": exempt("programme image rechecks live source access and rating restrictions; guide_images_test covers hidden and changed programmes"),
 		"GET /v1/dvr":                 static("/v1/dvr"),
 		"GET /v1/dvr/channels":        static("/v1/dvr/channels"),

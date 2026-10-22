@@ -92,6 +92,9 @@ type KeepInput struct {
 }
 
 type RuleConfig struct {
+	MatchKind       string   `json:"matchKind"`
+	Title           string   `json:"title"`
+	ChannelID       string   `json:"channelId"`
 	Name            string   `json:"name"`
 	SourceID        string   `json:"sourceId"`
 	SeriesID        string   `json:"seriesId"`
@@ -105,7 +108,7 @@ type RuleConfig struct {
 }
 
 func (c RuleConfig) Valid() bool {
-	if !validText(c.Name, 160) || !hexID.MatchString(c.SourceID) || !validText(c.SeriesID, 512) || !c.Options.Valid() || (c.Episodes != "all" && c.Episodes != "new") || c.AllowedChannels == nil || c.BlockedChannels == nil || c.Keywords == nil || len(c.AllowedChannels) > 2000 || len(c.BlockedChannels) > 2000 || len(c.Keywords) > 20 || len(c.BlockedKeywords) > 20 {
+	if !validText(c.Name, 160) || !hexID.MatchString(c.SourceID) || (!c.titleMatch() && (!validText(c.SeriesID, 512) || c.Title != "" || c.ChannelID != "") || c.titleMatch() && (c.SeriesID != "" || !validText(c.Title, 512) || !canonicalID.MatchString(c.ChannelID))) || (c.MatchKind != "" && c.MatchKind != "series" && c.MatchKind != "title") || !c.Options.Valid() || (c.Episodes != "all" && c.Episodes != "new") || c.AllowedChannels == nil || c.BlockedChannels == nil || c.Keywords == nil || len(c.AllowedChannels) > 2000 || len(c.BlockedChannels) > 2000 || len(c.Keywords) > 20 || len(c.BlockedKeywords) > 20 {
 		return false
 	}
 	seen := map[string]bool{}
@@ -125,7 +128,7 @@ func (c RuleConfig) Valid() bool {
 	return true
 }
 func (c RuleConfig) Matches(p livechannels.Programme) bool {
-	if !c.Enabled || p.SeriesID != c.SeriesID {
+	if !c.Enabled || !c.identityMatches(p) {
 		return false
 	}
 	if c.Episodes == "new" && p.NewEvidence != "new" {
@@ -167,14 +170,18 @@ type RuleInput struct {
 	Config RuleConfig `json:"config"`
 }
 type Rule struct {
-	ID             string     `json:"id"`
-	Revision       int64      `json:"revision"`
-	Config         RuleConfig `json:"config"`
-	ReconcileState string     `json:"reconcileState"`
-	Diagnostic     string     `json:"diagnostic"`
-	UpdatedAt      string     `json:"updatedAt"`
+	Summary        RuleSummary `json:"summary"`
+	ID             string      `json:"id"`
+	Revision       int64       `json:"revision"`
+	Config         RuleConfig  `json:"config"`
+	ReconcileState string      `json:"reconcileState"`
+	Diagnostic     string      `json:"diagnostic"`
+	UpdatedAt      string      `json:"updatedAt"`
 }
 type Recording struct {
+	PositionMs int64      `json:"positionMs"`
+	DurationMs int64      `json:"durationMs"`
+	Overlaps   []Overlap  `json:"overlaps"`
 	ID         string     `json:"id"`
 	Revision   int64      `json:"revision"`
 	Occurrence Occurrence `json:"occurrence"`
@@ -232,12 +239,19 @@ func decorateTx(ctx context.Context, tx *sql.Tx, o livechannels.Owner, r *Record
 	if e := channelTx(ctx, tx, r); e != nil {
 		return e
 	}
+	r.Overlaps = []Overlap{}
+	var digest string
+	if e := tx.QueryRowContext(ctx, `SELECT digest FROM dvr_programme_images WHERE recording_id=?`, r.ID).Scan(&digest); e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return e
+	} else if e == nil {
+		r.Programme.Image = "/v1/dvr/recordings/" + r.ID + "/image"
+	}
 	r.Watched = nil
 	if r.ItemID == "" {
 		return nil
 	}
 	var watched bool
-	e := tx.QueryRowContext(ctx, `SELECT watched FROM personal_items WHERE profile_id=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, persistence.PersonalOwnerKey(o.Authority, o.AccountID, o.ProfileID), r.ItemID).Scan(&watched)
+	e := tx.QueryRowContext(ctx, `SELECT COALESCE(pi.watched,0),COALESCE(pg.position,0),COALESCE((SELECT CAST(max(a.duration)*1000 AS INTEGER) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=ce.id),0) FROM catalog_entities ce LEFT JOIN personal_items pi ON pi.item_id=ce.id AND pi.profile_id=? LEFT JOIN progress pg ON pg.item_id=ce.id AND pg.profile_id=? AND pg.unit=0 WHERE ce.public_id=pid_blob(?)`, persistence.PersonalOwnerKey(o.Authority, o.AccountID, o.ProfileID), persistence.PersonalOwnerKey(o.Authority, o.AccountID, o.ProfileID), r.ItemID).Scan(&watched, &r.PositionMs, &r.DurationMs)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return e
 	}
@@ -289,4 +303,18 @@ type Page struct {
 	Revision                 int64       `json:"revision"`
 	CaptureAvailable         bool        `json:"captureAvailable"`
 	CaptureUnavailableReason string      `json:"captureUnavailableReason"`
+}
+
+func (c RuleConfig) titleMatch() bool { return c.MatchKind == "title" }
+func (c RuleConfig) identityMatches(p livechannels.Programme) bool {
+	if c.titleMatch() {
+		return p.ChannelID == c.ChannelID && strings.EqualFold(strings.TrimSpace(c.Title), strings.TrimSpace(p.Title))
+	}
+	return p.SeriesID != "" && p.SeriesID == c.SeriesID
+}
+func (c RuleConfig) identitySQL() (string, []any) {
+	if c.titleMatch() {
+		return `p.channel_id=? AND lower(trim(p.title))=lower(trim(?))`, []any{c.ChannelID, c.Title}
+	}
+	return `m.series_id=?`, []any{c.SeriesID}
 }

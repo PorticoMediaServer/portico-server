@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"portico.local/server/internal/livechannels"
@@ -85,7 +86,7 @@ func (s *Store) SaveRule(ctx context.Context, a livechannels.Authority, o livech
 			if e = programmeVisibleTx(ctx, tx, o, p); e != nil {
 				return e
 			}
-			if p.SeriesID == "" || p.SeriesID != in.Config.SeriesID {
+			if !in.Config.identityMatches(p) {
 				return ErrInvalid
 			}
 			if in.Config.Episodes == "new" && p.NewEvidence != "new" && p.NewEvidence != "repeat" {
@@ -93,12 +94,14 @@ func (s *Store) SaveRule(ctx context.Context, a livechannels.Authority, o livech
 			}
 		} else {
 			// An edit may refine predicates/padding, never change the series identity.
-			if old.Config.SourceID != in.Config.SourceID || old.Config.SeriesID != in.Config.SeriesID {
+			if old.Config.SourceID != in.Config.SourceID || old.Config.SeriesID != in.Config.SeriesID || old.Config.MatchKind != in.Config.MatchKind || old.Config.Title != in.Config.Title || old.Config.ChannelID != in.Config.ChannelID {
 				return ErrConflict
 			}
 			if old.Config.Episodes != "new" && in.Config.Episodes == "new" {
 				var known bool
-				e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_sources s JOIN live_programme_metadata m ON m.generation_id=s.active_generation WHERE s.id=? AND m.series_id=? AND m.new_evidence IN('new','repeat'))`, in.Config.SourceID, in.Config.SeriesID).Scan(&known)
+				predicate, args := in.Config.identitySQL()
+				args = append([]any{in.Config.SourceID}, args...)
+				e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_sources s JOIN live_programmes p ON p.generation_id=s.active_generation LEFT JOIN live_programme_metadata m ON m.generation_id=p.generation_id AND m.id=p.id WHERE s.id=? AND `+predicate+` AND m.new_evidence IN('new','repeat'))`, args...).Scan(&known)
 				if e != nil {
 					return e
 				}
@@ -127,7 +130,7 @@ func (s *Store) SaveRule(ctx context.Context, a livechannels.Authority, o livech
 			var priorID string
 			var priorRevision int64
 			var deleted bool
-			e = tx.QueryRowContext(ctx, `SELECT id,revision,deleted FROM dvr_rules WHERE owner_key=? AND source_id=? AND series_id=?`, o.Key(), in.Config.SourceID, in.Config.SeriesID).Scan(&priorID, &priorRevision, &deleted)
+			e = tx.QueryRowContext(ctx, `SELECT id,revision,deleted FROM dvr_rules WHERE owner_key=? AND source_id=? AND series_id=? AND match_title=? AND match_channel=?`, o.Key(), in.Config.SourceID, in.Config.SeriesID, strings.ToLower(strings.TrimSpace(in.Config.Title)), in.Config.ChannelID).Scan(&priorID, &priorRevision, &deleted)
 			if e != nil && !errors.Is(e, sql.ErrNoRows) {
 				return e
 			}
@@ -145,7 +148,7 @@ func (s *Store) SaveRule(ctx context.Context, a livechannels.Authority, o livech
 				targetID, targetRevision = priorID, priorRevision+1
 				_, e = tx.ExecContext(ctx, `UPDATE dvr_rules SET deleted=0,enabled=?,revision=?,config_json=?,updated_ms=? WHERE id=? AND owner_key=?`, in.Config.Enabled, targetRevision, string(b), now, targetID, o.Key())
 			} else {
-				_, e = tx.ExecContext(ctx, `INSERT INTO dvr_rules(id,owner_key,authority,account_id,profile_id,source_id,series_id,revision,config_json,enabled,updated_ms) VALUES(?,?,?,?,?,?,?,1,?,?,?)`, in.ID, o.Key(), o.Authority, o.AccountID, o.ProfileID, in.Config.SourceID, in.Config.SeriesID, string(b), in.Config.Enabled, now)
+				_, e = tx.ExecContext(ctx, `INSERT INTO dvr_rules(id,owner_key,authority,account_id,profile_id,source_id,series_id,match_title,match_channel,revision,config_json,enabled,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,1,?,?,?)`, in.ID, o.Key(), o.Authority, o.AccountID, o.ProfileID, in.Config.SourceID, in.Config.SeriesID, strings.ToLower(strings.TrimSpace(in.Config.Title)), in.Config.ChannelID, string(b), in.Config.Enabled, now)
 			}
 		} else {
 			_, e = tx.ExecContext(ctx, `UPDATE dvr_rules SET revision=revision+1,config_json=?,enabled=?,updated_ms=? WHERE id=? AND owner_key=?`, string(b), in.Config.Enabled, now, in.ID, o.Key())
@@ -262,7 +265,10 @@ func (s *Store) PreviewRule(ctx context.Context, a livechannels.Authority, o liv
 		if err != nil {
 			return err
 		}
-		rows, e := tx.QueryContext(ctx, programmeQuery+` WHERE p.generation_id=? AND m.series_id=? AND p.end_utc>? ORDER BY p.start_utc,p.id`, out.Generation, c.SeriesID, s.now().UTC().Format(time.RFC3339))
+		predicate, args := c.identitySQL()
+		args = append([]any{out.Generation}, args...)
+		args = append(args, s.now().UTC().Format(time.RFC3339))
+		rows, e := tx.QueryContext(ctx, programmeQuery+` WHERE p.generation_id=? AND `+predicate+` AND p.end_utc>? ORDER BY p.start_utc,p.id`, args...)
 		if e != nil {
 			return e
 		}

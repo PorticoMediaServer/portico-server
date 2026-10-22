@@ -6,6 +6,7 @@ import (
 	"portico.local/server/internal/apispec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestConfigCollectionsAndDormantBounds(t *testing.T) {
@@ -65,5 +66,48 @@ func TestConfigCollectionsAndDormantBounds(t *testing.T) {
 	// Marshalling must not mutate the caller's slice elements.
 	if c.Blocks != nil || c.Rules[0].Weights != nil || c.Rules[0].Query.ShowIDs != nil {
 		t.Fatal("wire normalization mutated input")
+	}
+}
+
+func TestLibraryGuideCopiedBlockRecipeSurvivesPresetChanges(t *testing.T) {
+	f := justinsLibrary(t)
+	s, e := New(f.db)
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.now = func() time.Time { return f.now }
+	c := channel("copied-recipe", Query{LibraryIDs: []string{"movies"}, Kinds: []string{"movie"}, Order: "title"}, "sequential", "none")
+	c.Rules = append(c.Rules, Rule{ID: "recipe-copy", Name: "1985 films", Query: Query{LibraryIDs: []string{"movies"}, Kinds: []string{"movie"}, Order: "title", Filter: raw(`{"field":"year","operator":"equals","value":1985}`)}, Mode: "sequential", EpisodeMode: "none", Exhaustion: "loop", MaxConsecutive: 100})
+	c.Blocks = []Block{{ID: "afternoon", Weekdays: []int{0, 1, 2, 3, 4, 5, 6}, StartMinute: 15 * 60, EndMinute: 18 * 60, Priority: 1, RuleID: "recipe-copy", FallbackRuleID: "main", Anchor: "block-start", Overrun: "finish"}}
+	f.exec(t, `INSERT INTO admin_channel_presets VALUES('recipe','1985 films','1985 films',1,'{"year":1985}',1,1)`)
+	saved, e := s.Save(context.Background(), ownerAuthority(nil), SaveInput{RequestID: "copy-recipe", Config: c})
+	if e != nil {
+		t.Fatal(e)
+	}
+	preview, e := s.Preview(context.Background(), ownerAuthority(nil), saved.Config)
+	if e != nil || len(preview.FirstDay) == 0 {
+		t.Fatalf("preview %v %+v", e, preview)
+	}
+	found := false
+	for _, entry := range preview.FirstDay {
+		if strings.HasPrefix(entry.BlockID, "afternoon:") {
+			found = true
+			if entry.RuleID != "recipe-copy" {
+				t.Fatal("block not reflected in firstDay", entry)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("firstDay omitted installed block: blocks=%+v day=%+v",preview.Blocks,preview.FirstDay)
+	}
+	f.exec(t, `UPDATE admin_channel_presets SET revision=2,body='{"year":1990}' WHERE id='recipe'`)
+	list, e := s.List(context.Background(), ownerAuthority(nil))
+	if e != nil || len(list) != 1 || list[0].Config.Rules[1].Query.Filter == nil || string(list[0].Config.Rules[1].Query.Filter) != string(c.Rules[1].Query.Filter) {
+		t.Fatalf("preset changed installed copy %+v %v", list, e)
+	}
+	f.exec(t, `DELETE FROM admin_channel_presets WHERE id='recipe'`)
+	list, e = s.List(context.Background(), ownerAuthority(nil))
+	if e != nil || len(list) != 1 || len(list[0].Config.Blocks) != 1 {
+		t.Fatal("preset deletion changed channel", list, e)
 	}
 }

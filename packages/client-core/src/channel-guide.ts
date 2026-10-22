@@ -104,7 +104,7 @@ function parseImage(v: unknown): string | undefined {
 function parseDays(v: unknown): number | undefined {
  return Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 31 ? Number(v) : undefined;
 }
-function parseProgramme(raw: unknown, channelId: string): GuideProgramme {
+export function parseGuideProgramme(raw: unknown, channelId: string): GuideProgramme {
  if (!object(raw) || !id(raw.id) || raw.channelId !== channelId || !text(raw.title, 512) || !instant(raw.start) || !instant(raw.end) || Date.parse(raw.end) <= Date.parse(raw.start)) invalid();
  // How a programme was identified, and whether it is new, are evidence: a kind this app does not
  // know reads as the weakest (known only by its time slot; not known to be new or a repeat).
@@ -154,7 +154,7 @@ export function parseGuideChannels(value: unknown, sources: readonly GuideSource
   if (source.generation!==v.generation||source.provenance!==v.provenance||!route&&v.programmes.length!==0) invalid();
   let previousEnd = 0;
   const programmes = keepReadable('guide', 'programmes', v.programmes, (raw: unknown) => {
-   const p = parseProgramme(raw, v.id as string);
+   const p = parseGuideProgramme(raw, v.id as string);
    if (programmeIDs.has(p.id) || Date.parse(p.start) < previousEnd || route !== undefined && (Date.parse(p.end) <= Date.parse(route.start) || Date.parse(p.start) >= Date.parse(route.end)) || ++total > 10000) invalid();
    previousEnd = Date.parse(p.end); programmeIDs.add(p.id); return p;
   });

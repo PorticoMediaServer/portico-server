@@ -206,3 +206,14 @@ test('FEAT-08: a recording carries the server\'s seriesId and seriesTitle; an un
  const odd=parseRecording({...recording(),seriesId:42,seriesTitle:''});
  assert.equal(odd.seriesId,undefined);assert.equal(odd.seriesTitle,undefined);
 });
+
+test('recordings retain programme facts, image, position and duration without copying private fields',()=>{
+ const raw:any=recording();Object.assign(raw.programme,{subtitle:'Episode name',episode:{season:2,number:5},categories:['News'],rating:{system:'VCHIP',value:'TV-G'},year:2026,starRating:'4/5',flags:{live:false,new:true,premiere:true,repeat:false},image:'/v1/dvr/recordings/'+raw.id+'/image',providerURL:'private'});raw.positionMs=15000;raw.durationMs=3600000;
+ const r=parseRecording(raw);assert.equal(r.programme.subtitle,'Episode name');assert.deepEqual(r.programme.episode,{season:2,number:5});assert.equal(r.programme.flags?.live,false);assert.equal(r.programme.flags?.premiere,true);assert.equal(r.programme.image,raw.programme.image);assert.equal(r.positionMs,15000);assert.equal(r.durationMs,3600000);assert.ok(!JSON.stringify(r).includes('private'));
+ raw.durationMs=-1;assert.throws(()=>parseRecording(raw));
+});
+
+test('provider-id-free rule drafts explicitly match exact title on the selected channel',async()=>{
+ const {draftRule}=await import('../src/dvr.ts');const {programme:program}=recording();program.seriesId='';const d:any={programme:program,channel:{id:program.channelId,sourceId:hex(48,'b'),generation:hex(48,'d')},series:true};
+ const c=draftRule(d);assert.equal(c.matchKind,'title');assert.equal(c.title,program.title);assert.equal(c.channelId,program.channelId);assert.equal(c.seriesId,'');
+});
