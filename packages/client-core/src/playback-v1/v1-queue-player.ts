@@ -312,10 +312,10 @@ export class V1QueuePlayer implements QueueController {
       repeat: header.repeat, shuffled: !!header.shuffle, currentEntryId: current?.entryId ?? null, currentPlaybackId: this.session?.id ?? null, entries: Object.freeze(entries),
     });
     const view: QueuePlaybackView = Object.freeze({
-      queue, highestSequence: '0',
+      queue, highestSequence: '0', total:header.total, remainingCount:header.remainingCount, totalDurationMs:header.totalDurationMs, durationKnown:header.durationKnown,
       current: this.session ? Object.freeze({id: this.session.id, generation: this.session.presentation.generation, state: this.session.state}) : null,
       next,
-      items: Object.freeze(this.window.filter(e => e.itemId).map(e => Object.freeze({entryId: e.entryId, itemId: e.itemId, title: e.title, kind: e.kind, libraryId: '', ...(e.posterUrl ? {posterUrl: e.posterUrl} : {}), ...(e.stillUrl ? {stillUrl: e.stillUrl} : {})}))),
+      items: Object.freeze(this.window.filter(e => e.itemId).map(e => Object.freeze({...e, libraryId: ''}))),
       postPlay,
     });
     this.publish({view, error: null});

@@ -779,3 +779,12 @@ test('episode picks beyond the loaded window continue one run across the full sh
   assert.equal(playback.getSnapshot().playbackRun,run+1,'a fresh outside play resets the run');
  } finally {stop();}
 });
+
+
+test('the player view preserves batched identity and display facts plus whole queue totals',async()=>{
+ const server=new FakePlaybackServer({containerSize:()=>5});const inner=fakeHttp(server);
+ const facts={albumId:'album',album:'Record',artistId:'artist',artist:'Band',showId:'show',seasonId:'season',episode:{seasonNumber:2,number:7},backdropUrl:'/v1/items/show-0/art/backdrop',segmentId:'segment'};
+ const http:V1Http={async send(r){const response=await inner.send(r);const b=response.body as {window?: Record<string,unknown>[];queue?:Record<string,unknown>;items?:Record<string,unknown>[];id?:string;segments?:unknown}|undefined;if(b?.queue){Object.assign(b.queue,{totalDurationMs:900000,durationKnown:true,remainingCount:4});if(b.window)b.window=b.window.map(e=>({...e,...facts}));}if(b?.id&&b.segments)Object.assign(b,{totalDurationMs:900000,durationKnown:true,remainingCount:4});if(b?.items)b.items=b.items.map(e=>({...e,...facts}));return response;}};
+ let key=0;const api=new V1PlaybackApi(http,{key:()=>`view-${++key}-00000000`});const playback=new PlaybackService(api,()=> 'device');const player=new V1QueuePlayer({http,api,playback,viewer,key:()=>`queue-view-${++key}-0000`});const stop=player.connect();
+ try {await player.playEpisode('show','show-0');const view=player.getSnapshot().view;assert.equal(view?.totalDurationMs,900000);assert.equal(view?.remainingCount,4);assert.deepEqual(view?.items[0]?.episode,{seasonNumber:2,number:7});assert.equal(view?.items[0]?.artistId,'artist');assert.equal(view?.items[0]?.backdropUrl,facts.backdropUrl);assert.equal(view?.items[0]?.durationMs,180000);assert.equal(view?.items[0]?.segmentId,'segment');} finally{stop();}
+});
