@@ -12,7 +12,8 @@ import styles from './settings.module.css';
 
 const tDefault = createI18n().t;
 export type ShellAction = Readonly<{id: string; label: string; icon?: IconName; iconOnly?: boolean; variant?: 'primary' | 'glass' | 'text'; onAction: () => void}>;
-export type SettingsNavEntry = Readonly<{id: string; label: string; icon: IconName; count?: number; warning?: boolean; cluster?: string; trailing?: string}>;
+/** Navigation carries a setting's state, never a summary count. Major issues must be known for this exact row. */
+export type SettingsNavEntry = Readonly<{id: string; label: string; icon: IconName; cluster?: string; stateValue?: string; majorIssue?: boolean}>;
 export type SettingsSearchGroup = Readonly<{id: string; label: string; icon: IconName; area: 'account' | 'server'; rows: readonly {id: string; label: string; description?: string}[]}>;
 export function MatchText({text, query}: {text: string; query: string}) {
   const index = query ? text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase()) : -1;
@@ -23,7 +24,7 @@ export function SettingsNav({accountName, serverName, viewerRole, account, serve
   selectedId: string; selectedSearchResult?: Readonly<{pageId: string; rowId: string}>; query: string; onQueryChange: (value: string) => void; onNavigate: (id: string) => void;
   matches?: readonly SettingsSearchGroup[]; onSearchResult: (pageId: string, rowId: string) => void; layout?: 'desktop' | 'phone'; t?: ShellTranslate;
 }) {
-  const rows = (entries: readonly SettingsNavEntry[]) => entries.map((entry, index) => <div key={entry.id} className={index > 0 && entry.cluster !== entries[index - 1]?.cluster ? styles.clusterStart : undefined}><button type="button" className={styles.navItem} aria-current={entry.id === selectedId ? 'page' : undefined} onClick={() => onNavigate(entry.id)}><span className={styles.navIcon}><Icon name={entry.icon} size={layout === 'phone' ? 18 : 19} /></span><span className={styles.navLabel}>{entry.label}</span>{entry.trailing !== undefined ? <span className={styles.teaser}>{entry.trailing}</span> : entry.count !== undefined && <span className={styles.count} data-warning={entry.warning || undefined}>{entry.count}</span>}{layout === 'phone' && <Icon name="i-right" size={18} />}</button></div>);
+  const rows = (entries: readonly SettingsNavEntry[]) => entries.map((entry, index) => <div key={entry.id} className={index > 0 && entry.cluster !== entries[index - 1]?.cluster ? styles.clusterStart : undefined}><button type="button" className={styles.navItem} aria-current={entry.id === selectedId ? 'page' : undefined} onClick={() => onNavigate(entry.id)}><span className={styles.navIcon}><Icon name={entry.icon} size={layout === 'phone' ? 18 : 19} /></span><span className={styles.navLabel}>{entry.label}</span>{entry.stateValue !== undefined && <span className={styles.teaser}>{entry.stateValue}</span>}{entry.majorIssue === true && <span className={styles.majorIssue} role="img" aria-label={t('next.shell.health.attention')} />}{layout === 'phone' && <Icon name="i-right" size={18} />}</button></div>);
   const visibleMatches = matches?.filter(group => group.area === 'account' ? account.some(entry => entry.id === group.id) : viewerRole !== 'member' && server.some(entry => entry.id === group.id));
   const matchCount = visibleMatches?.reduce((count, group) => count + group.rows.length, 0) ?? 0;
   return <aside className={styles.settingsNav} data-layout={layout}>{layout === 'desktop' && <><h1>{t('next.shell.settings')}</h1><div className={styles.find}><Icon name="i-search" size={20} /><input type="search" value={query} onChange={event => onQueryChange(event.currentTarget.value)} placeholder={t('next.shell.searchSettings')} aria-label={t('next.shell.searchSettings')} />{query && <button type="button" className={styles.clearSearch} onClick={() => onQueryChange('')} aria-label={t('next.shell.clearSearch')}><Icon name="i-x" size={14} /></button>}</div></>}
@@ -37,12 +38,12 @@ export function LargeTitleHeader({title, actions, className}: {title: string; ac
 export function PushedNavBar({title, backLabel, onBack, trailing, safeArea = true}: {title?: string; backLabel: string; onBack: () => void; trailing?: ReactNode; safeArea?: boolean}) {
   return <header className={styles.pushedNav} data-safe-area={safeArea || undefined}><button type="button" onClick={onBack}><Icon name="i-left" size={24} />{backLabel}</button>{title && <span className={styles.pushedTitle}>{title}</span>}<div className={styles.pushedTrailing}>{trailing}</div></header>;
 }
-export function ShortcutTiles({items, compact = false}: {items: readonly (ShellAction & {count?: number})[]; compact?: boolean}) {
-  return <div className={styles.shortcuts} data-compact={compact || undefined}>{items.map(item => <button type="button" key={item.id} onClick={item.onAction}>{item.count !== undefined && item.count > 0 && <span className={styles.shortcutBadge}>{item.count}</span>}{item.icon && <Icon name={item.icon} size={22} />}{item.label}</button>)}</div>;
+export function ShortcutTiles({items, compact = false}: {items: readonly ShellAction[]; compact?: boolean}) {
+  return <div className={styles.shortcuts} data-compact={compact || undefined}>{items.map(item => <button type="button" key={item.id} onClick={item.onAction}>{item.icon && <Icon name={item.icon} size={22} />}{item.label}</button>)}</div>;
 }
 export type SettingsSheetProps = Omit<BottomSheetProps, 'title' | 'children'> & {
   profile: ProfileIdentity; accountDescription: string; onProfile: () => void; query: string; onQueryChange: (value: string) => void;
-  shortcuts: readonly (ShellAction & {count?: number})[]; children: ReactNode; t?: ShellTranslate;
+  shortcuts: readonly ShellAction[]; children: ReactNode; t?: ShellTranslate;
 };
 export function SettingsSheet({profile, accountDescription, onProfile, query, onQueryChange, shortcuts, children, t = tDefault, ...props}: SettingsSheetProps) {
   return <BottomSheet {...props} title={t('next.shell.settings')} showCloseButton className={styles.settingsSheet} headerClassName={styles.sheetHeader} bodyClassName={styles.sheetBody}>

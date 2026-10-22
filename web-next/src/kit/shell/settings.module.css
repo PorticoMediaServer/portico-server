@@ -15,13 +15,13 @@
 .navItem > span:first-of-type { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .navLabel { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .navIcon { display: grid; place-items: center; flex: none; }
+.majorIssue { margin-left: auto; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-record); }
+.teaser + .majorIssue { margin-left: 0; }
 .teaser { margin-left: auto; font-size: 14.5px; color: var(--color-text-tertiary); }
 .navItem:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); color: var(--color-text); }
 .navItem[aria-current='page'] { background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--color-text); }
 .navItem[aria-current='page'] svg { color: var(--color-accent-strong); }
 .navItem[aria-current='page']::before { content: ''; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 3px; background: var(--color-accent); }
-.count { margin-left: auto; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 10px; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--color-text-secondary); }
-.count[data-warning] { background: color-mix(in srgb, var(--color-amber) 18%, transparent); color: var(--color-amber); }
 .serverNav { margin-top: 24px; padding: 14px 8px 8px; border-radius: 16px; background: radial-gradient(120% 60% at 100% 0%, color-mix(in srgb, var(--color-accent-deep) 26%, transparent), transparent 62%), radial-gradient(100% 50% at 0% 100%, color-mix(in srgb, var(--color-generated-green) 26%, transparent), transparent 66%), #0b1822; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent-strong) 16%, transparent); }
 .serverNavHeader { display: flex; align-items: center; gap: 12px; padding: 0 6px 12px; }
 .serverNavHeader > :last-child { margin-left: auto; }
@@ -43,7 +43,6 @@
 .settingsNav[data-layout='phone'] .serverNav .navIcon { background: color-mix(in srgb, var(--color-accent) 16%, transparent); color: var(--color-accent-strong); }
 .settingsNav[data-layout='phone'] .serverNav .navIcon svg { color: inherit; }
 .settingsNav[data-layout='phone'] .clusterStart { padding-top: 0; }
-.settingsNav[data-layout='phone'] .count { color: var(--color-text-tertiary); background: none; border-radius: 0; font-size: 14.5px; font-weight: 600; padding: 0; }
 .clusterStart { padding-top: 10px; }
 .searchResults { margin-top: 18px; }
 .matchCount { padding: 0 12px 6px; font-size: 13px; font-weight: 600; color: var(--color-text-tertiary); }
@@ -69,7 +68,6 @@
 .shortcuts button { position: relative; height: 78px; border: 0; border-radius: 14px; background: var(--color-raised); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; font-size: 11.5px; font-weight: 700; color: var(--color-text-secondary); line-height: 1.2; text-align: center; padding: 0 4px; cursor: pointer; }
 .shortcuts[data-compact] button { height: 70px; }
 .shortcuts button svg { color: var(--color-text); }
-.shortcutBadge { position: absolute; top: 9px; right: 12px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--color-accent); color: var(--color-action-ink); font-size: 11px; font-weight: 800; display: grid; place-items: center; padding: 0 5px; }
 .settingsSheet { border-radius: 16px 16px 0 0; background: var(--color-ink); overflow: hidden; box-shadow: 0 -1px 0 color-mix(in srgb, var(--color-text) 8%, transparent); padding: 0; }
 .sheetHeader { position: relative; height: 56px; padding: 0 10px; display: flex; align-items: center; flex: none; }
 .sheetHeader > [role='slider'] { position: absolute; width: 38px; height: 5px; top: 6px; left: 50%; margin-left: -19px; padding: 0; }
