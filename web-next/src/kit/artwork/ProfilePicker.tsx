@@ -51,7 +51,7 @@ export function ProfilePicker({profiles, onSelect, selectedId, onAdd, onManage, 
         <small className={styles.profileBadge}>{profile.pinRequired && profile.eligible && !profile.primary ? <><span className={styles.fullPin}>{defaultI18n.t('next.artwork.protected')}</span><span className={styles.shortPin}>{defaultI18n.t('next.artwork.pin')}</span></> : badge(profile)}</small>
       </button>)}
       {onAdd && layout !== 'tv' && <button type="button" className={artClass(styles.profileTile, styles.addProfile)} onClick={onAdd}>
-        <span className={styles.profileFace}><Icon name="i-plus" size={48} /></span><b className={styles.profileName}>{defaultI18n.t('next.artwork.addProfile')}</b><small className={styles.profileBadge} />
+        <span className={styles.profileFace}><Icon name="i-plus" size={56} /></span><b className={styles.profileName}>{defaultI18n.t('next.artwork.addProfile')}</b><small className={styles.profileBadge} />
       </button>}
     </div>
     {onManage && layout !== 'tv' && <button type="button" className={styles.manageProfiles} onClick={onManage}><Icon name="i-pencil" size={20} />{defaultI18n.t('next.artwork.manageProfiles')}</button>}

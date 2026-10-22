@@ -1,4 +1,4 @@
-import {currentUTCTimestamp} from '../../local-session.ts';
+import {currentUTCTimestamp, utcOrderKey} from '../../local-session.ts';
 import type {OwnerActivitySummary} from './types.ts';
 
 type Reader = (value: unknown) => unknown;
@@ -55,7 +55,34 @@ const quality: Reader = v => {
       out.mode === 'automatic' && numbers || out.mode === 'limit' && out.id !== undefined) invalid();
   return out;
 };
-const session = record({id, user: named, profile: named, device: named, kind: label, state: label, positionMs: count, decision: decisions}, {durationMs: integer(Number.MAX_SAFE_INTEGER, 1), item, quality, videoHeight: integer(Number.MAX_SAFE_INTEGER, 1)});
+const username: Reader = value => {
+  const out = text(256, true)(value) as string;
+  return out.trim() ? out : invalid();
+};
+const sessionShape = record({id, user: record({id}, {username}), profile: named, device: named, kind: label, state: label,
+  startedAt: timestamp, problem: bool, converting: bool, positionMs: count, decision: decisions},
+  {durationMs: integer(Number.MAX_SAFE_INTEGER, 1), item, quality, videoHeight: integer(Number.MAX_SAFE_INTEGER, 1)});
+const session: Reader = value => {
+  const out = sessionShape(value) as ObjectValue;
+  const decision = out.decision as {video?: {action: string}; audio?: {action: string}; subtitles?: {action: string}};
+  const converting = ['transcode', 'burn'].includes(decision.video?.action ?? '') || decision.audio?.action === 'transcode' || decision.subtitles?.action === 'burn';
+  if (out.problem !== ['error', 'buffering'].includes(out.state as string) || out.converting !== converting) invalid();
+  return out;
+};
+const streams: Reader = value => {
+  const out = record({count, convertingCount: count, overflow: record({count, convertingCount: count}), items: list(session, 3, 'id')})(value) as ObjectValue;
+  const items = out.items as ObjectValue[], total = out.count as number, converting = out.convertingCount as number;
+  const overflow = out.overflow as {count: number; convertingCount: number};
+  if (items.length !== Math.min(total, 3) || converting > total || overflow.count !== total - items.length ||
+      overflow.convertingCount !== converting - items.filter(item => item.converting).length || overflow.convertingCount > overflow.count) invalid();
+  const priority = (item: ObjectValue) => item.problem ? 0 : item.converting ? 1 : 2;
+  for (let n = 1; n < items.length; n++) {
+    const previous = items[n - 1], current = items[n], p = priority(previous), c = priority(current);
+    const pt = utcOrderKey(previous.startedAt as string), ct = utcOrderKey(current.startedAt as string);
+    if (p > c || p === c && (pt < ct || pt === ct && (previous.id as string) > (current.id as string))) invalid();
+  }
+  return out;
+};
 const relativeFile: Reader = v => {
   const path = text(4096, true)(v) as string;
   if (/^(?:[/\\]|[A-Za-z]:)/.test(path) || path.split(/[/\\]/).some(p => p === '..') || path === '.') invalid();
@@ -86,7 +113,7 @@ const update: Reader = v => {
 };
 const summary = record({
   scope: record({serverId: id, viewerFence: text(64, true)}), observedAt: timestamp, serverName: words,
-  streams: capped(session, 4), scans: list(scan, Number.MAX_SAFE_INTEGER, 'libraryId'), tasks: capped(task, 3),
+  streams, scans: list(scan, Number.MAX_SAFE_INTEGER, 'libraryId'), tasks: capped(task, 3),
   update, health: record({degraded: bool}),
 }, {lastScanFinishedAt: timestamp});
 

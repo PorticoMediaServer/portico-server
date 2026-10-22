@@ -8,12 +8,18 @@ import {Menu, MenuItem, MenuSeparator} from '../overlays/Popover';
 import type {OverlayChange} from '../overlays/types';
 import type {ShellTranslate} from './ServerIdentity';
 import {ShellScrim} from './ShellScrim';
+import {differingProfileName} from './model';
 import styles from './account.module.css';
 
 const tDefault = createI18n().t;
 export type ProfileTone = 'blue' | 'violet' | 'mint' | 'coral' | 'gold' | 'slate' | 'rose' | 'sky';
 export type ProfileAvatarSize = 22 | 30 | 32 | 34 | 48 | 54 | 84 | 168;
-export type ProfileIdentity = Readonly<{id: string; name: string; initial: string; art?: ProfileTone; pinRequired?: boolean}>;
+export type ProfileIdentity = Readonly<{id: string; name: string; username?: string; initial: string; art?: ProfileTone; pinRequired?: boolean}>;
+/** A profile label is never promoted into a username. */
+export function IdentityName({person}: {person: Pick<ProfileIdentity, 'name' | 'username'>}) {
+  const profile = differingProfileName(person.name, person.username);
+  return <>{person.username || person.name}{person.username && profile && <span className={styles.identityProfile}>{profile}</span>}</>;
+}
 export type ProfileAvatarProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & {
   initial: string; name: string; art?: ProfileTone; size?: ProfileAvatarSize; appearance?: 'profile' | 'session';
   current?: boolean; locked?: boolean; notificationDot?: boolean; source?: ArtworkSource; t?: ShellTranslate;
@@ -45,7 +51,7 @@ export type AccountMenuProps = Readonly<{
 export function AccountMenu({open, onOpenChange, trigger, current, primary, accountFacts, profiles, actions, notificationCount, notificationDot = false, t = tDefault}: AccountMenuProps) {
   const choose = (profile: ProfileIdentity) => actions.switchProfile(profile);
   return <><ShellScrim open={open} context="account" /><Menu open={open} onOpenChange={onOpenChange} trigger={trigger} title={t('next.shell.profileMenu', {name: current.name})} width={340} sideOffset={17} alignOffset={-24} modal className={styles.accountMenu}>
-    <div className={styles.who}><ProfileAvatarFace initial={current.initial} art={current.art} size={48} /><div><b>{current.name}</b>{primary && <small>{t('next.shell.mainProfile')}</small>}<small className={styles.factParts}>{accountFacts.map(fact => <span key={fact.id}>{fact.text}</span>)}</small></div></div>
+    <div className={styles.who}><ProfileAvatarFace initial={current.initial} art={current.art} size={48} /><div><b><IdentityName person={current} /></b>{primary && <small>{t('next.shell.mainProfile')}</small>}<small className={styles.factParts}>{accountFacts.map(fact => <span key={fact.id}>{fact.text}</span>)}</small></div></div>
     <div className={styles.switchProfiles}><div className={styles.switchLabel}>{t('next.shell.switchTo')}<MenuItem className={styles.manageProfiles} onSelect={actions.manageProfiles}>{t('next.shell.manage')}</MenuItem></div>
       <div className={styles.profileRow}>{profiles.filter(profile => profile.id !== current.id).map(profile => <MenuItem key={profile.id} className={styles.miniProfile} onSelect={() => choose(profile)}><ProfileAvatarFace initial={profile.initial} art={profile.art} size={48} locked={profile.pinRequired} t={t} /><span>{profile.name}</span></MenuItem>)}
         {actions.addProfile && <MenuItem className={styles.addProfile} onSelect={actions.addProfile}><span className={styles.addFace}><Icon name="i-plus" size={22} /></span>{t('next.shell.add')}</MenuItem>}
