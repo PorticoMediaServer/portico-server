@@ -14165,16 +14165,6 @@
         ],
         "type": "object"
       },
-      "DeleteUpgradeCopyRequest": {
-        "properties": {},
-        "required": [],
-        "type": "object"
-      },
-      "DeleteUpgradeCopyResponse": {
-        "properties": {},
-        "required": [],
-        "type": "object"
-      },
       "DeleteV1ItemsItemIdSubtitlesResourceRequest": {
         "properties": {
           "expectedRevision": {
@@ -107544,34 +107534,6 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
-          },
-          "upgradeCopies": {
-            "items": {
-              "properties": {
-                "bytes": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "createdAt": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "path": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "createdAt",
-                "bytes",
-                "path"
-              ],
-              "type": "object"
-            },
-            "type": "array"
           }
         },
         "required": [
@@ -107579,8 +107541,7 @@
           "cacheDirectory",
           "backupDirectory",
           "reclaimableBytes",
-          "lastReclaimedBytes",
-          "upgradeCopies"
+          "lastReclaimedBytes"
         ],
         "type": "object"
       },
@@ -174407,7 +174368,6 @@
           "request_in_progress",
           "restore_lock_unavailable",
           "restore_source_invalid",
-          "restore_schema_newer",
           "restore_pre_release",
           "restore_integrity_failed",
           "restore_not_portico",
@@ -208951,34 +208911,6 @@
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
-                    },
-                    "upgradeCopies": {
-                      "items": {
-                        "properties": {
-                          "bytes": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "createdAt": {
-                            "type": "string"
-                          },
-                          "id": {
-                            "type": "string"
-                          },
-                          "path": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "createdAt",
-                          "bytes",
-                          "path"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
                     }
                   },
                   "required": [
@@ -208986,8 +208918,7 @@
                     "cacheDirectory",
                     "backupDirectory",
                     "reclaimableBytes",
-                    "lastReclaimedBytes",
-                    "upgradeCopies"
+                    "lastReclaimedBytes"
                   ],
                   "type": "object"
                 }
@@ -209026,73 +208957,10 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Read upgrade copies, active storage destinations and reclaimable database space",
+        "summary": "Read active storage destinations and reclaimable database space",
         "x-access": "owner",
         "x-admission": "admin",
         "x-cost": "page_sized",
-        "x-error-codes": [
-          "unauthorized",
-          "not_permitted",
-          "not_found",
-          "invalid_request",
-          "internal"
-        ],
-        "x-lane": "default",
-        "x-scope": "admin"
-      }
-    },
-    "/v1/admin/storage/upgrade-copies/{id}": {
-      "delete": {
-        "operationId": "delete_upgrade_copy",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Delete one automatic pre-upgrade database copy",
-        "x-access": "owner",
-        "x-admission": "admin",
-        "x-cost": "constant",
         "x-error-codes": [
           "unauthorized",
           "not_permitted",

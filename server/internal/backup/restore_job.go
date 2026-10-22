@@ -117,8 +117,7 @@ func restoreCode(err error) string {
 		return "restore_source_invalid"
 	case errors.Is(err, ErrInsufficientDisk):
 		return "insufficient_disk"
-	case errors.Is(err, persistence.ErrCandidateNewer):
-		return "restore_schema_newer"
+
 	case errors.Is(err, persistence.ErrCandidatePreRelease):
 		return "restore_pre_release"
 	case errors.Is(err, persistence.ErrCandidateNotPortico):

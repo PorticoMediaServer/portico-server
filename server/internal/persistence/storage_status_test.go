@@ -2,38 +2,39 @@ package persistence
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestStorageStatusListsAndDeletesOnlyUpgradeCopies(t *testing.T) {
+func TestStorageStatusLeavesOldEvidenceUntouched(t *testing.T) {
 	dir := t.TempDir()
 	db, err := Open(filepath.Join(dir, "portico.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	// Historical files remain evidence; there is no listing or deletion API.
 	copies := filepath.Join(dir, "migration-backups")
 	if err = os.Mkdir(copies, 0700); err != nil {
 		t.Fatal(err)
 	}
-	name := "before-20261013T120000.000000000Z.sqlite"
-	if err = os.WriteFile(filepath.Join(copies, name), []byte("backup"), 0600); err != nil {
+	path := filepath.Join(copies, "before-20261013T120000.000000000Z.sqlite")
+	if err = os.WriteFile(path, []byte("old evidence"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	status, err := ReadStorageStatus(context.Background(), db)
-	if err != nil || len(status.UpgradeCopies) != 1 || status.UpgradeCopies[0].Bytes != 6 {
+	if err != nil || status.DatabasePath != filepath.Join(dir, "portico.db") || status.ReclaimableBytes < 0 {
 		t.Fatal(status, err)
 	}
-	if err = DeleteUpgradeCopy(context.Background(), db, "../portico.db"); err == nil {
-		t.Fatal("accepted traversal")
+	raw, err := json.Marshal(status)
+	if err != nil || strings.Contains(string(raw), "upgrade") {
+		t.Fatal(string(raw), err)
 	}
-	if err = DeleteUpgradeCopy(context.Background(), db, name); err != nil {
-		t.Fatal(err)
-	}
-	status, err = ReadStorageStatus(context.Background(), db)
-	if err != nil || len(status.UpgradeCopies) != 0 {
-		t.Fatal(status, err)
+	preserved, err := os.ReadFile(path)
+	if err != nil || string(preserved) != "old evidence" {
+		t.Fatal("old evidence changed", err)
 	}
 }
