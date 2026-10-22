@@ -15,6 +15,32 @@ registerHooks({load(url, context, next) {
 }});
 const {SelectionCircle} = await import('../../src/kit/selection/SelectionCircle.tsx');
 const {SelectionHoldFeedback} = await import('../../src/kit/selection/SelectionHoldFeedback.tsx');
+const {selectionPickerTitleParts, selectionText} = await import('../../src/kit/selection/copy.ts');
+const {PickerAddedToast} = await import('../../src/kit/selection/SelectionPicker.tsx');
+
+test('picker toast uses the public text action and actual inserted rather than processed counts', () => {
+  const viewed: string[] = [];
+  const result = {destination: {id: 'playlist-1', name: 'Family night'}, inserted: 2, processed: 4, total: 4, alreadyIn: 2, failed: 0, unknown: 0, pending: false, complete: true, failures: []};
+  const element = PickerAddedToast({open: true, onOpenChange() {}, selection: {kind: 'movie', count: 4}, destination: 'playlist', result, onView: id => viewed.push(id)});
+  const toast = element.props.toast;
+  assert.equal(toast.action.variant, 'text');
+  assert.equal(renderToStaticMarkup(toast.message), 'Added 2 movies to Family night. 2 were already there.');
+  toast.action.onAction();
+  assert.deepEqual(viewed, ['playlist-1']);
+  assert.equal(PickerAddedToast({open: true, onOpenChange() {}, selection: {kind: 'movie', count: 4}, destination: 'playlist', result: {...result, failed: 1}, onView() {}}).props.toast, null);
+});
+
+test('picker emphasis follows the canonical items argument without matching user text', () => {
+  for (const key of ['next.selection.pickerTitle', 'next.selection.newPickerTitle'] as const) {
+    const values = {items: '4 movies', destination: 'playlist'};
+    const parts = selectionPickerTitleParts(key, values);
+    assert.equal(parts.map(part => part.text).join(''), selectionText(key, values));
+    assert.deepEqual(parts.filter(part => part.argument === 'items').map(part => part.text), ['4 movies']);
+  }
+  const parts = selectionPickerTitleParts('next.selection.pickerTitle', {items: 'playlist', destination: 'playlist'});
+  const heading = renderToStaticMarkup(createElement('div', {}, ...parts.map((part, index) => part.argument === 'items' ? createElement('b', {key: index}, part.text) : part.text)));
+  assert.equal(heading, '<div>Add <b>playlist</b> to a playlist</div>');
+});
 
 test('the interactive circle is a named native button with controlled pressed and disabled states', () => {
   const html = renderToStaticMarkup(createElement(SelectionCircle, {selected: true, selecting: true, disabled: true, accessibilityLabel: 'Select the movie', name: 'selection', value: 'movie-1', size: 24}));

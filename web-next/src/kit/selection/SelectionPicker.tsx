@@ -1,9 +1,9 @@
 import {useEffect, useRef, type ReactNode} from 'react';
 import {Button, TextField} from '../controls';
-import {BottomSheet, Popover, ToastHost, type OverlayChange} from '../overlays';
+import {BottomSheet, Popover, ToastHost, type OverlayChange, type ToastData} from '../overlays';
 import {focusable, usePhone} from '../overlays/shared';
 import {Icon} from '../Icon';
-import {selectionText as text} from './copy';
+import {selectionPickerTitleParts, selectionText as text} from './copy';
 import {missingPickerIds, pickerResultSucceeded, retryLabel, selectionCountText} from './presentation';
 import type {PickerEntry, PickerResult, SelectionCount, SelectionPickerProps} from './types';
 import styles from './selection.module.css';
@@ -43,14 +43,17 @@ function SelectionPicker({destination, ...props}: SelectionPickerProps & {destin
     callback(); return true;
   };
   const newName = text(destination === 'playlist' ? 'next.selection.newPlaylistName' : 'next.selection.newCollectionName');
-  const title = text(mode === 'new' ? 'next.selection.newPickerTitle' : 'next.selection.pickerTitle', {items: selectionCountText(selection), destination: text(destination === 'playlist' ? 'next.selection.playlistWord' : 'next.selection.collectionWord')});
+  const titleKey = mode === 'new' ? 'next.selection.newPickerTitle' : 'next.selection.pickerTitle';
+  const titleValues = {items: selectionCountText(selection), destination: text(destination === 'playlist' ? 'next.selection.playlistWord' : 'next.selection.collectionWord')};
+  const title = text(titleKey, titleValues);
+  const titleParts = selectionPickerTitleParts(titleKey, titleValues);
   const failures = result?.failures ?? [];
   const retryFailed = failures.length > 0 && !!result?.complete && !recovering && !loading;
   const retryAvailable = recovering || retryFailed;
   useEffect(() => {if (surface.open && retryAvailable) retryRef.current?.focus({preventScroll: true});}, [surface.open, retryAvailable]);
   const resultSummary = result?.inserted === undefined ? undefined : result.total === undefined ? text('next.selection.added', {count: result.inserted}) : text('next.selection.addedPartial', {added: result.inserted, total: result.total, name: result.destination.name});
   const content = <div className={styles.pickerContent} aria-busy={busy || loading || result && !result.complete || undefined}>
-    {!phone && <div className={styles.pickerHeading}>{title}</div>}
+    {!phone && <div className={styles.pickerHeading}>{titleParts.map((part, index) => part.argument === 'items' ? <b key={index}>{part.text}</b> : part.text)}</div>}
     {result ? <>
       {(resultSummary || failures.length > 0 || result.jobFacts?.length || !result.complete && result.processed !== undefined && result.total !== undefined) && <div className={styles.pickerFailure} role="status">
         {resultSummary && <b><Icon name={failures.length || recovering ? 'i-warn' : !loading && pickerResultSucceeded(result) ? 'i-check' : 'i-info'} size={18} />{resultSummary}</b>}
@@ -78,7 +81,9 @@ function SelectionPicker({destination, ...props}: SelectionPickerProps & {destin
   </div>;
   const initialFocusRef = retryAvailable ? retryRef : mode === 'new' ? nameRef : surface.initialFocusRef;
   const shared = {...surface, onOpenChange: (next: boolean, reason: Parameters<OverlayChange>[1]) => {if (next || !busy) surface.onOpenChange(next, reason);}, returnFocusRef: surface.returnFocusRef ?? anchorRef, title: phone && mode === 'new' ? newName : title, initialFocusRef, className: styles.picker, dismissOnOutsidePress: !busy, dismissOnBack: !busy, showCloseButton: !phone && !busy};
-  return phone ? <BottomSheet {...shared} fitContent>{content}</BottomSheet> : <Popover {...shared} anchorRef={anchorRef} title={title} width={360} placement="bottom-start">{content}</Popover>;
+  // Frame 12's chooser is 360px; frame 13's new/result/collection states occupy 410px cells.
+  const width = mode === 'new' || result || destination === 'collection' ? 410 : 360;
+  return phone ? <BottomSheet {...shared} fitContent>{content}</BottomSheet> : <Popover {...shared} anchorRef={anchorRef} title={title} width={width} placement="bottom-start">{content}</Popover>;
 }
 
 export function PlaylistPicker(props: SelectionPickerProps) { return <SelectionPicker {...props} destination="playlist" />; }
@@ -87,10 +92,10 @@ export function CollectionPicker(props: SelectionPickerProps) { return <Selectio
 export type PickerAddedToastProps = Readonly<{open: boolean; onOpenChange: OverlayChange; selection: SelectionCount; destination: Destination; result: PickerResult; onView: (id: string) => void; bottomInset?: number}>;
 /** Owns the supported host, exact result copy, positioning, lifetime and dismissal. */
 export function PickerAddedToast({open, onOpenChange, selection, destination, result, onView, bottomInset}: PickerAddedToastProps) {
-  const toast = open && pickerResultSucceeded(result) ? {
+  const toast: ToastData | null = open && pickerResultSucceeded(result) ? {
     id: `picker-${destination}-${result.destination.id}`,
     message: <>{text('next.selection.addedToast', {items: selectionCountText({count: result.inserted!, kind: selection.kind}), name: result.destination.name})}{result.alreadyIn !== undefined && result.alreadyIn > 0 && <> {text('next.selection.duplicatesToast', {count: result.alreadyIn})}</>}</>,
-    action: {label: text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection'), onAction: () => onView(result.destination.id)},
+    action: {variant: 'text', label: text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection'), onAction: () => onView(result.destination.id)},
   } : null;
   return <ToastHost toast={toast} bottomInset={bottomInset} toastClassName={styles.pickerToast} onDismiss={(_id, reason) => onOpenChange(false, reason)} />;
 }

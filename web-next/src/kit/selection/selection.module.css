@@ -62,7 +62,7 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .barPrimary.barPrimary, .barAction.barAction, .barMore.barMore { height: 44px; min-height: 44px; min-width: 0; border-radius: 11px; flex: none; gap: 8px; }
 .desktopBar .barPrimary.barPrimary { padding: 0 18px; font-size: 15px; }
 .desktopBar .barAction.barAction { padding: 0 14px; font-size: 14.5px; background: rgba(237,245,250,.1); backdrop-filter: none; }
-.barAction > span { display: inline-flex; align-items: center; gap: 8px; }
+.barAction > span { display: inline-flex; align-items: center; gap: 4px; }
 .barAction svg { color: var(--color-text-secondary); }
 .barAction:hover { background: rgba(237,245,250,.18); }
 .barAction[aria-expanded="true"] { background: rgba(237,245,250,.24); }
@@ -84,6 +84,9 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .allNote.allNote button { height: auto; min-height: 0; padding: 0; font-size: 14.5px; font-weight: 800; }
 .ownerMenuLabel > span:last-child { padding: 3px 7px; border-radius: 5px; background: rgba(0,0,0,.3); color: var(--color-text-secondary); font-size: 11px; font-weight: 800; }
 .ownerMenuLabel { display: flex; align-items: center; gap: 8px; }
+.moreOwnerGroup { margin: 6px -2px 0; padding: 6px 6px 4px; border-radius: 10px; background: radial-gradient(120% 140% at 100% 0%,rgba(47,134,187,.2),transparent 62%),#0b1822; box-shadow: inset 0 0 0 1px rgba(92,179,226,.16); }
+.moreOwnerGroup > div:first-child { padding: 6px 8px 4px; }
+.moreOwnerGroup .moreOwnerRow.moreOwnerRow { height: 38px; min-height: 38px; padding-inline: 8px; }
 .selectionMenu [data-owner-only="true"] { margin: 6px -2px 0; padding: 6px 6px 4px; border: 0; border-radius: 10px; background: radial-gradient(120% 140% at 100% 0%,rgba(47,134,187,.2),transparent 62%),#0b1822; box-shadow: inset 0 0 0 1px rgba(92,179,226,.16); }
 .selectionMenu button[role^="menuitem"] { min-height: 40px; }
 .selectionMenu [data-owner-only="true"] button[role^="menuitem"] { min-height: 38px; }
@@ -105,7 +108,7 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .editorHeader > h2 { margin: 0; }
 .editorHeading { display: flex; flex-direction: column; gap: 0; line-height: normal; }
 .editorOwner { min-height: 40px; display: flex; align-items: center; }
-.editorHeader > button { top: 26px; right: 24px; width: 40px; height: 40px; }
+.editorHeader.editorHeader > button { top: 26px; right: 24px; width: 40px; height: 40px; color: var(--color-text-secondary); }
 .editorTitle { margin-top: 16px; font-size: 30px; font-weight: 800; letter-spacing: -.035em; }
 .editorBody { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; padding: 6px 32px 16px; }
 .editorDescription { margin-top: 6px; max-width: 470px; font-size: 14.5px; font-weight: 400; letter-spacing: normal; line-height: 1.5; color: var(--color-text-secondary); }
@@ -185,11 +188,12 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .resultStatus[data-ok="true"] { background: rgba(134,207,179,.16); color: var(--color-healthy); }
 .picker.picker { padding: 8px; border-radius: 14px; background: var(--color-raised-high); }
 .pickerContent { min-width: 0; display: flow-root; }
-.pickerHeading { line-height: normal; padding: 10px 12px 8px; font-size: 13px; font-weight: 700; color: var(--color-text-tertiary); }
+.pickerHeading { display: flex; align-items: center; gap: 8px; line-height: normal; padding: 10px 12px 8px; font-size: 13px; font-weight: 700; color: var(--color-text-tertiary); }
+.pickerHeading b { color: var(--color-text); font-size: 14px; font-weight: 800; }
 .pickerSearch { margin: 0 4px 6px; }
 .picker .pickerSearch.pickerSearch > div { height: 38px; }
 .pickerSearch input { height: 38px; font-size: 14px; }
-.pickerRow.pickerRow { display: flex; width: 100%; height: auto; min-height: 52px; padding: 6px 10px 6px 8px; border-radius: 10px; text-align: left; color: var(--color-text-secondary); }
+.pickerRow.pickerRow { display: flex; width: 100%; height: auto; min-height: 52px; padding: 6px 10px 6px 8px; border-radius: 10px; text-align: left; line-height: normal; color: var(--color-text-secondary); }
 .pickerRow > span { display: flex; align-items: center; gap: 12px; width: 100%; }
 .pickerRow:hover { background: rgba(237,245,250,.07); color: var(--color-text); }
 .pickerArtwork, .newPickerArtwork { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; overflow: hidden; flex: none; background: var(--color-raised); box-shadow: 0 0 0 1px rgba(237,245,250,.08); }
@@ -206,12 +210,17 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .pickerNew { margin: 4px 4px 0; }
 .pickerNew.pickerNew > div > div { height: 44px; }
 .pickerNew input { height: 44px; }
+@media (min-width: 600px) {
+  .pickerNew.pickerNew > div > div { height: 48px; }
+  .pickerNew > div > label { margin-bottom: 7px; }
+  .pickerNew .pickerButtons { margin-inline: 0; }
+}
 .pickerFailure { margin: 0 8px 8px; padding: 12px; border-radius: 10px; font-size: 13.5px; line-height: 1.45; color: var(--color-text-secondary); background: rgba(241,121,121,.08); box-shadow: inset 0 0 0 1px rgba(241,121,121,.35); }
 .pickerFailure b { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 14px; color: var(--color-text); }
 .pickerFailure svg { color: var(--color-record); flex: none; }
 .pickerFailure p { margin: 0; }
 .pickerLoadMore.pickerLoadMore { width: 100%; color: var(--color-accent-strong); }
-.pickerToast.pickerToast { min-height: 64px; font-size: 15px; }
+.pickerToast.pickerToast { min-height: 64px; font-size: 15px; font-weight: 600; color: var(--color-text); }
 .deleteDialog.deleteDialog { padding: 26px 28px 22px; border-radius: 18px; background: var(--color-raised-high); }
 .deleteHeading { font-size: 22px; line-height: 1.2; display: flex; flex-direction: column; gap: 14px; }
 .deleteOwner { display: flex; align-items: center; gap: 10px; min-height: 24px; }
