@@ -1,5 +1,5 @@
 export {PosterCard, WideCard, SquareCard, CircleCard, EpisodeTile, CoverCard, RankedCard, PlaylistMosaic, NewPlaylistCard} from './MediaCards';
-export type {CircleCardProps, EpisodeTileProps, CoverCardProps, PlaylistMosaicProps} from './MediaCards';
+export type {CircleCardProps, EpisodeTileProps, CoverCardProps, PlaylistMosaicProps, CardCover} from './MediaCards';
 export {LiveCard, CollectionBanner, CollectionTile, GenreTile, LibraryCard, LibraryRow, ResumeCard, ReadResumeCard, SeriesTile, QuickTile, SessionCard} from './FeatureCards';
 export type {LiveCardProps, CollectionCardProps, GenreTileProps, LibraryCardProps, ResumeCardProps, SeriesTileProps, SeriesSegment, QuickTileProps, SessionCardProps, SessionChannel} from './FeatureCards';
 export {NotInterestedButton} from './CardFrame';
