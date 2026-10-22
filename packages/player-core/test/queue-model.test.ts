@@ -4,6 +4,16 @@ test('queue controls use stable occurrence IDs and current server revision for a
  const p=new PlayerQueue(scope),raw=view();raw.items.reverse();p.adopt(raw);assert.equal(p.previous(),null);assert.deepEqual(p.next(),{kind:'next',queueId:'queue',expectedRevision:'1'});assert.deepEqual(p.upcoming().map(e=>e.entryId),['second']);assert.deepEqual(p.select('second'),{kind:'entry',entryId:'second',queueId:'queue',expectedRevision:'1'});
  assert.equal(p.select('missing'),null);p.adopt({...view(),queue:{...view().queue,revision:'2',currentEntryId:'second'}});assert.equal(p.previous()?.kind,'previous');assert.equal(p.next()?.expectedRevision,'2');
 });
+test('Previous offers a revision-fenced intent at the first occurrence only with Repeat all',()=>{
+ const p=new PlayerQueue(scope),raw=view();raw.queue.repeat='all';assert.equal(p.adopt(raw),true);
+ const before=p.getSnapshot();assert.deepEqual(p.previous(),{kind:'previous',queueId:'queue',expectedRevision:'1'});assert.equal(p.getSnapshot(),before);assert.deepEqual(p.getSnapshot()?.queue.entries.map(e=>e.id),['first','second']);
+ for(const repeat of ['off','one']){assert.equal(p.adopt({...raw,queue:{...raw.queue,repeat,revision:'2'}}),true);assert.equal(p.previous(),null);}
+});
+test('Previous stays unavailable without a current occurrence, including Repeat all',()=>{
+ for(const repeat of ['off','one','all']){
+  const p=new PlayerQueue(scope);assert.equal(p.previous(),null);assert.equal(p.adopt({...view(),queue:{...view().queue,repeat,currentEntryId:null,currentPlaybackId:null}}),true);assert.equal(p.previous(),null);
+ }
+});
 test('out-of-order queue updates, wrong identity, leaked hidden display data and unbounded windows are rejected',()=>{
  const p=new PlayerQueue(scope);p.adopt({...view(),queue:{...view().queue,revision:'9',highestSeenSequence:'8'}});assert.equal(p.adopt(view()),false);assert.equal(p.getSnapshot()?.queue.revision,'9');
  for(const key of Object.keys(scope))assert.throws(()=>p.adopt({...view(),queue:{...view().queue,scope:{...scope,[key]:'other'}}}));

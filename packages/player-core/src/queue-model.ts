@@ -38,8 +38,9 @@ export class PlayerQueue {
   next():QueueAction|null { return this.view?.next.available?this.action({kind:'next' as const}):null; }
   previous():QueueAction|null {
     if(!this.view)return null;
-    const at=this.view.queue.entries.findIndex(e=>e.id===this.view!.queue.currentEntryId);
-    return this.view.queue.entries.slice(0,at).some(visible)?this.action({kind:'previous' as const}):null;
+    const queue=this.view.queue,at=queue.entries.findIndex(e=>e.id===queue.currentEntryId);
+    if(at<0)return null;
+    return (queue.entries.slice(0,at).some(visible)||queue.repeat==='all'&&queue.entries.some(visible))?this.action({kind:'previous' as const}):null;
   }
   select(entryId:string):QueueAction|null { return this.view?.queue.entries.some(e=>e.id===entryId&&visible(e))?this.action({kind:'entry' as const,entryId}):null; }
   edit(intent:import('./queues.ts').QueueIntent):QueueAction|null {

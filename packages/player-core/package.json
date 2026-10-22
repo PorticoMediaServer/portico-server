@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test": "node --experimental-strip-types --test-concurrency=1 --test test/*.test.ts",
     "check": "node scripts/check-boundary.mjs && tsc -p tsconfig.json && npm test"
   }
 }

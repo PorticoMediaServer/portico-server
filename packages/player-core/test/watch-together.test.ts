@@ -57,6 +57,22 @@ test('scope, room epoch, session and all three monotonic counters fence group up
  assert.deepEqual(s.control(room,'play'),{kind:'host-only',expand:true});const host=follower({isHost:true,canControl:true});assert.deepEqual(host.control(room,'seek',5),{kind:'group-transport',command:'seek',positionUs:'5000000',expectedRevision:'3'});
  s.adopt(room,group({phase:'ended',revision:'8',eventOrdinal:'10'}));assert.equal(s.adopt(room,group({revision:'9',eventOrdinal:'11'})),false);assert.deepEqual(s.tick(local(),T0+30000),[]);s.leave();assert.equal(s.status(),null);
 });
+test('equal-counter service projections follow Live to Reconnecting to Live and terminal closure',()=>{
+ const s=follower();assert.equal(s.status(),'in-step');
+ for(const phase of ['reconnecting','live','ended'] as const){
+  assert.equal(s.adopt(room,group({phase})),true);assert.equal(s.status(),phase==='live'?'in-step':phase);assert.deepEqual(s.getSnapshot(),group({phase}));
+ }
+ assert.deepEqual(s.tick(local(),T0+20000),[]);assert.equal(s.control(room,'play'),null);
+ const ended=s.getSnapshot();assert.equal(s.adopt(room,group()),false);assert.equal(s.adopt(room,group({revision:'8',playbackRevision:'4',eventOrdinal:'10'})),false);assert.equal(s.getSnapshot(),ended);
+});
+test('equal-counter lifecycle changes retain lower-counter, retired-room and stale-source fences',()=>{
+ const s=follower();assert.equal(s.adopt(room,group({phase:'reconnecting'})),true);const reconnecting=s.getSnapshot();
+ for(const delta of [{revision:'6'},{playbackRevision:'2'},{eventOrdinal:'8'}])for(const phase of ['live','ended'] as const){assert.equal(s.adopt(room,group({...delta,phase})),false);assert.equal(s.getSnapshot(),reconnecting);}
+ assert.equal(s.adopt({...room,roomId:'retired'},group({id:'retired',phase:'live'})),false);assert.equal(s.adopt({...room,scope:{...scope,profileId:'other'}},group()),false);
+ const freshRoom={...room,epoch:2};s.join(freshRoom);s.bind(fence);assert.equal(s.adopt(freshRoom,group({phase:'reconnecting'})),true);assert.equal(s.adopt(room,group({phase:'live'})),false);assert.equal(s.status(),'reconnecting');assert.equal(s.adopt(freshRoom,group()),true);
+ const freshSource={...fence,sourceId:'fresh',generation:2};s.bind(freshSource);assert.deepEqual(s.tick(local(),T0+20000),[]);assert.ok(s.tick(local({fence:freshSource,positionSeconds:5}),T0+20000).some(e=>e.kind==='seek'&&e.fence.sourceId==='fresh'));
+ s.leave();assert.equal(s.adopt(freshRoom,group({phase:'live'})),false);assert.equal(s.status(),null);
+});
 test('malicious clocks, counters, rates, identifiers and sync bands cannot reach engines',()=>{
  for(const delta of [{revision:'9223372036854775808'},{timeline:{...group().timeline,anchorAt:'bad'}},{timeline:{...group().timeline,rate:{numerator:'1',denominator:'0'}}},{timeline:{...group().timeline,itemId:'../../private'}},{sync:{...group().sync,rateCorrectionMaximum:'Infinity'}},{sync:{...group().sync,noCorrectionUnderMs:5000}}]){const s=new WatchTogetherSync();s.join(room);assert.throws(()=>s.adopt(room,group(delta)));}
 });

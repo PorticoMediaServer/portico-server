@@ -89,7 +89,8 @@ export class WatchTogetherSync {
   adopt(room:WatchTogetherFence,raw:unknown):boolean {
     if(!sameRoom(this.room,room))return false;
     const next=parseState(raw,room.roomId),old=this.state;
-    if(old&&(old.phase==='ended'||BigInt(next.revision)<BigInt(old.revision)||BigInt(next.playbackRevision)<BigInt(old.playbackRevision)||BigInt(next.eventOrdinal)<=BigInt(old.eventOrdinal)))return false;
+    // Connection lifecycle can change without a new server event; only lower counters are stale.
+    if(old&&(old.phase==='ended'||BigInt(next.revision)<BigInt(old.revision)||BigInt(next.playbackRevision)<BigInt(old.playbackRevision)||BigInt(next.eventOrdinal)<BigInt(old.eventOrdinal)))return false;
     this.state=next;return true;
   }
   status():'in-step'|'waiting'|'host-away'|'reconnecting'|'ended'|null {
