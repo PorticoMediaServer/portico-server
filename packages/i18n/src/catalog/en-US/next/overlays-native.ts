@@ -18,4 +18,6 @@ export const overlaysNativeMessages = {
   'next.overlays.native.ownerOnly': 'Owner only',
   'next.overlays.native.rate': 'Rate',
   'next.overlays.native.editMetadata': 'Edit metadata',
+  'next.overlays.native.playFromBeginning': 'Play from the beginning',
+  'next.overlays.native.goToSeason': 'Go to season',
 } as const satisfies Record<`next.overlays.native.${string}`, string>;
