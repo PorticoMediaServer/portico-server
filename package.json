@@ -4,13 +4,17 @@
   "type": "module",
   "workspaces": [
     "web",
+    "web-next",
     "packages/client-core",
-    "packages/design"
+    "packages/design",
+    "packages/player-core"
   ],
   "scripts": {
     "dev:web": "npm run dev --workspace portico-web",
     "check:web": "npm run test:cast && npm run check --workspace portico-web",
     "test:core": "npm run test --workspace @portico/client-core",
-    "test:cast": "node --test server/receiver/cast/test/receiver.test.cjs"
+    "test:cast": "node --test server/receiver/cast/test/receiver.test.cjs",
+    "test:player": "npm run test --workspace @portico/player-core",
+    "check:player": "npm run check --workspace @portico/player-core"
   }
 }
