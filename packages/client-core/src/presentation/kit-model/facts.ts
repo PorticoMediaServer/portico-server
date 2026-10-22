@@ -19,7 +19,7 @@ export type CardSubject = TitleFacts & Readonly<{
   episode?: EpisodeNumbering; seasonNumber?: number; positionSeconds?: number;
 }>;
 export type CardTextModel = Readonly<{id: string; title: string; caption: readonly FactPart[]; detail: readonly FactPart[]; progress?: number}>;
-export type TitleFactContext = 'video' | 'music' | 'audiobook' | 'audiobook-chapters';
+export type TitleFactContext = 'video' | 'music' | 'audiobook' | 'audiobook-chapters' | 'home-movie' | 'home-show';
 
 /** A calendar day is not a device-zone instant. Reject impossible days, including rollover. */
 function calendarDay(day: string | undefined, locale: string | undefined): string | undefined {
@@ -51,6 +51,18 @@ export function episodeLabel(numbering: EpisodeNumbering | undefined, context: C
 export function titleFactParts(facts: TitleFacts, env: TextEnvironment, context: TitleFactContext = 'video'): readonly FactPart[] {
   const {t} = env;
   const time = durationText(facts.durationSeconds, t);
+  // Home hero and TV focus share year → genres → movie length or show seasons.
+  // The kind is explicit: an unknown show season total never becomes episode length.
+  if (context === 'home-movie' || context === 'home-show') {
+    // The frame draws genres as one comma-separated metadata group. Consumers render it whole.
+    const genres = (facts.genres ?? []).filter(supplied);
+    return compact([
+      integer(facts.year) ? part('year', String(facts.year)) : undefined,
+      genres.length ? part('genres', genres.reduce((list, genre) => t('next.kit.genres.append', {list, genre})), 'supplement') : undefined,
+      context === 'home-movie' && time ? part('duration', time) : undefined,
+      context === 'home-show' && integer(facts.seasonCount) ? part('season-count', t('next.kit.seasons', {count: facts.seasonCount}), 'supplement') : undefined,
+    ]);
+  }
   // The full player's chapter-list summary alone includes the chapter total in its label.
   if (context === 'audiobook-chapters') return compact([
     integer(facts.chapterCount) ? part('chapter-count', t('next.kit.chapters', {count: facts.chapterCount}), 'supplement') : undefined,

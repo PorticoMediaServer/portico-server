@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {appendHomeRowPage,validateHomeDocument,validateHomeRow,validateHomeSeeAll,fetchHomeRow,type HomeApi} from '../src/home.ts';
+import {appendHomeRowPage,validateHomeDocument,validateHomeEntry,validateHomeRow,validateHomeSeeAll,fetchHomeRow,type HomeApi} from '../src/home.ts';
+import {validateContentEntry} from '../src/library-content.ts';
 import {HomeService} from '../src/home-service.ts';
 import {homeRowPresentation,homeSpotlightModels} from '../src/presentation/home-spotlight.ts';
 import {homeContractsMessages} from '../../i18n/src/catalog/en-US/next/home-contracts.ts';
@@ -14,6 +15,29 @@ const channel=(id:string,mark='SS')=>({source,channel:{id,sourceId:source.id,pro
 const live=(channels:unknown[],more:Record<string,unknown>={})=>({revision:'directory-guide-preferences',observedAt:'2026-10-22T00:30:00Z',expiresAt:'2026-10-22T00:31:00Z',sort:'favorites',group:'Sports',groups:[{name:'Sports',count:2000}],channels,...more});
 const api=(read:(path:string)=>unknown):HomeApi=>({request:async<T>(path:string)=>await read(path) as T});
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
+
+test('Home episodes retain authorized parent facts without substituting child metadata or identity',()=>{
+  const parent={kind:'show',year:2020,genres:['Drama','Mystery'],seasonCount:2};
+  const episode=entry('episode','episode',{year:2026,genres:['Comedy'],seasonNumber:2,episodeNumber:3,durationMs:3000000,homeTitleContext:{...parent,privatePath:'/private/show'}});
+  const parsed=validateHomeRow(row('continue',{entries:[episode],total:1})).entries[0];
+  assert.deepEqual(parsed.homeTitleContext,parent);
+  assert.ok(Object.isFrozen(parsed.homeTitleContext)&&Object.isFrozen(parsed.homeTitleContext!.genres));
+  assert.equal(parsed.id,'episode');assert.equal(parsed.navigation!.entityId,'episode');assert.equal(parsed.playback!.itemId,'episode');
+  assert.equal(parsed.year,2026);assert.deepEqual(parsed.genres,['Comedy']);assert.equal(parsed.duration,3000);
+  assert.equal('homeTitleContext' in validateContentEntry(episode),false,'generic catalogue metadata stays unchanged');
+  assert.equal(validateHomeEntry(entry('without','episode',{year:2026,genres:['Comedy']})).homeTitleContext,undefined);
+  const sparse=validateHomeEntry({...episode,homeTitleContext:{kind:'show',genres:[],seasonCount:0}}).homeTitleContext!;
+  assert.deepEqual(sparse,{kind:'show',genres:[],seasonCount:0});assert.equal(sparse.year,undefined);
+  const resume={...episode,show:{id:'show',name:'Show'}};
+  const document=validateHomeDocument(doc([],{spotlight:[{entry:entry('show','show'),reason:{kind:'recent',text:{code:'next.home.reason.recentTo',fallback:'Recently added'}},resumeTarget:resume}]}));
+  assert.deepEqual(document.spotlight[0].resumeTarget!.homeTitleContext,parent);
+  assert.equal(document.spotlight[0].entry.homeTitleContext,undefined);
+  for(const broken of [{kind:'album',genres:[]},{kind:'show',genres:['a','b','c']},{kind:'show',genres:[1]},{kind:'show',genres:[],year:0},{kind:'show',genres:[],seasonCount:-1},{kind:'show',genres:[],seasonCount:1.5}]){
+    const value=validateHomeEntry({...episode,homeTitleContext:broken});
+    assert.equal(value.id,'episode');assert.equal(value.homeTitleContext,undefined);
+  }
+  assert.equal(validateHomeEntry(entry('movie','movie',{homeTitleContext:parent})).homeTitleContext,undefined);
+});
 
 test('spotlight preserves server reasons and order, real show resume identity and normalized runtime',()=>{
   const spotlight=[
@@ -39,7 +63,7 @@ test('spotlight preserves server reasons and order, real show resume identity an
 });
 
 test('new badges, causal source, collection facts, ordered ranks and audio contributions survive parsing',()=>{
-  const collection={collection:{id:'collection',libraryId:'videos',name:'A collection',itemCount:4,revision:3},members:[entry('one'),entry('two'),entry('three'),entry('four')],backdropUrl:'/member/backdrop',firstYear:1984,lastTitle:'four'};
+  const collection={mediaKind:'movie',collection:{id:'collection',libraryId:'videos',name:'A collection',itemCount:4,revision:3},members:[entry('one'),entry('two'),entry('three'),entry('four')],backdropUrl:'/member/backdrop',firstYear:1984,lastTitle:'four'};
   const rows=[
     row('new_on_server',{entries:[entry('new','movie',{new:true}),entry('watched','movie',{watched:true})],total:2,seeAll:{type:'row',rowId:'new_on_server'}}),
     row('because_you_watched',{entries:[entry('related')],reason:{kind:'because_you_watched',source:{id:'actual',name:'Actual source'},text:{code:'next.home.becauseYouWatched',fallback:'Because you watched Actual source',params:{title:'Actual source'}}}}),
@@ -72,6 +96,11 @@ test('On now requires authoritative marks, real one-programme windows and keeps 
   assert.equal(parsed.live!.channels[0].channel.programmes[0].flags!.live,false);
   assert.equal(parsed.live!.channels[0].channel.programmes[0].flags!.repeat,true);
   assert.equal(parsed.live!.channels[0].source.name,'Actual source');
+  assert.deepEqual(parsed.live!.channels[0].actions,{play:false,favorite:false});
+  const offered=validateHomeRow(row('on_now',{live:live([{...channel('one'),actions:{play:true,favorite:true,editMetadata:true,queue:true}}])})).live!.channels[0];
+  assert.deepEqual(offered.actions,{play:true,favorite:true});
+  const unavailable=validateHomeRow(row('on_now',{live:live([{...channel('one'),channel:{...channel('one').channel,tuneAvailable:false},actions:{play:true,favorite:true}}])})).live!.channels[0];
+  assert.deepEqual(unavailable.actions,{play:false,favorite:true});
   assert.equal(validateHomeDocument(doc([row('on_now',{live:live([channel('one')]),total:2000})])).rows.length,1);
   for(const bad of [live([{...channel('one'),channel:{...channel('one').channel,mark:undefined}}]),live([channel('one')],{sort:'name'}),live(Array(51).fill(channel('one'))),live([{...channel('one'),channel:{...channel('one').channel,programmes:[...channel('one').channel.programmes,...channel('one').channel.programmes]}}]),live([channel('one')],{observedAt:'2026-10-22T01:00:00Z',expiresAt:'2026-10-22T01:01:00Z'})])assert.throws(()=>validateHomeRow(row('on_now',{live:bad})));
   assert.deepEqual(validateHomeSeeAll({type:'guide',group:'Sports',sourceId:'source'}),{type:'guide',group:'Sports',sourceId:'source'});
@@ -112,7 +141,7 @@ test('deferred collection/live hydration survives empty entries and denied live 
   let denied=false;
   const service=new HomeService(api(path=>{
     if(path==='/v1/home')return doc([row('featured_collection',{deferred:true}),row('on_now',{deferred:true})]);
-    if(path.includes('featured_collection'))return row('featured_collection',{kind:'collection_banner',collection:{collection:{id:'collection',libraryId:'videos',name:'Collection',itemCount:1,revision:1},members:[entry('member')]},total:1});
+    if(path.includes('featured_collection'))return row('featured_collection',{kind:'collection_banner',collection:{mediaKind:'movie',collection:{id:'collection',libraryId:'videos',name:'Collection',itemCount:1,revision:1},members:[entry('member')]},total:1});
     if(denied)throw {status:404,code:'not_found'};
     return row('on_now',{live:live([channel('one')]),total:2000,nextCursor:'next',hasMore:true});
   }));

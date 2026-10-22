@@ -4097,6 +4097,13 @@ CREATE TABLE personal_job_items(job_id TEXT NOT NULL REFERENCES personal_jobs(id
  ordinal INTEGER NOT NULL,item_id INTEGER NOT NULL, PRIMARY KEY(job_id,ordinal),UNIQUE(job_id,item_id)) STRICT;
 CREATE TABLE personal_job_failures(job_id TEXT NOT NULL REFERENCES personal_jobs(id) ON DELETE CASCADE,
  ordinal INTEGER NOT NULL,item_id INTEGER NOT NULL,code TEXT NOT NULL,PRIMARY KEY(job_id,ordinal)) STRICT;
+CREATE TABLE personal_job_membership_outcomes(
+ job_id TEXT NOT NULL REFERENCES personal_jobs(id) ON DELETE CASCADE,
+ item_public_id BLOB NOT NULL CHECK(length(item_public_id)=16),
+ outcome TEXT NOT NULL CHECK(outcome IN('pending','added','already_present','failed')),
+ code TEXT NOT NULL DEFAULT '' CHECK(length(code)<=128),
+ PRIMARY KEY(job_id,item_public_id)
+) STRICT;
 CREATE TABLE container_personal_state(profile_id TEXT NOT NULL,kind TEXT NOT NULL,container_id INTEGER NOT NULL,
  watched INTEGER NOT NULL CHECK(watched IN(0,1)),watermark TEXT NOT NULL,revision INTEGER NOT NULL,cleared_through TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(profile_id,kind,container_id)) STRICT;
