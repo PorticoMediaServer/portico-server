@@ -62,16 +62,17 @@ function switchCase(checked = false, size: 'compact' | 'phone' | 'episode' = 'co
 
 function field(variant: 'field' | 'compact' | 'search' = 'field', state: 'value' | 'placeholder' | 'error' | 'disabled' | 'readonly' | 'long' | 'focus' = 'value') {
   return function FieldCase() {
-    const [value, choose] = useState(state === 'placeholder' || state === 'error' ? '' : state === 'long' ? fixture('next.controls.fixture.longName') : t('next.controls.movies'));
+    const [value, choose] = useState(state === 'placeholder' || state === 'error' ? '' : state === 'long' ? fixture('next.controls.fixture.longName') : variant === 'search' && state === 'focus' ? fixture('next.controls.fixture.settingsSearch') : t('next.controls.movies'));
     return <Surface stacked raised><TextField variant={variant} label={variant === 'search' ? undefined : t('next.controls.libraryName')}
       aria-label={variant === 'search' ? t('next.controls.searchSettings') : undefined} placeholder={t(variant === 'search' ? 'next.controls.searchSettings' : 'next.controls.namePlaceholder')}
-      value={value} onChange={event => choose(event.currentTarget.value)} autoFocus={state === 'focus'} disabled={state === 'disabled'} readOnly={state === 'readonly'} error={state === 'error' ? t('next.controls.nameError') : undefined} /><output data-value={value} /></Surface>;
+      value={value} onChange={event => choose(event.currentTarget.value)} autoFocus={state === 'focus'} disabled={state === 'disabled'} readOnly={state === 'readonly'} error={state === 'error' ? t('next.controls.nameError') : undefined}
+      trailing={variant === 'search' && value ? <Button variant="icon" icon="i-x" iconSize={14} iconOnly aria-label={t('next.controls.clearSearch')} className={styles.clearSearch} onClick={() => choose('')} /> : undefined} /><output data-value={value} /></Surface>;
   };
 }
 
 function AuthFieldCase() {
   const [value, choose] = useState(fixture('next.controls.fixture.server'));
-  return <Surface stacked><TextField variant="auth" label={t('next.controls.serverName')} value={value} onChange={event => choose(event.currentTarget.value)} autoFocus /></Surface>;
+  return <Surface stacked><TextField variant="auth" label={t('next.controls.serverName')} value={value} onChange={event => choose(event.currentTarget.value)} /></Surface>;
 }
 function CodeFieldCase() {
   const [value, choose] = useState(fixture('next.controls.fixture.code'));
@@ -79,7 +80,7 @@ function CodeFieldCase() {
 }
 function LargeSearchCase() {
   const [value, choose] = useState('');
-  return <Surface stacked><TextField variant="large-search" type="search" aria-label={t('next.controls.search')} placeholder={t('next.controls.searchLibraries')} value={value} onChange={event => choose(event.currentTarget.value)} autoFocus /></Surface>;
+  return <Surface stacked><TextField variant="large-search" type="search" aria-label={t('next.controls.search')} placeholder={t('next.controls.searchLibraries')} value={value} onChange={event => choose(event.currentTarget.value)} trailing={<span className={styles.searchHint}><span className={styles.keyHint}>{t('next.controls.searchShortcut')}</span>{t('next.controls.searchFromAnywhere')}</span>} autoFocus /></Surface>;
 }
 
 function ButtonContractCase() {
@@ -106,7 +107,7 @@ const qualityOptions = (): readonly SelectOption[] => [
 
 function select(rich = false, opened = false, disabled = false, long = false) {
   return function SelectCase() {
-    const [value, choose] = useState(rich ? 'auto' : '10');
+    const [value, choose] = useState(rich ? opened ? 'auto' : 'original' : '10');
     const [open, setOpen] = useState(opened);
     const Component = rich ? RichSelect : Select;
     return <Surface stacked raised><Component aria-label={t(rich ? 'next.controls.away' : 'next.controls.stillWatching')} value={value} onValueChange={choose} open={open} onOpenChange={setOpen} disabled={disabled}
@@ -183,6 +184,7 @@ const cases: readonly GalleryCase[] = [
   {id: 'resume-phone', labelKey: 'next.controls.resume', width: 350, height: 70, render: resume(false, true)},
   {id: 'disabled', labelKey: 'next.controls.disabled', width: 240, height: 80, render: button({variant: 'primary', icon: 'i-play', disabled: true})},
   {id: 'loading', labelKey: 'next.controls.loading', width: 240, height: 80, render: button({variant: 'primary', icon: 'i-play', loading: true})},
+  {id: 'loading-text', labelKey: 'next.controls.loading', width: 150, height: 64, render: button({variant: 'text', loading: true}, 'next.controls.acknowledge')},
   {id: 'long-name', labelKey: 'next.controls.name', width: 240, height: 80, render: button({variant: 'primary', icon: 'i-play'}, 'next.controls.play', true)},
   {id: 'chip', labelKey: 'next.controls.season', width: 240, height: 64, render: chip({trailingIcon: 'i-down'})},
   {id: 'chip-selected', labelKey: 'next.controls.selected', width: 240, height: 64, render: chip({variant: 'search', selected: true}, 'next.controls.all')},
@@ -192,7 +194,7 @@ const cases: readonly GalleryCase[] = [
   {id: 'chip-retry', labelKey: 'next.controls.people', width: 240, height: 64, render: chip({variant: 'search', retry: true, 'aria-label': t('next.controls.peopleRetry')}, 'next.controls.people')},
   {id: 'chip-download-retry', labelKey: 'next.controls.tryAgain', width: 240, height: 54, render: chip({variant: 'download', retry: true, phone: true}, 'next.controls.tryAgain')},
   {id: 'chip-phone', labelKey: 'next.controls.all', width: 240, height: 58, render: chip({phone: true, selected: true, count: 6}, 'next.controls.all')},
-  {id: 'chip-quick', labelKey: 'next.controls.unwatched', width: 240, height: 64, render: chip({variant: 'quick', selected: true}, 'next.controls.unwatched')},
+  {id: 'chip-quick', labelKey: 'next.controls.all', width: 240, height: 64, render: chip({variant: 'quick', selected: true, count: 72}, 'next.controls.all')},
   {id: 'chip-facet', labelKey: 'next.controls.animation', width: 240, height: 58, render: chip({variant: 'facet', selected: true, count: 6, icon: 'i-check'}, 'next.controls.animation')},
   {id: 'chip-applied', labelKey: 'next.controls.genre', width: 280, height: 58, render: chip({variant: 'applied', prefix: t('next.controls.genre'), trailingIcon: 'i-close', 'aria-label': t('next.controls.removeAnimation')}, 'next.controls.animation')},
   {id: 'chip-pill', labelKey: 'next.controls.quality', width: 240, height: 58, render: chip({variant: 'pill', prefix: t('next.controls.auto'), 'aria-label': fixture('next.controls.fixture.qualityLabel')}, 'next.controls.quality1080')},
@@ -226,7 +228,7 @@ const cases: readonly GalleryCase[] = [
   {id: 'select-long', labelKey: 'next.controls.name', width: 240, height: 64, render: select(false, false, false, true)},
   {id: 'rich-select', labelKey: 'next.controls.away', width: 260, height: 64, render: select(true)},
   {id: 'rich-select-open', labelKey: 'next.controls.away', width: 380, height: 480, render: select(true, true)},
-  {id: 'rich-select-phone', labelKey: 'next.controls.away', width: 390, height: 600, render: select(true, true)},
+  {id: 'rich-select-phone', labelKey: 'next.controls.away', width: 390, height: 844, render: select(true, true)},
   {id: 'volume', labelKey: 'next.controls.volume', width: 116, height: 48, render: volume()},
   {id: 'volume-dock', labelKey: 'next.controls.volume', width: 124, height: 48, render: volume('dock')},
   {id: 'volume-disabled', labelKey: 'next.controls.disabled', width: 116, height: 48, render: volume('player', true)},

@@ -17,7 +17,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   return <button {...props} ref={ref} type={type} disabled={disabled || loading} aria-busy={loading || props['aria-busy'] || undefined}
     data-size={size} data-variant={variant} data-phone={phone || undefined} data-icon-only={iconOnly || undefined}
     className={[styles.button, className].filter(Boolean).join(' ')}>
-    {loading ? <span className={styles.spinner} aria-hidden="true" /> : icon && <Icon name={icon} className={styles.glyph} size={iconSize} style={iconSize ? {width: iconSize, height: iconSize} : undefined} />}
+    {icon && (loading ? <span className={styles.spinner} aria-hidden="true" style={iconSize ? {width: iconSize, height: iconSize} : undefined} /> : <Icon name={icon} className={styles.glyph} size={iconSize} style={iconSize ? {width: iconSize, height: iconSize} : undefined} />)}
     {children !== undefined && children !== null && <span className={styles.buttonLabel}>{children}</span>}
   </button>;
 });

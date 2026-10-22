@@ -33,10 +33,23 @@ export type SegmentedProps = Omit<ComponentPropsWithoutRef<typeof RadioGroup.Roo
   disabled?: boolean;
 };
 
-export function Segmented({items, value, defaultValue, onValueChange, variant = 'glass', name, disabled, className, ...props}: SegmentedProps) {
+export function Segmented({items, value, defaultValue, onValueChange, variant = 'glass', name, disabled, className, onKeyDownCapture, ...props}: SegmentedProps) {
   const id = useId();
   return <RadioGroup.Root {...props} id={props.id ?? id} orientation="horizontal" value={value} defaultValue={defaultValue ?? items.find(item => !item.disabled)?.value}
-    onValueChange={onValueChange} disabled={disabled} name={name} className={[styles.segmented, className].filter(Boolean).join(' ')} data-variant={variant}>
+    onValueChange={onValueChange} disabled={disabled} name={name} className={[styles.segmented, className].filter(Boolean).join(' ')} data-variant={variant}
+    onKeyDownCapture={event => {
+      onKeyDownCapture?.(event);
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || disabled) return;
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      const choices = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')].filter(choice => !choice.disabled);
+      const index = choices.indexOf(event.target as HTMLButtonElement);
+      if (index < 0) return;
+      const rtl = getComputedStyle(event.currentTarget).direction === 'rtl';
+      const direction = (event.key === 'ArrowRight' ? 1 : -1) * (rtl ? -1 : 1);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? choices.length - 1 : props.loop === false ? Math.min(choices.length - 1, Math.max(0, index + direction)) : (index + direction + choices.length) % choices.length;
+      // Commit before keyup: Radix's deferred roving focus can miss a rapid key press.
+      event.preventDefault(); choices[next]?.focus(); choices[next]?.click();
+    }}>
     {items.map(item => <RadioGroup.Item key={item.value} value={item.value} disabled={item.disabled} aria-label={item.accessibleLabel} className={styles.segment}>
       {item.icon && <Icon name={item.icon} size={18} />}{item.label}
     </RadioGroup.Item>)}
