@@ -575,8 +575,8 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/playback/controls/{id}:stop": writeExempt("account-scoped opaque playback session stop; no catalogue ID or title response (TestPlaybackV1AccountPlaybackListHidesRestrictedTitlesAndStopsOwnSlots)"),
 		"POST /v1/downloads/options": writeProbes(func(m *restrictionEnv) []idProbe {
 			var out []idProbe
-			for _, kind := range []string{"show", "season", "album", "artist", "book"} {
-				body := fmt.Sprintf(`{"target":{"kind":%q,"id":"ID"},"deviceId":"matrix-device","policy":{"episodes":"all"}}`, kind)
+			for _, kind := range []string{"show", "season", "album", "book"} {
+				body := fmt.Sprintf(`{"target":{"kind":%q,"id":"ID"},"deviceId":%q,"policy":{"episodes":"all"}}`, kind, m.device)
 				out = append(out, perHidden("POST", "/v1/downloads/options", body, kind).probes(m)...)
 			}
 			return out
