@@ -87,3 +87,115 @@ test('the existing independent snippet contract keeps its substantive count', ()
 test('malformed multiline source fails closed instead of losing checked positions', () => {
   assert.throws(() => countLiterals('const view = <Panel\n title="Actual title"'), /cannot parse source/);
 });
+
+test('named copy positions check their values without promoting DOM selectors or lookup predicates', () => {
+  const source = `
+    const subtitle = card.querySelector('.on-art small')!, detail = card.querySelector(':scope > .s');
+    const model = {title: card.querySelector('.on-art b')!.textContent!};
+    const title = (JSON.parse(manifestJson) as {tv: {title: string}[]}).tv.find(item => item.title.startsWith('The Last'))!.title;
+    model.caption = card.querySelector('.on-art small')!.textContent!;
+    const message = readInput('Developer input only');
+    const visible = {title: 'Actual title', subtitle: 'Actual subtitle', detail: 'Actual detail'};
+    model.caption = 'Actual caption';
+  `;
+  assert.deepEqual(texts(source), ['Actual title', 'Actual subtitle', 'Actual detail', 'Actual caption']);
+});
+
+test('JSX callback returns stay checked while local declarations and thrown diagnostics stay inputs', () => {
+  const source = `
+    const view = <>{parseMessage(enUS[messageId]).map((node, index) => {
+      const scratch = 'Not returned from this callback';
+      const subtitle = card.querySelector('.on-art small')!, detail = card.querySelector(':scope > .s');
+      const model = {title: card.querySelector('.on-art b')!.textContent!};
+      const title = manifest.tv.find(item => item.title.startsWith('The Last'))!.title;
+      if (node.kind === 'text') return <Fragment key={index}>{node.value}</Fragment>;
+      if (node.kind === 'arg') return emphasis.includes(node.name) ? <strong>{values[node.name]}</strong> : <Fragment>{values[node.name]}</Fragment>;
+      throw new TypeError('State sentences require text and named arguments.');
+    })}</>;
+    const visible = <>{items.map(item => {
+      const ignored = 'This local is never rendered';
+      const helper = () => 'This helper is never returned';
+      if (item.blocked) throw new Error('This diagnostic is never rendered');
+      const message = 'Named message remains checked';
+      if (item.ready) return 'Play now';
+      return item.retry ? 'Try again' : \`Waiting for \${item.name}\`;
+    })}</>;
+  `;
+  assert.deepEqual(texts(source), ['Named message remains checked', 'Play now', 'Try again', 'Waiting for ${x}']);
+});
+
+test('render helpers retain JSX, expression callbacks and block returns through branches', () => {
+  const source = `
+    function renderLabel() { return <b>Helper visible text</b>; }
+    const view = <Panel title={items.map(item => item.ready ? 'Ready now' : 'Try again')}>
+      {(() => {
+        if (ready) return 'Direct helper return';
+        switch (state) {
+          case 'Not displayed case': return 'Switch return';
+          default: try { return 'Try return'; } catch (error) { throw new Error('Developer diagnostic'); }
+        }
+      })()}
+      {items.map(item => <span>{item.ready ? 'Nested JSX return' : 'Other JSX return'}</span>)}
+    </Panel>;
+  `;
+  assert.deepEqual(texts(source), ['Helper visible text', 'Ready now', 'Try again', 'Direct helper return', 'Switch return', 'Try return', 'Nested JSX return', 'Other JSX return']);
+});
+
+test('structured helper inputs and catalogue interpolations keep their checked copy', () => {
+  const source = [
+    'const view = <Panel title={formatMessage("next.test", {time: "4:02 PM"})}',
+    '  body={render({value: ready ? "Visible helper value" : "Other helper value", label: "Explicit label"})}>',
+    '  {formatMessage("next.test", {time: "8:45 PM"})}',
+    '  {["Visible array value"].map(value => <b>{value}</b>)}',
+    '</Panel>;',
+  ].join('\n');
+  assert.deepEqual(countLiterals(source).hits, [
+    {line: 1, text: '4:02 PM'}, {line: 2, text: 'Visible helper value'}, {line: 2, text: 'Other helper value'}, {line: 2, text: 'Explicit label'},
+    {line: 3, text: '8:45 PM'}, {line: 4, text: 'Visible array value'},
+  ]);
+});
+
+test('visible locals and local helper results follow lexical values without promoting unused scalar inputs', () => {
+  const source = `
+    function passthrough(value: string, input: string) { const result = value; return result; }
+    const statusText = passthrough('Visible forwarded copy', 'Unused scalar helper input');
+    function renderText() {
+      const result = ready ? 'Visible helper result' : 'Visible helper alternative';
+      return result;
+    }
+    function unusedHelper() { return 'Unused helper result'; }
+    const view = <>
+      <p>{statusText}</p><p>{renderText()}</p>
+      {items.map(item => {
+        const statusText = 'Visible callback local';
+        const scratch = 'Unused callback local';
+        return statusText;
+      })}
+      {(() => { let result = 'Initial local value'; result = 'Assigned local value'; return result; })()}
+    </>;
+  `;
+  assert.deepEqual(texts(source), ['Visible forwarded copy', 'Visible helper result', 'Visible helper alternative', 'Visible callback local', 'Initial local value', 'Assigned local value']);
+});
+
+test('helper binding traversal terminates on recursive values and keeps later visible siblings', () => {
+  const source = `
+    function recursive() { return ready ? recursive() : 'Visible recursive fallback'; }
+    const cycle = cycle;
+    const view = <p>{recursive()}{cycle}{'Visible sibling'}</p>;
+  `;
+  assert.deepEqual(texts(source), ['Visible recursive fallback', 'Visible sibling']);
+});
+
+test('predicate inputs and discarded expressions do not hide conditional, direct or template output', () => {
+  const source = [
+    'const view = <Panel title={"Not a displayed predicate" === state ? "Displayed title" : "Alternate title"}>',
+    '  {lookup("Not a displayed input") ? "Visible success" : "Visible failure"}',
+    '  {ready && "Visible logical return"}',
+    '  {"Truthy condition only" && "Visible right side"}',
+    '  {fallback || "Visible fallback"}',
+    '  {("Discarded expression only", "Visible sequence return")}',
+    '  {`Visible template ${ready ? "Visible nested value" : "Other nested value"}`}',
+    '</Panel>;',
+  ].join('\n');
+  assert.deepEqual(texts(source), ['Displayed title', 'Alternate title', 'Visible success', 'Visible failure', 'Visible logical return', 'Visible right side', 'Visible fallback', 'Visible sequence return', 'Visible template ${x}', 'Visible nested value', 'Other nested value']);
+});

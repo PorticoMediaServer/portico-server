@@ -61,12 +61,12 @@ function connectionFacts(phone = false): readonly DetailsFact[] {
 function Connection({owner = true, phone = false, unknown = false}: {owner?: boolean; phone?: boolean; unknown?: boolean}) {
   const [open, setOpen] = useState(true);
   const {action, output} = useActions();
-  const details = owner ? <DetailsPanel audience="owner" facts={connectionFacts(phone)} owner={{ownerMark:<ServerMark size={22}/>,ownerTag:<OwnerTag/>,paragraphs: [t('next.states.connectionOwnerBody', {time: '4:02 PM'})], codes: ['route_unavailable', 'request_failed'], actions: [action('copy', t('next.states.copyDetails'), 'i-copy')]}}/> : <DetailsPanel audience="viewer" facts={connectionFacts(phone)}/>;
+  const details = owner ? <DetailsPanel audience="owner" facts={connectionFacts(phone)} owner={{ownerMark:<ServerMark size={22}/>,ownerTag:<OwnerTag/>,paragraphs: [t('next.states.connectionOwnerBody', {time: fixture('next.states.fixture.connectionTime')})], codes: ['route_unavailable', 'request_failed'], actions: [action('copy', t('next.states.copyDetails'), 'i-copy')]}}/> : <DetailsPanel audience="viewer" facts={connectionFacts(phone)}/>;
   return <StateLayout className={phone ? styles.mobileConnection : undefined} title={t('next.states.cantReach', {server: server()})}
     backdrop={phone ? {kind:'colour',shape:'top',fill:true} : undefined}
     body={t(phone ? 'next.states.cantReachPhoneBody' : 'next.states.cantReachBody')} icon="i-srvoff" tone="warning"
     contentStyle={phone ? {top: 62, left: 20, right: 20} : {top: 500}}
-    retry={{progress: unknown ? null : phone ? 1 - 12 / 56.55 : 1 - 22 / 56.55, label: unknown ? t('next.states.retrying') : t('next.states.retryIn', {seconds: phone ? 26 : 9}), detail: phone ? undefined : t('next.states.triesSince', {count: 4, time: '4:02 PM'})}}
+    retry={{progress: unknown ? null : phone ? 1 - 12 / 56.55 : 1 - 22 / 56.55, label: unknown ? t('next.states.retrying') : t('next.states.retryIn', {seconds: phone ? 26 : 9}), detail: phone ? undefined : t('next.states.triesSince', {count: 4, time: fixture('next.states.fixture.connectionTime')})}}
     primary={action('retry', t('next.states.tryNow'), phone ? undefined : 'i-retry')} secondary={action('switch', t('next.states.switchServer'), phone ? undefined : 'i-server')}
     details={phone ? undefined : {open, onOpenChange: setOpen, content: details}} afterActions={phone ? details : undefined} after={output}/>;
 }
@@ -132,7 +132,7 @@ function Empty({kind}: {kind: EmptyKind}) {
     'first-library':{eyebrow:t('next.states.ready',{server:server()}),title:t('next.states.firstLibrary'),body:t('next.states.firstLibraryBody'),primary:action('add',t('next.states.addLibrary'),'i-plus'),secondary:action('live',t('next.states.setupLive'),'i-live')},
     member:{icon:'i-clock',title:t('next.states.gettingReady',{server:server()}),body:t('next.states.gettingReadyBody'),links:[action('switch',t('next.states.switchServer'),'i-server')]},
     'my-list':{icon:'i-bookmark',title:t('next.states.myListEmpty'),body:t('next.states.myListEmptyBody')},
-    recordings:{icon:'i-rec',title:t('next.states.noRecordings'),body:t('next.states.noRecordingsBody',{title:referenceFacts.programmeName,time:'8:45 PM'}),primary:action('guide',t('next.states.openGuide'),'i-guide')},
+    recordings:{icon:'i-rec',title:t('next.states.noRecordings'),body:t('next.states.noRecordingsBody',{title:referenceFacts.programmeName,time:fixture('next.states.fixture.recordingTime')}),primary:action('guide',t('next.states.openGuide'),'i-guide')},
     live:{eyebrow:<OwnerTag variant="state" identity={server()}/>,title:t('next.states.setupLive'),body:t('next.states.setupLiveBody'),primary:action('source',t('next.states.addTVSource'),'i-plus'),secondary:action('tuners',t('next.states.findTuners'))},
   };
   return <StateLayout {...content[kind]} className={kind === 'owner' ? styles.ownerDenied : undefined}
