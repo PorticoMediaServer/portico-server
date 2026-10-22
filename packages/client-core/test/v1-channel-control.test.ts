@@ -20,7 +20,7 @@ class ChannelServer implements V1Http {
     const ok = (body: unknown, status = 200) => ({status, headers: {}, body});
     if (r.method === 'POST' && r.path === '/v1/playback/sessions') {
       if (this.refuse) return {status: 409, headers: {}, body: {error: {code: this.refuse, retry: 'after_refresh'}}};
-      this.s = {id: 'ps_1', revision: '1', kind: 'channel', state: 'playing', presentation: {generation: 0, url: '', subtitles: [], decision: {},
+      this.s = {id: 'ps_1', revision: '1', kind: 'channel', state: (r.body as {state:string}).state, presentation: {generation: 0, url: '', subtitles: [], decision: {},
         linear: {name: 'News', programme: {id: 'p1', title: 'Morning', startMs: 0, endMs: 3_600_000}, originMs: 1000, windowStartMs: 0, windowEndMs: 0, liveEdgeMs: 0, state: 'preparing'}}};
       return ok(this.s, 201);
     }
@@ -101,6 +101,29 @@ test('v1 channels: pause and a seek in the window are PATCHes on the current rev
     assert.ok(patches.some(b => b.seek?.positionMs === 12_000));
     assert.equal(playback.getSnapshot().pendingSeek?.positionSeconds, 12);
   } finally { playback.leave(); }
+});
+
+test('v1 channels: a restore POST and its resolved join stay paused until an explicit resume',async()=>{
+ const {server,playback}=setup();
+ try{
+  const intents:string[]=[];const unsubscribe=playback.subscribe(()=>intents.push(playback.getSnapshot().intent));
+  try{
+   await playback.playChannel(channel,{state:'paused'});
+   for(let i=0;i<100&&!playback.getSnapshot().session;i++)await new Promise(r=>setTimeout(r,2));
+   const start=server.log.find(r=>r.method==='POST'&&r.path==='/v1/playback/sessions')!;
+   assert.deepEqual(start.body,{channelId:v1ChannelId(channel),channelGeneration:'g1',state:'paused'});
+   let snapshot=playback.getSnapshot();assert.ok(snapshot.session);assert.equal(snapshot.intent,'paused');assert.equal(snapshot.playbackRun,1);
+   const join=server.log.find(r=>r.method==='PATCH')!;assert.equal((join.body as any).state,'paused');assert.equal((join.body as any).seek.live,true);
+   playback.ready(snapshot.intentId);playback.seekApplied(snapshot.intentId,snapshot.pendingSeek!.revision,60,'paused');await settle();
+   // Restore only inside the real retained window, while the actual session is paused.
+   snapshot=playback.getSnapshot();assert.equal(snapshot.intent,'paused');assert.equal(snapshot.linear?.desired.state,'paused');
+   assert.ok(Number(snapshot.linear!.media.windowStartUs)/1e6<=12&&Number(snapshot.linear!.media.windowEndUs)/1e6>=12);
+   playback.seek(12);await settle();
+   const seek=server.log.filter(r=>r.method==='PATCH').at(-1)!;assert.equal((seek.body as any).state,'paused');assert.equal((seek.body as any).seek.positionMs,12000);
+   assert.ok(intents.every(intent=>intent==='paused'));assert.ok(server.log.filter(r=>r.method==='POST'||r.method==='PATCH').every(r=>(r.body as any).state===undefined||(r.body as any).state==='paused'));
+   playback.resume();await settle();assert.equal(playback.getSnapshot().intent,'playing');assert.ok(server.log.some(r=>r.method==='PATCH'&&(r.body as any).state==='playing'));
+  }finally{unsubscribe();}
+ }finally{playback.leave();}
 });
 
 test('v1 channels: every tuner in use is said as such, and the start is over', async () => {

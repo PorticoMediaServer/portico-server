@@ -1,10 +1,9 @@
-import {playbackFence, sameFence, sameScope, type PlaybackFence} from './identity.ts';
+import {playbackFence, sameFence, sameScope, type PlaybackFence, type QueuePlaybackFence, type ChannelPlaybackFence} from './identity.ts';
 import {parseQueueSnapshot, queueScope, type QueueScope, type QueueSnapshot} from './queues.ts';
 import {clockMs, counter, invalidState, seconds, wireId} from './validation.ts';
 export type DockPlayback = Readonly<{
-  fence:PlaybackFence; kind:'video'|'live'|'music'|'audiobook'; queue:QueueSnapshot|null;
   positionSeconds:number; playing:boolean; expanded:boolean;
-}>;
+}> & (Readonly<{kind:'live';fence:ChannelPlaybackFence;queue:null}> | Readonly<{kind:'video'|'music'|'audiobook';fence:QueuePlaybackFence;queue:QueueSnapshot|null}>);
 export type RemotePhase = 'connecting'|'pairing'|'waiting'|'playing'|'stopped'|'replaced'|'error';
 export type RemoteDock = Readonly<{
   id:string; kind:'cast'|'play-on'; phase:RemotePhase; sequence:string;
@@ -26,7 +25,13 @@ export class PlaybackDock {
   private checked(p:DockPlayback):DockPlayback {
     const fence=playbackFence(p.fence);
     if (!sameScope(fence.playback.scope,this.scope) || !['video','live','music','audiobook'].includes(p.kind) || !seconds(p.positionSeconds) || typeof p.playing!=='boolean' || typeof p.expanded!=='boolean') invalidState();
-    return Object.freeze({fence,kind:p.kind,positionSeconds:p.positionSeconds,playing:p.playing,expanded:p.expanded,queue:p.queue?parseQueueSnapshot(p.queue,this.scope):null});
+    const common={positionSeconds:p.positionSeconds,playing:p.playing,expanded:p.expanded};
+    if(p.kind==='live') {
+      if(fence.kind!=='channel'||p.queue!==null)invalidState();
+      return Object.freeze({...common,kind:p.kind,fence,queue:null});
+    }
+    if(fence.kind!=='queue')invalidState();
+    return Object.freeze({...common,fence,kind:p.kind,queue:p.queue?parseQueueSnapshot(p.queue,this.scope):null});
   }
   private commit(state:DockState,effects:DockEffect[]=[]):DockTransition { this.state=Object.freeze(state); return Object.freeze({state:this.state,effects:Object.freeze(effects.map(e=>Object.freeze(e)))}); }
   start(value:DockPlayback):DockTransition {

@@ -1,4 +1,4 @@
-html { color-scheme: dark; background: var(--color-ink); color: var(--color-text); font-family: var(--font); }
+html { color-scheme: dark; background: var(--color-ink); color: var(--color-text); font-family: var(--font); -webkit-font-smoothing: antialiased; }
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; font-size: var(--type-body-size); line-height: var(--type-body-line); }
 button, input, select, textarea { font: inherit; }

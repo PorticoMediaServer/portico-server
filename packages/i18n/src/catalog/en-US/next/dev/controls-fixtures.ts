@@ -6,5 +6,6 @@ export const controlsFixtureMessages = {
   'next.controls.fixture.longName': 'The Lord of the Rings: The Fellowship of the Ring',
   'next.controls.fixture.server': 'Portico demo',
   'next.controls.fixture.code': 'KQ7M 2XHD',
+  'next.controls.fixture.settingsSearch': 'subtitle',
   'next.controls.fixture.qualityLabel': 'Quality: automatic, 1080p now',
 } as const satisfies Record<`next.controls.fixture.${string}`, string>;

@@ -21,6 +21,8 @@ import {dockNativeMessages} from './dock-native.ts';
 import {shared} from './shared.ts';
 import {homeContractsMessages} from './home-contracts.ts';
 import {selectionMessages} from './selection.ts';
+import {selectionNativeMessages} from './selection-native.ts';
+import {homeNativeMessages} from './home-native.ts';
 
 export const nextMessages = {
   ...platformMessages,
@@ -46,6 +48,8 @@ export const nextMessages = {
   ...shared,
   ...homeContractsMessages,
   ...selectionMessages,
+  ...selectionNativeMessages,
+  ...homeNativeMessages,
 } as const satisfies Record<`next.${string}`, string>;
 
 export type NextMessageId = keyof typeof nextMessages;

@@ -13,12 +13,16 @@ export type AmbientArtProps = ArtStyleProps & Readonly<{
   source?: AmbientArtSource | null; sources?: readonly AmbientArtSource[];
   foreground?: ArtworkSource | null; palette?: ArtworkPalette;
   treatment?: 'hero' | 'title' | 'phone' | 'cover' | 'wash' | 'library' | 'artist' | 'poster';
-  visible?: boolean; arrivalDurationMs?: number; foregroundStyle?: CSSProperties; position?: string;
+  visible?: boolean; arrivalDurationMs?: number; position?: string;
+  /** Static dimensions and position of the fixed masked foreground frame. */
+  foregroundFrameStyle?: CSSProperties;
+  /** Sharp-only transform; does not move the mask, frame or ambient wash. */
+  foregroundStyle?: CSSProperties;
   onReady?: (source: ArtworkSource) => void; onError?: (source: ArtworkSource) => void; onStatusChange?: (status: ArtworkStatus) => void;
 }>;
 
 /** One continuous masked surface; sharp art and tiny preblur remain independent requests. */
-export function AmbientArt({source, sources, foreground, palette, treatment = 'hero', visible = true, arrivalDurationMs, foregroundStyle, position, onReady, onError, onStatusChange, className, style, width, height}: AmbientArtProps) {
+export function AmbientArt({source, sources, foreground, palette, treatment = 'hero', visible = true, arrivalDurationMs, foregroundFrameStyle, foregroundStyle, position, onReady, onError, onStatusChange, className, style, width, height}: AmbientArtProps) {
   const ambient = (sources ?? (source ? [source] : [])).slice(0, 3).filter(item => item.variant === 'ambient-v1' && item.maxEdge === 64 && /^[a-f0-9]{64}$/.test(item.version));
   const colourStyle = palette ? {'--art-first': palette.first, '--art-second': palette.second} as CSSProperties : undefined;
   return <div aria-hidden="true" className={artClass(styles.ambient, styles[treatment], className)} style={artSize({width, height, style: {...colourStyle, ...style}})}>
@@ -26,6 +30,6 @@ export function AmbientArt({source, sources, foreground, palette, treatment = 'h
       {palette && <span className={styles.palette} />}
       {ambient.map((item, index) => <Artwork key={item.key} source={item} visible={visible} arrivalDurationMs={arrivalDurationMs} alt="" className={styles.ambientImage} style={{'--art-order': index} as CSSProperties} onStatusChange={!foreground && index === 0 ? onStatusChange : undefined} onReady={!foreground && index === 0 ? onReady : undefined} onError={!foreground && index === 0 ? onError : undefined} />)}
     </div>
-    {foreground && <span className={styles.foreground}><span data-foreground-art className={styles.foregroundArt} style={foregroundStyle}><Artwork source={foreground} visible={visible} arrivalDurationMs={arrivalDurationMs} alt="" position={position} onReady={onReady} onError={onError} onStatusChange={onStatusChange} /></span></span>}
+    {foreground && <span className={styles.foreground} style={foregroundFrameStyle}><span data-foreground-art className={styles.foregroundArt} style={foregroundStyle}><Artwork source={foreground} visible={visible} arrivalDurationMs={arrivalDurationMs} alt="" position={position} onReady={onReady} onError={onError} onStatusChange={onStatusChange} /></span></span>}
   </div>;
 }

@@ -645,6 +645,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	registerBulkJobs(registry, d)
+	registerBulkMetadataPreview(registry, d)
+	registerHomeDestinationPicker(registry, d)
+	registerHomeDestinationReceipt(registry, d)
 	if err := registerPersonalReads(registry, d); err != nil {
 		return nil, err
 	}

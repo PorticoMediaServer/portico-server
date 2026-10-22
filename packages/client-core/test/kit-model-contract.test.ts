@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile, readdir} from 'node:fs/promises';
 import {formatMessage, messageArguments, parseMessage} from '../../i18n/src/messageformat.ts';
 import {shared} from '../../i18n/src/catalog/en-US/next/shared.ts';
-import {cardText, titleFactParts, episodeLabel, playbackIdentity, appliedFilterParts, programmeFactParts, fileInfoModel, versionModels, audioTrackModels, subtitleTrackModels, playbackInfoModel, sessionFactParts, qualityControlModel, type KitTranslate, type KitMessageValues} from '../src/presentation/kit-model/index.ts';
+import {cardText, titleFactParts, collectionCaptionParts, episodeLabel, playbackIdentity, appliedFilterParts, programmeFactParts, fileInfoModel, versionModels, audioTrackModels, subtitleTrackModels, playbackInfoModel, sessionFactParts, qualityControlModel, type KitTranslate, type KitMessageValues} from '../src/presentation/kit-model/index.ts';
 
 test('all owned generated wording parses as ICU and uses sentence case without middle-dot joins', () => {
   for (const [id, message] of Object.entries(shared)) {
@@ -19,6 +19,9 @@ test('all owned generated wording parses as ICU and uses sentence case without m
   assert.equal(formatMessage(shared['next.kit.songs'], {count: 4}), '4 songs');
   assert.equal(formatMessage(shared['next.kit.books'], {count: 1}), '1 book');
   assert.equal(formatMessage(shared['next.kit.books'], {count: 2}), '2 books');
+  assert.deepEqual(messageArguments(shared['next.kit.collection.filmsOnServer']), ['count']);
+  assert.deepEqual(messageArguments(shared['next.kit.collection.filmsFromTo']), ['count', 'title', 'year']);
+  assert.deepEqual(messageArguments(shared['next.kit.genres.append']), ['genre', 'list']);
 });
 
 test('model translation calls supply exactly the declared ICU arguments', () => {
@@ -36,6 +39,10 @@ test('model translation calls supply exactly the declared ICU arguments', () => 
   cardText({id: 'author', kind: 'author', title: 'Author', bookCount: 2}, 'ordinary', env);
   titleFactParts({author: 'Author', narrator: 'Narrator', durationSeconds: 1000, chapterCount: 3}, env, 'audiobook');
   titleFactParts({chapterNumber: 2, chapterCount: 3}, env, 'audiobook-chapters');
+  titleFactParts({year: 2001, genres: ['Animation', 'Family'], durationSeconds: 7500}, env, 'home-movie');
+  titleFactParts({year: 2023, genres: ['Drama'], seasonCount: 1}, env, 'home-show');
+  collectionCaptionParts({mediaKind: 'movie', itemCount: 4}, env);
+  collectionCaptionParts({mediaKind: 'movie', itemCount: 4, firstYear: 1995, lastTitle: 'Actual last title'}, env);
   episodeLabel({mode: 'absolute', number: 37}, 'in-show', env);
   episodeLabel({mode: 'seasonal', season: 1, episode: 2}, 'search', env);
   episodeLabel({mode: 'special'}, 'in-show', env);
@@ -81,6 +88,18 @@ function translationTypes(t: KitTranslate): void {
   t('next.kit.episodeCode', values);
   t('next.kit.live');
   t('next.kit.books', {count: 2});
+  const collectionValues: KitMessageValues<'next.kit.collection.filmsFromTo'> = {count: 4, year: 1995, title: 'Actual last title'};
+  t('next.kit.collection.filmsFromTo', collectionValues);
+  t('next.kit.collection.filmsOnServer', {count: 4});
+  t('next.kit.genres.append', {list: 'Drama', genre: 'Mystery'});
+  // @ts-expect-error catalogue punctuation requires the next supplied genre
+  t('next.kit.genres.append', {list: 'Drama'});
+  // @ts-expect-error the range requires both genuine endpoints
+  t('next.kit.collection.filmsFromTo', {count: 4, year: 1995});
+  // @ts-expect-error a collection count is numeric, never the rendered count words
+  t('next.kit.collection.filmsOnServer', {count: 'Four'});
+  // @ts-expect-error the year remains a genuine ungrouped number
+  t('next.kit.collection.filmsFromTo', {count: 4, year: '1995', title: 'Actual last title'});
   // @ts-expect-error a book count requires its genuine numeric count
   t('next.kit.books');
   // @ts-expect-error a book count cannot be an item-label string

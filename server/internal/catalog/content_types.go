@@ -77,8 +77,12 @@ type ContentEntityRef struct {
 	Name string `json:"name"`
 }
 type ContentEntry struct {
-	New  bool              `json:"new,omitempty"`
-	Show *ContentEntityRef `json:"show,omitempty"`
+	HomeActions *HomeActions `json:"homeActions,omitempty"`
+	// HomeTitleContext contains authorized parent-show facts for a Home episode.
+	// The episode's own identity, metadata and playback target remain separate.
+	HomeTitleContext *HomeTitleContext `json:"homeTitleContext,omitempty"`
+	New              bool              `json:"new,omitempty"`
+	Show             *ContentEntityRef `json:"show,omitempty"`
 	// SortLetter is the letter the server files a browse entry under (its
 	// sort title's, articles and an owner's sort title already applied): the
 	// key of the page's positionIndex it belongs to.

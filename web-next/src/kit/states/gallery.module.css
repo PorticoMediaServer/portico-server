@@ -1,5 +1,6 @@
 .event { position: absolute; z-index: 9; right: 20px; bottom: 20px; padding: 12px; border-radius: 10px; color: var(--color-text); background: var(--color-raised-high); }
 .mobileConnection h1 { font-size: 28px; }
+.ownerDenied h1 { font-size: 28px; }
 .mobileConnection .detailsHeading { margin: 0; }
 .compactStage, .shortcutStage { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--color-ink); }
 .frozen { position: absolute; inset: 0; filter: blur(14px) brightness(.34) saturate(.9); transform: scale(1.05); }
@@ -19,4 +20,5 @@
 .shortcutPicture { position: absolute; inset: 0; filter: brightness(.4); }
 .shortcutStage > button { position: absolute; left: 20px; top: 20px; }
 .progressStage { display: grid; width: 100%; height: 100%; place-items: center; background: var(--color-ink); }
+.artworkStage { width: 100%; height: 100%; }
 @media (max-width: 1023px) { .slowNotice { top: 104px; max-width: calc(100% - 16px); height: auto; min-height: 36px; padding: 8px 12px; white-space: normal; font-size: 13.5px; } }

@@ -1,16 +1,16 @@
 import {activeSegment, followedByScene, skipsAutomatically, skipTarget, UNDO_SECONDS, type SkipMode} from './segment-skip.ts';
 import {parseSegmentMarkers, type SegmentMarker} from './segment-markers.ts';
 import {upNextOffer, upNextCountdown, type UpNextOffer, type UpNextCountdown} from './up-next.ts';
-import {playbackFence, sameFence, type PlaybackFence} from './identity.ts';
+import {playbackFence, sameFence, type QueuePlaybackFence} from './identity.ts';
 import {parseQueuePostPlay, type QueuePostPlay} from './post-play.ts';
 import {clockMs, invalidState, seconds} from './validation.ts';
 export type Attention = 'still-watching' | 'playback-error' | 'owner-stopped' | 'host-only';
 export type PolicyFrame = Readonly<{
-  fence: PlaybackFence; nowMs: number; positionSeconds: number; durationSeconds: number;
+  fence: QueuePlaybackFence; nowMs: number; positionSeconds: number; durationSeconds: number;
   rate: number; playing: boolean; expanded: boolean; ended: boolean; kind: string;
   modes: Readonly<Record<string,SkipMode>>; postPlay: QueuePostPlay | null; attention?: Attention;
 }>;
-export type PolicyCommand = Readonly<{fence: PlaybackFence} & (
+export type PolicyCommand = Readonly<{fence: QueuePlaybackFence} & (
   {kind:'seek';positionSeconds:number;reason:'automatic-skip'|'manual-skip'|'undo';markerId:string} |
   {kind:'advance';mode:'automatic'|'manual'|'still-watching';nextEntryId:string} |
   {kind:'expand';reason:Attention}
@@ -25,7 +25,7 @@ export type PolicyResult = Readonly<{view:PolicyView;commands:readonly PolicyCom
 /** Deterministic extraction of the skip/credits/end-card effects. Engines execute commands only
  * while their fence still matches. Renderer motion never changes these clocks. */
 export class PlaybackPolicy {
-  private fence?: PlaybackFence;
+  private fence?: QueuePlaybackFence;
   private markers: readonly SegmentMarker[] = [];
   private dismissed = new Set<string>();
   private undo?: {marker:SegmentMarker;from:number;until:number};
@@ -33,14 +33,16 @@ export class PlaybackPolicy {
   private offerId = ''; private offerElapsed = 0; private endElapsed = 0;
   private watchedCredits = ''; private advanced = false; private cancelled = false;
   private frame?: PolicyFrame;
-  begin(fence: PlaybackFence, markers: unknown, duration?: number): void {
-    const next = playbackFence(fence), parsed = parseSegmentMarkers(markers,duration);
+  begin(fence: QueuePlaybackFence, markers: unknown, duration?: number): void {
+    const next = playbackFence(fence);
+    if(next.kind!=='queue')invalidState();
+    const parsed = parseSegmentMarkers(markers,duration);
     if (sameFence(this.fence,next)) { this.markers=parsed; const ids=new Set(parsed.map(m=>m.id)); this.dismissed=new Set([...this.dismissed].filter(id=>ids.has(id))); if(this.undo&&!ids.has(this.undo.marker.id))this.undo=undefined; return; }
     this.fence=next; this.markers=parsed; this.dismissed.clear(); this.undo=undefined;
     this.lastNow=-1; this.offerId=''; this.offerElapsed=0; this.endElapsed=0;
     this.watchedCredits=''; this.advanced=false; this.cancelled=false; this.frame=undefined;
   }
-  stop(fence: PlaybackFence): void { if (sameFence(this.fence,fence)) { this.fence=undefined; this.frame=undefined; this.markers=[]; this.dismissed.clear(); this.undo=undefined; } }
+  stop(fence: QueuePlaybackFence): void { if (sameFence(this.fence,fence)) { this.fence=undefined; this.frame=undefined; this.markers=[]; this.dismissed.clear(); this.undo=undefined; } }
   update(input: PolicyFrame): PolicyResult | null {
     if (!sameFence(this.fence,input.fence)) return null;
     const now=clockMs(input.nowMs);
@@ -81,27 +83,27 @@ export class PlaybackPolicy {
     const prompt:PolicyView['prompt']=show && visibleOffer ? {kind:'up-next',offer:visibleOffer,countdown,sceneAfterCredits:!!visibleOffer.marker && followedByScene(visibleOffer.marker,input.durationSeconds)} : show && marker && !this.dismissed.has(marker.id) ? {kind:'skip',marker}:null;
     return Object.freeze({view:Object.freeze({prompt:prompt?Object.freeze(prompt):null,undo:show && this.undo?Object.freeze({marker:this.undo.marker,remainingSeconds:(this.undo.until-now)/1000}):null,markers:input.expanded?this.markers:Object.freeze([]),finished:input.ended,replay:input.ended && (!post?.available || !post.autoplay || this.cancelled),attention}),commands:Object.freeze(commands)});
   }
-  dismiss(fence: PlaybackFence): boolean {
+  dismiss(fence: QueuePlaybackFence): boolean {
     if (!sameFence(this.fence,fence) || !this.frame?.expanded || this.frame.attention || this.frame.ended) return false;
     const marker=activeSegment(this.markers,this.frame.positionSeconds,this.frame.modes,this.dismissed);
     if (marker) this.dismissed.add(marker.id);
     if (this.offerId) this.watchedCredits=this.offerId;
     return !!marker || !!this.offerId;
   }
-  skip(fence: PlaybackFence): PolicyCommand | null {
+  skip(fence: QueuePlaybackFence): PolicyCommand | null {
     if (!sameFence(this.fence,fence) || !this.frame?.expanded || this.frame.attention || this.frame.ended) return null;
     const marker=activeSegment(this.markers,this.frame.positionSeconds,this.frame.modes,this.dismissed);
     if (!marker) return null;
     this.dismissed.add(marker.id);
     return Object.freeze({kind:'seek',fence:this.fence!,positionSeconds:skipTarget(marker,this.frame.durationSeconds),reason:'manual-skip',markerId:marker.id});
   }
-  undoSkip(fence: PlaybackFence, nowMs:number): PolicyCommand | null {
+  undoSkip(fence: QueuePlaybackFence, nowMs:number): PolicyCommand | null {
     if (!sameFence(this.fence,fence) || !this.frame?.expanded || this.frame.attention || !this.undo || clockMs(nowMs)<this.lastNow || nowMs>=this.undo.until) return null;
     const undo=this.undo; this.undo=undefined; this.dismissed.add(undo.marker.id);
     return Object.freeze({kind:'seek',fence:this.fence!,positionSeconds:undo.from,reason:'undo',markerId:undo.marker.id});
   }
-  cancelAutoplay(fence: PlaybackFence): void { if (sameFence(this.fence,fence)) this.cancelled=true; }
-  advance(fence: PlaybackFence, mode:'manual'|'still-watching'): PolicyCommand | null {
+  cancelAutoplay(fence: QueuePlaybackFence): void { if (sameFence(this.fence,fence)) this.cancelled=true; }
+  advance(fence: QueuePlaybackFence, mode:'manual'|'still-watching'): PolicyCommand | null {
     if (!sameFence(this.fence,fence) || !this.frame?.expanded || this.advanced) return null;
     const post=this.frame.postPlay;
     if (this.frame.attention && this.frame.attention!=='still-watching' || (post?.passoutCheckDue || this.frame.attention==='still-watching') && mode!=='still-watching' || !post?.available || !post.nextEntryId) return null;

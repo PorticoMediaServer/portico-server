@@ -24,5 +24,7 @@ export type AnchoredOverlayProps = Omit<OverlaySurfaceProps, 'footer'> & {
   sideOffset?: number;
   alignOffset?: number;
   width?: number;
+  sideOffset?: number;
+  alignOffset?: number;
 };
 export type OverlayStyle = CSSProperties & Record<`--overlay-${string}`, string | number>;

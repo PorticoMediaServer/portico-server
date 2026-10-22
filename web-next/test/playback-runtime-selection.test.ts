@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {HomeSelectionPlaybackItem} from '@core/home-selection/types.ts';
-import {selectionSegments} from '../src/platform/playback/selection.ts';
+import {selectionSegments, selectionStartSeconds} from '../src/platform/playback/selection.ts';
 
-const leaf = (id: string): HomeSelectionPlaybackItem => ({identity: {id, kind: 'movie', libraryId: 'library'}, entry: {id, kind: 'movie', libraryId: 'library', title: id, playback: {itemId: id}}, target: {itemId: id}});
-const album: HomeSelectionPlaybackItem = {identity: {id: 'release', kind: 'album', libraryId: 'library'}, entry: {id: 'release', kind: 'album', libraryId: 'library', title: 'release', playback: {itemId: 'song-two', startSeconds: 12}}, target: {itemId: 'song-two', startSeconds: 12}};
+type CatalogueIdentity = Extract<HomeSelectionPlaybackItem['identity'], {libraryId: string}>;
+type EntrySelection = Extract<HomeSelectionPlaybackItem, {entry: unknown}> & {identity: CatalogueIdentity};
+const leaf = (id: string): EntrySelection => ({identity: {id, kind: 'movie', libraryId: 'library'}, entry: {id, kind: 'movie', libraryId: 'library', title: id, playback: {itemId: id}}, target: {itemId: id}});
+const album: EntrySelection = {identity: {id: 'release', kind: 'album', libraryId: 'library'}, entry: {id: 'release', kind: 'album', libraryId: 'library', title: 'release', playback: {itemId: 'song-two', startSeconds: 12}}, target: {itemId: 'song-two', startSeconds: 12}};
 
 test('selection playback retains displayed aggregate identity and the supplied display order', () => {
   assert.deepEqual(selectionSegments([leaf('first'), album, leaf('last')], true), [
@@ -35,4 +37,18 @@ test('selection keeps authoritative resume and explicit start-over distinct from
   assert.deepEqual(selectionSegments([{...album, target: {itemId: 'resume-child', startSeconds: 45}}], true), [{source: {container: {kind: 'album', id: 'release'}}, anchor: {itemId: 'resume-child'}}]);
   const movie = leaf('movie');
   assert.deepEqual(selectionSegments([{...movie, target: {itemId: 'movie', startSeconds: 0}}], true), [{source: {items: {ids: ['movie']}}}]);
+});
+
+test('a collection keeps its real selector and never treats its preview members as the playback target', () => {
+  const collection: Extract<HomeSelectionPlaybackItem, {collection: unknown}> & {identity: CatalogueIdentity} = {identity: {kind: 'collection', id: 'collection', libraryId: 'library'}, collection: {collection: {id: 'collection', libraryId: 'library', name: 'Actual collection', itemCount: 40, revision: 2}, mediaKind: 'movie', members: [leaf('preview-only').entry]}};
+  assert.deepEqual(selectionSegments([collection, album, leaf('last')], true), [
+    {source: {container: {kind: 'collection', id: 'collection'}}},
+    {source: {container: {kind: 'album', id: 'release'}}},
+    {source: {items: {ids: ['last']}}},
+  ]);
+  assert.deepEqual(selectionSegments([collection], false), [{source: {container: {kind: 'collection', id: 'collection'}}}]);
+  assert.equal(selectionStartSeconds([collection, album]), undefined);
+  assert.equal(selectionStartSeconds([album, collection]), 12);
+  assert.throws(() => selectionSegments([{...collection, identity: {...collection.identity, id: 'forged'}}], true));
+  assert.throws(() => selectionSegments([{...collection, identity: {...collection.identity, libraryId: 'other'}}], true));
 });
