@@ -23,8 +23,24 @@ test('picker toast uses the public text action and actual inserted rather than p
   const result = {destination: {id: 'playlist-1', name: 'Family night'}, inserted: 2, processed: 4, total: 4, alreadyIn: 2, failed: 0, unknown: 0, pending: false, complete: true, failures: []};
   const element = PickerAddedToast({open: true, onOpenChange() {}, selection: {kind: 'movie', count: 4}, destination: 'playlist', result, onView: id => viewed.push(id)});
   const toast = element.props.toast;
+  assert.equal(element.props.className, 'pickerToastHost');
+  assert.equal(element.props.toastClassName, 'pickerToast');
   assert.equal(toast.action.variant, 'text');
   assert.equal(renderToStaticMarkup(toast.message), 'Added 2 movies to Family night. 2 were already there.');
+  for (const destination of ['playlist', 'collection'] as const) {
+    const action = PickerAddedToast({open: true, onOpenChange() {}, selection: {kind: 'movie', count: 4}, destination, result, onView() {}}).props.toast!.action!;
+    const fullLabel = destination === 'playlist' ? 'View playlist' : 'View collection';
+    assert.equal(renderToStaticMarkup(action.label), fullLabel);
+    assert.equal(action.accessibilityLabel, fullLabel);
+    const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    try {
+      Object.defineProperty(globalThis, 'window', {configurable: true, value: {matchMedia: (query: string) => ({matches: query === '(max-width: 599px)'})}});
+      assert.equal(renderToStaticMarkup(action.label), 'View');
+    } finally {
+      if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
+      else Reflect.deleteProperty(globalThis, 'window');
+    }
+  }
   toast.action.onAction();
   assert.deepEqual(viewed, ['playlist-1']);
   assert.equal(PickerAddedToast({open: true, onOpenChange() {}, selection: {kind: 'movie', count: 4}, destination: 'playlist', result: {...result, failed: 1}, onView() {}}).props.toast, null);
