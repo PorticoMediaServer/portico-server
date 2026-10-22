@@ -15,12 +15,15 @@ type Intercept = (request: V1Request, response: V1Response) => Promise<V1Respons
 function setup(t: TestContext, quality?: () => QualityRequest | undefined) {
   const server = new FakePlaybackServer(), inner = fakeHttp(server);
   const log: V1Request[] = [], sessions = new Set<string>();
-  let intercept: Intercept = (_request, response) => response, serial = 0, resets = 0;
+  let intercept: Intercept = (_request, response) => response, serial = 0, resets = 0, pending = 0;
   const http = {send: async (request: V1Request): Promise<V1Response> => {
-    log.push(request);
-    const response = await inner.send(request as never) as V1Response;
-    if (request.method === 'POST' && request.path === '/v1/playback/sessions' && response.status === 201) sessions.add((response.body as {id: string}).id);
-    return intercept(request, response);
+    pending++;
+    try {
+      log.push(request);
+      const response = await inner.send(request as never) as V1Response;
+      if (request.method === 'POST' && request.path === '/v1/playback/sessions' && response.status === 201) sessions.add((response.body as {id: string}).id);
+      return await intercept(request, response);
+    } finally { pending--; }
   }};
   const api = new V1PlaybackApi(http, {timers: {setTimer: () => 0, clearTimer: () => {}}, key: () => `session-${++serial}-key`});
   const playback = new PlaybackService(api, () => `intent-${++serial}`, {deferRecovery: true, beforeFreshPlayback: async () => { resets++; }});
@@ -36,7 +39,17 @@ function setup(t: TestContext, quality?: () => QualityRequest | undefined) {
     playback.fact(snapshot.intentId, 37.25, 'playing');
     return {queueId: queue.id, entryId: queue.currentEntryId!, entries: queue.entries};
   };
-  return {server, http, log, player, playback, seed, resets: () => resets, intercept: (fn: Intercept) => { intercept = fn; }};
+  const settle = async () => {
+    // The service can enqueue the latest timeline fact behind a report already in flight.
+    let count = -1;
+    for (let turn = 0; turn < 20; turn++) {
+      await new Promise(setImmediate);
+      if (pending === 0 && count === log.length) return;
+      count = log.length;
+    }
+    throw new Error('playback fixture did not settle');
+  };
+  return {server, http, log, player, playback, seed, settle, resets: () => resets, intercept: (fn: Intercept) => { intercept = fn; }};
 }
 function gate() {
   let release!: () => void, entered!: () => void;
@@ -221,10 +234,14 @@ test('restorePaused never publishes ready for a server response that names playi
 });
 
 test('restorePaused rejects invalid input before disturbing current playback', async t => {
-  const f = setup(t), saved = await f.seed(), session = f.playback.getSnapshot().session!.id, before = f.log.length;
+  const f = setup(t), saved = await f.seed(), session = f.playback.getSnapshot().session!.id;
+  await f.settle();
+  assert.equal(f.server.session(session)!.reports.at(-1)!.positionMs, 37250, 'the seeded progress report completed before the invalid operation');
+  const before = f.log.length;
   for (const position of [-1, NaN, Infinity, 1e9 + 1]) await assert.rejects(f.player.restorePaused(saved.queueId, saved.entryId, position));
   await assert.rejects(f.player.restorePaused('../other', saved.entryId, 0));
   await assert.rejects(f.player.restorePaused(saved.queueId, '', 0));
   assert.equal(f.playback.getSnapshot().session!.id, session);
   assert.equal(f.log.length, before);
+  assert.deepEqual(f.log.slice(before), [], 'invalid restore inputs dispatch no reads, starts, reports or cleanup');
 });

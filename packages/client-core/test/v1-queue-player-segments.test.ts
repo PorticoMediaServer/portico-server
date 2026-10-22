@@ -10,13 +10,22 @@ import type {V1Request, V1Response} from '../src/playback-v1/http.ts';
 const mixed: readonly SegmentInput[] = [{source: {items: {ids: ['first', 'second']}}}, {source: {container: {kind: 'album', id: 'release'}}}, {source: {items: {ids: ['last']}}}];
 function setup(t: TestContext) {
   const server = new FakePlaybackServer({containerSize: () => 2}), inner = fakeHttp(server), log: V1Request[] = [];
-  let serial = 0, intercept = async (_request: V1Request, response: V1Response): Promise<V1Response> => response;
-  const http = {send: async (request: V1Request): Promise<V1Response> => { log.push(request); return intercept(request, await inner.send(request as never) as V1Response); }};
+  let serial = 0, pending = 0, intercept = async (_request: V1Request, response: V1Response): Promise<V1Response> => response;
+  const http = {send: async (request: V1Request): Promise<V1Response> => { pending++; try { log.push(request); return await intercept(request, await inner.send(request as never) as V1Response); } finally { pending--; } }};
   const api = new V1PlaybackApi(http, {timers: {setTimer: () => 0, clearTimer: () => {}}, key: () => `segment-session-${++serial}`});
   const playback = new PlaybackService(api, () => `intent-${++serial}`, {deferRecovery: true});
   const player = new V1QueuePlayer({http, api, playback, viewer: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile'}, key: () => `segment-queue-${++serial}`});
   player.connect(); t.after(() => { playback.leave(); player.dispose(); });
-  return {server, log, player, playback, intercept: (fn: typeof intercept) => { intercept = fn; }};
+  const settle = async () => {
+    let count = -1;
+    for (let turn = 0; turn < 20; turn++) {
+      await new Promise(setImmediate);
+      if (pending === 0 && count === log.length) return;
+      count = log.length;
+    }
+    throw new Error('playback fixture did not settle');
+  };
+  return {server, log, player, playback, settle, intercept: (fn: typeof intercept) => { intercept = fn; }};
 }
 function gate() { let release!: () => void, enter!: () => void; const started = new Promise<void>(r => { enter = r; }), waiting = new Promise<void>(r => { release = r; }); return {started, release, hold: async () => { enter(); await waiting; }}; }
 
@@ -105,9 +114,13 @@ for (const startSeconds of [undefined, 5]) test(`playSegments aborts a late ${st
 
 test('playSegments rejects an invalid or stale selection before any request', async t => {
   const f = setup(t), abort = new AbortController(); abort.abort();
+  await f.settle();
+  assert.deepEqual(f.log.map(r => [r.method, r.path]), [['GET', '/v1/listening/preferences']], 'connect loads real listening preferences before the operation');
+  const before = f.log.length;
   await assert.rejects(f.player.playSegments([]));
   await assert.rejects(f.player.playSegments(mixed, {startSeconds: -1}));
   await assert.rejects(f.player.playSegments(mixed, {isCurrent: () => false}));
   await assert.rejects(f.player.playSegments(mixed, {signal: abort.signal}));
-  assert.equal(f.log.length, 0);
+  assert.equal(f.log.length, before);
+  assert.deepEqual(f.log.slice(before), [], 'invalid or stale selection dispatches no request of any kind');
 });
