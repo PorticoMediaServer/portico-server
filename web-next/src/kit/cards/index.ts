@@ -3,4 +3,4 @@ export type {CircleCardProps, EpisodeTileProps, CoverCardProps, PlaylistMosaicPr
 export {LiveCard, CollectionBanner, CollectionTile, GenreTile, LibraryCard, LibraryRow, ResumeCard, ReadResumeCard, SeriesTile, QuickTile, SessionCard} from './FeatureCards';
 export type {LiveCardProps, CollectionCardProps, GenreTileProps, LibraryCardProps, ResumeCardProps, SeriesTileProps, SeriesSegment, QuickTileProps, SessionCardProps, SessionChannel} from './FeatureCards';
 export {NotInterestedButton} from './CardFrame';
-export type {CardContent, CardSelectionIntent, CardSelection, CardProps, MediaCardProps, CardFacts} from './types';
+export type {CardContent, CardSelectionIntent, CardSelection, CardProps, MediaCardProps, CardFacts, CardTextRun, CardFactPresentation, CardTextPresentation} from './types';

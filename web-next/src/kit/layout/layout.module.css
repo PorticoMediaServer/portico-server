@@ -121,12 +121,14 @@
 @media (hover: none) { .seeAll { opacity: 1; } }
 .hero[data-reduced-motion='true'] .slide, .hero[data-reduced-motion='true'] .copy > * { transition: opacity var(--motion-reduced) linear; transform: none; transition-delay: 0ms; }
 .hero[data-reduced-motion='true'] .heroArtwork [data-foreground-art] { animation: none; transform: none; }
-.hero[data-reduced-motion='true'] .timer i { animation: none; transform: scaleX(1); }
+.hero[data-reduced-motion='true'] .timer i { animation: none; }
+.hero[data-reduced-motion='true'] .thumbnail[data-active='true'] .timer i { transform: scaleX(1); }
 [data-reduced-motion='true'] .shelfItem, [data-reduced-motion='true'] .flowSection { animation-duration: var(--motion-reduced); transition: opacity var(--motion-reduced) linear; transform: none; }
 @media (prefers-reduced-motion: reduce) {
   .shelfItem, .flowSection { animation-duration: var(--motion-reduced); transition: opacity var(--motion-reduced) linear; transform: none; }
   .slide, .copy > * { transition: opacity var(--motion-reduced) linear; transform: none; transition-delay: 0ms; }
   .heroArtwork [data-foreground-art] { animation: none; transform: none; }
-  .timer i { animation: none; transform: scaleX(1); }
+  .hero .thumbnail .timer i { animation: none; }
+  .thumbnail[data-active='true'] .timer i { transform: scaleX(1); }
 }
 .hero .copy[data-active='false'] > * { transition: none; }
