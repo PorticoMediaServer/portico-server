@@ -20,7 +20,7 @@ export type HomeSelectionActions = Readonly<{
 /** Server grants for implemented commands. Platform support is applied separately. */
 export type HomeActions = Readonly<{
  play:boolean;queue:boolean;playlist:boolean;collection:boolean;myList:boolean;favorite:boolean;watched:boolean;played:boolean;rating:boolean;
- editMetadata:boolean;refreshMetadata:boolean;delete:boolean;download:boolean;details:boolean;state:HomeActionState;selection:HomeSelectionActions;
+ editMetadata:boolean;refreshMetadata:boolean;delete:boolean;download:boolean;details:boolean;removeFromContinue?:boolean;state:HomeActionState;selection:HomeSelectionActions;
 }>;
 /** Genuine parent-show facts for a returned Home episode, independent of the
  * episode's own year/genres and of its selection or playback identity. */
@@ -45,7 +45,7 @@ export type HomeChannelMark = Readonly<{text:string;seed:string}>;
 export type HomeChannel = Readonly<{channel:GuideChannel & Readonly<{mark:HomeChannelMark}>;source:GuideSource;actions:HomeChannelActions}>;
 export type HomeLive = Readonly<{revision:string;observedAt:string;expiresAt:string;sort:'favorites';group:string;groups:readonly Readonly<{name:string;count:number}>[];channels:readonly HomeChannel[]}>;
 export type HomeRow = Readonly<{
-  id: string; viewerFence: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; explanation?: string; endpoint: string;
+  id: string; viewerFence: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; explanation?: string; why?:ServerText; whyTitles?:readonly Readonly<{id:string;name:string}>[]; displayTargets?:readonly Readonly<{membershipId:string;entryId:string}>[]; endpoint: string;
   /** `for_you` on the personal rows: the layout arranges and hides them together as the row `for_you`. */
   family?: string;
   deferred?: boolean; children?: readonly HomeRow[];
@@ -62,7 +62,7 @@ export type HomeRow = Readonly<{
   nextCursor: string; anchorId?: string; revision: HomeRevision;
 }>;
 export type HomeLayout = Readonly<{revision: number; rowOrder: readonly string[]; hiddenRowIds: readonly string[]}>;
-export type HomeLayoutRowView = Readonly<{id: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; libraryId?: string; required: boolean; hideable: boolean; reorderable: boolean; hidden: boolean}>;
+export type HomeLayoutRowView = Readonly<{availabilityText?:ServerText;id: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; libraryId?: string; required: boolean; hideable: boolean; reorderable: boolean; hidden: boolean}>;
 export type HomeLayoutView = Readonly<HomeLayout & {rows: readonly HomeLayoutRowView[]}>;
 /** Frozen type dependency of presentation/home-hero.ts, removed with the old UI in Phase 10. */
 export type HomeHeroRef = Readonly<{rowId: string; entryId: string; selectionKey?: string}>;
@@ -94,7 +94,7 @@ export function parseHomeActions(value:unknown):HomeActions|undefined {
   const selectionFlags=['play','queue','playlist','collection','myList','favorite','watched','download','edit','refresh','delete'] as const;
   const suppliedSelection:Record<string,unknown>=object(value.selection)?value.selection:{};
   const selection=Object.freeze(Object.fromEntries(selectionFlags.map(flag=>[flag,suppliedSelection[flag]===true])) as HomeSelectionActions);
-  return Object.freeze({...offers,selection,state:Object.freeze({watchlisted:s.watchlisted,favorite:s.favorite,watched:s.watched,rating:s.rating as number|null,personalRevision:s.personalRevision,containerRevision:s.containerRevision})});
+  return Object.freeze({...offers,...(value.removeFromContinue===true?{removeFromContinue:true}:{}),selection,state:Object.freeze({watchlisted:s.watchlisted,favorite:s.favorite,watched:s.watched,rating:s.rating as number|null,personalRevision:s.personalRevision,containerRevision:s.containerRevision})});
 }
 
 function parseHomeTitleContext(value:unknown):HomeTitleContext|undefined {
@@ -274,11 +274,20 @@ function parseHomeRow(value: unknown, allowChildren: boolean): HomeRow {
     if(!Array.isArray(value.platforms)||value.platforms.length>3||value.platforms.some(p=>!['web','phone','tv'].includes(p)))invalid();
     row.platforms=Object.freeze([...value.platforms]);
   }
+  if(value.displayTargets!==undefined){
+    if(!Array.isArray(value.displayTargets)||value.displayTargets.length>60)invalid();
+    row.displayTargets=Object.freeze(value.displayTargets.map(v=>{if(!object(v)||!id(v.membershipId)||!id(v.entryId)||!entries.some(entry=>entry.id===v.entryId))invalid();return Object.freeze({membershipId:v.membershipId,entryId:v.entryId});}));
+  }
   if (whole(value.cacheTtlMs)) row.cacheTtlMs = value.cacheTtlMs;
   const titleText = titleTextOf(value.titleText);
   if (titleText) row.titleText = titleText;
   const subtitleText=titleTextOf(value.subtitleText);
   if(subtitleText)row.subtitleText=subtitleText;
+  if(value.why!==undefined)row.why=titleTextOf(value.why);
+  if(value.whyTitles!==undefined){
+    if(!Array.isArray(value.whyTitles)||value.whyTitles.length>3)invalid();
+    row.whyTitles=Object.freeze(value.whyTitles.map(v=>{if(!object(v)||!id(v.id)||!text(v.name,2048))invalid();return Object.freeze({id:v.id,name:v.name});}));
+  }
   for (const field of ['explanation', 'libraryId', 'relation', 'provider', 'evidenceId', 'anchorId', 'family'] as const) {
     if (text(value[field], 1024)) row[field] = value[field];
     else if (value[field] !== undefined && value[field] !== null) noteSkipped('home', 'row.' + field);
@@ -334,6 +343,7 @@ export function validateHomeLayoutView(value: unknown): HomeLayoutView {
     const required = row.required === true, hideable = row.hideable === true && !required;
     const titleText = titleTextOf(row.titleText);
     return Object.freeze({
+      ...(row.availabilityText?{availabilityText:titleTextOf(row.availabilityText)}:{}),
       id: row.id as string, title: words(row.title, 1024), ...(titleText ? {titleText} : {}), kind: words(row.kind, 256), artworkShape: oneOfOr('home', 'layout.artworkShape', row.artworkShape, shapes, 'poster'),
       ...(id(row.libraryId) ? {libraryId: row.libraryId} : {}),
       required, hideable, reorderable: row.reorderable === true, hidden: row.hidden === true && hideable,
@@ -384,34 +394,42 @@ export async function fetchHomeLayout(api: HomeApi, signal?: AbortSignal): Promi
   return validateHomeLayoutView(await api.request<RouteResponse<"get_home_layout">>(routePath("get_home_layout"), 'GET', undefined, signal));
 }
 
-/**
- * PERF-S14: Home is a summary, so a row paged sideways keeps at most this many entries on the device
- * (never O(row)). Past it the row stops offering more; the row's own destination (See all: the
- * library, Saved…) is the full, windowed view.
- */
-export const HOME_ROW_MAX_ENTRIES = 100;
+/** Start the next server page with about ten loaded cards left. */
+export const HOME_ROW_PREFETCH_REMAINING = 10;
+/** Skeleton cards represent a pending page, never an invented true end. */
+export function homeRowPagingState(row: HomeRow, lastVisibleIndex: number, pending: boolean): Readonly<{prefetch: boolean; skeletons: number; exhausted: boolean}> {
+  const count = row.live?.channels.length ?? row.entries.length;
+  const more = row.nextCursor.length > 0;
+  return Object.freeze({prefetch: more && !pending && count - 1 - lastVisibleIndex <= HOME_ROW_PREFETCH_REMAINING, skeletons: pending && more ? row.limit : 0, exhausted: !more});
+}
 
 /** These server rows reject cursors from any different selected membership. */
 export function hasFencedHomeMembership(rowId: string): boolean {
-  return ['new_on_server', 'because_you_watched', 'listen_next', 'continue_books', 'community_watching'].includes(rowId);
+  return rowId.length > 0;
 }
 
-/** A row after one more page: new entries appended (duplicates dropped), capped at `max`. */
-export function appendHomeRowPage(row: HomeRow, page: HomeRow, max = HOME_ROW_MAX_ENTRIES): HomeRow {
+/** Keep the loaded prefix and append the server page until nextCursor is empty. */
+export function appendHomeRowPage(row: HomeRow, page: HomeRow): HomeRow {
   if(row.id!==page.id||row.viewerFence!==page.viewerFence)invalid();
+  if(!row.live&&(row.revision.catalog!==page.revision.catalog||row.revision.viewer!==page.revision.viewer))throw Object.assign(new Error('The row revision changed.'),{code:'stale_continuation'});
   if(row.live||page.live){
     if(!row.live||!page.live||row.live.revision!==page.live.revision||row.live.observedAt!==page.live.observedAt||row.live.group!==page.live.group)invalid();
     const key=(v:HomeChannel)=>v.channel.provenance+':'+v.channel.sourceId+':'+v.channel.id;
     const seen=new Set(row.live.channels.map(key));
-    const channels=Object.freeze([...row.live.channels,...page.live.channels.filter(v=>!seen.has(key(v)))] .slice(0,max));
+    const channels=Object.freeze([...row.live.channels,...page.live.channels.filter(v=>!seen.has(key(v)))]);
     const expiresAt=Date.parse(page.live.expiresAt)<Date.parse(row.live.expiresAt)?page.live.expiresAt:row.live.expiresAt;
-    return Object.freeze({...row,live:Object.freeze({...row.live,channels,expiresAt}),nextCursor:channels.length>=max?'':page.nextCursor,hasMore:page.hasMore,total:page.total});
+    return Object.freeze({...row,live:Object.freeze({...row.live,channels,expiresAt}),nextCursor:page.nextCursor,hasMore:page.hasMore,total:page.total});
   }
   const seen = new Set(row.entries.map(e => e.id));
-  const entries = [...row.entries, ...page.entries.filter(e => !seen.has(e.id))].slice(0, max);
-  const capped = entries.length >= max;
+  const entries = [...row.entries, ...page.entries.filter(e => !seen.has(e.id))];
   const resumes=page.resumes?Object.freeze([...(row.resumes??[]),...page.resumes.filter(v=>!row.resumes?.some(old=>old.entryId===v.entryId))].filter(v=>entries.some(e=>e.id===v.entryId))):row.resumes;
-  return Object.freeze({...row, entries, ...(resumes?{resumes}:{}), nextCursor: capped ? '' : page.nextCursor, hasMore: page.hasMore, total: page.total});
+  const targets=[...(row.displayTargets??[])];
+  for(const target of page.displayTargets??[]){
+    const previous=targets.find(v=>v.membershipId===target.membershipId||v.entryId===target.entryId);
+    if(previous&&(previous.membershipId!==target.membershipId||previous.entryId!==target.entryId))throw Object.assign(new Error('The row display target changed.'),{code:'stale_continuation'});
+    if(!previous)targets.push(target);
+  }
+  return Object.freeze({...row, entries, ...(resumes?{resumes}:{}), ...(targets.length?{displayTargets:Object.freeze(targets)}:{}), nextCursor: page.nextCursor, hasMore: page.hasMore, total: page.total});
 }
 
 export async function fetchHomeRow(api: HomeApi, rowId: string, page: HomeRowPage = {}, signal?: AbortSignal): Promise<HomeRow> {

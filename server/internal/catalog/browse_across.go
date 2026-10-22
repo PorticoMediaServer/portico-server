@@ -103,9 +103,12 @@ func acrossAnchor(node *BrowseNode) *BrowseNode {
 // acrossMembers is SQL yielding (id, pos): the entities the group names, in
 // its own order where it has one (a playlist's positions, a row's order, the
 // history's most recent first), at most acrossMaximum+1 of them.
-func acrossMembers(anchor *BrowseNode, profile string, rows map[string][]int64) (string, []any, bool, error) {
+func acrossMembers(anchor *BrowseNode, profile string, rows map[string][]int64, sources ...map[string]HomeRowMembership) (string, []any, bool, error) {
 	value, _ := anchor.Value.(string)
-	limit := ` LIMIT ` + strconv.Itoa(acrossMaximum+1)
+	limit := ""
+	if anchor.Field == "person" || anchor.Field == "cast" || anchor.Field == "crew" {
+		limit = ` LIMIT ` + strconv.Itoa(acrossMaximum+1)
+	}
 	switch anchor.Field {
 	case "person", "cast", "crew":
 		role := ""
@@ -122,6 +125,11 @@ func acrossMembers(anchor *BrowseNode, profile string, rows map[string][]int64) 
 	case "savedCollection":
 		return `SELECT sre.item_id AS id,ROW_NUMBER() OVER (ORDER BY sre.order_key,sre.id) AS pos FROM saved_resource_entries sre INDEXED BY saved_resource_entries_order WHERE sre.resource_id=? AND sre.item_id IS NOT NULL ORDER BY sre.order_key,sre.id` + limit, []any{value}, true, nil
 	case "homeRow":
+		if len(sources) > 0 {
+			if source, ok := sources[0][value]; ok {
+				return source.query, source.args, true, nil
+			}
+		}
 		ids, ok := rows[value]
 		if !ok {
 			return "", nil, false, ErrBrowseHomeRow
@@ -148,6 +156,7 @@ type AcrossRequest struct {
 	Cursor      string
 	Range       *BrowseRange
 	Rows        map[string][]int64
+	RowSources  map[string]HomeRowMembership
 	profile     string
 	fence       string
 	libraries   []string
@@ -182,6 +191,7 @@ func (s *Service) BrowseAcross(viewer Viewer, request AcrossRequest) (BrowseResu
 		})
 		return result, err
 	}
+	s = s.WithRecommendationRestrictions(viewer.EffectiveRestrictions())
 	request.profile, request.fence, request.libraries, request.restriction = viewer.Profile, viewer.Fence, viewer.Libraries, viewer.EffectiveRestrictions()
 	out, rows, err := s.acrossSelect(request)
 	if err != nil {
@@ -211,7 +221,7 @@ func (s *Service) acrossRevision(request AcrossRequest, pivot browsePivot, sorts
 	if err := s.read().QueryRow(`SELECT group_concat(state,',') FROM (SELECT r.library_id||':'||r.order_revision||':'||COALESCE(v.revision,0) AS state FROM library_revisions r LEFT JOIN viewer_revisions v ON v.library_id=r.library_id AND v.profile_id=? WHERE r.library_id IN(SELECT value FROM json_each(?)) ORDER BY r.library_id)`, request.profile, idsJSON(request.libraries)).Scan(&state); err != nil {
 		return "", err
 	}
-	group, err := s.browseGroupFence(request.Query, request.Rows)
+	group, err := s.browseGroupFence(request.Query, request.Rows, request.RowSources)
 	if err != nil {
 		return "", err
 	}
@@ -238,7 +248,7 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 	if anchor == nil {
 		return out, nil, ErrBrowseAcrossGroup
 	}
-	members, memberArgs, ordered, err := acrossMembers(anchor, request.profile, request.Rows)
+	members, memberArgs, ordered, err := acrossMembers(anchor, request.profile, request.Rows, request.RowSources)
 	if err != nil {
 		return out, nil, err
 	}
@@ -270,7 +280,13 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		// order from the profile's own rows, past any length.
 		return s.acrossHistory(request, pivot, sorts[0], out, limit)
 	}
-	group := `WITH anchor(id,pos) AS MATERIALIZED (SELECT id,pos FROM (` + members + `) LIMIT ` + strconv.Itoa(acrossMaximum) + `),
+	membershipLimit := ""
+	if anchor.Field == "person" || anchor.Field == "cast" || anchor.Field == "crew" {
+		membershipLimit = ` LIMIT ` + strconv.Itoa(acrossMaximum)
+	} else {
+		capped = false
+	}
+	group := `WITH anchor(id,pos) AS MATERIALIZED (SELECT id,pos FROM (` + members + `)` + membershipLimit + `),
  ord(id,pos) AS MATERIALIZED (SELECT id,min(pos) FROM (SELECT id,pos FROM anchor
   UNION ALL SELECT bm.entity_id,anchor.pos FROM anchor CROSS JOIN catalog_browse_memberships bm INDEXED BY catalog_browse_membership_item ON bm.item_id=anchor.id
   UNION ALL SELECT bm.item_id,anchor.pos FROM anchor CROSS JOIN catalog_browse_memberships bm ON bm.entity_id=anchor.id) GROUP BY id)`
@@ -280,7 +296,7 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 	}
 	where := `e.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND e.kind IN(` + placeholders(len(kinds)) + `)`
 	args := append([]any{idsJSON(request.libraries)}, kinds...)
-	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows}
+	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources}
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err
@@ -409,7 +425,7 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 	}
 	where := `personal.profile_id=? AND personal.last_played_at<>'' AND e.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND e.kind IN(` + placeholders(len(kinds)) + `)`
 	args := append([]any{request.profile, idsJSON(request.libraries)}, kinds...)
-	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows}
+	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources}
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err
@@ -759,7 +775,7 @@ func (s *Service) facetsInGroup(viewer Viewer, request FacetRequest, limit int) 
 	if anchor == nil {
 		return out, ErrBrowseAcrossGroup
 	}
-	members, memberArgs, _, err := acrossMembers(anchor, viewer.Profile, request.Rows)
+	members, memberArgs, _, err := acrossMembers(anchor, viewer.Profile, request.Rows, request.RowSources)
 	if err != nil {
 		return out, err
 	}

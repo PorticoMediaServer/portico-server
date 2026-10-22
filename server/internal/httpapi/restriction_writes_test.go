@@ -396,6 +396,29 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
+		"DELETE /v1/me/removed-titles/{id}": perHidden("DELETE", "/v1/me/removed-titles/ID", "", "item"),
+		"POST /v1/home/destination-picker": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for _, kind := range []string{"playlist", "collection"} {
+				for _, id := range m.hiddenItemSamples() {
+					out = append(out, idProbe{hidden: id, method: "POST", path: "/v1/home/destination-picker", body: fmt.Sprintf(`{"kind":%q,"limit":40,"itemIds":[%q]}`, kind, id)})
+				}
+			}
+			return out
+		}),
+		"POST /v1/home/destination-receipt": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for kind, destination := range map[string]string{"playlist": m.playlist, "collection": m.savedResource} {
+				for _, id := range m.hiddenSamples() {
+					out = append(out,
+						idProbe{hidden: id, method: "POST", path: "/v1/home/destination-receipt", body: fmt.Sprintf(`{"kind":%q,"destinationId":%q,"jobIds":[%q]}`, kind, destination, id)},
+						idProbe{hidden: id, method: "POST", path: "/v1/home/destination-receipt", body: fmt.Sprintf(`{"kind":%q,"destinationId":%q,"jobIds":["matrix-foreign-job"]}`, kind, id)},
+					)
+				}
+			}
+			return out
+		}),
+		"POST /v1/metadata/bulk/preview":                                      perHidden("POST", "/v1/metadata/bulk/preview", `{"targets":[{"kind":"item","contentKind":"movie","id":"ID","libraryId":"private-library"}]}`, "item"),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.mks": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.sub": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),

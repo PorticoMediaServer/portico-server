@@ -898,6 +898,26 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "delete_me_removed_titles_id",
+    "method": "DELETE",
+    "path": "/v1/me/removed-titles/{id}",
+    "summary": "Remove this profile's removed-title Continue reference",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "delete_metadata_kind_id_art_role_upload_candidateId",
     "method": "DELETE",
     "path": "/v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}",
@@ -5568,6 +5588,46 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "get_me_removed_titles_id",
+    "method": "GET",
+    "path": "/v1/me/removed-titles/{id}",
+    "summary": "Read this profile's removed-title reference",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_me_saved_summary",
+    "method": "GET",
+    "path": "/v1/me/saved/summary",
+    "summary": "Read private Saved landing counts",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_media_grant",
     "method": "GET",
     "path": "/v1/media/{grant}",
@@ -6467,6 +6527,7 @@ export const routes = [
       "sort",
       "direction",
       "filter",
+      "shape",
       "limit",
       "cursor"
     ],
@@ -6517,7 +6578,9 @@ export const routes = [
     "query": [
       "cursor",
       "kind",
-      "pinned"
+      "pinned",
+      "shape",
+      "limit"
     ],
     "errors": [
       "invalid_request",
@@ -12789,6 +12852,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "home_layout_conflict",
       "internal"
     ],
     "status": 200,
@@ -16404,6 +16468,7 @@ export const routePaths = {
   "delete_dvr_recordings_id": "/v1/dvr/recordings/{id}",
   "delete_dvr_rules_id": "/v1/dvr/rules/{id}",
   "delete_items_id_lyrics_resource": "/v1/items/{id}/lyrics/{resource}",
+  "delete_me_removed_titles_id": "/v1/me/removed-titles/{id}",
   "delete_metadata_kind_id_art_role_upload_candidateId": "/v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}",
   "delete_playlists_id": "/v1/playlists/{id}",
   "delete_playlists_id_entries_entryId": "/v1/playlists/{id}/entries/{entryId}",
@@ -16609,6 +16674,8 @@ export const routePaths = {
   "get_live_tuners": "/v1/admin/dvr/tuners",
   "get_me": "/v1/me",
   "get_me_library_navigation": "/v1/me/library-navigation",
+  "get_me_removed_titles_id": "/v1/me/removed-titles/{id}",
+  "get_me_saved_summary": "/v1/me/saved/summary",
   "get_media_grant": "/v1/media/{grant}",
   "get_media_grant_audio": "/v1/media/{grant}/audio",
   "get_media_grant_audio_converted": "/v1/media/{grant}/audio-converted",

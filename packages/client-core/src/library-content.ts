@@ -35,7 +35,9 @@ export type ContentEntry = Readonly<{
   /** Up to 4 poster paths for a 2x2 mosaic; category rows only. Absent when there is nothing to show. */
   /** `count` is a lower bound: a grouping under a broad filter counts each group up to 10,000 ("10,000+"). */
   countIsLowerBound?: boolean;
+  removed?:boolean;
   artworkPaths?: readonly string[];
+  yearMin?:number; yearMax?:number; origin?:'automatic'|'owner';
   navigation?: Readonly<{ view: ContentView | 'item'; entityId?: string; category?: string }>;
   playback?: Readonly<{ itemId: string; startSeconds?: number }>;
   /** An episode's air date (YYYY-MM-DD): show workspace pages, and episode rows of a browse page. */
@@ -206,6 +208,9 @@ function entry(v: unknown): ContentEntry {
   if (v.role !== undefined) {
     if (v.role === 'album' || v.role === 'ep' || v.role === 'single' || v.role === 'compilation' || v.role === 'appearance') row.role = v.role;
   }
+  for(const field of ['yearMin','yearMax'] as const)if(typeof v[field]==='number'&&Number.isInteger(v[field])&&(v[field] as number)>0)row[field]=v[field] as number;
+  if(v.origin==='automatic'||v.origin==='owner')row.origin=v.origin;
+  if(v.removed===true)row.removed=true;
   if (v.artworkPaths !== undefined) {
     if (Array.isArray(v.artworkPaths)) {
       const paths = (v.artworkPaths as unknown[]).filter(p => string(p, 4096) && (p as string).length > 0).slice(0, 4) as string[];

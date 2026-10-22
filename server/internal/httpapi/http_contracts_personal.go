@@ -6,6 +6,18 @@ import (
 )
 
 func registerPersonalHTTPContracts(registry *apikit.Registry) error {
+	if err := apikit.RegisterHTTP[struct{}, catalog.SavedSummary](registry, apikit.Metadata{ID: "get_me_saved_summary", Method: "GET", Path: "/v1/me/saved/summary", Summary: "Read private Saved landing counts", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[struct{}, catalog.RemovedTitle](registry, apikit.Metadata{ID: "get_me_removed_titles_id", Method: "GET", Path: "/v1/me/removed-titles/{id}", Summary: "Read this profile's removed-title reference", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[struct{}, struct {
+		Removed bool `json:"removed"`
+	}](registry, apikit.Metadata{ID: "delete_me_removed_titles_id", Method: "DELETE", Path: "/v1/me/removed-titles/{id}", Summary: "Remove this profile's removed-title Continue reference", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+
 	// internal/httpapi/discovery.go:144
 	if err := apikit.RegisterHTTP[struct{}, struct {
 		Categories []catalog.Category `json:"categories"`
@@ -88,7 +100,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:55
-	if err := apikit.RegisterHTTP[struct{}, catalog.SavedResourcePage](registry, apikit.Metadata{ID: "get_saved_resources", Method: "GET", Path: "/v1/saved-resources", Summary: "Read saved resources", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "kind", "pinned"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.SavedResourceCardsPage](registry, apikit.Metadata{ID: "get_saved_resources", Method: "GET", Path: "/v1/saved-resources", Summary: "Read saved resources", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "kind", "pinned", "shape", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:81

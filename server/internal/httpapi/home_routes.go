@@ -258,6 +258,10 @@ func (d Dependencies) applyHomeLayout(w http.ResponseWriter, r *http.Request, re
 	}
 	out, e := d.Console.ApplyHomeLayout(r.Context(), p, d.consoleAuthority(p, false), change)
 	if e != nil {
+		if errors.Is(e, operations.ErrConflict) && !errors.Is(e, operations.ErrIdempotencyKeyReused) {
+			write(w, 409, map[string]any{"error": map[string]any{"code": "home_layout_conflict", "message": publicErrorMessage("home_layout_conflict"), "retryable": false}})
+			return
+		}
 		consoleError(w, e)
 		return
 	}

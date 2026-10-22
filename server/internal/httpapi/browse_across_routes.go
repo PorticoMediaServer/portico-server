@@ -39,7 +39,7 @@ func (d Dependencies) acrossViewer(r *http.Request) (identity.Principal, catalog
 
 // resolveHomeRows reads the Home rows a query names through Home itself, so a
 // homeRow condition holds exactly the titles the viewer's row shows.
-func (d Dependencies) resolveHomeRows(r *http.Request, p identity.Principal, viewer catalog.Viewer, query *catalog.BrowseNode, cat *catalog.Service) (map[string][]int64, error) {
+func (d Dependencies) resolveHomeRows(r *http.Request, p identity.Principal, viewer catalog.Viewer, query *catalog.BrowseNode, cat *catalog.Service) (map[string]catalog.HomeRowMembership, error) {
 	ids := catalog.BrowseHomeRows(query)
 	if len(ids) == 0 {
 		return nil, nil
@@ -48,9 +48,9 @@ func (d Dependencies) resolveHomeRows(r *http.Request, p identity.Principal, vie
 	if e != nil {
 		return nil, e
 	}
-	out := map[string][]int64{}
+	out := map[string]catalog.HomeRowMembership{}
 	for _, id := range ids {
-		members, e := cat.HomeRowMembers(request, id)
+		members, e := cat.ResolveHomeRowMembership(request, id)
 		if e != nil {
 			return nil, e
 		}
@@ -85,7 +85,7 @@ func (d Dependencies) browseAcrossHandler(w http.ResponseWriter, r *http.Request
 		if err != nil {
 			return err
 		}
-		out, err = cat.BrowseAcross(viewer, catalog.AcrossRequest{ServerID: d.Identity.ID(), Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Rows: rows})
+		out, err = cat.BrowseAcross(viewer, catalog.AcrossRequest{ServerID: d.Identity.ID(), Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, RowSources: rows})
 		return err
 	})
 	if e != nil {
@@ -152,7 +152,7 @@ func (d Dependencies) browseAcrossFacetsHandler(w http.ResponseWriter, r *http.R
 	}
 	var out catalog.FacetPage
 	e = d.compose(r, viewer.Restrictions, func(cat *catalog.Service) error {
-		var rows map[string][]int64
+		var rows map[string]catalog.HomeRowMembership
 		if group != nil {
 			var err error
 			if rows, err = d.resolveHomeRows(r, p, viewer, group, cat); err != nil {
@@ -160,7 +160,7 @@ func (d Dependencies) browseAcrossFacetsHandler(w http.ResponseWriter, r *http.R
 			}
 		}
 		var err error
-		out, err = cat.FacetsAcross(viewer, catalog.FacetRequest{Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Group: group, Rows: rows})
+		out, err = cat.FacetsAcross(viewer, catalog.FacetRequest{Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Group: group, RowSources: rows})
 		return err
 	})
 	if e != nil {

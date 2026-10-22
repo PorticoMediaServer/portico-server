@@ -868,6 +868,27 @@ func run() (runErr error) {
 			return 0
 		})
 	})
+	supervise.Supervise(ctx, "cmd.automatic-collections", func(life context.Context) {
+		wake := worker.NewSignal()
+		unregister := dbwork.WakeOnTables(wake, "catalog_automatic_collections")
+		defer unregister()
+		worker.Run(life, "cmd.automatic-collections", wake, func(ctx context.Context) time.Duration {
+			if err := cat.PruneRemovedTitles(ctx); err != nil {
+				log.Printf("Removed titles: %v", err)
+				return 15 * time.Second
+			}
+			more, err := cat.SyncAutomaticCollections(ctx)
+			if err != nil {
+				log.Printf("Automatic collections: %v", err)
+				return 15 * time.Second
+			}
+			if more {
+				return time.Millisecond
+			}
+			return time.Hour
+		})
+	})
+
 	// Audio facts for client-side decoding (spec §18.7): a background pass over
 	// the library's audio assets, woken by catalog changes, one measurement at a
 	// time; a play measures a missing one itself (bounded).

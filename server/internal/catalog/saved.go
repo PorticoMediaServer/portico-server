@@ -62,6 +62,9 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 		return ContentEnvelope{}, err
 	}
 	out := ContentEnvelope{Scope: ContentScope{r.ServerID, "", "mixed", r.View, "", r.ViewerFence}, Navigation: savedNavigation(), Sorts: savedSortOptions(), Filters: []ContentFilter{}, Sections: []ContentSection{}}
+	if r.Shape != "" && r.Shape != "posters" && r.Shape != "squares" {
+		return out, ErrCursor
+	}
 	if r.View != "watchlist" && r.View != "favorites" {
 		return out, requestinput.New("invalid Saved view")
 	}
@@ -89,13 +92,13 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 		flag = "favorite"
 	}
 	out.Heading = ContentHeading{Key: "saved." + r.View, Fallback: heading}
-	out.Query = ContentQuery{Sort: r.Sort, Direction: r.Direction, Category: r.Filter, Limit: r.Limit, SearchMode: "none"}
+	out.Query = ContentQuery{Sort: r.Sort, Direction: r.Direction, Category: r.Filter + ":" + r.Shape, Limit: r.Limit, SearchMode: "none"}
 	rev, e := s.homeRevision(libraries, r.Profile)
 	if e != nil {
 		return out, e
 	}
 	out.Revision = rev
-	scope := cursorScope{Profile: r.Profile, View: r.View, Section: r.View, Viewer: r.ViewerFence, Sort: r.Sort, Direction: r.Direction, Category: r.Filter, Limit: r.Limit}
+	scope := cursorScope{Profile: r.Profile, View: r.View, Section: r.View, Viewer: r.ViewerFence, Sort: r.Sort, Direction: r.Direction, Category: r.Filter + ":" + r.Shape, Limit: r.Limit}
 	raw, _ := json.Marshal(libraries)
 	// A saved title is a playable item (movie, episode, song, book file) or a title that holds
 	// them (show, artist, album, book): the flag sits in the same personal_items row either way.
@@ -106,6 +109,18 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 	containers, containerArgs := r.Viewer.entityVisibilitySQL("i.id", "(SELECT library_id FROM catalog_libraries WHERE id=i.library_id)")
 	base += ` AND ((i.kind IN(1,4,7,9) AND ` + visibility + `) OR (i.kind IN(2,5,6,8) AND ` + containers + `))`
 	baseArgs = append(append(baseArgs, visibleArgs...), containerArgs...)
+	shapeCounts := &SavedShapeCounts{}
+	if e = s.read().QueryRow(`SELECT COALESCE(sum(i.kind IN(1,2,3,4)),0),COALESCE(sum(i.kind IN(5,6,7,8,9,13)),0)`+base, baseArgs...).Scan(&shapeCounts.Posters, &shapeCounts.Squares); e != nil {
+		return out, e
+	}
+	out.ShapeCounts = shapeCounts
+	if r.Shape == "posters" {
+		base += ` AND i.kind IN(1,2,3,4)`
+	}
+	if r.Shape == "squares" {
+		base += ` AND i.kind IN(5,6,7,8,9,13)`
+	}
+
 	var all, unwatched, inProgress int
 	if e = s.read().QueryRow(`SELECT count(*)`+base, baseArgs...).Scan(&all); e != nil {
 		return out, e

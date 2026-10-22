@@ -312,7 +312,8 @@ type browseCompiler struct {
 	itemPivot bool
 	// rows are the Home rows the request names, resolved by the caller to the
 	// row's titles in its order (homeRow).
-	rows map[string][]int64
+	rows       map[string][]int64
+	rowSources map[string]HomeRowMembership
 	// kinds are the pivot's kinds, which bound a value-side candidate list.
 	kinds []int
 	// perTitle tests a member condition on each title it is asked of, never

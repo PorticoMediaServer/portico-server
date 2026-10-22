@@ -289,6 +289,9 @@ const (
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
 	return map[string]restrictionRoute{
+		"GET /v1/me/saved/summary":                                                   static("/v1/me/saved/summary"),
+		"GET /v1/me/removed-titles/{id}":                                             probe(func(m *restrictionEnv) []string { return prefixed("/v1/me/removed-titles/", m.hiddenItemSamples()) }),
+		"GET /v1/admin/activity":                                                     exempt(reasonAdmin),
 		"GET /v1/admin/playback/route-failures":                                      exempt(reasonAdmin),
 		"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
 		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
@@ -707,7 +710,13 @@ func restrictionReadPOSTs(m *restrictionEnv) map[string][]postProbe {
 			}
 		}
 	}
-	return map[string][]postProbe{"POST /v1/libraries/{id}/browse": browse, "POST /v1/browse": across, "POST /v1/jobs": jobs}
+	pickers := []postProbe{}
+	if m != nil {
+		for _, kind := range []string{"playlist", "collection"} {
+			pickers = append(pickers, postProbe{"/v1/home/destination-picker", fmt.Sprintf(`{"kind":%q,"limit":40,"itemIds":[%q,%q]}`, kind, m.visibleMovie, m.hiddenItems["movie"][0])})
+		}
+	}
+	return map[string][]postProbe{"POST /v1/libraries/{id}/browse": browse, "POST /v1/browse": across, "POST /v1/jobs": jobs, "POST /v1/home/destination-picker": pickers}
 }
 
 func prefixed(prefix string, ids []string, suffix ...string) []string {
@@ -769,7 +778,7 @@ func (m *restrictionEnv) hiddenItemSamples() []string {
 }
 
 func (m *restrictionEnv) homeRows() []string {
-	rows := []string{"continue", "continue_listening", "ondeck", "recommended", "trending"}
+	rows := []string{"continue", "new_on_server", "because_you_watched", "listen_next", "continue_books", "recommended", "trending_now", "community_watching"}
 	for _, library := range m.libraries {
 		rows = append(rows, "recent_"+library)
 	}

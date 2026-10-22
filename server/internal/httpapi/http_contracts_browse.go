@@ -148,7 +148,7 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 		IdempotencyKey   string   `json:"idempotencyKey"`
 		RowOrder         []string `json:"rowOrder"`
 		HiddenRowIDs     []string `json:"hiddenRowIds"`
-	}, operations.HomeLayoutDocument](registry, apikit.Metadata{ID: "put_home_layout", Method: "PUT", Path: "/v1/home/layout", Summary: "Save home layout", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, operations.HomeLayoutDocument](registry, apikit.Metadata{ID: "put_home_layout", Method: "PUT", Path: "/v1/home/layout", Summary: "Save home layout", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "home_layout_conflict", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/home_routes.go:124

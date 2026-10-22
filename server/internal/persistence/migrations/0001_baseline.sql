@@ -8189,3 +8189,110 @@ CREATE TABLE segment_catchup (
 CREATE INDEX segment_files_work ON segment_files(state,next_ms,show_id,object_id);
 CREATE INDEX segment_files_show ON segment_files(show_id,state);
 CREATE INDEX segment_shows_dirty ON segment_shows(dirty,show_id) WHERE dirty=1;
+
+-- Provider membership is evidence. Owner decisions live independently so a
+-- rescan cannot rename, reorder, re-add a removed film, or recreate a hidden set.
+CREATE TABLE catalog_automatic_collections(
+ library_id INTEGER NOT NULL REFERENCES catalog_libraries(id) ON DELETE CASCADE,
+ provider TEXT NOT NULL,provider_id TEXT NOT NULL,name TEXT NOT NULL,
+ entity_id INTEGER REFERENCES catalog_entities(id) ON DELETE SET NULL,
+ removed INTEGER NOT NULL DEFAULT 0 CHECK(removed IN(0,1)),
+ dirty INTEGER NOT NULL DEFAULT 1 CHECK(dirty IN(0,1)),
+ owner_edited INTEGER NOT NULL DEFAULT 0 CHECK(owner_edited IN(0,1)),
+ PRIMARY KEY(library_id,provider,provider_id)) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_automatic_collection_entity ON catalog_automatic_collections(entity_id);
+CREATE TABLE catalog_automatic_members(
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ library_id INTEGER NOT NULL REFERENCES catalog_libraries(id) ON DELETE CASCADE,
+ provider TEXT NOT NULL,provider_id TEXT NOT NULL,name TEXT NOT NULL,
+ PRIMARY KEY(item_id,provider,provider_id)) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_automatic_members_group ON catalog_automatic_members(library_id,provider,provider_id,item_id);
+CREATE TABLE catalog_automatic_member_overrides(
+ collection_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ present INTEGER NOT NULL CHECK(present IN(0,1)),
+ PRIMARY KEY(collection_id,item_id)) WITHOUT ROWID, STRICT;
+CREATE TRIGGER catalog_automatic_member_insert AFTER INSERT ON catalog_automatic_members BEGIN
+ INSERT INTO catalog_automatic_collections(library_id,provider,provider_id,name) VALUES(NEW.library_id,NEW.provider,NEW.provider_id,NEW.name)
+ ON CONFLICT(library_id,provider,provider_id) DO UPDATE SET name=excluded.name,dirty=1;
+END;
+CREATE TRIGGER catalog_automatic_member_delete AFTER DELETE ON catalog_automatic_members BEGIN
+ UPDATE catalog_automatic_collections SET dirty=1 WHERE library_id=OLD.library_id AND provider=OLD.provider AND provider_id=OLD.provider_id;
+END;
+CREATE TRIGGER catalog_automatic_fields_insert AFTER INSERT ON screen_metadata_fields WHEN NEW.field IN('relations','collectionName') AND NEW.target_kind='item' BEGIN
+DELETE FROM catalog_automatic_members WHERE item_id=NEW.target_id;
+ INSERT INTO catalog_automatic_members(item_id,library_id,provider,provider_id,name)
+ SELECT e.id,e.library_id,json_extract(j.value,'$.target.provider'),json_extract(j.value,'$.target.id'),json_extract(j.value,'$.name')
+ FROM catalog_entities e JOIN screen_metadata_fields f ON f.target_id=e.id AND f.target_kind='item' AND f.field='relations',json_each(f.value) j
+ WHERE e.id=NEW.target_id AND e.kind=1 AND json_valid(f.value) AND json_extract(j.value,'$.kind')='collection'
+ AND COALESCE(json_extract(j.value,'$.target.provider'),'')<>'' AND COALESCE(json_extract(j.value,'$.target.id'),'')<>'' AND COALESCE(json_extract(j.value,'$.name'),'')<>''
+ AND NOT EXISTS(SELECT 1 FROM screen_metadata_fields n WHERE n.target_kind='item' AND n.target_id=e.id AND n.field='collectionName' AND json_valid(n.value) AND trim(json_extract(n.value,'$'))<>'')
+ ON CONFLICT DO NOTHING;
+ INSERT INTO catalog_automatic_members(item_id,library_id,provider,provider_id,name)
+ SELECT e.id,e.library_id,'nfo',lower(trim(json_extract(f.value,'$'))),trim(json_extract(f.value,'$')) FROM catalog_entities e JOIN screen_metadata_fields f ON f.target_id=e.id AND f.target_kind='item' AND f.field='collectionName'
+ WHERE e.id=NEW.target_id AND e.kind=1 AND json_valid(f.value) AND trim(json_extract(f.value,'$'))<>'' ON CONFLICT DO NOTHING;
+END;
+CREATE TRIGGER catalog_automatic_fields_update AFTER UPDATE ON screen_metadata_fields WHEN NEW.field IN('relations','collectionName') AND NEW.target_kind='item' BEGIN
+DELETE FROM catalog_automatic_members WHERE item_id=NEW.target_id;
+ INSERT INTO catalog_automatic_members(item_id,library_id,provider,provider_id,name)
+ SELECT e.id,e.library_id,json_extract(j.value,'$.target.provider'),json_extract(j.value,'$.target.id'),json_extract(j.value,'$.name')
+ FROM catalog_entities e JOIN screen_metadata_fields f ON f.target_id=e.id AND f.target_kind='item' AND f.field='relations',json_each(f.value) j
+ WHERE e.id=NEW.target_id AND e.kind=1 AND json_valid(f.value) AND json_extract(j.value,'$.kind')='collection'
+ AND COALESCE(json_extract(j.value,'$.target.provider'),'')<>'' AND COALESCE(json_extract(j.value,'$.target.id'),'')<>'' AND COALESCE(json_extract(j.value,'$.name'),'')<>''
+ AND NOT EXISTS(SELECT 1 FROM screen_metadata_fields n WHERE n.target_kind='item' AND n.target_id=e.id AND n.field='collectionName' AND json_valid(n.value) AND trim(json_extract(n.value,'$'))<>'')
+ ON CONFLICT DO NOTHING;
+ INSERT INTO catalog_automatic_members(item_id,library_id,provider,provider_id,name)
+ SELECT e.id,e.library_id,'nfo',lower(trim(json_extract(f.value,'$'))),trim(json_extract(f.value,'$')) FROM catalog_entities e JOIN screen_metadata_fields f ON f.target_id=e.id AND f.target_kind='item' AND f.field='collectionName'
+ WHERE e.id=NEW.target_id AND e.kind=1 AND json_valid(f.value) AND trim(json_extract(f.value,'$'))<>'' ON CONFLICT DO NOTHING;
+END;
+CREATE TRIGGER catalog_automatic_fields_delete AFTER DELETE ON screen_metadata_fields WHEN OLD.field IN('relations','collectionName') AND OLD.target_kind='item' BEGIN
+DELETE FROM catalog_automatic_members WHERE item_id=OLD.target_id;
+ INSERT INTO catalog_automatic_members(item_id,library_id,provider,provider_id,name)
+ SELECT e.id,e.library_id,json_extract(j.value,'$.target.provider'),json_extract(j.value,'$.target.id'),json_extract(j.value,'$.name')
+ FROM catalog_entities e JOIN screen_metadata_fields f ON f.target_id=e.id AND f.target_kind='item' AND f.field='relations',json_each(f.value) j
+ WHERE e.id=OLD.target_id AND e.kind=1 AND json_valid(f.value) AND json_extract(j.value,'$.kind')='collection'
+ AND COALESCE(json_extract(j.value,'$.target.provider'),'')<>'' AND COALESCE(json_extract(j.value,'$.target.id'),'')<>'' AND COALESCE(json_extract(j.value,'$.name'),'')<>''
+ AND NOT EXISTS(SELECT 1 FROM screen_metadata_fields n WHERE n.target_kind='item' AND n.target_id=e.id AND n.field='collectionName' AND json_valid(n.value) AND trim(json_extract(n.value,'$'))<>'')
+ ON CONFLICT DO NOTHING;
+ INSERT INTO catalog_automatic_members(item_id,library_id,provider,provider_id,name)
+ SELECT e.id,e.library_id,'nfo',lower(trim(json_extract(f.value,'$'))),trim(json_extract(f.value,'$')) FROM catalog_entities e JOIN screen_metadata_fields f ON f.target_id=e.id AND f.target_kind='item' AND f.field='collectionName'
+ WHERE e.id=OLD.target_id AND e.kind=1 AND json_valid(f.value) AND trim(json_extract(f.value,'$'))<>'' ON CONFLICT DO NOTHING;
+END;
+
+-- A missing source is not deletion. These rows are written only by actual
+-- canonical entity deletion, with profile evidence and policy facts retained.
+CREATE TABLE catalog_title_tombstones(
+ public_id TEXT PRIMARY KEY,library_id TEXT NOT NULL,title TEXT NOT NULL,kind INTEGER NOT NULL,
+ poster_url TEXT NOT NULL,backdrop_url TEXT NOT NULL,recording INTEGER NOT NULL,
+ removed_at TEXT NOT NULL,expires_at TEXT NOT NULL) STRICT;
+CREATE INDEX catalog_title_tombstones_expiry ON catalog_title_tombstones(expires_at);
+CREATE TABLE catalog_title_tombstone_viewers(
+ public_id TEXT NOT NULL REFERENCES catalog_title_tombstones(public_id) ON DELETE CASCADE,
+ profile_id TEXT NOT NULL,activity_at TEXT NOT NULL,continuing INTEGER NOT NULL CHECK(continuing IN(0,1)),PRIMARY KEY(public_id,profile_id)) WITHOUT ROWID, STRICT;
+CREATE TABLE catalog_title_tombstone_attributes(
+ public_id TEXT NOT NULL REFERENCES catalog_title_tombstones(public_id) ON DELETE CASCADE,
+ field_id INTEGER NOT NULL,value_key TEXT NOT NULL,source_value TEXT NOT NULL,
+ PRIMARY KEY(public_id,field_id,value_key)) WITHOUT ROWID, STRICT;
+CREATE TRIGGER catalog_title_removed BEFORE DELETE ON catalog_entities WHEN OLD.kind IN(1,4,7,9) BEGIN
+ INSERT INTO catalog_title_tombstones(public_id,library_id,title,kind,poster_url,backdrop_url,recording,removed_at,expires_at)
+ VALUES(pid(OLD.public_id),COALESCE((SELECT library_id FROM catalog_libraries WHERE id=OLD.library_id),''),OLD.title,OLD.kind,
+ COALESCE((SELECT poster_url FROM catalog_item_details WHERE entity_id=OLD.id),''),COALESCE((SELECT backdrop_url FROM catalog_item_details WHERE entity_id=OLD.id),''),
+ EXISTS(SELECT 1 FROM dvr_catalog_provenance WHERE item_id=OLD.id),strftime('%Y-%m-%dT%H:%M:%fZ','now'),strftime('%Y-%m-%dT%H:%M:%fZ','now','+30 days'))
+ ON CONFLICT(public_id) DO NOTHING;
+ INSERT OR IGNORE INTO catalog_title_tombstone_viewers SELECT pid(OLD.public_id),a.profile_id,a.updated_at,a.state<>'ended' AND p.position>0 AND p.completed=0 FROM progress_activity a JOIN progress p ON p.profile_id=a.profile_id AND p.item_id=a.item_id WHERE a.item_id=OLD.id;
+ INSERT OR IGNORE INTO catalog_title_tombstone_viewers SELECT pid(OLD.public_id),profile_id,updated_at,0 FROM personal_history WHERE item_id=OLD.id;
+ INSERT OR IGNORE INTO catalog_title_tombstone_viewers SELECT pid(OLD.public_id),profile_id,COALESCE(last_played_at,''),0 FROM personal_items WHERE item_id=OLD.id AND (watchlisted=1 OR favorite=1);
+ INSERT OR IGNORE INTO catalog_title_tombstone_attributes
+ SELECT pid(OLD.public_id),term.field_id,term.value_key,edge.source_value FROM catalog_item_attribute_edges edge JOIN catalog_attribute_terms term ON term.id=edge.term_id WHERE edge.item_id=OLD.id AND term.field_id IN(1,2,3);
+END;
+
+CREATE TABLE catalog_removed_title_revisions(profile_id TEXT PRIMARY KEY,revision INTEGER NOT NULL) STRICT;
+CREATE TRIGGER catalog_removed_title_reference_insert AFTER INSERT ON catalog_title_tombstone_viewers BEGIN
+ INSERT INTO catalog_removed_title_revisions VALUES(NEW.profile_id,1) ON CONFLICT(profile_id) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER catalog_removed_title_reference_update AFTER UPDATE ON catalog_title_tombstone_viewers BEGIN
+ INSERT INTO catalog_removed_title_revisions VALUES(NEW.profile_id,1) ON CONFLICT(profile_id) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER catalog_removed_title_reference_delete AFTER DELETE ON catalog_title_tombstone_viewers BEGIN
+ INSERT INTO catalog_removed_title_revisions VALUES(OLD.profile_id,1) ON CONFLICT(profile_id) DO UPDATE SET revision=revision+1;
+END;

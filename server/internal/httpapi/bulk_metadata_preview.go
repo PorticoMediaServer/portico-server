@@ -3,10 +3,12 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"time"
 
 	"portico.local/apikit"
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/metadata"
@@ -17,11 +19,18 @@ import (
 // POST metadata/bulk; the preview grants no new mutation or editor authority.
 func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
 	v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "post_metadata_bulk_preview", Method: "POST", Path: "/v1/metadata/bulk/preview", Summary: "Read shared and mixed metadata for an authorized selection", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, BodyLimit: 524288, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}},
-		func(ctx context.Context, r *http.Request, in catalog.BulkMetadataPreviewRequest) (metadata.BulkMetadataPreview, error) {
+		func(ctx context.Context, r *http.Request, in catalog.BulkMetadataPreviewRequest) (out metadata.BulkMetadataPreview, err error) {
+			// Selection validation can originate in either service. Translate it
+			// at the HTTP boundary while retaining authentication and fault errors.
+			defer func() {
+				if errors.Is(err, metadata.ErrRepairInput) {
+					err = &apierror.Error{Code: "invalid_request", Cause: err}
+				}
+				err = bulkError(err)
+			}()
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			r = r.WithContext(ctx)
-			out := metadata.BulkMetadataPreview{}
 			if r.URL.RawQuery != "" {
 				return out, metadata.ErrRepairInput
 			}

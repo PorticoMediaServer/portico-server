@@ -12,12 +12,12 @@
  * - A row's next page that the server refuses as out of date is not the person's problem: the
  *   whole document is read again quietly and the row continues from there.
  * - Saving the layout carries the revision that was read; when the layout moved elsewhere first,
- *   it is read again and the same arrangement is sent with the new revision.
+ *   the conflict is surfaced for an explicit Reload layout before saving again.
  *
  * No React and no timers of its own beyond the read deadline: tested under Node.
  */
-import {appendHomeRowPage, fetchHome, fetchHomeLayout, fetchHomeRow, hasFencedHomeMembership, hasHomeRowContent, HOME_ROW_MAX_ENTRIES, resetHomeLayout, saveHomeLayout, type HomeApi, type HomeDocument, type HomeLayout, type HomeLayoutView} from './home.ts';
-import {ALREADY_DONE, isStaleAnswer, mergeRevalidatedList, retryWhenStale} from './freshness-actions.ts';
+import {appendHomeRowPage, fetchHome, fetchHomeLayout, fetchHomeRow, hasFencedHomeMembership, hasHomeRowContent, resetHomeLayout, saveHomeLayout, type HomeApi, type HomeDocument, type HomeLayout, type HomeLayoutView} from './home.ts';
+import {isStaleAnswer, mergeRevalidatedList} from './freshness-actions.ts';
 
 export type HomeSnapshot = Readonly<{
   phase: 'idle' | 'loading' | 'ready' | 'error';
@@ -65,11 +65,11 @@ export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): Hom
     // No membership fingerprint is exposed to the client. Even overlapping first
     // pages cannot prove that a retained tail or its signed cursor is still valid.
     const refreshed = mergeRevalidatedList(old.entries, row.entries, e => e.id, {same: sameJson, complete: hasFencedHomeMembership(row.id) || !row.nextCursor});
-    const entries = refreshed.length > HOME_ROW_MAX_ENTRIES ? Object.freeze(refreshed.slice(0, HOME_ROW_MAX_ENTRIES)) : refreshed;
+    const entries = refreshed;
     const keptTail = entries.length > row.entries.length;
     const {entries: _a, revision: _b, nextCursor: _c, hasMore: _d, ...oldRest} = old;
     const {entries: _e, revision: _f, nextCursor: _g, hasMore: _h, ...freshRest} = row;
-    const nextCursor = entries.length >= HOME_ROW_MAX_ENTRIES ? '' : keptTail ? old.nextCursor : row.nextCursor;
+    const nextCursor = keptTail ? old.nextCursor : row.nextCursor;
     if (entries === old.entries && nextCursor === old.nextCursor && sameJson(oldRest, freshRest)) {
       if (shown.rows[index] !== old) changed = true;
       return [old];
@@ -304,14 +304,11 @@ export class HomeService {
 
   loadLayout = (signal?: AbortSignal): Promise<HomeLayoutView> => fetchHomeLayout(this.api(), signal);
 
-  /** Saves the arrangement. A layout that moved elsewhere first is read again and the same arrangement sent once more. */
+  /** A conflicting save is surfaced for Reload layout; it never overwrites another device silently. */
   async saveLayout(rowOrder: readonly string[], hiddenRowIds: readonly string[], idempotencyKey: () => string, expectedRevision?: number): Promise<HomeLayout> {
-    let revision = expectedRevision ?? this.state.document?.layout.revision;
+    const revision = expectedRevision ?? this.state.document?.layout.revision;
     if (revision === undefined) throw new Error('Home is not loaded.');
-    const saved = await retryWhenStale(() => saveHomeLayout(this.api(), {expectedRevision: revision!, rowOrder, hiddenRowIds, idempotencyKey: idempotencyKey()}), {
-      reread: async () => { revision = (await fetchHomeLayout(this.api())).revision; },
-    });
-    if (saved === ALREADY_DONE) throw new Error('Home is not loaded.');
+    const saved = await saveHomeLayout(this.api(), {expectedRevision: revision, rowOrder, hiddenRowIds, idempotencyKey: idempotencyKey()});
     await this.afterLayout();
     return saved;
   }

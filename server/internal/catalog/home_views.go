@@ -1,6 +1,8 @@
 package catalog
 
 import (
+	"fmt"
+	"portico.local/server/internal/compactcatalog"
 	"strings"
 )
 
@@ -11,10 +13,7 @@ import (
 // viewer can no longer read, or that no longer validates, is left out; its id
 // stays harmlessly in the layout until the layout is next saved.
 
-const (
-	homeViewPrefix = "view:"
-	homeViewRow    = 60 // a view row's entries on Home; See all opens the view
-)
+const homeViewPrefix = "view:"
 
 // homeViewSpecs are the Home rows for the saved views the layout names.
 func (s *Service) homeViewSpecs(r HomeRequest) []homeRowSpec {
@@ -41,26 +40,77 @@ func (s *Service) homeViewSpecs(r HomeRequest) []homeRowSpec {
 	return out
 }
 
-// homeViewSource runs the view's browse and lists its first entries in order.
+// homeViewSource is the saved browse as a server-side relation, including its
+// exact filter and order. There is no first-60 member materialization.
 func (s *Service) homeViewSource(r HomeRequest, spec homeRowSpec) (homeSource, error) {
 	actor, ok := homeViewActor(r.Profile)
 	if !ok {
 		return homeSource{}, ErrHomeRowUnknown
 	}
 	view, err := s.SavedResource(r.ServerID, r.ViewerFence, strings.TrimPrefix(spec.ID, homeViewPrefix), actor)
-	if err != nil || view.Definition == nil {
+	if err != nil || view.Definition == nil || view.Status != "ready" {
 		return homeSource{}, ErrHomeRowUnknown
 	}
 	d := view.Definition
-	page, err := s.BrowseEntities(r.Viewer, BrowseRequest{ServerID: r.ServerID, Library: d.LibraryID, Profile: r.Profile, ViewerFence: r.ViewerFence, Pivot: d.Pivot, Query: d.Query, Sort: d.Sort, Limit: homeViewRow, Restrictions: r.Restrictions})
+	if !r.Viewer.AllowsLibrary(d.LibraryID) {
+		return homeSource{}, ErrHomeRowUnknown
+	}
+	library, err := s.library(d.LibraryID)
 	if err != nil {
 		return homeSource{}, err
 	}
-	candidates := make([]recCandidate, 0, len(page.Entries))
-	for _, e := range page.Entries {
-		candidates = append(candidates, recCandidate{ID: e.ID})
+	pivot, ok := pivotForKind(library.Kind, d.Pivot)
+	if !ok || !pivot.Browsable {
+		return homeSource{}, ErrBrowsePivot
 	}
-	return candidateSource(candidates), nil
+	sorts, err := resolveBrowseSorts(pivot, d.Sort)
+	if err != nil {
+		return homeSource{}, err
+	}
+	where, args := browseScopeSQL(d.LibraryID, pivot)
+	compiler := &browseCompiler{profile: r.Profile, restrictions: r.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot)}
+	for _, member := range entityKindMembers(pivot) {
+		kind, err := compactcatalog.ParseKind(member)
+		if err != nil {
+			return homeSource{}, err
+		}
+		compiler.kinds = append(compiler.kinds, int(kind))
+	}
+	clause, err := compiler.compile(d.Query)
+	if err != nil {
+		return homeSource{}, err
+	}
+	where += " AND " + clause
+	args = append(args, compiler.args...)
+	visible, values := EntityRestrictionSQL("e.entity_id", r.Restrictions)
+	where += " AND " + visible
+	args = append(args, values...)
+	from := `catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id`
+	order, orderArgs := "", []any{}
+	if sorts[0].Field == "groupOrder" {
+		group, groupArgs, err := s.groupOrderSource(groupOrderTarget(d.Query), nil)
+		if err != nil {
+			return homeSource{}, err
+		}
+		from = `(` + group + `) ord CROSS JOIN catalog_browse_rows e ON e.entity_id=ord.id CROSS JOIN catalog_entities ce ON ce.id=e.entity_id`
+		args = append(groupArgs, args...)
+		direction := "ASC"
+		if sorts[0].Direction == "desc" {
+			direction = "DESC"
+		}
+		order = "ord.pos " + direction + ",e.entity_id " + direction
+	} else {
+		order, orderArgs, err = s.queueBrowseOrder(r.Viewer, &QueueQuery{LibraryID: d.LibraryID, Query: d.Query}, sorts, where, args, nil)
+		if err != nil {
+			return homeSource{}, err
+		}
+	}
+	request := BrowseRequest{Library: d.LibraryID, Profile: r.Profile, ViewerFence: r.ViewerFence, Pivot: d.Pivot, Query: d.Query, Restrictions: r.Restrictions}
+	revision, err := s.browseRevision(request, pivot, sorts)
+	if err != nil {
+		return homeSource{}, err
+	}
+	return homeSource{base: `SELECT pid(ce.public_id) AS id,printf('%020d',ROW_NUMBER() OVER(ORDER BY ` + order + `)) AS ord FROM ` + from + ` WHERE ` + where, args: append(orderArgs, args...), selfRestricted: true, fingerprint: fmt.Sprintf("%d:%s", view.Revision, revision)}, nil
 }
 
 func homeViewActor(profile string) (ResourceActor, bool) {

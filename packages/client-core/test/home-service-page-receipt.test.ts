@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {HOME_ROW_MAX_ENTRIES, type HomeApi} from '../src/home.ts';
+import {type HomeApi} from '../src/home.ts';
 import {HomeService, type HomePageOutcome} from '../src/home-service.ts';
 
 const entry = (id: string) => ({id, kind: 'movie', title: id, libraryId: 'movies', available: true, navigation: {view: 'item', entityId: id}, playback: {itemId: id}});
@@ -62,14 +62,14 @@ for (const [label, page] of [
   });
 }
 
-test('receipt excludes entries discarded by the retained-row cap', async t => {
-  const full = Array.from({length: HOME_ROW_MAX_ENTRIES}, (_, index) => 'old-' + index);
+test('receipt includes new cards beyond the former retained-row cap', async t => {
+  const full = Array.from({length: 100}, (_, index) => 'old-' + index);
   const service = new HomeService(api(path => path === '/v1/home' ? home([row('recent', full)]) : row('recent', ['discarded'], {nextCursor: 'advanced'})));
   t.after(() => service.dispose());
   await service.load();
-  assert.deepEqual(await service.more('recent'), applied('recent', null));
-  assert.equal(shown(service).entries.length, HOME_ROW_MAX_ENTRIES);
-  assert.equal(shown(service).nextCursor, '');
+  assert.deepEqual(await service.more('recent'), applied('recent', 'discarded'));
+  assert.equal(shown(service).entries.length, 101);
+  assert.equal(shown(service).nextCursor, 'advanced');
 });
 
 test('an empty page without cursor progress never fulfils a wait', async t => {

@@ -9,6 +9,7 @@ import (
 
 func policyErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "home_layout_conflict", Status: 409, Message: publicErrorMessage("home_layout_conflict"), Retry: apierror.AfterRefresh},
 		{Code: "stale_continuation", Status: 409, Message: "This list changed. Refresh it to continue.", Retry: apierror.AfterRefresh},
 		{Code: "operation_expired", Status: 409, Message: "The time to undo this change has passed.", Retry: apierror.Never},
 		{Code: "invalid_channel_input", Status: 400, Message: "The playlist or guide could not be used. Check it and try again.", Retry: apierror.Never},

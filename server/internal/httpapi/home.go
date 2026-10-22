@@ -139,7 +139,7 @@ func (d Dependencies) compose(r *http.Request, restrictions identity.ContentRest
 func (d Dependencies) savedContent(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	for key, values := range q {
-		if len(values) != 1 || (key != "view" && key != "limit" && key != "sort" && key != "direction" && key != "cursor" && key != "filter") {
+		if len(values) != 1 || (key != "view" && key != "limit" && key != "sort" && key != "direction" && key != "cursor" && key != "filter" && key != "shape") {
 			failure(w, catalog.ErrCursor)
 			return
 		}
@@ -168,12 +168,19 @@ func (d Dependencies) savedContent(w http.ResponseWriter, r *http.Request) {
 		failure(w, e)
 		return
 	}
-	request := catalog.ContentRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, View: q.Get("view"), Sort: q.Get("sort"), Direction: q.Get("direction"), Filter: q.Get("filter"), Cursor: q.Get("cursor"), Limit: limit, Restrictions: restrictions}
+	request := catalog.ContentRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, View: q.Get("view"), Sort: q.Get("sort"), Direction: q.Get("direction"), Filter: q.Get("filter"), Shape: q.Get("shape"), Cursor: q.Get("cursor"), Limit: limit, Restrictions: restrictions}
 	var out catalog.ContentEnvelope
 	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
 		var composeErr error
 		if q.Get("view") == "playlists" {
 			out, composeErr = cat.PlaylistDirectory(request, resourceActor(p))
+			if composeErr == nil {
+				for i := range out.Sections {
+					if composeErr = cat.ProjectPlaylistSamples(viewer, out.Sections[i].Entries); composeErr != nil {
+						break
+					}
+				}
+			}
 		} else {
 			out, composeErr = cat.Saved(request, libraries)
 		}
