@@ -13,6 +13,8 @@ registerHooks({load(url, context, next) {
 }});
 const {ActivityPanel, TopBarActivity} = await import('../../src/kit/shell/Activity.tsx');
 const {CardFrame} = await import('../../src/kit/cards/CardFrame.tsx');
+const {PickerAddedToast} = await import('../../src/kit/selection/SelectionPicker.tsx');
+const {ToastHost} = await import('../../src/kit/overlays/Feedback.tsx');
 const {SongRow} = await import('../../src/kit/browse/TrackTable.tsx');
 const idle = (): ActivityPanelView => ({serverName: 'Actual server', phase: 'loading', streams: [], scans: [], tasks: [], onRetry() {}, onDashboard() {}});
 
@@ -59,4 +61,22 @@ test('the card owns one named selection control around a decorative circle', () 
   assert.match(html, /class="selection"[^>]*aria-label="[^"]*Actual title/);
   assert.match(html, /class="selection"[^>]*aria-pressed="true"/);
   assert.doesNotMatch(html, /<button[^>]*>(?:(?!<\/button>).)*<button/s);
+});
+
+test('picker success binds its exact data and dismissal to the actual ToastHost', () => {
+  const calls: unknown[] = [];
+  const props = {open: true, onOpenChange: (...args: unknown[]) => calls.push(args), selection: {kind: 'movie' as const, count: 200}, destination: 'playlist' as const, result: {destination: {id: 'actual-playlist', name: 'Actual playlist'}, inserted: 3, alreadyIn: 197, failed: 0, complete: true, failures: []}, onView: (id: string) => calls.push(id), bottomInset: 156};
+  const element = PickerAddedToast(props);
+  assert.equal(element.type, ToastHost);
+  assert.equal(element.props.bottomInset, 156);
+  assert.equal(element.props.toastClassName, 'pickerToast');
+  const copy = renderToStaticMarkup(element.props.toast!.message);
+  assert.match(copy, /Added 3 movies to Actual playlist/);
+  assert.match(copy, /197 were already there/);
+  assert.doesNotMatch(copy, /Added 200/);
+  element.props.toast!.action!.onAction();
+  element.props.onDismiss('actual-playlist', 'gesture');
+  assert.deepEqual(calls, ['actual-playlist', [false, 'gesture']]);
+  assert.equal(PickerAddedToast({...props, open: false}).props.toast, null);
+  assert.equal(PickerAddedToast({...props, result: {...props.result, failed: 1}}).props.toast, null);
 });

@@ -1,6 +1,6 @@
 import {useEffect, useRef, type ReactNode} from 'react';
 import {Button, TextField} from '../controls';
-import {BottomSheet, Popover, Toast, type OverlayChange} from '../overlays';
+import {BottomSheet, Popover, ToastHost, type OverlayChange} from '../overlays';
 import {focusable, usePhone} from '../overlays/shared';
 import {Icon} from '../Icon';
 import {selectionText as text} from './copy';
@@ -79,9 +79,13 @@ function SelectionPicker({destination, ...props}: SelectionPickerProps & {destin
 export function PlaylistPicker(props: SelectionPickerProps) { return <SelectionPicker {...props} destination="playlist" />; }
 export function CollectionPicker(props: SelectionPickerProps) { return <SelectionPicker {...props} destination="collection" />; }
 
-export type PickerAddedToastProps = Readonly<{open: boolean; onOpenChange: OverlayChange; selection: SelectionCount; destination: Destination; result: PickerResult; onView: (id: string) => void}>;
-/** Mount in the existing ToastHost slot; the caller ends selection only after a confirmed complete result. */
-export function PickerAddedToast({open, onOpenChange, selection, destination, result, onView}: PickerAddedToastProps) {
-  if (!pickerResultSucceeded(result)) return null;
-  return <Toast open={open} onOpenChange={onOpenChange} className={styles.pickerToast} message={<>{text('next.selection.addedToast', {items: selectionCountText({count: result.inserted!, kind: selection.kind}), name: result.destination.name})}{result.alreadyIn !== undefined && result.alreadyIn > 0 && <> {text('next.selection.duplicatesToast', {count: result.alreadyIn})}</>}</>} action={{label: text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection'), onAction: () => onView(result.destination.id)}} />;
+export type PickerAddedToastProps = Readonly<{open: boolean; onOpenChange: OverlayChange; selection: SelectionCount; destination: Destination; result: PickerResult; onView: (id: string) => void; bottomInset?: number}>;
+/** Owns the supported host, exact result copy, positioning, lifetime and dismissal. */
+export function PickerAddedToast({open, onOpenChange, selection, destination, result, onView, bottomInset}: PickerAddedToastProps) {
+  const toast = open && pickerResultSucceeded(result) ? {
+    id: `picker-${destination}-${result.destination.id}`,
+    message: <>{text('next.selection.addedToast', {items: selectionCountText({count: result.inserted!, kind: selection.kind}), name: result.destination.name})}{result.alreadyIn !== undefined && result.alreadyIn > 0 && <> {text('next.selection.duplicatesToast', {count: result.alreadyIn})}</>}</>,
+    action: {label: text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection'), onAction: () => onView(result.destination.id)},
+  } : null;
+  return <ToastHost toast={toast} bottomInset={bottomInset} toastClassName={styles.pickerToast} onDismiss={(_id, reason) => onOpenChange(false, reason)} />;
 }
