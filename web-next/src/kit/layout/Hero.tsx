@@ -8,7 +8,7 @@ import {useLayoutMotion} from './motion';
 import styles from './layout.module.css';
 
 export type HeroCandidate = Readonly<{id: string; title: string; long?: boolean; reason?: string; overview?: string; facts?: readonly FactPart[]; thumbnail?: string}>;
-export type HeroRenderContext = Readonly<{index: number; active: boolean; visible: boolean; paused: boolean; reducedMotion: boolean; platform: LayoutPlatform}>;
+export type HeroRenderContext = Readonly<{index: number; active: boolean; visible: boolean; paused: boolean; reducedMotion: boolean; platform: LayoutPlatform; onReady?: () => void; onError?: () => void}>;
 export type HeroProps<T extends HeroCandidate> = Omit<HTMLAttributes<HTMLElement>, 'children' | 'onChange'> & {
   /** A bounded, server-authored spotlight set. This primitive never chooses library entries. */
   candidates: readonly T[];
@@ -20,6 +20,9 @@ export type HeroProps<T extends HeroCandidate> = Omit<HTMLAttributes<HTMLElement
   activeIndex?: number; defaultIndex?: number; onIndexChange?: (index: number) => void;
   active?: boolean; visible?: boolean; heroFocused?: boolean; reducedMotion?: boolean; platform?: LayoutPlatform;
   showNavigation?: boolean;
+  contentVisible?: boolean;
+  onArtworkReady?: (candidate: T) => void;
+  onArtworkError?: (candidate: T) => void;
 };
 
 export function HeroFacts({parts, platform = 'desktop'}: {parts: readonly FactPart[]; platform?: LayoutPlatform}) {
@@ -28,10 +31,10 @@ export function HeroFacts({parts, platform = 'desktop'}: {parts: readonly FactPa
 }
 
 export function Hero<T extends HeroCandidate>({candidates, renderArtwork, renderThumbnail, renderActions, renderMetadata, renderSupplement, activeIndex, defaultIndex = 0, onIndexChange,
-  active = true, visible = true, heroFocused = false, reducedMotion = false, showNavigation = true, platform = 'desktop', className, onMouseEnter, onMouseLeave, onFocusCapture, onBlurCapture, ...props}: HeroProps<T>) {
+  active = true, visible = true, heroFocused = false, reducedMotion = false, showNavigation = true, contentVisible = true, onArtworkReady, onArtworkError, platform = 'desktop', className, onMouseEnter, onMouseLeave, onFocusCapture, onBlurCapture, ...props}: HeroProps<T>) {
   const [ownIndex, setOwnIndex] = useState(defaultIndex), [hovered, setHovered] = useState(false), [focused, setFocused] = useState(false);
   const motion = useLayoutMotion(reducedMotion), index = boundedIndex(activeIndex ?? ownIndex, candidates.length), id = useId();
-  const paused = !active || !visible || !motion.visible || motion.reduced || hovered || focused || platform === 'tv' && !heroFocused;
+  const paused = !active || !visible || !contentVisible || !motion.visible || motion.reduced || hovered || focused || platform === 'tv' && !heroFocused;
   const choose = (next: number) => { const value = boundedIndex(next, candidates.length); if (value >= 0 && value !== index) { if (activeIndex === undefined) setOwnIndex(value); onIndexChange?.(value); } };
   const chooseRef = useRef(choose); chooseRef.current = choose;
   const remaining = useRef<number>(heroSpec.rotation.intervalMs), clockId = useRef('');
@@ -59,7 +62,9 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
     onMouseEnter={event => { setHovered(true); onMouseEnter?.(event); }} onMouseLeave={event => { setHovered(false); onMouseLeave?.(event); }}
     onFocusCapture={event => { setFocused(true); onFocusCapture?.(event); }} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); onBlurCapture?.(event); }}>
     {candidates.map((candidate, candidateIndex) => {
-      const selected = candidateIndex === index, context = {index: candidateIndex, active: selected, visible: visible && motion.visible && (selected || candidate.id === exitingId || candidateIndex === (index + 1) % candidates.length), paused, reducedMotion: motion.reduced, platform};
+      const current = candidateIndex === index, selected = current && contentVisible;
+      const context = {index: candidateIndex, active: selected, visible: visible && motion.visible && (current || candidate.id === exitingId || candidateIndex === (index + 1) % candidates.length), paused, reducedMotion: motion.reduced, platform,
+        onReady: onArtworkReady ? () => onArtworkReady(candidate) : undefined, onError: onArtworkError ? () => onArtworkError(candidate) : undefined};
       return <div key={candidate.id} id={`${id}-slide-${candidateIndex}`} className={styles.slide} data-active={selected} inert={!selected} aria-hidden={!selected}
         role={showNavigation && candidates.length > 1 ? 'tabpanel' : undefined} aria-labelledby={showNavigation && candidates.length > 1 ? `${id}-tab-${candidateIndex}` : undefined}>
         <div className={styles.heroArtwork} data-hero-artwork data-drift={!motion.reduced && platform !== 'tv'}>{renderArtwork(candidate, context)}</div>

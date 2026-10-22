@@ -19,27 +19,26 @@ export function PreviewDebounce<T>({value, getKey, hold = false, children}: {val
   return children(usePreviewDebounce(value, getKey(value), hold));
 }
 
-export type FocusPreviewHeroProps<T extends HeroCandidate> = Omit<HeroProps<T>, 'candidates' | 'activeIndex' | 'onIndexChange' | 'renderActions' | 'platform'> & {
+export type FocusPreviewHeroProps<T extends HeroCandidate> = Omit<HeroProps<T>, 'candidates' | 'activeIndex' | 'onIndexChange' | 'renderActions' | 'platform' | 'onArtworkReady' | 'onArtworkError' | 'showNavigation' | 'contentVisible'> & {
   entry: T | null; holdingDirection?: boolean;
-  /** Resolve when the actual scheduler-backed foreground is decoded. */
-  prepareArtwork: (entry: T) => Promise<void>;
   onPreviewError?: () => void;
+  onPreviewReady?: (entry: T) => void;
 };
 
 /** Only an actual bounded focus summary is accepted; artwork remains owned by its renderer. */
-export function FocusPreviewHero<T extends HeroCandidate>({entry, holdingDirection = false, reducedMotion = false, renderArtwork, prepareArtwork, onPreviewError, className, ...props}: FocusPreviewHeroProps<T>) {
-  const settled = usePreviewDebounce(entry, entry?.id ?? null, holdingDirection), [layers, setLayers] = useState<readonly T[]>([]);
-  const motion = useLayoutMotion(reducedMotion), prepare = useRef(prepareArtwork), fail = useRef(onPreviewError);
-  prepare.current = prepareArtwork; fail.current = onPreviewError;
+export function FocusPreviewHero<T extends HeroCandidate>({entry, holdingDirection = false, reducedMotion = false, renderArtwork, onPreviewError, onPreviewReady, className, ...props}: FocusPreviewHeroProps<T>) {
+  const settled = usePreviewDebounce(entry, entry?.id ?? null, holdingDirection), [layers, setLayers] = useState<readonly T[]>([]), [activeId, setActiveId] = useState<string | null>(null);
+  const motion = useLayoutMotion(reducedMotion), active = useRef(activeId), incoming = useRef(settled);
+  active.current = activeId; incoming.current = settled;
   useEffect(() => {
-    if (!settled) { setLayers([]); return; }
-    let current = true;
-    void prepare.current(settled).then(() => {
-      if (current) setLayers(previous => previous.at(-1)?.id === settled.id ? [...previous.slice(0, -1), settled] : [...previous.slice(-1), settled]);
-    }, () => { if (current) fail.current?.(); });
-    return () => { current = false; };
+    if (!settled) { setLayers([]); setActiveId(null); return; }
+    setLayers(previous => {
+      const shown = previous.find(candidate => candidate.id === active.current);
+      return shown && shown.id !== settled.id ? [shown, settled] : [settled];
+    });
   }, [settled]);
   return <div className={[styles.preview, className].filter(Boolean).join(' ')}>
-    <Hero {...props} reducedMotion={motion.reduced} candidates={layers} activeIndex={layers.length - 1} showNavigation={false} renderArtwork={renderArtwork} active={false} platform="tv" />
+    <Hero {...props} reducedMotion={motion.reduced} candidates={layers} activeIndex={Math.max(0, layers.findIndex(candidate => candidate.id === activeId))} contentVisible={activeId !== null} showNavigation={false}
+      renderArtwork={renderArtwork} onArtworkReady={candidate => { if (candidate.id === incoming.current?.id) { setActiveId(candidate.id); onPreviewReady?.(candidate); } }} onArtworkError={candidate => { if (candidate.id === incoming.current?.id) onPreviewError?.(); }} active={false} platform="tv" />
   </div>;
 }

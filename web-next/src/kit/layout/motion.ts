@@ -35,9 +35,15 @@ export function scrollLayout(element: HTMLElement, left: number, top: number, re
   scrolling.get(element)?.();
   if (reduced) { element.scrollTo({left, top, behavior: 'instant'}); return () => {}; }
   const fromX = element.scrollLeft, fromY = element.scrollTop, started = performance.now();
+  const snap = element.style.scrollSnapType; element.style.scrollSnapType = 'none';
   let frame = 0, cancelled = false;
-  const cancel = () => { cancelled = true; cancelAnimationFrame(frame); if (scrolling.get(element) === cancel) scrolling.delete(element); };
+  const cancel = () => {
+    cancelled = true; cancelAnimationFrame(frame); element.style.scrollSnapType = snap;
+    element.removeEventListener('pointerdown', cancel); element.removeEventListener('wheel', cancel);
+    if (scrolling.get(element) === cancel) scrolling.delete(element);
+  };
   scrolling.set(element, cancel);
+  element.addEventListener('pointerdown', cancel, {once: true, passive: true}); element.addEventListener('wheel', cancel, {once: true, passive: true});
   const tick = (now: number) => {
     if (cancelled) return;
     const p = Math.min(1, (now - started) / (repeat ? motion.quick : motion.slow)), eased = repeat ? p : rowEase(p);

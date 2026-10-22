@@ -67,6 +67,8 @@
 .track { display: flex; position: relative; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 0 var(--layout-gutter); padding: 10px var(--layout-gutter) 14px; scrollbar-width: none; overscroll-behavior-x: contain; }
 .track::-webkit-scrollbar { display: none; }
 .shelfItem { flex: none; scroll-snap-align: start; }
+.shelfItem { animation: layout-arrive var(--motion-quick) var(--ease-out) both; transition: opacity var(--motion-standard) var(--ease-in), transform var(--motion-standard) var(--ease-in); }
+.shelfItem[data-leaving='true'] { opacity: 0; transform: scale(.96); }
 .arrow { position: absolute; z-index: var(--layer-row-arrow); top: 38px; bottom: 50px; width: 56px; border: 0; padding: 0; display: grid; place-items: center; opacity: 0; transition: opacity 200ms var(--ease-out); color: var(--color-text); cursor: pointer; }
 .arrowLeft { left: 0; background: linear-gradient(90deg, rgba(7,16,24,.9), transparent); }
 .arrowRight { right: 0; background: linear-gradient(270deg, rgba(7,16,24,.9), transparent); }
@@ -97,6 +99,9 @@
 .alphabet[data-platform='phone'] .band { display: none; }
 .flow { position: relative; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 52px 40px; padding: 40px clamp(32px, calc(32px + (100vw - 1024px) * .076923), 64px) 0; }
 .flowSection { flex: none; min-width: 0; max-width: 100%; }
+.flowSection { animation: layout-arrive var(--motion-quick) var(--ease-out) both; transition: opacity var(--motion-quick) var(--ease-in); }
+.flowSection[data-leaving='true'] { opacity: 0; }
+@keyframes layout-arrive { from { opacity: 0; } to { opacity: 1; } }
 .flowHead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; min-height: 30px; }
 .flowHead h2 { font-size: 22px; font-weight: 700; line-height: normal; letter-spacing: -.015em; margin: 0; }
 .flowHead > span { font-size: 14px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
@@ -105,7 +110,9 @@
 .hero[data-reduced-motion='true'] .slide, .hero[data-reduced-motion='true'] .copy > * { transition: opacity var(--motion-reduced) linear; transform: none; transition-delay: 0ms; }
 .hero[data-reduced-motion='true'] .heroArtwork [data-foreground-art] { animation: none; transform: none; }
 .hero[data-reduced-motion='true'] .timer i { animation: none; transform: scaleX(1); }
+[data-reduced-motion='true'] .shelfItem, [data-reduced-motion='true'] .flowSection { animation-duration: var(--motion-reduced); transition: opacity var(--motion-reduced) linear; transform: none; }
 @media (prefers-reduced-motion: reduce) {
+  .shelfItem, .flowSection { animation-duration: var(--motion-reduced); transition: opacity var(--motion-reduced) linear; transform: none; }
   .slide, .copy > * { transition: opacity var(--motion-reduced) linear; transform: none; transition-delay: 0ms; }
   .heroArtwork [data-foreground-art] { animation: none; transform: none; }
   .timer i { animation: none; transform: scaleX(1); }

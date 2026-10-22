@@ -48,7 +48,9 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
     if (focus) { pendingFocus.current = index; element.focus({preventScroll: true}); }
     const rowTop = Math.floor(index / columns) * pitch, rowBottom = rowTop + rowHeight;
     const target = focus && rowTop >= logicalTop && rowBottom <= logicalTop + usableHeight ? logicalTop : focus && rowBottom > logicalTop + usableHeight ? rowBottom - usableHeight : rowTop;
-    scrollLayout(element, 0, Math.min(maxPhysical, Math.max(0, target * maxPhysical / maxLogical)), motion.reduced, repeat);
+    // Alphabet/End jumps go straight to their sparse window instead of fetching every crossed page.
+    const instant = motion.reduced || !focus || Math.abs(target - logicalTop) > usableHeight * 2;
+    scrollLayout(element, 0, Math.min(maxPhysical, Math.max(0, target * maxPhysical / maxLogical)), instant, repeat);
     if (focus) setViewport(previous => ({...previous}));
   }, [total, columns, pitch, rowHeight, logicalTop, usableHeight, maxPhysical, maxLogical, motion.reduced]);
   useImperativeHandle(ref, () => ({scrollToIndex: (index, options) => jump(index, options?.focus)}), [jump]);
@@ -72,7 +74,7 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
   }
   return <div ref={root} tabIndex={-1} className={[styles.grid, className].filter(Boolean).join(' ')} style={{height, ...style}} role="list" aria-label={label} aria-busy={snapshot.status === 'loading'}
     onScroll={event => { const element = event.currentTarget; setViewport({width: element.clientWidth, height: element.clientHeight, top: element.scrollTop}); }}
-    onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(null); }}
+    onBlurCapture={event => { const next = event.relatedTarget as HTMLElement | null; if (!next || !event.currentTarget.contains(next) || !next.closest('[data-item-id]')) setFocused(null); }}
     onKeyDown={event => {
       if ((event.target as HTMLElement).closest('input,textarea,select,[contenteditable="true"]')) return;
       const slot = (event.target as HTMLElement).closest<HTMLElement>('[data-grid-index]'); if (!slot) return;
