@@ -299,6 +299,6 @@ export default defineGalleryFamily({id: 'browse', labelKey: 'next.browse.family'
   {id: 'tracks-songs', labelKey: 'next.browse.tracksCase', width: 1312, height: 608, render: tableCase('songs')},
   {id: 'tracks-chapters', labelKey: 'next.browse.tracksCase', width: 880, height: 676, render: tableCase('chapters')},
   {id: 'tracks-sparse', labelKey: 'next.browse.tracksCase', width: 880, height: 288, render: tableCase('sparse')},
-  {id: 'tracks-disc', labelKey: 'next.browse.tracksCase', width: 880, height: 340, render: tableCase('disc')},
+  {id: 'tracks-disc', labelKey: 'next.browse.tracksCase', width: 880, height: 352, render: tableCase('disc')},
   {id: 'song-row', labelKey: 'next.browse.songCase', width: 416, height: 248, render: tableCase('compact')},
 ]});
