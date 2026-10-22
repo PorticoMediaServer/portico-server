@@ -4,6 +4,8 @@ export const statesNativeFixtures = {
   title: 'The Last of Us',
   phoneTitle: 'Slow Horses',
   movie: 'Dune: Part Two',
+  removedTitle: 'Titanic',
+  secondContinueTitle: 'Inside Out',
   episode: "When You're Lost in the Darkness",
   profile: 'Sam',
   query: 'casablanca',
