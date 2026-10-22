@@ -92,7 +92,7 @@ function picker(layout: 'desktop' | 'phone' | 'tv'): ComponentType {
     return <Stage className={`${styles.profileStage} ${layout === 'phone' ? styles.profilePhone : layout === 'tv' ? styles.profileTV : ''}`}>
       <ColourBackdrop shape={layout === 'phone' ? 'top' : 'round'} />
       <h1>{t('next.artwork.who')}</h1>{layout === 'phone' && <p>{fixture('next.artwork.fixture.server')}</p>}
-      <ProfilePicker profiles={profiles} layout={layout} autoFocusId={layout === 'phone' ? undefined : 'alex'} onFocusChange={id => recordCallback(`profile:focus:${id}`)} onSelect={profile => { recordCallback(`profile:select:${profile.id}`); setOutcome(profile.name); }} onAdd={() => { recordCallback('profile:add'); setOutcome(t('next.artwork.addProfile')); }} onManage={() => { recordCallback('profile:manage'); setOutcome(t('next.artwork.manageProfiles')); }} />
+      <ProfilePicker profiles={profiles} getProfileTint={profile => referenceArtworkColors.authProfileTints[profile.id]} layout={layout} autoFocusId={layout === 'phone' ? undefined : 'alex'} onFocusChange={id => recordCallback(`profile:focus:${id}`)} onSelect={profile => { recordCallback(`profile:select:${profile.id}`); setOutcome(profile.name); }} onAdd={() => { recordCallback('profile:add'); setOutcome(t('next.artwork.addProfile')); }} onManage={() => { recordCallback('profile:manage'); setOutcome(t('next.artwork.manageProfiles')); }} />
       <output className={styles.outcome}>{outcome}</output>
     </Stage>;
   };
@@ -133,7 +133,7 @@ const cases = [
   {id: 'person-bare-detail', labelKey: 'next.artwork.case.person', width: 96, height: 96, render: person(false, 'TC', 96)},
   {id: 'person-bare-author', labelKey: 'next.artwork.case.person', width: 112, height: 112, render: person(false, 'FH', 112)},
   {id: 'person-covers', labelKey: 'next.artwork.case.person', width: 172, height: 172, render: person(true)},
-  ...([1, 2, 4] as const).map(count => ({id: `mosaic-${count}`, labelKey: 'next.artwork.case.mosaic' as const, width: 190, height: 190, render: mosaic(count)})),
+  ...([1, 2, 3, 4] as const).map(count => ({id: `mosaic-${count}`, labelKey: 'next.artwork.case.mosaic' as const, width: 190, height: 190, render: mosaic(count)})),
   {id: 'channel-monogram', labelKey: 'next.artwork.case.channel', width: 34, height: 34, render: channel('monogram')},
   {id: 'channel-logo', labelKey: 'next.artwork.case.channel', width: 34, height: 34, render: channel('logo')},
   {id: 'channel-logo-error', labelKey: 'next.artwork.case.channel', width: 34, height: 34, render: channel('error')},
