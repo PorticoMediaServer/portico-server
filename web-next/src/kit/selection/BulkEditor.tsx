@@ -63,7 +63,7 @@ function BulkResults({result, targets, resultDescriptions, onRetry, draft, busy}
 
 /** Controlled metadata fields and receipts; the caller supplies the real schema and aggregate read. */
 export function BulkEditor(props: BulkEditorProps) {
-  const {selection, schema, values, draft, onDraftChange, onSave, onRetry, targets, resultDescriptions, result, busy = false, error, ownerTag, description, ...surface} = props;
+  const {selection, schema, singleItemFields, values, draft, onDraftChange, onSave, onRetry, targets, resultDescriptions, result, busy = false, error, ownerTag, description, ...surface} = props;
   const phone = usePhone(), [viewport, setViewport] = useState(() => typeof window === 'undefined' ? 844 : window.visualViewport?.height ?? window.innerHeight);
   const focus = useRef<HTMLElement | null>(null);
   useEffect(() => { const update = () => setViewport(window.visualViewport?.height ?? window.innerHeight); window.visualViewport?.addEventListener('resize', update); window.addEventListener('resize', update); return () => { window.visualViewport?.removeEventListener('resize', update); window.removeEventListener('resize', update); }; }, []);
@@ -81,7 +81,7 @@ export function BulkEditor(props: BulkEditorProps) {
     {targets.some(target => target.artwork) && <div className={styles.editorArtwork} data-kind={selection.kind}>{targets.slice(0, 5).map(target => <span key={target.id}>{target.artwork}</span>)}{selection.count > 5 && <small>{text('next.selection.andMore', {count: selection.count - 5})}</small>}</div>}
     {result ? <BulkResults result={result} targets={targets} resultDescriptions={resultDescriptions} onRetry={onRetry} draft={draft} busy={busy} /> : <>
       <div className={styles.fieldGrid} ref={element => { focus.current = element?.querySelector<HTMLElement>('input,button') ?? null; }}>{fields.map((spec, index) => <BulkField key={spec.field} spec={spec} aggregate={values[spec.field]!} count={selection.count} draft={draft} onChange={onDraftChange} busy={busy} phone={phone} initial={index === 0} />)}</div>
-      <div className={styles.singleItemNote}><Icon name="i-info" size={18} /><div>{text(selection.kind === 'movie' ? phone ? 'next.selection.movieSingleFieldsPhone' : 'next.selection.movieSingleFields' : selection.kind === 'episode' ? 'next.selection.episodeSingleFields' : selection.kind === 'song' ? 'next.selection.trackSingleFields' : 'next.selection.otherSingleFields')}</div></div>
+      <div className={styles.singleItemNote}><Icon name="i-info" size={18} /><div>{text('next.selection.oneAtATime')} {defaultI18n.list(singleItemFields.filter(field => !field.bulk).map(field => field.label))}</div></div>
       {fields.length === 0 && <p className={styles.fieldHelp}>{text('next.selection.noSeasonFields')}</p>}
       <label className={styles.lockRow}><span>{text('next.selection.lock')}<small>{text('next.selection.lockHelp')}</small></span><Switch checked={draft.lockEdited} disabled={busy} onCheckedChange={value => onDraftChange({...draft, lockEdited: value})} aria-label={text('next.selection.lock')} /></label>
     </>}

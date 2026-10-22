@@ -60,6 +60,8 @@ export type BulkEditorDraft = Readonly<{
 export type BulkEditorProps = SelectionSurface & Readonly<{
   selection: SelectionCount & {kind: SelectionMediaKind};
   schema: readonly RepairFieldSpec[];
+  /** Actual complete registry (or exact excludedFields); only !bulk fields are described. */
+  singleItemFields: readonly RepairFieldSpec[];
   values: Readonly<Record<string, BulkFieldValues>>;
   draft: BulkEditorDraft;
   onDraftChange: (draft: BulkEditorDraft) => void;
