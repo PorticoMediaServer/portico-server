@@ -5,3 +5,4 @@
 .expandedSlot { position: absolute; inset: 0; }
 .morphTools { position: absolute; z-index: var(--layer-dialog); right: 24px; top: 24px; }
 .result { display: none; }
+.widgetDocument { overflow: clip; }

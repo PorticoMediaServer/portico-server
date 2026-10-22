@@ -43,5 +43,5 @@ export type DockHostProps = Readonly<{
 }>;
 export type MediaSurfaceProps = Readonly<{
   children: ReactNode; expanded: boolean; dockSlot: RefObject<HTMLElement | null>;
-  expandedSlot: RefObject<HTMLElement | null>; hidden?: boolean; className?: string;
+  expandedSlot: RefObject<HTMLElement | null>; hidden?: boolean; finished?: boolean; className?: string;
 }>;
