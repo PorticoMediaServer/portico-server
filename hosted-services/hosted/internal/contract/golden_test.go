@@ -180,7 +180,7 @@ func signedWebClaim(t *testing.T) claimweb.Signed {
 	digest.Write(public)
 	sum := digest.Sum(nil)
 	now := time.Now().UTC()
-	raw, e := json.Marshal(claimweb.Request{Kind: "portico.claim.web.v1", Audience: claimAudience, OperationID: "op_golden_claim", ServerID: "srv_" + base64.RawURLEncoding.EncodeToString(sum), PublicKey: base64.RawURLEncoding.EncodeToString(public), Name: "Living Room", Address: "http://192.168.1.10:32500", IssuedAt: now, ExpiresAt: now.Add(4 * time.Minute)})
+	raw, e := json.Marshal(claimweb.Request{Purpose: "setup", Kind: "portico.claim.web.v2", Audience: claimAudience, OperationID: "op_golden_claim", ServerID: "srv_" + base64.RawURLEncoding.EncodeToString(sum), PublicKey: base64.RawURLEncoding.EncodeToString(public), Name: "Living Room", Address: "http://192.168.1.10:32500", IssuedAt: now, ExpiresAt: now.Add(4 * time.Minute)})
 	if e != nil {
 		t.Fatal(e)
 	}

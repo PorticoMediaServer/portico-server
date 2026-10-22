@@ -3,6 +3,7 @@
   "code": "<code>",
   "expiresAt": "<time>",
   "name": "Living Room",
+  "purpose": "setup",
   "requestedAt": "<time>",
   "serverId": "<serverId>",
   "status": "pending"

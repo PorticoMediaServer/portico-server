@@ -25,6 +25,7 @@ import (
 )
 
 type Handler struct {
+	ServerReturns      *ServerReturns
 	AppAuthorizations  *AppAuthorizations
 	AccessLog          func(string)
 	requests           atomic.Uint64
@@ -54,6 +55,7 @@ func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	h.oidcRoutes(mux)
 	h.appAuthorizationRoutes(mux)
+	h.serverReturnRoutes(mux)
 	h.appleNotificationRoutes(mux)
 	h.securityRoutes(mux)
 	h.RegisterDirectRoutes(mux, h.DirectRoutes)

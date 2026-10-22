@@ -90,11 +90,56 @@ func (s *Store) FinalizeClaim(ctx context.Context, v claims.Verified, material c
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return empty, e
 		}
-		if exists && (owner.Valid || !revoked.Valid || key != v.Wire.PublicKey) {
+		var purpose, current, previous string
+		if e = tx.QueryRowContext(ctx, `SELECT purpose,current_owner_account_id,previous_owner_role FROM claim_operations WHERE id=$1`, v.Wire.OperationID).Scan(&purpose, &current, &previous); e != nil {
+			return empty, e
+		}
+		transfer := exists && owner.Valid && !revoked.Valid && key == v.Wire.PublicKey && owner.String == current && (purpose == "change-owner" && current != v.Wire.AccountID || purpose == "switch" && current == v.Wire.AccountID)
+		if purpose != "setup" && !transfer {
+			return empty, claims.ErrStale
+		}
+		if exists && !transfer && (owner.Valid || !revoked.Valid || key != v.Wire.PublicKey) {
 			return empty, claims.ErrStale
 		}
 		if generation == int64(^uint64(0)>>1) || credential == int64(^uint64(0)>>1) || policy == int64(^uint64(0)>>1) {
 			return empty, claims.ErrStale
+		}
+		if transfer {
+			// Retire the previous generation atomically; no route/return survives it.
+			if _, e = tx.ExecContext(ctx, `UPDATE claim_operations SET state='cancelled',cancelled_at=clock_timestamp() WHERE server_id=$1 AND id<>$2 AND state IN('installed','committed_pending_install')`, v.Wire.ServerID, v.Wire.OperationID); e != nil {
+				return empty, e
+			}
+			if _, e = tx.ExecContext(ctx, `DELETE FROM current_server_endpoints WHERE server_id=$1`, v.Wire.ServerID); e != nil {
+				return empty, e
+			}
+			if _, e = tx.ExecContext(ctx, `DELETE FROM networking_route_state WHERE server_id=$1`, v.Wire.ServerID); e != nil {
+				return empty, e
+			}
+			if purpose == "change-owner" {
+				if previous == "remove" {
+					if _, e = tx.ExecContext(ctx, `DELETE FROM server_members WHERE server_id=$1 AND account_id=$2`, v.Wire.ServerID, current); e != nil {
+						return empty, e
+					}
+					if _, e = tx.ExecContext(ctx, `UPDATE memberships SET role='member',revoked=true WHERE server_id=$1 AND account_id=$2`, v.Wire.ServerID, current); e != nil {
+						return empty, e
+					}
+				} else {
+					if _, e = tx.ExecContext(ctx, `UPDATE server_members SET role=$3,updated_at=clock_timestamp() WHERE server_id=$1 AND account_id=$2`, v.Wire.ServerID, current, previous); e != nil {
+						return empty, e
+					}
+					if _, e = tx.ExecContext(ctx, `UPDATE memberships SET role=CASE WHEN $3='admin' THEN 'member' ELSE $3 END WHERE server_id=$1 AND account_id=$2`, v.Wire.ServerID, current, previous); e != nil {
+						return empty, e
+					}
+				}
+			}
+			if purpose == "change-owner" {
+				if _, e = tx.ExecContext(ctx, `INSERT INTO server_ownership_transfers(server_id,operation_id,claim_operation_id,previous_account_id,new_account_id,policy_revision) VALUES($1,$2,$2,$3,$4,$5)`, v.Wire.ServerID, v.Wire.OperationID, current, v.Wire.AccountID, policy+1); e != nil {
+					return empty, e
+				}
+			}
+			if e = bumpServerListVersionsTx(ctx, tx, []string{current}); e != nil {
+				return empty, e
+			}
 		}
 		generation++
 		credential++
@@ -147,6 +192,9 @@ func (s *Store) FinalizeClaim(ctx context.Context, v claims.Verified, material c
 			return empty, e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE claim_operations SET state='committed_pending_install',claim_generation=$2,credential_generation=$3,committed_token_hash=$4 WHERE id=$1`, v.Wire.OperationID, generation, credential, material.Hash); e != nil {
+			return empty, e
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO server_members(server_id,account_id,role) VALUES($1,$2,'owner') ON CONFLICT(server_id,account_id) DO UPDATE SET role='owner',updated_at=clock_timestamp()`, v.Wire.ServerID, v.Wire.AccountID); e != nil {
 			return empty, e
 		}
 		// The owner's devices find the new server at their next list check.

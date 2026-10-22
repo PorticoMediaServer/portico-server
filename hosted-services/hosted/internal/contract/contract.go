@@ -25,6 +25,7 @@ import (
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/oidclogin"
 	"portico.local/hosted/internal/postgres"
+	"portico.local/hosted/internal/serverreturn"
 	"portico.local/hosted/internal/sessions"
 )
 
@@ -144,6 +145,10 @@ func Definitions() []apikit.Definition {
 		route[appauth.Request, appauth.Review]("POST", "/v1/app-authorizations", "app_authorization_review", "Review sign-in to one server for an unregistered app.", Public, apikit.ScopeSession, 201).lane(security),
 		route[appauth.Decision, appauth.Return]("POST", "/v1/app-authorizations/{id}/decision", "app_authorization_decide", "Approve or deny the reviewed app sign-in.", Public, apikit.ScopeSession, 200).lane(security),
 		route[appauth.Exchange, appauth.Grant]("POST", "/v1/app-authorizations/token", "app_authorization_exchange", "Exchange a one-time PKCE code for one server identity assertion.", Public, apikit.ScopeOpen, 200).lane(security),
+
+		route[serverreturn.Start, serverreturn.Started]("POST", "/v1/server-returns/start", "server_return_start", "Begin a registered first-party server return.", AccountSession, apikit.ScopeSession, 201).lane(security),
+		route[serverreturn.Complete, serverreturn.Return]("POST", "/v1/server-returns/{id}/complete", "server_return_complete", "Complete a registered first-party server return.", AccountSession, apikit.ScopeSession, 200).lane(security),
+		route[serverreturn.Exchange, serverreturn.Grant]("POST", "/v1/server-returns/exchange", "server_return_exchange", "Spend a registered server return code.", Public, apikit.ScopeOpen, 200).lane(security),
 
 		// Device and TV authorization.
 		route[device.Start, device.Authorization]("POST", "/v1/device-authorizations", "device_authorization_create", "Start a device authorization.", Public, apikit.ScopeOpen, 201).lane(security),

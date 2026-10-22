@@ -26,6 +26,9 @@ func lockClaim(ctx context.Context, tx *sql.Tx, v claims.Verified) (lockedClaim,
 	if preliminary.expected.AccountID != v.Wire.AccountID {
 		return empty, claims.ErrStale
 	}
+	if e := lockClaimAccounts(ctx, tx, preliminary.expected.AccountID, v.Wire.ServerID); e != nil {
+		return empty, e
+	}
 	facts, e := AuthorizeCurrentFamilyTx(ctx, tx, preliminary.expected)
 	if e != nil {
 		return empty, claimAuthError(e)

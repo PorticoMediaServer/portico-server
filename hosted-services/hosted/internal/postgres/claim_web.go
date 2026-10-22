@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -12,6 +13,7 @@ import (
 	"portico.local/hosted/internal/claims"
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/security"
+	"portico.local/hosted/internal/serverreturn"
 	"sync"
 	"time"
 )
@@ -95,13 +97,27 @@ func (s *Store) RegisterWebClaim(ctx context.Context, q claimweb.Request, key []
 	if _, e = tx.ExecContext(ctx, `INSERT INTO claim_web_pending(operation_id,code_hash,request,request_hash,account_id,server_id,expires_at) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7) ON CONFLICT(operation_id) DO NOTHING`, q.OperationID, security.Hash(code), raw, hash, q.AccountID, q.ServerID, q.ExpiresAt); e != nil {
 		return claimweb.Pending{}, e
 	}
-	var saved []byte
+	var saved, previousRequest []byte
 	var at time.Time
 	var status string
-	if e = tx.QueryRowContext(ctx, `SELECT request_hash,requested_at,status FROM claim_web_pending WHERE operation_id=$1`, q.OperationID).Scan(&saved, &at, &status); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT request_hash,request,requested_at,status FROM claim_web_pending WHERE operation_id=$1`, q.OperationID).Scan(&saved, &previousRequest, &at, &status); e != nil {
 		return claimweb.Pending{}, claims.ErrStale
 	}
 	if !equalSecret(saved, hash) {
+		// Refresh may extend only time bounds. A stable approval code must never
+		// change the server/name/address/account or the purpose/ownership intent
+		// the authenticated approver has just reviewed.
+		var previous claimweb.Request
+		if json.Unmarshal(previousRequest, &previous) != nil || !q.IssuedAt.After(previous.IssuedAt) {
+			return claimweb.Pending{}, claims.ErrStale
+		}
+		previous.IssuedAt = q.IssuedAt
+		previous.ExpiresAt = q.ExpiresAt
+		canonical, _ := json.Marshal(previous)
+		if !bytes.Equal(canonical, raw) {
+			return claimweb.Pending{}, claims.ErrStale
+		}
+
 		// The server re-sent this operation with a newer request (a retried Connect, or one
 		// after the earlier request expired). The request is server-signed, so while nobody
 		// has approved or denied it, the newest one replaces the old: otherwise a server
@@ -116,7 +132,7 @@ func (s *Store) RegisterWebClaim(ctx context.Context, q claimweb.Request, key []
 	if e = tx.Commit(); e != nil {
 		return claimweb.Pending{}, e
 	}
-	return claimweb.Pending{Code: code, ServerID: q.ServerID, Name: q.Name, Address: q.Address, RequestedAt: at, ExpiresAt: q.ExpiresAt, Status: status}, nil
+	return claimweb.Pending{Purpose: q.Purpose, PreviousOwnerRole: q.PreviousOwnerRole, Code: code, ServerID: q.ServerID, Name: q.Name, Address: q.Address, RequestedAt: at, ExpiresAt: q.ExpiresAt, Status: status}, nil
 }
 func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpectation, code string) (claimweb.Pending, error) {
 	tx, e := s.DB.BeginTx(ctx, nil)
@@ -141,6 +157,22 @@ func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 	p.ServerID = q.ServerID
 	p.Name = q.Name
 	p.Address = q.Address
+	p.Purpose = q.Purpose
+	p.PreviousOwnerRole = q.PreviousOwnerRole
+	if q.CurrentOwnerAccountID != "" {
+		var owner string
+		if e = tx.QueryRowContext(ctx, `SELECT owner_account_id FROM servers WHERE id=$1 AND revoked_at IS NULL`, q.ServerID).Scan(&owner); e != nil || owner != q.CurrentOwnerAccountID {
+			return p, claims.ErrStale
+		}
+		if e = tx.QueryRowContext(ctx, `SELECT username FROM accounts WHERE id=$1`, q.CurrentOwnerAccountID).Scan(&p.CurrentOwnerUsername); e != nil {
+			return p, claims.ErrStale
+		}
+	}
+	// Projection proves an exact current registration; signed Address alone does not.
+	var claim, cred, gen int64
+	if tx.QueryRowContext(ctx, `SELECT s.claim_generation,s.credential_generation,n.generation FROM servers s JOIN networking_route_state n ON n.server_id=s.id JOIN networking_route_candidates c ON c.server_id=n.server_id AND c.operation_id=n.operation_id AND c.generation=n.generation AND c.origin=$2 AND c.state='verified' WHERE s.id=$1 AND s.owner_account_id=$3 AND s.revoked_at IS NULL AND n.operation_id=$4 AND n.claim_generation=s.claim_generation AND n.credential_generation=s.credential_generation AND (n.remote_enabled OR c.class='lan')`, q.ServerID, q.Address, a.AccountID, q.OperationID).Scan(&claim, &cred, &gen) == nil && serverreturn.Origin(q.Address) {
+		p.ReturnRegistration = &serverreturn.Registration{ID: serverreturn.RegistrationID(q.ServerID, q.OperationID, claim, cred, gen, q.Address), Origin: q.Address}
+	}
 	return p, tx.Commit()
 }
 func (s *Store) DecideWebClaim(ctx context.Context, a identity.CurrentFamilyExpectation, code, profile, replaces string, approve bool, service *claims.Service) error {
@@ -151,6 +183,19 @@ func (s *Store) DecideWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 		return e
 	}
 	defer tx.Rollback()
+	// Read the immutable server-signed request before taking any account lock,
+	// then lock target/current accounts in the shared canonical order.
+	var preliminary []byte
+	if e = tx.QueryRowContext(ctx, `SELECT request FROM claim_web_pending WHERE code_hash=$1`, security.Hash(code)).Scan(&preliminary); e != nil {
+		return claims.ErrStale
+	}
+	var pre claimweb.Request
+	if json.Unmarshal(preliminary, &pre) != nil {
+		return claims.ErrInvalid
+	}
+	if e = lockClaimAccounts(ctx, tx, a.AccountID, pre.ServerID); e != nil {
+		return e
+	}
 	if _, e = AuthorizeCurrentFamilyTx(ctx, tx, a); e != nil {
 		return e
 	}
@@ -185,7 +230,7 @@ func (s *Store) DecideWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 	}
 	if approve {
 		// Execute the same approval consumer in this transaction; no decision gap.
-		input := claims.ApprovalInput{OperationID: q.OperationID, ServerID: q.ServerID, PublicKey: q.PublicKey, LocalGeneration: q.LocalGeneration, Name: q.Name, OwnerProfileID: profile, ReplacesServerID: replaces}
+		input := claims.ApprovalInput{OperationID: q.OperationID, ServerID: q.ServerID, PublicKey: q.PublicKey, LocalGeneration: q.LocalGeneration, Name: q.Name, OwnerProfileID: profile, ReplacesServerID: replaces, Purpose: q.Purpose, CurrentOwnerAccountID: q.CurrentOwnerAccountID, PreviousOwnerRole: q.PreviousOwnerRole, ReturnRegistrationID: q.ReturnRegistrationID}
 		approval, e := s.approveClaimTx(ctx, tx, a, input, q.Audience)
 		if e != nil {
 			return e

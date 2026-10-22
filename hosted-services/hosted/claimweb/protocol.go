@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"portico.local/hosted/internal/serverreturn"
 	"regexp"
 	"time"
 )
@@ -20,26 +21,34 @@ type Request struct {
 	ServerID    string `json:"serverId"`
 	// AccountID is empty for a web claim: the approver's account is bound at
 	// approval. A non-empty value restricts approval to that account.
-	AccountID       string    `json:"accountId"`
-	PublicKey       string    `json:"publicKey"`
-	LocalGeneration int64     `json:"localGeneration,string"`
-	Name            string    `json:"name"`
-	Address         string    `json:"address"`
-	IssuedAt        time.Time `json:"issuedAt"`
-	ExpiresAt       time.Time `json:"expiresAt"`
+	AccountID             string    `json:"accountId"`
+	PublicKey             string    `json:"publicKey"`
+	LocalGeneration       int64     `json:"localGeneration,string"`
+	Name                  string    `json:"name"`
+	Address               string    `json:"address"`
+	Purpose               string    `json:"purpose"`
+	CurrentOwnerAccountID string    `json:"currentOwnerAccountId"`
+	PreviousOwnerRole     string    `json:"previousOwnerRole"`
+	ReturnRegistrationID  string    `json:"returnRegistrationId"`
+	IssuedAt              time.Time `json:"issuedAt"`
+	ExpiresAt             time.Time `json:"expiresAt"`
 }
 type Signed struct {
 	Payload   string `json:"payload"`
 	Signature string `json:"signature"`
 }
 type Pending struct {
-	Code        string    `json:"code"`
-	ServerID    string    `json:"serverId"`
-	Name        string    `json:"name"`
-	Address     string    `json:"address"`
-	RequestedAt time.Time `json:"requestedAt"`
-	ExpiresAt   time.Time `json:"expiresAt"`
-	Status      string    `json:"status"`
+	Purpose              string                     `json:"purpose"`
+	CurrentOwnerUsername string                     `json:"currentOwnerUsername,omitempty"`
+	PreviousOwnerRole    string                     `json:"previousOwnerRole,omitempty"`
+	ReturnRegistration   *serverreturn.Registration `json:"returnRegistration,omitempty"`
+	Code                 string                     `json:"code"`
+	ServerID             string                     `json:"serverId"`
+	Name                 string                     `json:"name"`
+	Address              string                     `json:"address"`
+	RequestedAt          time.Time                  `json:"requestedAt"`
+	ExpiresAt            time.Time                  `json:"expiresAt"`
+	Status               string                     `json:"status"`
 }
 
 var ErrInvalid = errors.New("invalid pending claim")
@@ -63,8 +72,23 @@ func Verify(s Signed, audience string, now time.Time) (Request, error) {
 	sum := digest.Sum(nil)
 	sig, e := base64.RawURLEncoding.Strict().DecodeString(s.Signature)
 	u, ue := url.Parse(q.Address)
-	if e != nil || !ed25519.Verify(key, raw, sig) || q.Kind != "portico.claim.web.v1" || q.Audience != audience || q.ServerID != "srv_"+base64.RawURLEncoding.EncodeToString(sum) || !id.MatchString(q.OperationID) || (q.AccountID != "" && !id.MatchString(q.AccountID)) || q.LocalGeneration < 0 || len(q.Name) < 1 || len(q.Name) > 120 || ue != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || q.IssuedAt.After(now.Add(time.Minute)) || !q.ExpiresAt.After(now) || q.ExpiresAt.Sub(q.IssuedAt) > 10*time.Minute || !q.ExpiresAt.After(q.IssuedAt) {
+	if e != nil || !ed25519.Verify(key, raw, sig) || q.Kind != "portico.claim.web.v2" || q.Audience != audience || q.ServerID != "srv_"+base64.RawURLEncoding.EncodeToString(sum) || !id.MatchString(q.OperationID) || (q.AccountID != "" && !id.MatchString(q.AccountID)) || !validPurposeBinding(q.Purpose, q.CurrentOwnerAccountID, q.PreviousOwnerRole, q.ReturnRegistrationID) || q.LocalGeneration < 0 || len(q.Name) < 1 || len(q.Name) > 120 || ue != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || q.IssuedAt.After(now.Add(time.Minute)) || !q.ExpiresAt.After(now) || q.ExpiresAt.Sub(q.IssuedAt) > 10*time.Minute || !q.ExpiresAt.After(q.IssuedAt) {
 		return q, ErrInvalid
 	}
 	return q, nil
+}
+
+func validPurposeBinding(p, current, previous, registration string) bool {
+	if registration != "" && !id.MatchString(registration) {
+		return false
+	}
+	switch p {
+	case "setup":
+		return current == "" && previous == ""
+	case "switch":
+		return id.MatchString(current) && previous == ""
+	case "change-owner":
+		return id.MatchString(current) && (previous == "admin" || previous == "member" || previous == "remove")
+	}
+	return false
 }

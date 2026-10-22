@@ -18,7 +18,7 @@ func TestWebClaimApprovalPushAndAccountIsolation(t *testing.T) {
 	f := currentClaimJourney(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	q := claimweb.Request{Kind: "portico.claim.web.v1", Audience: "https://hosted.example", OperationID: f.input.OperationID, ServerID: f.input.ServerID, AccountID: f.expected.AccountID, PublicKey: f.input.PublicKey, Name: "Living Room", Address: "http://192.168.1.10:32500", IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(4 * time.Minute)}
+	q := claimweb.Request{Purpose: "setup", Kind: "portico.claim.web.v2", Audience: "https://hosted.example", OperationID: f.input.OperationID, ServerID: f.input.ServerID, AccountID: f.expected.AccountID, PublicKey: f.input.PublicKey, Name: "Living Room", Address: "http://192.168.1.10:32500", IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(4 * time.Minute)}
 	p, e := f.store.RegisterWebClaim(ctx, q, make([]byte, 32))
 	if e != nil {
 		t.Fatal(e)
@@ -63,7 +63,7 @@ func TestUnboundWebClaimBindsTheApprover(t *testing.T) {
 	f := currentClaimJourney(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	q := claimweb.Request{Kind: "portico.claim.web.v1", Audience: "https://hosted.example", OperationID: f.input.OperationID, ServerID: f.input.ServerID, PublicKey: f.input.PublicKey, Name: "Den", Address: "http://192.168.1.10:32500", IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(4 * time.Minute)}
+	q := claimweb.Request{Purpose: "setup", Kind: "portico.claim.web.v2", Audience: "https://hosted.example", OperationID: f.input.OperationID, ServerID: f.input.ServerID, PublicKey: f.input.PublicKey, Name: "Den", Address: "http://192.168.1.10:32500", IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(4 * time.Minute)}
 	p, e := f.store.RegisterWebClaim(ctx, q, make([]byte, 32))
 	if e != nil {
 		t.Fatal(e)
@@ -125,7 +125,7 @@ func TestWebClaimsAreCappedPerServer(t *testing.T) {
 	f := currentClaimJourney(t)
 	ctx := context.Background()
 	for i := range 4 {
-		q := claimweb.Request{Kind: "portico.claim.web.v1", Audience: "https://hosted.example", OperationID: fmt.Sprintf("op_cap_%d", i), ServerID: f.input.ServerID, PublicKey: f.input.PublicKey, Name: "Den", Address: "http://192.168.1.10:32500", IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(4 * time.Minute)}
+		q := claimweb.Request{Purpose: "setup", Kind: "portico.claim.web.v2", Audience: "https://hosted.example", OperationID: fmt.Sprintf("op_cap_%d", i), ServerID: f.input.ServerID, PublicKey: f.input.PublicKey, Name: "Den", Address: "http://192.168.1.10:32500", IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(4 * time.Minute)}
 		_, e := f.store.RegisterWebClaim(ctx, q, make([]byte, 32))
 		if i < 3 && e != nil {
 			t.Fatal(i, e)
@@ -144,7 +144,7 @@ func TestWebClaimNewerRequestReplacesAnUndecidedOne(t *testing.T) {
 	f := currentClaimJourney(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	q := claimweb.Request{Kind: "portico.claim.web.v1", Audience: "https://hosted.example", OperationID: f.input.OperationID, ServerID: f.input.ServerID, PublicKey: f.input.PublicKey, Name: "Den", Address: "http://192.168.1.10:32500", IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(4 * time.Minute)}
+	q := claimweb.Request{Purpose: "setup", Kind: "portico.claim.web.v2", Audience: "https://hosted.example", OperationID: f.input.OperationID, ServerID: f.input.ServerID, PublicKey: f.input.PublicKey, Name: "Den", Address: "http://192.168.1.10:32500", IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(4 * time.Minute)}
 	first, e := f.store.RegisterWebClaim(ctx, q, make([]byte, 32))
 	if e != nil {
 		t.Fatal(e)
@@ -166,5 +166,29 @@ func TestWebClaimNewerRequestReplacesAnUndecidedOne(t *testing.T) {
 	latest.ExpiresAt = newer.ExpiresAt.Add(time.Minute)
 	if _, e = f.store.RegisterWebClaim(ctx, latest, make([]byte, 32)); !errors.Is(e, claims.ErrStale) {
 		t.Fatalf("a different request after approval: %v", e)
+	}
+}
+
+func TestWebClaimV2RefreshCannotReplaceReviewedIntent(t *testing.T) {
+	f := currentClaimJourney(t)
+	ctx := context.Background()
+	q := claimweb.Request{Purpose: "setup", Kind: "portico.claim.web.v2", Audience: "https://hosted.example", OperationID: f.input.OperationID, ServerID: f.input.ServerID, PublicKey: f.input.PublicKey, Name: "Original", Address: "https://server.example:32500", IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(4 * time.Minute)}
+	if _, e := f.store.RegisterWebClaim(ctx, q, make([]byte, 32)); e != nil {
+		t.Fatal(e)
+	}
+	for name, change := range map[string]func(*claimweb.Request){"purpose": func(q *claimweb.Request) {
+		q.Purpose = "change-owner"
+		q.CurrentOwnerAccountID = "strict-owner"
+		q.PreviousOwnerRole = "admin"
+	}, "name": func(q *claimweb.Request) { q.Name = "Different" }, "address": func(q *claimweb.Request) { q.Address = "https://attacker.example" }, "account": func(q *claimweb.Request) { q.AccountID = "strict-other" }, "registration": func(q *claimweb.Request) { q.ReturnRegistrationID = "ret_changed" }} {
+		t.Run(name, func(t *testing.T) {
+			next := q
+			next.IssuedAt = q.IssuedAt.Add(time.Second)
+			next.ExpiresAt = q.ExpiresAt.Add(time.Second)
+			change(&next)
+			if _, e := f.store.RegisterWebClaim(ctx, next, make([]byte, 32)); !errors.Is(e, claims.ErrStale) {
+				t.Fatal("reviewed intent changed", e)
+			}
+		})
 	}
 }

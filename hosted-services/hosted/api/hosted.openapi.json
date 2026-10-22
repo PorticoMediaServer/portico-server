@@ -3641,6 +3641,9 @@
       },
       "ServerClaimApproveRequest": {
         "properties": {
+          "currentOwnerAccountId": {
+            "type": "string"
+          },
           "expectedRevision": {
             "type": "string"
           },
@@ -3656,10 +3659,19 @@
           "ownerProfileId": {
             "type": "string"
           },
+          "previousOwnerRole": {
+            "type": "string"
+          },
           "publicKey": {
             "type": "string"
           },
+          "purpose": {
+            "type": "string"
+          },
           "replacesServerId": {
+            "type": "string"
+          },
+          "returnRegistrationId": {
             "type": "string"
           },
           "serverId": {
@@ -3673,7 +3685,11 @@
           "localGeneration",
           "name",
           "ownerProfileId",
-          "expectedRevision"
+          "expectedRevision",
+          "purpose",
+          "currentOwnerAccountId",
+          "previousOwnerRole",
+          "returnRegistrationId"
         ],
         "type": "object"
       },
@@ -3975,6 +3991,9 @@
           "code": {
             "type": "string"
           },
+          "currentOwnerUsername": {
+            "type": "string"
+          },
           "expiresAt": {
             "format": "date-time",
             "type": "string"
@@ -3982,9 +4001,30 @@
           "name": {
             "type": "string"
           },
+          "previousOwnerRole": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
           "requestedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "returnRegistration": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origin"
+            ],
+            "type": "object"
           },
           "serverId": {
             "type": "string"
@@ -3994,6 +4034,7 @@
           }
         },
         "required": [
+          "purpose",
           "code",
           "serverId",
           "name",
@@ -4071,6 +4112,9 @@
           "code": {
             "type": "string"
           },
+          "currentOwnerUsername": {
+            "type": "string"
+          },
           "expiresAt": {
             "format": "date-time",
             "type": "string"
@@ -4078,9 +4122,30 @@
           "name": {
             "type": "string"
           },
+          "previousOwnerRole": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
           "requestedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "returnRegistration": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origin"
+            ],
+            "type": "object"
           },
           "serverId": {
             "type": "string"
@@ -4090,6 +4155,7 @@
           }
         },
         "required": [
+          "purpose",
           "code",
           "serverId",
           "name",
@@ -4730,6 +4796,315 @@
         "required": [
           "code",
           "status"
+        ],
+        "type": "object"
+      },
+      "ServerReturnCompleteRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "ServerReturnCompleteResponse": {
+        "properties": {
+          "location": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "location"
+        ],
+        "type": "object"
+      },
+      "ServerReturnExchangeRequest": {
+        "properties": {
+          "code": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "installationId": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "setup",
+              "switch",
+              "change-owner"
+            ],
+            "type": "string"
+          },
+          "registrationId": {
+            "type": "string"
+          },
+          "serverChallenge": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "transactionId": {
+            "type": "string"
+          },
+          "verifier": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "transactionId",
+          "verifier",
+          "registrationId",
+          "serverChallenge",
+          "installationId",
+          "purpose"
+        ],
+        "type": "object"
+      },
+      "ServerReturnExchangeResponse": {
+        "properties": {
+          "assertion": {
+            "properties": {
+              "certificate": {
+                "properties": {
+                  "keyId": {
+                    "type": "string"
+                  },
+                  "notAfter": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "notBefore": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "publicKey": {
+                    "type": "string"
+                  },
+                  "purpose": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "revoked": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "signature": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "keyId",
+                  "publicKey",
+                  "purpose",
+                  "notBefore",
+                  "notAfter",
+                  "revision",
+                  "revoked",
+                  "signature"
+                ],
+                "type": "object"
+              },
+              "keyId": {
+                "type": "string"
+              },
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature",
+              "keyId"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "assertion"
+        ],
+        "type": "object"
+      },
+      "ServerReturnStartRequest": {
+        "oneOf": [
+          {
+            "properties": {
+              "claimOperationId": {
+                "type": "string"
+              },
+              "codeChallenge": {
+                "maxLength": 43,
+                "minLength": 43,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "installationId": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "const": "setup",
+                "type": "string"
+              },
+              "registrationId": {
+                "type": "string"
+              },
+              "serverChallenge": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              },
+              "state": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "purpose",
+              "registrationId",
+              "state",
+              "codeChallenge",
+              "serverChallenge",
+              "installationId"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "claimOperationId": {
+                "type": "string"
+              },
+              "codeChallenge": {
+                "maxLength": 43,
+                "minLength": 43,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "installationId": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "const": "switch",
+                "type": "string"
+              },
+              "registrationId": {
+                "type": "string"
+              },
+              "serverChallenge": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              },
+              "state": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "purpose",
+              "registrationId",
+              "state",
+              "codeChallenge",
+              "serverChallenge",
+              "installationId"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "claimOperationId": {
+                "type": "string"
+              },
+              "codeChallenge": {
+                "maxLength": 43,
+                "minLength": 43,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "installationId": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "const": "change-owner",
+                "type": "string"
+              },
+              "registrationId": {
+                "type": "string"
+              },
+              "serverChallenge": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              },
+              "state": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "purpose",
+              "registrationId",
+              "state",
+              "codeChallenge",
+              "serverChallenge",
+              "installationId"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ServerReturnStartResponse": {
+        "properties": {
+          "transactionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "transactionId"
         ],
         "type": "object"
       },
@@ -11999,6 +12374,9 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "currentOwnerAccountId": {
+                    "type": "string"
+                  },
                   "expectedRevision": {
                     "type": "string"
                   },
@@ -12014,10 +12392,19 @@
                   "ownerProfileId": {
                     "type": "string"
                   },
+                  "previousOwnerRole": {
+                    "type": "string"
+                  },
                   "publicKey": {
                     "type": "string"
                   },
+                  "purpose": {
+                    "type": "string"
+                  },
                   "replacesServerId": {
+                    "type": "string"
+                  },
+                  "returnRegistrationId": {
                     "type": "string"
                   },
                   "serverId": {
@@ -12031,7 +12418,11 @@
                   "localGeneration",
                   "name",
                   "ownerProfileId",
-                  "expectedRevision"
+                  "expectedRevision",
+                  "purpose",
+                  "currentOwnerAccountId",
+                  "previousOwnerRole",
+                  "returnRegistrationId"
                 ],
                 "type": "object"
               }
@@ -12786,6 +13177,9 @@
                     "code": {
                       "type": "string"
                     },
+                    "currentOwnerUsername": {
+                      "type": "string"
+                    },
                     "expiresAt": {
                       "format": "date-time",
                       "type": "string"
@@ -12793,9 +13187,30 @@
                     "name": {
                       "type": "string"
                     },
+                    "previousOwnerRole": {
+                      "type": "string"
+                    },
+                    "purpose": {
+                      "type": "string"
+                    },
                     "requestedAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "returnRegistration": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "origin"
+                      ],
+                      "type": "object"
                     },
                     "serverId": {
                       "type": "string"
@@ -12805,6 +13220,7 @@
                     }
                   },
                   "required": [
+                    "purpose",
                     "code",
                     "serverId",
                     "name",
@@ -13000,6 +13416,9 @@
                     "code": {
                       "type": "string"
                     },
+                    "currentOwnerUsername": {
+                      "type": "string"
+                    },
                     "expiresAt": {
                       "format": "date-time",
                       "type": "string"
@@ -13007,9 +13426,30 @@
                     "name": {
                       "type": "string"
                     },
+                    "previousOwnerRole": {
+                      "type": "string"
+                    },
+                    "purpose": {
+                      "type": "string"
+                    },
                     "requestedAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "returnRegistration": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "origin"
+                      ],
+                      "type": "object"
                     },
                     "serverId": {
                       "type": "string"
@@ -13019,6 +13459,7 @@
                     }
                   },
                   "required": [
+                    "purpose",
                     "code",
                     "serverId",
                     "name",
@@ -13253,6 +13694,502 @@
         "x-error-codes": [],
         "x-lane": "default",
         "x-scope": "open"
+      }
+    },
+    "/v1/server-returns/exchange": {
+      "post": {
+        "operationId": "server_return_exchange",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "code": {
+                    "maxLength": 128,
+                    "minLength": 32,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "installationId": {
+                    "maxLength": 128,
+                    "minLength": 32,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "purpose": {
+                    "enum": [
+                      "setup",
+                      "switch",
+                      "change-owner"
+                    ],
+                    "type": "string"
+                  },
+                  "registrationId": {
+                    "type": "string"
+                  },
+                  "serverChallenge": {
+                    "maxLength": 128,
+                    "minLength": 32,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "transactionId": {
+                    "type": "string"
+                  },
+                  "verifier": {
+                    "maxLength": 128,
+                    "minLength": 32,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "transactionId",
+                  "verifier",
+                  "registrationId",
+                  "serverChallenge",
+                  "installationId",
+                  "purpose"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "assertion": {
+                      "properties": {
+                        "certificate": {
+                          "properties": {
+                            "keyId": {
+                              "type": "string"
+                            },
+                            "notAfter": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "notBefore": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "publicKey": {
+                              "type": "string"
+                            },
+                            "purpose": {
+                              "type": "string"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "revoked": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "signature": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "keyId",
+                            "publicKey",
+                            "purpose",
+                            "notBefore",
+                            "notAfter",
+                            "revision",
+                            "revoked",
+                            "signature"
+                          ],
+                          "type": "object"
+                        },
+                        "keyId": {
+                          "type": "string"
+                        },
+                        "payload": {
+                          "type": "string"
+                        },
+                        "signature": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "payload",
+                        "signature",
+                        "keyId"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "assertion"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Spend a registered server return code.",
+        "x-access": "public",
+        "x-admission": "",
+        "x-cost": "constant",
+        "x-error-codes": [],
+        "x-lane": "security",
+        "x-max-body-bytes": 65536,
+        "x-scope": "open"
+      }
+    },
+    "/v1/server-returns/start": {
+      "post": {
+        "operationId": "server_return_start",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "properties": {
+                      "claimOperationId": {
+                        "type": "string"
+                      },
+                      "codeChallenge": {
+                        "maxLength": 43,
+                        "minLength": 43,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "installationId": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "purpose": {
+                        "const": "setup",
+                        "type": "string"
+                      },
+                      "registrationId": {
+                        "type": "string"
+                      },
+                      "serverChallenge": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "serverId": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "serverId",
+                      "purpose",
+                      "registrationId",
+                      "state",
+                      "codeChallenge",
+                      "serverChallenge",
+                      "installationId"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "properties": {
+                      "claimOperationId": {
+                        "type": "string"
+                      },
+                      "codeChallenge": {
+                        "maxLength": 43,
+                        "minLength": 43,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "installationId": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "purpose": {
+                        "const": "switch",
+                        "type": "string"
+                      },
+                      "registrationId": {
+                        "type": "string"
+                      },
+                      "serverChallenge": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "serverId": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "serverId",
+                      "purpose",
+                      "registrationId",
+                      "state",
+                      "codeChallenge",
+                      "serverChallenge",
+                      "installationId"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "properties": {
+                      "claimOperationId": {
+                        "type": "string"
+                      },
+                      "codeChallenge": {
+                        "maxLength": 43,
+                        "minLength": 43,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "installationId": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "purpose": {
+                        "const": "change-owner",
+                        "type": "string"
+                      },
+                      "registrationId": {
+                        "type": "string"
+                      },
+                      "serverChallenge": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "serverId": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "serverId",
+                      "purpose",
+                      "registrationId",
+                      "state",
+                      "codeChallenge",
+                      "serverChallenge",
+                      "installationId"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "transactionId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "transactionId"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Begin a registered first-party server return.",
+        "x-access": "account_session",
+        "x-admission": "",
+        "x-cost": "constant",
+        "x-error-codes": [],
+        "x-lane": "security",
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
+      }
+    },
+    "/v1/server-returns/{id}/complete": {
+      "post": {
+        "operationId": "server_return_complete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "location": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "location"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Complete a registered first-party server return.",
+        "x-access": "account_session",
+        "x-admission": "",
+        "x-cost": "constant",
+        "x-error-codes": [],
+        "x-lane": "security",
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/servers": {

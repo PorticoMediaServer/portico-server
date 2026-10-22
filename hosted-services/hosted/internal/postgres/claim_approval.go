@@ -55,6 +55,9 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 	if !in.Valid() {
 		return empty, claims.ErrInvalid
 	}
+	if e := lockClaimAccounts(ctx, tx, expected.AccountID, in.ServerID); e != nil {
+		return empty, e
+	}
 	facts, e := AuthorizeCurrentFamilyTx(ctx, tx, expected)
 	if e != nil {
 		return empty, e
@@ -103,7 +106,7 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 			return empty, claims.ErrCapacity
 		}
 		key, _ := base64.RawURLEncoding.DecodeString(in.PublicKey)
-		if _, e = tx.ExecContext(ctx, `INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,owner_profile_id,intent_digest,state) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'approved')`, in.OperationID, in.ServerID, expected.AccountID, key, in.LocalGeneration, in.Name, in.OwnerProfileID, digest[:]); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,owner_profile_id,intent_digest,state,purpose,current_owner_account_id,previous_owner_role,return_registration_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'approved',$9,$10,$11,$12)`, in.OperationID, in.ServerID, expected.AccountID, key, in.LocalGeneration, in.Name, in.OwnerProfileID, digest[:], in.Purpose, in.CurrentOwnerAccountID, in.PreviousOwnerRole, in.ReturnRegistrationID); e != nil {
 			return empty, e
 		}
 	}
@@ -122,9 +125,22 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return empty, e
 	}
-	if e == nil && (existingOwner.Valid && existingOwner.String != expected.AccountID || existingKey != in.PublicKey) {
+	if e == nil && existingKey != in.PublicKey {
 		return empty, claims.ErrStale
 	}
+	if in.Purpose == "setup" && e == nil && existingOwner.Valid {
+		return empty, claims.ErrStale
+	}
+	if in.Purpose != "setup" && (e != nil || !existingOwner.Valid || existingOwner.String != in.CurrentOwnerAccountID) {
+		return empty, claims.ErrStale
+	}
+	if in.Purpose == "change-owner" && expected.AccountID == in.CurrentOwnerAccountID {
+		return empty, claims.ErrStale
+	}
+	if in.Purpose == "switch" && expected.AccountID != in.CurrentOwnerAccountID {
+		return empty, claims.ErrStale
+	}
+
 	var now time.Time
 	if e = tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
 		return empty, e
@@ -137,7 +153,7 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 		if !sameClaimApproval(old, captured) || !old.expiry.After(now) {
 			return empty, claims.ErrStale
 		}
-		return claims.Approval{Kind: "portico.claim.approval", Version: "1", Audience: audience, OperationID: in.OperationID, ServerID: in.ServerID, AccountID: expected.AccountID, PublicKey: in.PublicKey, LocalGeneration: in.LocalGeneration, ApprovalRevision: old.revision, IssuedAt: old.issued.UTC().Format(time.RFC3339Nano), ExpiresAt: old.expiry.UTC().Format(time.RFC3339Nano)}, nil
+		return claims.Approval{Kind: "portico.claim.approval", Version: "2", Audience: audience, OperationID: in.OperationID, ServerID: in.ServerID, AccountID: expected.AccountID, PublicKey: in.PublicKey, LocalGeneration: in.LocalGeneration, ApprovalRevision: old.revision, Purpose: in.Purpose, CurrentOwnerAccountID: in.CurrentOwnerAccountID, PreviousOwnerRole: in.PreviousOwnerRole, ReturnRegistrationID: in.ReturnRegistrationID, IssuedAt: old.issued.UTC().Format(time.RFC3339Nano), ExpiresAt: old.expiry.UTC().Format(time.RFC3339Nano)}, nil
 	}
 	expiry := now.Add(5 * time.Minute)
 	for _, bound := range []time.Time{facts.AccessExpiresAt, facts.AbsoluteExpiresAt, facts.IdleExpiresAt} {
@@ -164,5 +180,21 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 	if !facts.UnexpiredAt(decisionTime) || !expiry.After(decisionTime) {
 		return empty, claims.ErrApprovalRequired
 	}
-	return claims.Approval{Kind: "portico.claim.approval", Version: "1", Audience: audience, OperationID: in.OperationID, ServerID: in.ServerID, AccountID: expected.AccountID, PublicKey: in.PublicKey, LocalGeneration: in.LocalGeneration, ApprovalRevision: revision, IssuedAt: now.UTC().Format(time.RFC3339Nano), ExpiresAt: expiry.UTC().Format(time.RFC3339Nano)}, nil
+	return claims.Approval{Kind: "portico.claim.approval", Version: "2", Audience: audience, OperationID: in.OperationID, ServerID: in.ServerID, AccountID: expected.AccountID, PublicKey: in.PublicKey, LocalGeneration: in.LocalGeneration, ApprovalRevision: revision, Purpose: in.Purpose, CurrentOwnerAccountID: in.CurrentOwnerAccountID, PreviousOwnerRole: in.PreviousOwnerRole, ReturnRegistrationID: in.ReturnRegistrationID, IssuedAt: now.UTC().Format(time.RFC3339Nano), ExpiresAt: expiry.UTC().Format(time.RFC3339Nano)}, nil
+}
+
+// Match the server-operation account lock order before any family/claim locks.
+func lockClaimAccounts(ctx context.Context, tx *sql.Tx, account, server string) error {
+	rows, e := tx.QueryContext(ctx, `SELECT id FROM accounts WHERE id=$1 OR id=(SELECT owner_account_id FROM servers WHERE id=$2) ORDER BY id FOR UPDATE`, account, server)
+	if e != nil {
+		return e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if e = rows.Scan(&id); e != nil {
+			return e
+		}
+	}
+	return rows.Err()
 }

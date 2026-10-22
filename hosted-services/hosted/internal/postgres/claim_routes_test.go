@@ -63,7 +63,7 @@ func currentClaimJourney(t *testing.T) claimJourney {
 	if e != nil {
 		t.Fatal(e)
 	}
-	return claimJourney{f, service, &httpapi.ClaimHandler{Service: service, CaptureAuthority: f.store.CaptureClaimAuthority}, key, claims.ApprovalInput{OperationID: "operation_a", ServerID: server, PublicKey: base64.RawURLEncoding.EncodeToString(key.Public().(ed25519.PublicKey)), Name: "Server", OwnerProfileID: "claim_profile"}}
+	return claimJourney{f, service, &httpapi.ClaimHandler{Service: service, CaptureAuthority: f.store.CaptureClaimAuthority}, key, claims.ApprovalInput{Purpose: "setup", OperationID: "operation_a", ServerID: server, PublicKey: base64.RawURLEncoding.EncodeToString(key.Public().(ed25519.PublicKey)), Name: "Server", OwnerProfileID: "claim_profile"}}
 }
 func claimHTTP(t *testing.T, h http.Handler, path, token string, input, output any, want int) {
 	t.Helper()

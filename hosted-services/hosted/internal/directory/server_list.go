@@ -10,6 +10,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"hash/maphash"
+	"portico.local/hosted/internal/serverreturn"
+	"portico.local/hosted/trust"
 	"strconv"
 	"strings"
 	"sync"
@@ -360,4 +362,17 @@ func (s *Service) verifyConsent(m MemberStanding, server string) (time.Time, str
 		return time.Time{}, "", ""
 	}
 	return c.IssuedAt, c.Kind, envelope.KeyID
+}
+
+// SignServerReturn is called only inside the registered-return consume. It
+// cannot issue ordinary identity/custody assertions or infer contact identity.
+func (s *Service) SignServerReturn(q serverreturn.Assertion) (trust.Envelope, error) {
+	if s.keys == nil || q.Kind != "portico.server-return.v1" || !serverreturn.Binding(q.Purpose, q.CurrentOwnerAccountID, q.PreviousOwnerRole) || !validServerID(q.ServerID) || q.ClaimGeneration < 1 || q.CredentialGeneration < 1 {
+		return trust.Envelope{}, ErrInvalid
+	}
+	raw, e := json.Marshal(q)
+	if e != nil {
+		return trust.Envelope{}, e
+	}
+	return s.keys.Sign(raw)
 }

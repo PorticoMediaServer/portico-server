@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"portico.local/hosted/internal/identity"
+	"portico.local/hosted/internal/serverreturn"
 	"portico.local/hosted/trust"
 	"time"
 )
@@ -18,51 +19,60 @@ var ErrStale = errors.New("claim stale")
 var ErrCapacity = errors.New("claim capacity exceeded")
 
 type ApprovalInput struct {
-	ReplacesServerID string `json:"replacesServerId,omitempty"`
-	OperationID      string `json:"operationId"`
-	ServerID         string `json:"serverId"`
-	PublicKey        string `json:"publicKey"`
-	LocalGeneration  int64  `json:"localGeneration,string"`
-	Name             string `json:"name"`
-	OwnerProfileID   string `json:"ownerProfileId"`
-	ExpectedRevision int64  `json:"expectedRevision,string"`
+	ReplacesServerID      string `json:"replacesServerId,omitempty"`
+	OperationID           string `json:"operationId"`
+	ServerID              string `json:"serverId"`
+	PublicKey             string `json:"publicKey"`
+	LocalGeneration       int64  `json:"localGeneration,string"`
+	Name                  string `json:"name"`
+	OwnerProfileID        string `json:"ownerProfileId"`
+	ExpectedRevision      int64  `json:"expectedRevision,string"`
+	Purpose               string `json:"purpose"`
+	CurrentOwnerAccountID string `json:"currentOwnerAccountId"`
+	PreviousOwnerRole     string `json:"previousOwnerRole"`
+	ReturnRegistrationID  string `json:"returnRegistrationId"`
 }
 
 func (a ApprovalInput) Valid() bool {
 	key, ok := decode(a.PublicKey, 32)
 	derived, _ := ServerID(key)
-	return (a.ReplacesServerID == "" || validID(a.ReplacesServerID) && a.ReplacesServerID != a.ServerID) && a.ServerID == derived && validID(a.OperationID) && validID(a.ServerID) && validID(a.OwnerProfileID) && ok && a.LocalGeneration >= 0 && a.ExpectedRevision >= 0 && len(a.Name) > 0 && len(a.Name) <= 120
+	return serverreturn.Binding(a.Purpose, a.CurrentOwnerAccountID, a.PreviousOwnerRole) && (a.ReturnRegistrationID == "" || validID(a.ReturnRegistrationID)) && (a.ReplacesServerID == "" || validID(a.ReplacesServerID) && a.ReplacesServerID != a.ServerID) && a.ServerID == derived && validID(a.OperationID) && validID(a.ServerID) && validID(a.OwnerProfileID) && ok && a.LocalGeneration >= 0 && a.ExpectedRevision >= 0 && len(a.Name) > 0 && len(a.Name) <= 120
 }
 
 // IntentDigest includes the explicit selected profile and displayed server name.
 // Neither can be silently substituted during idempotent approval/reapproval.
 func (a ApprovalInput) IntentDigest(account, audience string) [32]byte {
 	v := struct {
-		OperationID, ServerID, AccountID, PublicKey, Audience string
-		LocalGeneration                                       int64
-		Name, OwnerProfileID, ReplacesServerID                string
-	}{a.OperationID, a.ServerID, account, a.PublicKey, audience, a.LocalGeneration, a.Name, a.OwnerProfileID, a.ReplacesServerID}
+		OperationID, ServerID, AccountID, PublicKey, Audience                   string
+		LocalGeneration                                                         int64
+		Name, OwnerProfileID, ReplacesServerID                                  string
+		Purpose, CurrentOwnerAccountID, PreviousOwnerRole, ReturnRegistrationID string
+	}{a.OperationID, a.ServerID, account, a.PublicKey, audience, a.LocalGeneration, a.Name, a.OwnerProfileID, a.ReplacesServerID, a.Purpose, a.CurrentOwnerAccountID, a.PreviousOwnerRole, a.ReturnRegistrationID}
 	raw, _ := json.Marshal(v)
 	return sha256.Sum256(raw)
 }
 
 type Approval struct {
-	Kind             string `json:"kind"`
-	Version          string `json:"version"`
-	Audience         string `json:"audience"`
-	OperationID      string `json:"operationId"`
-	ServerID         string `json:"serverId"`
-	AccountID        string `json:"accountId"`
-	PublicKey        string `json:"publicKey"`
-	LocalGeneration  int64  `json:"localGeneration,string"`
-	ApprovalRevision int64  `json:"approvalRevision,string"`
-	IssuedAt         string `json:"issuedAt"`
-	ExpiresAt        string `json:"expiresAt"`
+	Kind                  string `json:"kind"`
+	Version               string `json:"version"`
+	Audience              string `json:"audience"`
+	OperationID           string `json:"operationId"`
+	ServerID              string `json:"serverId"`
+	AccountID             string `json:"accountId"`
+	PublicKey             string `json:"publicKey"`
+	LocalGeneration       int64  `json:"localGeneration,string"`
+	ApprovalRevision      int64  `json:"approvalRevision,string"`
+	Purpose               string `json:"purpose"`
+	CurrentOwnerAccountID string `json:"currentOwnerAccountId"`
+	PreviousOwnerRole     string `json:"previousOwnerRole"`
+	ReturnRegistrationID  string `json:"returnRegistrationId"`
+	IssuedAt              string `json:"issuedAt"`
+	ExpiresAt             string `json:"expiresAt"`
 }
 type Envelope = trust.Envelope
 
 func SignApproval(a Approval, key ed25519.PrivateKey, keyID string, certificate *trust.Certificate) (Envelope, error) {
-	if len(key) != ed25519.PrivateKeySize || keyID == "" || a.Kind != "portico.claim.approval" || a.Version != "1" || !validAudience(a.Audience) || !validBinding(a.OperationID, a.ServerID, a.AccountID, a.LocalGeneration) || a.ApprovalRevision < 1 {
+	if len(key) != ed25519.PrivateKeySize || keyID == "" || a.Kind != "portico.claim.approval" || a.Version != "2" || !serverreturn.Binding(a.Purpose, a.CurrentOwnerAccountID, a.PreviousOwnerRole) || !validAudience(a.Audience) || !validBinding(a.OperationID, a.ServerID, a.AccountID, a.LocalGeneration) || a.ApprovalRevision < 1 {
 		return Envelope{}, ErrInvalid
 	}
 	public, ok := decode(a.PublicKey, 32)
