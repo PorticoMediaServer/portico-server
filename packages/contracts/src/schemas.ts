@@ -2303,6 +2303,158 @@ export const schemas = {
               "nullable": true,
               "type": "boolean"
             },
+            "homeActions": {
+              "properties": {
+                "collection": {
+                  "type": "boolean"
+                },
+                "delete": {
+                  "type": "boolean"
+                },
+                "details": {
+                  "type": "boolean"
+                },
+                "download": {
+                  "type": "boolean"
+                },
+                "editMetadata": {
+                  "type": "boolean"
+                },
+                "favorite": {
+                  "type": "boolean"
+                },
+                "myList": {
+                  "type": "boolean"
+                },
+                "play": {
+                  "type": "boolean"
+                },
+                "played": {
+                  "type": "boolean"
+                },
+                "playlist": {
+                  "type": "boolean"
+                },
+                "queue": {
+                  "type": "boolean"
+                },
+                "rating": {
+                  "type": "boolean"
+                },
+                "refreshMetadata": {
+                  "type": "boolean"
+                },
+                "selection": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "edit": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "refresh": {
+                      "type": "boolean"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "download",
+                    "edit",
+                    "refresh",
+                    "delete"
+                  ],
+                  "type": "object"
+                },
+                "state": {
+                  "properties": {
+                    "containerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "personalRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "rating": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    },
+                    "watchlisted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "watchlisted",
+                    "favorite",
+                    "watched",
+                    "rating",
+                    "personalRevision",
+                    "containerRevision"
+                  ],
+                  "type": "object"
+                },
+                "watched": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "play",
+                "queue",
+                "playlist",
+                "collection",
+                "myList",
+                "favorite",
+                "watched",
+                "played",
+                "rating",
+                "editMetadata",
+                "refreshMetadata",
+                "delete",
+                "download",
+                "details",
+                "state",
+                "selection"
+              ],
+              "type": "object"
+            },
             "id": {
               "type": "string"
             },
@@ -2449,6 +2601,158 @@ export const schemas = {
                     "type": "string"
                   },
                   "type": "array"
+                },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
                 },
                 "id": {
                   "type": "string"
@@ -3148,6 +3452,158 @@ export const schemas = {
               "nullable": true,
               "type": "boolean"
             },
+            "homeActions": {
+              "properties": {
+                "collection": {
+                  "type": "boolean"
+                },
+                "delete": {
+                  "type": "boolean"
+                },
+                "details": {
+                  "type": "boolean"
+                },
+                "download": {
+                  "type": "boolean"
+                },
+                "editMetadata": {
+                  "type": "boolean"
+                },
+                "favorite": {
+                  "type": "boolean"
+                },
+                "myList": {
+                  "type": "boolean"
+                },
+                "play": {
+                  "type": "boolean"
+                },
+                "played": {
+                  "type": "boolean"
+                },
+                "playlist": {
+                  "type": "boolean"
+                },
+                "queue": {
+                  "type": "boolean"
+                },
+                "rating": {
+                  "type": "boolean"
+                },
+                "refreshMetadata": {
+                  "type": "boolean"
+                },
+                "selection": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "edit": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "refresh": {
+                      "type": "boolean"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "download",
+                    "edit",
+                    "refresh",
+                    "delete"
+                  ],
+                  "type": "object"
+                },
+                "state": {
+                  "properties": {
+                    "containerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "personalRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "rating": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    },
+                    "watchlisted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "watchlisted",
+                    "favorite",
+                    "watched",
+                    "rating",
+                    "personalRevision",
+                    "containerRevision"
+                  ],
+                  "type": "object"
+                },
+                "watched": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "play",
+                "queue",
+                "playlist",
+                "collection",
+                "myList",
+                "favorite",
+                "watched",
+                "played",
+                "rating",
+                "editMetadata",
+                "refreshMetadata",
+                "delete",
+                "download",
+                "details",
+                "state",
+                "selection"
+              ],
+              "type": "object"
+            },
             "id": {
               "type": "string"
             },
@@ -3294,6 +3750,158 @@ export const schemas = {
                     "type": "string"
                   },
                   "type": "array"
+                },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
                 },
                 "id": {
                   "type": "string"
@@ -32731,6 +33339,158 @@ export const schemas = {
                   },
                   "collection": {
                     "properties": {
+                      "actions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
+                      },
                       "backdropUrl": {
                         "type": "string"
                       },
@@ -32771,6 +33531,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "lastTitle": {
+                        "type": "string"
+                      },
+                      "mediaKind": {
                         "type": "string"
                       },
                       "members": {
@@ -32882,6 +33645,158 @@ export const schemas = {
                             "hidden": {
                               "nullable": true,
                               "type": "boolean"
+                            },
+                            "homeActions": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "editMetadata": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "played": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "rating": {
+                                  "type": "boolean"
+                                },
+                                "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "selection": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "edit": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "refresh": {
+                                      "type": "boolean"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "download",
+                                    "edit",
+                                    "refresh",
+                                    "delete"
+                                  ],
+                                  "type": "object"
+                                },
+                                "state": {
+                                  "properties": {
+                                    "containerRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "personalRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "rating": {
+                                      "nullable": true,
+                                      "type": "number"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    },
+                                    "watchlisted": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "watchlisted",
+                                    "favorite",
+                                    "watched",
+                                    "rating",
+                                    "personalRevision",
+                                    "containerRevision"
+                                  ],
+                                  "type": "object"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "played",
+                                "rating",
+                                "editMetadata",
+                                "refreshMetadata",
+                                "delete",
+                                "download",
+                                "details",
+                                "state",
+                                "selection"
+                              ],
+                              "type": "object"
                             },
                             "id": {
                               "type": "string"
@@ -33029,6 +33944,158 @@ export const schemas = {
                                     "type": "string"
                                   },
                                   "type": "array"
+                                },
+                                "homeActions": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "details": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "editMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "played": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "rating": {
+                                      "type": "boolean"
+                                    },
+                                    "refreshMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "selection": {
+                                      "properties": {
+                                        "collection": {
+                                          "type": "boolean"
+                                        },
+                                        "delete": {
+                                          "type": "boolean"
+                                        },
+                                        "download": {
+                                          "type": "boolean"
+                                        },
+                                        "edit": {
+                                          "type": "boolean"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "myList": {
+                                          "type": "boolean"
+                                        },
+                                        "play": {
+                                          "type": "boolean"
+                                        },
+                                        "playlist": {
+                                          "type": "boolean"
+                                        },
+                                        "queue": {
+                                          "type": "boolean"
+                                        },
+                                        "refresh": {
+                                          "type": "boolean"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "play",
+                                        "queue",
+                                        "playlist",
+                                        "collection",
+                                        "myList",
+                                        "favorite",
+                                        "watched",
+                                        "download",
+                                        "edit",
+                                        "refresh",
+                                        "delete"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "state": {
+                                      "properties": {
+                                        "containerRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "personalRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "rating": {
+                                          "nullable": true,
+                                          "type": "number"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        },
+                                        "watchlisted": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "watchlisted",
+                                        "favorite",
+                                        "watched",
+                                        "rating",
+                                        "personalRevision",
+                                        "containerRevision"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "played",
+                                    "rating",
+                                    "editMetadata",
+                                    "refreshMetadata",
+                                    "delete",
+                                    "download",
+                                    "details",
+                                    "state",
+                                    "selection"
+                                  ],
+                                  "type": "object"
                                 },
                                 "id": {
                                   "type": "string"
@@ -33383,6 +34450,7 @@ export const schemas = {
                       }
                     },
                     "required": [
+                      "mediaKind",
                       "collection",
                       "members"
                     ],
@@ -33512,6 +34580,158 @@ export const schemas = {
                         "hidden": {
                           "nullable": true,
                           "type": "boolean"
+                        },
+                        "homeActions": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "details": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "editMetadata": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "played": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "rating": {
+                              "type": "boolean"
+                            },
+                            "refreshMetadata": {
+                              "type": "boolean"
+                            },
+                            "selection": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "edit": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "refresh": {
+                                  "type": "boolean"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "download",
+                                "edit",
+                                "refresh",
+                                "delete"
+                              ],
+                              "type": "object"
+                            },
+                            "state": {
+                              "properties": {
+                                "containerRevision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "personalRevision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "rating": {
+                                  "nullable": true,
+                                  "type": "number"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                },
+                                "watchlisted": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "watchlisted",
+                                "favorite",
+                                "watched",
+                                "rating",
+                                "personalRevision",
+                                "containerRevision"
+                              ],
+                              "type": "object"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "played",
+                            "rating",
+                            "editMetadata",
+                            "refreshMetadata",
+                            "delete",
+                            "download",
+                            "details",
+                            "state",
+                            "selection"
+                          ],
+                          "type": "object"
                         },
                         "id": {
                           "type": "string"
@@ -33659,6 +34879,158 @@ export const schemas = {
                                 "type": "string"
                               },
                               "type": "array"
+                            },
+                            "homeActions": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "editMetadata": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "played": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "rating": {
+                                  "type": "boolean"
+                                },
+                                "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "selection": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "edit": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "refresh": {
+                                      "type": "boolean"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "download",
+                                    "edit",
+                                    "refresh",
+                                    "delete"
+                                  ],
+                                  "type": "object"
+                                },
+                                "state": {
+                                  "properties": {
+                                    "containerRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "personalRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "rating": {
+                                      "nullable": true,
+                                      "type": "number"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    },
+                                    "watchlisted": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "watchlisted",
+                                    "favorite",
+                                    "watched",
+                                    "rating",
+                                    "personalRevision",
+                                    "containerRevision"
+                                  ],
+                                  "type": "object"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "played",
+                                "rating",
+                                "editMetadata",
+                                "refreshMetadata",
+                                "delete",
+                                "download",
+                                "details",
+                                "state",
+                                "selection"
+                              ],
+                              "type": "object"
                             },
                             "id": {
                               "type": "string"
@@ -34045,6 +35417,21 @@ export const schemas = {
                       "channels": {
                         "items": {
                           "properties": {
+                            "actions": {
+                              "properties": {
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "favorite"
+                              ],
+                              "type": "object"
+                            },
                             "channel": {
                               "properties": {
                                 "favorite": {
@@ -34301,6 +35688,7 @@ export const schemas = {
                             }
                           },
                           "required": [
+                            "actions",
                             "channel",
                             "source"
                           ],
@@ -34605,6 +35993,158 @@ export const schemas = {
                               "nullable": true,
                               "type": "boolean"
                             },
+                            "homeActions": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "editMetadata": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "played": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "rating": {
+                                  "type": "boolean"
+                                },
+                                "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "selection": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "edit": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "refresh": {
+                                      "type": "boolean"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "download",
+                                    "edit",
+                                    "refresh",
+                                    "delete"
+                                  ],
+                                  "type": "object"
+                                },
+                                "state": {
+                                  "properties": {
+                                    "containerRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "personalRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "rating": {
+                                      "nullable": true,
+                                      "type": "number"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    },
+                                    "watchlisted": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "watchlisted",
+                                    "favorite",
+                                    "watched",
+                                    "rating",
+                                    "personalRevision",
+                                    "containerRevision"
+                                  ],
+                                  "type": "object"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "played",
+                                "rating",
+                                "editMetadata",
+                                "refreshMetadata",
+                                "delete",
+                                "download",
+                                "details",
+                                "state",
+                                "selection"
+                              ],
+                              "type": "object"
+                            },
                             "id": {
                               "type": "string"
                             },
@@ -34751,6 +36291,158 @@ export const schemas = {
                                     "type": "string"
                                   },
                                   "type": "array"
+                                },
+                                "homeActions": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "details": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "editMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "played": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "rating": {
+                                      "type": "boolean"
+                                    },
+                                    "refreshMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "selection": {
+                                      "properties": {
+                                        "collection": {
+                                          "type": "boolean"
+                                        },
+                                        "delete": {
+                                          "type": "boolean"
+                                        },
+                                        "download": {
+                                          "type": "boolean"
+                                        },
+                                        "edit": {
+                                          "type": "boolean"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "myList": {
+                                          "type": "boolean"
+                                        },
+                                        "play": {
+                                          "type": "boolean"
+                                        },
+                                        "playlist": {
+                                          "type": "boolean"
+                                        },
+                                        "queue": {
+                                          "type": "boolean"
+                                        },
+                                        "refresh": {
+                                          "type": "boolean"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "play",
+                                        "queue",
+                                        "playlist",
+                                        "collection",
+                                        "myList",
+                                        "favorite",
+                                        "watched",
+                                        "download",
+                                        "edit",
+                                        "refresh",
+                                        "delete"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "state": {
+                                      "properties": {
+                                        "containerRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "personalRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "rating": {
+                                          "nullable": true,
+                                          "type": "number"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        },
+                                        "watchlisted": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "watchlisted",
+                                        "favorite",
+                                        "watched",
+                                        "rating",
+                                        "personalRevision",
+                                        "containerRevision"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "played",
+                                    "rating",
+                                    "editMetadata",
+                                    "refreshMetadata",
+                                    "delete",
+                                    "download",
+                                    "details",
+                                    "state",
+                                    "selection"
+                                  ],
+                                  "type": "object"
                                 },
                                 "id": {
                                   "type": "string"
@@ -35454,6 +37146,158 @@ export const schemas = {
             },
             "collection": {
               "properties": {
+                "actions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "backdropUrl": {
                   "type": "string"
                 },
@@ -35494,6 +37338,9 @@ export const schemas = {
                   "type": "integer"
                 },
                 "lastTitle": {
+                  "type": "string"
+                },
+                "mediaKind": {
                   "type": "string"
                 },
                 "members": {
@@ -35605,6 +37452,158 @@ export const schemas = {
                       "hidden": {
                         "nullable": true,
                         "type": "boolean"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -35752,6 +37751,158 @@ export const schemas = {
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "nullable": true,
+                                    "type": "number"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
                           },
                           "id": {
                             "type": "string"
@@ -36106,6 +38257,7 @@ export const schemas = {
                 }
               },
               "required": [
+                "mediaKind",
                 "collection",
                 "members"
               ],
@@ -36232,6 +38384,158 @@ export const schemas = {
                   "hidden": {
                     "nullable": true,
                     "type": "boolean"
+                  },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
                   },
                   "id": {
                     "type": "string"
@@ -36379,6 +38683,158 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -36765,6 +39221,21 @@ export const schemas = {
                 "channels": {
                   "items": {
                     "properties": {
+                      "actions": {
+                        "properties": {
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "favorite"
+                        ],
+                        "type": "object"
+                      },
                       "channel": {
                         "properties": {
                           "favorite": {
@@ -37021,6 +39492,7 @@ export const schemas = {
                       }
                     },
                     "required": [
+                      "actions",
                       "channel",
                       "source"
                     ],
@@ -37325,6 +39797,158 @@ export const schemas = {
                         "nullable": true,
                         "type": "boolean"
                       },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -37471,6 +40095,158 @@ export const schemas = {
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "nullable": true,
+                                    "type": "number"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
                           },
                           "id": {
                             "type": "string"
@@ -38287,6 +41063,158 @@ export const schemas = {
                   "nullable": true,
                   "type": "boolean"
                 },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -38433,6 +41361,158 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -38942,6 +42022,158 @@ export const schemas = {
                   "nullable": true,
                   "type": "boolean"
                 },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -39088,6 +42320,158 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -39496,6 +42880,158 @@ export const schemas = {
             },
             "collection": {
               "properties": {
+                "actions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "backdropUrl": {
                   "type": "string"
                 },
@@ -39536,6 +43072,9 @@ export const schemas = {
                   "type": "integer"
                 },
                 "lastTitle": {
+                  "type": "string"
+                },
+                "mediaKind": {
                   "type": "string"
                 },
                 "members": {
@@ -39647,6 +43186,158 @@ export const schemas = {
                       "hidden": {
                         "nullable": true,
                         "type": "boolean"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -39794,6 +43485,158 @@ export const schemas = {
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "nullable": true,
+                                    "type": "number"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
                           },
                           "id": {
                             "type": "string"
@@ -40148,6 +43991,7 @@ export const schemas = {
                 }
               },
               "required": [
+                "mediaKind",
                 "collection",
                 "members"
               ],
@@ -40277,6 +44121,158 @@ export const schemas = {
                   "hidden": {
                     "nullable": true,
                     "type": "boolean"
+                  },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
                   },
                   "id": {
                     "type": "string"
@@ -40424,6 +44420,158 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -40810,6 +44958,21 @@ export const schemas = {
                 "channels": {
                   "items": {
                     "properties": {
+                      "actions": {
+                        "properties": {
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "favorite"
+                        ],
+                        "type": "object"
+                      },
                       "channel": {
                         "properties": {
                           "favorite": {
@@ -41066,6 +45229,7 @@ export const schemas = {
                       }
                     },
                     "required": [
+                      "actions",
                       "channel",
                       "source"
                     ],
@@ -41370,6 +45534,158 @@ export const schemas = {
                         "nullable": true,
                         "type": "boolean"
                       },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -41516,6 +45832,158 @@ export const schemas = {
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "nullable": true,
+                                    "type": "number"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
                           },
                           "id": {
                             "type": "string"
@@ -42219,6 +46687,158 @@ export const schemas = {
       },
       "collection": {
         "properties": {
+          "actions": {
+            "properties": {
+              "collection": {
+                "type": "boolean"
+              },
+              "delete": {
+                "type": "boolean"
+              },
+              "details": {
+                "type": "boolean"
+              },
+              "download": {
+                "type": "boolean"
+              },
+              "editMetadata": {
+                "type": "boolean"
+              },
+              "favorite": {
+                "type": "boolean"
+              },
+              "myList": {
+                "type": "boolean"
+              },
+              "play": {
+                "type": "boolean"
+              },
+              "played": {
+                "type": "boolean"
+              },
+              "playlist": {
+                "type": "boolean"
+              },
+              "queue": {
+                "type": "boolean"
+              },
+              "rating": {
+                "type": "boolean"
+              },
+              "refreshMetadata": {
+                "type": "boolean"
+              },
+              "selection": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "edit": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "refresh": {
+                    "type": "boolean"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "download",
+                  "edit",
+                  "refresh",
+                  "delete"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "properties": {
+                  "containerRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "personalRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "rating": {
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  },
+                  "watchlisted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "watchlisted",
+                  "favorite",
+                  "watched",
+                  "rating",
+                  "personalRevision",
+                  "containerRevision"
+                ],
+                "type": "object"
+              },
+              "watched": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "play",
+              "queue",
+              "playlist",
+              "collection",
+              "myList",
+              "favorite",
+              "watched",
+              "played",
+              "rating",
+              "editMetadata",
+              "refreshMetadata",
+              "delete",
+              "download",
+              "details",
+              "state",
+              "selection"
+            ],
+            "type": "object"
+          },
           "backdropUrl": {
             "type": "string"
           },
@@ -42259,6 +46879,9 @@ export const schemas = {
             "type": "integer"
           },
           "lastTitle": {
+            "type": "string"
+          },
+          "mediaKind": {
             "type": "string"
           },
           "members": {
@@ -42370,6 +46993,158 @@ export const schemas = {
                 "hidden": {
                   "nullable": true,
                   "type": "boolean"
+                },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
                 },
                 "id": {
                   "type": "string"
@@ -42517,6 +47292,158 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -42871,6 +47798,7 @@ export const schemas = {
           }
         },
         "required": [
+          "mediaKind",
           "collection",
           "members"
         ],
@@ -42997,6 +47925,158 @@ export const schemas = {
             "hidden": {
               "nullable": true,
               "type": "boolean"
+            },
+            "homeActions": {
+              "properties": {
+                "collection": {
+                  "type": "boolean"
+                },
+                "delete": {
+                  "type": "boolean"
+                },
+                "details": {
+                  "type": "boolean"
+                },
+                "download": {
+                  "type": "boolean"
+                },
+                "editMetadata": {
+                  "type": "boolean"
+                },
+                "favorite": {
+                  "type": "boolean"
+                },
+                "myList": {
+                  "type": "boolean"
+                },
+                "play": {
+                  "type": "boolean"
+                },
+                "played": {
+                  "type": "boolean"
+                },
+                "playlist": {
+                  "type": "boolean"
+                },
+                "queue": {
+                  "type": "boolean"
+                },
+                "rating": {
+                  "type": "boolean"
+                },
+                "refreshMetadata": {
+                  "type": "boolean"
+                },
+                "selection": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "edit": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "refresh": {
+                      "type": "boolean"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "download",
+                    "edit",
+                    "refresh",
+                    "delete"
+                  ],
+                  "type": "object"
+                },
+                "state": {
+                  "properties": {
+                    "containerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "personalRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "rating": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    },
+                    "watchlisted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "watchlisted",
+                    "favorite",
+                    "watched",
+                    "rating",
+                    "personalRevision",
+                    "containerRevision"
+                  ],
+                  "type": "object"
+                },
+                "watched": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "play",
+                "queue",
+                "playlist",
+                "collection",
+                "myList",
+                "favorite",
+                "watched",
+                "played",
+                "rating",
+                "editMetadata",
+                "refreshMetadata",
+                "delete",
+                "download",
+                "details",
+                "state",
+                "selection"
+              ],
+              "type": "object"
             },
             "id": {
               "type": "string"
@@ -43144,6 +48224,158 @@ export const schemas = {
                     "type": "string"
                   },
                   "type": "array"
+                },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
                 },
                 "id": {
                   "type": "string"
@@ -43530,6 +48762,21 @@ export const schemas = {
           "channels": {
             "items": {
               "properties": {
+                "actions": {
+                  "properties": {
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "favorite"
+                  ],
+                  "type": "object"
+                },
                 "channel": {
                   "properties": {
                     "favorite": {
@@ -43786,6 +49033,7 @@ export const schemas = {
                 }
               },
               "required": [
+                "actions",
                 "channel",
                 "source"
               ],
@@ -44090,6 +49338,158 @@ export const schemas = {
                   "nullable": true,
                   "type": "boolean"
                 },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -44236,6 +49636,158 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -45671,6 +51223,158 @@ export const schemas = {
                     "nullable": true,
                     "type": "boolean"
                   },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -45817,6 +51521,158 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -47173,6 +53029,158 @@ export const schemas = {
                         "nullable": true,
                         "type": "boolean"
                       },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -47319,6 +53327,158 @@ export const schemas = {
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "nullable": true,
+                                    "type": "number"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
                           },
                           "id": {
                             "type": "string"
@@ -50960,6 +57120,158 @@ export const schemas = {
                   },
                   "collection": {
                     "properties": {
+                      "actions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
+                      },
                       "backdropUrl": {
                         "type": "string"
                       },
@@ -51000,6 +57312,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "lastTitle": {
+                        "type": "string"
+                      },
+                      "mediaKind": {
                         "type": "string"
                       },
                       "members": {
@@ -51111,6 +57426,158 @@ export const schemas = {
                             "hidden": {
                               "nullable": true,
                               "type": "boolean"
+                            },
+                            "homeActions": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "editMetadata": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "played": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "rating": {
+                                  "type": "boolean"
+                                },
+                                "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "selection": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "edit": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "refresh": {
+                                      "type": "boolean"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "download",
+                                    "edit",
+                                    "refresh",
+                                    "delete"
+                                  ],
+                                  "type": "object"
+                                },
+                                "state": {
+                                  "properties": {
+                                    "containerRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "personalRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "rating": {
+                                      "nullable": true,
+                                      "type": "number"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    },
+                                    "watchlisted": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "watchlisted",
+                                    "favorite",
+                                    "watched",
+                                    "rating",
+                                    "personalRevision",
+                                    "containerRevision"
+                                  ],
+                                  "type": "object"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "played",
+                                "rating",
+                                "editMetadata",
+                                "refreshMetadata",
+                                "delete",
+                                "download",
+                                "details",
+                                "state",
+                                "selection"
+                              ],
+                              "type": "object"
                             },
                             "id": {
                               "type": "string"
@@ -51258,6 +57725,158 @@ export const schemas = {
                                     "type": "string"
                                   },
                                   "type": "array"
+                                },
+                                "homeActions": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "details": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "editMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "played": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "rating": {
+                                      "type": "boolean"
+                                    },
+                                    "refreshMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "selection": {
+                                      "properties": {
+                                        "collection": {
+                                          "type": "boolean"
+                                        },
+                                        "delete": {
+                                          "type": "boolean"
+                                        },
+                                        "download": {
+                                          "type": "boolean"
+                                        },
+                                        "edit": {
+                                          "type": "boolean"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "myList": {
+                                          "type": "boolean"
+                                        },
+                                        "play": {
+                                          "type": "boolean"
+                                        },
+                                        "playlist": {
+                                          "type": "boolean"
+                                        },
+                                        "queue": {
+                                          "type": "boolean"
+                                        },
+                                        "refresh": {
+                                          "type": "boolean"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "play",
+                                        "queue",
+                                        "playlist",
+                                        "collection",
+                                        "myList",
+                                        "favorite",
+                                        "watched",
+                                        "download",
+                                        "edit",
+                                        "refresh",
+                                        "delete"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "state": {
+                                      "properties": {
+                                        "containerRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "personalRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "rating": {
+                                          "nullable": true,
+                                          "type": "number"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        },
+                                        "watchlisted": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "watchlisted",
+                                        "favorite",
+                                        "watched",
+                                        "rating",
+                                        "personalRevision",
+                                        "containerRevision"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "played",
+                                    "rating",
+                                    "editMetadata",
+                                    "refreshMetadata",
+                                    "delete",
+                                    "download",
+                                    "details",
+                                    "state",
+                                    "selection"
+                                  ],
+                                  "type": "object"
                                 },
                                 "id": {
                                   "type": "string"
@@ -51612,6 +58231,7 @@ export const schemas = {
                       }
                     },
                     "required": [
+                      "mediaKind",
                       "collection",
                       "members"
                     ],
@@ -51741,6 +58361,158 @@ export const schemas = {
                         "hidden": {
                           "nullable": true,
                           "type": "boolean"
+                        },
+                        "homeActions": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "details": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "editMetadata": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "played": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "rating": {
+                              "type": "boolean"
+                            },
+                            "refreshMetadata": {
+                              "type": "boolean"
+                            },
+                            "selection": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "edit": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "refresh": {
+                                  "type": "boolean"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "download",
+                                "edit",
+                                "refresh",
+                                "delete"
+                              ],
+                              "type": "object"
+                            },
+                            "state": {
+                              "properties": {
+                                "containerRevision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "personalRevision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "rating": {
+                                  "nullable": true,
+                                  "type": "number"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                },
+                                "watchlisted": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "watchlisted",
+                                "favorite",
+                                "watched",
+                                "rating",
+                                "personalRevision",
+                                "containerRevision"
+                              ],
+                              "type": "object"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "played",
+                            "rating",
+                            "editMetadata",
+                            "refreshMetadata",
+                            "delete",
+                            "download",
+                            "details",
+                            "state",
+                            "selection"
+                          ],
+                          "type": "object"
                         },
                         "id": {
                           "type": "string"
@@ -51888,6 +58660,158 @@ export const schemas = {
                                 "type": "string"
                               },
                               "type": "array"
+                            },
+                            "homeActions": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "editMetadata": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "played": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "rating": {
+                                  "type": "boolean"
+                                },
+                                "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "selection": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "edit": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "refresh": {
+                                      "type": "boolean"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "download",
+                                    "edit",
+                                    "refresh",
+                                    "delete"
+                                  ],
+                                  "type": "object"
+                                },
+                                "state": {
+                                  "properties": {
+                                    "containerRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "personalRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "rating": {
+                                      "nullable": true,
+                                      "type": "number"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    },
+                                    "watchlisted": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "watchlisted",
+                                    "favorite",
+                                    "watched",
+                                    "rating",
+                                    "personalRevision",
+                                    "containerRevision"
+                                  ],
+                                  "type": "object"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "played",
+                                "rating",
+                                "editMetadata",
+                                "refreshMetadata",
+                                "delete",
+                                "download",
+                                "details",
+                                "state",
+                                "selection"
+                              ],
+                              "type": "object"
                             },
                             "id": {
                               "type": "string"
@@ -52274,6 +59198,21 @@ export const schemas = {
                       "channels": {
                         "items": {
                           "properties": {
+                            "actions": {
+                              "properties": {
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "favorite"
+                              ],
+                              "type": "object"
+                            },
                             "channel": {
                               "properties": {
                                 "favorite": {
@@ -52530,6 +59469,7 @@ export const schemas = {
                             }
                           },
                           "required": [
+                            "actions",
                             "channel",
                             "source"
                           ],
@@ -52834,6 +59774,158 @@ export const schemas = {
                               "nullable": true,
                               "type": "boolean"
                             },
+                            "homeActions": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "editMetadata": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "played": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "rating": {
+                                  "type": "boolean"
+                                },
+                                "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "selection": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "edit": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "refresh": {
+                                      "type": "boolean"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "download",
+                                    "edit",
+                                    "refresh",
+                                    "delete"
+                                  ],
+                                  "type": "object"
+                                },
+                                "state": {
+                                  "properties": {
+                                    "containerRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "personalRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "rating": {
+                                      "nullable": true,
+                                      "type": "number"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    },
+                                    "watchlisted": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "watchlisted",
+                                    "favorite",
+                                    "watched",
+                                    "rating",
+                                    "personalRevision",
+                                    "containerRevision"
+                                  ],
+                                  "type": "object"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "played",
+                                "rating",
+                                "editMetadata",
+                                "refreshMetadata",
+                                "delete",
+                                "download",
+                                "details",
+                                "state",
+                                "selection"
+                              ],
+                              "type": "object"
+                            },
                             "id": {
                               "type": "string"
                             },
@@ -52980,6 +60072,158 @@ export const schemas = {
                                     "type": "string"
                                   },
                                   "type": "array"
+                                },
+                                "homeActions": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "details": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "editMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "played": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "rating": {
+                                      "type": "boolean"
+                                    },
+                                    "refreshMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "selection": {
+                                      "properties": {
+                                        "collection": {
+                                          "type": "boolean"
+                                        },
+                                        "delete": {
+                                          "type": "boolean"
+                                        },
+                                        "download": {
+                                          "type": "boolean"
+                                        },
+                                        "edit": {
+                                          "type": "boolean"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "myList": {
+                                          "type": "boolean"
+                                        },
+                                        "play": {
+                                          "type": "boolean"
+                                        },
+                                        "playlist": {
+                                          "type": "boolean"
+                                        },
+                                        "queue": {
+                                          "type": "boolean"
+                                        },
+                                        "refresh": {
+                                          "type": "boolean"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "play",
+                                        "queue",
+                                        "playlist",
+                                        "collection",
+                                        "myList",
+                                        "favorite",
+                                        "watched",
+                                        "download",
+                                        "edit",
+                                        "refresh",
+                                        "delete"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "state": {
+                                      "properties": {
+                                        "containerRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "personalRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "rating": {
+                                          "nullable": true,
+                                          "type": "number"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        },
+                                        "watchlisted": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "watchlisted",
+                                        "favorite",
+                                        "watched",
+                                        "rating",
+                                        "personalRevision",
+                                        "containerRevision"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "played",
+                                    "rating",
+                                    "editMetadata",
+                                    "refreshMetadata",
+                                    "delete",
+                                    "download",
+                                    "details",
+                                    "state",
+                                    "selection"
+                                  ],
+                                  "type": "object"
                                 },
                                 "id": {
                                   "type": "string"
@@ -53683,6 +60927,158 @@ export const schemas = {
             },
             "collection": {
               "properties": {
+                "actions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "backdropUrl": {
                   "type": "string"
                 },
@@ -53723,6 +61119,9 @@ export const schemas = {
                   "type": "integer"
                 },
                 "lastTitle": {
+                  "type": "string"
+                },
+                "mediaKind": {
                   "type": "string"
                 },
                 "members": {
@@ -53834,6 +61233,158 @@ export const schemas = {
                       "hidden": {
                         "nullable": true,
                         "type": "boolean"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -53981,6 +61532,158 @@ export const schemas = {
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "nullable": true,
+                                    "type": "number"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
                           },
                           "id": {
                             "type": "string"
@@ -54335,6 +62038,7 @@ export const schemas = {
                 }
               },
               "required": [
+                "mediaKind",
                 "collection",
                 "members"
               ],
@@ -54461,6 +62165,158 @@ export const schemas = {
                   "hidden": {
                     "nullable": true,
                     "type": "boolean"
+                  },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
                   },
                   "id": {
                     "type": "string"
@@ -54608,6 +62464,158 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -54994,6 +63002,21 @@ export const schemas = {
                 "channels": {
                   "items": {
                     "properties": {
+                      "actions": {
+                        "properties": {
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "favorite"
+                        ],
+                        "type": "object"
+                      },
                       "channel": {
                         "properties": {
                           "favorite": {
@@ -55250,6 +63273,7 @@ export const schemas = {
                       }
                     },
                     "required": [
+                      "actions",
                       "channel",
                       "source"
                     ],
@@ -55554,6 +63578,158 @@ export const schemas = {
                         "nullable": true,
                         "type": "boolean"
                       },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -55700,6 +63876,158 @@ export const schemas = {
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "nullable": true,
+                                    "type": "number"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
                           },
                           "id": {
                             "type": "string"
@@ -59345,6 +67673,158 @@ export const schemas = {
             "nullable": true,
             "type": "boolean"
           },
+          "homeActions": {
+            "properties": {
+              "collection": {
+                "type": "boolean"
+              },
+              "delete": {
+                "type": "boolean"
+              },
+              "details": {
+                "type": "boolean"
+              },
+              "download": {
+                "type": "boolean"
+              },
+              "editMetadata": {
+                "type": "boolean"
+              },
+              "favorite": {
+                "type": "boolean"
+              },
+              "myList": {
+                "type": "boolean"
+              },
+              "play": {
+                "type": "boolean"
+              },
+              "played": {
+                "type": "boolean"
+              },
+              "playlist": {
+                "type": "boolean"
+              },
+              "queue": {
+                "type": "boolean"
+              },
+              "rating": {
+                "type": "boolean"
+              },
+              "refreshMetadata": {
+                "type": "boolean"
+              },
+              "selection": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "edit": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "refresh": {
+                    "type": "boolean"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "download",
+                  "edit",
+                  "refresh",
+                  "delete"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "properties": {
+                  "containerRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "personalRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "rating": {
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  },
+                  "watchlisted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "watchlisted",
+                  "favorite",
+                  "watched",
+                  "rating",
+                  "personalRevision",
+                  "containerRevision"
+                ],
+                "type": "object"
+              },
+              "watched": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "play",
+              "queue",
+              "playlist",
+              "collection",
+              "myList",
+              "favorite",
+              "watched",
+              "played",
+              "rating",
+              "editMetadata",
+              "refreshMetadata",
+              "delete",
+              "download",
+              "details",
+              "state",
+              "selection"
+            ],
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -59491,6 +67971,158 @@ export const schemas = {
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "homeActions": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "details": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "editMetadata": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "played": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "rating": {
+                    "type": "boolean"
+                  },
+                  "refreshMetadata": {
+                    "type": "boolean"
+                  },
+                  "selection": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "edit": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "refresh": {
+                        "type": "boolean"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "download",
+                      "edit",
+                      "refresh",
+                      "delete"
+                    ],
+                    "type": "object"
+                  },
+                  "state": {
+                    "properties": {
+                      "containerRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "personalRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "rating": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      },
+                      "watchlisted": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "watchlisted",
+                      "favorite",
+                      "watched",
+                      "rating",
+                      "personalRevision",
+                      "containerRevision"
+                    ],
+                    "type": "object"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "played",
+                  "rating",
+                  "editMetadata",
+                  "refreshMetadata",
+                  "delete",
+                  "download",
+                  "details",
+                  "state",
+                  "selection"
+                ],
+                "type": "object"
               },
               "id": {
                 "type": "string"
@@ -60182,6 +68814,158 @@ export const schemas = {
                     "nullable": true,
                     "type": "boolean"
                   },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -60328,6 +69112,158 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -60962,6 +69898,158 @@ export const schemas = {
                     "nullable": true,
                     "type": "boolean"
                   },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -61108,6 +70196,158 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -62197,6 +71437,158 @@ export const schemas = {
                 "nullable": true,
                 "type": "boolean"
               },
+              "homeActions": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "details": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "editMetadata": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "played": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "rating": {
+                    "type": "boolean"
+                  },
+                  "refreshMetadata": {
+                    "type": "boolean"
+                  },
+                  "selection": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "edit": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "refresh": {
+                        "type": "boolean"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "download",
+                      "edit",
+                      "refresh",
+                      "delete"
+                    ],
+                    "type": "object"
+                  },
+                  "state": {
+                    "properties": {
+                      "containerRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "personalRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "rating": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      },
+                      "watchlisted": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "watchlisted",
+                      "favorite",
+                      "watched",
+                      "rating",
+                      "personalRevision",
+                      "containerRevision"
+                    ],
+                    "type": "object"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "played",
+                  "rating",
+                  "editMetadata",
+                  "refreshMetadata",
+                  "delete",
+                  "download",
+                  "details",
+                  "state",
+                  "selection"
+                ],
+                "type": "object"
+              },
               "id": {
                 "type": "string"
               },
@@ -62343,6 +71735,158 @@ export const schemas = {
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
                   },
                   "id": {
                     "type": "string"
@@ -63034,6 +72578,158 @@ export const schemas = {
                         "nullable": true,
                         "type": "boolean"
                       },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -63180,6 +72876,158 @@ export const schemas = {
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "nullable": true,
+                                    "type": "number"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
                           },
                           "id": {
                             "type": "string"
@@ -63800,6 +73648,158 @@ export const schemas = {
             "nullable": true,
             "type": "boolean"
           },
+          "homeActions": {
+            "properties": {
+              "collection": {
+                "type": "boolean"
+              },
+              "delete": {
+                "type": "boolean"
+              },
+              "details": {
+                "type": "boolean"
+              },
+              "download": {
+                "type": "boolean"
+              },
+              "editMetadata": {
+                "type": "boolean"
+              },
+              "favorite": {
+                "type": "boolean"
+              },
+              "myList": {
+                "type": "boolean"
+              },
+              "play": {
+                "type": "boolean"
+              },
+              "played": {
+                "type": "boolean"
+              },
+              "playlist": {
+                "type": "boolean"
+              },
+              "queue": {
+                "type": "boolean"
+              },
+              "rating": {
+                "type": "boolean"
+              },
+              "refreshMetadata": {
+                "type": "boolean"
+              },
+              "selection": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "edit": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "refresh": {
+                    "type": "boolean"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "download",
+                  "edit",
+                  "refresh",
+                  "delete"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "properties": {
+                  "containerRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "personalRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "rating": {
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  },
+                  "watchlisted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "watchlisted",
+                  "favorite",
+                  "watched",
+                  "rating",
+                  "personalRevision",
+                  "containerRevision"
+                ],
+                "type": "object"
+              },
+              "watched": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "play",
+              "queue",
+              "playlist",
+              "collection",
+              "myList",
+              "favorite",
+              "watched",
+              "played",
+              "rating",
+              "editMetadata",
+              "refreshMetadata",
+              "delete",
+              "download",
+              "details",
+              "state",
+              "selection"
+            ],
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -63946,6 +73946,158 @@ export const schemas = {
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "homeActions": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "details": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "editMetadata": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "played": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "rating": {
+                    "type": "boolean"
+                  },
+                  "refreshMetadata": {
+                    "type": "boolean"
+                  },
+                  "selection": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "edit": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "refresh": {
+                        "type": "boolean"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "download",
+                      "edit",
+                      "refresh",
+                      "delete"
+                    ],
+                    "type": "object"
+                  },
+                  "state": {
+                    "properties": {
+                      "containerRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "personalRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "rating": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      },
+                      "watchlisted": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "watchlisted",
+                      "favorite",
+                      "watched",
+                      "rating",
+                      "personalRevision",
+                      "containerRevision"
+                    ],
+                    "type": "object"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "played",
+                  "rating",
+                  "editMetadata",
+                  "refreshMetadata",
+                  "delete",
+                  "download",
+                  "details",
+                  "state",
+                  "selection"
+                ],
+                "type": "object"
               },
               "id": {
                 "type": "string"
@@ -68191,6 +78343,158 @@ export const schemas = {
                   "nullable": true,
                   "type": "boolean"
                 },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -68337,6 +78641,158 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -68842,6 +79298,158 @@ export const schemas = {
                   "nullable": true,
                   "type": "boolean"
                 },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -68988,6 +79596,158 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -69625,6 +80385,158 @@ export const schemas = {
                   "nullable": true,
                   "type": "boolean"
                 },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -69771,6 +80683,158 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -71790,6 +82854,158 @@ export const schemas = {
             "nullable": true,
             "type": "boolean"
           },
+          "homeActions": {
+            "properties": {
+              "collection": {
+                "type": "boolean"
+              },
+              "delete": {
+                "type": "boolean"
+              },
+              "details": {
+                "type": "boolean"
+              },
+              "download": {
+                "type": "boolean"
+              },
+              "editMetadata": {
+                "type": "boolean"
+              },
+              "favorite": {
+                "type": "boolean"
+              },
+              "myList": {
+                "type": "boolean"
+              },
+              "play": {
+                "type": "boolean"
+              },
+              "played": {
+                "type": "boolean"
+              },
+              "playlist": {
+                "type": "boolean"
+              },
+              "queue": {
+                "type": "boolean"
+              },
+              "rating": {
+                "type": "boolean"
+              },
+              "refreshMetadata": {
+                "type": "boolean"
+              },
+              "selection": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "edit": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "refresh": {
+                    "type": "boolean"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "download",
+                  "edit",
+                  "refresh",
+                  "delete"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "properties": {
+                  "containerRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "personalRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "rating": {
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  },
+                  "watchlisted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "watchlisted",
+                  "favorite",
+                  "watched",
+                  "rating",
+                  "personalRevision",
+                  "containerRevision"
+                ],
+                "type": "object"
+              },
+              "watched": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "play",
+              "queue",
+              "playlist",
+              "collection",
+              "myList",
+              "favorite",
+              "watched",
+              "played",
+              "rating",
+              "editMetadata",
+              "refreshMetadata",
+              "delete",
+              "download",
+              "details",
+              "state",
+              "selection"
+            ],
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -71936,6 +83152,158 @@ export const schemas = {
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "homeActions": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "details": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "editMetadata": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "played": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "rating": {
+                    "type": "boolean"
+                  },
+                  "refreshMetadata": {
+                    "type": "boolean"
+                  },
+                  "selection": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "edit": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "refresh": {
+                        "type": "boolean"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "download",
+                      "edit",
+                      "refresh",
+                      "delete"
+                    ],
+                    "type": "object"
+                  },
+                  "state": {
+                    "properties": {
+                      "containerRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "personalRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "rating": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      },
+                      "watchlisted": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "watchlisted",
+                      "favorite",
+                      "watched",
+                      "rating",
+                      "personalRevision",
+                      "containerRevision"
+                    ],
+                    "type": "object"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "played",
+                  "rating",
+                  "editMetadata",
+                  "refreshMetadata",
+                  "delete",
+                  "download",
+                  "details",
+                  "state",
+                  "selection"
+                ],
+                "type": "object"
               },
               "id": {
                 "type": "string"
@@ -72627,6 +83995,158 @@ export const schemas = {
                     "nullable": true,
                     "type": "boolean"
                   },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -72773,6 +84293,158 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -74228,6 +85900,158 @@ export const schemas = {
             "nullable": true,
             "type": "boolean"
           },
+          "homeActions": {
+            "properties": {
+              "collection": {
+                "type": "boolean"
+              },
+              "delete": {
+                "type": "boolean"
+              },
+              "details": {
+                "type": "boolean"
+              },
+              "download": {
+                "type": "boolean"
+              },
+              "editMetadata": {
+                "type": "boolean"
+              },
+              "favorite": {
+                "type": "boolean"
+              },
+              "myList": {
+                "type": "boolean"
+              },
+              "play": {
+                "type": "boolean"
+              },
+              "played": {
+                "type": "boolean"
+              },
+              "playlist": {
+                "type": "boolean"
+              },
+              "queue": {
+                "type": "boolean"
+              },
+              "rating": {
+                "type": "boolean"
+              },
+              "refreshMetadata": {
+                "type": "boolean"
+              },
+              "selection": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "edit": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "refresh": {
+                    "type": "boolean"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "download",
+                  "edit",
+                  "refresh",
+                  "delete"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "properties": {
+                  "containerRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "personalRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "rating": {
+                    "nullable": true,
+                    "type": "number"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  },
+                  "watchlisted": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "watchlisted",
+                  "favorite",
+                  "watched",
+                  "rating",
+                  "personalRevision",
+                  "containerRevision"
+                ],
+                "type": "object"
+              },
+              "watched": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "play",
+              "queue",
+              "playlist",
+              "collection",
+              "myList",
+              "favorite",
+              "watched",
+              "played",
+              "rating",
+              "editMetadata",
+              "refreshMetadata",
+              "delete",
+              "download",
+              "details",
+              "state",
+              "selection"
+            ],
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -74374,6 +86198,158 @@ export const schemas = {
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "homeActions": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "details": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "editMetadata": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "played": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "rating": {
+                    "type": "boolean"
+                  },
+                  "refreshMetadata": {
+                    "type": "boolean"
+                  },
+                  "selection": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "edit": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "refresh": {
+                        "type": "boolean"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "download",
+                      "edit",
+                      "refresh",
+                      "delete"
+                    ],
+                    "type": "object"
+                  },
+                  "state": {
+                    "properties": {
+                      "containerRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "personalRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "rating": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      },
+                      "watchlisted": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "watchlisted",
+                      "favorite",
+                      "watched",
+                      "rating",
+                      "personalRevision",
+                      "containerRevision"
+                    ],
+                    "type": "object"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "played",
+                  "rating",
+                  "editMetadata",
+                  "refreshMetadata",
+                  "delete",
+                  "download",
+                  "details",
+                  "state",
+                  "selection"
+                ],
+                "type": "object"
               },
               "id": {
                 "type": "string"
@@ -75065,6 +87041,158 @@ export const schemas = {
                     "nullable": true,
                     "type": "boolean"
                   },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -75211,6 +87339,158 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -75956,6 +88236,158 @@ export const schemas = {
                   "nullable": true,
                   "type": "boolean"
                 },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -76102,6 +88534,158 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -76639,6 +89223,158 @@ export const schemas = {
                   "nullable": true,
                   "type": "boolean"
                 },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -76785,6 +89521,158 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -79129,6 +92017,158 @@ export const schemas = {
                   },
                   "collection": {
                     "properties": {
+                      "actions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
+                      },
                       "backdropUrl": {
                         "type": "string"
                       },
@@ -79169,6 +92209,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "lastTitle": {
+                        "type": "string"
+                      },
+                      "mediaKind": {
                         "type": "string"
                       },
                       "members": {
@@ -79280,6 +92323,158 @@ export const schemas = {
                             "hidden": {
                               "nullable": true,
                               "type": "boolean"
+                            },
+                            "homeActions": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "editMetadata": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "played": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "rating": {
+                                  "type": "boolean"
+                                },
+                                "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "selection": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "edit": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "refresh": {
+                                      "type": "boolean"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "download",
+                                    "edit",
+                                    "refresh",
+                                    "delete"
+                                  ],
+                                  "type": "object"
+                                },
+                                "state": {
+                                  "properties": {
+                                    "containerRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "personalRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "rating": {
+                                      "nullable": true,
+                                      "type": "number"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    },
+                                    "watchlisted": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "watchlisted",
+                                    "favorite",
+                                    "watched",
+                                    "rating",
+                                    "personalRevision",
+                                    "containerRevision"
+                                  ],
+                                  "type": "object"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "played",
+                                "rating",
+                                "editMetadata",
+                                "refreshMetadata",
+                                "delete",
+                                "download",
+                                "details",
+                                "state",
+                                "selection"
+                              ],
+                              "type": "object"
                             },
                             "id": {
                               "type": "string"
@@ -79427,6 +92622,158 @@ export const schemas = {
                                     "type": "string"
                                   },
                                   "type": "array"
+                                },
+                                "homeActions": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "details": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "editMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "played": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "rating": {
+                                      "type": "boolean"
+                                    },
+                                    "refreshMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "selection": {
+                                      "properties": {
+                                        "collection": {
+                                          "type": "boolean"
+                                        },
+                                        "delete": {
+                                          "type": "boolean"
+                                        },
+                                        "download": {
+                                          "type": "boolean"
+                                        },
+                                        "edit": {
+                                          "type": "boolean"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "myList": {
+                                          "type": "boolean"
+                                        },
+                                        "play": {
+                                          "type": "boolean"
+                                        },
+                                        "playlist": {
+                                          "type": "boolean"
+                                        },
+                                        "queue": {
+                                          "type": "boolean"
+                                        },
+                                        "refresh": {
+                                          "type": "boolean"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "play",
+                                        "queue",
+                                        "playlist",
+                                        "collection",
+                                        "myList",
+                                        "favorite",
+                                        "watched",
+                                        "download",
+                                        "edit",
+                                        "refresh",
+                                        "delete"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "state": {
+                                      "properties": {
+                                        "containerRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "personalRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "rating": {
+                                          "nullable": true,
+                                          "type": "number"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        },
+                                        "watchlisted": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "watchlisted",
+                                        "favorite",
+                                        "watched",
+                                        "rating",
+                                        "personalRevision",
+                                        "containerRevision"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "played",
+                                    "rating",
+                                    "editMetadata",
+                                    "refreshMetadata",
+                                    "delete",
+                                    "download",
+                                    "details",
+                                    "state",
+                                    "selection"
+                                  ],
+                                  "type": "object"
                                 },
                                 "id": {
                                   "type": "string"
@@ -79781,6 +93128,7 @@ export const schemas = {
                       }
                     },
                     "required": [
+                      "mediaKind",
                       "collection",
                       "members"
                     ],
@@ -79910,6 +93258,158 @@ export const schemas = {
                         "hidden": {
                           "nullable": true,
                           "type": "boolean"
+                        },
+                        "homeActions": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "details": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "editMetadata": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "played": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "rating": {
+                              "type": "boolean"
+                            },
+                            "refreshMetadata": {
+                              "type": "boolean"
+                            },
+                            "selection": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "edit": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "refresh": {
+                                  "type": "boolean"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "download",
+                                "edit",
+                                "refresh",
+                                "delete"
+                              ],
+                              "type": "object"
+                            },
+                            "state": {
+                              "properties": {
+                                "containerRevision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "personalRevision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "rating": {
+                                  "nullable": true,
+                                  "type": "number"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                },
+                                "watchlisted": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "watchlisted",
+                                "favorite",
+                                "watched",
+                                "rating",
+                                "personalRevision",
+                                "containerRevision"
+                              ],
+                              "type": "object"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "played",
+                            "rating",
+                            "editMetadata",
+                            "refreshMetadata",
+                            "delete",
+                            "download",
+                            "details",
+                            "state",
+                            "selection"
+                          ],
+                          "type": "object"
                         },
                         "id": {
                           "type": "string"
@@ -80057,6 +93557,158 @@ export const schemas = {
                                 "type": "string"
                               },
                               "type": "array"
+                            },
+                            "homeActions": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "editMetadata": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "played": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "rating": {
+                                  "type": "boolean"
+                                },
+                                "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "selection": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "edit": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "refresh": {
+                                      "type": "boolean"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "download",
+                                    "edit",
+                                    "refresh",
+                                    "delete"
+                                  ],
+                                  "type": "object"
+                                },
+                                "state": {
+                                  "properties": {
+                                    "containerRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "personalRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "rating": {
+                                      "nullable": true,
+                                      "type": "number"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    },
+                                    "watchlisted": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "watchlisted",
+                                    "favorite",
+                                    "watched",
+                                    "rating",
+                                    "personalRevision",
+                                    "containerRevision"
+                                  ],
+                                  "type": "object"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "played",
+                                "rating",
+                                "editMetadata",
+                                "refreshMetadata",
+                                "delete",
+                                "download",
+                                "details",
+                                "state",
+                                "selection"
+                              ],
+                              "type": "object"
                             },
                             "id": {
                               "type": "string"
@@ -80443,6 +94095,21 @@ export const schemas = {
                       "channels": {
                         "items": {
                           "properties": {
+                            "actions": {
+                              "properties": {
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "favorite"
+                              ],
+                              "type": "object"
+                            },
                             "channel": {
                               "properties": {
                                 "favorite": {
@@ -80699,6 +94366,7 @@ export const schemas = {
                             }
                           },
                           "required": [
+                            "actions",
                             "channel",
                             "source"
                           ],
@@ -81003,6 +94671,158 @@ export const schemas = {
                               "nullable": true,
                               "type": "boolean"
                             },
+                            "homeActions": {
+                              "properties": {
+                                "collection": {
+                                  "type": "boolean"
+                                },
+                                "delete": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "type": "boolean"
+                                },
+                                "download": {
+                                  "type": "boolean"
+                                },
+                                "editMetadata": {
+                                  "type": "boolean"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
+                                },
+                                "myList": {
+                                  "type": "boolean"
+                                },
+                                "play": {
+                                  "type": "boolean"
+                                },
+                                "played": {
+                                  "type": "boolean"
+                                },
+                                "playlist": {
+                                  "type": "boolean"
+                                },
+                                "queue": {
+                                  "type": "boolean"
+                                },
+                                "rating": {
+                                  "type": "boolean"
+                                },
+                                "refreshMetadata": {
+                                  "type": "boolean"
+                                },
+                                "selection": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "edit": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "refresh": {
+                                      "type": "boolean"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "download",
+                                    "edit",
+                                    "refresh",
+                                    "delete"
+                                  ],
+                                  "type": "object"
+                                },
+                                "state": {
+                                  "properties": {
+                                    "containerRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "personalRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "rating": {
+                                      "nullable": true,
+                                      "type": "number"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    },
+                                    "watchlisted": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "watchlisted",
+                                    "favorite",
+                                    "watched",
+                                    "rating",
+                                    "personalRevision",
+                                    "containerRevision"
+                                  ],
+                                  "type": "object"
+                                },
+                                "watched": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "play",
+                                "queue",
+                                "playlist",
+                                "collection",
+                                "myList",
+                                "favorite",
+                                "watched",
+                                "played",
+                                "rating",
+                                "editMetadata",
+                                "refreshMetadata",
+                                "delete",
+                                "download",
+                                "details",
+                                "state",
+                                "selection"
+                              ],
+                              "type": "object"
+                            },
                             "id": {
                               "type": "string"
                             },
@@ -81149,6 +94969,158 @@ export const schemas = {
                                     "type": "string"
                                   },
                                   "type": "array"
+                                },
+                                "homeActions": {
+                                  "properties": {
+                                    "collection": {
+                                      "type": "boolean"
+                                    },
+                                    "delete": {
+                                      "type": "boolean"
+                                    },
+                                    "details": {
+                                      "type": "boolean"
+                                    },
+                                    "download": {
+                                      "type": "boolean"
+                                    },
+                                    "editMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "favorite": {
+                                      "type": "boolean"
+                                    },
+                                    "myList": {
+                                      "type": "boolean"
+                                    },
+                                    "play": {
+                                      "type": "boolean"
+                                    },
+                                    "played": {
+                                      "type": "boolean"
+                                    },
+                                    "playlist": {
+                                      "type": "boolean"
+                                    },
+                                    "queue": {
+                                      "type": "boolean"
+                                    },
+                                    "rating": {
+                                      "type": "boolean"
+                                    },
+                                    "refreshMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "selection": {
+                                      "properties": {
+                                        "collection": {
+                                          "type": "boolean"
+                                        },
+                                        "delete": {
+                                          "type": "boolean"
+                                        },
+                                        "download": {
+                                          "type": "boolean"
+                                        },
+                                        "edit": {
+                                          "type": "boolean"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "myList": {
+                                          "type": "boolean"
+                                        },
+                                        "play": {
+                                          "type": "boolean"
+                                        },
+                                        "playlist": {
+                                          "type": "boolean"
+                                        },
+                                        "queue": {
+                                          "type": "boolean"
+                                        },
+                                        "refresh": {
+                                          "type": "boolean"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "play",
+                                        "queue",
+                                        "playlist",
+                                        "collection",
+                                        "myList",
+                                        "favorite",
+                                        "watched",
+                                        "download",
+                                        "edit",
+                                        "refresh",
+                                        "delete"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "state": {
+                                      "properties": {
+                                        "containerRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "favorite": {
+                                          "type": "boolean"
+                                        },
+                                        "personalRevision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "rating": {
+                                          "nullable": true,
+                                          "type": "number"
+                                        },
+                                        "watched": {
+                                          "type": "boolean"
+                                        },
+                                        "watchlisted": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "watchlisted",
+                                        "favorite",
+                                        "watched",
+                                        "rating",
+                                        "personalRevision",
+                                        "containerRevision"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "watched": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "play",
+                                    "queue",
+                                    "playlist",
+                                    "collection",
+                                    "myList",
+                                    "favorite",
+                                    "watched",
+                                    "played",
+                                    "rating",
+                                    "editMetadata",
+                                    "refreshMetadata",
+                                    "delete",
+                                    "download",
+                                    "details",
+                                    "state",
+                                    "selection"
+                                  ],
+                                  "type": "object"
                                 },
                                 "id": {
                                   "type": "string"
@@ -81852,6 +95824,158 @@ export const schemas = {
             },
             "collection": {
               "properties": {
+                "actions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "backdropUrl": {
                   "type": "string"
                 },
@@ -81892,6 +96016,9 @@ export const schemas = {
                   "type": "integer"
                 },
                 "lastTitle": {
+                  "type": "string"
+                },
+                "mediaKind": {
                   "type": "string"
                 },
                 "members": {
@@ -82003,6 +96130,158 @@ export const schemas = {
                       "hidden": {
                         "nullable": true,
                         "type": "boolean"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -82150,6 +96429,158 @@ export const schemas = {
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "nullable": true,
+                                    "type": "number"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
                           },
                           "id": {
                             "type": "string"
@@ -82504,6 +96935,7 @@ export const schemas = {
                 }
               },
               "required": [
+                "mediaKind",
                 "collection",
                 "members"
               ],
@@ -82630,6 +97062,158 @@ export const schemas = {
                   "hidden": {
                     "nullable": true,
                     "type": "boolean"
+                  },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
                   },
                   "id": {
                     "type": "string"
@@ -82777,6 +97361,158 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
@@ -83163,6 +97899,21 @@ export const schemas = {
                 "channels": {
                   "items": {
                     "properties": {
+                      "actions": {
+                        "properties": {
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "favorite"
+                        ],
+                        "type": "object"
+                      },
                       "channel": {
                         "properties": {
                           "favorite": {
@@ -83419,6 +98170,7 @@ export const schemas = {
                       }
                     },
                     "required": [
+                      "actions",
                       "channel",
                       "source"
                     ],
@@ -83723,6 +98475,158 @@ export const schemas = {
                         "nullable": true,
                         "type": "boolean"
                       },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -83869,6 +98773,158 @@ export const schemas = {
                               "type": "string"
                             },
                             "type": "array"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "nullable": true,
+                                    "type": "number"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
                           },
                           "id": {
                             "type": "string"
@@ -86023,6 +101079,158 @@ export const schemas = {
                   "nullable": true,
                   "type": "boolean"
                 },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -86169,6 +101377,158 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -121953,6 +137313,158 @@ export const schemas = {
                     "nullable": true,
                     "type": "boolean"
                   },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -122099,6 +137611,158 @@ export const schemas = {
                           "type": "string"
                         },
                         "type": "array"
+                      },
+                      "homeActions": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "details": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "editMetadata": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "played": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "rating": {
+                            "type": "boolean"
+                          },
+                          "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "selection": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "edit": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "refresh": {
+                                "type": "boolean"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "download",
+                              "edit",
+                              "refresh",
+                              "delete"
+                            ],
+                            "type": "object"
+                          },
+                          "state": {
+                            "properties": {
+                              "containerRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "personalRevision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "rating": {
+                                "nullable": true,
+                                "type": "number"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              },
+                              "watchlisted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "watchlisted",
+                              "favorite",
+                              "watched",
+                              "rating",
+                              "personalRevision",
+                              "containerRevision"
+                            ],
+                            "type": "object"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "played",
+                          "rating",
+                          "editMetadata",
+                          "refreshMetadata",
+                          "delete",
+                          "download",
+                          "details",
+                          "state",
+                          "selection"
+                        ],
+                        "type": "object"
                       },
                       "id": {
                         "type": "string"
