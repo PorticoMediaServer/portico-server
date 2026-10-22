@@ -2036,3 +2036,4 @@ export * from './home-service.ts';
 export * from './scan-issues.ts';
 export * from './playback-controls.ts';
 export {sizeClassForWidth, type SizeClass} from './presentation/size-class.ts';
+export {libraryNavigationIcon} from './presentation/library-navigation.ts';
