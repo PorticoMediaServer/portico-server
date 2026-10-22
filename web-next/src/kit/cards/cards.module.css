@@ -18,6 +18,11 @@
 .subtitle > span { overflow:hidden; text-overflow:ellipsis; }
 .reason { gap:4px; margin-top:3px; margin-bottom:14px; font-size:12.5px; color:var(--color-text-tertiary); white-space:nowrap; overflow:hidden; }
 .reason [data-role='identity'] { color:var(--color-text-secondary); font-weight:600; }
+.textMatch { background:none; color:var(--color-text); font-weight:700; }
+.textSecondary { color:var(--color-text-secondary); font-weight:600; }
+@media (min-width:1024px) {
+  .cover .reason { font-weight:600; }
+}
 .belowProgress > .primary > .progress { margin-top:8px; }
 .belowProgress .caption { margin-top:8px; }
 .insetProgress .edge { inset:auto 10px 10px; border-radius:4px; }
