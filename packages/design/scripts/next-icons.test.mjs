@@ -15,7 +15,7 @@ const symbol = '<symbol id="i-test" viewBox="0 0 24 24"><path fill="currentColor
 
 test('every canonical symbol has the same faithful ID and geometry in both outputs', () => {
   const web = renderShared(icons), native = renderNative(icons);
-  assert.equal(icons.length, 242);
+  assert.equal(icons.length, 244);
   assert.equal(new Set(icons.map(i => i.attrs.id)).size, icons.length);
   assert.equal((native.match(/case "/g) || []).length, icons.length);
   for (const icon of icons) {
@@ -41,6 +41,16 @@ test('activity Levels preserves the approved ring and three bars', () => {
   assert.equal(activity.children[0].children[0].tag, 'circle');
   assert.equal(activity.children[0].children[0].attrs.r, '9');
   assert.equal(activity.children[0].children[1].attrs.d, 'M8.25 16v-3.5M12 16V8M15.75 16v-5.5');
+});
+
+test('selection queue choices preserve the exact next and later source geometry', () => {
+  const next = icons.find(i => i.attrs.id === 'i-pnext');
+  assert.equal(next.attrs.viewBox, '0 0 24 24');
+  assert.equal(next.children[0].children[0].attrs.d, 'M4 6.5h8M4 12h5M4 17.5h8');
+  assert.equal(next.children[1].attrs.d, 'M14.5 8.2v7.6c0 .5.5.8.9.5l5-3.8a.6.6 0 0 0 0-1l-5-3.8c-.4-.3-.9 0-.9.5z');
+  const later = icons.find(i => i.attrs.id === 'i-plater');
+  assert.equal(later.attrs.viewBox, '0 0 24 24');
+  assert.equal(later.children[0].children[0].attrs.d, 'M4 6.5h16M4 11.5h16M4 16.5h8M17 14v6M14 17h6');
 });
 
 test('unsupported SVG features, unsafe attributes and malformed geometry fail closed', () => {
@@ -73,6 +83,6 @@ test('generation is deterministic and check detects stale or missing native outp
     writeFileSync(target, renderNative(icons) + '\n');
     assert.notEqual(run([]).status, 0);
     assert.match(run([]).stderr, /Stale icon output/);
-    assert.equal(execFileSync(process.execPath, [path.join(here, 'next-icons.mjs'), '--check'], {encoding: 'utf8'}).trim(), 'next-icons: 242 symbols; 1 output(s) verified');
+    assert.equal(execFileSync(process.execPath, [path.join(here, 'next-icons.mjs'), '--check'], {encoding: 'utf8'}).trim(), 'next-icons: 244 symbols; 1 output(s) verified');
   } finally { rmSync(temp, {recursive: true, force: true}); }
 });

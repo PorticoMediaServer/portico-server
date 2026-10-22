@@ -73,14 +73,47 @@ test('curation uses both supplied edit offers and the actual audience; hosted ow
   assert.equal(selectionKindHasBulkFields('person'), false);
 });
 
-test('TV hides every owner action and only the phone app offers Download', () => {
+test('every platform admits authorized catalogue curation and only the phone app offers Download', () => {
   const summary = summarizeSelection([item('movie', 'a')]);
-  const tv = selectionActions(summary, {...owner, platform: 'tv'});
-  for (const action of ['edit', 'delete', 'refresh', 'download'] as const) assert.equal(tv[action].state, 'hidden', action);
   for (const platform of ['desktop-web', 'mobile-web', 'phone-app', 'tv'] as const) {
     const rules = selectionActions(summary, {...owner, platform});
+    for (const action of ['edit', 'delete', 'refresh'] as const) assert.equal(rules[action].state, 'ready', `${platform} ${action}`);
     assert.equal(rules.download.state, platform === 'phone-app' ? 'ready' : 'hidden', platform);
   }
+});
+
+test('TV Edit needs both editing authority and every actual grant, including Mixed and no-fields explanations', () => {
+  const tv = {...owner, platform: 'tv' as const};
+  const movies = summarizeSelection([item('movie', 'a'), item('movie', 'b')]);
+  const editor = {...tv, isOwner: false, canEditMetadata: true};
+  const viewer = {...tv, isOwner: false, canEditMetadata: false};
+  assert.equal(selectionActions(movies, editor).edit.state, 'ready');
+  for (const action of ['edit', 'refresh', 'delete'] as const) assert.equal(selectionActions(movies, viewer)[action].state, 'hidden', action);
+  assert.equal(selectionActions(movies, editor).refresh.state, 'hidden');
+  assert.equal(selectionActions(movies, editor).delete.state, 'hidden');
+  const denied = summarizeSelection([item('movie', 'a'), item('movie', 'b', 'library', {...all, edit: false})]);
+  assert.deepEqual(selectionActions(denied, tv).edit, {state: 'disabled', reason: 'not-permitted'});
+  assert.deepEqual(selectionActions(denied, editor).edit, {state: 'disabled', reason: 'not-permitted'});
+  const mixed = summarizeSelection([item('movie', 'movie'), item('episode', 'episode')]);
+  assert.deepEqual(selectionActions(mixed, editor).edit, {state: 'explain', reason: 'mixed-types'});
+  assert.equal(selectionActions(mixed, viewer).edit.state, 'hidden');
+  assert.deepEqual(selectionActions(summarizeSelection([item('season', 'season')]), editor).edit, {state: 'explain', reason: 'no-bulk-fields'});
+  assert.deepEqual(selectionActions(summarizeSelection([item('season', 'denied', 'library', {...all, edit: false})]), editor).edit, {state: 'disabled', reason: 'not-permitted'});
+  for (const kind of ['movie', 'show', 'episode', 'song', 'album', 'artist', 'book', 'audiobook_file'] as const) {
+    assert.equal(selectionActions(summarizeSelection([item(kind, kind)]), editor).edit.state, 'ready', kind);
+  }
+});
+
+test('TV owner Delete and Refresh preserve actual offers, one-library safety and the explanation limit', () => {
+  const tv = {...owner, platform: 'tv' as const};
+  const denied = summarizeSelection([item('movie', 'a'), item('movie', 'b', 'library', {...all, delete: false, refresh: false})]);
+  assert.deepEqual(selectionActions(denied, tv).delete, {state: 'disabled', reason: 'not-permitted'});
+  assert.equal(selectionActions(denied, tv).refresh.state, 'hidden');
+  assert.equal(selectionActions(denied, tv).edit.state, 'ready');
+  const one = summarizeSelection([item('movie', 'a')]);
+  assert.deepEqual(selectionActions({...one, count: 201}, tv).delete, {state: 'explain', reason: 'delete-limit'});
+  assert.deepEqual(selectionActions(summarizeSelection([item('movie', 'a', 'one'), item('movie', 'b', 'two')]), tv).delete, {state: 'disabled', reason: 'one-library-required'});
+  assert(Object.values(selectionActions(summarizeSelection([]), tv)).every(rule => rule.state === 'hidden'));
 });
 
 test('Delete over 200 opens the limit explanation and never implies destructive chunking', () => {

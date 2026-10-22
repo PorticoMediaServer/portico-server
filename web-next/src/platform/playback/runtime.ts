@@ -41,7 +41,7 @@ type Stack = {
   channel?: HomeChannel;
 };
 const emptySubtitle: SubtitleSnapshot = {catalog: null, plan: null, busy: false, loading: false, suppressed: true, error: null, canRetry: false, candidates: []};
-const problem = (code: string): never => { throw new Error(code); };
+function problem(code: string): never { throw new Error(code); }
 const validSeconds = (value: number) => Number.isFinite(value) && value >= 0 && value <= 1e9;
 const compatibleVideo = (value: VideoLike): value is VideoLike & SubtitleHost => typeof (value as Partial<SubtitleHost>).addTextTrack === 'function' && !!(value as Partial<SubtitleHost>).textTracks;
 
@@ -107,7 +107,7 @@ export class WebShellPlaybackRuntime {
   getSnapshot = (): WebPlaybackRuntimeSnapshot => this.snapshot;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private current(stack = this.stack): boolean { return !this.disposed && !stack.retired && stack === this.stack && this.source.isCurrent(); }
-  private key(fence: PlaybackFence): string { return JSON.stringify(fence); }
+  private key(fence: PlaybackFence): string { return JSON.stringify(playbackFence(fence)); }
   private assertCurrent(): void { if (!this.current()) problem('playback_authority_retired'); }
   private setTimer(fn: () => void, ms: number): unknown { return this.env.timers?.setTimer?.(fn, ms) ?? setTimeout(fn, ms); }
   private clearTimer(timer: unknown): void { if (timer === undefined) return; if (this.env.timers?.clearTimer) this.env.timers.clearTimer(timer); else clearTimeout(timer as ReturnType<typeof setTimeout>); }
@@ -135,7 +135,7 @@ export class WebShellPlaybackRuntime {
       if (!this.current(stackReference)) return;
       await this.capabilityPublisher.publish(profile, life.signal);
     }});
-    const queue = new V1QueuePlayer({http, api: web.transport, playback: service, viewer: this.source.authority, events: this.source.events, key: this.env.key, musicDefaults: this.source.settings.musicDefaults, quality: this.source.settings.defaultQuality});
+    const queue = new V1QueuePlayer({http, api: web.transport, playback: service, viewer: this.source.authority, events: this.source.events, key: this.env.key, musicDefaults: this.source.settings.musicDefaults, quality: this.source.settings.defaultQuality, retainQueueIds: () => this.retainedQueueIds(stackReference)});
     // The actual controller retains its ordered stop barrier across consecutive channel starts.
     service.useChannelPlayback(this.channelControl);
     queue.setCompletionPolicy(() => 'hold');
@@ -174,7 +174,26 @@ export class WebShellPlaybackRuntime {
     const local = this.dock.getSnapshot().local;
     if (!local || !sameFence(local.fence, p.fence)) return;
     this.bookmarks.set(this.key(p.fence), {playback: {...local, playing: false}, subject: p.subject, queueId: p.fence.kind === 'queue' ? stack.queue.currentSession()?.queue?.queueId : undefined, libraryId: stack.libraryId, channel: stack.channel, posterUrl: p.posterUrl, backdropUrl: p.backdropUrl, durationSeconds: p.durationSeconds, rate: p.rate});
-    while (this.bookmarks.size > 8) this.bookmarks.delete(this.bookmarks.keys().next().value!);
+    // Offered bookmarks stay restorable while newer sources fill the private history cache.
+    const dock = this.dock.getSnapshot(), retained = new Set([dock.local, dock.parkedAudio, dock.resumeVideo].flatMap(value => value ? [this.key(value.fence)] : []));
+    for (const key of this.bookmarks.keys()) {
+      if (this.bookmarks.size <= 8) break;
+      if (!retained.has(key)) this.bookmarks.delete(key);
+    }
+  }
+  /** The canonical create samples these actual authority-owned queues, including the current
+   * source until the next subject is known. It owns retention and retirement on the server. */
+  private retainedQueueIds(stack: Stack): readonly string[] {
+    if (!this.current(stack)) problem('playback_authority_retired');
+    const dock = this.dock.getSnapshot(), ids = new Set<string>();
+    for (const value of [dock.local, dock.parkedAudio, dock.resumeVideo]) {
+      if (!value || value.fence.kind !== 'queue') continue;
+      const bookmark = this.bookmarks.get(this.key(value.fence));
+      if (!bookmark?.queueId || !sameFence(bookmark.playback.fence, value.fence)) problem('playback_bookmark_unavailable');
+      ids.add(bookmark.queueId);
+    }
+    if (ids.size > 3) problem('invalid_queue_bookmarks');
+    return Object.freeze([...ids]);
   }
   private retire(stack: Stack): void {
     if (stack.retired) return;
@@ -184,13 +203,20 @@ export class WebShellPlaybackRuntime {
     const local = this.dock.getSnapshot().local, playback = stack.service.getSnapshot();
     if (local && this.snapshot?.fence && sameFence(local.fence, this.snapshot.fence)) this.dock.update({...local, positionSeconds: playback.pendingSeek?.positionSeconds ?? playback.positionSeconds, playing: false});
     if (this.snapshot?.fence) this.retiredFences.add(this.key(this.snapshot.fence));
-    while (this.retiredFences.size > 16) this.retiredFences.delete(this.retiredFences.values().next().value!);
+    this.trimRetiredFences();
     for (const off of stack.offs.splice(0)) off();
     stack.retired = true;
     this.clearSourceResources(stack);
     stack.service.leave(); stack.queue.dispose(); stack.unmount?.(); stack.unmount = undefined;
     stack.web.dispose(); stack.offers.dispose(); stack.life.abort();
     this.surface?.clear();
+  }
+  private trimRetiredFences(): void {
+    while (this.retiredFences.size > 16) {
+      const oldest = this.retiredFences.values().next();
+      if (oldest.done) break;
+      this.retiredFences.delete(oldest.value);
+    }
   }
   private replace(): Stack {
     this.replacing = true;
@@ -280,7 +306,7 @@ export class WebShellPlaybackRuntime {
     const header = stack.queue.getSnapshot().view?.queue;
     if (!header) {
       if (stack.queue.getSnapshot().phase === 'preparing' || stack.service.getSnapshot().session) problem('queue_not_ready');
-      const created = await client.create(segments, {signal: request.signal});
+      const created = await client.create(segments, {signal: request.signal, retainQueueIds: this.retainedQueueIds(stack)});
       check();
       await stack.queue.open(created.queue.id, request.signal);
       check(); this.sync(); return {queue: created.queue};
@@ -353,7 +379,7 @@ export class WebShellPlaybackRuntime {
       const prior = this.snapshot?.fence;
       if (prior && playback.session && (prior.sessionId !== playback.session.id || prior.generation !== playback.session.generation)) {
         this.retiredFences.add(this.key(prior));
-        while (this.retiredFences.size > 16) this.retiredFences.delete(this.retiredFences.values().next().value!);
+        this.trimRetiredFences();
       }
       this.selectSource(stack, playback, session);
       const offers = this.offers(stack, playback), fence = this.fence(stack, playback, session, offers);
@@ -364,10 +390,16 @@ export class WebShellPlaybackRuntime {
         const speed = this.choices.get('speed', fence.playback, savedSpeed);
         stack.service.setPlaybackRate(speed); stack.web.setRate(speed);
         const timing = {positionSeconds: playback.pendingSeek?.positionSeconds ?? playback.positionSeconds, playing: playback.intent === 'playing' && playback.phase !== 'ended' && playback.phase !== 'error', expanded: stack.expanded};
-        if (fence.kind === 'queue' && stack.subject.kind === 'channel') problem('invalid_playback_subject');
         // v1 is not the strict player-core QueueSnapshot protocol. Keep its genuine queue
         // receipt/window separately; never rename occurrence IDs to pass that parser.
-        const local: DockPlayback = fence.kind === 'channel' ? {fence, kind: 'live', queue: null, ...timing} : {fence, kind: stack.subject.kind as 'video' | 'music' | 'audiobook', queue: null, ...timing};
+        let local: DockPlayback;
+        if (fence.kind === 'channel') {
+          if (stack.subject.kind !== 'channel') problem('invalid_playback_subject');
+          local = {fence, kind: 'live', queue: null, ...timing};
+        } else {
+          if (stack.subject.kind === 'channel') problem('invalid_playback_subject');
+          local = {fence, kind: stack.subject.kind, queue: null, ...timing};
+        }
         const transition = sameFence(this.dock.getSnapshot().local?.fence, fence) ? this.dock.update(local) : this.dock.start(local);
         // Replacement pre-applied the retiring source's effects. No old fence can command the
         // new session; externally requested transitions use onTransition below.
@@ -454,9 +486,10 @@ export class WebShellPlaybackRuntime {
     service.setPolling(plan.mode === 'track'); service.start();
   }
   private renderSubtitles(stack: Stack): void {
-    const state = stack.subtitles?.getSnapshot() ?? emptySubtitle, plan = state.plan;
+    const state = stack.subtitles?.getSnapshot() ?? emptySubtitle, plan = state.plan, surface = this.surface;
     // The dock is quiet: Portico's subtitle surface is never visible in a thumbnail.
-    if (!this.surface || !stack.expanded || !plan || state.suppressed || plan.mode !== 'track' || plan.renderer !== 'external_text' || !plan.documentUrl) { stack.documentAbort?.abort(); this.surface?.guard(false); this.surface?.clear(); stack.documentKey = undefined; return; }
+    if (!surface || !stack.expanded || !plan || state.suppressed || plan.mode !== 'track' || plan.renderer !== 'external_text' || !plan.documentUrl) { stack.documentAbort?.abort(); this.surface?.guard(false); this.surface?.clear(); stack.documentKey = undefined; return; }
+    const documentUrl = plan.documentUrl;
     const key = JSON.stringify([stack.sessionKey, plan.sourceId, plan.revision, plan.documentUrl, plan.offsetUs]);
     if (stack.documentKey === key) return;
     stack.documentKey = key;
@@ -466,12 +499,12 @@ export class WebShellPlaybackRuntime {
     const load = async () => {
       if (!this.current(stack) || stack.documentKey !== key || abort.signal.aborted) return;
       try {
-        const url = this.source.api.mediaUrl(plan.documentUrl!);
+        const url = this.source.api.mediaUrl(documentUrl);
         if (new URL(url).origin !== new URL(this.source.api.baseUrl).origin) problem('unexpected_subtitle_origin');
         const read = await fetchSubtitleDocument(this.env.fetch ?? fetch, url, etag, abort.signal);
         if (!this.current(stack) || stack.documentKey !== key || abort.signal.aborted) return;
         if (!read.unchanged) { document = read.document; etag = read.etag; }
-        if (document) { this.surface!.show(document.cues, Number(plan.offsetUs) / 1e6); this.surface!.guard(true); stack.web.slot.selectSidecarSubtitle(plan.selected?.id ?? null); }
+        if (document) { surface.show(document.cues, Number(plan.offsetUs) / 1e6); surface.guard(true); stack.web.slot.selectSidecarSubtitle(plan.selected?.id ?? null); }
       } catch { if (this.current(stack) && !abort.signal.aborted) { this.surface?.clear(); this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } }
       finally { if (this.current(stack) && stack.documentKey === key && !abort.signal.aborted) stack.documentTimer = this.setTimer(() => { void load(); }, 25_000); }
     };
@@ -493,10 +526,10 @@ export class WebShellPlaybackRuntime {
         let error: string | undefined;
         if (!this.current(stack) || serial !== this.operation) error = 'stale_playback_command';
         else if (stack.service.getSnapshot().phase === 'error' || this.snapshot.problem === 'playback_metadata_failed') error = 'playback_restore_failed';
-        const fence = this.snapshot.fence;
-        if (!error && (!fence || fence.sessionId !== stack.service.getSnapshot().session?.id)) return;
-        off(); this.clearTimer(timer);
-        if (error) reject(new Error(error)); else resolve(fence!);
+        if (error) { off(); this.clearTimer(timer); reject(new Error(error)); return; }
+        const fence = this.snapshot.fence, session = stack.service.getSnapshot().session;
+        if (!fence || !session || fence.sessionId !== session.id || fence.generation !== session.generation || !this.matches(fence)) return;
+        off(); this.clearTimer(timer); resolve(fence);
       };
       off = this.subscribe(check); check();
     });
@@ -508,8 +541,8 @@ export class WebShellPlaybackRuntime {
   async seek(fence: PlaybackFence, seconds: number): Promise<void> { if (!validSeconds(seconds)) problem('invalid_playback_position'); const stack = this.offered(fence, 'seek'); stack.service.seek(Math.min(stack.service.getSnapshot().duration || Infinity, seconds)); }
   async skip(fence: PlaybackFence, seconds: number): Promise<void> { if (!Number.isFinite(seconds)) problem('invalid_playback_position'); const stack = this.require(fence); await this.seek(fence, Math.max(0, (stack.service.getSnapshot().pendingSeek?.positionSeconds ?? stack.service.getSnapshot().positionSeconds) + seconds)); }
   async replay(fence: PlaybackFence): Promise<void> { if (fence.kind !== 'queue') problem('playback_command_unavailable'); const stack = this.offered(fence, 'replay'); await stack.service.play(fence.itemId, 0); if (this.current(stack)) this.sync(); }
-  async previous(fence: PlaybackFence): Promise<void> { const stack = this.offered(fence, 'previous'); await stack.queue.previous(); if (this.current(stack)) this.sync(); }
-  async next(fence: PlaybackFence): Promise<void> { const stack = this.offered(fence, 'next'), queue = stack.queue.getSnapshot().view!.queue; await stack.queue.next(queue.id, queue.revision); if (this.current(stack)) this.sync(); }
+  async previous(fence: PlaybackFence): Promise<void> { if (fence.kind !== 'queue') problem('playback_command_unavailable'); const stack = this.offered(fence, 'previous'); await stack.queue.previous(); if (this.current(stack)) this.sync(); }
+  async next(fence: PlaybackFence): Promise<void> { if (fence.kind !== 'queue') problem('playback_command_unavailable'); const stack = this.offered(fence, 'next'), view = stack.queue.getSnapshot().view; if (!view) problem('playback_command_unavailable'); await stack.queue.next(view.queue.id, view.queue.revision); if (this.current(stack)) this.sync(); }
   open(fence: PlaybackFence): void { const stack = this.require(fence); stack.expanded = true; this.dock.expand(fence); this.sync(); }
   collapse(fence: PlaybackFence): void { const stack = this.require(fence); stack.expanded = false; this.dock.collapse(fence); this.surface?.guard(false); this.surface?.clear(); this.sync(); }
   async stop(fence: PlaybackFence): Promise<void> { this.require(fence); this.rememberCurrent(); await this.onTransition(this.dock.close(fence)); }
@@ -523,14 +556,18 @@ export class WebShellPlaybackRuntime {
       if (effect.kind === 'restore') {
         const bookmark = this.bookmarks.get(key);
         const fence = effect.playback.fence;
-        if (!bookmark || fence.kind === 'queue' && !bookmark.queueId || fence.kind === 'channel' && !bookmark.channel) problem('playback_bookmark_unavailable');
+        if (!bookmark) problem('playback_bookmark_unavailable');
+        const queueId = bookmark.queueId, channel = bookmark.channel?.channel;
+        if (fence.kind === 'queue' && !queueId || fence.kind === 'channel' && !channel) problem('playback_bookmark_unavailable');
+        if (fence.kind === 'channel' && channel && (channel.id !== fence.channelId || channel.provenance !== fence.channelKind || channel.sourceId !== fence.sourceId || channel.generation !== fence.channelGeneration)) problem('stale_channel_bookmark');
         const serial = ++this.operation, stack = this.replace();
         stack.subject = bookmark.subject; stack.itemId = fence.kind === 'queue' ? fence.itemId : undefined; stack.libraryId = bookmark.libraryId; stack.channel = bookmark.channel;
         stack.posterUrl = bookmark.posterUrl; stack.backdropUrl = bookmark.backdropUrl; stack.expanded = false;
-        if (fence.kind === 'queue') await stack.queue.restorePaused(bookmark.queueId!, fence.entryId, effect.playback.positionSeconds);
-        else {
-          const channel = bookmark.channel!.channel;
-          if (channel.id !== fence.channelId || channel.provenance !== fence.channelKind || channel.sourceId !== fence.sourceId || channel.generation !== fence.channelGeneration) problem('stale_channel_bookmark');
+        if (fence.kind === 'queue') {
+          if (!queueId) problem('playback_bookmark_unavailable');
+          await stack.queue.restorePaused(queueId, fence.entryId, effect.playback.positionSeconds);
+        } else {
+          if (!channel) problem('playback_bookmark_unavailable');
           await stack.service.playChannel({kind: channel.provenance, sourceId: channel.sourceId, channelId: channel.id, generation: channel.generation}, {state: 'paused'});
         }
         if (!this.current(stack) || serial !== this.operation) return;
@@ -626,10 +663,16 @@ export class WebShellPlaybackRuntime {
       case 'stop': await this.stop(action.fence); return;
       case 'volume': {
         this.offered(action.fence, 'volume');
-        if (action.volume === undefined || !Number.isFinite(action.volume) || action.volume < 0 || action.volume > 1 || !this.video) problem('invalid_playback_volume');
-        this.video.volume = action.volume; this.sync(); return;
+        const video = this.video, volume = action.volume;
+        if (volume === undefined || !Number.isFinite(volume) || volume < 0 || volume > 1 || !video) problem('invalid_playback_volume');
+        video.volume = volume; this.sync(); return;
       }
-      case 'mute': this.offered(action.fence, 'volume'); this.video!.muted = !this.video!.muted; this.sync(); return;
+      case 'mute': {
+        this.offered(action.fence, 'volume');
+        const video = this.video;
+        if (!video) problem('invalid_playback_volume');
+        video.muted = !video.muted; this.sync(); return;
+      }
       default: problem('playback_command_unavailable');
     }
   };

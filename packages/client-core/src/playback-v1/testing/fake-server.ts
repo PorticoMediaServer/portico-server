@@ -30,7 +30,7 @@ type Session = {
   queue?: {queueId: string; entryId: string}; transferId?: string; startedAt: number; terminatedMessage?: string; endReason?: string;
 };
 type Segment = {id: string; kind: 'items' | 'selector'; label: string; count: number; keyAt: (i: number) => string; removals: Set<number>};
-type Queue = {id: string; revision: number; deviceId: string; segments: Segment[]; current: number; repeat: 'off' | 'one' | 'all'; shuffle?: {seed: number; lap: number; domain: number; first: number}; sessionId?: string;
+type Queue = {id: string; revision: number; deviceId: string; ownerKind: 'device' | 'group'; authority: string; accountId: string; profileId: string; updatedAt: number; segments: Segment[]; current: number; repeat: 'off' | 'one' | 'all'; shuffle?: {seed: number; lap: number; domain: number; first: number}; sessionId?: string;
   /** §18: the prepared next entry (private until committed), and committed answers by token. */
   prepared?: {token: string; sessionId: string; sessionGeneration: number; nextPosition: number; nextSessionId: string; expiresAt: number; revision: number};
   committed?: Map<string, FakeResponse>};;
@@ -98,6 +98,7 @@ export class FakePlaybackServer {
   private sessions = new Map<string, Session>();
   private keys = new Map<string, {body: string; status: number; response: unknown; rounds: number}>();
   private queues = new Map<string, Queue>();
+  private queueKeys = new Map<string, {body: string; response: FakeResponse; createdAt: number}>();
   private transfers = new Map<string, Transfer>();
   private events: FakeEvent[] = [];
   private eventSeq = 0;
@@ -105,7 +106,9 @@ export class FakePlaybackServer {
   private streams = new Set<{push: (e: FakeEvent) => void; close: (reconnectAfterMs: number) => void; fail: (status: number) => void}>();
   private streamRefusal?: number;
   private failures: (number | 'offline')[] = [];
-  private nextId = 0;
+  private ids = {next: 0};
+  private get nextId(): number { return this.ids.next; }
+  private set nextId(value: number) { this.ids.next = value; }
   private o: FakeServerOptions & {reportEveryMs: number; leaseMs: number; deviceId: string; ring: number};
   private now: () => number;
   private setTimer: (fn: () => void, ms: number) => unknown;
@@ -125,6 +128,13 @@ export class FakePlaybackServer {
   eventLog(): readonly FakeEvent[] { return this.events; }
   /** As another device (a TV, a phone) for the next requests' `deviceId`. */
   asDevice(deviceId: string): FakePlaybackServer { const view = Object.create(this) as FakePlaybackServer; (view as unknown as {o: FakePlaybackServer['o']}).o = {...this.o, deviceId}; return view; }
+  /** A different authenticated viewer on the current device; queue ownership never follows it. */
+  asViewer(viewer: NonNullable<FakeServerOptions['viewer']>): FakePlaybackServer { const view = Object.create(this) as FakePlaybackServer; view.o = {...this.o, viewer}; return view; }
+  /** The real queue idle and create receipt lifetimes also apply to retained data. */
+  sweepQueues(): void {
+    for (const q of this.queues.values()) if (q.ownerKind === 'device' && q.updatedAt < this.now() - 90 * 24 * 60 * 60 * 1000) this.queues.delete(q.id);
+    for (const [key, receipt] of this.queueKeys) if (receipt.createdAt < this.now() - 24 * 60 * 60 * 1000) this.queueKeys.delete(key);
+  }
   /** Publish an event (tests may also publish their own). */
   publish(type: string, resource?: {kind: string; id: string}, revision?: string, data?: unknown): FakeEvent {
     const e: FakeEvent = {id: String(++this.eventSeq), type, at: new Date(this.now()).toISOString(), ...(resource ? {resource} : {}), ...(revision ? {revision} : {}), ...(data !== undefined ? {data} : {})};
@@ -196,7 +206,7 @@ export class FakePlaybackServer {
       if (m === 'GET') return s ? {status: 200, headers: {ETag: etag(s.revision)}, body: this.view(s)} : this.error(404, 'session_not_found');
     }
     if ((match = /^\/v1\/devices\/([^/]+)\/commands$/.exec(pathOnly)) && m === 'POST') return this.command(decodeURIComponent(match[1]!), body);
-    if (m === 'POST' && pathOnly === routePath("create_queue")) return this.createQueue(body);
+    if (m === 'POST' && pathOnly === routePath("create_queue")) return this.createQueue(h('Idempotency-Key'), body);
     if ((match = /^\/v1\/queues\/([^/:]+)(.*)$/.exec(pathOnly))) return this.queueRoute(m, decodeURIComponent(match[1]!), match[2]!, q, h('If-Match'), body);
     if (m === 'GET' && pathOnly === routePath("list_admin_sessions")) return this.adminList(q);
     if ((match = /^\/v1\/admin\/sessions\/([^/:]+):terminate$/.exec(pathOnly)) && m === 'POST') return this.terminate(decodeURIComponent(match[1]!), body);
@@ -365,8 +375,10 @@ export class FakePlaybackServer {
     } else if (body.queue && typeof (body.queue as {queueId?: unknown}).queueId === 'string') {
       const qref = body.queue as {queueId: string; entryId: string};
       const queue = this.queues.get(qref.queueId);
-      if (!queue) return this.error(404, 'queue_not_found');
-      s = this.newSession(this.itemOfEntry(queue, qref.entryId) ?? 'unknown', {queue: qref, state: body.state === 'paused' ? 'paused' : 'playing', positionMs: typeof body.startPositionMs === 'number' ? body.startPositionMs : 0});
+      if (!queue || !this.ownsQueue(queue)) return this.error(404, 'queue_not_found');
+      const itemId = this.itemOfEntry(queue, qref.entryId);
+      if (!itemId) return this.error(404, 'queue_not_found');
+      s = this.newSession(itemId, {queue: qref, state: body.state === 'paused' ? 'paused' : 'playing', positionMs: typeof body.startPositionMs === 'number' ? body.startPositionMs : 0});
       queue.sessionId = s.id;
     } else if (typeof body.itemId === 'string' || typeof body.channelId === 'string') {
       s = this.newSession((body.itemId ?? body.channelId) as string, {
@@ -594,17 +606,42 @@ export class FakePlaybackServer {
     return {items, page: {limit: Math.min(limit, WINDOW_MAX), total, start: from, revision: String(q.revision), ...(from + n < total ? {nextCursor: `from:${from + n}`} : {})}};
   }
 
-  private createQueue(body: Record<string, unknown>): FakeResponse {
+  private ownsQueue(q: Queue): boolean {
+    const viewer = this.viewerScope();
+    return q.authority === viewer.authority && q.accountId === viewer.accountId && q.profileId === viewer.profileId && !/^[~!]/.test(q.deviceId);
+  }
+
+  private createQueue(key: string | undefined, body: Record<string, unknown>): FakeResponse {
+    if (!key) return this.error(428, 'idempotency_key_required');
+    if (body.owner !== undefined && body.owner !== 'device') return this.error(400, 'invalid_request');
+    const retain = body.retainQueueIds;
+    if (retain != null && (!Array.isArray(retain) || retain.length > 3 || Array.from(retain).some(id => typeof id !== 'string' || id.length < 1 || id.length > 128 || /[^A-Za-z0-9_-]/.test(id)) || new Set(retain).size !== retain.length)) return this.error(400, 'invalid_request');
+    const retained = (retain ?? []) as string[];
     const segs = Array.isArray(body.segments) ? body.segments as Record<string, unknown>[] : [];
-    if (!segs.length) return this.error(400, 'invalid_request');
-    const previous = [...this.queues.values()].find(x => x.deviceId === this.o.deviceId);
-    if (previous) this.queues.delete(previous.id);
-    const q: Queue = {id: `q${++this.nextId}`, revision: 1, deviceId: this.o.deviceId, segments: [], current: 0, repeat: 'off'};
+    if (!segs.length || segs.length > 16) return this.error(400, 'invalid_request');
+    const sp = body.startPlayback as {state?: string; quality?: unknown; startPositionMs?: unknown} | undefined;
+    if (sp?.state !== undefined && sp.state !== 'playing' && sp.state !== 'paused') return this.error(400, 'invalid_request');
+    const viewer = this.viewerScope();
+    const {retainQueueIds: _, ...ordinary} = body;
+    const semantic = {...ordinary, viewer: {authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId}, ...(retained.length ? {retainQueueIds: [...retained].sort()} : {})};
+    const canonical = (v: unknown): unknown => Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, value]) => [k, canonical(value)])) : v;
+    const digest = JSON.stringify(canonical(semantic)), receiptKey = JSON.stringify([this.o.deviceId, key]);
+    const receipt = this.queueKeys.get(receiptKey);
+    if (receipt && receipt.createdAt >= this.now() - 24 * 60 * 60 * 1000) return receipt.body === digest ? receipt.response : this.error(422, 'idempotency_key_reused');
+    this.sweepQueues();
+    for (const id of retained) {
+      const old = this.queues.get(id);
+      if (!old || old.ownerKind !== 'device' || old.deviceId !== this.o.deviceId || !this.ownsQueue(old)) return this.error(404, 'queue_not_found');
+    }
+    let id: string;
+    do { id = `q${++this.nextId}`; } while (this.queues.has(id));
+    const q: Queue = {id, revision: 1, deviceId: this.o.deviceId, ownerKind: 'device', authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, updatedAt: this.now(), segments: [], current: 0, repeat: 'off'};
     for (const s of segs) { const seg = this.segmentFrom((s.source ?? {}) as Record<string, unknown>); if (!seg) return this.error(422, 'unsupported_selector'); q.segments.push(seg); }
     const first = segs[0]!;
     const order = first.order as {mode?: string; seed?: string} | undefined;
     const anchor = first.anchor as {itemId?: string; position?: number} | string | undefined;
     const total = this.total(q);
+    if (!total) return this.error(404, 'queue_not_found');
     let start = 0;
     if (anchor && typeof anchor === 'object' && typeof anchor.position === 'number') start = Math.min(anchor.position, total - 1);
     if (anchor && typeof anchor === 'object' && typeof anchor.itemId === 'string') { for (let i = 0; i < Math.min(total, 10_000); i++) if (this.sourceAt(q, i)!.seg.keyAt(this.sourceAt(q, i)!.ordinal) === anchor.itemId) { start = i; break; } }
@@ -615,9 +652,14 @@ export class FakePlaybackServer {
       q.shuffle = {seed, lap: 0, domain: total, first: firstSource};
       q.current = 0;
     } else q.current = start;
+    // Commit only after the whole request has been validated and built. Retention
+    // exempts exactly these rows; all other queues on the device retire as usual.
+    for (const old of this.queues.values()) if (old.ownerKind === 'device' && old.deviceId === this.o.deviceId) {
+      if (!retained.includes(old.id)) this.queues.delete(old.id);
+      else { old.sessionId = undefined; old.prepared = undefined; }
+    }
     this.queues.set(q.id, q);
     let session: Session | undefined;
-    const sp = body.startPlayback as {state?: string; quality?: unknown; startPositionMs?: unknown} | undefined;
     if (sp) {
       const cur = this.entryAt(q, q.current)!;
       // A resumed start (a book's saved position): the test says where the session begins.
@@ -626,12 +668,14 @@ export class FakePlaybackServer {
       q.sessionId = session.id;
     }
     const w = this.window(q, Math.max(0, q.current - 20), 71);
-    return {status: 201, headers: {ETag: etag(q.revision)}, body: {queue: this.header(q), window: w.items, ...(session ? {session: this.view(session)} : {})}};
+    const response = {status: 201, headers: {ETag: etag(q.revision)}, body: {queue: this.header(q), window: w.items, ...(session ? {session: this.view(session)} : {})}};
+    this.queueKeys.set(receiptKey, {body: digest, response, createdAt: this.now()});
+    return response;
   }
 
   private queueRoute(m: string, id: string, rest: string, qs: URLSearchParams, ifMatch: string | undefined, body: Record<string, unknown>): FakeResponse {
     const q = this.queues.get(id);
-    if (!q) return this.error(404, 'queue_not_found');
+    if (!q || !this.ownsQueue(q)) return m === 'DELETE' && rest === '' ? {status: 204, headers: {}} : this.error(404, 'queue_not_found');
     if (m === 'GET' && rest === '') return {status: 200, headers: {ETag: etag(q.revision)}, body: this.header(q)};
     if (m === 'GET' && rest === '/entries') {
       const limit = Number(qs.get('limit') ?? 50);
@@ -705,6 +749,7 @@ export class FakePlaybackServer {
       }
     } else return this.error(404, 'not_found');
     q.revision++;
+    q.updatedAt = this.now();
     this.publish('queue.updated', {kind: 'queue', id: q.id}, String(q.revision), {current: q.current});
     return {status: 200, headers: {ETag: etag(q.revision)}, body: {queue: this.header(q), ...(session ? {session: this.view(session)} : {})}};
   }
@@ -745,6 +790,7 @@ export class FakePlaybackServer {
     q.sessionId = session.id;
     q.prepared = undefined;
     q.revision++;
+    q.updatedAt = this.now();
     this.commits++;
     this.publish('queue.updated', {kind: 'queue', id: q.id}, String(q.revision), {current: q.current});
     const response: FakeResponse = {status: 200, headers: {ETag: etag(q.revision)}, body: {queue: this.header(q), session: this.view(session)}};
