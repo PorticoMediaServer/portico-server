@@ -61,7 +61,32 @@ function useVisible() {
 export function HomeScreen(bindings: HomeBindings) {
   const {service, snapshot} = usePooledService<HomeService, HomeSnapshot>('home', () => bindings.service, dependencies);
   useEffect(() => { if (service.getSnapshot().phase === 'idle') void service.load(); }, [service]);
-  useQuietRefresh('home-time', context => service.revalidate(context), () => !!service.getSnapshot().document, {everyMs: 60000});
+  const pending = useRef<{document: HomeDocument; controller: AbortController; promise: Promise<void>} | undefined>(undefined);
+  const refresh = useCallback((context?: Parameters<HomeService['revalidate']>[0]): Promise<void> => {
+    const shown = service.getSnapshot().document;
+    if (!shown || context?.signal?.aborted) return Promise.resolve();
+    if (pending.current?.document === shown && !pending.current.controller.signal.aborted) return pending.current.promise;
+    pending.current?.controller.abort();
+    const controller = new AbortController(), stop = () => controller.abort();
+    context?.signal?.addEventListener('abort', stop, {once: true});
+    const request = {document: shown, controller, promise: Promise.resolve()};
+    pending.current = request;
+    request.promise = service.revalidate({signal: controller.signal, settle: async () => {
+      await context?.settle?.();
+      // A newer Home read or authority handover wins over this window refresh.
+      if (service.getSnapshot().document !== shown) controller.abort();
+    }}).finally(() => {
+      context?.signal?.removeEventListener('abort', stop);
+      if (pending.current === request) pending.current = undefined;
+    });
+    return request.promise;
+  }, [service]);
+  useEffect(() => {
+    const off = service.subscribe(() => { if (pending.current?.document !== service.getSnapshot().document) pending.current?.controller.abort(); });
+    return () => { off(); pending.current?.controller.abort(); pending.current = undefined; };
+  }, [service]);
+  useQuietRefresh('home-time', refresh, () => !!service.getSnapshot().document, {everyMs: 60000});
+  const refreshLive = useCallback(() => { void refresh().catch(bindings.effects.reportError); }, [refresh, bindings.effects.reportError]);
   const [now, setNow] = useState(Date.now);
   const document = snapshot.document;
   useEffect(() => {
@@ -70,14 +95,16 @@ export function HomeScreen(bindings: HomeBindings) {
       if (timer) clearTimeout(timer);
       if (globalThis.document.hidden) return;
       const time = Date.now(); setNow(time);
+      if (document?.rows.some(row => row.live && !currentHomeLive(row.live, time))) refreshLive();
       const deadline = document && homeLiveDeadline(document.rows, time);
       if (deadline !== undefined) timer = setTimeout(() => {
-        setNow(Date.now()); void service.revalidate().catch(bindings.effects.reportError);
+        setNow(Date.now()); refreshLive();
       }, Math.min(60000, Math.max(1, deadline - time)));
     };
     update(); globalThis.document.addEventListener('visibilitychange', update);
-    return () => { if (timer) clearTimeout(timer); globalThis.document.removeEventListener('visibilitychange', update); };
-  }, [document, service, bindings.effects.reportError]);
+    window.addEventListener('resize', update);
+    return () => { if (timer) clearTimeout(timer); globalThis.document.removeEventListener('visibilitychange', update); window.removeEventListener('resize', update); };
+  }, [document, refreshLive]);
   const width = useShellWidth(), [started] = useState(Date.now), [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (snapshot.document) return;
@@ -87,11 +114,11 @@ export function HomeScreen(bindings: HomeBindings) {
   if (!document && snapshot.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}} />;
   if (!document) return <HomeSkeleton elapsedMs={elapsed} window={{width, height: window.innerHeight, scrollTop: window.scrollY}} />;
-  return <HomeView {...bindings} document={document} nowMs={now} onMore={rowId => { void service.more(rowId); }} />;
+  return <HomeView {...bindings} document={document} nowMs={now} refreshLive={refreshLive} onMore={rowId => { void service.more(rowId); }} />;
 }
 
 type Spotlight = Omit<ReturnType<typeof homeSpotlights>[number], 'reason'> & HeroCandidate & {causalReason: HomeReason; source: HomeSpotlight};
-export function HomeView({document, nowMs, onMore, artwork, effects, selection, time, reducedMotion}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void}) {
+export function HomeView({document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
   const width = useShellWidth(), platform: LayoutPlatform = width >= 1024 ? 'desktop' : 'phone-web';
   const heroPixels = Math.max(width, heroSpec.backdropWidth[platform === 'desktop' ? 'web' : 'phone']) * devicePixelRatio;
   const hero = useVisible(), env = useMemo(() => ({t, locale: time.locale}), [time.locale]);
@@ -122,20 +149,26 @@ export function HomeView({document, nowMs, onMore, artwork, effects, selection, 
       </>} /></div>}
     {selection.toolbar}
     <div className={styles.rows} data-with-hero={candidates.length > 0}>
-      {rows.map((row, index) => <HomeRowView key={row.id} row={row} rowIndex={index} platform={platform} nowMs={nowMs} onMore={() => onMore(row.id)}
+      {rows.map((row, index) => <HomeRowView key={row.id} row={row} rowIndex={index} platform={platform} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}
         artwork={artwork} effects={effects} selection={selection} time={time} reducedMotion={reducedMotion} />)}
     </div>
   </div>;
 }
 
-type HomeRowProps = HomePresentation & {row: HomeRow; rowIndex: number; platform: LayoutPlatform; nowMs: number; onMore: () => void};
+type HomeRowProps = HomePresentation & {row: HomeRow; rowIndex: number; platform: LayoutPlatform; nowMs: number; onMore: () => void; refreshLive: () => void};
 function HomeRowView(props: HomeRowProps) {
+  const {row, rowIndex, selection, refreshLive} = props;
   const interest = useVisible(), [range, setRange] = useState<readonly [number, number]>(props.row.collection ? [0, 0] : [-1, -1]);
   const onRange = useCallback((first: number, last: number) => setRange(before => before[0] === first && before[1] === last ? before : [first, last]), []);
+  // Intersection can run after a suspended deadline timer. Use the actual clock
+  // before both registration and rendering, even when the supplied tick is old.
+  const nowMs = Date.now(), liveCurrent = !row.live || !!currentHomeLive(row.live, nowMs);
   useEffect(() => {
-    if (interest.visible) return props.selection.registerWindow(props.row, props.rowIndex, range[0], range[1]);
-  }, [interest.visible, props.selection, props.row, props.rowIndex, range]);
-  return <div ref={interest.ref}><HomeRowContents {...props} onRange={onRange} /></div>;
+    if (!interest.visible) return;
+    if (!liveCurrent) { refreshLive(); return; }
+    return selection.registerWindow(row, rowIndex, range[0], range[1]);
+  }, [interest.visible, liveCurrent, refreshLive, selection, row, rowIndex, range]);
+  return <div ref={interest.ref}><HomeRowContents {...props} nowMs={props.row.live ? nowMs : props.nowMs} onRange={onRange} /></div>;
 }
 function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bindings}: HomeRowProps & {onRange: (first: number, last: number) => void}) {
   const env = {t, locale: bindings.time.locale};
@@ -193,9 +226,10 @@ function VisibleLive({item, mark, nowMs, order, row, artwork, effects, time, sel
   const interest = useVisible(), {channel} = item;
   const programme = channel.programmes.find(item => Date.parse(item.start) <= nowMs && nowMs < Date.parse(item.end));
   const start = programme && Date.parse(programme.start), end = programme && Date.parse(programme.end);
-  const play = () => { void effects.playChannel(channel).catch(effects.reportError); };
+  const current = () => !!currentHomeLive(row.live, Date.now()) && !!selection.channel(row, item);
+  const play = () => { if (current()) void effects.playChannel(channel).catch(effects.reportError); };
   const canPlay = homeChannelSelection(item, {platform: 'web', playbackAvailable: true, queueAvailable: true}).capabilities.play;
   return <div ref={interest.ref}><LiveCard channel={{sourceId: channel.sourceId, id: channel.id, name: channel.name, number: channel.number, mark}}
     programme={programme ? {title: programme.title, facts: programmeFactParts({startMs: start, endMs: end, subtitle: programme.subtitle, categories: programme.categories, rating: programme.rating?.value, flags: programme.flags, recording: programme.recordingState === 'recording'}, time, nowMs), progress: start !== undefined && end !== undefined && end > start ? (nowMs - start) / (end - start) : undefined, live: programme.flags?.live === true, isNew: programme.flags?.new === true, premiere: programme.flags?.premiere === true} : undefined}
-    visible={interest.visible} selection={selection.channel(row, item)} logo={artwork.foreground(channel.logoPath, 34 * devicePixelRatio, 1, {group: row.id, order})} onNavigate={canPlay ? play : () => effects.openSeeAll({type: 'guide', sourceId: channel.sourceId})} onPlay={canPlay ? play : undefined} /></div>;
+    visible={interest.visible} selection={selection.channel(row, item)} logo={artwork.foreground(channel.logoPath, 34 * devicePixelRatio, 1, {group: row.id, order})} onNavigate={canPlay ? play : () => { if (current()) effects.openSeeAll({type: 'guide', sourceId: channel.sourceId}); }} onPlay={canPlay ? play : undefined} /></div>;
 }

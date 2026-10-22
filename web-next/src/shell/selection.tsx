@@ -10,6 +10,7 @@ import {SelectionCircle} from '../kit/selection';
 import type {CardSelection} from '../kit/cards';
 import {router} from '../router';
 import type {HomeSelection} from '../screens/home/Home';
+import {currentHomeLive} from '../screens/home/model';
 import type {ShellAssemblyContext} from './bootstrap';
 import {entryDestination, seeAllDestination} from './navigation';
 import {SelectionSurfaces, SelectionPhoneBar, type SelectionRendererSource} from './SelectionSurfaces';
@@ -52,10 +53,19 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
   const windowId = (row: HomeRow) => 'home:' + row.id;
   const spotlightId = (spotlight: HomeSpotlight) => 'home:spotlight:' + document().spotlight.indexOf(spotlight);
   const selected = (key: string) => controller.getSnapshot().selection.selectedKeys.includes(key);
+  const currentRow = (row: HomeRow) => {
+    const shown = context.home.getSnapshot().document;
+    return isCurrent(controller.getSnapshot().context) && !!shown && row.viewerFence === shown.viewerFence && shown.rows.some(value => value === row || value.children?.includes(row));
+  };
+  const liveCurrent = (row: HomeRow) => !row.live || !!currentHomeLive(row.live, Date.now());
+  const clearExpiredLive = (row: HomeRow) => {
+    if (!retired && row.live && !liveCurrent(row) && row.live.channels.some(item => selected(controller.key(homeChannelSelection(item, platform))))) controller.clear();
+  };
   function descriptor(row: HomeRow, item: SelectionIdentity | undefined, title: string): CardSelection | undefined {
-    if (!item) return undefined;
+    if (!item || !currentRow(row) || !liveCurrent(row)) return undefined;
     const key = controller.key(item), snapshot = controller.getSnapshot().selection;
     const toggle = (range: boolean) => perform(() => {
+      if (!currentRow(row) || !liveCurrent(row)) { clearExpiredLive(row); return; }
       const change = controller.toggle(windowId(row), key, range);
       if (!change.ok) throw Object.assign(new Error(change.reason), {code: change.reason});
     });
@@ -66,15 +76,23 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
   const selection: HomeSelection = {
     toolbar: <SelectionSurfaces source={source} />,
     card: (row, entry) => descriptor(row, homeEntrySelection(entry, platform), entry.title),
-    channel: (row, item) => descriptor(row, homeChannelSelection(item, platform), item.channel.name),
+    channel: (row, item) => row.live?.channels.includes(item) ? descriptor(row, homeChannelSelection(item, platform), item.channel.name) : undefined,
     collection: row => row.collection ? descriptor(row, homeCollectionSelection(row.collection, platform), row.collection.collection.name) : undefined,
     registerWindow: (row, sectionOrder, first, last) => {
       if (!isCurrent(controller.getSnapshot().context) || first < 0 || last < first) return undefined;
+      if (!currentRow(row) || !liveCurrent(row)) { clearExpiredLive(row); return undefined; }
       // The server's returned row is capped at 100 and is already mounted by Shelf.
       // Keeping this loaded page allows Shift ranges after horizontal scrolling, without reading a query.
-      const registered = controller.registerWindow({id: windowId(row), row, sectionOrder, start: row.start});
+      let registered: ReturnType<HomeSelectionController['registerWindow']>;
+      try { registered = controller.registerWindow({id: windowId(row), row, sectionOrder, start: row.start}); }
+      catch (error) {
+        // The real clock can cross expiry between the caller and controller
+        // checks. That specific refusal creates no window or action offer.
+        if ((error as {code?: unknown})?.code !== 'stale-home-live-window' || liveCurrent(row)) throw error;
+        clearExpiredLive(row); return undefined;
+      }
       if (!registered.ok) { reportError(Object.assign(new Error(registered.reason), {code: registered.reason})); return undefined; }
-      return registered.unregister;
+      return () => { registered.unregister(); clearExpiredLive(row); };
     },
     registerSpotlight: spotlight => {
       if (!isCurrent(controller.getSnapshot().context)) return undefined;
