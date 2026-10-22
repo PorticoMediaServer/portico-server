@@ -806,6 +806,17 @@ test('runtime quality changes require current options and an enabled rung on the
 
 test('runtime Home selection binds distinct Home and detail fences to the actual queue and persistent media', async t => {
   const f = setup(t), picked = selectionLeaf('movie');
+  // The canonical fake's default queue leaf is three minutes, while this fixture's
+  // actual movie media/options already declare two hours. Publish that same duration
+  // in this test's queue receipt so 1040 seconds is a valid authoritative position.
+  f.intercept(async (request, response) => {
+    if (request.method === 'POST' && request.path === '/v1/queues' && response.status === 201) {
+      const body = response.body as {window: {itemId: string; durationMs: number}[]};
+      assert.ok(body.window.length > 0); assert.ok(body.window.every(entry => entry.itemId === 'movie' && entry.durationMs === 180000));
+      return {...response, body: {...body, window: body.window.map(entry => ({...entry, durationMs: 7200000}))}};
+    }
+    return response;
+  });
   assert.ok('target' in picked);
   const receipt = await f.runtime.selectionPlayback(context => context === selectionContext).play({context: selectionContext, items: [{...picked, target: {...picked.target, startSeconds: 1040}}], signal: new AbortController().signal});
   const engine = await f.arrive(), state = f.runtime.getSnapshot(), fence = state.fence;
@@ -980,7 +991,10 @@ test('runtime Home authority retirement prevents an outstanding detail response 
 
 test('runtime selection still requires the Home authority fence rather than the bound detail fence', async t => {
   const f = setup(t), wrong = {...selectionContext, scope: {...selectionContext.scope, privacyFence: detailViewerFence}};
+  await settle();
+  assert.deepEqual(f.log.map(request => [request.method, request.path]), [['GET', '/v1/listening/preferences']]);
+  const before = f.log.length;
   await assert.rejects(f.runtime.selectionPlayback(() => true).play({context: wrong, items: [selectionLeaf('movie')], signal: new AbortController().signal}), /stale_selection_context/);
-  assert.equal(f.log.length, 0); assert.equal(f.hls.instances.length, 0);
+  assert.equal(f.log.length, before); assert.deepEqual(f.log.slice(before), []); assert.equal(f.hls.instances.length, 0);
   assert.equal(f.runtime.getSnapshot().fence, undefined); assert.equal(f.runtime.getSnapshot().offers, null);
 });
