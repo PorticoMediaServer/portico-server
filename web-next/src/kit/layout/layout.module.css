@@ -4,7 +4,7 @@
 .slide[data-active='true'] { opacity: 1; pointer-events: auto; }
 .heroArtwork { position: absolute; inset: 0; overflow: hidden; }
 .heroArtwork > * { width: 100%; height: 100%; }
-.heroArtwork[data-drift='true'] [data-foreground-art] { animation: drift 11000ms var(--ease-out) both; }
+.slide[data-active='true'] .heroArtwork[data-drift='true'] [data-foreground-art] { animation: drift 11000ms var(--ease-out) both; }
 .hero[data-paused='true'] .heroArtwork [data-foreground-art] { animation-play-state: paused; }
 @keyframes drift { from { transform: scale(1.07); } to { transform: scale(1); } }
 .copy { position: absolute; left: var(--layout-gutter); bottom: 150px; width: 600px; z-index: 1; }

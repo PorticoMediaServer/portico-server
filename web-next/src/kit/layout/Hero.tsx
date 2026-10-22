@@ -1,4 +1,4 @@
-import {useEffect, useId, useRef, useState, type ReactNode, type HTMLAttributes} from 'react';
+import {useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type HTMLAttributes} from 'react';
 import {heroSpec} from '@design';
 import type {FactPart} from '@portico/client-core/kit-model';
 import {defaultI18n} from '@i18n';
@@ -8,7 +8,7 @@ import {useLayoutMotion} from './motion';
 import styles from './layout.module.css';
 
 export type HeroCandidate = Readonly<{id: string; title: string; long?: boolean; reason?: string; overview?: string; facts?: readonly FactPart[]; thumbnail?: string}>;
-export type HeroRenderContext = Readonly<{index: number; active: boolean; paused: boolean; reducedMotion: boolean; platform: LayoutPlatform}>;
+export type HeroRenderContext = Readonly<{index: number; active: boolean; visible: boolean; paused: boolean; reducedMotion: boolean; platform: LayoutPlatform}>;
 export type HeroProps<T extends HeroCandidate> = Omit<HTMLAttributes<HTMLElement>, 'children' | 'onChange'> & {
   /** A bounded, server-authored spotlight set. This primitive never chooses library entries. */
   candidates: readonly T[];
@@ -36,6 +36,15 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
   const chooseRef = useRef(choose); chooseRef.current = choose;
   const remaining = useRef<number>(heroSpec.rotation.intervalMs), clockId = useRef('');
   const currentId = candidates[index]?.id ?? '';
+  const priorId = useRef(currentId), [exitingId, setExitingId] = useState<string | null>(null);
+  const fadeMs = motion.reduced ? heroSpec.rotation.reducedMs : heroSpec.rotation.crossfadeMs;
+  useLayoutEffect(() => {
+    const previous = priorId.current; priorId.current = currentId;
+    if (previous === currentId) return;
+    setExitingId(previous);
+    const timer = window.setTimeout(() => setExitingId(null), fadeMs);
+    return () => window.clearTimeout(timer);
+  }, [currentId, fadeMs]);
   useEffect(() => {
     if (clockId.current !== currentId) { remaining.current = heroSpec.rotation.intervalMs; clockId.current = currentId; }
     if (paused || candidates.length < 2) return;
@@ -50,10 +59,10 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
     onMouseEnter={event => { setHovered(true); onMouseEnter?.(event); }} onMouseLeave={event => { setHovered(false); onMouseLeave?.(event); }}
     onFocusCapture={event => { setFocused(true); onFocusCapture?.(event); }} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); onBlurCapture?.(event); }}>
     {candidates.map((candidate, candidateIndex) => {
-      const selected = candidateIndex === index, context = {index: candidateIndex, active: selected, paused, reducedMotion: motion.reduced, platform};
+      const selected = candidateIndex === index, context = {index: candidateIndex, active: selected, visible: visible && motion.visible && (selected || candidate.id === exitingId || candidateIndex === (index + 1) % candidates.length), paused, reducedMotion: motion.reduced, platform};
       return <div key={candidate.id} id={`${id}-slide-${candidateIndex}`} className={styles.slide} data-active={selected} inert={!selected} aria-hidden={!selected}
         role={showNavigation && candidates.length > 1 ? 'tabpanel' : undefined} aria-labelledby={showNavigation && candidates.length > 1 ? `${id}-tab-${candidateIndex}` : undefined}>
-        <div className={styles.heroArtwork} data-hero-artwork data-drift={!motion.reduced}>{renderArtwork(candidate, context)}</div>
+        <div className={styles.heroArtwork} data-hero-artwork data-drift={!motion.reduced && platform !== 'tv'}>{renderArtwork(candidate, context)}</div>
         <div className={styles.copy}>
           {candidate.reason && <p className={styles.reason} style={layoutType(type.eyebrow)}>{candidate.reason}</p>}
           <Lockup title={candidate.title} long={candidate.long} platform={platform} />
@@ -77,7 +86,7 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
           else return;
           event.preventDefault(); choose(next); thumbRefs.current[next]?.focus();
         }}>
-        {!phone && <>{renderThumbnail && <span className={styles.thumbnailImage}>{renderThumbnail(candidate, {index: candidateIndex, active: candidateIndex === index, paused, reducedMotion: motion.reduced, platform})}</span>}<span className={styles.timer}><i key={currentId} /></span><span className={styles.thumbnailTitle}>{candidate.title}</span></>}
+        {!phone && <>{renderThumbnail && <span className={styles.thumbnailImage}>{renderThumbnail(candidate, {index: candidateIndex, active: candidateIndex === index, visible: visible && motion.visible, paused, reducedMotion: motion.reduced, platform})}</span>}<span className={styles.timer}><i key={currentId} /></span><span className={styles.thumbnailTitle}>{candidate.title}</span></>}
       </button>)}
     </div>}
   </section>;

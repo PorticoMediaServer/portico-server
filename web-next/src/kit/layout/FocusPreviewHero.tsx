@@ -5,10 +5,11 @@ import styles from './layout.module.css';
 
 export function usePreviewDebounce<T>(value: T, key: string | null, hold = false): T {
   const [settled, setSettled] = useState(value);
-  const latest = useRef(value); latest.current = value;
+  const latest = useRef(value), settledKey = useRef(key); latest.current = value;
+  useEffect(() => { if (!hold && key === settledKey.current) setSettled(value); }, [value, key, hold]);
   useEffect(() => {
     if (hold) return;
-    const timer = window.setTimeout(() => setSettled(latest.current), 250);
+    const timer = window.setTimeout(() => { settledKey.current = key; setSettled(latest.current); }, 250);
     return () => window.clearTimeout(timer);
   }, [key, hold]);
   return settled;
