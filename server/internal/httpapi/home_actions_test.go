@@ -544,7 +544,30 @@ func TestHomeActionAggregateAvailabilityRetainsSnapshotAndCurrentRestrictionFenc
 		}
 		return row
 	}
+	// No visibility class is published by the compact worker. Exercise its
+	// genuine cold source first, then the same source through a published
+	// class. Neither may combine unavailable G children with available R ones.
+	var classes, datedMembers int
+	if err := f.db.QueryRow(`SELECT count(*) FROM compact_visibility_classes`).Scan(&classes); err != nil || classes != 0 {
+		t.Fatalf("fixture did not start with an unpublished visibility class: %d %v", classes, err)
+	}
+	if err := f.db.QueryRow(`SELECT count(*) FROM catalog_browse_member_metrics WHERE entity_id=? AND added IS NOT NULL`, show.ID).Scan(&datedMembers); err != nil || datedMembers != 70 {
+		t.Fatalf("drained Recent source lost its available dated members: %d %v", datedMembers, err)
+	}
 	before := read(true) // The only permitted available member is after 64.
+	r := httptest.NewRequest("GET", "/v1/home", nil)
+	r.Header.Set("Authorization", "Bearer "+f.kids.AccessToken)
+	_, current, err := f.d.homeRequest(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.d.Catalog.RebuildVisibilityClass(ctx, "tv", current.Restrictions); err != nil {
+		t.Fatal(err)
+	}
+	published := read(true)
+	if published.ViewerFence != before.ViewerFence || published.Revision != before.Revision {
+		t.Fatal("publishing the visibility class changed current Home authority/content")
+	}
 	p, err := f.d.Identity.Authenticate(f.kids.AccessToken)
 	if err != nil {
 		t.Fatal(err)
