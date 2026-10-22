@@ -1,5 +1,5 @@
 import {createRoot} from 'react-dom/client';
-import family from './dock';
+import family from '../families/dock';
 import {IconSprite} from '../../kit/Icon';
 import styles from '../../kit/dock/gallery.module.css';
 import '../../kit/tokens.css';
