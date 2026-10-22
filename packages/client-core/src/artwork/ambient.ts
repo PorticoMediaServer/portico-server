@@ -45,7 +45,13 @@ export function ambientArtworkSource(artworkUrl: string | null | undefined, iden
   const version = params.get('v');
   if (version === null || !/^[a-f0-9]{64}$/.test(version)) return null;
   const subject = params.get('subject');
-  if (subject !== null && (subject.length > 160 || /[\x00-\x1f\x7f]/.test(subject))) return null;
+  if (subject !== null) {
+    const bytes = Array.from(subject).reduce((total, char) => {
+      const point = char.codePointAt(0)!;
+      return total + (point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4);
+    }, 0);
+    if (bytes > 160 || /[\x00-\x1f\x7f]/.test(subject)) return null;
+  }
   params.delete('w');
   params.set('size', 'ambient-v1');
   params.sort();

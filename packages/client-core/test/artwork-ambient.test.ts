@@ -26,6 +26,8 @@ test('metadata subject and source version survive canonical query ordering', () 
   const b = ambientArtworkSource(path + '?v=' + version + '&subject=tmdb:123', identity)!;
   assert.deepEqual(a, b);
   assert.equal(new URLSearchParams(a.url.split('?')[1]).get('subject'), 'tmdb:123');
+  assert(ambientArtworkSource(path + '?v=' + version + '&subject=' + encodeURIComponent('é'.repeat(80)), identity));
+  assert.equal(ambientArtworkSource(path + '?v=' + version + '&subject=' + encodeURIComponent('é'.repeat(81)), identity), null, 'the server limits UTF-8 subject bytes');
 });
 
 test('cache identity is separated by source revision, variant and current authority', () => {
