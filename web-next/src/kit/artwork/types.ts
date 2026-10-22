@@ -7,7 +7,7 @@ export type ArtworkSource = Readonly<{scheduler: ArtworkScheduler<ArtworkImage>;
 export type AmbientArtSource = ArtworkSource & Pick<AmbientArtworkSource, 'variant' | 'maxEdge' | 'version'>;
 export type ArtworkStatus = 'empty' | 'loading' | 'ready' | 'error';
 export type ArtworkPalette = Readonly<{first: string; second: string}>;
-export type GeneratedCoverTint = ArtworkPalette;
+export type {GeneratedCoverTint} from '@design';
 export type ArtStyleProps = Readonly<{className?: string; style?: CSSProperties; width?: number | string; height?: number | string}>;
 export type ArtworkProps = ArtStyleProps & Readonly<{
   source?: ArtworkSource | null; alt: string; fit?: 'cover' | 'contain'; position?: string;
