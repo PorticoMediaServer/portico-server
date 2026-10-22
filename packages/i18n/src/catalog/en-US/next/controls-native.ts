@@ -1,5 +1,6 @@
-/** Native component-gallery names; product actions reuse the shared catalogue. */
+/** Native controls copy; existing product actions reuse the shared catalogue. */
 export const controlsNativeMessages = {
+  'next.controls.native.choose': 'Choose',
   'next.controls.native.galleryTitle': 'Controls',
   'next.controls.native.buttonsTitle': 'Buttons',
   'next.controls.native.resumeTitle': 'Resume',
