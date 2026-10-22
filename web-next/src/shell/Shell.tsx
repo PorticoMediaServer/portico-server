@@ -5,7 +5,7 @@ import type {Library, Viewer} from '@core/index.ts';
 import {AccountMenu, ProfileAvatar, type ProfileIdentity, type ProfileTone} from '../kit/shell';
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {Icon} from '../kit/Icon';
-import {Menu} from '../kit/overlays';
+import {Menu, MenuItem} from '../kit/overlays';
 import {desktopLibraries, isLibraryLocation, rememberLibrary, rememberedLibrary, showOwnerActivity} from './model';
 import {useShellScrolled, useShellWidth} from './viewport';
 import styles from './shell.module.css';
@@ -52,9 +52,16 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
     else void navigate({to: '/libraries'});
   };
   const current = {id: viewer.profileId, username: identity.username, name: identity.profileName, initial: Array.from(identity.profileName.trim())[0] ?? '', art: identity.profileArt};
+  const dashboard = () => { void navigate({to: '/dashboard', search: viewer.role === 'owner' ? {} : {section: 'streams'}}); };
+  const serverAction = !desktop && (viewer.role === 'owner' || viewer.role === 'admin' || viewer.role === 'administrator')
+    ? <MenuItem className={styles.dashboardCard} onSelect={dashboard}>
+      <span className={styles.dashboardIcon}><Icon name="i-pulse" size={22} /></span>
+      <span className={styles.dashboardText}><small>{t('next.shell.server')}</small><b>{t('next.shell.dashboard')}</b></span>
+      <Icon name="i-right" size={18} />
+    </MenuItem> : undefined;
   const account = <AccountMenu open={accountOpen} onOpenChange={setAccountOpen} current={current} primary={identity.primaryProfile === true}
     notificationCount={desktop ? undefined : identity.unread} notificationDot={!desktop && identity.showNotificationDot && identity.unread > 0}
-    profiles={identity.profiles} accountFacts={identity.accountFacts} actions={{
+    profiles={identity.profiles} accountFacts={identity.accountFacts} serverAction={serverAction} actions={{
       manageProfiles: () => { void navigate({to: '/profiles'}); },
       ...(identity.canManageProfiles ? {addProfile: () => { void navigate({to: '/profiles', search: {add: true}}); }} : {}),
       switchProfile: profile => { void navigate({to: '/profiles', search: {profileId: profile.id}}); },
@@ -85,7 +92,10 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
           {account}
         </div>
       </nav> : <>
-        {home && <header className={styles.phoneHeader}><Link className={styles.brand} to="/" aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>{account}</header>}
+        {home && <header className={styles.phoneHeader}><Link className={styles.brand} to="/" aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link><div className={styles.phoneTools}>
+          {viewer.role === 'owner' && <button type="button" className={styles.phoneActivity} aria-label={t('next.shell.activity')} onClick={dashboard}><Icon name="i-activity" size={22} /></button>}
+          {account}
+        </div></header>}
         {phoneSelection ?? <nav className={styles.tabbar} aria-label={t('next.home.shell.main')}>
           <Link to="/" activeOptions={{exact: true}} activeProps={{'aria-current': 'page'}}><Icon name="i-home" size={22} /><span>{t('next.home.shell.home')}</span></Link>
           <Link to="/search" search={{q: lastSearch.current}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span>{t('next.home.shell.search')}</span></Link>
