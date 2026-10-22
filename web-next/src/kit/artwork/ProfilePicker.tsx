@@ -4,7 +4,7 @@ import {defaultI18n} from '@i18n';
 import type {SelectionProfile} from '@core/session-selection';
 import {Icon} from '../Icon';
 import {artClass, artSize} from './Artwork';
-import type {ArtStyleProps} from './types';
+import type {ArtworkPalette, ArtStyleProps} from './types';
 import styles from './artwork.module.css';
 
 export type ProfileFaceProps = ArtStyleProps & Readonly<{
@@ -12,9 +12,11 @@ export type ProfileFaceProps = ArtStyleProps & Readonly<{
   size?: number; alt?: string;
   /** Explicit presentation base; omitted for the canonical semantic art colour. */
   tint?: string;
+  /** Explicit two-stop 135-degree presentation; omitted for the semantic/tint recipe. */
+  palette?: ArtworkPalette;
 }>;
-export function ProfileFace({initial, art = 'blue', tint, locked = false, selected = false, size, alt = '', className, style, width = size, height = size}: ProfileFaceProps) {
-  return <span className={artClass(styles.profileFace, selected && styles.currentFace, className)} style={artSize({width, height, style: {'--profile-colour': tint ?? profileArtColors[art], ...(size ? {'--profile-size': `${size}px`} : {}), ...style} as CSSProperties})} role={alt ? 'img' : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true}>
+export function ProfileFace({initial, art = 'blue', tint, palette, locked = false, selected = false, size, alt = '', className, style, width = size, height = size}: ProfileFaceProps) {
+  return <span className={artClass(styles.profileFace, palette && styles.profilePalette, selected && styles.currentFace, className)} style={artSize({width, height, style: {'--profile-colour': tint ?? profileArtColors[art], ...(palette ? {'--profile-first': palette.first, '--profile-second': palette.second} : {}), ...(size ? {'--profile-size': `${size}px`} : {}), ...style} as CSSProperties})} role={alt ? 'img' : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true}>
     {initial}{locked && <span className={styles.lockBadge}><Icon name="i-lock" /></span>}
   </span>;
 }
