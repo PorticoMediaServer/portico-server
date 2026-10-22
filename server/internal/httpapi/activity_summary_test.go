@@ -184,7 +184,7 @@ func TestActivitySummaryPublishedBounds(t *testing.T) {
 		t.Fatal(e)
 	}
 	props := shape["properties"].(map[string]any)
-	for key, want := range map[string]int{"streams": 4, "tasks": 3} {
+	for key, want := range map[string]int{"streams": 3, "tasks": 3} {
 		fields := props[key].(map[string]any)["properties"].(map[string]any)
 		if fields["items"].(map[string]any)["maxItems"] != want || fields["count"].(map[string]any)["minimum"] != 0 {
 			t.Fatalf("wire bounds missing for %s: %+v", key, fields)
@@ -290,5 +290,48 @@ func TestActivitySummaryAuthorityChangesDuringOutstandingRead(t *testing.T) {
 				t.Fatal("summary did not finish after authority changed")
 			}
 		})
+	}
+}
+
+func TestActivitySummaryThreeSessionWireStillOwnerPrivate(t *testing.T) {
+	d, tokens, h := activitySummaryFixture(t)
+	now := time.Now().UnixMilli()
+	for n := 0; n < 6; n++ {
+		id := fmt.Sprintf("activity-session-%d", n)
+		presentation := `{"decision":{"video":{"action":"copy","reasons":[]}}}`
+		if n < 3 {
+			presentation = `{"decision":{"video":{"action":"transcode","reasons":[]}}}`
+		}
+		if _, e := d.DB.Exec(`INSERT INTO playback_v1_sessions(id,device_id,account_id,profile_id,authority,start_key,start_digest,kind,role,state,request,revision,generation,lease_expires_ms,created_ms,updated_ms,presentation) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, "device", "owner", "owner-profile", "local", "key-"+id, "digest", "vod", "local", "playing", "{}", 1, 1, now+3600000, now+int64(n), now, presentation); e != nil {
+			t.Fatal(e)
+		}
+	}
+	w := activitySummaryRequest(h, tokens["owner"].AccessToken)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var out ActivitySummary
+	if e := json.Unmarshal(w.Body.Bytes(), &out); e != nil {
+		t.Fatal(e)
+	}
+	if out.Streams.Count != 6 || out.Streams.ConvertingCount != 3 || out.Streams.Overflow.Count != 3 || out.Streams.Overflow.ConvertingCount != 0 || len(out.Streams.Items) != 3 {
+		t.Fatalf("wire totals: %+v", out.Streams)
+	}
+	for n, row := range out.Streams.Items {
+		if row.ID != fmt.Sprintf("activity-session-%d", 2-n) || row.User.Username != "owner" || row.StartedAt == "" || !row.Converting {
+			t.Fatalf("wire facts: %+v", row)
+		}
+	}
+	if strings.Contains(w.Body.String(), `"url"`) || strings.Contains(w.Body.String(), `"user":{"id":"owner","name"`) {
+		t.Fatal("private capability or legacy fallback escaped", w.Body.String())
+	}
+	for _, role := range []string{"", "member", "admin"} {
+		denied := activitySummaryRequest(h, tokens[role].AccessToken)
+		if denied.Code != 401 && denied.Code != 403 {
+			t.Fatal(role, denied.Code)
+		}
+		if strings.Contains(denied.Body.String(), "activity-session") || strings.Contains(denied.Body.String(), "streams") {
+			t.Fatal("owner facts leaked to", role)
+		}
 	}
 }

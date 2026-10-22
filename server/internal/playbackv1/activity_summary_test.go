@@ -38,7 +38,7 @@ func TestActivitySummarySessionsExactTotalAndRealDisplay(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if out.Count != 5 || len(out.Items) != 4 {
+	if out.Count != 5 || len(out.Items) != 3 || out.ConvertingCount != 5 || out.Overflow.Count != 2 || out.Overflow.ConvertingCount != 2 {
 		t.Fatalf("cap/total: %+v", out)
 	}
 	for _, v := range out.Items {
@@ -135,5 +135,100 @@ func TestActivitySummarySessionsCommittedVideoHeight(t *testing.T) {
 				t.Fatalf("unknown/private fact escaped: %s", wire)
 			}
 		})
+	}
+}
+
+func TestActivitySummaryPrioritizesFullActiveSetBeforeThreeAndCountsOverflow(t *testing.T) {
+	c := catalogtest.Open(t)
+	now := time.UnixMilli(1_790_000_000_000)
+	s := &Service{DB: c.DB, Now: func() time.Time { return now }}
+	// Four ordinary newer sessions would fill the old pre-priority cap.
+	for n := 0; n < 4; n++ {
+		insertPausedSession(t, c.DB, fmt.Sprintf("new-%d", n), "vod", "playing", now.UnixMilli()+int64(n), 0)
+	}
+	for _, v := range []struct {
+		id, state, presentation string
+		at                      int64
+	}{
+		{"old-problem", "buffering", `{"decision":{"video":{"action":"direct","reasons":[]}}}`, 10},
+		{"old-video", "playing", `{"decision":{"video":{"action":"transcode","reasons":[]}}}`, 20},
+		{"old-audio", "playing", `{"decision":{"audio":{"action":"transcode","reasons":[]}}}`, 30},
+		{"old-burn", "playing", `{"decision":{"subtitles":{"action":"burn","reasons":[]}}}`, 0},
+	} {
+		insertPausedSession(t, c.DB, v.id, "vod", v.state, now.UnixMilli()-100+v.at, 0)
+		c.Exec(`UPDATE playback_v1_sessions SET presentation=? WHERE id=?`, v.presentation, v.id)
+	}
+	// A requested 2160 ceiling is no committed conversion. Malformed JSON is unknown.
+	c.Exec(`UPDATE playback_v1_sessions SET presentation='{"quality":{"mode":"limit","maxHeight":2160},"decision":{"video":{"action":"copy","reasons":[]}}}' WHERE id='new-3'`)
+	c.Exec(`UPDATE playback_v1_sessions SET presentation='not-json' WHERE id='new-2'`)
+	insertPausedSession(t, c.DB, "ended", "vod", "error", now.UnixMilli()+100, 0)
+	insertPausedSession(t, c.DB, "expired", "vod", "error", now.UnixMilli()+100, 0)
+	c.Exec(`UPDATE playback_v1_sessions SET ended_ms=1 WHERE id='ended'`)
+	c.Exec(`UPDATE playback_v1_sessions SET lease_expires_ms=? WHERE id='expired'`, now.UnixMilli())
+	out, err := s.ActivitySummarySessions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Count != 8 || out.ConvertingCount != 3 || out.Overflow.Count != 5 || out.Overflow.ConvertingCount != 1 || len(out.Items) != 3 {
+		t.Fatalf("full-set totals: %+v", out)
+	}
+	for n, id := range []string{"old-problem", "old-audio", "old-video"} {
+		if out.Items[n].ID != id {
+			t.Fatalf("priority before cap: %+v", out.Items)
+		}
+	}
+	if !out.Items[0].Problem || out.Items[0].Converting || out.Items[1].Problem || !out.Items[1].Converting {
+		t.Fatalf("actual state/decisions: %+v", out.Items)
+	}
+	// The legacy endpoint remains newest-first and keeps its four-row request.
+	page, err := s.AdminSessions(context.Background(), 4, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 4 || page.Items[0].ID != "new-3" {
+		t.Fatalf("legacy pagination changed: %+v", page)
+	}
+}
+
+func TestActivitySummaryRealUsernameAbsentHostedAndStableRecentOrder(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id) VALUES('owner','real_username',X'00','primary')`)
+	c.Exec(`UPDATE direct_profiles SET name='Different profile' WHERE id='primary'`)
+	now := time.UnixMilli(1_790_000_000_000)
+	for _, id := range []string{"b", "a", "c", "d"} {
+		insertPausedSession(t, c.DB, id, "audio", "paused", now.UnixMilli(), 0)
+	}
+	c.Exec(`UPDATE playback_v1_sessions SET authority='hosted' WHERE id='a'`)
+	c.Exec(`UPDATE playback_v1_sessions SET account_id='missing-account',profile_id='missing-profile',device_id='missing-device' WHERE id='b'`)
+	out, err := (&Service{DB: c.DB, Now: func() time.Time { return now }}).ActivitySummarySessions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Count != 4 || out.ConvertingCount != 0 || out.Overflow.Count != 1 || out.Overflow.ConvertingCount != 0 {
+		t.Fatalf("ordinary totals: %+v", out)
+	}
+	for n, id := range []string{"a", "b", "c"} {
+		if out.Items[n].ID != id || out.Items[n].StartedAt != now.UTC().Format(time.RFC3339Nano) {
+			t.Fatalf("stable real start: %+v", out.Items)
+		}
+	}
+	if out.Items[0].User.Username != "" || out.Items[1].User.Username != "" || out.Items[2].User.Username != "real_username" || out.Items[2].Profile.Name != "Different profile" {
+		t.Fatalf("username provenance: %+v", out.Items)
+	}
+	if out.Items[0].Profile.Name != "" || out.Items[1].Profile.Name != "" || out.Items[1].Device.Name != "" {
+		t.Fatalf("missing names replaced by identifiers: %+v", out.Items)
+	}
+	wire, _ := json.Marshal(out.Items[0])
+	if strings.Contains(string(wire), "username") || strings.Contains(string(wire), `"user":{"id":"owner","name"`) {
+		t.Fatalf("unavailable username invented: %s", wire)
+	}
+	// Revoking/renaming the actual local account is reflected in the next snapshot.
+	c.Exec(`UPDATE accounts SET username='renamed_username' WHERE id='owner'`)
+	out, err = (&Service{DB: c.DB, Now: func() time.Time { return now }}).ActivitySummarySessions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Items[2].User.Username != "renamed_username" {
+		t.Fatal("cached identity escaped source change")
 	}
 }
