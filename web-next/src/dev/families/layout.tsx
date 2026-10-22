@@ -220,7 +220,7 @@ function GridCase({empty = false, phone = false, reference = false}: {empty?: bo
         const drawn = reference ? referenceGridCards.find(card => card.querySelector('.t')!.textContent === item.title) : undefined;
         const url = referenceMovieArt.get(item.title), progress = drawn?.querySelector('.pbar i') as HTMLElement | undefined;
         return <PosterCard context="grid" artwork={reference && url ? art.runtime.source({url, cacheKey: url}) : art.posters[context.index % candidates.length]} model={{...cardText(item, 'ordinary', {t}), ...(progress ? {progress: parseFloat(progress.style.width) / 100} : {})}} watched={!!drawn?.querySelector('.done')} titleLines={phone ? 1 : 2} style={{width: '100%'}} onNavigate={() => setAction(item.id)} onPlay={() => setAction(`play:${item.id}`)} onMore={() => setAction(`more:${item.id}`)}
-          selection={reference ? {active: selected.size > 0, checked: selected.has(item.id), control: <SelectionCircle interactive={false} accessibilityLabel={t('card.select', {title: item.title})} selected={selected.has(item.id)} />, onExit: () => setSelected(new Set()), onToggle: intent => {
+          selection={reference ? {active: selected.size > 0, checked: selected.has(item.id), control: <SelectionCircle interactive={false} accessibilityLabel={t('card.select', {title: item.title})} selected={selected.has(item.id)} selecting={selected.size > 0} />, onExit: () => setSelected(new Set()), onToggle: intent => {
             setSelected(previous => { const next = new Set(previous), anchor = referenceBrowse.entries.findIndex(value => value.id === selectionAnchor.current); if (intent.range && anchor >= 0) { for (const value of referenceBrowse.entries.slice(Math.min(anchor, context.index), Math.max(anchor, context.index) + 1)) next.add(value.id); } else if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next; }); selectionAnchor.current = item.id;
           }} : undefined} />;
       }}
@@ -273,7 +273,7 @@ function DrawnGrid({fixture}: {fixture: typeof drawnGridCases[number]}) {
       renderPlaceholder={() => <div className={styles.unloaded} />} renderItem={(item, context) => {
         const common = {context: 'grid' as const, style: {width: '100%'}, titleLines: fixture.phone ? 1 as const : 2 as const, model: item.model, watched: item.watched, isNew: item.isNew, next: item.next,
           artwork: item.url ? art.runtime.source({url: item.url, cacheKey: item.url}) : undefined, onNavigate: () => setAction(item.id), onPlay: () => setAction(`play:${item.id}`), onMore: () => setAction(`more:${item.id}`),
-          selection: {active: selected.size > 0, checked: selected.has(item.id), control: <SelectionCircle interactive={false} accessibilityLabel={t('card.select', {title: item.model.title})} selected={selected.has(item.id)} />,
+          selection: {active: selected.size > 0, checked: selected.has(item.id), control: <SelectionCircle interactive={false} accessibilityLabel={t('card.select', {title: item.model.title})} selected={selected.has(item.id)} selecting={selected.size > 0} />,
             onExit: () => setSelected(new Set()), onToggle: (intent: {range: boolean}) => {
               setSelected(previous => { const next = new Set(previous), anchor = fixture.items.findIndex(value => value.id === selectionAnchor.current);
                 if (intent.range && anchor >= 0) for (const value of fixture.items.slice(Math.min(anchor, context.index), Math.max(anchor, context.index) + 1)) next.add(value.id);
