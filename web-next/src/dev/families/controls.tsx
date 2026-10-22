@@ -74,6 +74,13 @@ function AuthFieldCase() {
   const [value, choose] = useState(fixture('next.controls.fixture.server'));
   return <Surface stacked><TextField variant="auth" label={t('next.controls.serverName')} value={value} onChange={event => choose(event.currentTarget.value)} /></Surface>;
 }
+function ViewSegmentedCase() {
+  const [value, choose] = useState('guide');
+  return <Surface><Segmented variant="view" aria-label={t('next.controls.layout')} value={value} onValueChange={choose} items={[
+    {value: 'list', label: t('next.controls.list'), icon: 'i-list-guide'},
+    {value: 'guide', label: t('next.controls.guide'), icon: 'i-timeline'},
+  ]} /><output data-selection={value} /></Surface>;
+}
 function CodeFieldCase() {
   const [value, choose] = useState(fixture('next.controls.fixture.code'));
   return <Surface stacked raised><TextField variant="code" label={t('next.controls.codeFromHost')} value={value} onChange={event => choose(event.currentTarget.value)} error={t('next.controls.codeError')} errorIcon="i-warn" /></Surface>;
@@ -185,6 +192,8 @@ const cases: readonly GalleryCase[] = [
   {id: 'disabled', labelKey: 'next.controls.disabled', width: 240, height: 80, render: button({variant: 'primary', icon: 'i-play', disabled: true})},
   {id: 'loading', labelKey: 'next.controls.loading', width: 240, height: 80, render: button({variant: 'primary', icon: 'i-play', loading: true})},
   {id: 'loading-text', labelKey: 'next.controls.loading', width: 150, height: 64, render: button({variant: 'text', loading: true}, 'next.controls.acknowledge')},
+  {id: 'ghost-disabled', labelKey: 'next.controls.saveView', width: 240, height: 64, render: button({variant: 'ghost', icon: 'i-save', disabled: true}, 'next.controls.saveView')},
+  {id: 'segmented-view', labelKey: 'next.controls.layout', width: 240, height: 64, render: ViewSegmentedCase},
   {id: 'long-name', labelKey: 'next.controls.name', width: 240, height: 80, render: button({variant: 'primary', icon: 'i-play'}, 'next.controls.play', true)},
   {id: 'chip', labelKey: 'next.controls.season', width: 240, height: 64, render: chip({trailingIcon: 'i-down'})},
   {id: 'chip-selected', labelKey: 'next.controls.selected', width: 240, height: 64, render: chip({variant: 'search', selected: true}, 'next.controls.all')},

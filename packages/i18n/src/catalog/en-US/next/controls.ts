@@ -7,6 +7,7 @@ export const controlsMessages = {
   'next.controls.resume': 'Resume',
   'next.controls.myList': 'My List',
   'next.controls.startOver': 'Start over',
+  'next.controls.saveView': 'Save view',
   'next.controls.more': 'More',
   'next.controls.reset': 'Reset',
   'next.controls.acknowledge': 'Acknowledge',

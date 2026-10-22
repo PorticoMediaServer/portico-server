@@ -13857,6 +13857,11 @@ export const schemas = {
       },
       "streams": {
         "properties": {
+          "convertingCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "count": {
             "maximum": 9007199254740991,
             "minimum": 0,
@@ -13865,6 +13870,9 @@ export const schemas = {
           "items": {
             "items": {
               "properties": {
+                "converting": {
+                  "type": "boolean"
+                },
                 "decision": {
                   "properties": {
                     "audio": {
@@ -14059,6 +14067,9 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "problem": {
+                  "type": "boolean"
+                },
                 "profile": {
                   "properties": {
                     "id": {
@@ -14106,6 +14117,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "startedAt": {
+                  "type": "string"
+                },
                 "state": {
                   "type": "string"
                 },
@@ -14114,13 +14128,12 @@ export const schemas = {
                     "id": {
                       "type": "string"
                     },
-                    "name": {
+                    "username": {
                       "type": "string"
                     }
                   },
                   "required": [
-                    "id",
-                    "name"
+                    "id"
                   ],
                   "type": "object"
                 },
@@ -14137,17 +14150,41 @@ export const schemas = {
                 "device",
                 "kind",
                 "state",
+                "startedAt",
+                "problem",
+                "converting",
                 "positionMs",
                 "decision"
               ],
               "type": "object"
             },
-            "maxItems": 4,
+            "maxItems": 3,
             "type": "array"
+          },
+          "overflow": {
+            "properties": {
+              "convertingCount": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "count": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "count",
+              "convertingCount"
+            ],
+            "type": "object"
           }
         },
         "required": [
           "count",
+          "convertingCount",
+          "overflow",
           "items"
         ],
         "type": "object"

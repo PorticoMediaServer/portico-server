@@ -5,11 +5,11 @@ import styles from './artwork.module.css';
 
 export type CircleArtProps = ArtStyleProps & Readonly<{
   covers: readonly ArtworkSource[]; initials?: string; alt: string; size?: number;
-  visible?: boolean; treatment?: 'artist' | 'search'; coverZoom?: number; initialsSize?: number;
+  visible?: boolean; treatment?: 'artist' | 'search' | 'tv'; coverZoom?: number; initialsSize?: number;
 }>;
 export function CircleArt({covers, initials, alt, size, treatment = 'artist', coverZoom, initialsSize, visible = true, className, style, width = size, height = size}: CircleArtProps) {
   const items = covers.slice(0, 4);
-  return <span role={alt ? 'img' : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true} className={artClass(styles.circle, styles[treatment === 'search' ? 'searchCircle' : 'artistCircle'], styles[`circle${items.length}`], className)} style={artSize({width, height, style: {...(coverZoom === undefined ? {} : {'--circle-cover-zoom': coverZoom}), ...(initialsSize === undefined ? {} : {'--circle-initials-size': `${initialsSize}px`}), ...style} as CSSProperties})}>
+  return <span role={alt ? 'img' : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true} className={artClass(styles.circle, styles[treatment === 'search' ? 'searchCircle' : treatment === 'tv' ? 'tvCircle' : 'artistCircle'], styles[`circle${items.length}`], className)} style={artSize({width, height, style: {...(coverZoom === undefined ? {} : {'--circle-cover-zoom': coverZoom}), ...(initialsSize === undefined ? {} : {'--circle-initials-size': `${initialsSize}px`}), ...style} as CSSProperties})}>
     {items.length ? items.map((source, index) => <span key={`${source.key}:${index}`} className={styles.circleCell}><Artwork source={source} alt="" visible={visible} /></span>) : initials && <b className={styles.initials}>{initials}</b>}
   </span>;
 }

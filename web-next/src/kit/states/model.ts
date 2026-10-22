@@ -21,10 +21,13 @@ export type SkeletonGridGeometry = Readonly<{
   totalHeight: number;
   cells: readonly SkeletonCell[];
 }>;
+export type SkeletonCaptionLines = 0 | 1 | 2;
 
 /** Only intersecting rows mount. Library size changes the spacer, never the render work. */
 export function skeletonGridWindow(viewport: SkeletonWindow, itemCount: number, options: Readonly<{
   columns?: number; gutter?: number; columnGap?: number; rowGap?: number; ratio?: number; captions?: boolean;
+  /** Known leading row extents; never a catalogue-sized list. Unspecified rows use captions. */
+  leadingCaptionLines?: readonly SkeletonCaptionLines[];
 }> = {}): SkeletonGridGeometry {
   const width = Number.isFinite(viewport.width) ? Math.max(0, viewport.width) : 0;
   const height = Number.isFinite(viewport.height) ? Math.max(0, viewport.height) : 0;
@@ -40,18 +43,29 @@ export function skeletonGridWindow(viewport: SkeletonWindow, itemCount: number, 
   // Reserve the real card's two text lines, including their margins, as it arrives.
   const captionHeight = options.captions === false ? 0 : phone ? 41 : 50;
   const rowHeight = cellHeight + captionHeight + rowGap;
-  const count = Number.isFinite(itemCount) ? Math.max(0, Math.floor(itemCount)) : 0;
+  const count = Number.isFinite(itemCount) ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(itemCount))) : 0;
   const rows = Math.ceil(count / columns);
-  const totalHeight = rows === 0 ? 0 : rows * rowHeight - rowGap;
+  const deltas = [0];
+  for (const lines of (options.leadingCaptionLines ?? []).slice(0, rows)) {
+    const extent = lines === 0 ? 0 : lines === 1 ? phone ? 20 : 26 : phone ? 41 : 50;
+    deltas.push(deltas[deltas.length - 1]! + extent - captionHeight);
+  }
+  const rowTop = (row: number) => row * rowHeight + deltas[Math.min(row, deltas.length - 1)]!;
+  const totalHeight = rows === 0 ? 0 : rowTop(rows) - rowGap;
   const scrollTop = Number.isFinite(viewport.scrollTop) ? Math.max(0, viewport.scrollTop) : 0;
-  const firstRow = Math.min(rows, Math.floor(scrollTop / Math.max(1, rowHeight)));
-  const lastRow = Math.min(rows, Math.ceil((scrollTop + height) / Math.max(1, rowHeight)));
+  const lowerBound = (position: number) => {
+    let low = 0, high = rows;
+    while (low < high) { const middle = low + Math.floor((high - low) / 2); if (rowTop(middle) < position) low = middle + 1; else high = middle; }
+    return low;
+  };
+  const firstRow = scrollTop >= totalHeight ? rows : Math.max(0, lowerBound(scrollTop + Number.EPSILON * Math.max(1, scrollTop)) - 1);
+  const lastRow = lowerBound(scrollTop + height);
   const cells: SkeletonCell[] = [];
   if (width > 0 && height > 0) for (let row = firstRow; row < lastRow; row++) {
     for (let column = 0; column < columns; column++) {
       const index = row * columns + column;
       if (index >= count) break;
-      cells.push({index, x: gutter + column * (cellWidth + columnGap), y: row * rowHeight, width: cellWidth, height: cellHeight});
+      cells.push({index, x: gutter + column * (cellWidth + columnGap), y: rowTop(row), width: cellWidth, height: cellHeight});
     }
   }
   return {columns, cellWidth, rowHeight, totalHeight, cells};
