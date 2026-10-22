@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {HomeSelectionController, homeSelectionContext} from '../src/home-selection/index.ts';
 import type {HomeDocument, HomeEntry, HomeRow, HomeActions, HomeChannel} from '../src/home.ts';
-import type {HomeService} from '../src/home-service.ts';
+import {HomeService} from '../src/home-service.ts';
 import type {HomeSelectionOptions, HomeSelectionPlaybackRequest} from '../src/home-selection/index.ts';
 import {routePath} from '../../contracts/src/routes.ts';
 import {homeEntrySelection} from '../src/home-selection.ts';
@@ -13,20 +13,21 @@ const requestId = async () => `00000000-0000-4000-8000-${String(++sequence).padS
 const offers = (patch: Partial<HomeActions> = {}): HomeActions => ({play: true, queue: true, playlist: true, collection: true, myList: true, favorite: true, watched: true, played: false, rating: true, editMetadata: true, refreshMetadata: true, delete: true, download: true, details: true, selection: {play: true, queue: true, playlist: true, collection: true, myList: true, favorite: true, watched: true, download: true, edit: true, refresh: true, delete: true}, state: {watchlisted: false, favorite: false, watched: false, rating: 6, personalRevision: 0, containerRevision: 0}, ...patch});
 function entry(id: string, kind: HomeEntry['kind'] = 'movie'): HomeEntry {return {id, libraryId: 'library', kind, title: `Title ${id}`, available: true, playback: {itemId: `play-${id}`}, homeActions: offers()};}
 function row(entries: readonly HomeEntry[]): HomeRow {return {id: 'recent', viewerFence: fence, title: 'Recent', kind: 'media', artworkShape: 'poster', endpoint: '', privacySensitivity: '', policyState: '', priority: 0, required: false, hideable: true, reorderable: true, critical: false, cursorCapable: true, entries, total: entries.length, start: 0, limit: entries.length, hasMore: false, nextCursor: '', revision: {catalog: 1, viewer: 1}};}
-function harness(entries = [entry('a'), entry('b')], request?: HomeSelectionOptions['api']['request']) {
+function harness(entries = [entry('a'), entry('b')], request?: HomeSelectionOptions['api']['request'], home?: HomeService) {
   let document: HomeDocument = {serverId: 'server', viewerFence: fence, rows: [row(entries)], spotlight: [], layout: {revision: 1, rowOrder: ['recent'], hiddenRowIds: []}, revision: {catalog: 1, viewer: 1}, generatedAt: '2026-10-22T00:00:00Z'};
+  const currentDocument = () => home?.getSnapshot().document ?? document;
   let authorityCurrent = true;
   const listeners = new Set<() => void>(), played: HomeSelectionPlaybackRequest[] = [], queued: HomeSelectionPlaybackRequest[] = [], errors: unknown[] = [];
   const header = {id: 'queue', revision: '1', total: 2, repeat: 'off' as const, segments: []};
   const options: HomeSelectionOptions = {
     api: {request: request ?? (async () => {throw new Error('Unexpected network request');})},
-    home: {getSnapshot: () => ({phase: 'ready', document, paging: new Set()}), subscribe: (listener: () => void) => {listeners.add(listener); return () => listeners.delete(listener);}} as unknown as HomeService,
-    events: {on: () => () => {}}, context: homeSelectionContext({serverId: 'server', authority: 'local', accountId: 'owner', profileId: 'profile', viewId: 'home'}, document), environment: {platform: 'desktop-web', isOwner: true, canEditMetadata: true}, isCurrent: context => authorityCurrent && JSON.stringify(context) === JSON.stringify(homeSelectionContext({serverId: 'server', authority: 'local', accountId: 'owner', profileId: 'profile', viewId: 'home'}, document)), requestId,
+    home: home ?? {getSnapshot: () => ({phase: 'ready', document, paging: new Set()}), subscribe: (listener: () => void) => {listeners.add(listener); return () => listeners.delete(listener);}} as unknown as HomeService,
+    events: {on: () => () => {}}, context: homeSelectionContext({serverId: 'server', authority: 'local', accountId: 'owner', profileId: 'profile', viewId: 'home'}, currentDocument()), environment: {platform: 'desktop-web', isOwner: true, canEditMetadata: true}, isCurrent: context => authorityCurrent && JSON.stringify(context) === JSON.stringify(homeSelectionContext({serverId: 'server', authority: 'local', accountId: 'owner', profileId: 'profile', viewId: 'home'}, currentDocument())), requestId,
     playback: {play: async input => {played.push(input); return {queue: header};}, enqueue: async input => {queued.push(input); return {queue: header};}, playChannel: async () => {throw new Error('Unexpected channel playback');}},
     routes: {openEntry: () => {throw new Error('Unexpected navigation');}, openCollection: () => {throw new Error('Unexpected navigation');}, openDestination: () => {throw new Error('Unexpected navigation');}}, reportError: error => errors.push(error),
   };
   const controller = new HomeSelectionController(options);
-  return {controller, options, entries, played, queued, errors, get document() {return document;}, retire() {authorityCurrent = false;}, replace(next: HomeDocument, beforeNotify?: () => void) {document = next; beforeNotify?.(); for (const listener of listeners) listener();}};
+  return {controller, options, entries, played, queued, errors, get document() {return currentDocument();}, retire() {authorityCurrent = false;}, replace(next: HomeDocument, beforeNotify?: () => void) {document = next; beforeNotify?.(); for (const listener of listeners) listener();}};
 }
 function pickAll(h: ReturnType<typeof harness>) {h.controller.registerWindow({id: 'window', row: h.document.rows[0], sectionOrder: 0}); h.controller.selectLoaded();}
 
@@ -487,4 +488,102 @@ test('reconcile: an explicit new opener releases the previous retained menu wind
   h.controller.registerWindow({id: 'other', row: h.document.rows[0], sectionOrder: 0, entries: [h.entries[0]]});
   h.controller.openMenu('other', menuKey(h, h.entries[0]));
   assert.equal(h.controller.getSnapshot().menu?.windowId, 'other'); assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 1); h.controller.dispose();
+});
+
+
+async function serviceHarness() {
+  const a = {...row([entry('a0'), entry('a1'), entry('a2')]), start: 10}, b = {...row([entry('b0'), entry('b1')]), id: 'other', total: 3, nextCursor: 'page-b', hasMore: true};
+  const document: HomeDocument = {serverId: 'server', viewerFence: fence, rows: [a, b], spotlight: [{entry: a.entries[0], reason: {kind: 'featured', text: {code: 'featured', fallback: 'Featured'}}}], layout: {revision: 1, rowOrder: [a.id, b.id], hiddenRowIds: []}, revision: {catalog: 1, viewer: 1}, generatedAt: '2026-10-22T00:00:00Z'};
+  const home = new HomeService({request: async <T>(path: string) => {
+    if (path === routePath('get_home')) return document as T;
+    assert.match(path, /other.*cursor=page-b/);
+    return {...b, entries: [entry('b2')], start: 2, limit: 1, nextCursor: '', hasMore: false} as T;
+  }});
+  await home.load(); assert.equal(home.getSnapshot().phase, 'ready');
+  return {...harness([], undefined, home), home};
+}
+
+for (const withMenu of [false, true]) test(`reconcile F1: real HomeService B paging preserves mounted A without reattachment, menu=${withMenu}`, async t => {
+  const h = await serviceHarness(); t.after(() => {h.controller.dispose(); h.home.dispose();});
+  const before = h.home.getSnapshot().document!, a = before.rows[0], key = menuKey(h, a.entries[1]);
+  const registered = h.controller.registerWindow({id: 'mounted-a', row: a, entries: [a.entries[1]], start: 11, sectionOrder: 0}); assert.ok(registered.ok);
+  h.controller.toggle('mounted-a', key);
+  if (withMenu) h.controller.openMenu('mounted-a', key);
+  await h.home.more('other');
+  const after = h.home.getSnapshot().document!;
+  assert.notEqual(after, before); assert.equal(after.rows[0], a); assert.notEqual(after.rows[1], before.rows[1]); assert.deepEqual(after.revision, before.revision);
+  assert.equal(h.controller.getSnapshot().selection.summary.count, 0, 'a new document still clears bulk picks');
+  assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 1);
+  if (withMenu) assert.equal(h.controller.getSnapshot().menu?.key, key);
+  else h.controller.openMenu('mounted-a', key);
+  h.controller.closeMenu();
+  assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 1, 'closing a menu does not own the mounted A window');
+  assert.equal(h.controller.toggle('mounted-a', key).ok, true);
+  registered.unregister();
+  assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 0, 'the original shell cleanup still unregisters A');
+  assert.throws(() => h.controller.openMenu('mounted-a', key), /unregistered-home-entry/);
+});
+
+test('reconcile F1: real optimistic B removal preserves mounted spotlight and original cleanup', async t => {
+  const h = await serviceHarness(); t.after(() => {h.controller.dispose(); h.home.dispose();});
+  const before = h.home.getSnapshot().document!, spotlight = before.spotlight[0], key = menuKey(h, spotlight.entry);
+  const registered = h.controller.registerSpotlight({id: 'mounted-hero', spotlight}); assert.ok(registered.ok);
+  h.controller.openMenu('mounted-hero', key);
+  h.home.withoutEntry('b0');
+  const after = h.home.getSnapshot().document!;
+  assert.notEqual(after, before); assert.equal(after.spotlight, before.spotlight); assert.equal(after.rows[0], before.rows[0]); assert.deepEqual(after.revision, before.revision);
+  assert.equal(h.controller.getSnapshot().menu?.member.entry, spotlight.entry);
+  h.controller.closeMenu(); assert.equal(h.controller.toggle('mounted-hero', key).ok, true);
+  registered.unregister(); assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 0);
+});
+
+test('reconcile F1: unchanged A still cancels old document work when only B changes', async t => {
+  const h = await serviceHarness(); t.after(() => {h.controller.dispose(); h.home.dispose();});
+  let release!: (value: Awaited<ReturnType<HomeSelectionOptions['playback']['play']>>) => void;
+  h.options.playback.play = input => {h.played.push(input); return new Promise(resolve => {release = resolve;});};
+  const a = h.home.getSnapshot().document!.rows[0], key = menuKey(h, a.entries[0]);
+  h.controller.registerWindow({id: 'mounted-a', row: a, sectionOrder: 0}); h.controller.openMenu('mounted-a', key);
+  const pending = h.controller.executeMenu('play');
+  await h.home.more('other');
+  assert.equal(h.played[0].signal.aborted, true); h.controller.openMenu('mounted-a', key);
+  release({queue: {id: 'late', revision: '1', total: 1, repeat: 'off', segments: []}}); await pending;
+  assert.equal(h.controller.getSnapshot().menu?.key, key); assert.notEqual(h.controller.getSnapshot().action.phase, 'complete');
+});
+
+test('reconcile F1: changed source coordinates or environment cannot preserve a mounted registration', () => {
+  for (const change of ['row-order', 'spotlight-order', 'environment'] as const) {
+    const h = harness(); const other = {...row([entry('other')]), id: 'other'};
+    const spotlight = {entry: h.entries[0], reason: {kind: 'featured', text: {code: 'featured', fallback: 'Featured'}}};
+    h.replace({...h.document, rows: [h.document.rows[0], other], spotlight: [spotlight, {...spotlight, entry: h.entries[1]}]});
+    if (change === 'spotlight-order') h.controller.registerSpotlight({id: 'mounted', spotlight});
+    else h.controller.registerWindow({id: 'mounted', row: h.document.rows[0], sectionOrder: 0});
+    if (change === 'environment') h.controller.setContext(nextContext(h), {...h.options.environment, isOwner: false});
+    else h.replace({...h.document, ...(change === 'row-order' ? {rows: [...h.document.rows].reverse()} : {spotlight: [...h.document.spotlight].reverse()})});
+    assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 0, change); h.controller.dispose();
+  }
+});
+
+
+test('reconcile F1: retained controller-owned menus still release their window after an unrelated refresh or ambiguity', () => {
+  for (const ambiguous of [false, true]) {
+    const h = harness(); const spotlight = {entry: h.entries[1], reason: {kind: 'featured', text: {code: 'featured', fallback: 'Featured'}}};
+    h.replace({...h.document, spotlight: [spotlight]}); h.controller.registerSpotlight({id: 'hero', spotlight}); h.controller.openMenu('hero', menuKey(h));
+    h.replace({...h.document, revision: {catalog: 2, viewer: 2}});
+    assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 1);
+    h.replace({...h.document, ...(ambiguous ? {spotlight: [spotlight, {...spotlight}]} : {rows: [{...h.document.rows[0], title: 'Changed B'}]})});
+    if (ambiguous) assert.equal(h.controller.getSnapshot().menu, null);
+    else {assert.equal(h.controller.getSnapshot().menu?.key, menuKey(h)); h.controller.closeMenu();}
+    assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 0); h.controller.dispose();
+  }
+});
+
+test('reconcile F1: original preserved cleanup cannot unregister a newer shell replacement', () => {
+  const h = harness(), a = h.document.rows[0], other = {...row([entry('other')]), id: 'other'};
+  h.replace({...h.document, rows: [a, other]});
+  const original = h.controller.registerWindow({id: 'mounted-a', row: a, sectionOrder: 0}); assert.ok(original.ok);
+  h.replace({...h.document, rows: [a, {...other, title: 'Changed B'}]});
+  const replacement = h.controller.registerWindow({id: 'mounted-a', row: a, sectionOrder: 0}); assert.ok(replacement.ok);
+  original.unregister(); assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 2);
+  assert.equal(h.controller.toggle('mounted-a', menuKey(h)).ok, true);
+  replacement.unregister(); assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 0); h.controller.dispose();
 });

@@ -20,11 +20,13 @@ const sameScope = (a: SelectionContext, b: SelectionContext) =>
   a.scope.serverId === b.scope.serverId && a.scope.authority === b.scope.authority && a.scope.accountId === b.scope.accountId && a.scope.profileId === b.scope.profileId && a.scope.viewId === b.scope.viewId && a.scope.privacyFence === b.scope.privacyFence;
 const sameContext = (a: SelectionContext, b: SelectionContext) =>
   sameScope(a, b) && a.revision.catalogRevision === b.revision.catalogRevision && a.revision.viewerRevision === b.revision.viewerRevision;
+const sameEnvironment = (a: SelectionEnvironment, b: SelectionEnvironment) => a.platform === b.platform && a.isOwner === b.isOwner && a.canEditMetadata === b.canEditMetadata;
 export function homeSelectionContext(scope: Omit<SelectionContext['scope'], 'privacyFence'>, document: HomeDocument): SelectionContext {
   if (scope.serverId !== document.serverId) throw selectionExecutionError('home-source-mismatch');
   return {scope: {...scope, privacyFence: document.viewerFence}, revision: {catalogRevision: String(document.revision.catalog), viewerRevision: String(document.revision.viewer)}};
 }
 type WindowSource = Readonly<{kind: 'row'; id: string; slot: 'entries' | 'collection' | 'live'} | {kind: 'spotlight'}>;
+type WindowOrigin = Readonly<{kind: 'row'; row: HomeRow; index: number} | {kind: 'spotlight'; spotlight: HomeSpotlight}>;
 const sameSource = (a: WindowSource, b: WindowSource) => a.kind === 'spotlight' ? b.kind === 'spotlight' : b.kind === 'row' && a.id === b.id && a.slot === b.slot;
 type CurrentMember = Readonly<{member: HomeSelectionMember; row?: HomeRow; spotlight?: HomeSpotlight; index: number}>;
 type Ticket = {document: HomeDocument; epoch: number; context: SelectionContext; target: SelectionTarget; model?: SelectionOperation; controller: AbortController};
@@ -35,7 +37,7 @@ export class HomeSelectionController {
   private environment: SelectionEnvironment;
   private listeners = new Set<() => void>();
   private cleanups: (() => void)[] = [];
-  private windows = new Map<string, {token: object; members: Map<string, HomeSelectionMember>; unregister: () => void; order: number; start: number; source: WindowSource}>();
+  private windows = new Map<string, {token: object; members: Map<string, HomeSelectionMember>; unregister: () => void; order: number; start: number; source: WindowSource; origin: WindowOrigin}>();
   private held = new Map<string, HomeSelectionMember>();
   private operationMembers = new Map<string, HomeSelectionMember>();
   private epoch = 0;
@@ -102,19 +104,35 @@ export class HomeSelectionController {
     if (!this.options.isCurrent(next)) {this.invalidate(); return;}
     if (document !== this.document || !sameContext(next, this.state.context)) this.reconcile(next, this.environment);
   }
-  private invalidate() {this.cancelAction(); this.selection.clear(); for (const window of this.windows.values()) window.unregister(); this.windows.clear(); this.menuWindow = undefined; this.menuSource = undefined; this.held.clear(); this.editorEdits = []; this.editorReceipts = []; this.editorOriginalTargets = []; this.editorRetryTargets = undefined; this.deleteBody = undefined; this.jobs = []; this.personalCommands = []; this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null, action: idle()});}
+  private invalidate(keep?: ReadonlySet<string>) {this.cancelAction(); this.selection.clear(); for (const [id, window] of this.windows) if (!keep?.has(id)) {window.unregister(); this.windows.delete(id);} this.menuWindow = undefined; this.menuSource = undefined; this.held.clear(); this.editorEdits = []; this.editorReceipts = []; this.editorOriginalTargets = []; this.editorRetryTargets = undefined; this.deleteBody = undefined; this.jobs = []; this.personalCommands = []; this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null, action: idle()});}
   /** Revision changes may retain a menu's semantic opener, never its old grants or in-flight work. */
   private reconcile(context: SelectionContext, environment: SelectionEnvironment) {
-    const previous = this.state.context, menu = this.state.menu, source = this.menuSource, window = menu && this.windows.get(menu.windowId);
+    const previous = this.state.context, menu = this.state.menu, source = this.menuSource, window = menu && this.windows.get(menu.windowId), menuWindow = this.menuWindow;
+    const keep = new Set<string>();
+    if (sameContext(previous, context) && sameEnvironment(this.environment, environment) && this.isHomeCurrent(context)) {
+      const rows = this.rows(), spotlight = this.options.home.getSnapshot().document?.spotlight;
+      for (const [id, registered] of this.windows) {
+        const origin = registered.origin;
+        // Genuine immutable sources at the same coordinates keep their original token and cleanup.
+        // A changed source still goes through semantic menu reconciliation below.
+        if (origin.kind === 'spotlight' ? spotlight?.[registered.start] === origin.spotlight
+          : rows[origin.index] === origin.row && rows.filter(row => row.id === origin.row.id).length === 1
+            && (!origin.row.live || Number.isFinite(Date.parse(origin.row.live.expiresAt)) && Date.parse(origin.row.live.expiresAt) > Date.now())) keep.add(id);
+      }
+    }
+    const retainedMenuWindow = menu && keep.has(menu.windowId) ? menuWindow : undefined;
     this.changing = true;
     try {
-      this.invalidate();
+      this.invalidate(keep);
       this.environment = {...environment}; this.selection.setContext(context);
       this.document = this.options.home.getSnapshot().document;
       this.publish({context: this.selection.getSnapshot().context, selection: this.selection.getSnapshot(), actions: selectionActions(this.selection.getSnapshot().summary, this.environment), action: idle()});
-      if (!menu || !window || !source || !sameSource(source, window.source) || !sameScope(previous, context) || !this.isHomeCurrent(context)) return;
+      if (!menu || !window || !source || !sameSource(source, window.source) || !sameScope(previous, context) || !this.isHomeCurrent(context)) {retainedMenuWindow?.(); return;}
       const current = this.resolveMember(source, menu.key);
-      if (!current || !this.retainsGrants(menu, current.member)) return;
+      if (!current || !this.retainsGrants(menu, current.member)) {retainedMenuWindow?.(); return;}
+      if (this.windows.get(menu.windowId) === window) {
+        this.menuWindow = retainedMenuWindow; this.openMenu(menu.windowId, menu.key); return;
+      }
       // Re-register only the proven current item. The shell owns physical order and visible windows.
       const registered = current.spotlight ? this.registerSpotlight({id: menu.windowId, spotlight: current.spotlight})
         : current.row ? this.registerWindow({id: menu.windowId, row: current.row, sectionOrder: window.order - 1,
@@ -134,7 +152,7 @@ export class HomeSelectionController {
       this.invalidate(); this.environment = {...environment}; this.selection.setContext(context);
       this.publish({context: this.selection.getSnapshot().context, selection: this.selection.getSnapshot(), actions: selectionActions(this.selection.getSnapshot().summary, this.environment), action: idle()}); return;
     }
-    if (sameContext(this.state.context, context) && this.document === this.options.home.getSnapshot().document && this.environment.platform === environment.platform && this.environment.isOwner === environment.isOwner && this.environment.canEditMetadata === environment.canEditMetadata) return;
+    if (sameContext(this.state.context, context) && this.document === this.options.home.getSnapshot().document && sameEnvironment(this.environment, environment)) return;
     this.reconcile(context, environment);
   }
   private rows(): readonly HomeRow[] {
@@ -175,7 +193,7 @@ export class HomeSelectionController {
     const ticket = this.selection.captureContext(), token = {};
     const result = this.selection.registerWindow(ticket, {id: input.id, sectionId: row.id, sectionOrder: input.sectionOrder + 1, start, items: [...members.values()].map(member => member.item)});
     if (!result.ok) return result;
-    this.windows.set(input.id, {token, members, unregister: result.unregister, order: input.sectionOrder + 1, start, source: {kind: 'row', id: row.id, slot: input.channels !== undefined || row.live ? 'live' : row.collection && input.entries === undefined ? 'collection' : 'entries'}});
+    this.windows.set(input.id, {token, members, unregister: result.unregister, order: input.sectionOrder + 1, start, source: {kind: 'row', id: row.id, slot: input.channels !== undefined || row.live ? 'live' : row.collection && input.entries === undefined ? 'collection' : 'entries'}, origin: {kind: 'row', row, index: this.rows().indexOf(row)}});
     return {ok: true as const, unregister: () => {if (this.windows.get(input.id)?.token === token) this.windows.delete(input.id); result.unregister();}};
   }
   registerSpotlight(input: Readonly<{id: string; spotlight: HomeSpotlight}>) {
@@ -188,7 +206,7 @@ export class HomeSelectionController {
     const key = this.key(item), token = {}, members = new Map([[key, member]]);
     const result = this.selection.registerWindow(this.selection.captureContext(), {id: input.id, sectionId: 'home:spotlight', sectionOrder: 0, start: index, items: [item]});
     if (!result.ok) return result;
-    this.windows.set(input.id, {token, members, unregister: result.unregister, order: 0, start: index, source: {kind: 'spotlight'}});
+    this.windows.set(input.id, {token, members, unregister: result.unregister, order: 0, start: index, source: {kind: 'spotlight'}, origin: {kind: 'spotlight', spotlight: input.spotlight}});
     return {ok: true as const, unregister: () => {if (this.windows.get(input.id)?.token === token) this.windows.delete(input.id); result.unregister();}};
   }
   private allMembers() {const members = new Map<string, HomeSelectionMember>(); for (const window of [...this.windows.values()].sort((a, b) => b.order - a.order || b.start - a.start)) for (const [key, member] of window.members) members.set(key, member); for (const [key, member] of this.held) members.set(key, member); for (const [key, member] of this.operationMembers) members.set(key, member); return members;}
