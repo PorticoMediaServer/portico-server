@@ -18,8 +18,9 @@ function PickerRow({entry, onSelect, busy, end}: {entry: PickerRowDisplay; onSel
 
 /** Every action delegates to the supplied operation; entries and outcomes are bounded real data. */
 function SelectionPicker({destination, ...props}: SelectionPickerProps & {destination: Destination}) {
-  const {selection, entries, query, onQueryChange, hasNext, hasPrevious, onNext, onPrevious, loading = false, mode, onModeChange, name, onNameChange, onAdd, onCreateAndAdd, onRetry, onRetryOperation, result, busy = false, error, anchorRef, ...surface} = props;
-  const phone = usePhone(), nameRef = useRef<HTMLInputElement | null>(null), listRef = useRef<HTMLDivElement | null>(null);
+  const {selection, entries, query, onQueryChange, hasNext, hasPrevious, onNext, onPrevious, loading = false, mode, onModeChange, name, onNameChange, onAdd, onCreateAndAdd, onRetry, onRetryOperation, onRetryError, result, busy = false, error, anchorRef, ...surface} = props;
+  const phone = usePhone(), nameRef = useRef<HTMLInputElement | null>(null), retryRef = useRef<HTMLButtonElement | null>(null), listRef = useRef<HTMLDivElement | null>(null);
+  const retryRecovery = onRetryError ?? onRetryOperation, recovering = !!retryRecovery;
   const windowKey = JSON.stringify([query, entries.map(entry => entry.id)]);
   const page = useRef<{direction: 'next' | 'previous'; key: string; focus: boolean; loading: boolean} | null>(null);
   const scrollTop = useRef(0), lastQuery = useRef(query);
@@ -44,36 +45,40 @@ function SelectionPicker({destination, ...props}: SelectionPickerProps & {destin
   const newName = text(destination === 'playlist' ? 'next.selection.newPlaylistName' : 'next.selection.newCollectionName');
   const title = text(mode === 'new' ? 'next.selection.newPickerTitle' : 'next.selection.pickerTitle', {items: selectionCountText(selection), destination: text(destination === 'playlist' ? 'next.selection.playlistWord' : 'next.selection.collectionWord')});
   const failures = result?.failures ?? [];
+  const retryFailed = failures.length > 0 && !!result?.complete && !recovering && !loading;
+  const retryAvailable = recovering || retryFailed;
+  useEffect(() => {if (surface.open && retryAvailable) retryRef.current?.focus({preventScroll: true});}, [surface.open, retryAvailable]);
   const resultSummary = result?.inserted === undefined ? undefined : result.total === undefined ? text('next.selection.added', {count: result.inserted}) : text('next.selection.addedPartial', {added: result.inserted, total: result.total, name: result.destination.name});
   const content = <div className={styles.pickerContent} aria-busy={busy || loading || result && !result.complete || undefined}>
     {!phone && <div className={styles.pickerHeading}>{title}</div>}
     {result ? <>
       {(resultSummary || failures.length > 0 || result.jobFacts?.length || !result.complete && result.processed !== undefined && result.total !== undefined) && <div className={styles.pickerFailure} role="status">
-        {resultSummary && <b><Icon name={failures.length ? 'i-warn' : result.complete ? 'i-check' : 'i-info'} size={18} />{resultSummary}</b>}
+        {resultSummary && <b><Icon name={failures.length || recovering ? 'i-warn' : !loading && pickerResultSucceeded(result) ? 'i-check' : 'i-info'} size={18} />{resultSummary}</b>}
         {!result.complete && result.processed !== undefined && result.total !== undefined && <p>{text('next.selection.countOf', {count: result.processed, total: result.total})}</p>}
         {result.jobFacts?.map(fact => <p key={fact.id}>{fact.text}</p>)}
         {failures.map(failure => <p key={failure.id}>{text('next.selection.couldNotAdd', {title: failure.title, reason: failure.reason})}</p>)}
       </div>}
       <PickerRow entry={{...result.destination, alreadyIn: result.alreadyIn}} busy={busy} end={result.inserted === undefined ? undefined : <span className={styles.pickerEnd}>{text('next.selection.added', {count: result.inserted})}</span>} />
-      <div className={styles.pickerButtons}><Button size="small" disabled={busy} onClick={() => surface.onOpenChange(false, 'action')}>{text('next.selection.done')}</Button>{failures.length > 0 && result.complete && !onRetryOperation && <Button size="small" variant="primary" loading={busy} onClick={() => onRetry(missingPickerIds(failures))}>{retryLabel(failures)}</Button>}{onRetryOperation && <Button size="small" variant="primary" loading={busy} onClick={onRetryOperation}>{text('next.selection.retry')}</Button>}</div>
-    </> : onRetryOperation ? <div className={styles.pickerButtons}><Button size="small" disabled={busy} onClick={() => surface.onOpenChange(false, 'action')}>{text('next.selection.done')}</Button><Button size="small" variant="primary" loading={busy} onClick={onRetryOperation}>{text('next.selection.retry')}</Button></div> : mode === 'new' ? <form className={styles.pickerNew} onSubmit={event => { event.preventDefault(); if (!busy) onCreateAndAdd(name.trim() || newName); }}>
+      <div className={styles.pickerButtons}><Button size="small" disabled={busy} onClick={() => surface.onOpenChange(false, 'action')}>{text('next.selection.done')}</Button>{retryFailed && <Button ref={retryRef} size="small" variant="primary" loading={busy} onClick={() => {if (!busy && !loading) onRetry(missingPickerIds(failures));}}>{retryLabel(failures)}</Button>}{retryRecovery && <Button ref={retryRef} size="small" variant="primary" loading={busy} onClick={() => {if (!busy) retryRecovery();}}>{text('next.selection.retry')}</Button>}</div>
+    </> : retryRecovery ? <div className={styles.pickerButtons}><Button size="small" disabled={busy} onClick={() => surface.onOpenChange(false, 'action')}>{text('next.selection.done')}</Button><Button ref={retryRef} size="small" variant="primary" loading={busy} onClick={() => {if (!busy) retryRecovery();}}>{text('next.selection.retry')}</Button></div> : mode === 'new' ? <form className={styles.pickerNew} onSubmit={event => { event.preventDefault(); if (!busy && !loading) onCreateAndAdd(name.trim() || newName); }}>
       <TextField ref={nameRef} autoFocus label={text('next.selection.name')} aria-label={text('next.selection.name')} value={name} onChange={event => onNameChange(event.currentTarget.value)} placeholder={newName} disabled={busy} />
-      <div className={styles.pickerButtons}><Button size="small" disabled={busy} onClick={() => onModeChange('choose')}>{text('next.selection.cancel')}</Button><Button size="small" type="submit" variant="primary" loading={busy}>{text('next.selection.createAndAdd', {count: selection.count})}</Button></div>
+      <div className={styles.pickerButtons}><Button size="small" disabled={busy} onClick={() => onModeChange('choose')}>{text('next.selection.cancel')}</Button><Button size="small" type="submit" variant="primary" loading={busy} disabled={loading}>{text('next.selection.createAndAdd', {count: selection.count})}</Button></div>
     </form> : <>
       {onQueryChange && <TextField variant="search" leadingIcon="i-search" aria-label={text(destination === 'playlist' ? 'next.selection.findPlaylist' : 'next.selection.findCollection')} placeholder={text(destination === 'playlist' ? 'next.selection.findPlaylist' : 'next.selection.findCollection')} value={query ?? ''} onChange={event => onQueryChange(event.currentTarget.value)} disabled={busy} containerClassName={styles.pickerSearch} />}
-      <Button variant="text" size="small" className={styles.pickerRow} disabled={busy} onClick={() => onModeChange('new')}><span className={styles.newPickerArtwork}><Icon name="i-plus" size={20} /></span><span className={styles.pickerText}><b>{text(destination === 'playlist' ? 'next.selection.newPlaylist' : 'next.selection.newCollection')}</b></span></Button>
+      <Button variant="text" size="small" className={styles.pickerRow} disabled={busy || loading} onClick={() => {if (!busy && !loading) onModeChange('new');}}><span className={styles.newPickerArtwork}><Icon name="i-plus" size={20} /></span><span className={styles.pickerText}><b>{text(destination === 'playlist' ? 'next.selection.newPlaylist' : 'next.selection.newCollection')}</b></span></Button>
       <div className={styles.pickerSeparator} />
       <div className={styles.pickerEntries} ref={listRef} aria-busy={loading || undefined}
         onWheel={event => {const list = event.currentTarget; if (event.deltaY > 0 && list.scrollTop + list.clientHeight >= list.scrollHeight - 1) turnPage('next'); else if (event.deltaY < 0 && list.scrollTop <= 1) turnPage('previous');}}
         onScroll={event => {const list = event.currentTarget, previous = scrollTop.current; scrollTop.current = list.scrollTop; if (list.scrollTop > previous && list.scrollTop + list.clientHeight >= list.scrollHeight - 1) turnPage('next'); else if (list.scrollTop < previous && list.scrollTop <= 1) turnPage('previous');}}
         onKeyDown={event => {const rows = focusable(event.currentTarget); if ((event.key === 'PageDown' && event.currentTarget.scrollTop + event.currentTarget.clientHeight >= event.currentTarget.scrollHeight - 1 || event.key === 'ArrowDown' && document.activeElement === rows.at(-1)) && turnPage('next')) event.preventDefault(); else if ((event.key === 'PageUp' && event.currentTarget.scrollTop <= 1 || event.key === 'ArrowUp' && document.activeElement === rows[0]) && turnPage('previous')) event.preventDefault();}}>
-        {entries.map(entry => <PickerRow key={entry.id} entry={entry} busy={busy || !entry.canAdd} onSelect={() => {if (entry.canAdd && !busy) onAdd(entry.id);}} />)}
+        {entries.map(entry => <PickerRow key={entry.id} entry={entry} busy={busy || loading || !entry.canAdd} onSelect={() => {if (entry.canAdd && !busy && !loading) onAdd(entry.id);}} />)}
       </div>
     </>}
     {error && <div className={styles.pickerFailure} role="alert"><Icon name="i-warn" size={18} /><p>{error}</p></div>}
   </div>;
-  const shared = {...surface, returnFocusRef: surface.returnFocusRef ?? anchorRef, title: phone && mode === 'new' ? newName : title, initialFocusRef: mode === 'new' ? nameRef : undefined, className: styles.picker, dismissOnOutsidePress: !busy, dismissOnBack: !busy};
-  return phone ? <BottomSheet {...shared} fitContent>{content}</BottomSheet> : <Popover {...surface} anchorRef={anchorRef} returnFocusRef={surface.returnFocusRef ?? anchorRef} initialFocusRef={mode === 'new' ? nameRef : undefined} title={title} width={360} placement="bottom-start" className={styles.picker}>{content}</Popover>;
+  const initialFocusRef = retryAvailable ? retryRef : mode === 'new' ? nameRef : surface.initialFocusRef;
+  const shared = {...surface, returnFocusRef: surface.returnFocusRef ?? anchorRef, title: phone && mode === 'new' ? newName : title, initialFocusRef, className: styles.picker, dismissOnOutsidePress: !busy, dismissOnBack: !busy};
+  return phone ? <BottomSheet {...shared} fitContent>{content}</BottomSheet> : <Popover {...shared} anchorRef={anchorRef} title={title} width={360} placement="bottom-start">{content}</Popover>;
 }
 
 export function PlaylistPicker(props: SelectionPickerProps) { return <SelectionPicker {...props} destination="playlist" />; }

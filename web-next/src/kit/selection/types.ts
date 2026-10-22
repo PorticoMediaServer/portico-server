@@ -82,7 +82,7 @@ export type PickerEntry = Readonly<{id: string; name: string; size: number; canA
 export type PickerFailure = Readonly<{id: string; title: string; reason: string}>;
 /** Counters describe actual membership writes; processed does not imply inserted. */
 export type PickerResult = Readonly<{
-  destination: Readonly<{id: string; name: string; artwork?: ReactNode}>;
+  destination: Readonly<{id: string; name: string; size?: number; artwork?: ReactNode}>;
   inserted?: number;
   processed?: number;
   failed?: number;
@@ -114,6 +114,8 @@ export type SelectionPickerProps = SelectionSurface & Readonly<{
   onRetry: (missingIds: readonly string[]) => void;
   /** Present only for a genuine uncertain original operation, not a failed-target retry. */
   onRetryOperation?: () => void;
+  /** Present only for a genuine read or confirmed command error on the retained picker. */
+  onRetryError?: () => void;
   result?: PickerResult;
   busy?: boolean;
   error?: string;
