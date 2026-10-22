@@ -26,10 +26,11 @@ export type V1ChannelOptions = Readonly<{http: V1Http; key?: () => string; now?:
 /** What the service applies: the playback id, whether the start can't proceed, and the projection. */
 export type ChannelView = Readonly<{playbackId: string; status?: string; linear: ChannelProjection}>;
 export type ChannelViewSink = {state: (value: ChannelView) => void; error: (message: string, terminal: boolean) => void};
+export type ChannelStartOptions = Readonly<{state?:'playing'|'paused'}>;
 
 /** The service's channel control, whichever protocol (the /v2 `ChannelControl` or this). */
 export interface ChannelPlayback {
-  open(channel: ChannelReference, sink: ChannelViewSink): Promise<void>;
+  open(channel: ChannelReference, sink: ChannelViewSink, options?:ChannelStartOptions): Promise<void>;
   recover(): Promise<void>;
   pause(): void;
   resume(): void;
@@ -162,16 +163,18 @@ export class V1ChannelControl implements ChannelPlayback {
     return result;
   }
 
-  async open(channel: ChannelReference, sink: ChannelViewSink): Promise<void> {
+  async open(channel: ChannelReference, sink: ChannelViewSink, options:ChannelStartOptions={}): Promise<void> {
+    const state=options.state??'playing';
+    if(state!=='playing'&&state!=='paused')throw new Error('invalid_channel_start_state');
     this.close();
     this.sink = sink;
-    this.wanted = 'playing';
+    this.wanted = state;
     const a: Active = {serial: ++this.serial, channel, joined: false, seq: 0, lastReport: 0, tail: Promise.resolve(), closed: false};
     this.active = a;
     try {
       await this.stopping.catch(() => {});
       if (!this.current(a)) return;
-      const r = await call(this.http, {method: 'POST', path: routePath("start_playback_session"), headers: {'Idempotency-Key': this.key()}, body: {channelId: v1ChannelId(channel), channelGeneration: channel.generation, state: 'playing'}});
+      const r = await call(this.http, {method: 'POST', path: routePath("start_playback_session"), headers: {'Idempotency-Key': this.key()}, body: {channelId: v1ChannelId(channel), channelGeneration: channel.generation, state: this.wanted}});
       const s = parseChannelSession(r.body);
       if (!this.current(a)) { void this.stop(s.id); return; }
       a.id = s.id;

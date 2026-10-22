@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {WatchTogetherSync,GroupClock,groupCorrection,groupTargetPositionUs,type FollowerLocal,type FollowerEffect} from '../src/index.ts';import {room,scope,fence,group,T0} from './fixtures.ts';
+import {WatchTogetherSync,GroupClock,groupCorrection,groupTargetPositionUs,type FollowerLocal,type FollowerEffect} from '../src/index.ts';import {room,scope,fence,channelFence,group,T0} from './fixtures.ts';
 const local=(over:Partial<FollowerLocal>={}):FollowerLocal=>({fence,positionSeconds:30,playing:true,buffering:false,ready:true,seeking:false,durationSeconds:7200,...over});
 const follower=(over:Parameters<typeof group>[0]={})=>{const s=new WatchTogetherSync();s.join(room);s.bind(fence);s.adopt(room,group(over));return s;};
 test('copied group timeline and correction bands preserve quiet, rate and seek boundaries',()=>{
@@ -82,4 +82,11 @@ test('all pill states come from group facts and reconnects keep the last known r
 test('bounded NTP samples ignore slow outliers, expire after two minutes and reset per room',()=>{
  const c=new GroupClock();assert.equal(c.sample(5000,1000),4000);assert.equal(c.sample(5150,1300,{sent:1000,received:1300}),4000);assert.equal(c.sample(6000,4000,{sent:2000,received:4000}),4000);assert.equal(c.sample(9000,5000),4000);assert.equal(c.sample(150000,130001),19999);c.reset();assert.equal(c.offsetMs,0);
  for(let i=0;i<100;i++)c.sample(1000+i,1000+i,{sent:1000+i,received:1000+i});assert.equal(c.offsetMs,0);
+});
+
+test('the queue-only group contract cannot mistake a live channel for a matching catalogue occurrence',()=>{
+ const s=follower(),live={...channelFence,sessionId:fence.sessionId,channelId:fence.itemId};
+ assert.throws(()=>s.bind(live as never));
+ assert.deepEqual(s.tick(local({fence:live as never,positionSeconds:5}),T0+20000),[]);
+ assert.ok(s.tick(local({positionSeconds:5}),T0+20000).some(e=>e.kind==='seek'));
 });
