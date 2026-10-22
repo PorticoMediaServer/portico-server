@@ -82,7 +82,7 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .stickyBar .allNote { margin: 12px 0 0; }
 .allNote b { color: var(--color-text); font-weight: 700; }
 .allNote.allNote button { height: auto; min-height: 0; padding: 0; font-size: 14.5px; font-weight: 800; }
-.ownerMenuLabel > span:last-child { padding: 3px 7px; border-radius: 5px; background: rgba(47,134,187,.22); color: var(--color-accent-strong); font-size: 11px; font-weight: 800; }
+.ownerMenuLabel > span:last-child { padding: 3px 7px; border-radius: 5px; background: rgba(0,0,0,.3); color: var(--color-text-secondary); font-size: 11px; font-weight: 800; }
 .ownerMenuLabel { display: flex; align-items: center; gap: 8px; }
 .selectionMenu [data-owner-only="true"] { margin: 6px -2px 0; padding: 6px 6px 4px; border: 0; border-radius: 10px; background: radial-gradient(120% 140% at 100% 0%,rgba(47,134,187,.2),transparent 62%),#0b1822; box-shadow: inset 0 0 0 1px rgba(92,179,226,.16); }
 .selectionMenu button[role^="menuitem"] { min-height: 40px; }
@@ -263,6 +263,7 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
   .selectionMenu [role="group"] { margin: 0 20px; }
   .selectionMenu [role="group"] > div:last-child { background: transparent; border-radius: 0; box-shadow: none; }
   .selectionMenu [role="group"] button[role^="menuitem"] { min-height: 56px; height: 56px; padding: 0; gap: 14px; }
+  .selectionMenu [role="group"] button[data-destructive="true"] > span:first-child { color: var(--color-record); }
   .selectionMenu [role="group"] button[role^="menuitem"]::before { display: none; }
   .selectionMenu [role="group"] button[role^="menuitem"] > span:first-child { width: 24px; height: 24px; background: transparent; border-radius: 0; }
   .selectionMenu [role="group"] button[role^="menuitem"] > span:first-child svg { width: 22px; height: 22px; }

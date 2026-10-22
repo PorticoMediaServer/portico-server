@@ -17,7 +17,7 @@ function useActionMenus(selection: SelectionCount, actions: SelectionActions) {
   if (actions.onCollection) extra.push({id: 'collection', label: text('next.selection.addToCollection'), icon: 'i-layers', onSelect: () => { if (more.current) actions.onCollection!(more.current); }});
   if (actions.onWatchedChange) extra.push({id: 'unwatched', label: text('next.selection.markUnwatched'), icon: 'i-eyeoff', onSelect: () => actions.onWatchedChange!(false)});
   if (actions.onFavorite) extra.push({id: 'favorite', label: text('next.selection.favorite'), icon: 'i-heart', onSelect: actions.onFavorite});
-  if (actions.onRemoveFromMyList) extra.push({id: 'remove', label: text('next.selection.removeFromMyList'), icon: 'i-bookmark', onSelect: actions.onRemoveFromMyList});
+  if (actions.onRemoveFromMyList) extra.push({id: 'remove', label: text('next.selection.removeFromMyList'), icon: 'i-x', onSelect: actions.onRemoveFromMyList});
   if (actions.onRefresh || actions.onDelete) {
     extra.push({id: 'owner', section: true, label: <span className={styles.ownerMenuLabel}>{actions.ownerMark}<span>{text('next.selection.owner')}</span></span>, ownerOnly: true});
     if (actions.onRefresh) extra.push({id: 'refresh', label: text('next.selection.refresh'), icon: 'i-refresh', onSelect: actions.onRefresh});
