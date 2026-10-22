@@ -4,11 +4,31 @@ import {validBulkListEntry} from '@core/metadata-bulk';
 import type {RepairFieldSpec} from '@core/metadata-repair';
 import type {DeletePreview} from '@core/administration';
 import type {BulkEditorDraft, BulkFieldValues, BulkListDraft, BulkResultView, PickerResult, PickerFailure, SelectionCount, SelectionMediaKind} from './types';
-import {selectionText} from './copy';
+import {selectionText, type SelectionMessage} from './copy';
+
+const selectionCountKeys = {
+  movie: 'next.selection.movie',
+  show: 'next.selection.show',
+  season: 'next.selection.season',
+  episode: 'next.selection.episode',
+  artist: 'next.selection.artist',
+  album: 'next.selection.album',
+  song: 'next.selection.song',
+  book: 'next.selection.book',
+  audiobook_file: 'next.selection.audiobookPart',
+  chapter: 'next.selection.chapter',
+  collection: 'next.selection.collection',
+  category: 'next.selection.category',
+  author: 'next.selection.author',
+  book_series: 'next.selection.bookSeries',
+  disc: 'next.selection.disc',
+  extra: 'next.selection.extra',
+} satisfies Readonly<Record<Exclude<SelectionMediaKind, 'channel' | 'person'>, SelectionMessage>>;
 
 export function selectionCountText({count, kind}: SelectionCount): string {
-  const key = kind === 'audiobook_file' ? 'next.selection.audiobookPart' : kind === 'book_series' ? 'next.selection.bookSeries' : kind ? `next.selection.${kind}` as const : 'next.selection.titles';
-  return selectionText(key, {count});
+  if (kind === 'channel') return defaultI18n.t('next.kit.channels', {count});
+  if (kind === 'person') return defaultI18n.t('web.together.people', {count});
+  return selectionText(kind ? selectionCountKeys[kind] : 'next.selection.titles', {count});
 }
 
 /** Order only the bulk fields in the actual preview registry. */

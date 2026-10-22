@@ -1,5 +1,5 @@
 import {queueScope, type QueueScope} from './queues.ts';
-import {invalidState, record, wireId} from './validation.ts';
+import {invalidState, queueOccurrenceId, record, wireId} from './validation.ts';
 export type PlaybackIdentity = Readonly<{scope: QueueScope; run: number}>;
 /** A real queue occurrence; item and entry IDs never stand for a channel. */
 export type QueuePlaybackFence = Readonly<{kind:'queue'; playback: PlaybackIdentity; sessionId: string; itemId: string; sourceId: string; entryId: string; showId?: string; seasonId?: string; generation: number}>;
@@ -8,8 +8,6 @@ export type ChannelPlaybackFence = Readonly<{kind:'channel'; playback:PlaybackId
   Readonly<{channelKind:'live-source';sourceId:string}> | Readonly<{channelKind:'library-channel';sourceId?:string}>
 );
 export type PlaybackFence = QueuePlaybackFence | ChannelPlaybackFence;
-// v1 occurrence IDs include dots; other identity fields keep their own wire-ID grammar.
-const queueEntryId=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_.-]{1,128}$/.test(v);
 export function playbackIdentity(value: PlaybackIdentity): PlaybackIdentity {
   if (!record(value) || !Number.isSafeInteger(value.run) || value.run < 1) invalidState();
   return Object.freeze({scope: queueScope(value.scope), run: value.run});
@@ -21,7 +19,7 @@ export function playbackFence(value: PlaybackFence): PlaybackFence {
   if (!record(value) || !wireId(value.sessionId) || !Number.isSafeInteger(value.generation) || value.generation < 1) invalidState();
   const common={playback:playbackIdentity(value.playback),sessionId:value.sessionId,generation:value.generation};
   if(value.kind==='queue') {
-    if(!wireId(value.itemId)||!wireId(value.sourceId)||!queueEntryId(value.entryId) || value.showId!==undefined&&!wireId(value.showId) || value.seasonId!==undefined&&!wireId(value.seasonId) || ['channelKind','channelId','channelGeneration'].some(k=>k in value))invalidState();
+    if(!wireId(value.itemId)||!wireId(value.sourceId)||!queueOccurrenceId(value.entryId) || value.showId!==undefined&&!wireId(value.showId) || value.seasonId!==undefined&&!wireId(value.seasonId) || ['channelKind','channelId','channelGeneration'].some(k=>k in value))invalidState();
     return Object.freeze({...common,kind:'queue',itemId:value.itemId,sourceId:value.sourceId,entryId:value.entryId,...(value.showId?{showId:value.showId}:{}),...(value.seasonId?{seasonId:value.seasonId}:{})});
   }
   if(value.kind!=='channel' || !wireId(value.channelId) || !wireId(value.channelGeneration) || ['itemId','entryId','showId','seasonId'].some(k=>k in value))invalidState();

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
-import {createElement} from 'react';
+import {Children, createElement, isValidElement, type ReactNode} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformTsx} from '../transform-tsx.mjs';
 import type {ActivityPanelView} from '../../src/kit/shell/Activity';
@@ -13,6 +13,7 @@ registerHooks({load(url, context, next) {
 }});
 const {ActivityPanel, TopBarActivity} = await import('../../src/kit/shell/Activity.tsx');
 const {CardFrame} = await import('../../src/kit/cards/CardFrame.tsx');
+const {SessionCard} = await import('../../src/kit/cards/FeatureCards.tsx');
 const {PickerAddedToast} = await import('../../src/kit/selection/SelectionPicker.tsx');
 const {ToastHost} = await import('../../src/kit/overlays/Feedback.tsx');
 const {SongRow} = await import('../../src/kit/browse/TrackTable.tsx');
@@ -43,6 +44,31 @@ test('a card has one real More button with the supplied expanded state', () => {
   assert.equal((html.match(/aria-haspopup="menu"/g) ?? []).length, 1);
   assert.match(html, /aria-expanded="true"/);
   assert.equal((html.match(/<button/g) ?? []).length, 2);
+});
+
+test('SessionCard forwards the More button currentTarget and owns its expanded menu state', () => {
+  const calls: unknown[] = [];
+  const props = {model: {title: 'Actual title', caption: []}, viewer: {name: 'Actual viewer', device: 'Actual device'}, facts: [], onNavigate() {}, onMore: (anchor: HTMLButtonElement) => calls.push(anchor), moreExpanded: true};
+  const html = renderToStaticMarkup(createElement(SessionCard, props));
+  assert.equal((html.match(/aria-label="More"/g) ?? []).length, 1);
+  assert.equal((html.match(/aria-haspopup="menu"/g) ?? []).length, 1);
+  assert.match(html, /aria-expanded="true"/);
+  assert.equal((html.match(/<button/g) ?? []).length, 2);
+  type ActionProps = {children?: ReactNode; icon?: string; onClick?: (event: {currentTarget: object; target: object}) => void};
+  function moreAction(node: ReactNode): ActionProps | undefined {
+    for (const child of Children.toArray(node)) {
+      if (!isValidElement<ActionProps>(child)) continue;
+      if (child.props.icon === 'i-more') return child.props;
+      const nested = moreAction(child.props.children);
+      if (nested) return nested;
+    }
+  }
+  const action = moreAction(SessionCard(props).props.overlay);
+  assert.ok(action?.onClick);
+  // Dispatch contract only: the event target can be the glyph; the anchor is currentTarget.
+  const currentTarget = {tagName: 'BUTTON'}, target = {tagName: 'svg'};
+  action.onClick({currentTarget, target});
+  assert.deepEqual(calls, [currentTarget]);
 });
 
 test('the search SongRow owns its search geometry and omits the ordinal', () => {

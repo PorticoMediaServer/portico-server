@@ -2,8 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {DeletePreview} from '../../../packages/client-core/src/administration.ts';
 import type {RepairFieldSpec} from '../../../packages/client-core/src/metadata-repair.ts';
-import {addListValue, bulkDraftValid, bulkEditorSchema, bulkSummary, bulkReceiptView, pickerResultSucceeded, deletePermission, missingPickerIds, toggleListRemoval} from '../../src/kit/selection/presentation.ts';
-import type {BulkEditorDraft, BulkFieldValues} from '../../src/kit/selection/types.ts';
+import {selectionKinds} from '../../../packages/client-core/src/selection-model/capabilities.ts';
+import {addListValue, bulkDraftValid, bulkEditorSchema, bulkSummary, bulkReceiptView, pickerResultSucceeded, deletePermission, missingPickerIds, selectionCountText, toggleListRemoval} from '../../src/kit/selection/presentation.ts';
+import type {BulkEditorDraft, BulkFieldValues, SelectionMediaKind} from '../../src/kit/selection/types.ts';
+
+test('every canonical selection kind has an exact singular and plural count label', () => {
+  const labels: Readonly<Record<SelectionMediaKind, readonly [string, string]>> = {
+    movie: ['1 movie', '2 movies'], show: ['1 show', '2 shows'], season: ['1 season', '2 seasons'], episode: ['1 episode', '2 episodes'],
+    artist: ['1 artist', '2 artists'], album: ['1 album', '2 albums'], song: ['1 song', '2 songs'], book: ['1 book', '2 books'],
+    audiobook_file: ['1 audiobook part', '2 audiobook parts'], chapter: ['1 chapter', '2 chapters'], collection: ['1 collection', '2 collections'],
+    category: ['1 category', '2 categories'], author: ['1 author', '2 authors'], book_series: ['1 series', '2 series'], disc: ['1 disc', '2 discs'], extra: ['1 extra', '2 extras'],
+    channel: ['1 channel', '2 channels'], person: ['1 person', '2 people'],
+  };
+  for (const kind of selectionKinds) {
+    assert.equal(selectionCountText({kind, count: 1}), labels[kind][0], kind);
+    assert.equal(selectionCountText({kind, count: 2}), labels[kind][1], kind);
+  }
+  assert.equal(selectionCountText({count: 1}), '1 title');
+  assert.equal(selectionCountText({count: 2}), '2 titles');
+});
 
 const schema: readonly RepairFieldSpec[] = [
   {field: 'year', label: 'Year', group: 'numbers', type: 'integer', min: 1800, max: 2200, bulk: true},

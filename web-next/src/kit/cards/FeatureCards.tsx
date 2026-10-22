@@ -79,10 +79,10 @@ export type SessionCardProps = NavigationCardProps & Readonly<{
   paused?: boolean;
   onStop?: () => void;
 }> & (Readonly<{media?: 'video' | 'audio'; channel?: never}> | Readonly<{media: 'channel'; channel: SessionChannel}>);
-export function SessionCard({viewer, facts, paused, media = 'video', channel, onStop, ...props}: SessionCardProps) {
+export function SessionCard({viewer, facts, paused, media = 'video', channel, onStop, onMore, moreExpanded, ...props}: SessionCardProps) {
   return <CardFrame {...props} onPlay={undefined} onMore={undefined} kind="session" className={cx(paused && styles.paused, props.className)} overlay={<>
     {paused && <span className={styles.sessionState}><Icon name="i-pause" size={12} />{defaultI18n.t('next.cards.paused')}</span>}
-    {(onStop || props.onMore) && <span className={styles.sessionActions}>{onStop && <Button variant="glass" size="xs" icon="i-stop" onClick={onStop}>{defaultI18n.t('next.cards.stop')}</Button>}{props.onMore && <Button variant="glass" size="xs" icon="i-more" iconOnly aria-label={defaultI18n.t('next.cards.more')} onClick={props.onMore} />}</span>}
+    {(onStop || onMore) && <span className={styles.sessionActions}>{onStop && <Button variant="glass" size="xs" icon="i-stop" onClick={onStop}>{defaultI18n.t('next.cards.stop')}</Button>}{onMore && <Button variant="glass" size="xs" icon="i-more" iconOnly aria-label={defaultI18n.t('next.cards.more')} aria-haspopup="menu" aria-expanded={moreExpanded} onClick={event => onMore(event.currentTarget)} />}</span>}
   </>}>
     <span className={cx(styles.sessionArt, media === 'audio' && styles.sessionAudio, media === 'channel' && styles.sessionChannel)} style={tintStyle(channel?.tint)}>{channel ? <><ChannelMark mark={channel.mark} source={channel.logo} tint={channel.tint} size={32} visible={props.visible} /><Facts parts={channel.facts} /></> : <>{media === 'audio' && <CardAmbient {...props} />}<span className={styles.sessionForeground}><CardArtwork {...props} /></span></>}</span><span className={styles.sessionCopy}><span className={styles.sessionTitle}>{props.model.title}</span><Facts parts={props.model.caption} className={styles.sessionSubtitle} /><span className={styles.viewer}>{viewer.avatar}<strong>{viewer.name}</strong><span>{viewer.device}</span></span><Facts parts={facts} className={styles.sessionFacts} /></span><Progress value={props.model.progress} edge />
   </CardFrame>;

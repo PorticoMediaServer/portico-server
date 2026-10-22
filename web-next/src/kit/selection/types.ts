@@ -3,7 +3,7 @@ import type {RepairFieldSpec} from '@core/metadata-repair';
 import type {BulkReceipt} from '@core/metadata-bulk';
 import type {DeletePreview, DeleteResult} from '@core/administration';
 import type {SelectionKind} from '@core/selection-model';
-import type {OverlayChange} from '../overlays';
+import type {OverlayChange, OverlaySurfaceProps} from '../overlays';
 
 export type SelectionMediaKind = SelectionKind;
 export type SelectionItemDisplay = Readonly<{id: string; title: string; artwork?: ReactNode; subtitle?: string}>;
@@ -94,7 +94,7 @@ export type PickerResult = Readonly<{
   complete: boolean;
   jobFacts?: readonly Readonly<{id: string; text: string}>[];
 }>;
-export type SelectionPickerProps = SelectionSurface & Readonly<{
+export type SelectionPickerProps = SelectionSurface & Pick<OverlaySurfaceProps, 'initialFocusRef'> & Readonly<{
   selection: SelectionCount;
   anchorRef: RefObject<HTMLElement | null>;
   entries: readonly PickerEntry[];

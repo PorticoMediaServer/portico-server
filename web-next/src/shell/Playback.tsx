@@ -17,6 +17,7 @@ export type ShellPlaybackBinding = Readonly<{
 }>;
 const noSubscription = () => () => {};
 const noSnapshot = () => undefined;
+const noPresentations: readonly DockPresentation[] = Object.freeze([]);
 
 /** This parent and its one video stay mounted through routes AND authority handovers. */
 export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefined}) {
@@ -25,8 +26,8 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
   const width = useShellWidth(), phone = width < 1024;
   const video = useRef<HTMLVideoElement>(null), dockSlot = useRef<HTMLSpanElement>(null), expandedSlot = useRef<HTMLDivElement>(null);
   const media = useMemo(() => new PlaybackMediaOwner<HTMLVideoElement>(), []);
-  const cache = useMemo(() => new PlaybackPresentations(), [runtime]);
-  const presentations = snapshot && binding ? cache.update(snapshot, playbackPresentation(snapshot, binding.environment, binding.artwork, binding.skips)) : [];
+  const cache = useMemo(() => new PlaybackPresentations(runtime), [runtime]);
+  const presentations = useMemo(() => snapshot && binding ? cache.update(snapshot, playbackPresentation(snapshot, binding.environment, binding.artwork, binding.skips)) : noPresentations, [snapshot, binding, cache]);
   const dockBinding: DockBinding | undefined = useMemo(() => runtime && binding ? {
     getSnapshot: () => runtime.dock.getSnapshot(), onAction: action => { void runtime.onAction(action).catch(binding.reportError); },
   } : undefined, [runtime, binding]);
@@ -52,7 +53,7 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
       const presentation = presentations.find(value => fenceKey(value.fence) === fenceKey(changed.playback.fence));
       if (presentation) { const changedAtMs = performance.now(); setNow(changedAtMs); setNotice({runtime, value: {...changed, presentation, changedAtMs}}); }
     }
-  }, [runtime, snapshot?.dock, presentations]);
+  }, [runtime, snapshot, presentations]);
   const currentNotice = retainedPlaybackNotice(notice, runtime, snapshot?.dock, presentations);
   useEffect(() => {
     if (!currentNotice) return;

@@ -25,20 +25,34 @@ export type Placement = 'next' | 'end' | Readonly<{after: string}>;
 
 export type CreateResult = Readonly<{queue: QueueHeader; window: readonly QueueEntry[]; session?: Session}>;
 
+export type QueueCreateOptions = Readonly<{
+  startPlayback?: Readonly<{state?: 'playing' | 'paused'; quality?: QualityRequest}>;
+  /** At most three distinct actual queues on this device and viewer; omission retires all old queues. */
+  retainQueueIds?: readonly string[];
+  signal?: AbortSignal;
+}>;
+
+function retainedQueueIds(value: readonly string[] | undefined): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 3 || Array.from(value).some(id => typeof id !== 'string' || id.length < 1 || id.length > 128 || /[^A-Za-z0-9_-]/.test(id)) || new Set(value).size !== value.length) throw new ContractError('retainQueueIds');
+  return Object.freeze([...value]);
+}
+
 export class QueueClient {
   private http: V1Http;
   private key: () => string;
   constructor(http: V1Http, key: () => string = () => idempotencyKey()) { this.http = http; this.key = key; }
 
   /** Play (or Shuffle, or Resume a show): replaces this device's current queue. */
-  async create(segments: readonly SegmentInput[], options: {startPlayback?: Readonly<{state?: 'playing' | 'paused'; quality?: QualityRequest}>; signal?: AbortSignal} = {}): Promise<CreateResult> {
-    const r = await call(this.http, {method: 'POST', path: routePath("create_queue"), headers: {'Idempotency-Key': this.key()}, body: {owner: 'device', segments, ...(options.startPlayback ? {startPlayback: options.startPlayback} : {})}, signal: options.signal});
+  async create(segments: readonly SegmentInput[], options: QueueCreateOptions = {}): Promise<CreateResult> {
+    const retainQueueIds = retainedQueueIds(options.retainQueueIds);
+    const r = await call(this.http, {method: 'POST', path: routePath("create_queue"), headers: {'Idempotency-Key': this.key()}, body: {owner: 'device', segments, ...(options.startPlayback ? {startPlayback: options.startPlayback} : {}), ...(retainQueueIds !== undefined ? {retainQueueIds} : {})}, signal: options.signal});
     const b = r.body as {queue?: unknown; window?: unknown; session?: unknown};
     return Object.freeze({queue: parseQueue(b.queue), window: Object.freeze(Array.isArray(b.window) ? b.window.map(parseEntry) : []), session: b.session !== undefined ? parseSession(b.session) : undefined});
   }
 
   /** Capture every match on the server; the first batch can start playback. */
-  createSelector(source: Selector, options: {shuffleSeed?: string; shuffle?: boolean; startPlayback?: Readonly<{state?: 'playing' | 'paused'; quality?: QualityRequest}>; signal?: AbortSignal} = {}): Promise<CreateResult> {
+  createSelector(source: Selector, options: QueueCreateOptions & {shuffleSeed?: string; shuffle?: boolean} = {}): Promise<CreateResult> {
     return this.create([{source, ...(options.shuffle ? {order: {mode: 'shuffle' as const, ...(options.shuffleSeed ? {seed: options.shuffleSeed} : {})}} : {})}], options);
   }
 
