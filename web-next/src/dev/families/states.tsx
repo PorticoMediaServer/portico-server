@@ -5,6 +5,7 @@ import {ArtworkScheduler} from '@core/artwork';
 import {cardText} from '@portico/client-core/kit-model';
 import {defineGalleryFamily, type GalleryCase} from '../gallery-registry';
 import {Artwork, type AmbientArtSource, type ArtworkImage, type ArtworkSource} from '../../kit/artwork';
+import {Icon} from '../../kit/Icon';
 import {Button, Tabs} from '../../kit/controls';
 import {PosterCard, WideCard} from '../../kit/cards';
 import {OwnerTag, ServerBand, ServerMark} from '../../kit/shell';
@@ -21,13 +22,24 @@ const referenceFacts = {
   crashWhen: fixture('next.states.fixture.crashWhen'), crashApp: fixture('next.states.fixture.crashApp'), crashBrowser: fixture('next.states.fixture.crashBrowser'), crashWhere: fixture('next.states.fixture.crashWhere'),
 } as const;
 const server = () => referenceFacts.serverName;
+/** The source draws a static partial-opacity arrival. This is not a decode or timing claim. */
+function ReferenceArrival({children}: {children: ReactNode}) { return <div className={styles.referenceArrival} data-state-reference-arrival="partial">{children}</div>; }
 
 /** Root supplies real authority-bound handles privately for ambient evidence. */
 type StatesArtworkEvidence = Readonly<{
-  home?: Pick<SkeletonArtwork, 'source' | 'foreground' | 'palette'>;
-  title?: Readonly<{foreground: ArtworkSource; ambient: AmbientArtSource}>;
+  home?: SkeletonArtwork;
+  title?: Readonly<{foreground: ArtworkSource; ambient?: AmbientArtSource; palette?: SkeletonArtwork['palette']}> & Pick<SkeletonArtwork, 'visible' | 'onReady' | 'onError'>;
 }>;
 declare global { var __porticoWebStatesEvidence: StatesArtworkEvidence | undefined; }
+function useStatesArtworkEvidence() {
+  const [evidence, setEvidence] = useState(globalThis.__porticoWebStatesEvidence);
+  useEffect(() => {
+    const update = () => setEvidence(globalThis.__porticoWebStatesEvidence);
+    window.addEventListener('portico-states-evidence', update);
+    return () => window.removeEventListener('portico-states-evidence', update);
+  }, []);
+  return evidence;
+}
 
 /** Reference assets and display facts are confined to this serve-only fixture module. */
 function useReferenceArtwork() {
@@ -61,9 +73,9 @@ function connectionFacts(phone = false): readonly DetailsFact[] {
 function Connection({owner = true, phone = false, unknown = false}: {owner?: boolean; phone?: boolean; unknown?: boolean}) {
   const [open, setOpen] = useState(true);
   const {action, output} = useActions();
-  const details = owner ? <DetailsPanel audience="owner" facts={connectionFacts(phone)} owner={{ownerMark:<ServerMark size={22}/>,ownerTag:<OwnerTag/>,paragraphs: [t('next.states.connectionOwnerBody', {time: fixture('next.states.fixture.connectionTime')})], codes: ['route_unavailable', 'request_failed'], actions: [action('copy', t('next.states.copyDetails'), 'i-copy')]}}/> : <DetailsPanel audience="viewer" facts={connectionFacts(phone)}/>;
+  const details = owner ? <DetailsPanel className={styles.connectionDetails} audience="owner" facts={connectionFacts(phone)} owner={{ownerMark:<ServerMark size={26}/>,ownerTag:<OwnerTag/>,paragraphs: [t('next.states.connectionOwnerBody', {time: fixture('next.states.fixture.connectionTime')})], codes: ['route_unavailable', 'request_failed'], actions: [action('copy', t('next.states.copyDetails'), 'i-copy')]}}/> : <DetailsPanel className={styles.connectionDetails} audience="viewer" facts={connectionFacts(phone)}/>;
   return <StateLayout className={phone ? styles.mobileConnection : undefined} title={t('next.states.cantReach', {server: server()})}
-    backdrop={phone ? {kind:'colour',shape:'top',fill:true} : undefined}
+    backdrop={phone ? null : undefined}
     body={t(phone ? 'next.states.cantReachPhoneBody' : 'next.states.cantReachBody')} icon="i-srvoff" tone="warning"
     contentStyle={phone ? {top: 62, left: 20, right: 20} : {top: 500}}
     retry={{progress: unknown ? null : phone ? 1 - 12 / 56.55 : 1 - 22 / 56.55, label: unknown ? t('next.states.retrying') : t('next.states.retryIn', {seconds: phone ? 26 : 9}), detail: phone ? undefined : t('next.states.triesSince', {count: 4, time: fixture('next.states.fixture.connectionTime')})}}
@@ -79,7 +91,7 @@ function PageFailed() {
 function Updating() {
   const {action, output} = useActions();
   return <StateLayout title={t('next.states.updating', {server: server()})} body={t('next.states.updatingBody', {version: '1.4.0'})} icon="i-update" tone="accent" contentStyle={{top: 470}}
-    secondary={action('switch', t('next.states.switchServer'), 'i-server')} links={[action('changes', t('next.states.whatsNew', {version: '1.4.0'}), 'i-right')]} after={output}>
+    secondary={action('switch', t('next.states.switchServer'), 'i-server')} links={[{...action('changes', t('next.states.whatsNew', {version: '1.4.0'}), 'i-right'),iconPosition:'end'}]} after={output}>
     <StateSteps steps={[{id: 'backup', label: t('next.states.backedUp'), status: 'done', detail: fixture('next.states.fixture.backupTime')}, {id: 'database', label: t('next.states.updatingDatabase'), status: 'current', detail: t('next.states.secondsLeft', {seconds: 30}), progress: 1 - 24 / 56.55}, {id: 'starting', label: t('next.states.starting'), status: 'pending'}]}/>
   </StateLayout>;
 }
@@ -89,12 +101,12 @@ function PlayerFailure() {
   return <StateLayout variant="player" backdrop={{kind: 'frozen', source: reference('assets/pool/movies/dune-part-two--bd.jpg')}}
     title={t('next.states.playbackStopped')} body={<StateSentence messageId="next.states.versionFailureBody" values={{failedVersion: '4K HDR10', position: '1:12:40', alternative: '1080p'}}/>} icon="i-warn" tone="warning" contentStyle={{top: 418}}
     primary={action('version', t('next.states.playVersion', {version: '1080p'}), 'i-play')} secondary={action('retry', t('next.states.tryAgain'), 'i-retry')}
-    links={[action('report', t('next.states.reportProblem'), 'i-flag')]} afterActions={<DetailsPanel audience="owner" facts={[]} owner={{ownerMark:<ServerMark size={22}/>,ownerTag:<OwnerTag/>,paragraphs: [t('next.states.playbackOwnerBody',{browser:'Chrome on this Mac',version:'4K HDR10',format:'HEVC Main 10',resolution:'2160p',position:'1:12:40'})], codes: ['decoder_contradiction'], time: '4:05 PM', actions: [action('info', t('next.states.playbackInfo'), 'i-pulse'), action('copy', t('next.states.copyDetails'), 'i-copy')]}}/>} after={output}/>;
+    links={[action('report', t('next.states.reportProblem'), 'i-flag')]} afterActions={<DetailsPanel audience="owner" facts={[]} owner={{ownerMark:<ServerMark size={26}/>,ownerTag:<OwnerTag/>,paragraphs: [t('next.states.playbackOwnerBody',{browser:'Chrome on this Mac',version:'4K HDR10',format:'HEVC Main 10',resolution:'2160p',position:'1:12:40'})], codes: ['decoder_contradiction'], time: '4:05 PM', actions: [action('info', t('next.states.playbackInfo'), 'i-pulse'), action('copy', t('next.states.copyDetails'), 'i-copy')]}}/>} after={output}/>;
 }
 function CompactFailure({kind}: {kind: 'permanent' | 'busy' | 'limit'}) {
   const reference = useReferenceArtwork();
   const {action, output} = useActions();
-  const [streams, setStreams] = useState([0,1]);
+  const streams = [0,1];
   return <div className={styles.compactStage}>
     <Artwork className={styles.frozen} source={reference(kind === 'permanent' ? 'assets/pool/movies/spirited-away--bd.jpg' : kind === 'busy' ? 'assets/pool/tv/the-last-of-us--bd.jpg' : 'assets/pool/tv/severance--bd.jpg')} alt=""/>
     <StateView className={styles.compactContent} variant="compact" icon={kind === 'permanent' ? 'i-info' : kind === 'busy' ? 'i-clock' : 'i-monitor'} tone={kind === 'permanent' ? 'neutral' : 'warning'}
@@ -104,8 +116,8 @@ function CompactFailure({kind}: {kind: 'permanent' | 'busy' | 'limit'}) {
       primary={kind === 'permanent' ? action('back', t('next.states.back')) : kind === 'busy' ? action('retry', t('next.states.tryNow')) : undefined}
       secondary={kind === 'permanent' ? action('report', t('next.states.reportProblem'), 'i-flag') : kind === 'busy' ? action('back', t('next.states.back')) : undefined}>
       {kind === 'limit' && <div className={styles.sessions}>{streams.map(index => <div key={index}>
-        <span><b>{referenceFacts.deviceNames[index]}</b><small>{referenceFacts.streamNames[index]}</small></span>
-        <Button variant="glass" size="xs" onClick={() => setStreams(value => value.filter(item => item !== index))}>{t('next.states.stop')}</Button>
+        <Icon name={index === 0 ? 'i-tv' : 'i-phone'} size={18}/><span><b>{referenceFacts.deviceNames[index]}</b><small>{referenceFacts.streamNames[index]}</small></span>
+        <Button variant="glass" size="xs" onClick={action(`stop-${index}`, t('next.states.stop')).onPress}>{t('next.states.stop')}</Button>
       </div>)}</div>}
     </StateView>{output}
   </div>;
@@ -129,14 +141,14 @@ function Empty({kind}: {kind: EmptyKind}) {
     removed:{icon:'i-not',title:t('next.states.removed',{title:referenceFacts.removedName,server:server()}),body:t('next.states.removedBody'),primary:action('search',t('next.states.searchTitle',{title:referenceFacts.removedName}),'i-search'),secondary:action('remove',t('next.states.removeContinue'))},
     restricted:{icon:'i-lock',title:t('next.states.restricted',{profile:referenceFacts.profileName}),body:t('next.states.restrictedBody'),primary:action('home',t('next.states.goHome')),secondary:action('profile',t('next.states.switchProfile'),'i-switch')},
     owner:{eyebrow:<OwnerTag variant="state" identity={t('next.shell.serverSettings')}/>,icon:'i-lock',title:t('next.states.ownerRequired'),body:t('next.states.ownerRequiredBody',{server:server()}),primary:action('settings',t('next.states.mySettings')),secondary:action('home',t('next.states.goHome'))},
-    'first-library':{eyebrow:t('next.states.ready',{server:server()}),title:t('next.states.firstLibrary'),body:t('next.states.firstLibraryBody'),primary:action('add',t('next.states.addLibrary'),'i-plus'),secondary:action('live',t('next.states.setupLive'),'i-live')},
+    'first-library':{eyebrow:<><span className={styles.readyDot}/>{t('next.states.ready',{server:server()})}</>,title:t('next.states.firstLibrary'),body:t('next.states.firstLibraryBody'),primary:action('add',t('next.states.addLibrary'),'i-plus'),secondary:action('live',t('next.states.setupLive'),'i-live')},
     member:{icon:'i-clock',title:t('next.states.gettingReady',{server:server()}),body:t('next.states.gettingReadyBody'),links:[action('switch',t('next.states.switchServer'),'i-server')]},
     'my-list':{icon:'i-bookmark',title:t('next.states.myListEmpty'),body:t('next.states.myListEmptyBody')},
     recordings:{icon:'i-rec',title:t('next.states.noRecordings'),body:t('next.states.noRecordingsBody',{title:referenceFacts.programmeName,time:fixture('next.states.fixture.recordingTime')}),primary:action('guide',t('next.states.openGuide'),'i-guide')},
     live:{eyebrow:<OwnerTag variant="state" identity={server()}/>,title:t('next.states.setupLive'),body:t('next.states.setupLiveBody'),primary:action('source',t('next.states.addTVSource'),'i-plus'),secondary:action('tuners',t('next.states.findTuners'))},
   };
-  return <StateLayout {...content[kind]} className={kind === 'owner' ? styles.ownerDenied : undefined}
-    backdrop={{kind:'colour',shape:kind === 'not-found' || kind === 'first-library' ? 'side':'top',fill:kind !== 'not-found' && kind !== 'first-library'}}
+  return <StateLayout {...content[kind]} className={kind === 'owner' ? styles.ownerDenied : kind === 'restricted' ? styles.restricted : kind === 'member' ? styles.memberEmpty : kind === 'live' ? styles.liveEmpty : undefined}
+    backdrop={kind === 'my-list' || kind === 'recordings' || kind === 'owner' ? null : {kind:'colour',shape:kind === 'not-found' || kind === 'first-library' ? 'side':'top'}}
     chrome={kind === 'owner' ? <ServerBand variant="state"/> : undefined}
     contentStyle={{top:kind === 'first-library' || kind === 'not-found' ? 330 : kind === 'member' ? 286 : kind === 'my-list' ? 178 : kind === 'owner' ? 44 : 250,...(kind === 'owner' ? {left:20,right:20} : {})}} after={output}/>;
 }
@@ -150,43 +162,45 @@ function SearchEmpty() {
 function Crash() {
   const {action, output} = useActions();
   return <StateLayout title={t('next.states.crashed')} body={t('next.states.crashedBody')} tone="error" icon="i-warn" contentStyle={{top:420}}
-    primary={action('reload',t('next.states.reload'),'i-reload')} secondary={action('copy',t('next.states.copyDetails'),'i-copy')} links={[action('send',t('next.states.sendOwner'),'i-right')]}
+    primary={action('reload',t('next.states.reload'),'i-reload')} secondary={action('copy',t('next.states.copyDetails'),'i-copy')} links={[{...action('send',t('next.states.sendOwner'),'i-right'),iconPosition:'end'}]}
     afterActions={<><p className={styles.detailsHeading}>{t('next.states.copyIncludes')}</p><DetailsPanel audience="viewer" facts={[
       {id:'when',label:t('next.states.when'),value:referenceFacts.crashWhen},{id:'app',label:t('next.states.app'),value:referenceFacts.crashApp},{id:'browser',label:t('next.states.browser'),value:referenceFacts.crashBrowser},{id:'where',label:t('next.states.where'),value:referenceFacts.crashWhere},{id:'reference',label:t('next.states.reference'),value:'7F3K Q2MD'},
     ]}/></>} after={output}/>;
 }
 function LoadingHome({phone = false, early = false}: {phone?: boolean; early?: boolean}) {
   const reference = useReferenceArtwork();
+  const evidence = useStatesArtworkEvidence();
   const {action, output} = useActions();
   const episode = cardText({id:'tlou-1',kind:'episode',title:referenceFacts.episodeName,show:{title:referenceFacts.showName},episode:{mode:'seasonal',season:1,episode:1}},'continuation',{t:defaultI18n.t});
-  const movie = cardText({id:'inside-out',kind:'movie',title:referenceFacts.movieName,year:2015},'continuation',{t:defaultI18n.t});
+  const movie = cardText({id:'inside-out',kind:'movie',title:referenceFacts.movieName,year:2015},'ordinary',{t:defaultI18n.t});
   const arrived = early ? undefined : new Map([
-    [0,<WideCard key="episode" model={{...episode,progress:.22}} artwork={reference('assets/bd-tlou.jpg')} style={{width:'100%'}} onNavigate={action('title',referenceFacts.showName).onPress}/>],
-    ...(!phone ? [[1,<WideCard key="movie" model={{...movie,progress:.09}} artwork={reference('assets/bd-insideout.jpg')} style={{width:'100%'}} onNavigate={action('title',referenceFacts.movieName).onPress}/>] as const] : []),
+    [0,<WideCard key="episode" model={{...episode,progress:.22,...(phone ? {caption:[...episode.caption.filter(part => part.id !== 'episode-title'),{id:'remaining',text:fixture('next.states.fixture.remaining'),role:'supplement' as const}],detail:[]} : {})}} artwork={reference('assets/bd-tlou.jpg')} arrivalDurationMs={240} style={{width:'100%'}} onNavigate={action('title',referenceFacts.showName).onPress}/>],
+    ...(!phone ? [[1,<ReferenceArrival key="movie"><WideCard model={{...movie,progress:.09}} artwork={reference('assets/bd-insideout.jpg')} arrivalDurationMs={240} style={{width:'100%'}} onNavigate={action('title',referenceFacts.movieName).onPress}/></ReferenceArrival>] as const] : []),
   ]);
-  return <><HomeSkeleton elapsedMs={early ? 299 : 8000} window={{width:phone ? 390 : 1440,height:phone ? 844 : 920,scrollTop:0}} art={globalThis.__porticoWebStatesEvidence?.home} rows={[{id:'continue',shape:'wide',arrived},{id:'posters',shape:'poster'}]}
+  return <><HomeSkeleton elapsedMs={early ? 299 : phone ? 500 : 8000} window={{width:phone ? 390 : 1440,height:phone ? 844 : 920,scrollTop:0}} art={evidence?.home} rows={phone ? [{id:'continue',shape:'wide',arrived}] : [{id:'continue',shape:'wide',arrived},{id:'posters',shape:'poster'}]}
     slowNotice={<div className={styles.slowNotice}><span className={styles.waitingDot}/><span><b>{t('next.states.stillLoading')}</b>{' '}{t('next.states.slowConnection',{server:server()})}</span></div>}/>
     {output}</>;
 }
 function LoadingTitle({phone = false}: {phone?: boolean}) {
   const reference = useReferenceArtwork();
   const [tab, setTab] = useState('episodes');
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const supplied = globalThis.__porticoWebStatesEvidence?.title;
-  return <div className={styles.artworkStage} data-state-artwork-status={status} data-state-ambient-source={supplied ? 'provided' : 'absent'}><TitleSkeleton elapsedMs={500} window={{width:phone ? 390 : 1440,height:phone ? 844 : 960,scrollTop:0}}
-    pressed={{title:phone ? referenceFacts.phoneShow : referenceFacts.showName,artwork:supplied?.foreground ?? reference(phone ? 'assets/pool/tv/slow-horses--bd.jpg':'assets/bd-tlou.jpg'),ambient:supplied?.ambient,onReady:() => setStatus('ready'),onError:() => setStatus('error')}}
-    tabs={<Tabs value={tab} onValueChange={setTab} phone={phone} items={[{value:'episodes',label:t('next.states.episodes')},{value:'similar',label:t('next.states.moreLikeThis')},{value:'details',label:t('next.states.details')}]}/>}/></div>;
+  const [status, setStatus] = useState<{key: string; status: 'ready' | 'error'}>();
+  const supplied = useStatesArtworkEvidence()?.title;
+  const artwork = supplied?.foreground ?? reference(phone ? 'assets/pool/tv/slow-horses--bd.jpg':'assets/bd-tlou.jpg');
+  return <div className={styles.artworkStage} data-state-artwork-status={status?.key === artwork.key ? status.status : 'loading'} data-state-ambient-source={supplied?.ambient ? 'provided' : 'absent'}><TitleSkeleton elapsedMs={500} window={{width:phone ? 390 : 1440,height:phone ? 844 : 960,scrollTop:0}}
+    pressed={{title:phone ? referenceFacts.phoneShow : referenceFacts.showName,artwork,ambient:supplied?.ambient,palette:supplied?.palette,visible:supplied?.visible,onReady:source => {setStatus({key:source.key,status:'ready'});supplied?.onReady?.(source);},onError:source => {setStatus({key:source.key,status:'error'});supplied?.onError?.(source);}}}
+    tabs={<Tabs listClassName={phone ? undefined : styles.titleTabsList} value={tab} onValueChange={setTab} phone={phone} items={[{value:'episodes',label:t('next.states.episodes')},{value:'similar',label:t('next.states.moreLikeThis')},{value:'details',label:t('next.states.details')}]}/>}/></div>;
 }
 function LoadingGrid({phone = false}: {phone?: boolean}) {
   const reference = useReferenceArtwork();
   const {action, output} = useActions();
   const [top, setTop] = useState(0);
   const arrived = new Map([
-    [0,<PosterCard key="first" model={cardText({id:'12-angry-men',kind:'movie',title:referenceFacts.firstMovieName,year:1957},'ordinary',{t:defaultI18n.t})} artwork={reference('assets/pool/movies/12-angry-men.jpg')} style={{width:'100%'}} onNavigate={action('title',referenceFacts.firstMovieName).onPress}/>],
-    [1,<PosterCard key="second" model={cardText({id:'alien',kind:'movie',title:referenceFacts.secondMovieName,year:1979},'ordinary',{t:defaultI18n.t})} artwork={reference('assets/pool/movies/alien.jpg')} style={{width:'100%'}} onNavigate={action('title',referenceFacts.secondMovieName).onPress}/>],
+    [0,<PosterCard key="first" context="grid" density="grid" model={cardText({id:'12-angry-men',kind:'movie',title:referenceFacts.firstMovieName,year:1957},'ordinary',{t:defaultI18n.t})} artwork={reference('assets/pool/movies/12-angry-men.jpg')} arrivalDurationMs={240} style={{width:'100%'}} onNavigate={action('title',referenceFacts.firstMovieName).onPress}/>],
+    [1,<ReferenceArrival key="second"><PosterCard context="grid" density="grid" model={cardText({id:'alien',kind:'movie',title:referenceFacts.secondMovieName,year:1979},'ordinary',{t:defaultI18n.t})} artwork={reference('assets/pool/movies/alien.jpg')} arrivalDurationMs={240} style={{width:'100%'}} onNavigate={action('title',referenceFacts.secondMovieName).onPress}/></ReferenceArrival>],
   ]);
   return <div className={styles.gridViewport} onScroll={event => setTop(event.currentTarget.scrollTop)}>
-    <GridSkeleton elapsedMs={500} window={{width:phone ? 390 : 1440,height:phone ? 600 : 620,scrollTop:top}} itemCount={50000} arrived={arrived}/>{output}
+    <GridSkeleton elapsedMs={500} window={{width:phone ? 390 : 1440,height:phone ? 600 : 620,scrollTop:top}} itemCount={50000} arrived={arrived} captions={false} leadingCaptionLines={phone ? [2,1] : [2]}/>{output}
   </div>;
 }
 function ShortcutCase() {

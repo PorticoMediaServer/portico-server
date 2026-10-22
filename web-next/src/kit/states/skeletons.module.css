@@ -49,6 +49,7 @@
 .phone .rowHeading { min-height: 18px; margin-bottom: 4px; }
 .phone .track { padding-top: 8px; padding-bottom: 10px; }
 .phone .titleArt { height: 396px; }
+.phone .pressedArtwork::after { inset: 0 0 -140px; background: linear-gradient(180deg,rgba(7,16,24,.5) 0,transparent 16%,transparent 36%,rgba(7,16,24,.8) 68%,rgba(7,16,24,.55) 84%,rgba(7,16,24,0) 100%); }
 .phone .titleWords { left: 20px; right: 20px; top: 300px; width: auto; text-align: center; }
 .phone .titleWords h1 { font-size: 46px; line-height: .94; margin: 0 0 12px; }
 .phone .titleWords > .block { margin: 0 auto; }

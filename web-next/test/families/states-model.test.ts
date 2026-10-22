@@ -34,11 +34,28 @@ test('phone loading matches the drawn gutters, gaps, three columns and poster ra
   assert.ok(Math.abs(geometry.cells[0]!.height/geometry.cellWidth-1.5)<.001);
   assert.equal(geometry.rowHeight,geometry.cells[0]!.height+41+16);
 });
+test('known caption extents preserve the drawn leading rows without mounting the library', () => {
+  const window={width:390,height:600,scrollTop:0};
+  const options={captions:false,leadingCaptionLines:[2,1] as const};
+  const geometry=skeletonGridWindow(window,50000,options);
+  assert.equal(geometry.cells[3]!.y,geometry.cells[0]!.height+41+16);
+  assert.equal(geometry.cells[6]!.y,geometry.cells[3]!.y+geometry.cells[0]!.height+20+16);
+  const distant=skeletonGridWindow({...window,scrollTop:1000000},50000,options);
+  assert.ok(distant.cells.length<=15);
+  assert.ok(distant.cells[0]!.index>10000);
+  assert.equal(skeletonGridWindow({...window,scrollTop:geometry.totalHeight+1},50000,options).cells.length,0);
+});
 test('empty and nonfinite inputs cannot turn into unbounded work or invalid geometry', () => {
   const window={width:1440,height:620,scrollTop:0};
   assert.equal(skeletonGridWindow(window,NaN).cells.length,0);
   assert.equal(skeletonGridWindow({...window,width:0},50000).cells.length,0);
   assert.deepEqual(skeletonGridWindow(window,50000,{columns:NaN,gutter:Infinity,columnGap:NaN,rowGap:NaN}),skeletonGridWindow(window,50000));
+});
+test('oversized finite library counts still produce a bounded visible window', () => {
+  const geometry=skeletonGridWindow({width:1440,height:620,scrollTop:1000000},Number.MAX_VALUE);
+  assert.ok(Number.isFinite(geometry.totalHeight));
+  assert.ok(geometry.cells.length>0 && geometry.cells.length<=21);
+  assert.ok(geometry.cells.every(cell=>Number.isSafeInteger(cell.index)));
 });
 test('the complete shortcut list uses actual Settings skip values', () => {
   const sections=keyboardShortcutSections(7,45);
