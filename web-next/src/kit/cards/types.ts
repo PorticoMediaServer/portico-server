@@ -8,7 +8,9 @@ export type CardSelectionIntent = Readonly<{range: boolean; source: 'pointer' | 
 export type CardSelection = Readonly<{
   active: boolean;
   checked: boolean;
-  control: ReactNode;
+  preview?: boolean;
+  /** Optional decorative SelectionCircle; CardFrame owns the single interactive target. */
+  control?: ReactNode;
   onToggle: (intent: CardSelectionIntent) => void;
   onExit: () => void;
 }>;
@@ -20,10 +22,13 @@ export type CardProps = Readonly<{
   onMore?: (anchor: HTMLButtonElement) => void;
   moreExpanded?: boolean;
   onNotInterested?: () => void;
+  disabled?: boolean;
   selection?: CardSelection;
   watched?: boolean;
   isNew?: boolean;
   next?: boolean;
+  /** Additional authored credit/reason rows, retaining semantic fact parts. */
+  extraCaption?: readonly (readonly FactPart[])[];
   className?: string;
   style?: CSSProperties;
   primaryRef?: Ref<HTMLButtonElement>;
