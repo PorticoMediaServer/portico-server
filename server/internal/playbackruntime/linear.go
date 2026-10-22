@@ -60,6 +60,7 @@ type LinearRuntime struct {
 	wg           sync.WaitGroup
 }
 type linearEntry struct {
+	captions    linearinput.CaptionDeclarations
 	mu          sync.Mutex
 	buffer      *linearbuffer.Buffer
 	token       string
@@ -776,6 +777,7 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 	}
 	entry.mu.Lock()
 	entry.engine = engine
+	entry.captions = gateway.Captions()
 	entry.mu.Unlock()
 	plan.HLSInput = gateway.HLS()
 	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal, Fragmented: plan.Fragmented}, func() error { return l.checkProducerWithPatience(work, w) })
@@ -852,6 +854,7 @@ func (l *LinearRuntime) produceLibrary(ctx context.Context, w playback.LinearWor
 	}
 	entry.mu.Lock()
 	entry.engine = engine
+	entry.captions = linearinput.CaptionDeclarations{}
 	entry.mu.Unlock()
 	now := time.Now().UnixMilli()
 	if now >= w.Selection.EntryEndMS {
@@ -1062,7 +1065,7 @@ func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, g
 	var from *int64
 	if r.URL.RawQuery != "" {
 		match := playlistStart.FindStringSubmatch(r.URL.RawQuery)
-		if match == nil || name != "index.m3u8" {
+		if match == nil || name != "index.m3u8" && name != "stream.m3u8" {
 			http.NotFound(w, r)
 			return
 		}
@@ -1075,7 +1078,8 @@ func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, g
 		return
 	}
 	e.mu.Lock()
-	buffer, gen := e.buffer, e.generation
+	buffer, gen, captions := e.buffer, e.generation, e.captions
+	captions.Renditions = append([]linearinput.CaptionRendition(nil), captions.Renditions...)
 	e.mu.Unlock()
 	authorize := func(selection *playback.LinearSelection) error {
 		_, err := l.owner.Linear.authority.AuthorizeLinearMedia(r.Context(), id, gen, selection)
@@ -1085,7 +1089,7 @@ func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, g
 		http.Error(w, "media authority expired", 403)
 		return
 	}
-	if name == "index.m3u8" {
+	if name == "index.m3u8" || name == "stream.m3u8" {
 		// Playlist access checks every retained programme as well as the current one.
 		for _, producer := range buffer.Producers() {
 			e.mu.Lock()
@@ -1104,6 +1108,13 @@ func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, g
 		}
 		if authorize(nil) != nil {
 			http.Error(w, "media authority expired", 403)
+			return
+		}
+		master, hasCaptions := captionMaster(captions, r.URL.RawQuery)
+		if name == "index.m3u8" && hasCaptions {
+			data = master
+		} else if name == "stream.m3u8" && !hasCaptions {
+			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")

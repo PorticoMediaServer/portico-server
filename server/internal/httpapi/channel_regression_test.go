@@ -625,7 +625,7 @@ func TestChannelsSurfingReplacesThePlaybackInOneSlot(t *testing.T) {
 // liveChannel publishes a live source whose one channel is a real HLS stream on
 // this host (a confirmed LAN root, as an owner confirms it), with the owner's
 // tuner limit, and returns its reference.
-func (s *channelSuite) liveChannel(t *testing.T, tuners int) playback.LinearReference {
+func (s *channelSuite) liveChannel(t *testing.T, tuners int, captionSource ...bool) playback.LinearReference {
 	t.Helper()
 	ffmpeg, _ := requireChannelTools(t)
 	dir := filepath.Join(s.state, "stream")
@@ -648,7 +648,13 @@ func (s *channelSuite) liveChannel(t *testing.T, tuners int) playback.LinearRefe
 	}
 	began := time.Now()
 	files := http.FileServer(http.Dir(dir))
+	withCaptions := len(captionSource) > 0 && captionSource[0]
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if withCaptions && r.URL.Path == "/live/master.m3u8" {
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,GROUP-ID=\"source-captions\",NAME=\"English captions\",LANGUAGE=\"en\",INSTREAM-ID=\"SERVICE2\",AUTOSELECT=YES\n#EXT-X-STREAM-INF:BANDWIDTH=800000,CLOSED-CAPTIONS=\"source-captions\"\nindex.m3u8\n"))
+			return
+		}
 		if r.URL.Path != "/live/index.m3u8" {
 			files.ServeHTTP(w, r)
 			return
@@ -666,7 +672,11 @@ func (s *channelSuite) liveChannel(t *testing.T, tuners int) playback.LinearRefe
 		_, _ = w.Write([]byte(b.String()))
 	}))
 	t.Cleanup(server.Close)
-	if err := os.WriteFile(filepath.Join(dir, "list.m3u"), []byte("#EXTM3U\n#EXTINF:-1 tvg-id=\"news\" tvg-chno=\"1\",Northwind News\n"+server.URL+"/live/index.m3u8\n"), 0o600); err != nil {
+	sourcePlaylist := "/live/index.m3u8"
+	if withCaptions {
+		sourcePlaylist = "/live/master.m3u8"
+	}
+	if err := os.WriteFile(filepath.Join(dir, "list.m3u"), []byte("#EXTM3U\n#EXTINF:-1 tvg-id=\"news\" tvg-chno=\"1\",Northwind News\n"+server.URL+sourcePlaylist+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	owner := func(context.Context, *sql.Tx, bool) (string, func(string, string) bool, error) {
@@ -876,4 +886,47 @@ func (d *v1ChannelDriver) noTuner(t *testing.T, ref playback.LinearReference) {
 	if w.Code != 409 || !strings.Contains(w.Body.String(), "no_tuner_available") {
 		t.Fatalf("a start with every tuner in use: %d %s", w.Code, w.Body)
 	}
+}
+
+// The source fixture declares a CEA service. This verifies declaration and
+// media authority transport, not that its generated test picture has captions.
+func TestChannelsLiveCaptionDeclarationsStayOnAuthenticatedMaster(t *testing.T) {
+	eachChannelDriver(t, 60*time.Second, func(t *testing.T, s *channelSuite, d channelDriver) {
+		ref := s.liveChannel(t, 2, true)
+		h := d.tune(t, ref)
+		v := waitChannel(t, d, h, 45*time.Second, "caption-declared live source becomes active", active)
+		code, master := s.media(v.StreamURL)
+		if code != 200 || !strings.Contains(master, "TYPE=CLOSED-CAPTIONS") || !strings.Contains(master, `INSTREAM-ID="SERVICE2"`) || !strings.Contains(master, `BANDWIDTH=800000,CLOSED-CAPTIONS="source-captions"`) || !strings.Contains(master, "stream.m3u8") || strings.Contains(master, "/live/") {
+			t.Fatalf("master %d %s", code, master)
+		}
+		child := strings.TrimSuffix(v.StreamURL, "index.m3u8") + "stream.m3u8"
+		if code, playlist := s.media(child); code != 200 || !strings.Contains(playlist, "#EXTINF") {
+			t.Fatalf("authenticated child %d %s", code, playlist)
+		}
+		seek := fmt.Sprintf("at=%d", max(int64(0), v.WindowStartUS/1000))
+		if code, master := s.media(v.StreamURL + "?" + seek); code != 200 || !strings.Contains(master, "stream.m3u8?"+seek) {
+			t.Fatalf("seek master %d %s", code, master)
+		}
+		d.stop(t, h)
+		for _, path := range []string{v.StreamURL, child} {
+			if code, body := s.media(path); code == 200 {
+				t.Fatalf("stopped caption media survived %s %s", path, body)
+			}
+		}
+	})
+}
+
+func TestChannelsUndeclaredCaptionsStayAbsent(t *testing.T) {
+	eachChannelDriver(t, 60*time.Second, func(t *testing.T, s *channelSuite, d channelDriver) {
+		h := d.tune(t, s.liveChannel(t, 2))
+		v := waitChannel(t, d, h, 45*time.Second, "undeclared live source becomes active", active)
+		if code, playlist := s.media(v.StreamURL); code != 200 || !strings.Contains(playlist, "#EXTINF") || strings.Contains(playlist, "CLOSED-CAPTIONS") || strings.Contains(playlist, "INSTREAM-ID") {
+			t.Fatalf("invented declaration %d %s", code, playlist)
+		}
+		child := strings.TrimSuffix(v.StreamURL, "index.m3u8") + "stream.m3u8"
+		if code, body := s.media(child); code != 404 {
+			t.Fatalf("undeclared child %d %s", code, body)
+		}
+		d.stop(t, h)
+	})
 }
