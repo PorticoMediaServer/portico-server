@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
-import {Children, isValidElement, type ReactNode} from 'react';
+import {Children, createElement, isValidElement, type ReactNode} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
 import {transformTsx} from '../transform-tsx.mjs';
 import {PlaybackDock, type DockPlayback, type QueuePlaybackFence} from '../../../packages/player-core/src/index.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../../src/platform/playback/types.ts';
@@ -105,6 +106,7 @@ const loader = registerHooks({load(url, context, next) {
 }});
 const {PlaybackHost} = await import('../../src/shell/Playback.tsx');
 const {NowPlayingCard} = await import('../../src/kit/dock/NowPlayingCard.tsx');
+const {MediaSurface} = await import('../../src/kit/dock/MediaSurface.tsx');
 test.after(() => { loader.deregister(); delete (globalThis as Record<string, unknown>)[bridgeKey]; });
 
 function element(tree: ReactNode, type: string): any {
@@ -166,6 +168,7 @@ test('host rerenders retain one media ref and presentations while actual authori
   dock.start(video); state = snapshot(video, 'Current movie');
   let tree = render();
   const media = element(tree, 'video').props.ref.current, surface = element(tree, 'media-surface');
+  assert.equal(surface.props.finished, false);
   const presentations = element(tree, 'dock-host').props.presentations;
   assert.equal(presentations.length, 2);
   assert.equal(element(tree, 'dock-notice').props.notice.presentation.identity.title, 'Private song');
@@ -180,9 +183,12 @@ test('host rerenders retain one media ref and presentations while actual authori
   state = {...state, presentation: {...state.presentation!, finished: true, controls: ['replay']}}; tree = render();
   const completed = element(tree, 'dock-host').props.presentations.find((p: any) => p.identity.title === 'Current movie');
   assert.equal(completed.finished, true); assert.deepEqual(completed.controls, ['replay']);
+  assert.equal(element(tree, 'media-surface').props.finished, true);
+  assert.equal(element(tree, 'media-surface').key, surface.key);
   assert.equal(element(tree, 'video').props.ref.current, media);
   state = {...state, presentation: {...state.presentation!, finished: false, controls: ['pause']}}; tree = render();
   assert.equal(element(tree, 'dock-host').props.presentations.find((p: any) => p.identity.title === 'Current movie').finished, false);
+  assert.equal(element(tree, 'media-surface').props.finished, false);
   dock.beginRemote({id: 'receiver', kind: 'cast', phase: 'playing', sequence: '1', playback: video, positionSeconds: 42}, 0);
   state = {...state, dock: dock.getSnapshot()}; tree = render();
   const remoteHost = element(tree, 'dock-host').props;
@@ -198,9 +204,26 @@ test('host rerenders retain one media ref and presentations while actual authori
   binding = undefined; tree = render();
   assert.equal(element(tree, 'video').props.ref.current, media);
   assert.equal(element(tree, 'dock-host'), undefined);
+  assert.equal(element(tree, 'media-surface').props.finished, undefined);
   assert.deepEqual(events.at(-1), ['dispose', 'second']);
   binding = makeBinding(runtime('third')); state = snapshot(video, 'New authority movie'); tree = render();
   assert.equal(element(tree, 'video').props.ref.current, media);
   assert.deepEqual(element(tree, 'dock-host').props.presentations.map((p: any) => p.identity.title), ['New authority movie']);
   assert.deepEqual(events.at(-1), ['mount', 'third', media]);
+});
+
+test('the actual MediaSurface renders the explicit finished glyph around its one supplied video', () => {
+  const video = createElement('video', {src: '/controlled-video', playsInline: true});
+  const slot = {current: null};
+  const render = (finished?: boolean, expanded = false) => renderToStaticMarkup(createElement(MediaSurface, {finished, expanded, dockSlot: slot, expandedSlot: slot, children: video}));
+  for (const finished of [undefined, false, true, false]) {
+    const html = render(finished);
+    assert.equal((html.match(/<video\b/g) ?? []).length, 1);
+    assert.match(html, /src="\/controlled-video"/);
+    assert.equal(html.includes('data-finished="true"'), finished === true);
+    assert.match(html, new RegExp(`href="#${finished ? 'i-back' : 'i-zoom'}"`));
+  }
+  const expanded = render(true, true);
+  assert.match(expanded, /data-finished="true"/);
+  assert.doesNotMatch(expanded, /surfaceExpand/);
 });
