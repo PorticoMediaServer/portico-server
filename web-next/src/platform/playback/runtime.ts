@@ -135,7 +135,7 @@ export class WebShellPlaybackRuntime {
       if (!this.current(stackReference)) return;
       await this.capabilityPublisher.publish(profile, life.signal);
     }});
-    const queue = new V1QueuePlayer({http, api: web.transport, playback: service, viewer: this.source.authority, events: this.source.events, key: this.env.key, musicDefaults: this.source.settings.musicDefaults, quality: this.source.settings.defaultQuality});
+    const queue = new V1QueuePlayer({http, api: web.transport, playback: service, viewer: this.source.authority, events: this.source.events, key: this.env.key, musicDefaults: this.source.settings.musicDefaults, quality: this.source.settings.defaultQuality, retainQueueIds: () => this.retainedQueueIds(stackReference)});
     // The actual controller retains its ordered stop barrier across consecutive channel starts.
     service.useChannelPlayback(this.channelControl);
     queue.setCompletionPolicy(() => 'hold');
@@ -174,11 +174,26 @@ export class WebShellPlaybackRuntime {
     const local = this.dock.getSnapshot().local;
     if (!local || !sameFence(local.fence, p.fence)) return;
     this.bookmarks.set(this.key(p.fence), {playback: {...local, playing: false}, subject: p.subject, queueId: p.fence.kind === 'queue' ? stack.queue.currentSession()?.queue?.queueId : undefined, libraryId: stack.libraryId, channel: stack.channel, posterUrl: p.posterUrl, backdropUrl: p.backdropUrl, durationSeconds: p.durationSeconds, rate: p.rate});
-    while (this.bookmarks.size > 8) {
-      const oldest = this.bookmarks.keys().next();
-      if (oldest.done) break;
-      this.bookmarks.delete(oldest.value);
+    // Offered bookmarks stay restorable while newer sources fill the private history cache.
+    const dock = this.dock.getSnapshot(), retained = new Set([dock.local, dock.parkedAudio, dock.resumeVideo].flatMap(value => value ? [this.key(value.fence)] : []));
+    for (const key of this.bookmarks.keys()) {
+      if (this.bookmarks.size <= 8) break;
+      if (!retained.has(key)) this.bookmarks.delete(key);
     }
+  }
+  /** The canonical create samples these actual authority-owned queues, including the current
+   * source until the next subject is known. It owns retention and retirement on the server. */
+  private retainedQueueIds(stack: Stack): readonly string[] {
+    if (!this.current(stack)) problem('playback_authority_retired');
+    const dock = this.dock.getSnapshot(), ids = new Set<string>();
+    for (const value of [dock.local, dock.parkedAudio, dock.resumeVideo]) {
+      if (!value || value.fence.kind !== 'queue') continue;
+      const bookmark = this.bookmarks.get(this.key(value.fence));
+      if (!bookmark?.queueId || !sameFence(bookmark.playback.fence, value.fence)) problem('playback_bookmark_unavailable');
+      ids.add(bookmark.queueId);
+    }
+    if (ids.size > 3) problem('invalid_queue_bookmarks');
+    return Object.freeze([...ids]);
   }
   private retire(stack: Stack): void {
     if (stack.retired) return;
@@ -291,7 +306,7 @@ export class WebShellPlaybackRuntime {
     const header = stack.queue.getSnapshot().view?.queue;
     if (!header) {
       if (stack.queue.getSnapshot().phase === 'preparing' || stack.service.getSnapshot().session) problem('queue_not_ready');
-      const created = await client.create(segments, {signal: request.signal});
+      const created = await client.create(segments, {signal: request.signal, retainQueueIds: this.retainedQueueIds(stack)});
       check();
       await stack.queue.open(created.queue.id, request.signal);
       check(); this.sync(); return {queue: created.queue};

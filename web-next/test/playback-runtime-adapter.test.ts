@@ -376,6 +376,54 @@ test('runtime refuses a deleted parked queue without inventing another queue or 
   assert.equal(f.runtime.getSnapshot().fence, undefined);
 });
 
+test('runtime retains all three actual dock queue candidates and retires superseded extras on the next Play', async t => {
+  const f = setup(t); await f.runtime.play('movie_a', 5); await f.arrive();
+  const first = f.runtime.getSnapshot(), videoA = first.fence, queueA = first.session?.queue;
+  assert.ok(videoA); assert.ok(queueA);
+  await f.runtime.play('song_b', 10); await f.arrive();
+  const queueB = f.runtime.getSnapshot().session?.queue;
+  assert.ok(queueB);
+  await f.runtime.play('movie_c', 15); await f.arrive();
+  const queueC = f.runtime.getSnapshot().session?.queue;
+  assert.ok(queueC);
+  assert.equal(f.runtime.getSnapshot().dock.resumeVideo?.fence.sessionId, videoA.sessionId);
+  assert.equal(f.runtime.getSnapshot().dock.parkedAudio?.kind, 'music');
+  await f.runtime.play('movie_d', 20); await f.arrive();
+  const queueD = f.runtime.getSnapshot().session?.queue, createD = f.log.filter(request => request.path === '/v1/queues' && request.method === 'POST').at(-1);
+  assert.ok(queueD); assert.ok(createD);
+  assert.deepEqual(createD.body, {owner: 'device', segments: [{source: {items: {ids: ['movie_d']}}}], retainQueueIds: [queueC.queueId, queueB.queueId, queueA.queueId]});
+  for (const queue of [queueA, queueB, queueC, queueD]) assert.ok(f.server.queue(queue.queueId));
+  await f.runtime.play('movie_e', 25); await f.arrive();
+  const createE = f.log.filter(request => request.path === '/v1/queues' && request.method === 'POST').at(-1);
+  assert.ok(createE);
+  assert.deepEqual(createE.body, {owner: 'device', segments: [{source: {items: {ids: ['movie_e']}}}], retainQueueIds: [queueD.queueId, queueB.queueId, queueA.queueId]});
+  assert.equal(f.server.queue(queueC.queueId), undefined, 'an old current queue is not retained once no actual dock bookmark names it');
+  const plays = f.video.plays, restored = await f.runtime.restoreBookmark(videoA, false);
+  await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session?.queue?.queueId, queueA.queueId);
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 5);
+  assert.equal(f.runtime.getSnapshot().playback.intent, 'paused'); assert.equal(f.video.plays, plays);
+  await f.runtime.stop(restored); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session?.queue?.queueId, queueB.queueId);
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 10);
+  assert.equal(f.runtime.getSnapshot().playback.intent, 'paused'); assert.equal(f.video.plays, plays);
+});
+
+test('runtime keeps an offered parked bookmark through more Plays than the private bookmark cache bound', async t => {
+  const f = setup(t); await f.runtime.play('song_one', 10); await f.arrive();
+  f.video.advance(35); await settle();
+  const audio = f.runtime.getSnapshot(), bookmark = audio.fence, queue = audio.session?.queue;
+  assert.ok(bookmark); assert.ok(queue);
+  for (let index = 0; index < 9; index++) { await f.runtime.play(`movie_${index}`, 5); await f.arrive(); }
+  const current = f.runtime.getSnapshot().fence, plays = f.video.plays;
+  assert.ok(current);
+  assert.equal(f.runtime.getSnapshot().dock.parkedAudio?.fence.sessionId, bookmark.sessionId);
+  await f.runtime.stop(current); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session?.queue?.queueId, queue.queueId);
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 35);
+  assert.equal(f.runtime.getSnapshot().playback.intent, 'paused'); assert.equal(f.video.plays, plays);
+});
+
 test('runtime resets a session speed on a new play and rejects unsupported remote commands', async t => {
   const f = setup(t); await f.runtime.play('first', 5); await f.arrive();
   f.runtime.setSpeed(f.runtime.getSnapshot().fence!, 1.5); assert.equal(f.video.playbackRate, 1.5);
@@ -494,6 +542,30 @@ test('runtime enqueue while idle creates the actual queue without starting media
   assert.equal(f.log.some(r => r.method === 'POST' && r.path === '/v1/playback/sessions'), false);
   const create = f.log.find(r => r.method === 'POST' && r.path === '/v1/queues')!;
   assert.equal(Object.hasOwn(create.body as object, 'startPlayback'), false);
+});
+
+test('runtime idle enqueue retains an offered video queue without starting it or the enqueued media', async t => {
+  const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
+  const video = f.runtime.getSnapshot(), bookmark = video.fence, queue = video.session?.queue;
+  assert.ok(bookmark); assert.ok(queue);
+  await f.runtime.play('song_one', 5); await f.arrive();
+  const audio = f.runtime.getSnapshot().fence;
+  assert.ok(audio);
+  await f.runtime.stop(audio);
+  assert.equal(f.runtime.getSnapshot().playback.session, undefined);
+  assert.equal(f.runtime.getSnapshot().dock.resumeVideo?.fence.sessionId, bookmark.sessionId);
+  const before = f.log.length, plays = f.video.plays;
+  const receipt = await f.runtime.selectionPlayback(() => true).enqueue({context: selectionContext, items: [selectionLeaf('queued')], placement: 'end', signal: new AbortController().signal});
+  const calls = f.log.slice(before), create = calls.find(request => request.path === '/v1/queues' && request.method === 'POST');
+  assert.ok(create);
+  assert.deepEqual(create.body, {owner: 'device', segments: [{source: {items: {ids: ['queued']}}}], retainQueueIds: [queue.queueId]});
+  assert.ok(f.server.queue(receipt.queue.id)); assert.ok(f.server.queue(queue.queueId));
+  assert.equal(calls.some(request => request.path === '/v1/playback/sessions' && request.method === 'POST'), false);
+  assert.equal(f.runtime.getSnapshot().playback.session, undefined); assert.equal(f.video.plays, plays);
+  await f.runtime.restoreBookmark(bookmark, false); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session?.queue?.queueId, queue.queueId);
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 20);
+  assert.equal(f.runtime.getSnapshot().playback.intent, 'paused'); assert.equal(f.video.plays, plays);
 });
 
 test('runtime selection cancels a late queue before media adoption when the Home context changes', async t => {
