@@ -24,7 +24,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 		return p, true
 	}
 	owner := func(w http.ResponseWriter, r *http.Request, mutate bool) (identity.Principal, bool) {
-		return admit(w, r, mutate, d.owner)
+		return admit(w, r, mutate, d.administrator)
 	}
 	administrator := func(w http.ResponseWriter, r *http.Request, mutate bool) (identity.Principal, bool) {
 		return admit(w, r, mutate, func(r *http.Request) (identity.Principal, error) {
@@ -45,7 +45,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 				return
 			}
 			body.Actor = metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}
-			err := d.Metadata.SelectScreen(r.Context(), kind, r.PathValue("id"), body, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+			err := d.Metadata.SelectScreen(r.Context(), kind, r.PathValue("id"), body, func(tx *sql.Tx) error { return d.manualMetadataAuthorize(r.Context(), tx, p) })
 			if err != nil {
 				failure(w, err)
 				return
@@ -62,7 +62,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 				failure(w, err)
 				return
 			}
-			err := d.Metadata.SearchScreen(r.Context(), kind, r.PathValue("id"), body, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+			err := d.Metadata.SearchScreen(r.Context(), kind, r.PathValue("id"), body, func(tx *sql.Tx) error { return d.manualMetadataAuthorize(r.Context(), tx, p) })
 			if err != nil {
 				failure(w, err)
 				return
@@ -81,7 +81,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 				failure(w, err)
 				return
 			}
-			err := d.Metadata.RetryScreen(r.Context(), kind, r.PathValue("id"), body.ExpectedRevision, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+			err := d.Metadata.RetryScreen(r.Context(), kind, r.PathValue("id"), body.ExpectedRevision, func(tx *sql.Tx) error { return d.manualMetadataAuthorize(r.Context(), tx, p) })
 			if err != nil {
 				failure(w, err)
 				return
@@ -99,7 +99,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		err := d.Metadata.SelectAnimeSeason(r.Context(), r.PathValue("id"), body, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		err := d.Metadata.SelectAnimeSeason(r.Context(), r.PathValue("id"), body, func(tx *sql.Tx) error { return d.manualMetadataAuthorize(r.Context(), tx, p) })
 		if err != nil {
 			failure(w, err)
 			return

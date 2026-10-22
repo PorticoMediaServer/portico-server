@@ -400,6 +400,10 @@ CREATE INDEX catalog_playlist_entries_page ON catalog_playlist_entries(playlist_
 CREATE INDEX catalog_playlist_entries_item ON catalog_playlist_entries(item_id) WHERE item_id IS NOT NULL;
 
 -- People are not entities: token is the public person id (format unchanged).
+CREATE TABLE metadata_kept_files(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ files_fingerprint TEXT NOT NULL) STRICT;
+
 CREATE TABLE catalog_people(
  id INTEGER PRIMARY KEY,
  token TEXT NOT NULL UNIQUE,
@@ -407,6 +411,8 @@ CREATE TABLE catalog_people(
  name TEXT NOT NULL,
  sort_name TEXT NOT NULL,
  biography TEXT NOT NULL DEFAULT '',
+ birth_place TEXT NOT NULL DEFAULT '',
+ biography_source TEXT NOT NULL DEFAULT '',
  birth_date TEXT NOT NULL DEFAULT '',
  death_date TEXT NOT NULL DEFAULT '',
  portrait_url TEXT NOT NULL DEFAULT '',
@@ -4186,7 +4192,7 @@ CREATE TABLE show_people_credits(
  name TEXT NOT NULL,
  role TEXT NOT NULL,
  department TEXT NOT NULL,
- ordinal INTEGER NOT NULL CHECK(ordinal>=0 AND ordinal<128),
+ ordinal INTEGER NOT NULL CHECK(ordinal>=0),
  PRIMARY KEY(show_id,identity_key,role,department)
 ) STRICT;
 CREATE TABLE music_artist_evidence(

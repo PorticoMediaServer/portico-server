@@ -33,6 +33,7 @@ type BulkPreviewTarget struct {
 	ExpectedRevision string `json:"expectedRevision"`
 }
 type BulkMetadataPreview struct {
+	Tabs              []string                    `json:"tabs"`
 	ServerID          string                      `json:"serverId"`
 	ViewerFence       string                      `json:"viewerFence"`
 	ContentKind       string                      `json:"contentKind"`
@@ -203,6 +204,7 @@ func (s *Service) BulkPreviewTx(ctx context.Context, tx *sql.Tx, selection catal
 		out.Schema = append(out.Schema, listSpec("genres", "Genres"))
 		accumulators["genres"] = &previewAccumulator{values: map[string]int64{}, entries: map[string]int64{}}
 	}
+	out.Tabs = repairSchemaTabs(out.Schema)
 	if len(selection.Targets) > 0 {
 		for _, target := range selection.Targets {
 			repair := RepairTarget{Kind: target.Kind, ID: target.ID}
@@ -254,14 +256,22 @@ func (s *Service) BulkPreviewTx(ctx context.Context, tx *sql.Tx, selection catal
 		args = append(args, out.Kind, out.Kind)
 		vectors := `WITH selected AS (` + selection.SQL + `) SELECT ` + vector + ` AS vector FROM selected JOIN catalog_entities i ON i.id=selected.id JOIN catalog_kinds k ON k.id=i.kind LEFT JOIN catalog_item_details d ON d.entity_id=i.id LEFT JOIN catalog_shows sh ON sh.entity_id=i.id LEFT JOIN catalog_artists ar ON ar.entity_id=i.id LEFT JOIN catalog_albums al ON al.entity_id=i.id LEFT JOIN catalog_books bk ON bk.entity_id=i.id`
 		query := `SELECT vector,count(*) FROM (` + vectors + `) GROUP BY vector`
-		// Exact per-field distinct counts are separate from the bounded value list.
-		for _, spec := range out.Schema {
-			var distinct int64
-			bound := append(append([]any{}, args...), out.Kind, out.ContentKind, spec.Field)
-			if err = tx.QueryRowContext(ctx, `WITH vectors AS (`+vectors+`) SELECT count(DISTINCT portico_bulk_metadata_value(?,?,?,vector)) FROM vectors`, bound...).Scan(&distinct); err != nil {
-				return out, err
-			}
-			out.Fields[spec.Field] = BulkPreviewField{DistinctCount: distinct}
+		// Build and group the vectors once for every exact distinct count. A
+		// whole-view editor must not rescan/rebuild 48,000 vectors per field.
+		expressions := make([]string, 0, len(out.Schema))
+		bound := append([]any{}, args...)
+		counts := make([]int64, len(out.Schema))
+		destinations := make([]any, len(counts))
+		for i, spec := range out.Schema {
+			expressions = append(expressions, "count(DISTINCT portico_bulk_metadata_value(?,?,?,vector))")
+			bound = append(bound, out.Kind, out.ContentKind, spec.Field)
+			destinations[i] = &counts[i]
+		}
+		if err = tx.QueryRowContext(ctx, `WITH vectors AS MATERIALIZED(SELECT vector FROM (`+vectors+`) GROUP BY vector) SELECT `+strings.Join(expressions, ",")+` FROM vectors`, bound...).Scan(destinations...); err != nil {
+			return out, err
+		}
+		for i, spec := range out.Schema {
+			out.Fields[spec.Field] = BulkPreviewField{DistinctCount: counts[i]}
 		}
 		grouped, err := tx.QueryContext(ctx, query, args...)
 		if err != nil {

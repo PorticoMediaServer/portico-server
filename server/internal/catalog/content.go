@@ -47,6 +47,11 @@ func contentItem(item Item) ContentEntry {
 	if item.Episode != nil {
 		entry.Subtitle = item.Episode.ShowTitle
 		entry.EpisodeNumber = &item.Episode.Number
+		entry.DateBased = item.Episode.Numbering == "date"
+		entry.Special = item.Episode.SeasonNumber != nil && *item.Episode.SeasonNumber == 0
+		if item.Episode.Numbering == "absolute" {
+			entry.AbsoluteNumber = &item.Episode.Number
+		}
 		entry.SeasonNumber = item.Episode.SeasonNumber
 	}
 	if item.Song != nil {

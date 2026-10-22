@@ -600,6 +600,8 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/items/{id}/listening":                        perItem("/listening"),
 		"GET /v1/items/{id}/playback-offers":                  perItem("/playback-offers"),
 		"GET /v1/items/{id}/recommendations":                  perItem("/recommendations"),
+		"GET /v1/items/{id}/file-info":                        perItem("/file-info"),
+		"GET /v1/items/{id}/recommendations/rows/{row}":       perItem("/recommendations/rows/more_like"),
 		"GET /v1/items/{id}/source-availability":              perItem("/source-availability"),
 		"GET /v1/items/{id}/trickplay":                        perItem("/trickplay"),
 		"GET /v1/items/{id}/trickplay/{set}/thumbnails.vtt":   perItem("/trickplay/set/thumbnails.vtt"),

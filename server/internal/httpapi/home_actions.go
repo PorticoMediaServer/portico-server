@@ -43,6 +43,13 @@ func (d Dependencies) homeActionAuthority(ctx context.Context, p identity.Princi
 			return out, err
 		}
 	}
+	_, metadataErr := d.tierAuthorityTx(ctx, tx, p, identity.TierAdmin)
+	if metadataErr == nil {
+		out.Metadata = d.Metadata != nil
+		out.Refresh = d.Metadata != nil
+	} else if !errors.Is(metadataErr, identity.ErrUnauthorized) && !errors.Is(metadataErr, identity.ErrForbidden) {
+		return out, metadataErr
+	}
 	ownerErr := d.ownerAuthorityTx(ctx, tx, p)
 	if ownerErr != nil {
 		if errors.Is(ownerErr, identity.ErrUnauthorized) || errors.Is(ownerErr, identity.ErrForbidden) {
@@ -50,10 +57,6 @@ func (d Dependencies) homeActionAuthority(ctx context.Context, p identity.Princi
 		}
 		return out, ownerErr
 	}
-	// These endpoints still require a local owner. Publishing the actual
-	// denial keeps Hosted owners and administrators from receiving fake grants.
-	out.Metadata = d.Metadata != nil
-	out.Refresh = d.Metadata != nil
 	if d.Administration != nil {
 		out.DeleteLibrary = func(library string) (bool, error) {
 			if err := d.allowedLibraryTx(ctx, p, library, tx); err != nil {

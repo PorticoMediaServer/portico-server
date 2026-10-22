@@ -75,6 +75,7 @@ type RepairSnapshot struct {
 	Artwork           []ArtworkChoice        `json:"artwork"`
 }
 type RepairState struct {
+	Tabs         []string          `json:"tabs"`
 	Target       RepairTarget      `json:"target"`
 	Library      string            `json:"libraryId"`
 	Server       string            `json:"serverId"`
@@ -277,6 +278,7 @@ func readRepairState(ctx context.Context, tx *sql.Tx, t RepairTarget) (RepairSta
 	out.Snapshot = snap
 	out.Library = ent.library
 	out.Schema = ent.schema
+	out.Tabs = repairSchemaTabs(ent.schema)
 	out.ArtworkRoles = artworkRolesFor(t.Kind, ent.itemKind)
 	if out.Revision, err = repairRevision(ctx, tx, t, snap, ent); err != nil {
 		return out, err

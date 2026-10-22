@@ -449,6 +449,27 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 			t.Errorf("%s is not in the golden file", actual.Name)
 			continue
 		}
+		// DP-2/DP-11 intentionally replace on-page files with language and
+		// visible collection summaries. Keep the rest of the recorded detail
+		// exact, including membership, actions and all personal state.
+		if strings.HasPrefix(actual.Name, "detail/") {
+			var rewritten map[string]any
+			if err := json.Unmarshal([]byte(want.Response), &rewritten); err != nil {
+				t.Fatal(err)
+			}
+			delete(rewritten, "files")
+			delete(rewritten["item"].(map[string]any), "sources")
+			rewritten["languages"] = map[string]any{"audio": []string{}, "subtitles": []string{}}
+			members, yearTo := 5, 1954
+			posters := []string{"/v1/items/movie-0000000/art/poster", "/v1/items/movie-0000001/art/poster", "/v1/items/movie-0000002/art/poster", "/v1/items/movie-0000003/art/poster"}
+			if actual.Viewer == "restricted" {
+				members, yearTo = 2, 1953
+				posters = []string{posters[0], posters[3]}
+			}
+			rewritten["collections"] = []any{map[string]any{"id": "collection 00000", "name": "Collection 00000", "memberCount": members, "position": 1, "yearFrom": 1950, "yearTo": yearTo, "posterUrls": posters}}
+			encoded, _ := json.Marshal(rewritten)
+			want.Response = string(encoded)
+		}
 		// Home's approved composition replaces the old per-library/single-hero policy.
 		// Keep unrelated read-path goldens exact; assert the new manifest and retired routes explicitly.
 		if strings.HasPrefix(actual.Name, "home/") {

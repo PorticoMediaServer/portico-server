@@ -336,3 +336,15 @@ func validFieldValue(kind string, spec RepairFieldSpec, value string) bool {
 	}
 	return !required || strings.TrimSpace(value) != ""
 }
+
+func repairSchemaTabs(schema []RepairFieldSpec) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, field := range schema {
+		if !seen[field.Group] {
+			seen[field.Group] = true
+			out = append(out, field.Group)
+		}
+	}
+	return out
+}

@@ -204,6 +204,7 @@ export function decodeGetItemsIdAnalysisArtifactsArtifactResponse(input: unknown
 export function decodeGetItemsIdArtKindResponse(input: unknown): types.GetItemsIdArtKindResponse { return decode("GetItemsIdArtKindResponse", input) as types.GetItemsIdArtKindResponse; }
 export function decodeGetItemsIdCreditsResponse(input: unknown): types.GetItemsIdCreditsResponse { return decode("GetItemsIdCreditsResponse", input) as types.GetItemsIdCreditsResponse; }
 export function decodeGetItemsIdDetailResponse(input: unknown): types.GetItemsIdDetailResponse { return decode("GetItemsIdDetailResponse", input) as types.GetItemsIdDetailResponse; }
+export function decodeGetItemsIdFileInfoResponse(input: unknown): types.GetItemsIdFileInfoResponse { return decode("GetItemsIdFileInfoResponse", input) as types.GetItemsIdFileInfoResponse; }
 export function decodeGetItemsIdListeningResponse(input: unknown): types.GetItemsIdListeningResponse { return decode("GetItemsIdListeningResponse", input) as types.GetItemsIdListeningResponse; }
 export function decodeGetItemsIdLyricsResponse(input: unknown): types.GetItemsIdLyricsResponse { return decode("GetItemsIdLyricsResponse", input) as types.GetItemsIdLyricsResponse; }
 export function decodeGetItemsIdLyricsResourceRevisionsRevisionResponse(input: unknown): types.GetItemsIdLyricsResourceRevisionsRevisionResponse { return decode("GetItemsIdLyricsResourceRevisionsRevisionResponse", input) as types.GetItemsIdLyricsResourceRevisionsRevisionResponse; }
@@ -212,6 +213,7 @@ export function decodeGetItemsIdMetadataMusicbrainzResponse(input: unknown): typ
 export function decodeGetItemsIdPlaybackOffersResponse(input: unknown): types.GetItemsIdPlaybackOffersResponse { return decode("GetItemsIdPlaybackOffersResponse", input) as types.GetItemsIdPlaybackOffersResponse; }
 export function decodeGetItemsIdPreparedVersionsResponse(input: unknown): types.GetItemsIdPreparedVersionsResponse { return decode("GetItemsIdPreparedVersionsResponse", input) as types.GetItemsIdPreparedVersionsResponse; }
 export function decodeGetItemsIdRecommendationsResponse(input: unknown): types.GetItemsIdRecommendationsResponse { return decode("GetItemsIdRecommendationsResponse", input) as types.GetItemsIdRecommendationsResponse; }
+export function decodeGetItemsIdRecommendationsRowResponse(input: unknown): types.GetItemsIdRecommendationsRowResponse { return decode("GetItemsIdRecommendationsRowResponse", input) as types.GetItemsIdRecommendationsRowResponse; }
 export function decodeGetItemsIdSourceAvailabilityResponse(input: unknown): types.GetItemsIdSourceAvailabilityResponse { return decode("GetItemsIdSourceAvailabilityResponse", input) as types.GetItemsIdSourceAvailabilityResponse; }
 export function decodeGetItemsIdTrickplayResponse(input: unknown): types.GetItemsIdTrickplayResponse { return decode("GetItemsIdTrickplayResponse", input) as types.GetItemsIdTrickplayResponse; }
 export function decodeGetItemsIdTrickplaySetThumbnailsVttResponse(input: unknown): types.GetItemsIdTrickplaySetThumbnailsVttResponse { return decode("GetItemsIdTrickplaySetThumbnailsVttResponse", input) as types.GetItemsIdTrickplaySetThumbnailsVttResponse; }
