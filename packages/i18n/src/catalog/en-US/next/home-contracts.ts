@@ -16,7 +16,7 @@ export const homeContractsMessages = {
   'next.home.whyRecommended': 'Chosen from your viewing activity and available libraries.',
   'next.home.whyRecommendedFromActivity': 'Because you’ve been watching {titles}. Titles you’ve finished are left out.',
   'next.home.whyPopular': 'Watched by people here over the last month. Only profiles that share their activity count.',
-  'next.home.layoutConflict': 'Home changed on another device. Reload the layout before saving.',
+  'next.home.layoutConflict': 'Home changed on another device. Refresh the layout before saving.',
   'next.home.continueBooks': 'Continue your books',
   'next.home.reason.recommended': 'Recommended for you',
   'next.home.reason.newIn': 'New in {library}',
