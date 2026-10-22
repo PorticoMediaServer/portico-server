@@ -9,7 +9,8 @@ import type {OverlayChange, OverlayDismissReason, OverlayStyle} from './types';
 import styles from './overlays.module.css';
 
 export type OverlayAction = Readonly<{label: ReactNode; onAction: () => void; icon?: IconName; accessibilityLabel?: string}>;
-export type ToastData = Readonly<{id: string; message: ReactNode; action?: OverlayAction; icon?: IconName; artwork?: ReactNode; tone?: 'default' | 'success' | 'warning' | 'error'}>;
+export type ToastAction = OverlayAction & Readonly<{variant?: 'glass' | 'text'}>;
+export type ToastData = Readonly<{id: string; message: ReactNode; action?: ToastAction; icon?: IconName; artwork?: ReactNode; tone?: 'default' | 'success' | 'warning' | 'error'}>;
 export type ToastProps = Omit<ToastData, 'id'> & {open: boolean; onOpenChange: OverlayChange; className?: string; testID?: string};
 
 /** One notification surface. The host supplies replacement, placement and lifetime. */
@@ -55,7 +56,7 @@ export function Toast({open, onOpenChange, message, action, icon, artwork, tone 
     }} onPointerCancel={event => { drag.current = null; event.currentTarget.style.transform = 'none'; event.currentTarget.style.opacity = '1'; }} onLostPointerCapture={event => { if (drag.current) { drag.current = null; event.currentTarget.style.transform = 'none'; } }}>
     {artwork && <span className={styles.toastArtwork}>{artwork}</span>}{icon && <Icon name={icon} size={18} className={styles.feedbackIcon} />}
     <span className={styles.toastMessage}>{message}</span>
-    {action && <Button variant="glass" size="xs" icon={action.icon} iconSize={16} aria-label={action.accessibilityLabel} className={styles.toastAction} onClick={() => { action.onAction(); onOpenChange(false, 'action'); }}>{action.label}</Button>}
+    {action && <Button variant={action.variant ?? 'glass'} size="xs" icon={action.icon} iconSize={16} aria-label={action.accessibilityLabel} className={styles.toastAction} onClick={() => { action.onAction(); onOpenChange(false, 'action'); }}>{action.label}</Button>}
   </div>;
 }
 
