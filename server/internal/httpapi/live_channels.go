@@ -318,11 +318,15 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 		// Live-source programmes follow the profile's content restrictions
 		// like library items (Channels spec §8.1); Library Channels apply
 		// theirs per scheduled item.
-		if restrictions, _, err := d.viewerRestrictions(r, p); err != nil {
+
+		restrictions, restrictionFence, err := d.viewerRestrictions(r, p)
+		if err != nil {
 			return nil, err
-		} else if restrictions.Active() {
+		}
+		if restrictions.Active() {
 			query.ProgrammeAllowed = func(rating string) bool { return catalog.RatingAllowed(restrictions, rating) }
 		}
+
 		var guide livechannels.Guide
 		var e error
 		if query.Kind == livechannels.LibraryChannel {
@@ -331,48 +335,35 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 			}
 			guide, e = d.LibraryChannels.Guide(ctx, d.libraryAuthority(p), query, store.ContinuationKey("library-guide-v1"))
 		} else {
-			guide, e = store.Guide(ctx, d.liveAuthority(p), query)
+			guide, e = store.Guide(ctx, d.guideReadAuthority(p, restrictionFence), query)
 		}
 		if e == nil {
-			if d.Administration != nil && len(guide.Channels) > 0 {
-				ids := make([]string, 0, len(guide.Channels))
-				for _, channel := range guide.Channels {
-					if channel.Provenance == livechannels.LiveSource {
-						ids = append(ids, "live:"+channel.SourceID+":"+channel.ID)
-					}
-				}
-				paths, logoErr := d.Administration.ChannelLogoPaths(ctx, ids)
-				if logoErr != nil {
-					return nil, logoErr
-				}
-				for i := range guide.Channels {
-					id := "live:" + guide.Channels[i].SourceID + ":" + guide.Channels[i].ID
-					guide.Channels[i].LogoPath = paths[id]
-				}
-			}
-			available, reason := false, "channel_runtime_unavailable"
-			if d.PlaybackRuntime != nil && d.PlaybackRuntime.Linear != nil {
-				available, reason = d.PlaybackRuntime.Linear.Available()
-			}
-			for i := range guide.Channels {
-				channel := &guide.Channels[i]
-				if channel.Provenance == livechannels.LiveSource {
-					channel.RecordAvailable = d.DVR != nil && d.DVR.CaptureAvailable() && channel.Generation != ""
-					channel.RecordUnavailableReason = "recording-unavailable"
-					if channel.RecordAvailable {
-						channel.RecordUnavailableReason = ""
-					}
-				}
-				channel.TuneAvailable = available && channel.Generation != ""
-				channel.TuneUnavailableReason = reason
-				if available && channel.Generation == "" {
-					channel.TuneUnavailableReason = "schedule_preparing"
-				}
-			}
+			e = d.annotateViewerDirectory(ctx, p, guide.Channels)
 		}
-		if e == nil && d.DVR != nil && query.Kind != livechannels.LibraryChannel {
+
+		if e == nil && d.DVR != nil && query.Kind != livechannels.LibraryChannel && d.featureAllowed(ctx, p, "dvr") == nil {
 			e = d.DVR.AnnotateGuide(ctx, d.liveAuthority(p), channelSubject(p), &guide)
 		}
+		if e == nil {
+			_, after, err := d.viewerRestrictions(r, p)
+			if err != nil {
+				return nil, err
+			}
+			if after != restrictionFence {
+				return nil, livechannels.ErrCursor
+			}
+		}
+
 		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "guide": guide}, e
 	}))
+}
+
+func (d Dependencies) guideReadAuthority(p identity.Principal, restrictionFence string) livechannels.Authority {
+	return func(ctx context.Context, tx *sql.Tx, owner bool) (string, func(string, string) bool, error) {
+		fence, allowed, e := d.liveAuthority(p)(ctx, tx, owner)
+		if e != nil {
+			return "", nil, e
+		}
+		return fence + ":" + restrictionFence, allowed, nil
+	}
 }

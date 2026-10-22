@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"portico.local/server/internal/livechannels"
+	"portico.local/server/internal/persistence"
 	"strconv"
 	"strings"
 	"time"
@@ -13,12 +14,15 @@ import (
 // Detail explains competition without disclosing another profile's recording
 // identity, title, or rule. Demand/capacity still include all reservations.
 type Overlap struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Start    string `json:"start"`
-	End      string `json:"end"`
-	Priority int    `json:"priority"`
-	State    string `json:"state"`
+	Channel  RecordingChannel               `json:"channel"`
+	RuleID   string                         `json:"ruleId"`
+	Episode  *livechannels.ProgrammeEpisode `json:"episode,omitempty"`
+	ID       string                         `json:"id"`
+	Title    string                         `json:"title"`
+	Start    string                         `json:"start"`
+	End      string                         `json:"end"`
+	Priority int                            `json:"priority"`
+	State    string                         `json:"state"`
 }
 type Detail struct {
 	Recording   Recording             `json:"recording"`
@@ -73,7 +77,7 @@ func (s *Store) Detail(ctx context.Context, a livechannels.Authority, o livechan
 		}
 		start, _ := time.Parse(time.RFC3339Nano, r.Start)
 		end, _ := time.Parse(time.RFC3339Nano, r.End)
-		rows, e := tx.QueryContext(ctx, `SELECT id,programme_json,start_ms,end_ms,priority,state FROM dvr_recordings WHERE owner_key=? AND source_id=? AND id<>? AND id>? AND start_ms<? AND end_ms>? AND state IN('scheduled','conflicted','preparing','recording','finalizing') ORDER BY id LIMIT 21`, o.Key(), r.Occurrence.SourceID, id, after, end.UnixMilli(), start.UnixMilli())
+		rows, e := tx.QueryContext(ctx, `SELECT id,programme_json,start_ms,end_ms,priority,state,rule_id,channel_id FROM dvr_recordings WHERE owner_key=? AND source_id=? AND id<>? AND id>? AND start_ms<? AND end_ms>? AND state IN('scheduled','conflicted','preparing','recording','finalizing') ORDER BY id LIMIT 21`, o.Key(), r.Occurrence.SourceID, id, after, end.UnixMilli(), start.UnixMilli())
 		if e != nil {
 			return e
 		}
@@ -82,7 +86,7 @@ func (s *Store) Detail(ctx context.Context, a livechannels.Authority, o livechan
 			var v Overlap
 			var programme string
 			var start, end int64
-			if e = rows.Scan(&v.ID, &programme, &start, &end, &v.Priority, &v.State); e != nil {
+			if e = rows.Scan(&v.ID, &programme, &start, &end, &v.Priority, &v.State, &v.RuleID, &v.Channel.ID); e != nil {
 				return e
 			}
 			p, e := decodeProgramme(programme)
@@ -91,6 +95,7 @@ func (s *Store) Detail(ctx context.Context, a livechannels.Authority, o livechan
 			}
 			p.Admit(programmeAllowed)
 			v.Title = p.Title
+			v.Episode = p.Episode
 			v.Start = time.UnixMilli(start).UTC().Format(time.RFC3339Nano)
 			v.End = time.UnixMilli(end).UTC().Format(time.RFC3339Nano)
 			out.Overlaps = append(out.Overlaps, v)
@@ -102,6 +107,15 @@ func (s *Store) Detail(ctx context.Context, a livechannels.Authority, o livechan
 			out.Overlaps = out.Overlaps[:20]
 			out.NextOverlap = out.Overlaps[19].ID
 		}
+		rows.Close()
+		for i := range out.Overlaps {
+			peer := Recording{Occurrence: Occurrence{SourceID: r.Occurrence.SourceID, ChannelID: out.Overlaps[i].Channel.ID, Generation: r.Occurrence.Generation}}
+			if e = channelTx(ctx, tx, &peer); e != nil {
+				return e
+			}
+			out.Overlaps[i].Channel = peer.Channel
+		}
+
 		return nil
 	})
 	return out, e
@@ -238,4 +252,326 @@ func decodeProgramme(raw string) (livechannels.Programme, error) {
 		return p, ErrUnavailable
 	}
 	return p, nil
+}
+
+type RuleSummary struct {
+	Upcoming        int                     `json:"upcoming"`
+	Recorded        int                     `json:"recorded"`
+	Conflicts       int                     `json:"conflicts"`
+	MatchingTonight int                     `json:"matchingTonight"`
+	Next            *livechannels.Programme `json:"next,omitempty"`
+	Channel         RecordingChannel        `json:"channel"`
+}
+type Summary struct {
+	Upcoming  int `json:"upcoming"`
+	Recorded  int `json:"recorded"`
+	Rules     int `json:"rules"`
+	Conflicts int `json:"conflicts"`
+	Groups    int `json:"groups"`
+	Unwatched int `json:"unwatched"`
+}
+type RecordingGroup struct {
+	Key        string    `json:"key"`
+	Title      string    `json:"title"`
+	Recordings int       `json:"recordings"`
+	Unwatched  int       `json:"unwatched"`
+	Kept       int       `json:"kept"`
+	Exceptions int       `json:"exceptions"`
+	Latest     string    `json:"latest"`
+	Recording  Recording `json:"recording"`
+}
+type GroupPage struct {
+	Groups     []RecordingGroup `json:"groups"`
+	NextCursor string           `json:"nextCursor"`
+	Revision   int64            `json:"revision"`
+}
+
+const recordingGroupKeySQL = `CASE WHEN COALESCE(json_extract(r.programme_json,'$.seriesId'),'')<>'' THEN 'series:'||r.source_id||':'||json_extract(r.programme_json,'$.seriesId') WHEN json_type(r.programme_json,'$.episode')='object' OR (r.rule_id<>'' AND COALESCE((SELECT json_extract(config_json,'$.matchKind') FROM dvr_rules WHERE id=r.rule_id),'')='title') THEN 'title:'||r.source_id||':'||r.channel_id||':'||lower(trim(json_extract(r.programme_json,'$.title'))) ELSE 'recording:'||r.id END`
+
+// The HTTP source policy is source-level. Read its small distinct source set,
+// retaining recordings of a retired source only when that authority permits it.
+func recordingSourcesTx(ctx context.Context, tx *sql.Tx, o livechannels.Owner, allowed func(string, string) bool) (string, error) {
+	rows, e := tx.QueryContext(ctx, `SELECT DISTINCT source_id FROM dvr_recordings WHERE owner_key=? UNION SELECT DISTINCT source_id FROM dvr_rules WHERE owner_key=?`, o.Key(), o.Key())
+	if e != nil {
+		return "", e
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if e = rows.Scan(&id); e != nil {
+			return "", e
+		}
+		if allowed(id, "") {
+			ids = append(ids, id)
+		}
+	}
+	raw, _ := json.Marshal(ids)
+	return string(raw), rows.Err()
+}
+func (s *Store) Summary(ctx context.Context, a livechannels.Authority, o livechannels.Owner) (Summary, error) {
+	out := Summary{}
+	e := s.snapshot(ctx, a, o, func(tx *sql.Tx, allowed func(string, string) bool) error {
+		sources, e := recordingSourcesTx(ctx, tx, o, allowed)
+		if e != nil {
+			return e
+		}
+		e = tx.QueryRowContext(ctx, `SELECT COALESCE(sum(state IN('scheduled','conflicted','waiting-source','waiting-guide','preparing','recording','finalizing')),0),COALESCE(sum(state IN('completed','incomplete-playable')),0),COALESCE(sum(`+currentConflictSQL+`),0),count(DISTINCT CASE WHEN state IN('completed','incomplete-playable') THEN `+recordingGroupKeySQL+` END),COALESCE(sum(state IN('completed','incomplete-playable') AND item_id<>0 AND COALESCE((SELECT watched FROM personal_items WHERE profile_id=? AND item_id=r.item_id),0)=0),0) FROM dvr_recordings r WHERE owner_key=? AND source_id IN(SELECT value FROM json_each(?))`, personalOwner(o), o.Key(), sources).Scan(&out.Upcoming, &out.Recorded, &out.Conflicts, &out.Groups, &out.Unwatched)
+		if e != nil {
+			return e
+		}
+		return tx.QueryRowContext(ctx, `SELECT count(*) FROM dvr_rules WHERE owner_key=? AND deleted=0 AND source_id IN(SELECT value FROM json_each(?))`, o.Key(), sources).Scan(&out.Rules)
+	})
+	return out, e
+}
+func personalOwner(o livechannels.Owner) string {
+	return persistence.PersonalOwnerKey(o.Authority, o.AccountID, o.ProfileID)
+}
+func (s *Store) Groups(ctx context.Context, a livechannels.Authority, o livechannels.Owner, sort, cursor string, limit int) (GroupPage, error) {
+	out := GroupPage{Groups: []RecordingGroup{}}
+	if sort == "" {
+		sort = "recent"
+	}
+	if sort != "recent" && sort != "title" && sort != "oldest" || limit < 1 || limit > 50 {
+		return out, ErrInvalid
+	}
+	e := s.snapshot(ctx, a, o, func(tx *sql.Tx, allowed func(string, string) bool) error {
+		sources, e := recordingSourcesTx(ctx, tx, o, allowed)
+		if e != nil {
+			return e
+		}
+		fence, _, e := a(ctx, tx, false)
+		if e != nil {
+			return e
+		}
+		if e = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT revision FROM dvr_owner_revisions WHERE owner_key=?),0)`, o.Key()).Scan(&out.Revision); e != nil {
+			return e
+		}
+		c := continuation{Owner: o.Key(), Fence: fence, State: "groups:" + sort, Limit: limit, Revision: out.Revision, Expiry: s.now().Add(15 * time.Minute).UnixMilli()}
+		if cursor != "" {
+			old, e := s.decodeCursor(cursor)
+			if e != nil {
+				return e
+			}
+			if old.Owner != c.Owner || old.Fence != fence || old.State != c.State || old.Limit != limit || old.Revision != out.Revision || old.Expiry <= s.now().UnixMilli() {
+				return livechannels.ErrCursor
+			}
+			c = old
+		}
+		// SQL groups the full collection before LIMIT. The only decoded programmes
+		// are the representative rows of the requested group page.
+		query := `WITH eligible AS (SELECT r.*,` + recordingGroupKeySQL + ` group_key FROM dvr_recordings r WHERE owner_key=? AND source_id IN(SELECT value FROM json_each(?)) AND state IN('completed','incomplete-playable')), grouped AS (SELECT group_key,json_extract(programme_json,'$.title') title,count(*) total,sum(item_id<>0 AND COALESCE((SELECT watched FROM personal_items WHERE profile_id=? AND item_id=eligible.item_id),0)=0) unwatched,sum(keep) kept,sum(state<>'completed') exceptions,max(COALESCE(NULLIF(finished_ms,0),created_ms)) latest,min(COALESCE(NULLIF(finished_ms,0),created_ms)) oldest FROM eligible GROUP BY group_key) SELECT group_key,title,total,unwatched,kept,exceptions,latest,(SELECT id FROM eligible e WHERE e.group_key=grouped.group_key ORDER BY COALESCE(NULLIF(finished_ms,0),created_ms) DESC,id DESC LIMIT 1) FROM grouped ORDER BY `
+		order := "latest DESC,group_key"
+		if sort == "oldest" {
+			order = "oldest,group_key"
+		}
+		if sort == "title" {
+			order = "title COLLATE NOCASE,group_key"
+		}
+		query += order + ` LIMIT ? OFFSET ?`
+		rows, e := tx.QueryContext(ctx, query, o.Key(), sources, personalOwner(o), limit+1, c.AfterMS)
+		if e != nil {
+			return e
+		}
+		ids := []string{}
+		for rows.Next() {
+			var g RecordingGroup
+			var latest int64
+			var id string
+			if e = rows.Scan(&g.Key, &g.Title, &g.Recordings, &g.Unwatched, &g.Kept, &g.Exceptions, &latest, &id); e != nil {
+				rows.Close()
+				return e
+			}
+			g.Latest = time.UnixMilli(latest).UTC().Format(time.RFC3339Nano)
+			out.Groups = append(out.Groups, g)
+			ids = append(ids, id)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
+		if len(out.Groups) > limit {
+			out.Groups = out.Groups[:limit]
+			ids = ids[:limit]
+			c.AfterMS += int64(limit)
+			out.NextCursor = s.cursor(c)
+		}
+		predicate, e := programmePredicateTx(ctx, tx, o)
+		if e != nil {
+			return e
+		}
+		for i, id := range ids {
+			r, e := loadTx(ctx, tx, o, id)
+			if e != nil {
+				return e
+			}
+			if e = decorateTx(ctx, tx, o, &r); e != nil {
+				return e
+			}
+			restrictRecording(&r, predicate)
+			out.Groups[i].Recording = r
+			out.Groups[i].Title = r.Programme.Title
+			if r.Programme.Title == livechannels.RestrictedProgrammeTitle {
+				out.Groups[i].Key = "restricted:" + r.ID
+			}
+		}
+		return nil
+	})
+	return out, e
+}
+
+// One query for this page of rules: no per-rule preview HTTP calls. Paused
+// rules retain tomorrow's matching candidates without enabling capture.
+func (s *Store) ruleSummariesTx(ctx context.Context, tx *sql.Tx, o livechannels.Owner, rules []Rule, allowed func(string, string) bool) error {
+	if len(rules) == 0 {
+		return nil
+	}
+	byID := map[string]*Rule{}
+	ids := []string{}
+	for i := range rules {
+		rules[i].Summary.Channel = RecordingChannel{}
+		byID[rules[i].ID] = &rules[i]
+		ids = append(ids, rules[i].ID)
+	}
+	raw, _ := json.Marshal(ids)
+	rows, e := tx.QueryContext(ctx, `SELECT rule_id,sum(state IN('scheduled','conflicted','waiting-source','waiting-guide','preparing','recording','finalizing')),sum(state IN('completed','incomplete-playable')),sum(state='conflicted') FROM dvr_recordings WHERE owner_key=? AND rule_id IN(SELECT value FROM json_each(?)) GROUP BY rule_id`, o.Key(), string(raw))
+	if e != nil {
+		return e
+	}
+	for rows.Next() {
+		var id string
+		var up, rec, conf int
+		if e = rows.Scan(&id, &up, &rec, &conf); e != nil {
+			rows.Close()
+			return e
+		}
+		r := byID[id]
+		r.Summary.Upcoming = up
+		r.Summary.Recorded = rec
+		r.Summary.Conflicts = conf
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	predicate, e := programmePredicateTx(ctx, tx, o)
+	if e != nil {
+		return e
+	}
+	now := s.now()
+	end := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location()).UTC()
+	// Each rule uses its indexed identity/channel relation. At most fifty rules
+	// are on a page, and only one matching programme becomes a next-airing row.
+	for i := range rules {
+		r := &rules[i]
+		if !allowed(r.Config.SourceID, "") {
+			continue
+		}
+		where, args := r.Config.identitySQL()
+		args = append([]any{r.Config.SourceID}, args...)
+		args = append(args, now.UTC().Format(time.RFC3339))
+		rows, e := tx.QueryContext(ctx, programmeQuery+` JOIN live_sources src ON src.active_generation=p.generation_id WHERE src.id=? AND src.state='active' AND `+where+` AND p.end_utc>? ORDER BY p.start_utc,p.id`, args...)
+		if e != nil {
+			return e
+		}
+		config := r.Config
+		config.Enabled = true
+		for rows.Next() {
+			p, e := scanProgramme(rows)
+			if e != nil {
+				rows.Close()
+				return e
+			}
+			if !allowed(r.Config.SourceID, p.ChannelID) || !predicate(programmeRating(p)) || !config.Matches(p) {
+				continue
+			}
+			if r.Summary.Next == nil {
+				v := p
+				r.Summary.Next = &v
+				r.Summary.Channel.ID = p.ChannelID
+			}
+			start, _ := time.Parse(time.RFC3339Nano, p.Start)
+			if start.Before(end) {
+				r.Summary.MatchingTonight++
+			} else {
+				break
+			}
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
+		if r.Summary.Next != nil {
+			record := Recording{Occurrence: Occurrence{SourceID: r.Config.SourceID, ChannelID: r.Summary.Next.ChannelID}}
+			if e = channelTx(ctx, tx, &record); e != nil {
+				return e
+			}
+			r.Summary.Channel = record.Channel
+		}
+	}
+	return nil
+}
+
+func overlapsTx(ctx context.Context, tx *sql.Tx, o livechannels.Owner, r Recording, allowed func(string) bool, limit int) ([]Overlap, error) {
+	out := []Overlap{}
+	start, _ := time.Parse(time.RFC3339Nano, r.Start)
+	end, _ := time.Parse(time.RFC3339Nano, r.End)
+	rows, e := tx.QueryContext(ctx, `SELECT id,programme_json,start_ms,end_ms,priority,state,rule_id,channel_id FROM dvr_recordings WHERE owner_key=? AND source_id=? AND id<>? AND start_ms<? AND end_ms>? AND state IN('scheduled','conflicted','preparing','recording','finalizing') ORDER BY priority DESC,start_ms,id LIMIT ?`, o.Key(), r.Occurrence.SourceID, r.ID, end.UnixMilli(), start.UnixMilli(), limit)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v Overlap
+		var raw string
+		var start, end int64
+		if e = rows.Scan(&v.ID, &raw, &start, &end, &v.Priority, &v.State, &v.RuleID, &v.Channel.ID); e != nil {
+			return nil, e
+		}
+		p, e := decodeProgramme(raw)
+		if e != nil {
+			return nil, e
+		}
+		p.Admit(allowed)
+		v.Title = p.Title
+		v.Episode = p.Episode
+		v.Start = time.UnixMilli(start).UTC().Format(time.RFC3339Nano)
+		v.End = time.UnixMilli(end).UTC().Format(time.RFC3339Nano)
+		out = append(out, v)
+	}
+	if e = rows.Err(); e != nil {
+		return nil, e
+	}
+	rows.Close()
+	for i := range out {
+		r := Recording{Occurrence: Occurrence{SourceID: r.Occurrence.SourceID, ChannelID: out[i].Channel.ID, Generation: r.Occurrence.Generation}}
+		if e = channelTx(ctx, tx, &r); e != nil {
+			return nil, e
+		}
+		out[i].Channel = r.Channel
+	}
+	return out, nil
+}
+func (s *Store) ImageDigest(ctx context.Context, a livechannels.Authority, o livechannels.Owner, id string) (string, error) {
+	digest := ""
+	e := s.snapshot(ctx, a, o, func(tx *sql.Tx, allowed func(string, string) bool) error {
+		r, e := loadTx(ctx, tx, o, id)
+		if e != nil {
+			return e
+		}
+		if !allowed(r.Occurrence.SourceID, r.Occurrence.ChannelID) {
+			return ErrDenied
+		}
+		if e = programmeVisibleTx(ctx, tx, o, r.Programme); e != nil {
+			return e
+		}
+		if r.State == "deleted" {
+			return ErrDenied
+		}
+		return tx.QueryRowContext(ctx, `SELECT digest FROM dvr_programme_images WHERE recording_id=?`, id).Scan(&digest)
+	})
+	return digest, e
 }

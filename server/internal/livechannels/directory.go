@@ -2,9 +2,11 @@ package livechannels
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -425,4 +427,537 @@ func directoryNeighborOffset(ctx context.Context, tx *sql.Tx, scope DirectorySco
 		return anchor, -1, nil
 	}
 	return anchor, neighbor, err
+}
+
+// GuidePage pins the directory and observation time across horizontal paging.
+type GuidePage struct {
+	Directory
+	ObservedAt string `json:"observedAt"`
+	ExpiresAt  string `json:"expiresAt"`
+	NextCursor string `json:"nextCursor"`
+}
+type GuidePageQuery struct {
+	Directory DirectoryQuery
+	Cursor    string
+	At        time.Time
+	OnNow     bool
+}
+type GuideReader func(context.Context, GuideQuery) (Guide, error)
+type guidePageCursor struct {
+	Revision, Fence, Binding string
+	Offset                   int
+	At, Until                int64
+}
+
+func (s *Store) signGuideValue(v any, domain string) string {
+	raw, _ := json.Marshal(v)
+	mac := hmac.New(sha256.New, s.ContinuationKey(domain))
+	mac.Write(raw)
+	return base64.RawURLEncoding.EncodeToString(raw) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+func (s *Store) readGuideValue(raw, domain string, v any) error {
+	if len(raw) > 4096 {
+		return ErrCursor
+	}
+	payload, signature, ok := strings.Cut(raw, ".")
+	if !ok {
+		return ErrCursor
+	}
+	data, e := base64.RawURLEncoding.DecodeString(payload)
+	if e != nil {
+		return ErrCursor
+	}
+	sig, e := base64.RawURLEncoding.DecodeString(signature)
+	if e != nil {
+		return ErrCursor
+	}
+	mac := hmac.New(sha256.New, s.ContinuationKey(domain))
+	mac.Write(data)
+	if !hmac.Equal(sig, mac.Sum(nil)) || json.Unmarshal(data, v) != nil {
+		return ErrCursor
+	}
+	return nil
+}
+func (s *Store) NowNextPage(ctx context.Context, a DirectoryAuthority, read GuideReader, q GuidePageQuery) (GuidePage, error) {
+	out := GuidePage{}
+	if read == nil || q.Directory.Offset != 0 {
+		return out, ErrInvalid
+	}
+	if q.At.IsZero() {
+		q.At = time.Now()
+	}
+	now := q.At.UTC().Truncate(time.Second)
+	query := q.Directory
+	query.Sort = "favorites"
+	query.Revision = ""
+	b := query
+	b.Limit = query.Limit
+	binding := mustJSON(struct {
+		Q     DirectoryQuery
+		OnNow bool
+	}{b, q.OnNow})
+	c := guidePageCursor{Binding: binding, At: now.Unix(), Until: now.Add(time.Minute).Unix()}
+	if q.Cursor != "" {
+		if e := s.readGuideValue(q.Cursor, "guide-now-next", &c); e != nil {
+			return out, e
+		}
+		if c.Binding != binding || c.Offset < 0 || now.Unix() >= c.Until {
+			return out, ErrCursor
+		}
+		query.Revision = c.Revision
+		query.Offset = c.Offset
+	}
+	directory, e := s.ChannelDirectory(ctx, a, query)
+	if e != nil {
+		return out, e
+	}
+	if c.Fence != "" && c.Fence != directory.ViewerFence {
+		return out, ErrCursor
+	}
+	out.Directory = directory
+	at := time.Unix(c.At, 0).UTC()
+	for _, kind := range []Provenance{LiveSource, LibraryChannel} {
+		// Split by source as channel identifiers can overlap between live providers.
+		sources := map[string][]string{}
+		for _, ch := range directory.Channels {
+			if ch.Provenance == kind {
+				sources[ch.SourceID] = append(sources[ch.SourceID], ch.ID)
+			}
+		}
+		for source, ids := range sources {
+			end := at.Add(14 * 24 * time.Hour)
+			if q.OnNow {
+				end = at.Add(time.Second)
+			}
+			guide, err := read(ctx, GuideQuery{Viewer: Owner{}, Start: at, End: end, Timezone: "UTC", Kind: kind, SourceID: source, ChannelIDs: ids, Limit: 50, Compact: !q.OnNow})
+			if err != nil {
+				return GuidePage{}, err
+			}
+			for i := range out.Channels {
+				ch := &out.Channels[i]
+				if ch.SourceID != source || ch.Provenance != kind {
+					continue
+				}
+				for _, gch := range guide.Channels {
+					if gch.ID != ch.ID {
+						continue
+					}
+					for _, p := range gch.Programmes {
+						start, _ := time.Parse(time.RFC3339Nano, p.Start)
+						end, _ := time.Parse(time.RFC3339Nano, p.End)
+						if q.OnNow && (start.After(at) || !end.After(at)) {
+							continue
+						}
+						ch.Programmes = append(ch.Programmes, p)
+						if end.Unix() > c.At && end.Unix() < c.Until {
+							c.Until = end.Unix()
+						}
+					}
+				}
+			}
+		}
+	}
+	query.Offset = 0
+	query.Limit = 1
+	query.Revision = directory.Revision
+	if _, e = s.ChannelDirectory(ctx, a, query); e != nil {
+		return GuidePage{}, e
+	}
+	out.ObservedAt = at.Format(time.RFC3339)
+	out.ExpiresAt = time.Unix(c.Until, 0).UTC().Format(time.RFC3339)
+	if directory.Offset+len(out.Channels) < directory.Total {
+		c.Offset = directory.Offset + len(out.Channels)
+		c.Revision = directory.Revision
+		c.Fence = directory.ViewerFence
+		out.NextCursor = s.signGuideValue(c, "guide-now-next")
+	}
+	return out, nil
+}
+
+// AiringProjection runs under the same snapshot and must remove inaccessible
+// library entries, applying current item policy before any search result leaves it.
+type Airing struct {
+	Channel   Channel   `json:"channel"`
+	Programme Programme `json:"programme"`
+}
+type AiringGroup struct {
+	Key     string   `json:"key"`
+	Title   string   `json:"title"`
+	Airings []Airing `json:"airings"`
+}
+type AiringsPage struct {
+	Groups      []AiringGroup `json:"groups"`
+	NextCursor  string        `json:"nextCursor"`
+	Revision    string        `json:"revision"`
+	ViewerFence string        `json:"viewerFence"`
+	Start       string        `json:"start"`
+	End         string        `json:"end"`
+	Timezone    string        `json:"timezone"`
+	Today       string        `json:"today"`
+}
+type AiringsQuery struct {
+	Search, SeriesID, Title, ChannelID, SourceID, Kind, Cursor string
+	Start, End                                                 time.Time
+	Limit                                                      int
+	ProgrammeAllowed                                           func(string) bool
+}
+type AiringProjection func(context.Context, *sql.Tx, []Airing) ([]Airing, error)
+type airingsCursor struct {
+	Binding, Revision, Fence, After, AfterKey string
+	Expires                                   int64
+}
+
+// The eligible directory is shared with normal guide paging. Search never uses
+// a source's existence as permission, and never projects a provider locator.
+const airingCandidatesSQL = `, airings AS (
+ SELECT e.channel_id,e.source_id,e.provenance,e.name,e.number,e.group_name,e.generation,p.id,p.title,p.start_utc,p.end_utc,p.lineage,COALESCE(m.series_id,'') series_id,COALESCE(m.episode_id,'') episode_id,COALESCE(m.new_evidence,'unknown') new_evidence,COALESCE(m.description,'') description,COALESCE(m.facts,'{}') facts,
+ COALESCE((SELECT '/v1/guide/programme-images/'||i.generation_id||'/'||i.programme_id FROM live_programme_icons i JOIN live_programme_images img ON img.url=i.url WHERE i.generation_id=p.generation_id AND i.programme_id=p.id),'') image
+ FROM eligible e JOIN live_programmes p ON e.provenance='live-source' AND p.generation_id=e.generation AND p.channel_id=e.channel_id LEFT JOIN live_programme_metadata m ON m.generation_id=p.generation_id AND m.id=p.id
+ UNION ALL
+ SELECT e.channel_id,e.source_id,e.provenance,e.name,e.number,e.group_name,e.generation,l.occurrence_id,l.title,strftime('%Y-%m-%dT%H:%M:%SZ',l.start_ms/1000,'unixepoch'),strftime('%Y-%m-%dT%H:%M:%SZ',l.end_ms/1000,'unixepoch'),'generated','','','unknown','',json_object('subtitle',COALESCE((SELECT title FROM catalog_entities WHERE id=l.item_id),'')),''
+ FROM eligible e JOIN lc_entries l ON e.provenance='library-channel' AND l.generation_id=e.generation AND l.channel_id=e.channel_id
+ ) `
+
+func (s *Store) Airings(ctx context.Context, a DirectoryAuthority, project AiringProjection, q AiringsQuery) (AiringsPage, error) {
+	out := AiringsPage{Groups: []AiringGroup{}, Timezone: time.Local.String(), Today: time.Now().In(time.Local).Format("2006-01-02")}
+	if q.Start.IsZero() || !q.End.After(q.Start) || q.End.Sub(q.Start) > 14*24*time.Hour || q.Limit < 1 || q.Limit > 50 || len(q.Search) > 120 || len(q.SeriesID) > 512 || len(q.Title) > 512 || len(q.ChannelID) > 256 {
+		return out, ErrInvalid
+	}
+	out.Start = q.Start.UTC().Format(time.RFC3339)
+	out.End = q.End.UTC().Format(time.RFC3339)
+	dq := DirectoryQuery{Kind: q.Kind, SourceID: q.SourceID, Sort: "server", Limit: 50}
+	if dq.Kind == "" {
+		dq.Kind = "all"
+	}
+	if !validDirectoryQuery(dq) {
+		return out, ErrInvalid
+	}
+	binding := mustJSON([]any{out.Start, out.End, q.Search, q.SeriesID, q.Title, q.ChannelID, q.SourceID, dq.Kind, q.Limit})
+	c := airingsCursor{Binding: binding, Expires: time.Now().Add(15 * time.Minute).Unix()}
+	if q.Cursor != "" {
+		if e := s.readGuideValue(q.Cursor, "guide-airings", &c); e != nil {
+			return out, e
+		}
+		if c.Binding != binding || c.Expires <= time.Now().Unix() {
+			return out, ErrCursor
+		}
+	}
+	err := s.directorySnapshot(ctx, a, func(tx *sql.Tx, scope DirectoryScope) error {
+		revision, e := s.directoryRevision(ctx, tx, scope, dq)
+		if e != nil {
+			return e
+		}
+		if q.Cursor != "" && (revision != c.Revision || scope.Fence != c.Fence) {
+			return ErrCursor
+		}
+		out.Revision = revision
+		out.ViewerFence = scope.Fence
+		args := directoryArgs(scope, dq)
+		args = append(args, out.End, out.Start, q.Search, q.Search, q.SeriesID, q.SeriesID, q.Title, q.Title, q.ChannelID, q.ChannelID, c.After, c.After, c.AfterKey)
+		rows, e := tx.QueryContext(ctx, directoryEligibleSQL+airingCandidatesSQL+`SELECT channel_id,source_id,provenance,name,number,group_name,generation,id,title,start_utc,end_utc,lineage,series_id,episode_id,new_evidence,description,facts,image FROM airings WHERE start_utc<? AND end_utc>? AND (?='' OR instr(lower(title||' '||COALESCE(json_extract(facts,'$.subtitle'),'')),lower(?))>0) AND (?='' OR series_id=?) AND (?='' OR lower(trim(title))=lower(trim(?))) AND (?='' OR channel_id=?) AND (start_utc>? OR(start_utc=? AND provenance||':'||source_id||':'||id>?)) ORDER BY start_utc,provenance||':'||source_id||':'||id LIMIT 257`, args...)
+		if e != nil {
+			return e
+		}
+		batch := []Airing{}
+		facts := []string{}
+		for rows.Next() {
+			var v Airing
+			var f string
+			p := &v.Programme
+			ch := &v.Channel
+			if e = rows.Scan(&ch.ID, &ch.SourceID, &ch.Provenance, &ch.Name, &ch.Number, &ch.Group, &ch.Generation, &p.ID, &p.Title, &p.Start, &p.End, &p.Lineage, &p.SeriesID, &p.EpisodeID, &p.NewEvidence, &p.Description, &f, &p.Image); e != nil {
+				rows.Close()
+				return e
+			}
+			p.ChannelID = ch.ID
+			p.ApplyFacts(f)
+			ch.Programmes = []Programme{}
+			batch = append(batch, v)
+			facts = append(facts, f)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
+		count := 0
+		groups := map[string]int{}
+		for i, v := range batch {
+			if i == 256 {
+				out.NextCursor = s.signGuideValue(c, "guide-airings")
+				break
+			}
+			visible := []Airing{v}
+			if v.Channel.Provenance == LibraryChannel {
+				if project == nil {
+					visible = nil
+				} else {
+					visible, e = project(ctx, tx, visible)
+					if e != nil {
+						return e
+					}
+				}
+			}
+			rating := ""
+			if v.Programme.Rating != nil {
+				rating = v.Programme.Rating.Value
+			}
+			if q.ProgrammeAllowed != nil && !q.ProgrammeAllowed(rating) {
+				visible = nil
+			}
+			if len(visible) > 0 && count == q.Limit {
+				out.NextCursor = s.signGuideValue(c, "guide-airings")
+				break
+			}
+			c.After = v.Programme.Start
+			c.AfterKey = string(v.Channel.Provenance) + ":" + v.Channel.SourceID + ":" + v.Programme.ID
+			c.Revision = revision
+			c.Fence = scope.Fence
+			if len(visible) == 0 {
+				continue
+			}
+			v = visible[0]
+			key := v.Programme.SeriesID
+			if key == "" {
+				key = "title:" + strings.ToLower(strings.TrimSpace(v.Programme.Title))
+			}
+			g, ok := groups[key]
+			if !ok {
+				g = len(out.Groups)
+				groups[key] = g
+				out.Groups = append(out.Groups, AiringGroup{Key: key, Title: v.Programme.Title, Airings: []Airing{}})
+			}
+			out.Groups[g].Airings = append(out.Groups[g].Airings, v)
+			count++
+		}
+		return nil
+	})
+	if err != nil {
+		return AiringsPage{}, err
+	}
+	return out, nil
+}
+
+type Reminder struct {
+	ID       string `json:"id"`
+	Revision int64  `json:"revision"`
+	Airing   Airing `json:"airing"`
+	Due      bool   `json:"due"`
+}
+type ReminderInput struct {
+	SourceID         string     `json:"sourceId"`
+	ChannelID        string     `json:"channelId"`
+	Generation       string     `json:"generation"`
+	ProgrammeID      string     `json:"programmeId"`
+	Kind             Provenance `json:"kind"`
+	ExpectedRevision int64      `json:"expectedRevision"`
+}
+type ReminderPage struct {
+	Items      []Reminder `json:"items"`
+	NextCursor string     `json:"nextCursor"`
+	Revision   string     `json:"revision"`
+}
+
+func scanAiring(rows interface{ Scan(...any) error }) (Airing, error) {
+	var v Airing
+	var f string
+	p := &v.Programme
+	ch := &v.Channel
+	e := rows.Scan(&ch.ID, &ch.SourceID, &ch.Provenance, &ch.Name, &ch.Number, &ch.Group, &ch.Generation, &p.ID, &p.Title, &p.Start, &p.End, &p.Lineage, &p.SeriesID, &p.EpisodeID, &p.NewEvidence, &p.Description, &f, &p.Image)
+	p.ChannelID = ch.ID
+	p.ApplyFacts(f)
+	ch.Programmes = []Programme{}
+	return v, e
+}
+
+const airingColumns = `channel_id,source_id,provenance,name,number,group_name,generation,id,title,start_utc,end_utc,lineage,series_id,episode_id,new_evidence,description,facts,image`
+
+func resolveReminderTx(ctx context.Context, tx *sql.Tx, scope DirectoryScope, project AiringProjection, in ReminderInput, allowed func(string) bool) (Airing, error) {
+	q := DirectoryQuery{Kind: string(in.Kind), SourceID: in.SourceID, Sort: "server", Limit: 50}
+	args := directoryArgs(scope, q)
+	args = append(args, in.ChannelID, in.Generation, in.ProgrammeID)
+	v, e := scanAiring(tx.QueryRowContext(ctx, directoryEligibleSQL+airingCandidatesSQL+`SELECT `+airingColumns+` FROM airings WHERE channel_id=? AND generation=? AND id=?`, args...))
+	if errors.Is(e, sql.ErrNoRows) {
+		return v, ErrDenied
+	}
+	if e != nil {
+		return v, e
+	}
+	if in.Kind == LibraryChannel {
+		if project == nil {
+			return Airing{}, ErrDenied
+		}
+		values, e := project(ctx, tx, []Airing{v})
+		if e != nil {
+			return Airing{}, e
+		}
+		if len(values) != 1 {
+			return Airing{}, ErrDenied
+		}
+		v = values[0]
+	}
+	rating := ""
+	if v.Programme.Rating != nil {
+		rating = v.Programme.Rating.Value
+	}
+	if allowed != nil && !allowed(rating) {
+		return Airing{}, ErrDenied
+	}
+	return v, nil
+}
+func (s *Store) SaveReminder(ctx context.Context, a DirectoryAuthority, project AiringProjection, in ReminderInput, allowed func(string) bool) (Reminder, error) {
+	out := Reminder{}
+	if in.ExpectedRevision < 0 || !opaque(in.Generation) || !opaque(in.SourceID) && in.Kind != LibraryChannel || (in.ChannelID == "" || len(in.ChannelID) > 256) || (in.ProgrammeID == "" || len(in.ProgrammeID) > 256) || (in.Kind != LiveSource && in.Kind != LibraryChannel) {
+		return out, ErrInvalid
+	}
+	// A write transaction supplies the same directory authority as every read.
+	e := dbwork.WithWriteTxContext(ctx, s.db, dbwork.ClassSecurityFence, func(ctx context.Context, tx *sql.Tx) error {
+		scope, e := a(ctx, tx)
+		if e != nil {
+			return e
+		}
+		if !scope.Viewer.Valid() || scope.Fence == "" {
+			return ErrDenied
+		}
+		v, e := resolveReminderTx(ctx, tx, scope, project, in, allowed)
+		if e != nil {
+			return e
+		}
+		start, _ := time.Parse(time.RFC3339Nano, v.Programme.Start)
+		if !start.After(time.Now()) {
+			return ErrConflict
+		}
+		key := id("reminder", scope.Viewer.Key(), string(in.Kind), in.SourceID, in.ChannelID, in.Generation, in.ProgrammeID)
+		if in.ExpectedRevision == 0 {
+			_, e = tx.ExecContext(ctx, `INSERT INTO live_reminders(id,owner_key,kind,source_id,channel_id,generation_id,programme_id,revision,start_utc) VALUES(?,?,?,?,?,?,?,1,?) ON CONFLICT(id) DO NOTHING`, key, scope.Viewer.Key(), in.Kind, in.SourceID, in.ChannelID, in.Generation, in.ProgrammeID, v.Programme.Start)
+		} else {
+			result, err := tx.ExecContext(ctx, `UPDATE live_reminders SET revision=revision+1 WHERE id=? AND owner_key=? AND revision=?`, key, scope.Viewer.Key(), in.ExpectedRevision)
+			e = err
+			if e == nil {
+				n, _ := result.RowsAffected()
+				if n != 1 {
+					return ErrConflict
+				}
+			}
+		}
+		if e != nil {
+			return e
+		}
+		if e = tx.QueryRowContext(ctx, `SELECT revision FROM live_reminders WHERE id=?`, key).Scan(&out.Revision); e != nil {
+			return e
+		}
+		out.ID = key
+		out.Airing = v
+		after, e := a(ctx, tx)
+		if e != nil {
+			return e
+		}
+		if after.Fence != scope.Fence {
+			return ErrDenied
+		}
+		return nil
+	})
+	return out, e
+}
+func (s *Store) DeleteReminder(ctx context.Context, a DirectoryAuthority, key string, revision int64) error {
+	if len(key) != 64 || revision < 1 {
+		return ErrInvalid
+	}
+	return dbwork.WithWriteTxContext(ctx, s.db, dbwork.ClassSecurityFence, func(ctx context.Context, tx *sql.Tx) error {
+		scope, e := a(ctx, tx)
+		if e != nil {
+			return e
+		}
+		if !scope.Viewer.Valid() || scope.Fence == "" {
+			return ErrDenied
+		}
+		result, e := tx.ExecContext(ctx, `DELETE FROM live_reminders WHERE id=? AND owner_key=? AND revision=?`, key, scope.Viewer.Key(), revision)
+		if e != nil {
+			return e
+		}
+		n, _ := result.RowsAffected()
+		if n != 1 {
+			return ErrConflict
+		}
+		return nil
+	})
+}
+func (s *Store) Reminders(ctx context.Context, a DirectoryAuthority, project AiringProjection, cursor string, limit int, allowed func(string) bool) (ReminderPage, error) {
+	out := ReminderPage{Items: []Reminder{}}
+	if limit < 1 || limit > 50 {
+		return out, ErrInvalid
+	}
+	e := s.directorySnapshot(ctx, a, func(tx *sql.Tx, scope DirectoryScope) error {
+		if !scope.Viewer.Valid() {
+			return ErrDenied
+		}
+		q := DirectoryQuery{Kind: "all", Sort: "server", Limit: 50}
+		revision, e := s.directoryRevision(ctx, tx, scope, q)
+		if e != nil {
+			return e
+		}
+		var state string
+		if e = tx.QueryRowContext(ctx, `SELECT COALESCE(group_concat(id||':'||revision,'|'),'') FROM(SELECT id,revision FROM live_reminders WHERE owner_key=? ORDER BY id)`, scope.Viewer.Key()).Scan(&state); e != nil {
+			return e
+		}
+		revision = id(revision, scope.Viewer.Key(), state)
+		out.Revision = revision
+		c := airingsCursor{Binding: fmt.Sprint(limit), Revision: revision, Fence: scope.Fence, Expires: time.Now().Add(15 * time.Minute).Unix()}
+		if cursor != "" {
+			if e = s.readGuideValue(cursor, "guide-reminders", &c); e != nil {
+				return e
+			}
+			if c.Binding != fmt.Sprint(limit) || c.Revision != revision || c.Fence != scope.Fence || c.Expires <= time.Now().Unix() {
+				return ErrCursor
+			}
+		}
+		rows, e := tx.QueryContext(ctx, `SELECT id,revision,kind,source_id,channel_id,generation_id,programme_id FROM live_reminders WHERE owner_key=? AND id>? ORDER BY id LIMIT 257`, scope.Viewer.Key(), c.AfterKey)
+		if e != nil {
+			return e
+		}
+		type saved struct {
+			key   string
+			rev   int64
+			input ReminderInput
+		}
+		values := []saved{}
+		for rows.Next() {
+			var v saved
+			if e = rows.Scan(&v.key, &v.rev, &v.input.Kind, &v.input.SourceID, &v.input.ChannelID, &v.input.Generation, &v.input.ProgrammeID); e != nil {
+				rows.Close()
+				return e
+			}
+			values = append(values, v)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
+		for i, v := range values {
+			if i == 256 || len(out.Items) == limit {
+				out.NextCursor = s.signGuideValue(c, "guide-reminders")
+				break
+			}
+			c.AfterKey = v.key
+			airing, e := resolveReminderTx(ctx, tx, scope, project, v.input, allowed)
+			if errors.Is(e, ErrDenied) {
+				continue
+			}
+			if e != nil {
+				return e
+			}
+			end, _ := time.Parse(time.RFC3339Nano, airing.Programme.End)
+			if !end.After(time.Now()) {
+				continue
+			}
+			start, _ := time.Parse(time.RFC3339Nano, airing.Programme.Start)
+			out.Items = append(out.Items, Reminder{ID: v.key, Revision: v.rev, Airing: airing, Due: !start.After(time.Now())})
+		}
+		return nil
+	})
+	if e != nil {
+		return ReminderPage{}, e
+	}
+	return out, nil
 }

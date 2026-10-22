@@ -11793,6 +11793,11 @@ export const schemas = {
           "coverageStart": {
             "type": "string"
           },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "end": {
             "type": "string"
           },
@@ -11867,6 +11872,90 @@ export const schemas = {
               "episodeLimit"
             ],
             "type": "object"
+          },
+          "overlaps": {
+            "items": {
+              "properties": {
+                "channel": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "number"
+                  ],
+                  "type": "object"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "episode": {
+                  "properties": {
+                    "display": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "season": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "priority": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "ruleId": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "channel",
+                "ruleId",
+                "id",
+                "title",
+                "start",
+                "end",
+                "priority",
+                "state"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "positionMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "programme": {
             "properties": {
@@ -12025,6 +12114,9 @@ export const schemas = {
           }
         },
         "required": [
+          "positionMs",
+          "durationMs",
+          "overlaps",
           "id",
           "revision",
           "occurrence",
@@ -12080,6 +12172,41 @@ export const schemas = {
     "type": "object"
   },
   "DeleteDvrRulesIdResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "result": {
+        "additionalProperties": {
+          "type": "boolean"
+        },
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "result"
+    ],
+    "type": "object"
+  },
+  "DeleteGuideRemindersIdRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "DeleteGuideRemindersIdResponse": {
     "properties": {
       "protocolVersion": {
         "type": "string"
@@ -32280,6 +32407,500 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetDvrGroupsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetDvrGroupsResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "result": {
+        "properties": {
+          "groups": {
+            "items": {
+              "properties": {
+                "exceptions": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "kept": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "latest": {
+                  "type": "string"
+                },
+                "recording": {
+                  "properties": {
+                    "bytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channel": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "number"
+                      ],
+                      "type": "object"
+                    },
+                    "conflicts": {
+                      "items": {
+                        "properties": {
+                          "capacity": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "demand": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "end": {
+                            "type": "string"
+                          },
+                          "start": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "start",
+                          "end",
+                          "demand",
+                          "capacity"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "coverageEnd": {
+                      "type": "string"
+                    },
+                    "coverageStart": {
+                      "type": "string"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "keep": {
+                      "type": "boolean"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "occurrence": {
+                      "properties": {
+                        "channelId": {
+                          "type": "string"
+                        },
+                        "generation": {
+                          "type": "string"
+                        },
+                        "programmeId": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "sourceId",
+                        "channelId",
+                        "generation",
+                        "programmeId"
+                      ],
+                      "type": "object"
+                    },
+                    "options": {
+                      "properties": {
+                        "afterMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "beforeMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "episodeLimit": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "priority": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "retentionDays": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "beforeMs",
+                        "afterMs",
+                        "priority",
+                        "retentionDays",
+                        "episodeLimit"
+                      ],
+                      "type": "object"
+                    },
+                    "overlaps": {
+                      "items": {
+                        "properties": {
+                          "channel": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "number"
+                            ],
+                            "type": "object"
+                          },
+                          "end": {
+                            "type": "string"
+                          },
+                          "episode": {
+                            "properties": {
+                              "display": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "season": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [],
+                            "type": "object"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "ruleId": {
+                            "type": "string"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "channel",
+                          "ruleId",
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "priority",
+                          "state"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "programme": {
+                      "properties": {
+                        "categories": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "channelId": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "end": {
+                          "type": "string"
+                        },
+                        "episode": {
+                          "properties": {
+                            "display": {
+                              "type": "string"
+                            },
+                            "number": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "season": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "episodeId": {
+                          "type": "string"
+                        },
+                        "flags": {
+                          "properties": {
+                            "live": {
+                              "type": "boolean"
+                            },
+                            "new": {
+                              "type": "boolean"
+                            },
+                            "premiere": {
+                              "type": "boolean"
+                            },
+                            "repeat": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "live",
+                            "new",
+                            "premiere",
+                            "repeat"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "image": {
+                          "type": "string"
+                        },
+                        "lineage": {
+                          "type": "string"
+                        },
+                        "newEvidence": {
+                          "type": "string"
+                        },
+                        "rating": {
+                          "properties": {
+                            "system": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "system",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "recordingId": {
+                          "type": "string"
+                        },
+                        "recordingState": {
+                          "type": "string"
+                        },
+                        "seriesId": {
+                          "type": "string"
+                        },
+                        "starRating": {
+                          "type": "string"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "channelId",
+                        "title",
+                        "start",
+                        "end",
+                        "lineage",
+                        "categories",
+                        "flags"
+                      ],
+                      "type": "object"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "ruleId": {
+                      "type": "string"
+                    },
+                    "seriesId": {
+                      "type": "string"
+                    },
+                    "seriesTitle": {
+                      "type": "string"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "watched": {
+                      "nullable": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "positionMs",
+                    "durationMs",
+                    "overlaps",
+                    "id",
+                    "revision",
+                    "occurrence",
+                    "channel",
+                    "watched",
+                    "programme",
+                    "ruleId",
+                    "options",
+                    "start",
+                    "end",
+                    "state",
+                    "reason",
+                    "keep",
+                    "libraryId",
+                    "itemId",
+                    "coverageStart",
+                    "coverageEnd",
+                    "bytes",
+                    "conflicts"
+                  ],
+                  "type": "object"
+                },
+                "recordings": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "unwatched": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "key",
+                "title",
+                "recordings",
+                "unwatched",
+                "kept",
+                "exceptions",
+                "latest",
+                "recording"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "groups",
+          "nextCursor",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "result"
+    ],
+    "type": "object"
+  },
   "GetDvrRecordingsIdDeletePreviewRequest": {
     "properties": {},
     "required": [],
@@ -32336,6 +32957,15 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetDvrRecordingsIdImageRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetDvrRecordingsIdImageResponse": {
+    "format": "binary",
+    "type": "string"
+  },
   "GetDvrRecordingsIdRequest": {
     "properties": {},
     "required": [],
@@ -32381,8 +33011,46 @@ export const schemas = {
           "overlaps": {
             "items": {
               "properties": {
+                "channel": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "number"
+                  ],
+                  "type": "object"
+                },
                 "end": {
                   "type": "string"
+                },
+                "episode": {
+                  "properties": {
+                    "display": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "season": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
                 },
                 "id": {
                   "type": "string"
@@ -32391,6 +33059,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "ruleId": {
+                  "type": "string"
                 },
                 "start": {
                   "type": "string"
@@ -32403,6 +33074,8 @@ export const schemas = {
                 }
               },
               "required": [
+                "channel",
+                "ruleId",
                 "id",
                 "title",
                 "start",
@@ -32475,6 +33148,11 @@ export const schemas = {
               },
               "coverageStart": {
                 "type": "string"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "end": {
                 "type": "string"
@@ -32550,6 +33228,90 @@ export const schemas = {
                   "episodeLimit"
                 ],
                 "type": "object"
+              },
+              "overlaps": {
+                "items": {
+                  "properties": {
+                    "channel": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "number"
+                      ],
+                      "type": "object"
+                    },
+                    "end": {
+                      "type": "string"
+                    },
+                    "episode": {
+                      "properties": {
+                        "display": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "season": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [],
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "priority": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "ruleId": {
+                      "type": "string"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "channel",
+                    "ruleId",
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "priority",
+                    "state"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "positionMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "programme": {
                 "properties": {
@@ -32708,6 +33470,9 @@ export const schemas = {
               }
             },
             "required": [
+              "positionMs",
+              "durationMs",
+              "overlaps",
               "id",
               "revision",
               "occurrence",
@@ -32837,6 +33602,11 @@ export const schemas = {
                 "coverageStart": {
                   "type": "string"
                 },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "end": {
                   "type": "string"
                 },
@@ -32911,6 +33681,90 @@ export const schemas = {
                     "episodeLimit"
                   ],
                   "type": "object"
+                },
+                "overlaps": {
+                  "items": {
+                    "properties": {
+                      "channel": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "number"
+                        ],
+                        "type": "object"
+                      },
+                      "end": {
+                        "type": "string"
+                      },
+                      "episode": {
+                        "properties": {
+                          "display": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "season": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "priority": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "ruleId": {
+                        "type": "string"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "channel",
+                      "ruleId",
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "priority",
+                      "state"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "programme": {
                   "properties": {
@@ -33069,6 +33923,9 @@ export const schemas = {
                 }
               },
               "required": [
+                "positionMs",
+                "durationMs",
+                "overlaps",
                 "id",
                 "revision",
                 "occurrence",
@@ -33121,6 +33978,9 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "enabled": {
                       "type": "boolean"
                     },
@@ -33132,6 +33992,9 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "matchKind": {
+                      "type": "string"
                     },
                     "name": {
                       "type": "string"
@@ -33178,9 +34041,15 @@ export const schemas = {
                     },
                     "sourceId": {
                       "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
                     }
                   },
                   "required": [
+                    "matchKind",
+                    "title",
+                    "channelId",
                     "name",
                     "sourceId",
                     "seriesId",
@@ -33208,11 +34077,191 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "summary": {
+                  "properties": {
+                    "channel": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "number"
+                      ],
+                      "type": "object"
+                    },
+                    "conflicts": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "matchingTonight": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "next": {
+                      "properties": {
+                        "categories": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "channelId": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "end": {
+                          "type": "string"
+                        },
+                        "episode": {
+                          "properties": {
+                            "display": {
+                              "type": "string"
+                            },
+                            "number": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "season": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "episodeId": {
+                          "type": "string"
+                        },
+                        "flags": {
+                          "properties": {
+                            "live": {
+                              "type": "boolean"
+                            },
+                            "new": {
+                              "type": "boolean"
+                            },
+                            "premiere": {
+                              "type": "boolean"
+                            },
+                            "repeat": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "live",
+                            "new",
+                            "premiere",
+                            "repeat"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "image": {
+                          "type": "string"
+                        },
+                        "lineage": {
+                          "type": "string"
+                        },
+                        "newEvidence": {
+                          "type": "string"
+                        },
+                        "rating": {
+                          "properties": {
+                            "system": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "system",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "recordingId": {
+                          "type": "string"
+                        },
+                        "recordingState": {
+                          "type": "string"
+                        },
+                        "seriesId": {
+                          "type": "string"
+                        },
+                        "starRating": {
+                          "type": "string"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "channelId",
+                        "title",
+                        "start",
+                        "end",
+                        "lineage",
+                        "categories",
+                        "flags"
+                      ],
+                      "type": "object"
+                    },
+                    "recorded": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "upcoming": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "upcoming",
+                    "recorded",
+                    "conflicts",
+                    "matchingTonight",
+                    "channel"
+                  ],
+                  "type": "object"
+                },
                 "updatedAt": {
                   "type": "string"
                 }
               },
               "required": [
+                "summary",
                 "id",
                 "revision",
                 "config",
@@ -33389,6 +34438,70 @@ export const schemas = {
           "forecastDescription",
           "captureAvailable",
           "warning"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "result"
+    ],
+    "type": "object"
+  },
+  "GetDvrSummaryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetDvrSummaryResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "result": {
+        "properties": {
+          "conflicts": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "groups": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "recorded": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "rules": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "unwatched": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "upcoming": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "upcoming",
+          "recorded",
+          "rules",
+          "conflicts",
+          "groups",
+          "unwatched"
         ],
         "type": "object"
       },
@@ -34297,6 +35410,437 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetGuideAiringsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetGuideAiringsResponse": {
+    "properties": {
+      "airings": {
+        "properties": {
+          "end": {
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "properties": {
+                "airings": {
+                  "items": {
+                    "properties": {
+                      "channel": {
+                        "properties": {
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "hidden": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "logoPath": {
+                            "type": "string"
+                          },
+                          "mark": {
+                            "properties": {
+                              "seed": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "text",
+                              "seed"
+                            ],
+                            "type": "object"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "preferenceRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "programmes": {
+                            "items": {
+                              "properties": {
+                                "categories": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "channelId": {
+                                  "type": "string"
+                                },
+                                "description": {
+                                  "type": "string"
+                                },
+                                "end": {
+                                  "type": "string"
+                                },
+                                "episode": {
+                                  "properties": {
+                                    "display": {
+                                      "type": "string"
+                                    },
+                                    "number": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "season": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [],
+                                  "type": "object"
+                                },
+                                "episodeId": {
+                                  "type": "string"
+                                },
+                                "flags": {
+                                  "properties": {
+                                    "live": {
+                                      "type": "boolean"
+                                    },
+                                    "new": {
+                                      "type": "boolean"
+                                    },
+                                    "premiere": {
+                                      "type": "boolean"
+                                    },
+                                    "repeat": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "live",
+                                    "new",
+                                    "premiere",
+                                    "repeat"
+                                  ],
+                                  "type": "object"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "image": {
+                                  "type": "string"
+                                },
+                                "lineage": {
+                                  "type": "string"
+                                },
+                                "newEvidence": {
+                                  "type": "string"
+                                },
+                                "rating": {
+                                  "properties": {
+                                    "system": {
+                                      "type": "string"
+                                    },
+                                    "value": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "system",
+                                    "value"
+                                  ],
+                                  "type": "object"
+                                },
+                                "recordingId": {
+                                  "type": "string"
+                                },
+                                "recordingState": {
+                                  "type": "string"
+                                },
+                                "seriesId": {
+                                  "type": "string"
+                                },
+                                "starRating": {
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "type": "string"
+                                },
+                                "subtitle": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "channelId",
+                                "title",
+                                "start",
+                                "end",
+                                "lineage",
+                                "categories",
+                                "flags"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "recordAvailable": {
+                            "type": "boolean"
+                          },
+                          "recordUnavailableReason": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "tuneAvailable": {
+                            "type": "boolean"
+                          },
+                          "tuneUnavailableReason": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "provenance",
+                          "name",
+                          "number",
+                          "group",
+                          "generation",
+                          "programmes",
+                          "tuneAvailable",
+                          "tuneUnavailableReason",
+                          "recordUnavailableReason",
+                          "recordAvailable",
+                          "favorite",
+                          "hidden",
+                          "preferenceRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "programme": {
+                        "properties": {
+                          "categories": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "channelId": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "end": {
+                            "type": "string"
+                          },
+                          "episode": {
+                            "properties": {
+                              "display": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "season": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [],
+                            "type": "object"
+                          },
+                          "episodeId": {
+                            "type": "string"
+                          },
+                          "flags": {
+                            "properties": {
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "new": {
+                                "type": "boolean"
+                              },
+                              "premiere": {
+                                "type": "boolean"
+                              },
+                              "repeat": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "live",
+                              "new",
+                              "premiere",
+                              "repeat"
+                            ],
+                            "type": "object"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "image": {
+                            "type": "string"
+                          },
+                          "lineage": {
+                            "type": "string"
+                          },
+                          "newEvidence": {
+                            "type": "string"
+                          },
+                          "rating": {
+                            "properties": {
+                              "system": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "system",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "recordingId": {
+                            "type": "string"
+                          },
+                          "recordingState": {
+                            "type": "string"
+                          },
+                          "seriesId": {
+                            "type": "string"
+                          },
+                          "starRating": {
+                            "type": "string"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "channelId",
+                          "title",
+                          "start",
+                          "end",
+                          "lineage",
+                          "categories",
+                          "flags"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "channel",
+                      "programme"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "title",
+                "airings"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "today": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "groups",
+          "nextCursor",
+          "revision",
+          "viewerFence",
+          "start",
+          "end",
+          "timezone",
+          "today"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "airings"
+    ],
+    "type": "object"
+  },
   "GetGuideChannelsRequest": {
     "properties": {},
     "required": [],
@@ -34613,6 +36157,662 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetGuideNowNextRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetGuideNowNextResponse": {
+    "properties": {
+      "page": {
+        "properties": {
+          "channels": {
+            "items": {
+              "properties": {
+                "favorite": {
+                  "type": "boolean"
+                },
+                "generation": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "hidden": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "logoPath": {
+                  "type": "string"
+                },
+                "mark": {
+                  "properties": {
+                    "seed": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "seed"
+                  ],
+                  "type": "object"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "string"
+                },
+                "preferenceRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "programmes": {
+                  "items": {
+                    "properties": {
+                      "categories": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "channelId": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "end": {
+                        "type": "string"
+                      },
+                      "episode": {
+                        "properties": {
+                          "display": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "season": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "episodeId": {
+                        "type": "string"
+                      },
+                      "flags": {
+                        "properties": {
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "new": {
+                            "type": "boolean"
+                          },
+                          "premiere": {
+                            "type": "boolean"
+                          },
+                          "repeat": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "live",
+                          "new",
+                          "premiere",
+                          "repeat"
+                        ],
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "image": {
+                        "type": "string"
+                      },
+                      "lineage": {
+                        "type": "string"
+                      },
+                      "newEvidence": {
+                        "type": "string"
+                      },
+                      "rating": {
+                        "properties": {
+                          "system": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "system",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      "recordingId": {
+                        "type": "string"
+                      },
+                      "recordingState": {
+                        "type": "string"
+                      },
+                      "seriesId": {
+                        "type": "string"
+                      },
+                      "starRating": {
+                        "type": "string"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "channelId",
+                      "title",
+                      "start",
+                      "end",
+                      "lineage",
+                      "categories",
+                      "flags"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "recordAvailable": {
+                  "type": "boolean"
+                },
+                "recordUnavailableReason": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "tuneAvailable": {
+                  "type": "boolean"
+                },
+                "tuneUnavailableReason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sourceId",
+                "provenance",
+                "name",
+                "number",
+                "group",
+                "generation",
+                "programmes",
+                "tuneAvailable",
+                "tuneUnavailableReason",
+                "recordUnavailableReason",
+                "recordAvailable",
+                "favorite",
+                "hidden",
+                "preferenceRevision"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string"
+          },
+          "offset": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "properties": {
+                "availableEnd": {
+                  "type": "string"
+                },
+                "availableStart": {
+                  "type": "string"
+                },
+                "generation": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "publishedAt": {
+                  "type": "string"
+                },
+                "refreshState": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "refreshState",
+                "id",
+                "name",
+                "generation",
+                "publishedAt",
+                "availableStart",
+                "availableEnd",
+                "provenance"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "viewerFence",
+          "revision",
+          "total",
+          "offset",
+          "limit",
+          "channels",
+          "sources",
+          "observedAt",
+          "expiresAt",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "page"
+    ],
+    "type": "object"
+  },
+  "GetGuideOnNowRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetGuideOnNowResponse": {
+    "properties": {
+      "page": {
+        "properties": {
+          "channels": {
+            "items": {
+              "properties": {
+                "favorite": {
+                  "type": "boolean"
+                },
+                "generation": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "hidden": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "logoPath": {
+                  "type": "string"
+                },
+                "mark": {
+                  "properties": {
+                    "seed": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "seed"
+                  ],
+                  "type": "object"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "string"
+                },
+                "preferenceRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "programmes": {
+                  "items": {
+                    "properties": {
+                      "categories": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "channelId": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "end": {
+                        "type": "string"
+                      },
+                      "episode": {
+                        "properties": {
+                          "display": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "season": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "episodeId": {
+                        "type": "string"
+                      },
+                      "flags": {
+                        "properties": {
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "new": {
+                            "type": "boolean"
+                          },
+                          "premiere": {
+                            "type": "boolean"
+                          },
+                          "repeat": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "live",
+                          "new",
+                          "premiere",
+                          "repeat"
+                        ],
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "image": {
+                        "type": "string"
+                      },
+                      "lineage": {
+                        "type": "string"
+                      },
+                      "newEvidence": {
+                        "type": "string"
+                      },
+                      "rating": {
+                        "properties": {
+                          "system": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "system",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      "recordingId": {
+                        "type": "string"
+                      },
+                      "recordingState": {
+                        "type": "string"
+                      },
+                      "seriesId": {
+                        "type": "string"
+                      },
+                      "starRating": {
+                        "type": "string"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "channelId",
+                      "title",
+                      "start",
+                      "end",
+                      "lineage",
+                      "categories",
+                      "flags"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "recordAvailable": {
+                  "type": "boolean"
+                },
+                "recordUnavailableReason": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "tuneAvailable": {
+                  "type": "boolean"
+                },
+                "tuneUnavailableReason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sourceId",
+                "provenance",
+                "name",
+                "number",
+                "group",
+                "generation",
+                "programmes",
+                "tuneAvailable",
+                "tuneUnavailableReason",
+                "recordUnavailableReason",
+                "recordAvailable",
+                "favorite",
+                "hidden",
+                "preferenceRevision"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string"
+          },
+          "offset": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "properties": {
+                "availableEnd": {
+                  "type": "string"
+                },
+                "availableStart": {
+                  "type": "string"
+                },
+                "generation": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "publishedAt": {
+                  "type": "string"
+                },
+                "refreshState": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "refreshState",
+                "id",
+                "name",
+                "generation",
+                "publishedAt",
+                "availableStart",
+                "availableEnd",
+                "provenance"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "viewerFence",
+          "revision",
+          "total",
+          "offset",
+          "limit",
+          "channels",
+          "sources",
+          "observedAt",
+          "expiresAt",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "page"
+    ],
+    "type": "object"
+  },
   "GetGuideProgrammeImageRequest": {
     "properties": {},
     "required": [],
@@ -34621,6 +36821,420 @@ export const schemas = {
   "GetGuideProgrammeImageResponse": {
     "format": "binary",
     "type": "string"
+  },
+  "GetGuideRemindersRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetGuideRemindersResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "result": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "airing": {
+                  "properties": {
+                    "channel": {
+                      "properties": {
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "hidden": {
+                          "type": "boolean"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "logoPath": {
+                          "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "preferenceRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "programmes": {
+                          "items": {
+                            "properties": {
+                              "categories": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "channelId": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "end": {
+                                "type": "string"
+                              },
+                              "episode": {
+                                "properties": {
+                                  "display": {
+                                    "type": "string"
+                                  },
+                                  "number": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "season": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [],
+                                "type": "object"
+                              },
+                              "episodeId": {
+                                "type": "string"
+                              },
+                              "flags": {
+                                "properties": {
+                                  "live": {
+                                    "type": "boolean"
+                                  },
+                                  "new": {
+                                    "type": "boolean"
+                                  },
+                                  "premiere": {
+                                    "type": "boolean"
+                                  },
+                                  "repeat": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "live",
+                                  "new",
+                                  "premiere",
+                                  "repeat"
+                                ],
+                                "type": "object"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "image": {
+                                "type": "string"
+                              },
+                              "lineage": {
+                                "type": "string"
+                              },
+                              "newEvidence": {
+                                "type": "string"
+                              },
+                              "rating": {
+                                "properties": {
+                                  "system": {
+                                    "type": "string"
+                                  },
+                                  "value": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "system",
+                                  "value"
+                                ],
+                                "type": "object"
+                              },
+                              "recordingId": {
+                                "type": "string"
+                              },
+                              "recordingState": {
+                                "type": "string"
+                              },
+                              "seriesId": {
+                                "type": "string"
+                              },
+                              "starRating": {
+                                "type": "string"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "channelId",
+                              "title",
+                              "start",
+                              "end",
+                              "lineage",
+                              "categories",
+                              "flags"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "recordAvailable": {
+                          "type": "boolean"
+                        },
+                        "recordUnavailableReason": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        },
+                        "tuneAvailable": {
+                          "type": "boolean"
+                        },
+                        "tuneUnavailableReason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "provenance",
+                        "name",
+                        "number",
+                        "group",
+                        "generation",
+                        "programmes",
+                        "tuneAvailable",
+                        "tuneUnavailableReason",
+                        "recordUnavailableReason",
+                        "recordAvailable",
+                        "favorite",
+                        "hidden",
+                        "preferenceRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "programme": {
+                      "properties": {
+                        "categories": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "channelId": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "end": {
+                          "type": "string"
+                        },
+                        "episode": {
+                          "properties": {
+                            "display": {
+                              "type": "string"
+                            },
+                            "number": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "season": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "episodeId": {
+                          "type": "string"
+                        },
+                        "flags": {
+                          "properties": {
+                            "live": {
+                              "type": "boolean"
+                            },
+                            "new": {
+                              "type": "boolean"
+                            },
+                            "premiere": {
+                              "type": "boolean"
+                            },
+                            "repeat": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "live",
+                            "new",
+                            "premiere",
+                            "repeat"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "image": {
+                          "type": "string"
+                        },
+                        "lineage": {
+                          "type": "string"
+                        },
+                        "newEvidence": {
+                          "type": "string"
+                        },
+                        "rating": {
+                          "properties": {
+                            "system": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "system",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "recordingId": {
+                          "type": "string"
+                        },
+                        "recordingState": {
+                          "type": "string"
+                        },
+                        "seriesId": {
+                          "type": "string"
+                        },
+                        "starRating": {
+                          "type": "string"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "channelId",
+                        "title",
+                        "start",
+                        "end",
+                        "lineage",
+                        "categories",
+                        "flags"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "channel",
+                    "programme"
+                  ],
+                  "type": "object"
+                },
+                "due": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "revision",
+                "airing",
+                "due"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "result"
+    ],
+    "type": "object"
   },
   "GetGuideRequest": {
     "properties": {},
@@ -124893,6 +127507,11 @@ export const schemas = {
           "coverageStart": {
             "type": "string"
           },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "end": {
             "type": "string"
           },
@@ -124967,6 +127586,90 @@ export const schemas = {
               "episodeLimit"
             ],
             "type": "object"
+          },
+          "overlaps": {
+            "items": {
+              "properties": {
+                "channel": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "number"
+                  ],
+                  "type": "object"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "episode": {
+                  "properties": {
+                    "display": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "season": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "priority": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "ruleId": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "channel",
+                "ruleId",
+                "id",
+                "title",
+                "start",
+                "end",
+                "priority",
+                "state"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "positionMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "programme": {
             "properties": {
@@ -125125,6 +127828,9 @@ export const schemas = {
           }
         },
         "required": [
+          "positionMs",
+          "durationMs",
+          "overlaps",
           "id",
           "revision",
           "occurrence",
@@ -135090,6 +137796,11 @@ export const schemas = {
           "coverageStart": {
             "type": "string"
           },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "end": {
             "type": "string"
           },
@@ -135164,6 +137875,90 @@ export const schemas = {
               "episodeLimit"
             ],
             "type": "object"
+          },
+          "overlaps": {
+            "items": {
+              "properties": {
+                "channel": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "number"
+                  ],
+                  "type": "object"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "episode": {
+                  "properties": {
+                    "display": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "season": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "priority": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "ruleId": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "channel",
+                "ruleId",
+                "id",
+                "title",
+                "start",
+                "end",
+                "priority",
+                "state"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "positionMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "programme": {
             "properties": {
@@ -135322,6 +138117,9 @@ export const schemas = {
           }
         },
         "required": [
+          "positionMs",
+          "durationMs",
+          "overlaps",
           "id",
           "revision",
           "occurrence",
@@ -135500,6 +138298,11 @@ export const schemas = {
           "coverageStart": {
             "type": "string"
           },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "end": {
             "type": "string"
           },
@@ -135574,6 +138377,90 @@ export const schemas = {
               "episodeLimit"
             ],
             "type": "object"
+          },
+          "overlaps": {
+            "items": {
+              "properties": {
+                "channel": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "number"
+                  ],
+                  "type": "object"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "episode": {
+                  "properties": {
+                    "display": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "season": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "priority": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "ruleId": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "channel",
+                "ruleId",
+                "id",
+                "title",
+                "start",
+                "end",
+                "priority",
+                "state"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "positionMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "programme": {
             "properties": {
@@ -135732,6 +138619,9 @@ export const schemas = {
           }
         },
         "required": [
+          "positionMs",
+          "durationMs",
+          "overlaps",
           "id",
           "revision",
           "occurrence",
@@ -135785,6 +138675,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "channelId": {
+        "type": "string"
+      },
       "enabled": {
         "type": "boolean"
       },
@@ -135796,6 +138689,9 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "matchKind": {
+        "type": "string"
       },
       "name": {
         "type": "string"
@@ -135842,9 +138738,15 @@ export const schemas = {
       },
       "sourceId": {
         "type": "string"
+      },
+      "title": {
+        "type": "string"
       }
     },
     "required": [
+      "matchKind",
+      "title",
+      "channelId",
       "name",
       "sourceId",
       "seriesId",
@@ -151727,6 +154629,11 @@ export const schemas = {
           "coverageStart": {
             "type": "string"
           },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "end": {
             "type": "string"
           },
@@ -151801,6 +154708,90 @@ export const schemas = {
               "episodeLimit"
             ],
             "type": "object"
+          },
+          "overlaps": {
+            "items": {
+              "properties": {
+                "channel": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "number"
+                  ],
+                  "type": "object"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "episode": {
+                  "properties": {
+                    "display": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "season": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "priority": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "ruleId": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "channel",
+                "ruleId",
+                "id",
+                "title",
+                "start",
+                "end",
+                "priority",
+                "state"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "positionMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "programme": {
             "properties": {
@@ -151959,6 +154950,9 @@ export const schemas = {
           }
         },
         "required": [
+          "positionMs",
+          "durationMs",
+          "overlaps",
           "id",
           "revision",
           "occurrence",
@@ -152037,6 +155031,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "channelId": {
+            "type": "string"
+          },
           "enabled": {
             "type": "boolean"
           },
@@ -152048,6 +155045,9 @@ export const schemas = {
               "type": "string"
             },
             "type": "array"
+          },
+          "matchKind": {
+            "type": "string"
           },
           "name": {
             "type": "string"
@@ -152094,9 +155094,15 @@ export const schemas = {
           },
           "sourceId": {
             "type": "string"
+          },
+          "title": {
+            "type": "string"
           }
         },
         "required": [
+          "matchKind",
+          "title",
+          "channelId",
           "name",
           "sourceId",
           "seriesId",
@@ -152162,6 +155168,9 @@ export const schemas = {
                 },
                 "type": "array"
               },
+              "channelId": {
+                "type": "string"
+              },
               "enabled": {
                 "type": "boolean"
               },
@@ -152173,6 +155182,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "matchKind": {
+                "type": "string"
               },
               "name": {
                 "type": "string"
@@ -152219,9 +155231,15 @@ export const schemas = {
               },
               "sourceId": {
                 "type": "string"
+              },
+              "title": {
+                "type": "string"
               }
             },
             "required": [
+              "matchKind",
+              "title",
+              "channelId",
               "name",
               "sourceId",
               "seriesId",
@@ -152249,11 +155267,191 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "summary": {
+            "properties": {
+              "channel": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "number"
+                ],
+                "type": "object"
+              },
+              "conflicts": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "matchingTonight": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "next": {
+                "properties": {
+                  "categories": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "channelId": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "end": {
+                    "type": "string"
+                  },
+                  "episode": {
+                    "properties": {
+                      "display": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "season": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "episodeId": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "properties": {
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "new": {
+                        "type": "boolean"
+                      },
+                      "premiere": {
+                        "type": "boolean"
+                      },
+                      "repeat": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "live",
+                      "new",
+                      "premiere",
+                      "repeat"
+                    ],
+                    "type": "object"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "lineage": {
+                    "type": "string"
+                  },
+                  "newEvidence": {
+                    "type": "string"
+                  },
+                  "rating": {
+                    "properties": {
+                      "system": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "system",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  "recordingId": {
+                    "type": "string"
+                  },
+                  "recordingState": {
+                    "type": "string"
+                  },
+                  "seriesId": {
+                    "type": "string"
+                  },
+                  "starRating": {
+                    "type": "string"
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "channelId",
+                  "title",
+                  "start",
+                  "end",
+                  "lineage",
+                  "categories",
+                  "flags"
+                ],
+                "type": "object"
+              },
+              "recorded": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "upcoming": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "upcoming",
+              "recorded",
+              "conflicts",
+              "matchingTonight",
+              "channel"
+            ],
+            "type": "object"
+          },
           "updatedAt": {
             "type": "string"
           }
         },
         "required": [
+          "summary",
           "id",
           "revision",
           "config",
@@ -152368,6 +155566,429 @@ export const schemas = {
           "episodeLimit",
           "floorBytes",
           "capBytes"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "result"
+    ],
+    "type": "object"
+  },
+  "PutGuideRemindersRequest": {
+    "properties": {
+      "channelId": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "generation": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "programmeId": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sourceId",
+      "channelId",
+      "generation",
+      "programmeId",
+      "kind",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PutGuideRemindersResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "result": {
+        "properties": {
+          "airing": {
+            "properties": {
+              "channel": {
+                "properties": {
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "generation": {
+                    "type": "string"
+                  },
+                  "group": {
+                    "type": "string"
+                  },
+                  "hidden": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "logoPath": {
+                    "type": "string"
+                  },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "preferenceRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "programmes": {
+                    "items": {
+                      "properties": {
+                        "categories": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "channelId": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "end": {
+                          "type": "string"
+                        },
+                        "episode": {
+                          "properties": {
+                            "display": {
+                              "type": "string"
+                            },
+                            "number": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "season": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "episodeId": {
+                          "type": "string"
+                        },
+                        "flags": {
+                          "properties": {
+                            "live": {
+                              "type": "boolean"
+                            },
+                            "new": {
+                              "type": "boolean"
+                            },
+                            "premiere": {
+                              "type": "boolean"
+                            },
+                            "repeat": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "live",
+                            "new",
+                            "premiere",
+                            "repeat"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "image": {
+                          "type": "string"
+                        },
+                        "lineage": {
+                          "type": "string"
+                        },
+                        "newEvidence": {
+                          "type": "string"
+                        },
+                        "rating": {
+                          "properties": {
+                            "system": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "system",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "recordingId": {
+                          "type": "string"
+                        },
+                        "recordingState": {
+                          "type": "string"
+                        },
+                        "seriesId": {
+                          "type": "string"
+                        },
+                        "starRating": {
+                          "type": "string"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "channelId",
+                        "title",
+                        "start",
+                        "end",
+                        "lineage",
+                        "categories",
+                        "flags"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "recordAvailable": {
+                    "type": "boolean"
+                  },
+                  "recordUnavailableReason": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  },
+                  "tuneAvailable": {
+                    "type": "boolean"
+                  },
+                  "tuneUnavailableReason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sourceId",
+                  "provenance",
+                  "name",
+                  "number",
+                  "group",
+                  "generation",
+                  "programmes",
+                  "tuneAvailable",
+                  "tuneUnavailableReason",
+                  "recordUnavailableReason",
+                  "recordAvailable",
+                  "favorite",
+                  "hidden",
+                  "preferenceRevision"
+                ],
+                "type": "object"
+              },
+              "programme": {
+                "properties": {
+                  "categories": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "channelId": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "end": {
+                    "type": "string"
+                  },
+                  "episode": {
+                    "properties": {
+                      "display": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "season": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "episodeId": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "properties": {
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "new": {
+                        "type": "boolean"
+                      },
+                      "premiere": {
+                        "type": "boolean"
+                      },
+                      "repeat": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "live",
+                      "new",
+                      "premiere",
+                      "repeat"
+                    ],
+                    "type": "object"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "lineage": {
+                    "type": "string"
+                  },
+                  "newEvidence": {
+                    "type": "string"
+                  },
+                  "rating": {
+                    "properties": {
+                      "system": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "system",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  "recordingId": {
+                    "type": "string"
+                  },
+                  "recordingState": {
+                    "type": "string"
+                  },
+                  "seriesId": {
+                    "type": "string"
+                  },
+                  "starRating": {
+                    "type": "string"
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "channelId",
+                  "title",
+                  "start",
+                  "end",
+                  "lineage",
+                  "categories",
+                  "flags"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "channel",
+              "programme"
+            ],
+            "type": "object"
+          },
+          "due": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "airing",
+          "due"
         ],
         "type": "object"
       },

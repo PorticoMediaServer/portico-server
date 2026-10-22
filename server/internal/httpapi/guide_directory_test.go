@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
@@ -362,5 +363,100 @@ func TestGuideDirectoryHTTPRejectsInvalidQueriesAndAnonymousViewers(t *testing.T
 		if w.Code != 400 {
 			t.Fatalf("invalid summary query %q: %d %s", query, w.Code, w.Body.String())
 		}
+	}
+}
+
+func TestGuideFeatureHTTPFencesAndTypedAirings(t *testing.T) {
+	f := newGuideDirectoryHTTPFixture(t)
+	query := url.Values{"start": {"2026-09-05T12:00:00Z"}, "end": {"2026-09-06T12:00:00Z"}, "search": {"Private EPG"}, "limit": {"7"}}
+	w := f.call(t, "GET", "/v1/guide/airings?"+query.Encode(), f.member.AccessToken, nil)
+	if w.Code != 200 {
+		t.Fatalf("airings %d %s", w.Code, w.Body.String())
+	}
+	var envelope struct {
+		Airings livechannels.AiringsPage `json:"airings"`
+	}
+	if e := json.Unmarshal(w.Body.Bytes(), &envelope); e != nil {
+		t.Fatal(e)
+	}
+	if len(envelope.Airings.Groups) != 7 || envelope.Airings.NextCursor == "" {
+		t.Fatalf("airing page %s", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "private-provider-value") || strings.Contains(w.Body.String(), f.b.ID) {
+		t.Fatal("source facts leaked", w.Body.String())
+	}
+	query.Set("cursor", envelope.Airings.NextCursor)
+	w = f.call(t, "GET", "/v1/guide/airings?"+query.Encode(), f.member.AccessToken, nil)
+	if w.Code != 200 {
+		t.Fatal("cursor", w.Code, w.Body.String())
+	}
+	p, e := f.d.Identity.Authenticate(f.member.AccessToken)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.d.DB.Exec(`INSERT INTO profile_restrictions(profile_id,allow_live_tv) VALUES(?,0) ON CONFLICT(profile_id) DO UPDATE SET allow_live_tv=0,revision=revision+1`, p.ProfileID); e != nil {
+		t.Fatal(e)
+	}
+	for _, path := range []string{"/v1/guide/airings?" + query.Encode(), "/v1/guide/on-now", "/v1/guide/now-next", "/v1/guide/reminders"} {
+		w = f.call(t, "GET", path, f.member.AccessToken, nil)
+		if w.Code == 200 || strings.Contains(w.Body.String(), "Private EPG") || strings.Contains(w.Body.String(), "Channel 01") {
+			t.Fatalf("Live TV refusal %s %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	// The owner is not a substitute for a profile's recording grant. Directory
+	// capability remains false even when capture runtime is configured later.
+	for _, path := range []string{"/v1/guide/on-now?limit=0", "/v1/guide/airings?start=nope", "/v1/guide/now-next?offset=1"} {
+		w = f.call(t, "GET", path, f.owner.AccessToken, nil)
+		if w.Code != 400 {
+			t.Fatalf("invalid query %s %d %s", path, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestGuideReminderHTTPPersistsOnlyForItsProfile(t *testing.T) {
+	f := newGuideDirectoryHTTPFixture(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	input := f.a
+	input.ExpectedRevision = 1
+	input.RequestID = strings.Repeat("cf", 24)
+	input.Guide = fmt.Sprintf(`<tv><programme channel="a0" start="%s" stop="%s"><title>Reminder program</title></programme></tv>`, now.Add(time.Hour).Format("20060102150405 -0700"), now.Add(2*time.Hour).Format("20060102150405 -0700"))
+	w := f.call(t, "POST", "/v1/admin/live-sources", f.owner.AccessToken, input)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	q := url.Values{"search": {"Reminder program"}, "start": {now.Format(time.RFC3339)}, "end": {now.Add(24 * time.Hour).Format(time.RFC3339)}}
+	w = f.call(t, "GET", "/v1/guide/airings?"+q.Encode(), f.owner.AccessToken, nil)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var page struct {
+		Airings livechannels.AiringsPage `json:"airings"`
+	}
+	if e := json.Unmarshal(w.Body.Bytes(), &page); e != nil || len(page.Airings.Groups) != 1 {
+		t.Fatalf("airing %s %v", w.Body.String(), e)
+	}
+	v := page.Airings.Groups[0].Airings[0]
+	body := livechannels.ReminderInput{SourceID: v.Channel.SourceID, ChannelID: v.Channel.ID, Generation: v.Channel.Generation, ProgrammeID: v.Programme.ID, Kind: v.Channel.Provenance}
+	w = f.call(t, "PUT", "/v1/guide/reminders", f.owner.AccessToken, body)
+	if w.Code != 200 {
+		t.Fatal("save reminder", w.Code, w.Body.String())
+	}
+	var saved struct {
+		Result livechannels.Reminder `json:"result"`
+	}
+	if e := json.Unmarshal(w.Body.Bytes(), &saved); e != nil || saved.Result.ID == "" {
+		t.Fatal(w.Body.String(), e)
+	}
+	w = f.call(t, "GET", "/v1/guide/reminders", f.owner.AccessToken, nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Reminder program") {
+		t.Fatal("stored reminder", w.Code, w.Body.String())
+	}
+	w = f.call(t, "GET", "/v1/guide/reminders", f.member.AccessToken, nil)
+	if w.Code != 200 || strings.Contains(w.Body.String(), saved.Result.ID) {
+		t.Fatal("profile leak", w.Code, w.Body.String())
+	}
+	w = f.call(t, "DELETE", "/v1/guide/reminders/"+saved.Result.ID, f.owner.AccessToken, map[string]int{"expectedRevision": 1})
+	if w.Code != 200 {
+		t.Fatal("delete reminder", w.Code, w.Body.String())
 	}
 }

@@ -900,6 +900,26 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "delete_guide_reminders_id",
+    "method": "DELETE",
+    "path": "/v1/guide/reminders/{id}",
+    "summary": "Delete guide reminders",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "delete_items_id_lyrics_resource",
     "method": "DELETE",
     "path": "/v1/items/{id}/lyrics/{resource}",
@@ -3929,7 +3949,9 @@ export const routes = [
     "query": [
       "cursor",
       "limit",
-      "state"
+      "state",
+      "sort",
+      "group"
     ],
     "errors": [
       "invalid_request",
@@ -3962,6 +3984,31 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_dvr_groups",
+    "method": "GET",
+    "path": "/v1/dvr/groups",
+    "summary": "Read recording groups",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "sort",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
       "internal"
     ],
     "status": 200,
@@ -4014,6 +4061,27 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_dvr_recordings_id_image",
+    "method": "GET",
+    "path": "/v1/dvr/recordings/{id}/image",
+    "summary": "Read retained recording programme image",
+    "access": "device",
+    "requires": "read",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media"
+  },
+  {
     "id": "get_dvr_storage",
     "method": "GET",
     "path": "/v1/dvr/storage",
@@ -4028,6 +4096,26 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_dvr_summary",
+    "method": "GET",
+    "path": "/v1/dvr/summary",
+    "summary": "Read recording summary",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
       "internal"
     ],
     "status": 200,
@@ -4210,6 +4298,38 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "get_guide_airings",
+    "method": "GET",
+    "path": "/v1/guide/airings",
+    "summary": "Read guide airings",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "search",
+      "seriesId",
+      "title",
+      "channelId",
+      "sourceId",
+      "kind",
+      "start",
+      "end",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_guide_channels",
     "method": "GET",
     "path": "/v1/guide/channels",
@@ -4248,6 +4368,60 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_guide_now_next",
+    "method": "GET",
+    "path": "/v1/guide/now-next",
+    "summary": "Read guide now-next",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "kind",
+      "sourceId",
+      "group",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_guide_on_now",
+    "method": "GET",
+    "path": "/v1/guide/on-now",
+    "summary": "Read guide on-now",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "kind",
+      "sourceId",
+      "group",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_guide_programme_image",
     "method": "GET",
     "path": "/v1/guide/programme-images/{generation}/{programme}",
@@ -4268,6 +4442,30 @@ export const routes = [
     "responseContentType": "application/octet-stream",
     "http": true,
     "admission": "media"
+  },
+  {
+    "id": "get_guide_reminders",
+    "method": "GET",
+    "path": "/v1/guide/reminders",
+    "summary": "Get guide reminders",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_guide_sources",
@@ -13008,6 +13206,26 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "put_guide_reminders",
+    "method": "PUT",
+    "path": "/v1/guide/reminders",
+    "summary": "Put guide reminders",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "put_home_layout",
     "method": "PUT",
     "path": "/v1/home/layout",
@@ -16666,6 +16884,7 @@ export const routePaths = {
   "delete_direct_two_factor": "/v1/direct/two-factor",
   "delete_dvr_recordings_id": "/v1/dvr/recordings/{id}",
   "delete_dvr_rules_id": "/v1/dvr/rules/{id}",
+  "delete_guide_reminders_id": "/v1/guide/reminders/{id}",
   "delete_items_id_lyrics_resource": "/v1/items/{id}/lyrics/{resource}",
   "delete_me_removed_titles_id": "/v1/me/removed-titles/{id}",
   "delete_metadata_kind_id_art_role_upload_candidateId": "/v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}",
@@ -16805,9 +17024,12 @@ export const routePaths = {
   "get_download_usage": "/v1/downloads/usage",
   "get_dvr": "/v1/dvr",
   "get_dvr_channels": "/v1/dvr/channels",
+  "get_dvr_groups": "/v1/dvr/groups",
   "get_dvr_recordings_id": "/v1/dvr/recordings/{id}",
   "get_dvr_recordings_id_delete_preview": "/v1/dvr/recordings/{id}/delete-preview",
+  "get_dvr_recordings_id_image": "/v1/dvr/recordings/{id}/image",
   "get_dvr_storage": "/v1/dvr/storage",
+  "get_dvr_summary": "/v1/dvr/summary",
   "get_events": "/v1/events",
   "get_feedback": "/v1/feedback",
   "get_feedback_capabilities": "/v1/feedback/capabilities",
@@ -16815,8 +17037,12 @@ export const routePaths = {
   "get_feedback_reports": "/v1/feedback/reports",
   "get_feedback_reports_id": "/v1/feedback/reports/{id}",
   "get_guide": "/v1/guide",
+  "get_guide_airings": "/v1/guide/airings",
   "get_guide_channels": "/v1/guide/channels",
+  "get_guide_now_next": "/v1/guide/now-next",
+  "get_guide_on_now": "/v1/guide/on-now",
   "get_guide_programme_image": "/v1/guide/programme-images/{generation}/{programme}",
+  "get_guide_reminders": "/v1/guide/reminders",
   "get_guide_sources": "/v1/guide/sources",
   "get_health_live": "/health/live",
   "get_health_ready": "/health/ready",
@@ -17186,6 +17412,7 @@ export const routePaths = {
   "put_dvr_recordings_id_keep": "/v1/dvr/recordings/{id}/keep",
   "put_dvr_rules_id": "/v1/dvr/rules/{id}",
   "put_dvr_storage": "/v1/dvr/storage",
+  "put_guide_reminders": "/v1/guide/reminders",
   "put_home_layout": "/v1/home/layout",
   "put_items_id_analysis_policy": "/v1/items/{id}/analysis/policy",
   "put_items_id_lyrics_selection": "/v1/items/{id}/lyrics/selection",

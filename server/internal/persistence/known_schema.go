@@ -295,6 +295,7 @@ index download_requests_target
 index download_requests_viewer
 index download_requests_work
 index dvr_catalog_provenance_asset_id_fk
+index dvr_programme_images_url
 index dvr_recording_shares_capture
 index dvr_recordings_due
 index dvr_recordings_owner_page
@@ -374,6 +375,7 @@ index live_programme_images_digest
 index live_programmes_lineage
 index live_programmes_provider_key
 index live_programmes_window
+index live_reminders_owner
 index live_remote_due
 index live_remote_previews_expiry
 index live_reservation_window
@@ -858,6 +860,7 @@ table dvr_delete_work
 table dvr_maintenance_cursors
 table dvr_owner_revisions
 table dvr_private_libraries
+table dvr_programme_images
 table dvr_receipts
 table dvr_recording_grants
 table dvr_recording_shares
@@ -959,6 +962,7 @@ table live_programme_icons
 table live_programme_images
 table live_programme_metadata
 table live_programmes
+table live_reminders
 table live_remote_configs
 table live_remote_previews
 table live_remote_save_bindings
@@ -1808,6 +1812,7 @@ trigger dvr_managed_source_update
 trigger dvr_owner_revisions_bound_check
 trigger dvr_owner_revisions_bound_delete
 trigger dvr_owner_revisions_bound_insert
+trigger dvr_preserve_programme_image
 trigger dvr_preserve_recording_dependency
 trigger dvr_recording_grants_recording_groups_list_delete
 trigger dvr_recording_grants_recording_groups_list_insert
@@ -1821,6 +1826,10 @@ trigger dvr_recordings_my_recordings_list_update
 trigger dvr_recordings_tuners_list_delete
 trigger dvr_recordings_tuners_list_insert
 trigger dvr_recordings_tuners_list_update
+trigger dvr_refresh_programme_image
+trigger dvr_release_programme_image
+trigger dvr_retain_late_programme_image
+trigger dvr_retain_programme_image
 trigger dvr_retire_disabled_rule_dependency
 trigger dvr_retirement_catalog_revision
 trigger dvr_rules_bound_check
@@ -1936,6 +1945,7 @@ trigger live_logo_source_update
 trigger live_preference_receipts_bound_check
 trigger live_preference_receipts_bound_delete
 trigger live_preference_receipts_bound_insert
+trigger live_reminders_bound
 trigger live_remote_configs_live_sources_list_delete
 trigger live_remote_configs_live_sources_list_insert
 trigger live_remote_configs_live_sources_list_update

@@ -3552,9 +3552,9 @@ CREATE TABLE dvr_owner_revisions(owner_key TEXT PRIMARY KEY,revision INTEGER NOT
 CREATE TABLE dvr_receipts(owner_key TEXT NOT NULL,request_id TEXT NOT NULL,digest TEXT NOT NULL,result_json TEXT NOT NULL,created_ms INTEGER NOT NULL,PRIMARY KEY(owner_key,request_id)) STRICT;
 CREATE TABLE dvr_rules(
  id TEXT PRIMARY KEY,owner_key TEXT NOT NULL,authority TEXT NOT NULL,account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
- source_id TEXT NOT NULL REFERENCES live_source_identities(id),series_id TEXT NOT NULL,revision INTEGER NOT NULL,
+ source_id TEXT NOT NULL REFERENCES live_source_identities(id),series_id TEXT NOT NULL,match_title TEXT NOT NULL DEFAULT '',match_channel TEXT NOT NULL DEFAULT '',revision INTEGER NOT NULL,
  config_json TEXT NOT NULL,enabled INTEGER NOT NULL,deleted INTEGER NOT NULL DEFAULT 0,updated_ms INTEGER NOT NULL,
- UNIQUE(owner_key,source_id,series_id)) STRICT;
+ UNIQUE(owner_key,source_id,series_id,match_title,match_channel)) STRICT;
 CREATE TABLE dvr_recordings(
  id TEXT PRIMARY KEY,owner_key TEXT NOT NULL,authority TEXT NOT NULL,account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
  source_id TEXT NOT NULL REFERENCES live_source_identities(id),channel_id TEXT NOT NULL,programme_id TEXT NOT NULL,guide_generation TEXT NOT NULL,
@@ -8303,3 +8303,21 @@ END;
 CREATE TRIGGER catalog_removed_title_reference_delete AFTER DELETE ON catalog_title_tombstone_viewers BEGIN
  INSERT INTO catalog_removed_title_revisions VALUES(OLD.profile_id,1) ON CONFLICT(profile_id) DO UPDATE SET revision=revision+1;
 END;
+
+CREATE TABLE live_reminders(id TEXT PRIMARY KEY,owner_key TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN('live-source','library-channel')),source_id TEXT NOT NULL,channel_id TEXT NOT NULL,generation_id TEXT NOT NULL,programme_id TEXT NOT NULL,revision INTEGER NOT NULL,start_utc TEXT NOT NULL) STRICT;
+CREATE INDEX live_reminders_owner ON live_reminders(owner_key,id);
+CREATE TRIGGER live_reminders_bound BEFORE INSERT ON live_reminders WHEN (SELECT count(*) FROM live_reminders WHERE owner_key=NEW.owner_key)>=1000 AND NOT EXISTS(SELECT 1 FROM live_reminders WHERE id=NEW.id) BEGIN SELECT RAISE(ABORT,'This profile has reached its reminder limit.'); END;
+
+CREATE TABLE dvr_programme_images(recording_id TEXT PRIMARY KEY REFERENCES dvr_recordings(id) ON DELETE CASCADE,url TEXT NOT NULL REFERENCES live_programme_images(url),digest TEXT NOT NULL) STRICT;
+CREATE TRIGGER dvr_retain_programme_image AFTER INSERT ON dvr_recordings BEGIN
+ INSERT OR IGNORE INTO dvr_programme_images SELECT NEW.id,img.url,img.digest FROM live_programme_icons i JOIN live_programme_images img ON img.url=i.url WHERE i.generation_id=NEW.guide_generation AND i.programme_id=NEW.programme_id;
+END;
+CREATE TRIGGER dvr_refresh_programme_image AFTER UPDATE OF guide_generation,programme_json ON dvr_recordings WHEN NEW.state NOT IN('deleted','pending-delete') BEGIN
+ INSERT OR IGNORE INTO dvr_programme_images SELECT NEW.id,img.url,img.digest FROM live_programme_icons i JOIN live_programme_images img ON img.url=i.url WHERE i.generation_id=NEW.guide_generation AND i.programme_id=NEW.programme_id;
+END;
+CREATE TRIGGER dvr_retain_late_programme_image AFTER INSERT ON live_programme_images BEGIN
+ INSERT OR IGNORE INTO dvr_programme_images SELECT r.id,NEW.url,NEW.digest FROM dvr_recordings r JOIN live_programme_icons i ON i.generation_id=r.guide_generation AND i.programme_id=r.programme_id WHERE i.url=NEW.url AND r.state NOT IN('deleted','pending-delete');
+END;
+CREATE TRIGGER dvr_release_programme_image AFTER UPDATE OF state ON dvr_recordings WHEN NEW.state='deleted' BEGIN DELETE FROM dvr_programme_images WHERE recording_id=NEW.id; END;
+CREATE TRIGGER dvr_preserve_programme_image BEFORE DELETE ON live_programme_images WHEN EXISTS(SELECT 1 FROM dvr_programme_images WHERE url=OLD.url) BEGIN SELECT RAISE(IGNORE); END;
+CREATE INDEX dvr_programme_images_url ON dvr_programme_images(url);

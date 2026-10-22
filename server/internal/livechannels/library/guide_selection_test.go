@@ -2,6 +2,7 @@ package librarychannels
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -77,5 +78,55 @@ func TestLibraryDirectoryBypassesScheduleAndKeepsProfilePreferences(t *testing.T
 		if len(row.Channel.Programmes) != 0 || row.Channel.Generation == "" || row.Source.Provenance != livechannels.LibraryChannel {
 			t.Fatalf("directory native handle incomplete: %+v", row)
 		}
+	}
+}
+
+func TestLibraryGuideAiringsUseCurrentItemAdmission(t *testing.T) {
+	f := justinsLibrary(t)
+	s, _ := New(f.db)
+	s.now = func() time.Time { return f.now }
+	ctx := context.Background()
+	c := channel("airings", Query{LibraryIDs: []string{"movies"}, Kinds: []string{"movie"}, Order: "title", Text: "shark"}, "sequential", "none")
+	if _, e := s.Save(ctx, ownerAuthority(nil), SaveInput{RequestID: "airings", Config: c}); e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < 500; i++ {
+		worked, e := s.RunBatch(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if !worked {
+			break
+		}
+	}
+	live, e := livechannels.New(f.db)
+	if e != nil {
+		t.Fatal(e)
+	}
+	viewer := livechannels.Owner{Authority: "local", AccountID: "owner", ProfileID: "owner"}
+	allowed := true
+	authority := func(ctx context.Context, tx *sql.Tx) (livechannels.DirectoryScope, error) {
+		rows, fence, e := s.DirectoryRowsTx(ctx, tx, ownerAuthority(nil), viewer)
+		return livechannels.DirectoryScope{Fence: fence, LibraryRows: rows, Viewer: viewer}, e
+	}
+	project := func(ctx context.Context, tx *sql.Tx, v []livechannels.Airing) ([]livechannels.Airing, error) {
+		return s.ProjectAiringsTx(ctx, tx, ownerAuthority(func(string) bool { return allowed }), v)
+	}
+	query := livechannels.AiringsQuery{Start: f.now, End: f.now.Add(6 * time.Hour), Search: "shark", Limit: 5}
+	page, e := live.Airings(ctx, authority, project, query)
+	if e != nil || len(page.Groups) == 0 {
+		t.Fatalf("library airings %+v %v", page, e)
+	}
+	for _, g := range page.Groups {
+		for _, a := range g.Airings {
+			if a.Channel.Provenance != livechannels.LibraryChannel || a.Programme.Flags.Live {
+				t.Fatalf("library slot falsely live: %+v", a)
+			}
+		}
+	}
+	allowed = false
+	page, e = live.Airings(ctx, authority, project, query)
+	if e != nil || len(page.Groups) != 0 {
+		t.Fatalf("denied item title leaked through Search %+v %v", page, e)
 	}
 }

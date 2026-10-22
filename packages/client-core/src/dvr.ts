@@ -6,6 +6,7 @@ import {firstOfEach, keepReadable, oneOfOr} from './tolerant.ts';
 import {durationIntent, wireDurations} from './wire-units.ts';
 /** DVR intent protocol. This module never constructs a stream URL or starts playback.
  * Each instance belongs to one authenticated server/viewer lifetime. */
+import {parseGuideProgramme} from './channel-guide.ts';
 import type {ChannelApi, GuideChannel, GuideProgramme} from './channel-guide';
 export type DVRView = 'upcoming' | 'recorded' | 'rules' | 'history' | 'storage';
 export type RecordingState = 'scheduled' | 'conflicted' | 'waiting-source' | 'waiting-guide' | 'preparing' | 'recording' | 'finalizing' | 'completed' | 'incomplete-playable' | 'failed' | 'cancelled' | 'pending-delete' | 'deleted';
@@ -13,12 +14,12 @@ export type RecordingOptions = {beforeSeconds: number; afterSeconds: number; pri
 export type Occurrence = {sourceId: string; channelId: string; generation: string; programmeId: string};
 export type Recording = {id: string; revision: number; occurrence: Occurrence; programme: GuideProgramme; ruleId: string; options: RecordingOptions; start: string; end: string; state: RecordingState; reason: string; keep: boolean; itemId: string; libraryId: string; coverageStart: string; coverageEnd: string; bytes: number; channel?: {id: string; name: string; number: string}; watched?: boolean|null;
  /** FEAT-08: the show this recording belongs to (rows group by it); absent for one-offs. */
- seriesId?: string; seriesTitle?: string; conflicts: {start: string; end: string; demand: number; capacity: number}[]};
-export type RuleConfig = {name: string; sourceId: string; seriesId: string; enabled: boolean; episodes: 'all' | 'new'; allowedChannels: string[]; blockedChannels: string[]; keywords: string[]; blockedKeywords: string[]; options: RecordingOptions};
-export type RecordingRule = {id: string; revision: number; config: RuleConfig; reconcileState: string; diagnostic: string; updatedAt: string};
+ seriesId?: string; seriesTitle?: string; positionMs?:number;durationMs?:number;overlaps?:RecordingOverlap[]; conflicts: {start: string; end: string; demand: number; capacity: number}[]};
+export type RuleConfig = {matchKind?:"series"|"title";title?:string;channelId?:string;name: string; sourceId: string; seriesId: string; enabled: boolean; episodes: 'all' | 'new'; allowedChannels: string[]; blockedChannels: string[]; keywords: string[]; blockedKeywords: string[]; options: RecordingOptions};
+export type RecordingRule = {id: string; revision: number; config: RuleConfig; reconcileState: string; diagnostic: string; updatedAt: string;summary?:RuleSummary};
 export type DVRPage = {recordings: Recording[]; rules: RecordingRule[]; nextCursor: string; revision: number; captureAvailable: boolean; captureUnavailableReason: string; deletionAvailable: boolean; usage: {bytes: number; pendingDeleteBytes: number; recordings: number}};
 export type Capacity = {known: boolean; effective: number; planningEstimate?: number; mode?: string};
-export type RecordingDetail = {recording: Recording; capacity: Capacity; overlaps: {id: string; title: string; start: string; end: string; priority: number; state: string}[]; nextOverlap: string};
+export type RecordingDetail = {recording: Recording; capacity: Capacity; overlaps: RecordingOverlap[]; nextOverlap: string};
 export type RulePreview = {matches: number; unknownNewEvidence: number; sample: GuideProgramme[]; generation: string; capacity: Capacity};
 export type DeletePreview = {recordingId: string; revision: number; bytes: number; keep: boolean; activeReaders: boolean; result: string};
 export type StoragePolicy = {revision: number; retentionDays: number; episodeLimit: number; floorBytes: number; capBytes: number};
@@ -43,7 +44,9 @@ function programme(v: unknown): GuideProgramme {
  const lineage=oneOfOr('dvr','programme.lineage',v.lineage,['provider-id','interval-only','generated'] as const,'interval-only');
  const seriesId=v.seriesId??'',episodeId=v.episodeId??'',description=text(v.description??'',8192)?v.description??'':'',newEvidence=oneOfOr('dvr','programme.newEvidence',v.newEvidence||undefined,['new','repeat','unknown'] as const,'unknown');
  if(!text(seriesId,512)||!text(episodeId,512))invalid();
- return {id:v.id,channelId:v.channelId,title:v.title,start:v.start,end:v.end,lineage,seriesId,episodeId,description,newEvidence} as GuideProgramme;
+ const facts=parseGuideProgramme({...v,seriesId:'',episodeId:''},v.channelId);
+ const image=typeof v.image==='string'&&/^\/v1\/dvr\/recordings\/[a-f0-9]{64}\/image$/.test(v.image)?v.image:facts.image;
+ return {...facts,lineage,seriesId,episodeId,description,newEvidence,...(image?{image}:{})};
 }
 export function parseRecording(wire: unknown): Recording {
  const v: unknown = optionsFromWire(wire);
@@ -67,7 +70,8 @@ export function parseRecording(wire: unknown): Recording {
  // FEAT-08: optional grouping key and show name; an unreadable value is left out, never fatal.
  const series={...(text(v.seriesId,512)&&v.seriesId?{seriesId:v.seriesId}:{}),...(text(v.seriesTitle,512)&&v.seriesTitle?{seriesTitle:v.seriesTitle}:{})};
  const options:RecordingOptions={beforeSeconds:v.options.beforeSeconds,afterSeconds:v.options.afterSeconds,priority:v.options.priority,retentionDays:v.options.retentionDays,episodeLimit:v.options.episodeLimit};
- return {id:v.id,revision:v.revision,occurrence:{sourceId:v.occurrence.sourceId,channelId:v.occurrence.channelId,generation:v.occurrence.generation,programmeId:v.occurrence.programmeId},programme:p,ruleId:v.ruleId,options,start:v.start,end:v.end,state:v.state,reason:v.reason,keep:v.keep,itemId:v.itemId,libraryId:v.libraryId,coverageStart:v.coverageStart,coverageEnd:v.coverageEnd,bytes:v.bytes,...(channel===undefined?{}:{channel}),...(watched===undefined?{}:{watched}),conflicts:v.conflicts.map((c:any)=>({start:c.start,end:c.end,demand:c.demand,capacity:c.capacity})),...series} as Recording;
+ const progress={...(v.positionMs===undefined?{}:{positionMs:checkedNumber(v.positionMs)}),...(v.durationMs===undefined?{}:{durationMs:checkedNumber(v.durationMs)}),...(v.overlaps===undefined?{}:{overlaps:parseOverlaps(v.overlaps)})};
+ return {...progress,id:v.id,revision:v.revision,occurrence:{sourceId:v.occurrence.sourceId,channelId:v.occurrence.channelId,generation:v.occurrence.generation,programmeId:v.occurrence.programmeId},programme:p,ruleId:v.ruleId,options,start:v.start,end:v.end,state:v.state,reason:v.reason,keep:v.keep,itemId:v.itemId,libraryId:v.libraryId,coverageStart:v.coverageStart,coverageEnd:v.coverageEnd,bytes:v.bytes,...(channel===undefined?{}:{channel}),...(watched===undefined?{}:{watched}),conflicts:v.conflicts.map((c:any)=>({start:c.start,end:c.end,demand:c.demand,capacity:c.capacity})),...series} as Recording;
 }
 /** Part 2.2: unwatched counts only watched===false; null (unpublished) counts as neither. */
 export function countUnwatched(recordings: readonly Pick<Recording,'watched'>[]): number {
@@ -78,12 +82,12 @@ const PADDING = {beforeSeconds: 'beforeMs', afterSeconds: 'afterMs'} as const;
 function optionsFromWire(v:unknown):unknown{return object(v)&&object(v.options)?{...v,options:wireDurations(v.options,PADDING)}:v;}
 function configToWire(c:RuleConfig):Record<string,unknown>{return {...c,options:durationIntent(c.options,PADDING)};}
 function config(v:unknown):RuleConfig{
- if(!object(v)||!text(v.name,160)||!v.name||!id(v.sourceId,48)||!text(v.seriesId,512)||!v.seriesId||typeof v.enabled!=='boolean'||!['all','new'].includes(v.episodes)||!validRecordingOptions(v.options))invalid();
+ if(!object(v)||!text(v.name,160)||!v.name||!id(v.sourceId,48)||!text(v.seriesId,512)||(v.matchKind==='title'?(!text(v.title,512)||!v.title||!id(v.channelId)||v.seriesId!==''):!v.seriesId)||typeof v.enabled!=='boolean'||!['all','new'].includes(v.episodes)||!validRecordingOptions(v.options))invalid();
  for(const k of ['allowedChannels','blockedChannels'])if(!Array.isArray(v[k])||v[k].length>2000||v[k].some((x:unknown)=>!id(x)))invalid();
  for(const k of ['keywords','blockedKeywords'])if(!Array.isArray(v[k])||v[k].length>20||v[k].some((x:unknown)=>!text(x,128)||!x.trim()))invalid();
- return {name:v.name,sourceId:v.sourceId,seriesId:v.seriesId,enabled:v.enabled,episodes:v.episodes,allowedChannels:[...v.allowedChannels],blockedChannels:[...v.blockedChannels],keywords:[...v.keywords],blockedKeywords:[...v.blockedKeywords],options:{beforeSeconds:v.options.beforeSeconds,afterSeconds:v.options.afterSeconds,priority:v.options.priority,retentionDays:v.options.retentionDays,episodeLimit:v.options.episodeLimit}};
+ return {...(v.matchKind===undefined?{}:{matchKind:oneOfOr("dvr","rule.matchKind",v.matchKind,["series","title"] as const,"series")}),...(v.title===undefined?{}:{title:v.title}),...(v.channelId===undefined?{}:{channelId:v.channelId}),name:v.name,sourceId:v.sourceId,seriesId:v.seriesId,enabled:v.enabled,episodes:v.episodes,allowedChannels:[...v.allowedChannels],blockedChannels:[...v.blockedChannels],keywords:[...v.keywords],blockedKeywords:[...v.blockedKeywords],options:{beforeSeconds:v.options.beforeSeconds,afterSeconds:v.options.afterSeconds,priority:v.options.priority,retentionDays:v.options.retentionDays,episodeLimit:v.options.episodeLimit}};
 }
-function rule(v:unknown):RecordingRule{if(!object(v)||!id(v.id)||!number(v.revision,1)||!text(v.reconcileState,64)||!text(v.diagnostic,256)||!instant(v.updatedAt))invalid();return {id:v.id,revision:v.revision,config:config(optionsFromWire(v.config)),reconcileState:v.reconcileState,diagnostic:v.diagnostic,updatedAt:v.updatedAt} as RecordingRule;}
+function rule(v:unknown):RecordingRule{if(!object(v)||!id(v.id)||!number(v.revision,1)||!text(v.reconcileState,64)||!text(v.diagnostic,256)||!instant(v.updatedAt))invalid();return {id:v.id,revision:v.revision,config:config(optionsFromWire(v.config)),reconcileState:v.reconcileState,diagnostic:v.diagnostic,updatedAt:v.updatedAt,...(v.summary===undefined?{}:{summary:parseRuleSummary(v.summary)})} as RecordingRule;}
 /**
  * One page of recordings and rules. The cursor, the revision and the bounds are exact. A
  * recording or a rule that cannot be read (or is in a state this app does not know, so it could
@@ -118,7 +122,7 @@ export const mutableRecording=(r:Recording)=>['scheduled','conflicted','waiting-
 export const activeRecording=(r:Recording)=>mutableRecording(r)||['preparing','recording','finalizing'].includes(r.state);
 export const playableRecording=(r:Recording)=>!!r.itemId&&!!r.libraryId&&['completed','incomplete-playable'].includes(r.state);
 export function occurrence(d:RecordingDraft):Occurrence{return {sourceId:d.channel.sourceId,channelId:d.channel.id,generation:d.channel.generation,programmeId:d.programme.id};}
-export function draftRule(d:RecordingDraft):RuleConfig{return {name:d.programme.title,sourceId:d.channel.sourceId,seriesId:d.programme.seriesId,enabled:true,episodes:'all',allowedChannels:[],blockedChannels:[],keywords:[],blockedKeywords:[],options:{...defaultRecordingOptions}};}
+export function draftRule(d:RecordingDraft):RuleConfig{return {...(!d.programme.seriesId?{matchKind:"title",title:d.programme.title,channelId:d.channel.id}:{}),name:d.programme.title,sourceId:d.channel.sourceId,seriesId:d.programme.seriesId,enabled:true,episodes:'all',allowedChannels:[],blockedChannels:[],keywords:[],blockedKeywords:[],options:{...defaultRecordingOptions}};}
 export type SeriesRuleUi = {episodes: 'all'|'new'; keep: number; beforeSeconds: number; afterSeconds: number; anyChannel: boolean};
 /**
  * FEAT-02: rule-editor state → RuleConfig (plus the anchor). Both clients' record-series dialogs
@@ -129,7 +133,7 @@ export function seriesRuleConfig(d:RecordingDraft,ui:SeriesRuleUi):{config:RuleC
  if(ui.episodes!=='all'&&ui.episodes!=='new')invalid();
  const draft=draftRule({...d,series:true});
  draft.episodes=ui.episodes;
- draft.allowedChannels=ui.anyChannel?[]:[d.channel.id];
+ draft.allowedChannels=ui.anyChannel&&draft.matchKind!=="title"?[]:[d.channel.id];
  draft.options={...defaultRecordingOptions,beforeSeconds:ui.beforeSeconds,afterSeconds:ui.afterSeconds,episodeLimit:ui.keep};
  return {config:config(draft),anchor:occurrence(d)};
 }
@@ -159,8 +163,10 @@ export class DVRClient {
   if(epoch!==this.accessEpoch)throw new Error('Recording scope closed.');
   return this.read<T>(path,method,{...body,requestId});
  }
- async list(view:Exclude<DVRView,'storage'>,cursor=''){return parseDVRPage(await this.read(routePath("get_dvr") + "?" + (new URLSearchParams({state:view,limit:'50',...(cursor?{cursor}:{})}))));}
- async detail(recordingId:string,after=''):Promise<RecordingDetail>{if(!id(recordingId)||after&&!id(after))invalid();const v=await this.read<RecordingDetail>(encodedRoutePath("get_dvr_recordings_id", {"id": recordingId})+(after?'?after='+after:''));if(!object(v)||!validCapacity(v.capacity)||!Array.isArray(v.overlaps)||v.overlaps.length>20||!text(v.nextOverlap,64)||v.nextOverlap&&!id(v.nextOverlap))invalid();const r=parseRecording(v.recording);if(r.id!==recordingId)invalid();for(const o of v.overlaps)if(!object(o)||!id(o.id)||!text(o.title,512)||!instant(o.start)||!instant(o.end)||Date.parse(o.start)>=Date.parse(o.end)||!number(o.priority,-1000,1000)||!states.includes(o.state))invalid();if(new Set(v.overlaps.map(o=>o.id)).size!==v.overlaps.length)invalid();return {recording:r,capacity:capacity(v.capacity),overlaps:v.overlaps.map(o=>({id:o.id,title:o.title,start:o.start,end:o.end,priority:o.priority,state:o.state})),nextOverlap:v.nextOverlap};}
+ async list(view:Exclude<DVRView,'storage'>,cursor='',sort:'recent'|'title'|'oldest'='recent',group=''){return parseDVRPage(await this.read(routePath("get_dvr") + "?" + (new URLSearchParams({state:view,limit:'50',sort,...(group?{group}:{}),...(cursor?{cursor}:{})}))));}
+ async summary():Promise<DVRSummary>{return parseDVRSummary(await this.read(routePath("get_dvr_summary")));}
+ async groups(sort:'recent'|'title'|'oldest'='recent',cursor=''):Promise<RecordingGroups>{return parseRecordingGroups(await this.read(routePath("get_dvr_groups")+'?'+new URLSearchParams({sort,limit:'30',...(cursor?{cursor}:{})})));}
+ async detail(recordingId:string,after=''):Promise<RecordingDetail>{if(!id(recordingId)||after&&!id(after))invalid();const v=await this.read<RecordingDetail>(encodedRoutePath("get_dvr_recordings_id", {"id": recordingId})+(after?'?after='+after:''));if(!object(v)||!validCapacity(v.capacity)||!Array.isArray(v.overlaps)||v.overlaps.length>20||!text(v.nextOverlap,64)||v.nextOverlap&&!id(v.nextOverlap))invalid();const r=parseRecording(v.recording);if(r.id!==recordingId)invalid();for(const o of v.overlaps)if(!object(o)||!id(o.id)||!text(o.title,512)||!instant(o.start)||!instant(o.end)||Date.parse(o.start)>=Date.parse(o.end)||!number(o.priority,-1000,1000)||!states.includes(o.state))invalid();if(new Set(v.overlaps.map(o=>o.id)).size!==v.overlaps.length)invalid();return {recording:r,capacity:capacity(v.capacity),overlaps:parseOverlaps(v.overlaps),nextOverlap:v.nextOverlap};}
  async schedule(d:RecordingDraft,options:RecordingOptions){if(!validRecordingOptions(options))invalid();return parseRecording(await this.mutate(routePath("post_dvr_recordings"),'POST',{occurrence:occurrence(d),options:durationIntent(options,PADDING)}));}
  async update(r:Recording,options:RecordingOptions){if(!validRecordingOptions(options))invalid();return parseRecording(await this.mutate(encodedRoutePath("patch_dvr_recordings_id", {"id": r.id}),'PATCH',{expectedRevision:r.revision,options:durationIntent(options,PADDING)}));}
  async cancel(r:Recording){return parseRecording(await this.mutate(encodedRoutePath("post_dvr_recordings_id_cancel", {"id": r.id}),'POST',{expectedRevision:r.revision}));}
@@ -215,3 +221,13 @@ export class DVRModel {
   }catch(e){if(epoch===this.epoch&&request===this.overlapRequest)this.publish({error:dvrMessage(e),...(isAccessError(e)?{page:null,storage:null,detail:null,accessDenied:true}:{})});}
  }
 }
+
+export type RecordingOverlap={id:string;title:string;start:string;end:string;priority:number;state:string;channel?:{id:string;name:string;number:string};ruleId?:string;episode?:GuideProgramme['episode']};
+export type RuleSummary={upcoming:number;recorded:number;conflicts:number;matchingTonight:number;next?:GuideProgramme;channel:{id:string;name:string;number:string}};
+export type DVRSummary={upcoming:number;recorded:number;rules:number;conflicts:number;groups:number;unwatched:number};
+export type RecordingGroups={groups:{key:string;title:string;recordings:number;unwatched:number;kept:number;exceptions:number;latest:string;recording:Recording}[];nextCursor:string;revision:number};
+function checkedNumber(v:unknown):number{if(!number(v))invalid();return v;}
+function parseOverlaps(v:unknown):RecordingOverlap[]{if(!Array.isArray(v)||v.length>20)invalid();return v.map(o=>{if(!object(o)||!id(o.id)||!text(o.title,512)||!instant(o.start)||!instant(o.end)||!number(o.priority,-1000,1000)||!states.includes(o.state))invalid();const ch=o.channel;if(ch!==undefined&&(!object(ch)||!text(ch.id,64)||!text(ch.name,256)||!text(ch.number,32)))invalid();return {id:o.id,title:o.title,start:o.start,end:o.end,priority:o.priority,state:o.state,...(ch?{channel:{id:ch.id,name:ch.name,number:ch.number}}:{}),...(typeof o.ruleId==='string'?{ruleId:o.ruleId}:{}),...(object(o.episode)?{episode:{season:checkedNumber(o.episode.season??0),number:checkedNumber(o.episode.number??0)}}:{})};});}
+function parseRuleSummary(v:unknown):RuleSummary{if(!object(v)||!object(v.channel)||!text(v.channel.id,64)||!text(v.channel.name,256)||!text(v.channel.number,32))invalid();return {upcoming:checkedNumber(v.upcoming),recorded:checkedNumber(v.recorded),conflicts:checkedNumber(v.conflicts),matchingTonight:checkedNumber(v.matchingTonight),...(v.next===undefined?{}:{next:programme(v.next)}),channel:{id:v.channel.id,name:v.channel.name,number:v.channel.number}};}
+export function parseDVRSummary(v:unknown):DVRSummary{if(!object(v))invalid();return {upcoming:checkedNumber(v.upcoming),recorded:checkedNumber(v.recorded),rules:checkedNumber(v.rules),conflicts:checkedNumber(v.conflicts),groups:checkedNumber(v.groups),unwatched:checkedNumber(v.unwatched)};}
+export function parseRecordingGroups(v:unknown):RecordingGroups{if(!object(v)||!Array.isArray(v.groups)||v.groups.length>50||!text(v.nextCursor,4096)||!number(v.revision))invalid();return {revision:v.revision,nextCursor:v.nextCursor,groups:v.groups.map(g=>{if(!object(g)||!text(g.key,1200)||!text(g.title,512)||!instant(g.latest))invalid();return {key:g.key,title:g.title,latest:g.latest,recordings:checkedNumber(g.recordings),unwatched:checkedNumber(g.unwatched),kept:checkedNumber(g.kept),exceptions:checkedNumber(g.exceptions),recording:parseRecording(g.recording)};})};}

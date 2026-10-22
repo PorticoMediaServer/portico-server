@@ -147,6 +147,9 @@ type Programme struct {
 	Image string `json:"image,omitempty"`
 }
 type GuideQuery struct {
+	// Compact returns only the first three current/future slots per channel.
+	Compact bool
+
 	Viewer        Owner
 	FavoritesOnly bool
 	IncludeHidden bool

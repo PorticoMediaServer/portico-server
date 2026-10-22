@@ -157,7 +157,10 @@ func (s *Store) ReconcileOne(ctx context.Context) (bool, error) {
 			if err != nil {
 				return false, err
 			}
-			rows, e := tx.QueryContext(ctx, programmeQuery+` WHERE p.generation_id=? AND m.series_id=? AND p.id>? AND p.end_utc>? ORDER BY p.id LIMIT 64`, current, c.SeriesID, cursor, s.now().UTC().Format(time.RFC3339))
+			predicate, args := c.identitySQL()
+			args = append([]any{current}, args...)
+			args = append(args, cursor, s.now().UTC().Format(time.RFC3339))
+			rows, e := tx.QueryContext(ctx, programmeQuery+` WHERE p.generation_id=? AND `+predicate+` AND p.id>? AND p.end_utc>? ORDER BY p.id LIMIT 64`, args...)
 			if e != nil {
 				return false, e
 			}
