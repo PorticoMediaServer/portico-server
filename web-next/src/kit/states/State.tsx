@@ -1,7 +1,7 @@
 import {useId, type CSSProperties, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {Icon, type IconName} from '../Icon';
-import {Button} from '../controls';
+import {Button} from '../controls/Button';
 import {Artwork, ColourBackdrop, type ArtworkSource} from '../artwork';
 import {knownProgress} from './model';
 import styles from './states.module.css';

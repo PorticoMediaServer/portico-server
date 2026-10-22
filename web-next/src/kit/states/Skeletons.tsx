@@ -1,6 +1,6 @@
 import type {CSSProperties, ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
-import {AmbientArt, type AmbientArtSource, type ArtworkSource} from '../artwork';
+import {AmbientArt, type AmbientArtProps, type AmbientArtSource, type ArtworkSource} from '../artwork';
 import {loadingPhase, skeletonGridWindow, type SkeletonWindow} from './model';
 import styles from './skeletons.module.css';
 
@@ -45,10 +45,14 @@ export type SkeletonRow = Readonly<{
   heading?: ReactNode;
   arrived?: ReadonlyMap<number, ReactNode>;
 }>;
+/** Actual sources and decode callbacks remain owned by the artwork renderer. */
+export type SkeletonArtwork = Pick<AmbientArtProps, 'source' | 'foreground' | 'palette' | 'visible' | 'onReady' | 'onError'>;
 export type HomeSkeletonProps = Readonly<{
   elapsedMs: number;
   window: SkeletonWindow;
   header?: ReactNode;
+  art?: SkeletonArtwork;
+  visible?: boolean;
   hero?: ReactNode;
   thumbnails?: ReactNode;
   rows?: readonly SkeletonRow[];
@@ -58,13 +62,13 @@ export type HomeSkeletonProps = Readonly<{
 }>;
 const defaultRows: readonly SkeletonRow[] = [{id: 'continue', shape: 'wide'}, {id: 'posters', shape: 'poster'}];
 
-export function HomeSkeleton({elapsedMs, window, header, hero, thumbnails, rows = defaultRows, slowNotice, className}: HomeSkeletonProps) {
+export function HomeSkeleton({elapsedMs, window, header, art, visible = true, hero, thumbnails, rows = defaultRows, slowNotice, className}: HomeSkeletonProps) {
   const phase = loadingPhase(elapsedMs);
   const phone = window.width < 1024;
   const gutter = phone ? 20 : window.width < 1440 ? 32 + (window.width - 1024) / 13 : 64;
   let nextRowTop = phone ? 586 : 668;
   return <div className={[styles.page, styles.home, phone && styles.phone, className].filter(Boolean).join(' ')} aria-busy="true" aria-label={defaultI18n.t('next.states.homeSkeleton')}>
-    <div className={styles.homeGlow}/>{header}
+    {art ? <div className={styles.homeArt}><AmbientArt {...art} visible={visible && art.visible !== false} arrivalDurationMs={240} treatment={phone ? 'phone' : 'hero'}/></div> : <div className={styles.homeGlow}/>}{header}
     {phase === 'slow' && slowNotice}
     {hero ?? (phase !== 'waiting' && <div className={styles.heroWords}>
       <Skeleton line small={phone} width={phone ? 170 : 230} height={phone ? 11 : 15} className={styles.accentLine}/>
@@ -96,11 +100,12 @@ export function HomeSkeleton({elapsedMs, window, header, hero, thumbnails, rows 
   </div>;
 }
 
-export type PressedTitle = Readonly<{title: ReactNode; artwork?: ArtworkSource; ambient?: AmbientArtSource}>;
+export type PressedTitle = Readonly<{title: ReactNode; artwork?: ArtworkSource; ambient?: AmbientArtSource}> & Pick<SkeletonArtwork, 'visible' | 'onReady' | 'onError'>;
 export type TitleSkeletonProps = Readonly<{
   elapsedMs: number;
   window: SkeletonWindow;
   pressed: PressedTitle;
+  visible?: boolean;
   header?: ReactNode;
   tabs?: ReactNode;
   arrivedFacts?: ReactNode;
@@ -109,26 +114,26 @@ export type TitleSkeletonProps = Readonly<{
   episodes?: ReactNode;
   className?: string;
 }>;
-export function TitleSkeleton({elapsedMs, window, pressed, header, tabs, arrivedFacts, arrivedDescription, arrivedActions, episodes, className}: TitleSkeletonProps) {
+export function TitleSkeleton({elapsedMs, window, pressed, visible = true, header, tabs, arrivedFacts, arrivedDescription, arrivedActions, episodes, className}: TitleSkeletonProps) {
   const phone = window.width < 1024;
-  const visible = loadingPhase(elapsedMs) !== 'waiting';
+  const showShapes = loadingPhase(elapsedMs) !== 'waiting';
   const episodeCount = phone ? 1 : Math.ceil((window.width - 64) / 332);
   return <div className={[styles.page, styles.titlePage, phone && styles.phone, className].filter(Boolean).join(' ')} aria-busy="true" aria-label={defaultI18n.t('next.states.titleSkeleton')}>
-    <div className={styles.titleArt}><AmbientArt source={pressed.ambient} foreground={pressed.artwork} treatment={phone ? 'phone' : 'title'}/></div>
+    <div className={styles.titleArt}><AmbientArt source={pressed.ambient} foreground={pressed.artwork} visible={visible && pressed.visible !== false} arrivalDurationMs={240} onReady={pressed.onReady} onError={pressed.onError} treatment={phone ? 'phone' : 'title'}/></div>
     {header}
     <div className={styles.titleWords}><h1>{pressed.title}</h1>
-      {arrivedFacts ?? (visible && <Skeleton line small={phone} width={phone ? 210 : 320} height={phone ? 11 : 16}/>)}
+      {arrivedFacts ?? (showShapes && <Skeleton line small={phone} width={phone ? 210 : 320} height={phone ? 11 : 16}/>)}
       {!phone && <>
-        {arrivedDescription ?? (visible && <div className={styles.titleSynopsis}><Skeleton line width={540}/><Skeleton line width={520}/><Skeleton line width={380}/></div>)}
-        {arrivedActions ?? (visible && <div className={styles.titleActions}><Skeleton width={160} height={54} radius={12} sheen/><Skeleton width={140} height={54} radius={12}/><Skeleton width={54} height={54} radius={12}/><Skeleton width={54} height={54} radius={12}/></div>)}
+        {arrivedDescription ?? (showShapes && <div className={styles.titleSynopsis}><Skeleton line width={540}/><Skeleton line width={520}/><Skeleton line width={380}/></div>)}
+        {arrivedActions ?? (showShapes && <div className={styles.titleActions}><Skeleton width={160} height={54} radius={12} sheen/><Skeleton width={140} height={54} radius={12}/><Skeleton width={54} height={54} radius={12}/><Skeleton width={54} height={54} radius={12}/></div>)}
       </>}
     </div>
     {phone && <div className={styles.phoneDetails}>
-      {arrivedActions ?? (visible && <div className={styles.titleActions}><Skeleton height={46} sheen className={styles.grow}/>{Array.from({length: 3}, (_, index) => <Skeleton key={index} width={46} height={46}/>)}</div>)}
-      {arrivedDescription ?? (visible && <div className={styles.phoneSynopsis}><Skeleton line width="100%"/><Skeleton line width="70%"/></div>)}
+      {arrivedActions ?? (showShapes && <div className={styles.titleActions}><Skeleton height={46} sheen className={styles.grow}/>{Array.from({length: 3}, (_, index) => <Skeleton key={index} width={46} height={46}/>)}</div>)}
+      {arrivedDescription ?? (showShapes && <div className={styles.phoneSynopsis}><Skeleton line width="100%"/><Skeleton line width="70%"/></div>)}
       {tabs && <div className={styles.phoneTabs}>{tabs}</div>}
-      {episodes ?? (visible && <div className={styles.episodeList}><Skeleton width={136} style={{aspectRatio: '16 / 9'}}/><div className={styles.grow}><Skeleton line width="80%"/><Skeleton line small width="40%"/></div></div>)}
+      {episodes ?? (showShapes && <div className={styles.episodeList}><Skeleton width={136} style={{aspectRatio: '16 / 9'}}/><div className={styles.grow}><Skeleton line width="80%"/><Skeleton line small width="40%"/></div></div>)}
     </div>}
-    {!phone && <><div className={styles.titleTabs}>{tabs}</div><div className={styles.titleEpisodes}>{episodes ?? (visible && Array.from({length: episodeCount}, (_, index) => <Skeleton key={index} width={316} style={{aspectRatio: '16 / 9', flex: 'none'}}/>))}</div></>}
+    {!phone && <><div className={styles.titleTabs}>{tabs}</div><div className={styles.titleEpisodes}>{episodes ?? (showShapes && Array.from({length: episodeCount}, (_, index) => <Skeleton key={index} width={316} style={{aspectRatio: '16 / 9', flex: 'none'}}/>))}</div></>}
   </div>;
 }
