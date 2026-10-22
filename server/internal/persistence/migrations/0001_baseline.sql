@@ -62,7 +62,7 @@ CREATE TABLE catalog_entities(
 CREATE INDEX catalog_entities_title ON catalog_entities(library_id,kind,sort_key,id);
 CREATE INDEX catalog_entities_genreless ON catalog_entities(kind,id) WHERE genre_sources=0;
 CREATE INDEX catalog_entities_fact_gaps ON catalog_entities(kind,(asset_links=0)+(acting_credits=0)*2+(directing_credits=0)*4+(writing_credits=0)*8,id);
-CREATE INDEX catalog_entities_summary_added ON catalog_entities(library_id,kind,added_ms DESC,id DESC) WHERE retired=0;
+CREATE INDEX catalog_entities_summary_added ON catalog_entities(library_id,kind,retired,added_ms DESC,id DESC);
 CREATE INDEX catalog_entities_added ON catalog_entities(library_id,added_ms DESC,id DESC) WHERE added_ms IS NOT NULL;
 CREATE INDEX catalog_entities_parent ON catalog_entities(parent_id,id) WHERE parent_id IS NOT NULL;
 CREATE INDEX catalog_entities_library ON catalog_entities(library_id,kind,id);
