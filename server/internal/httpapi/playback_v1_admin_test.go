@@ -72,3 +72,26 @@ func TestPlaybackV1NowPlayingListsAndTerminates(t *testing.T) {
 		t.Fatalf("unknown session: %d", w.Code)
 	}
 }
+
+func TestPlaybackV1AccountPlaybackListHidesRestrictedTitlesAndStopsOwnSlots(t *testing.T) {
+	f := newV1Fixture(t, 1)
+	member, _ := f.member()
+	var session playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "account-list-000001"}, startBody(f.items[0], nil), 201, &session)
+	if _, err := f.db.Exec(`UPDATE playback_v1_sessions SET account_id='member',profile_id='other-profile' WHERE id=?`, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	var list playbackv1.RemoteControlsDocument
+	w := f.callAs(member, "GET", "/v1/playback/controls", nil, nil, 200, &list)
+	if len(list.Items) != 1 || list.Items[0].Item != nil || list.Items[0].Next != nil || len(list.Items[0].Actions) != 1 || list.Items[0].Actions[0] != "stop" || strings.Contains(w.Body.String(), f.items[0]) {
+		t.Fatalf("account list privacy: %s", w.Body.String())
+	}
+	f.callAs(member, "GET", "/v1/playback/sessions/"+session.ID, nil, nil, 404, nil)
+	f.call("POST", "/v1/playback/controls/"+session.ID+":stop", nil, map[string]any{}, 404, nil)
+	f.callAs(member, "POST", "/v1/playback/controls/"+session.ID+":stop", nil, map[string]any{}, 204, nil)
+	var ended int64
+	var reason string
+	if err := f.db.QueryRow(`SELECT ended_ms,end_reason FROM playback_v1_sessions WHERE id=?`, session.ID).Scan(&ended, &reason); err != nil || ended == 0 || reason != "stopped" {
+		t.Fatalf("stop: %d %s %v", ended, reason, err)
+	}
+}

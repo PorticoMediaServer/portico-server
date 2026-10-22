@@ -143,3 +143,24 @@ func TestPlaybackV1ContractFixtures(t *testing.T) {
 	record("get-playback-session.json", "GetPlaybackSessionResponse", "GET", "/v1/playback/sessions/{id}", nil, read)
 	record("change-playback-session.json", "ChangePlaybackSessionResponse", "PATCH", "/v1/playback/sessions/{id}", []byte(`{"state":"paused"}`), change)
 }
+
+func TestPlaybackV1AccountCapFailureCarriesObservedLimitAndPlayingCount(t *testing.T) {
+	f := newV1Fixture(t, 2)
+	if _, err := f.db.Exec(`UPDATE playback_owner_policy SET per_account_cap=1 WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "cap-observed-00001"}, startBody(f.items[0], nil), 201, nil)
+	w := f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "cap-observed-00002"}, startBody(f.items[1], nil), 409, nil)
+	var doc struct {
+		Error struct {
+			Code, Reason string
+			Current      playbackv1.StreamLimitDetail
+		}
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Error.Code != "stream_limit_reached" || doc.Error.Reason != "owner_account_cap" || doc.Error.Current.Limit != 1 || doc.Error.Current.Playing != 1 || doc.Error.Current.Scope != "account" {
+		t.Fatalf("observed failure: %s", w.Body.String())
+	}
+}

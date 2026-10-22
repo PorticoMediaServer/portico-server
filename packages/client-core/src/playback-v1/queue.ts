@@ -12,7 +12,7 @@ import {routePath, encodedRoutePath} from "../../../contracts/src/routes.ts";
 import {createWindowedCollection, type WindowedCollection} from '../collections/windowed.ts';
 import {PlaybackApiError, call, enc, idempotencyKey, type V1Http} from './http.ts';
 import type {QualityRequest} from './quality.ts';
-import {ContractError, parseEntry, parsePage, parsePreparedNext, parseQueue, parseSession, obj, type PreparedNext, type QueueEntry, type QueueHeader, type Selector, type Session} from './types.ts';
+import {ContractError, revision, parseEntry, parsePage, parsePreparedNext, parseQueue, parseSession, obj, type PreparedNext, type QueueEntry, type QueueHeader, type Selector, type Session} from './types.ts';
 
 /** Published window maximum (spec §8, invariant 8). */
 export const QUEUE_WINDOW_MAX = 200;
@@ -42,6 +42,19 @@ export class QueueClient {
   private http: V1Http;
   private key: () => string;
   constructor(http: V1Http, key: () => string = () => idempotencyKey()) { this.http = http; this.key = key; }
+
+  async entryForItem(id: string, itemId: string, signal?: AbortSignal): Promise<Readonly<{revision: string; entry: QueueEntry}>> {
+    const r=await call(this.http,{method:'GET',path:encodedRoutePath("get_queue_entry_for_item",{id:enc(id)})+'?itemId='+enc(itemId),signal});
+    if(!obj(r.body))throw new ContractError('queue item');
+    return Object.freeze({revision:revision(r.body.revision),entry:parseEntry(r.body.entry)});
+  }
+
+  /** Append a list or whole server-side selection, preserving mixed kinds. */
+  async batch(id: string, revision: string, source: Selector, placement: 'next' | 'end', signal?: AbortSignal): Promise<CreateResult> {
+    const r=await call(this.http,{method:'POST',path:encodedRoutePath("batch_queue",{id:enc(id)}),headers:{'If-Match':revision},body:{placement,source},signal});
+    if(!obj(r.body))throw new ContractError('batch queue');
+    return Object.freeze({queue:parseQueue(r.body.queue),window:Object.freeze(Array.isArray(r.body.window)?r.body.window.map(parseEntry):[]),...(r.body.session?{session:parseSession(r.body.session)}:{})});
+  }
 
   /** Play (or Shuffle, or Resume a show): replaces this device's current queue. */
   async create(segments: readonly SegmentInput[], options: QueueCreateOptions = {}): Promise<CreateResult> {

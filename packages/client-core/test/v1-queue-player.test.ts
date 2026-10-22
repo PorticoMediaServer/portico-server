@@ -762,3 +762,20 @@ test('the queue view carries the viewer\'s choice to start the next title during
     stop();
   }
 });
+
+
+test('episode picks beyond the loaded window continue one run across the full show',async()=>{
+ const {player,playback,stop,log}=setup({server:{containerSize:()=>120,itemKind:()=> 'episode'}});
+ try {
+  await player.playEpisode('show','show-0');
+  const run=playback.getSnapshot().playbackRun;
+  playback.setPlaybackRate(1.5);
+  await player.selectEpisode('show-100');
+  assert.equal(playback.getSnapshot().itemId,'show-100');
+  assert.equal(playback.getSnapshot().playbackRun,run);
+  assert.ok(log.some(r=>r.method==='GET'&&r.path.includes('/entry?itemId=show-100')));
+  assert.equal(log.filter(r=>r.method==='POST'&&r.path==='/v1/queues').length,1);
+  await player.playEpisode('show','show-1');
+  assert.equal(playback.getSnapshot().playbackRun,run+1,'a fresh outside play resets the run');
+ } finally {stop();}
+});

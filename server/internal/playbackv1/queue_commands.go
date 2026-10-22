@@ -1429,3 +1429,53 @@ func (s *Service) planBuilding(ctx context.Context, c Caller, segments []Segment
 	}
 	return nil
 }
+
+// QueueItemView resolves an episode from the full server queue, including
+// entries outside the loaded window. The revision fences the following jump.
+type QueueItemView struct {
+	Revision string     `json:"revision"`
+	Entry    QueueEntry `json:"entry"`
+}
+
+func (s *Service) EntryForItem(ctx context.Context, c Caller, id, item string) (QueueItemView, error) {
+	q, err := s.queueFor(ctx, c, id, "", false)
+	if err != nil {
+		return QueueItemView{}, err
+	}
+	tx, done, err := dbwork.BeginRead(ctx, s.DB)
+	if err != nil {
+		return QueueItemView{}, err
+	}
+	defer done()
+	l, err := s.readLayout(ctx, tx, q)
+	if err != nil {
+		return QueueItemView{}, err
+	}
+	for from := int64(0); from < l.total(); from += WindowMax {
+		l.chunks = map[string][]byte{}
+		if err = l.prefetch(from, min(WindowMax, l.total()-from)); err != nil {
+			return QueueItemView{}, err
+		}
+		for position := from; position < min(from+WindowMax, l.total()); position++ {
+			_, key, e := l.entryAtErr(position)
+			if e != nil {
+				if errors.Is(e, ErrQueueBuilding) {
+					return QueueItemView{}, e
+				}
+				return QueueItemView{}, e
+			}
+			if key != item {
+				continue
+			}
+			entries, e := s.window(ctx, l, c.Principal, position, 1)
+			if e != nil {
+				return QueueItemView{}, e
+			}
+			if len(entries) != 1 || !entries[0].Available {
+				return QueueItemView{}, ErrNotFound
+			}
+			return QueueItemView{Revision: strconv.FormatInt(q.revision, 10), Entry: entries[0]}, nil
+		}
+	}
+	return QueueItemView{}, ErrNotFound
+}

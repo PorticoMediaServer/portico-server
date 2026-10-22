@@ -13,9 +13,11 @@ import (
 )
 
 type ProviderStatus struct {
-	ID      string `json:"id"`
-	Enabled bool   `json:"enabled"`
-	Reason  string `json:"reason,omitempty"`
+	ID       string `json:"id"`
+	Enabled  bool   `json:"enabled"`
+	Reason   string `json:"reason,omitempty"`
+	ResetsAt string `json:"resetsAt,omitempty"`
+	RetryAt  string `json:"retryAt,omitempty"`
 }
 type ProviderCandidate struct {
 	FileID                       int64

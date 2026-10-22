@@ -516,3 +516,44 @@ func TestContainerRequestCursorDoesNotExposeHiddenOrdinals(t *testing.T) {
 		t.Fatal("foreign cursor", err)
 	}
 }
+
+func TestContainerDownloadOptionsAggregateAllBatchesAndRefuseForeignDevice(t *testing.T) {
+	h := requestHarness(t, 43)
+	ctx := context.WithValue(context.Background(), requestBatchObserverKey{}, func(phase string, n int) {
+		if n > requestBatchSize {
+			t.Fatalf("unbounded %s batch %d", phase, n)
+		}
+	})
+	in := ContainerOptionsRequest{Target: ContainerTarget{Kind: "show", ID: h.show}, DeviceID: "device", Policy: EpisodePolicy{Episodes: "all"}}
+	one, err := h.service.Options(ctx, h.viewer, h.itemIDs["ep-0001"], true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := h.service.ContainerOptions(ctx, h.viewer, in, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Total != 43 || len(out.Options) != len(one.Options) {
+		t.Fatalf("aggregate %+v", out)
+	}
+	for _, q := range out.Options {
+		var found *QualityOption
+		for i := range one.Options {
+			if one.Options[i].Quality == q.Quality {
+				found = &one.Options[i]
+			}
+		}
+		if found == nil || q.EstimatedBytes != 43*found.Bytes || q.Estimated != found.Estimated || q.Available != found.Available {
+			t.Fatalf("quality %+v item %+v", q, found)
+		}
+	}
+	in.DeviceID = "foreign-device"
+	if _, err = h.service.ContainerOptions(ctx, h.viewer, in, true); !errors.Is(err, identity.ErrUnauthorized) {
+		t.Fatalf("foreign device %v", err)
+	}
+	in.DeviceID = "device"
+	in.Target.ID = "missing"
+	if _, err = h.service.ContainerOptions(ctx, h.viewer, in, true); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing %v", err)
+	}
+}

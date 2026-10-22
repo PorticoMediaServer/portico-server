@@ -507,3 +507,21 @@ test('a re-plan starts the new presentation where the picture is now, and a loca
   assert.equal(requests.filter(r => r.startsWith('PATCH')).length, patches);
   ctl.dispose();
 });
+
+
+test('batch queue uses the committed route, revision and whole mixed selection',async()=>{
+ const sent: unknown[]=[];
+ const client=new QueueClient({async send(r){sent.push(r);return {status:200,headers:{},body:{queue:{id:'queue',revision:'2',total:3,remainingCount:2,totalDurationMs:3000,durationKnown:true,repeat:'off',segments:[]},window:[]}};}});
+ const source={items:{ids:['film','song']}} as const;
+ const result=await client.batch('queue','1',source,'next');
+ assert.deepEqual(sent,[{method:'POST',path:'/v1/queues/queue/batch',headers:{'If-Match':'1'},body:{placement:'next',source},signal:undefined}]);
+ assert.equal(result.queue.totalDurationMs,3000);assert.equal(result.queue.remainingCount,2);
+});
+
+test('playback options retain verified alternatives and collection successor facts',async()=>{
+ const {parseOptions}=await import('../src/playback-v1/types.ts');
+ const out=parseOptions({itemId:'film',kind:'movie',versions:[],chapters:[],markers:[],qualities:[],alternatives:[{versionId:'v1',label:'1080p'}],collection:{id:'collection',title:'Films',next:{id:'next',title:'Next film',year:2026,genres:['Drama'],backdropUrl:'/v1/items/next/art/backdrop'}}});
+ assert.deepEqual(out.alternatives,[{versionId:'v1',label:'1080p'}]);assert.equal(out.collection?.next.id,'next');assert.equal(out.collection?.next.backdropUrl,'/v1/items/next/art/backdrop');
+ const error=new PlaybackApiError(409,'stream_limit_reached','after_refresh',{scope:'account',limit:2,playing:2});assert.deepEqual(error.streamLimit,{scope:'account',limit:2,playing:2});
+ assert.equal(new PlaybackApiError(409,'stream_limit_reached','after_refresh',{scope:'account',limit:-1,playing:2}).streamLimit,undefined);
+});

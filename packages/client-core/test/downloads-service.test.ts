@@ -338,3 +338,15 @@ test('a quiet read never runs before the first load or on a server without downl
  const s=server([preparation()]),service=new DownloadsService(s.api,()=>'op',10);
  try{await service.revalidate();assert.equal(s.calls.length,0);}finally{service.dispose();}
 });
+
+
+test('container options keep server aggregate sizes and reject a different target',async()=>{
+ const calls: unknown[]=[];let wrong=false;
+ const service=new DownloadsService({async request<T>(path:string,method='GET',body?:unknown):Promise<T>{calls.push({path,method,body});return {target:{kind:'season',id:wrong?'other':'season'},total:43,options:[{quality:'original',label:'Original',estimatedBytes:43000,estimated:false,available:true,unavailableCount:0,unknownSizeCount:0}]} as T;}});
+ try {
+  const result=await service.containerOptions({kind:'season',id:'season'},'device',{episodes:'all'});
+  assert.equal(result.total,43);assert.equal(result.options[0]?.estimatedBytes,43000);
+  assert.deepEqual(calls,[{path:'/v1/downloads/options',method:'POST',body:{target:{kind:'season',id:'season'},deviceId:'device',policy:{episodes:'all'}}}]);
+  wrong=true;await assert.rejects(service.containerOptions({kind:'season',id:'season'},'device',{episodes:'all'}));
+ } finally {service.dispose();}
+});

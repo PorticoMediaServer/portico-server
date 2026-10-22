@@ -435,3 +435,35 @@ func TestProviderSessionExpiryFollowsTheToken(t *testing.T) {
 		}
 	}
 }
+
+func TestViewerProviderStatusProjectsOnlyObservedReasonsAndRetryTimes(t *testing.T) {
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	p := &OpenSubtitles{key: "test-key", credentials: openSubtitlesCredentials{key: "test-key"}}
+	p.now = func() time.Time { return now }
+	for _, reason := range []string{ReasonKeyRejected, ReasonSignInRequired, ReasonQuotaExhausted, ReasonRateLimited, ReasonUnreachable} {
+		p.observed = providerObservation{problem: reason, at: now, retryAt: now.Add(time.Minute), resetAt: now.Add(time.Hour)}
+		got := p.Status()
+		if got.Enabled || got.Reason != reason || got.RetryAt == "" {
+			t.Fatalf("%s: %+v", reason, got)
+		}
+		if reason == ReasonQuotaExhausted && got.ResetsAt == "" {
+			t.Fatal("quota reset omitted")
+		}
+		raw, _ := json.Marshal(got)
+		if strings.Contains(string(raw), "test-key") {
+			t.Fatal("credential leaked")
+		}
+	}
+	p.observed = providerObservation{quotaKnown: true, remaining: 0, resetAt: now.Add(time.Hour)}
+	if got := p.Status(); got.Enabled || got.Reason != ReasonQuotaExhausted || got.ResetsAt == "" {
+		t.Fatalf("last successful download exhausted quota: %+v", got)
+	}
+	p.observed = providerObservation{problem: ReasonQuotaExhausted, resetAt: now.Add(-time.Second)}
+	if !p.Status().Enabled || p.Status().ResetsAt != "" {
+		t.Fatal("expired quota blocks search", p.Status())
+	}
+	p.observed = providerObservation{problem: ReasonRateLimited, retryAt: now.Add(-time.Second)}
+	if !p.Status().Enabled {
+		t.Fatal("expired rate limit blocks search", p.Status())
+	}
+}

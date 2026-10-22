@@ -24,6 +24,10 @@ export class PlaybackApiError extends Error {
   /** The server's machine reason, when it gives one: for `connection_too_slow`, the widest fixed
    * quality the connection carries ("720p"). */
   readonly reason?: string;
+  get streamLimit(): Readonly<{scope: 'account'; limit: number; playing: number}> | undefined {
+   const v=this.current as Record<string,unknown>|undefined;
+   return this.code==='stream_limit_reached'&&v?.scope==='account'&&Number.isSafeInteger(v.limit)&&Number(v.limit)>0&&Number.isSafeInteger(v.playing)&&Number(v.playing)>=0?Object.freeze({scope:'account',limit:v.limit as number,playing:v.playing as number}):undefined;
+  }
   constructor(status: number, code: string, retry: RetryClass, current?: unknown, retryAfterMs?: number, reason?: string) {
     super(code);
     this.name = 'PlaybackApiError';

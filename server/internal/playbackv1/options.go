@@ -28,10 +28,20 @@ type Options struct {
 	Markers  []Marker       `json:"markers"`
 	// Qualities is the quality menu for the preferred (or previewed) version:
 	// the original, automatic, then the ladder steps no taller than its picture.
-	Qualities []QualityOption `json:"qualities"`
-	Preferred *Preferred      `json:"preferred,omitempty"`
-	Plan      *Plan           `json:"plan,omitempty"`
+	Qualities    []QualityOption      `json:"qualities"`
+	Preferred    *Preferred           `json:"preferred,omitempty"`
+	Plan         *Plan                `json:"plan,omitempty"`
+	Alternatives []VersionAlternative `json:"alternatives"`
+	Collection   *CollectionSuccessor `json:"collection,omitempty"`
 }
+
+// VersionAlternative is a version the device can actually play under its current policy.
+// The client asks before using one; a failure never silently changes the version.
+type VersionAlternative struct {
+	VersionID string `json:"versionId"`
+	Label     string `json:"label"`
+}
+
 type OptionsResume struct {
 	PositionMs int64  `json:"positionMs"`
 	PartIndex  int    `json:"partIndex"`
@@ -137,10 +147,11 @@ type PlanStream struct {
 
 // Preview is what the options query asks "what if" about (plan §7 item 15).
 type Preview struct {
-	VersionID  string
-	PartID     string // one part of a multi-part version (plans that file)
-	AudioID    string
-	SubtitleID string // "none" for off
+	VersionID      string
+	PartID         string // one part of a multi-part version (plans that file)
+	AudioID        string
+	SubtitleID     string // "none" for off
+	ThroughputKbps int
 	// Quality with an empty mode is the viewer's saved default for this reach.
 	Quality Quality
 }
@@ -155,6 +166,7 @@ type Service struct {
 	Playback  *playback.Service
 	Subtitles *subtitles.Service
 	Now       func() time.Time
+	durations queueDurationCache
 	// LeaseDuration and ReportEvery override the spec defaults (tests).
 	LeaseDuration time.Duration
 	ReportEvery   time.Duration
@@ -478,7 +490,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 		return Options{}, err
 	}
-	out := Options{ItemID: item, Kind: v1Kind(kind), Versions: []Version{}, Chapters: []Chapter{}, Markers: []Marker{}, Qualities: []QualityOption{}}
+	out := Options{ItemID: item, Kind: v1Kind(kind), Versions: []Version{}, Chapters: []Chapter{}, Markers: []Marker{}, Qualities: []QualityOption{}, Alternatives: []VersionAlternative{}}
 	audioOnly := kind == "song" || kind == "track" || kind == "audiobook_file"
 	assets, err := readAssets(ctx, tx, item)
 	if err != nil {
@@ -543,6 +555,12 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	if len(out.Versions) == 0 {
 		return out, nil
 	}
+	if !audioOnly {
+		out.Collection, err = s.collectionSuccessor(ctx, tx, p, item)
+		if err != nil {
+			return Options{}, err
+		}
+	}
 	if preview.Quality.Mode == "" {
 		preview.Quality = savedQuality(reach.SavedQuality)
 	}
@@ -556,7 +574,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 		preview.Quality.apply(&base)
 		done()
-		preview.VersionID = s.bestVersion(ctx, p, item, base)
+		preview.VersionID = s.bestVersion(ctx, p, item, base, preview.ThroughputKbps)
 		if tx, done, err = dbwork.BeginRead(ctx, s.DB); err != nil {
 			return Options{}, err
 		}
@@ -664,6 +682,22 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			if a.Default {
 				out.Preferred.AudioID = a.ID
 				break
+			}
+		}
+	}
+	if s.Playback != nil {
+		for _, candidate := range out.Versions {
+			probe := preview
+			probe.VersionID = candidate.ID
+			probe.PartID = ""
+			probe.AudioID = ""
+			probe.SubtitleID = "none"
+			choice, _, e := s.choice(out, probe, reach)
+			if e != nil {
+				continue
+			}
+			if plan, e := s.Playback.PlanV1(ctx, p, item, choice); e == nil && (preview.ThroughputKbps <= 0 || planKbps(plan) <= 0 || preview.ThroughputKbps*5 >= planKbps(plan)*4) {
+				out.Alternatives = append(out.Alternatives, VersionAlternative{VersionID: candidate.ID, Label: candidate.Label})
 			}
 		}
 	}

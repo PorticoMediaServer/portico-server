@@ -662,7 +662,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	request.Quality.apply(&base)
 	version := t.version
 	if version == "" && video && t.part == 0 {
-		version = s.bestVersion(ctx, c.Principal, t.item, base)
+		version = s.bestVersion(ctx, c.Principal, t.item, base, t.throughputKbps)
 	}
 	asset, err := s.partAsset(ctx, t.item, version, t.part)
 	if err != nil {
@@ -811,7 +811,7 @@ func (s *Service) adoptReplaced(ctx context.Context, view *Presentation, media s
 // the taller picture, then the larger file), which is the order the versions
 // are listed in. A title with one version, or one whose versions cannot be
 // compared, returns "", and the catalogue's best version is played.
-func (s *Service) bestVersion(ctx context.Context, p identity.Principal, item string, choice playback.V1Choice) string {
+func (s *Service) bestVersion(ctx context.Context, p identity.Principal, item string, choice playback.V1Choice, throughputKbps int) string {
 	tx, done, err := dbwork.BeginRead(ctx, s.DB)
 	if err != nil {
 		return ""
@@ -846,6 +846,11 @@ func (s *Service) bestVersion(ctx context.Context, p identity.Principal, item st
 			cost = 1
 		case playback.DeliveryAudioConversion:
 			cost = 2
+		}
+		if throughputKbps > 0 {
+			if need := planKbps(plan); need > 0 && throughputKbps*5 < need*4 {
+				cost += 100
+			}
 		}
 		if cost < bestCost {
 			best, bestCost = head.id, cost

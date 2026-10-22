@@ -318,6 +318,9 @@ func TestAudioRenditionLabelMatchesManifestContract(t *testing.T) {
 		if issues := doc.ValidateJSON(schema, raw); len(issues) > 0 {
 			t.Fatal(issues)
 		}
+		if r.Title != "Director \"A\"\\B" || r.Commentary != source.Audio[r.Ordinal].Commentary {
+			t.Fatalf("rendition facts lost: %+v", r)
+		}
 		if r.Label != manifestQuoted(r.Label) || !strings.Contains(manifest, `NAME="`+r.Label+`"`) {
 			t.Fatalf("label %q differs from manifest %s", r.Label, manifest)
 		}

@@ -339,6 +339,21 @@ export class V1QueuePlayer implements QueueController {
     return this.play(segments([itemId], false), itemId, {startSeconds}, chosen).then(() => {});
   }
 
+  /** A fresh start outside the player captures the entire show on the server.
+   * An in-player episode pick then jumps in this queue and retains this run. */
+  playEpisode(showId: string, episodeId: string, startSeconds?: number): Promise<void> {
+    return this.play([{source:{container:{kind:'show',id:showId}},anchor:{itemId:episodeId}}],episodeId,{startSeconds}).then(()=>{});
+  }
+
+  /** Resolve beyond the resident window before using the ordinary run-preserving jump. */
+  async selectEpisode(episodeId: string): Promise<void> {
+    const header=this.header;
+    if(!header)throw new PlaybackApiError(404,'not_found','never');
+    const found=await this.client.entryForItem(header.id,episodeId);
+    if(this.disposed||this.header?.id!==header.id)return;
+    await this.playEntry(header.id,found.entry.entryId,found.revision);
+  }
+
   // ── Changing what is playing ────────────────────────────────────────
 
   /** The session being played and the quality, engine and tracks in force on it. */
