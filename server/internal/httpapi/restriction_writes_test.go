@@ -656,6 +656,8 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/topshelf/token":                           writeExempt(reasonOwnSession),
 
 		// Live TV and DVR.
+		"PUT /v1/guide/reminders":               perHidden("PUT", "/v1/guide/reminders", `{"sourceId":"matrix-unknown","channelId":"matrix-unknown","generation":"matrix-unknown","programmeId":"ID","kind":"library-channel","expectedRevision":0}`, "item"),
+		"DELETE /v1/guide/reminders/{id}":       perHidden("DELETE", "/v1/guide/reminders/ID", `{"expectedRevision":1}`, "item"),
 		"POST /v1/dvr/recordings":               writeExempt(reasonLiveChannel),
 		"POST /v1/dvr/rules/preview":            writeExempt(reasonLiveChannel),
 		"PUT /v1/dvr/rules/{id}":                writeExempt(reasonLiveChannel),
