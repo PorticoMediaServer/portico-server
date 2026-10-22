@@ -73,7 +73,7 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const type = platformType(platform), phone = platform === 'phone-app' || platform === 'phone-web';
   const contextFor = (candidate: T, candidateIndex: number): HeroRenderContext => ({index: candidateIndex, active: candidateIndex === index && contentVisible,
-    visible: visible && motion.visible && (candidateIndex === index || candidate.id === exitingId || candidateIndex === (index + 1) % candidates.length), paused, reducedMotion: motion.reduced, platform,
+    visible: visible && motion.visible && (candidateIndex === index || candidate.id === exitingId || (active || showNavigation) && candidateIndex === (index + 1) % candidates.length), paused, reducedMotion: motion.reduced, platform,
     onReady: onArtworkReady ? () => onArtworkReady(candidate) : undefined, onError: onArtworkError ? () => onArtworkError(candidate) : undefined});
   const entry = candidates[index], context = entry ? contextFor(entry, index) : undefined;
   const reason = entry && context ? renderReason ? renderReason(entry, context) : entry.reason : undefined;

@@ -43,6 +43,7 @@ export function FocusPreviewHero<T extends HeroCandidate>({entry, holdingDirecti
   }, [settled]);
   return <div className={[styles.preview, className].filter(Boolean).join(' ')}>
     <Hero {...props} reducedMotion={motion.reduced} candidates={layers} activeIndex={Math.max(0, layers.findIndex(candidate => candidate.id === activeId))} contentVisible={activeId !== null} showNavigation={false}
-      renderArtwork={renderArtwork} onArtworkReady={candidate => { if (candidate.id === incoming.current?.id) { setActiveId(candidate.id); onPreviewReady?.(candidate); } }} onArtworkError={candidate => { if (candidate.id === incoming.current?.id) onPreviewError?.(); }} active={false} platform="tv" />
+      renderArtwork={(candidate, context) => renderArtwork(candidate, {...context, visible: props.visible !== false && motion.visible && (context.visible || candidate.id === settled?.id)})}
+      onArtworkReady={candidate => { if (candidate.id === incoming.current?.id) { setActiveId(candidate.id); onPreviewReady?.(candidate); } }} onArtworkError={candidate => { if (candidate.id === incoming.current?.id) onPreviewError?.(); }} active={false} platform="tv" />
   </div>;
 }
