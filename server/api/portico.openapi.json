@@ -207381,7 +207381,23 @@
           },
           {
             "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "v",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "w",
             "required": false,
             "schema": {
               "type": "string"
@@ -243550,6 +243566,14 @@
           },
           {
             "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "subject",
             "required": false,
             "schema": {
@@ -243559,6 +243583,14 @@
           {
             "in": "query",
             "name": "v",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "w",
             "required": false,
             "schema": {
               "type": "string"
