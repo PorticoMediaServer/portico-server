@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
+import {heroSpec} from '@design';
 import {HomeService, type HomeSnapshot} from '@core/home-service.ts';
 import type {HomeChannel, HomeDocument, HomeReason, HomeRow, HomeSeeAll, HomeSpotlight} from '@core/home.ts';
 import type {ContentEntry} from '@core/library-content.ts';
@@ -92,6 +93,7 @@ export function HomeScreen(bindings: HomeBindings) {
 type Spotlight = Omit<ReturnType<typeof homeSpotlights>[number], 'reason'> & HeroCandidate & {causalReason: HomeReason; source: HomeSpotlight};
 export function HomeView({document, nowMs, onMore, artwork, effects, selection, time, reducedMotion}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void}) {
   const width = useShellWidth(), platform: LayoutPlatform = width >= 1024 ? 'desktop' : 'phone-web';
+  const heroPixels = Math.max(width, heroSpec.backdropWidth[platform === 'desktop' ? 'web' : 'phone']) * devicePixelRatio;
   const hero = useVisible(), env = useMemo(() => ({t, locale: time.locale}), [time.locale]);
   const candidates: Spotlight[] = useMemo(() => homeSpotlights(document, env).map((slide, index) => ({...slide, source: document.spotlight[index], causalReason: slide.reason, reason: serverTextLabel(defaultI18n, slide.reason.text)})), [document, env]);
   useEffect(() => {
@@ -109,7 +111,7 @@ export function HomeView({document, nowMs, onMore, artwork, effects, selection, 
       renderReason={slide => slide.reason}
       renderMetadata={slide => <HeroFacts parts={slide.facts} platform={platform} />}
       renderArtwork={(slide, context) => <AmbientArt source={artwork.ambient(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, {group: 'home-hero', order: context.index, priority: 'high'})}
-        foreground={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, width * devicePixelRatio, 16 / 9, {group: 'home-hero', order: context.index, priority: 'high', large: true})}
+        foreground={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, heroPixels, 16 / 9, {group: 'home-hero', order: context.index, priority: 'high', large: true})}
         treatment={platform === 'desktop' ? 'hero' : 'phone'} visible={context.visible} onReady={context.onReady} onError={context.onError} />}
       renderThumbnail={(slide, context) => <Artwork source={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, 132 * devicePixelRatio, 16 / 9, {group: 'home-thumbnails', order: context.index})} alt="" visible={context.visible} />}
       renderActions={slide => <>
