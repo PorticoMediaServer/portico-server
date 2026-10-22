@@ -37,13 +37,16 @@ export function useLayoutPresence<T>(items: readonly T[], getKey: (item: T) => s
   useLayoutEffect(() => {
     for (const element of root.current?.children ?? []) {
       const node = element as HTMLElement, key = node.dataset.layoutItem;
-      animations.current.get(element)?.cancel();
+      const previous = animations.current.get(element);
+      animations.current.delete(element);
+      previous?.cancel();
       if (!key || leaving.has(key) || reduced) continue;
       const before = previousRects.current.get(key), after = element.getBoundingClientRect();
       if (!before || Math.abs(before.left - after.left) < .1 && Math.abs(before.top - after.top) < .1) continue;
       const animation = element.animate([{transform: `translate(${before.left - after.left}px,${before.top - after.top}px)`}, {transform: 'translate(0,0)'}], {duration: moveMs, easing: easings.inOut});
       animations.current.set(element, animation);
-      void animation.finished.then(() => { if (animations.current.get(element) === animation) animations.current.delete(element); }, () => {});
+      const release = () => { if (animations.current.get(element) === animation) animations.current.delete(element); };
+      void animation.finished.then(release, release);
     }
   }, [present, leaving, reduced, moveMs]);
   useLayoutEffect(() => () => { for (const animation of animations.current.values()) animation.cancel(); animations.current.clear(); }, []);

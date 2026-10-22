@@ -1,0 +1,203 @@
+import {test, type TestContext} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {registerHooks} from 'node:module';
+import {easings, reducedMotion} from '@design';
+
+type Ref = {current: unknown};
+type Effect = {deps: readonly unknown[]; cleanup?: () => void};
+const bridgeKey = '__porticoLayoutPresenceHooks';
+const bridge = {current: undefined as HookFrame | undefined};
+(globalThis as Record<string, unknown>)[bridgeKey] = bridge;
+const hookModule = 'data:text/javascript,' + encodeURIComponent(`const bridge = globalThis.${bridgeKey}; ${['useRef', 'useState', 'useLayoutEffect'].map(name => `export const ${name} = (...args) => bridge.current.${name}(...args);`).join('\n')}`);
+const loader = registerHooks({load(url, context, next) {
+  if (url.endsWith('/kit/layout/presence.ts')) return {format: 'module-typescript', shortCircuit: true,
+    source: readFileSync(new URL(url), 'utf8').replace("from 'react'", `from ${JSON.stringify(hookModule)}`)};
+  return next(url, context);
+}});
+const {useLayoutPresence} = await import('../../src/kit/layout/presence.ts');
+test.after(() => { loader.deregister(); delete (globalThis as Record<string, unknown>)[bridgeKey]; });
+
+// Run the actual hook with dependency equality, commit-before-layout effects,
+// cleanup-before-setup, and bounded state rerenders. DOM geometry, time, and WAAPI
+// are controlled; map references are observed through refs without changing source.
+// This is lifecycle/ownership evidence, not React DOM or heap measurement.
+class HookFrame {
+  private slots: any[] = [];
+  private cursor = 0;
+  private dirty = false;
+  private mounted = true;
+  private queued: {effect: Effect; run: () => void | (() => void)}[] = [];
+  refs: Ref[] = [];
+  useRef(value: unknown) {
+    const i = this.cursor++;
+    if (!this.slots[i]) { this.slots[i] = {current: value}; this.refs.push(this.slots[i]); }
+    return this.slots[i];
+  }
+  useState(initial: unknown) {
+    const i = this.cursor++;
+    this.slots[i] ??= {value: initial};
+    return [this.slots[i].value, (value: unknown) => {
+      assert.ok(this.mounted, 'no state updates after unmount');
+      if (!Object.is(value, this.slots[i].value)) { this.slots[i].value = value; this.dirty = true; }
+    }];
+  }
+  useLayoutEffect(run: () => void | (() => void), deps: readonly unknown[]) {
+    const i = this.cursor++, previous: Effect | undefined = this.slots[i];
+    if (!previous || deps.length !== previous.deps.length || deps.some((value, index) => !Object.is(value, previous.deps[index]))) {
+      const effect = {deps, cleanup: previous?.cleanup}; this.slots[i] = effect; this.queued.push({effect, run});
+    }
+  }
+  render<T>(run: () => T, commit: (result: T) => void): T {
+    for (let attempts = 0; attempts < 8; attempts++) {
+      bridge.current = this; this.cursor = 0; this.dirty = false; this.queued = [];
+      const result = run(); commit(result);
+      this.queued.forEach(job => job.effect.cleanup?.());
+      this.queued.forEach(job => { job.effect.cleanup = job.run() ?? undefined; });
+      if (!this.dirty) return result;
+    }
+    throw new Error('Presence effects did not settle within eight renders');
+  }
+  get maps(): Map<unknown, unknown>[] { return this.refs.map(ref => ref.current).filter(value => value instanceof Map); }
+  get ownedNodes(): LayoutNode[] { return this.maps.flatMap(map => [...map.keys()].filter(key => key instanceof LayoutNode)); }
+  animation(node: LayoutNode): ControlledAnimation | undefined { return this.maps.map(map => map.get(node)).find(value => value instanceof ControlledAnimation); }
+  unmount() {
+    if (!this.mounted) return;
+    this.mounted = false;
+    for (const slot of this.slots) slot?.cleanup?.();
+  }
+}
+class ControlledAnimation {
+  finished: Promise<Animation>;
+  cancelCalls = 0;
+  finish!: () => void;
+  reject!: () => void;
+  constructor(readonly frames: Keyframe[], readonly options: KeyframeAnimationOptions) {
+    this.finished = new Promise((resolve, reject) => {
+      this.finish = () => resolve(this as unknown as Animation);
+      this.reject = () => reject(new DOMException('Canceled', 'AbortError'));
+    });
+  }
+  cancel() { this.cancelCalls++; this.reject(); }
+}
+class LayoutNode {
+  dataset: {layoutItem: string};
+  left = 0;
+  animations: ControlledAnimation[] = [];
+  constructor(key: string) { this.dataset = {layoutItem: key}; }
+  getBoundingClientRect() { return {left: this.left, top: 0} as DOMRect; }
+  animate(frames: Keyframe[], options: KeyframeAnimationOptions) {
+    const animation = new ControlledAnimation(frames, options); this.animations.push(animation); return animation;
+  }
+}
+const getKey = (key: string) => key;
+function fixture(t: TestContext) {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  let now = 0, items: readonly string[] = [], reduced = false;
+  t.mock.method(performance, 'now', () => now);
+  const hooks = new HookFrame(), root = {children: [] as LayoutNode[]};
+  const render = (next = items, reduce = reduced) => {
+    items = next; reduced = reduce;
+    return hooks.render(() => useLayoutPresence(items, getKey, reduced, 180, 320), presence => {
+      const previous = new Map(root.children.map(node => [node.dataset.layoutItem, node]));
+      root.children = presence.present.map((key, index) => { const node = previous.get(key) ?? new LayoutNode(key); node.left = index * 100; return node; });
+      presence.root.current = root as unknown as HTMLDivElement;
+    });
+  };
+  const advance = (ms: number) => { now += ms; t.mock.timers.tick(ms); return render(); };
+  const node = (key: string) => { const value = root.children.find(node => node.dataset.layoutItem === key); assert.ok(value); return value; };
+  t.after(() => hooks.unmount());
+  return {hooks, root, render, advance, node};
+}
+
+test('move then remove releases ownership before exit timeout removes the DOM child', async t => {
+  const f = fixture(t); f.render(['a', 'b']); f.render(['b', 'a']);
+  const node = f.node('a'), animation = f.hooks.animation(node)!;
+  assert.ok(animation);
+  assert.deepEqual(animation.frames, [{transform: 'translate(-100px,0px)'}, {transform: 'translate(0,0)'}]);
+  assert.deepEqual(animation.options, {duration: 320, easing: easings.inOut});
+  const leaving = f.render(['b']);
+  assert.deepEqual(leaving.present, ['b', 'a']); assert.deepEqual([...leaving.leaving], ['a']);
+  assert.equal(f.node('a'), node, 'the leaving DOM child keeps its identity');
+  assert.equal(animation.cancelCalls, 1);
+  assert.equal(f.hooks.animation(node), undefined, 'cancellation releases ownership before promise reactions');
+  await Promise.resolve();
+  assert.equal(f.hooks.ownedNodes.length, 0);
+  assert.deepEqual(f.advance(179).present, ['b', 'a']);
+  assert.deepEqual(f.advance(1).present, ['b']);
+  assert.deepEqual(f.root.children.map(node => node.dataset.layoutItem), ['b']);
+  assert.equal(f.hooks.ownedNodes.length, 0, 'no removed Element/Animation pair remains in hook refs');
+});
+
+test('repeated unique move/remove cycles keep owned animation references bounded', async t => {
+  const f = fixture(t);
+  for (let cycle = 0; cycle < 24; cycle++) {
+    const a = `a-${cycle}`, b = `b-${cycle}`;
+    f.render([a, b]); f.render([b, a]);
+    assert.equal(f.hooks.ownedNodes.length, 2);
+    f.render([]);
+    f.advance(180);
+    assert.equal(f.root.children.length, 0);
+    assert.equal(f.hooks.ownedNodes.length, 0, `cycle ${cycle} releases removed nodes without unmount`);
+  }
+  await Promise.resolve();
+  assert.equal(f.hooks.ownedNodes.length, 0);
+});
+
+test('an old canceled animation rejection cannot release its current replacement', async t => {
+  const f = fixture(t); f.render(['a', 'b']); f.render(['b', 'a']);
+  const node = f.node('a'), old = f.hooks.animation(node)!;
+  f.render(['a', 'b']);
+  const replacement = f.hooks.animation(node)!;
+  assert.ok(replacement); assert.notEqual(replacement, old); assert.equal(old.cancelCalls, 1);
+  await Promise.resolve();
+  assert.equal(f.hooks.animation(node), replacement, 'old rejection must respect replacement identity');
+  replacement.finish();
+  await Promise.resolve();
+  assert.equal(f.hooks.animation(node), undefined, 'the current animation releases itself on completion');
+});
+
+test('a current animation releases ownership when finished rejects independently', async t => {
+  const f = fixture(t); f.render(['a', 'b']); f.render(['b', 'a']);
+  const node = f.node('a'), animation = f.hooks.animation(node)!;
+  animation.reject();
+  await Promise.resolve();
+  assert.equal(f.hooks.animation(node), undefined);
+  assert.equal(f.hooks.ownedNodes.length, 1, 'the other in-flight animation stays owned');
+});
+
+test('unmount cancels active replacements and clears ownership and pending exit work', async t => {
+  const f = fixture(t); f.render(['a', 'b', 'c']); f.render(['b', 'a', 'c']);
+  f.render(['b', 'a']); f.render(['a', 'b']);
+  const animations = f.hooks.ownedNodes.map(node => f.hooks.animation(node)!);
+  assert.equal(animations.length, 2);
+  assert.deepEqual(f.root.children.map(node => node.dataset.layoutItem), ['a', 'b', 'c']);
+  f.hooks.unmount();
+  assert.ok(animations.every(animation => animation.cancelCalls === 1));
+  assert.equal(f.hooks.ownedNodes.length, 0);
+  t.mock.timers.tick(1000); // A retained exit timer would try to update unmounted state.
+  await Promise.resolve();
+  assert.equal(f.hooks.ownedNodes.length, 0);
+});
+
+test('reduced motion cancels moves and preserves its own exit deadline', async t => {
+  const f = fixture(t); f.render(['a', 'b']); f.render(['b', 'a']);
+  const node = f.node('a'), animation = f.hooks.animation(node)!;
+  f.render(['b'], true);
+  assert.equal(animation.cancelCalls, 1); assert.equal(f.hooks.ownedNodes.length, 0);
+  assert.deepEqual(f.advance(reducedMotion.durationMs - 1).present, ['b', 'a']);
+  assert.deepEqual(f.advance(1).present, ['b']);
+  const counts = new Map(f.root.children.map(node => [node, node.animations.length]));
+  f.render(['a', 'b'], true); f.render(['b', 'a'], true);
+  assert.ok(f.root.children.every(node => node.animations.length === (counts.get(node) ?? 0)), 'reduced motion creates no new moves');
+  await Promise.resolve();
+});
+
+test('an item returning before its exit deadline retains its DOM identity and incoming order', t => {
+  const f = fixture(t); f.render(['a', 'b']); const original = f.node('a');
+  f.render(['b']); f.advance(100);
+  const returned = f.render(['a', 'b']);
+  assert.deepEqual(returned.present, ['a', 'b']); assert.equal(returned.leaving.size, 0);
+  assert.equal(f.node('a'), original);
+  assert.deepEqual(f.advance(100).present, ['a', 'b']);
+});
