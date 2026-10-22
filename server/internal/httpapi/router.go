@@ -299,7 +299,16 @@ func failure(w http.ResponseWriter, e error) {
 	}
 	if errors.Is(e, identity.ErrProfileLocked) {
 		status, code = 429, "profile_pin_locked"
-		w.Header().Set("Retry-After", "60")
+		var wait *identity.ProfilePINError
+		if errors.As(e, &wait) {
+			w.Header().Set("Retry-After", strconv.FormatInt(wait.RetryAfterSeconds, 10))
+		}
+	}
+	if errors.Is(e, identity.ErrProfilePIN) {
+		var wait *identity.ProfilePINError
+		if errors.As(e, &wait) {
+			w.Header().Set("Retry-After", strconv.FormatInt(wait.RetryAfterSeconds, 10))
+		}
 	}
 	if errors.Is(e, identity.ErrProfileCapacity) {
 		status, code = 409, "profile_capacity"

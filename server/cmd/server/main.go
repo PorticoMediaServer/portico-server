@@ -985,6 +985,9 @@ func run() (runErr error) {
 	bindPortNumber, _ := strconv.Atoi(bindPort)
 	doneAdministration := reporter.step("administration", "Open administration and access")
 	administration, closeAdministration := initializeAdministration(ctx, db, console, ident, state, bindPortNumber, startupLog)
+	if err := administration.Access.LoadInvitationKey(state); err != nil {
+		log.Fatalf("Invitation key: %v", err)
+	}
 	doneAdministration(nil)
 	defer closeAdministration()
 	// The owner's preferred LAN interface is read from the console once per

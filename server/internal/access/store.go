@@ -13,6 +13,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"portico.local/server/internal/dbwork"
 	"strconv"
 	"strings"
@@ -51,11 +53,59 @@ func invalid(fields ...string) error { return &ValidationError{Fields: fields} }
 type Authorize func(context.Context, *sql.Tx) error
 
 type Store struct {
-	DB  *sql.DB
-	Now func() time.Time
+	DB            *sql.DB
+	Now           func() time.Time
+	invitationKey []byte
 }
 
-func New(db *sql.DB) *Store { return &Store{DB: db, Now: time.Now} }
+// New uses an ephemeral key until the server loads its durable key before serving.
+func New(db *sql.DB) *Store {
+	key := make([]byte, 32)
+	if _, e := rand.Read(key); e != nil {
+		panic(e)
+	}
+	return &Store{DB: db, Now: time.Now, invitationKey: key}
+}
+
+// LoadInvitationKey is called once before HTTP starts. The database never contains
+// this key. Loss or rotation invalidates pending invitations; create new links.
+func (s *Store) LoadInvitationKey(state string) error {
+	path := filepath.Join(state, "invitation-link.key")
+	key, e := os.ReadFile(path)
+	if errors.Is(e, os.ErrNotExist) {
+		key = make([]byte, 32)
+		if _, e = rand.Read(key); e != nil {
+			return e
+		}
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if errors.Is(err, os.ErrExist) {
+			key, e = os.ReadFile(path)
+		} else if err != nil {
+			return err
+		} else {
+			_, e = f.Write(key)
+			if e == nil {
+				e = f.Sync()
+			}
+			ce := f.Close()
+			if e == nil {
+				e = ce
+			}
+		}
+	}
+	if e != nil {
+		return e
+	}
+	info, e := os.Lstat(path)
+	if e != nil {
+		return e
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || len(key) != 32 {
+		return errors.New("invitation key must be a private 32-byte regular file")
+	}
+	s.invitationKey = append([]byte(nil), key...)
+	return nil
+}
 
 func (s *Store) now() int64 { return s.Now().UTC().UnixMilli() }
 
@@ -110,8 +160,8 @@ func token() string {
 }
 
 // digest is the at-rest form of every secret this package issues. Invitation
-// codes and API key secrets are stored only as this digest; the plaintext is
-// returned once, at creation, and never again.
+// codes and API key secrets are stored only as this digest. Invitation codes
+// can be derived again using a separate server-only key.
 func digest(v string) string { h := sha256.Sum256([]byte(v)); return hex.EncodeToString(h[:]) }
 
 func safeText(v string, max int) bool {

@@ -2,10 +2,16 @@ package access
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"net/mail"
+	"fmt"
+	"portico.local/apikit"
+	"portico.local/server/internal/notify"
+	"reflect"
 	"strings"
 	"time"
 
@@ -13,12 +19,11 @@ import (
 	"portico.local/server/internal/identity"
 )
 
-// Invitation is a pending offer of an account on this direct server. The code is
-// returned once, when the invitation is created, and never read back: only its
-// digest is stored, so a leaked database cannot be used to accept invitations.
+// Invitation is an administrator-only record. Notes never belong in a shared card or recipient response.
+// Codes are derived under a server-only key; only their digest is in the database.
 type Invitation struct {
 	ID               string   `json:"id"`
-	Email            string   `json:"email"`
+	Notes            *string  `json:"notes,omitempty"`
 	Role             string   `json:"role"`
 	AllowedLibraries []string `json:"allowedLibraries"`
 	State            string   `json:"state"`
@@ -31,7 +36,7 @@ type Invitation struct {
 	// for: only that account can accept it, and it cannot be used to create a
 	// password account. Empty means whoever holds the code.
 	PorticoUsername string `json:"porticoUsername,omitempty"`
-	// Code is present only on the response that creates the invitation.
+	// Code is present on creation; an authorized pending-link read can recover it.
 	Code string `json:"code,omitempty"`
 }
 
@@ -42,7 +47,7 @@ type InvitationPage struct {
 
 type InvitationRequest struct {
 	OperationID      string   `json:"operationId"`
-	Email            string   `json:"email"`
+	Notes            *string  `json:"notes,omitempty"`
 	Role             string   `json:"role"`
 	AllowedLibraries []string `json:"allowedLibraries"`
 	ExpiresInHours   int      `json:"expiresInHours"`
@@ -50,18 +55,20 @@ type InvitationRequest struct {
 	PorticoUsername string `json:"porticoUsername,omitempty"`
 }
 
-// InvitationPreview contains only what the unauthenticated join page needs.
-// It never exposes a library name or a full invitee address.
+// InvitationPreview is the explicit public join-page projection. It has no target identity or notes.
 type InvitationPreview struct {
-	ServerName   string `json:"serverName"`
-	Email        string `json:"email"`
-	ExpiresAt    string `json:"expiresAt"`
-	Role         string `json:"role"`
-	LibraryCount int    `json:"libraryCount"`
-	// ForPorticoAccount says the invitation is for one particular Portico
-	// Account, so the join page offers that sign-in and not a new password
-	// account. Which account is not said.
-	ForPorticoAccount bool `json:"forPorticoAccount,omitempty"`
+	ServerName        string              `json:"serverName"`
+	ExpiresAt         string              `json:"expiresAt"`
+	Role              string              `json:"role"`
+	LibraryCount      int                 `json:"libraryCount"`
+	Libraries         []InvitationLibrary `json:"libraries"`
+	AllLibraries      bool                `json:"allLibraries"`
+	SignInMethod      string              `json:"signInMethod"`
+	InviterUsername   string              `json:"inviterUsername,omitempty"`
+	ForPorticoAccount bool                `json:"forPorticoAccount,omitempty"`
+}
+type InvitationLibrary struct {
+	Name string `json:"name"`
 }
 
 type InvitationPreviewRequest struct {
@@ -86,15 +93,28 @@ func boundUsername(raw string) (string, bool) {
 	return v, true
 }
 
-func maskedInvitationEmail(email string) string {
-	if email == "" {
-		return ""
+// invitationCode is a domain-separated HMAC. Replacing the file key invalidates
+// all existing pending links; their stored hashes cannot recover the key or code.
+func (s *Store) invitationCode(id string) string {
+	h := hmac.New(sha256.New, s.invitationKey)
+	h.Write([]byte("portico-invitation-v1\x00" + id))
+	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+}
+func (s *Store) checkInvitationCode(id, code string) bool {
+	return hmac.Equal([]byte(s.invitationCode(id)), []byte(code))
+}
+func invitationNotes(raw *string) (*string, error) {
+	if raw == nil {
+		return nil, nil
 	}
-	local, domain, ok := strings.Cut(email, "@")
-	if !ok || local == "" || domain == "" {
-		return "***"
+	v := strings.TrimSpace(*raw)
+	if !safeText(v, 500) {
+		return nil, invalid("notes")
 	}
-	return string([]rune(local)[0]) + "***@" + domain
+	if v == "" {
+		return nil, nil
+	}
+	return &v, nil
 }
 
 // Preview treats an unknown, expired, revoked, or accepted code identically.
@@ -105,9 +125,9 @@ func (s *Store) Preview(ctx context.Context, code string) (out InvitationPreview
 		return out, ErrInvitationNotFound
 	}
 	err = s.snapshot(ctx, nil, func(tx *sql.Tx) error {
-		var email, libraries, bound string
+		var id, libraries, bound string
 		var expiry int64
-		e := tx.QueryRowContext(ctx, `SELECT email,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending' AND expires_ms>?`, digest(code), s.now()).Scan(&email, &out.Role, &libraries, &expiry, &bound)
+		e := tx.QueryRowContext(ctx, `SELECT id,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending' AND expires_ms>?`, digest(code), s.now()).Scan(&id, &out.Role, &libraries, &expiry, &bound)
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrInvitationNotFound
 		}
@@ -118,7 +138,32 @@ func (s *Store) Preview(ctx context.Context, code string) (out InvitationPreview
 		if e = json.Unmarshal([]byte(libraries), &ids); e != nil {
 			return e
 		}
-		out.Email = maskedInvitationEmail(email)
+		if !s.checkInvitationCode(id, code) {
+			return ErrInvitationNotFound
+		}
+		out.Libraries = []InvitationLibrary{}
+		for _, library := range ids {
+			var name string
+			if e = tx.QueryRowContext(ctx, `SELECT name FROM libraries WHERE id=?`, library).Scan(&name); e != nil {
+				if errors.Is(e, sql.ErrNoRows) {
+					return ErrInvitationNotFound
+				}
+				return e
+			}
+			out.Libraries = append(out.Libraries, InvitationLibrary{Name: name})
+		}
+		out.AllLibraries = len(ids) == 0
+		out.SignInMethod = "local"
+		var ownerLinked bool
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_memberships m JOIN account_portico_links l ON l.account_id=m.account_id WHERE m.role='owner')`).Scan(&ownerLinked); e != nil {
+			return e
+		}
+		if ownerLinked || bound != "" {
+			out.SignInMethod = "portico"
+		}
+		if e = tx.QueryRowContext(ctx, `SELECT COALESCE(a.username,'') FROM access_invitations i LEFT JOIN accounts a ON a.id=i.created_by WHERE i.id=?`, id).Scan(&out.InviterUsername); e != nil {
+			return e
+		}
 		out.ExpiresAt = time.UnixMilli(expiry).UTC().Format(time.RFC3339)
 		out.LibraryCount = len(ids)
 		out.ForPorticoAccount = bound != ""
@@ -127,29 +172,13 @@ func (s *Store) Preview(ctx context.Context, code string) (out InvitationPreview
 	return
 }
 
-// normalizeEmail lowercases and validates an address. An invitation's address is
-// optional: neither this server nor Hosted mails invitations, so the owner shares
-// the link and code, and an address only names who it is meant for (and keeps a
-// second pending invitation to the same address from being created).
-func normalizeEmail(raw string) (string, bool) {
-	v := strings.ToLower(strings.TrimSpace(raw))
-	if len(v) < 3 || len(v) > 254 || !safeText(v, 254) {
-		return "", false
-	}
-	address, err := mail.ParseAddress(v)
-	if err != nil || address.Address != v {
-		return "", false
-	}
-	return v, true
-}
-
 func invitationRow(row interface{ Scan(...any) error }) (Invitation, error) {
 	var v Invitation
 	var libraries string
 	var created, expires int64
 	var accepted sql.NullInt64
 	var account sql.NullString
-	if e := row.Scan(&v.ID, &v.Email, &v.Role, &libraries, &v.State, &created, &expires, &accepted, &account, &v.Revision, &v.PorticoUsername); e != nil {
+	if e := row.Scan(&v.ID, &v.Notes, &v.Role, &libraries, &v.State, &created, &expires, &accepted, &account, &v.Revision, &v.PorticoUsername); e != nil {
 		return v, e
 	}
 	if e := json.Unmarshal([]byte(libraries), &v.AllowedLibraries); e != nil {
@@ -169,7 +198,7 @@ func invitationRow(row interface{ Scan(...any) error }) (Invitation, error) {
 	return v, nil
 }
 
-const invitationColumns = `id,email,role,allowed_libraries,state,created_ms,expires_ms,accepted_ms,account_id,revision,bound_username`
+const invitationColumns = `id,notes,role,allowed_libraries,state,created_ms,expires_ms,accepted_ms,account_id,revision,bound_username`
 
 // Invite creates a pending invitation. actor is the caller's tier: an admin may
 // invite members only, because identity.ManagesTier forbids creating a peer.
@@ -177,13 +206,11 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 	if !validOperationID(q.OperationID) {
 		return out, invalid("operationId")
 	}
-	email := ""
-	if strings.TrimSpace(q.Email) != "" {
-		var ok bool
-		if email, ok = normalizeEmail(q.Email); !ok {
-			return out, invalid("email")
-		}
+	notes, e := invitationNotes(q.Notes)
+	if e != nil {
+		return out, e
 	}
+	q.Notes = notes
 	bound, ok := boundUsername(q.PorticoUsername)
 	if !ok {
 		return out, invalid("porticoUsername")
@@ -214,8 +241,25 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 	if q.ExpiresInHours < 1 || q.ExpiresInHours > 720 {
 		return out, invalid("expiresInHours")
 	}
-	code := token()
+	var code string
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		if e := invitationManageTx(ctx, tx, actor, q.Role); e != nil {
+			return e
+		}
+		seen := map[string]bool{}
+		for _, v := range q.AllowedLibraries {
+			if seen[v] {
+				return invalid("allowedLibraries")
+			}
+			seen[v] = true
+			var present bool
+			if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries WHERE id=?)`, v).Scan(&present); e != nil {
+				return e
+			}
+			if !present {
+				return invalid("allowedLibraries")
+			}
+		}
 		scope := "invite"
 		body, want, e := receipt(tx, scope, q.OperationID, q)
 		if e != nil {
@@ -226,6 +270,10 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 			// the code exists exactly once, in the original response.
 			return json.Unmarshal([]byte(body), &out)
 		}
+		// Expired offers no longer occupy the pending capacity.
+		if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET state='revoked',revision=revision+1 WHERE state='pending' AND expires_ms<=?`, s.now()); e != nil {
+			return e
+		}
 		var count int
 		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM access_invitations WHERE state='pending'`).Scan(&count); e != nil {
 			return e
@@ -233,27 +281,13 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 		if count >= 200 {
 			return ErrCapacity
 		}
-		// Addressless invitations (link and code only) may be pending side by side.
-		if email != "" {
-			var taken bool
-			if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM access_invitations WHERE email=? AND state='pending' AND expires_ms>?)`, email, s.now()).Scan(&taken); e != nil {
-				return e
-			}
-			if taken {
-				return ErrConflict
-			}
-			// An expired pending row keeps the partial unique index occupied; retire
-			// it so the same address can be invited again.
-			if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET state='revoked',revision=revision+1 WHERE email=? AND state='pending'`, email); e != nil {
-				return e
-			}
-		}
 		now := s.now()
 		libraries, _ := json.Marshal(q.AllowedLibraries)
 		id := token()[:22]
+		code = s.invitationCode(id)
 		expires := now + int64(q.ExpiresInHours)*int64(time.Hour/time.Millisecond)
-		if _, e = tx.ExecContext(ctx, `INSERT INTO access_invitations(id,email,code_hash,role,allowed_libraries,state,created_ms,expires_ms,created_by,revision,bound_username) VALUES(?,?,?,?,?,'pending',?,?,?,1,?)`,
-			id, email, digest(code), q.Role, string(libraries), now, expires, actor.AccountID, bound); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO access_invitations(id,notes,code_hash,role,allowed_libraries,state,created_ms,expires_ms,created_by,revision,bound_username) VALUES(?,?,?,?,?,'pending',?,?,?,1,?)`,
+			id, notes, digest(code), q.Role, string(libraries), now, expires, actor.AccountID, bound); e != nil {
 			return e
 		}
 		if out, e = invitationRow(tx.QueryRowContext(ctx, `SELECT `+invitationColumns+` FROM access_invitations WHERE id=?`, id)); e != nil {
@@ -373,11 +407,19 @@ func (s *Store) RevokeInvitation(ctx context.Context, auth Authorize, id string,
 	return
 }
 
+// AcceptanceResult is recipient-safe; administrator notes are structurally absent.
+type AcceptanceResult struct {
+	AccountID        string   `json:"accountId"`
+	Username         string   `json:"username"`
+	ProfileID        string   `json:"profileId"`
+	Role             string   `json:"role"`
+	AllowedLibraries []string `json:"allowedLibraries"`
+}
 type Acceptance struct {
 	Code     string `json:"code"`
 	Username string `json:"username"`
 	Password string `json:"password"`
-	Name     string `json:"name"`
+	Name     string `json:"name,omitempty"`
 }
 
 // Accept redeems an invitation code and creates the account it describes. It is
@@ -386,13 +428,13 @@ type Acceptance struct {
 //
 // hash is supplied by the caller so the password cost is paid outside the
 // database transaction, which holds the single SQLite writer.
-func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Member, err error) {
+func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out AcceptanceResult, err error) {
 	code := strings.TrimSpace(q.Code)
 	if len(code) < 32 || len(code) > 128 {
 		return out, invalid("code")
 	}
 	username := strings.ToLower(strings.TrimSpace(q.Username))
-	if len(username) < 3 || len(username) > 64 || strings.ContainsAny(username, " \t\r\n@") {
+	if len(username) < 3 || len(username) > 64 || !safeText(username, 64) || strings.ContainsAny(username, " \t\r\n@") {
 		return out, invalid("username")
 	}
 	name := strings.TrimSpace(q.Name)
@@ -403,9 +445,10 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Memb
 		return out, invalid("name")
 	}
 	err = s.transaction(ctx, nil, func(tx *sql.Tx) error {
-		var id, email, role, libraries, bound string
+		var id, role, libraries, bound string
+		var notes *string
 		var expires int64
-		e := tx.QueryRowContext(ctx, `SELECT id,email,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &email, &role, &libraries, &expires, &bound)
+		e := tx.QueryRowContext(ctx, `SELECT id,notes,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &notes, &role, &libraries, &expires, &bound)
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrExpired
 		}
@@ -413,7 +456,7 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Memb
 			return e
 		}
 		now := s.now()
-		if expires <= now {
+		if expires <= now || !s.checkInvitationCode(id, code) {
 			return ErrExpired
 		}
 		// An invitation made for one Portico Account cannot become a password
@@ -434,7 +477,7 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Memb
 		if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,?,?)`, account, username, hash, profile); e != nil {
 			return e
 		}
-		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,allowed_libraries=?,revision=revision+1 WHERE account_id=? AND role<>'owner'`, role, libraries, account); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,allowed_libraries=?,notes=?,joined_via=?,joined_ms=?,revision=revision+1 WHERE account_id=? AND role<>'owner'`, role, libraries, notes, id, now, account); e != nil {
 			return e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET name=? WHERE id=?`, name, profile); e != nil {
@@ -443,7 +486,14 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Memb
 		if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET state='accepted',accepted_ms=?,account_id=?,revision=revision+1 WHERE id=?`, now, account, id); e != nil {
 			return e
 		}
-		out, e = readMember(ctx, tx, account)
+		if e = s.joinedNotice(ctx, tx, now, id, account, username); e != nil {
+			return e
+		}
+		m, err := readMember(ctx, tx, account)
+		if err != nil {
+			return err
+		}
+		out = AcceptanceResult{AccountID: m.AccountID, Username: m.Username, ProfileID: m.ProfileID, Role: m.Role, AllowedLibraries: m.AllowedLibraries}
 		return e
 	})
 	return
@@ -479,8 +529,8 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 		return out, identity.ErrUnauthorized
 	}
 	username := strings.ToLower(strings.TrimSpace(q.Username))
-	if len(username) < 3 || len(username) > 64 || strings.ContainsAny(username, " \t\r\n@") {
-		username = "member"
+	if len(username) < 3 || len(username) > 64 || !safeText(username, 64) || strings.ContainsAny(username, " \t\r\n@") {
+		return out, invalid("username")
 	}
 	name := strings.TrimSpace(q.DisplayName)
 	if name == "" || !safeText(name, 120) {
@@ -488,8 +538,9 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 	}
 	err = s.transaction(ctx, nil, func(tx *sql.Tx) error {
 		var id, role, libraries, bound string
+		var notes *string
 		var expires, invited int64
-		e := tx.QueryRowContext(ctx, `SELECT id,role,allowed_libraries,expires_ms,created_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &role, &libraries, &expires, &invited, &bound)
+		e := tx.QueryRowContext(ctx, `SELECT id,notes,role,allowed_libraries,expires_ms,created_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &notes, &role, &libraries, &expires, &invited, &bound)
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrExpired
 		}
@@ -497,7 +548,7 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 			return e
 		}
 		now := s.now()
-		if expires <= now {
+		if expires <= now || !s.checkInvitationCode(id, code) {
 			return ErrExpired
 		}
 		if bound != "" && bound != strings.ToLower(strings.TrimSpace(q.Username)) {
@@ -515,7 +566,7 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 				return e
 			}
 			if taken {
-				username += "-" + token()[:4]
+				return ErrConflict
 			}
 			// The direct_account_created trigger adds the membership and the
 			// primary profile, as for any invited account; the journal trigger
@@ -550,7 +601,7 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 				return ErrExpired
 			}
 		}
-		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,allowed_libraries=?,disabled=0,revision=revision+1 WHERE account_id=? AND role<>'owner' AND (?<>0 OR disabled<>0)`, role, libraries, account, created); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,allowed_libraries=?,notes=?,joined_via=?,joined_ms=?,disabled=0,revision=revision+1 WHERE account_id=? AND role<>'owner' AND (?<>0 OR disabled<>0)`, role, libraries, notes, id, now, account, created); e != nil {
 			return e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET state='accepted',accepted_ms=?,account_id=?,revision=revision+1 WHERE id=?`, now, account, id); e != nil {
@@ -560,6 +611,9 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 		// whose standing did not change (it left at Hosted and joins again):
 		// always push it, with the consent the sign-in below records.
 		if _, e = tx.ExecContext(ctx, `INSERT INTO hosted_membership_journal(hosted_account_id) VALUES(?)`, q.AccountID); e != nil {
+			return e
+		}
+		if e = s.joinedNotice(ctx, tx, now, id, account, q.Username); e != nil {
 			return e
 		}
 		out, e = signIn(ctx, tx)
@@ -591,8 +645,9 @@ func RedeemForRegistrationTx(ctx context.Context, tx *sql.Tx, code, account stri
 		return nil, identity.ErrRegistrationInvite
 	}
 	var id, role, libraries, bound string
+	var notes *string
 	var expires int64
-	e := tx.QueryRowContext(ctx, `SELECT id,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &role, &libraries, &expires, &bound)
+	e := tx.QueryRowContext(ctx, `SELECT id,notes,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &notes, &role, &libraries, &expires, &bound)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil, identity.ErrRegistrationInvite
 	}
@@ -606,6 +661,16 @@ func RedeemForRegistrationTx(ctx context.Context, tx *sql.Tx, code, account stri
 	if e = json.Unmarshal([]byte(libraries), &ids); e != nil {
 		return nil, e
 	}
+	if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET notes=?,joined_via=?,joined_ms=? WHERE account_id=?`, notes, id, now, account); e != nil {
+		return nil, e
+	}
+	var username string
+	if e = tx.QueryRowContext(ctx, `SELECT username FROM accounts WHERE id=?`, account).Scan(&username); e != nil {
+		return nil, e
+	}
+	if e = (&Store{}).joinedNotice(ctx, tx, now, id, account, username); e != nil {
+		return nil, e
+	}
 	if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET state='accepted',accepted_ms=?,account_id=?,revision=revision+1 WHERE id=? AND state='pending'`, now, account, id); e != nil {
 		return nil, e
 	}
@@ -616,6 +681,206 @@ func RedeemForRegistrationTx(ctx context.Context, tx *sql.Tx, code, account stri
 // service installs (identity.Service.RedeemInvitation).
 func (s *Store) RegistrationRedeemer() identity.InvitationRedeemer {
 	return func(ctx context.Context, tx *sql.Tx, code, account string) ([]string, error) {
+		var id string
+		if e := tx.QueryRowContext(ctx, `SELECT id FROM access_invitations WHERE code_hash=?`, digest(strings.TrimSpace(code))).Scan(&id); e != nil {
+			return nil, identity.ErrRegistrationInvite
+		}
+		if !s.checkInvitationCode(id, strings.TrimSpace(code)) {
+			return nil, identity.ErrRegistrationInvite
+		}
 		return RedeemForRegistrationTx(ctx, tx, code, account, s.now())
 	}
+}
+
+// joinedNotice deliberately carries usernames only and no private invitation text.
+func (s *Store) joinedNotice(ctx context.Context, tx *sql.Tx, now int64, id, account, username string) error {
+	rows, e := tx.QueryContext(ctx, `SELECT account_id FROM direct_memberships WHERE role IN('owner','admin') AND disabled=0 ORDER BY account_id`)
+	if e != nil {
+		return e
+	}
+	var accounts []string
+	for rows.Next() {
+		var a string
+		if e = rows.Scan(&a); e != nil {
+			rows.Close()
+			return e
+		}
+		accounts = append(accounts, a)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	var serverName string
+	if e = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT value FROM configuration WHERE key='name'),'Portico')`).Scan(&serverName); e != nil {
+		return e
+	}
+	for _, a := range accounts {
+		_, e = notify.Raise(tx, now, notify.Draft{Scope: notify.AdminScope("local", a), Audience: notify.AudienceAccountAdmin, Source: notify.SourceSecurity, Severity: notify.SeverityInfo, Category: "people.joined", DedupeKey: "invitation:" + id, Title: fmt.Sprintf("%s joined %s", username, serverName), Body: "The invitation was accepted.", Arguments: map[string]string{"username": username, "accountId": account, "server": serverName}, Actions: []notify.Action{}})
+		if e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+// InvitationChange edits only pending, unexpired offers, preserving their code.
+type InvitationChange struct {
+	ExpectedRevision int64    `json:"expectedRevision"`
+	OperationID      string   `json:"operationId"`
+	Notes            *string  `json:"notes,omitempty"`
+	Role             string   `json:"role"`
+	AllowedLibraries []string `json:"allowedLibraries"`
+	ExpiresAt        string   `json:"expiresAt"`
+}
+type InvitationLinkRequest struct {
+	ExpectedRevision int64 `json:"expectedRevision"`
+}
+type InvitationLink struct {
+	Code      string `json:"code"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+func invitationManageTx(ctx context.Context, tx *sql.Tx, actor identity.Principal, role string) error {
+	live, e := Role(tx, actor.AccountID)
+	if e != nil {
+		return e
+	}
+	if !identity.ManagesTier(live, role) || !identity.ManagesTier(actor.Role, role) {
+		return identity.ErrForbidden
+	}
+	return nil
+}
+func (s *Store) EditInvitation(ctx context.Context, auth Authorize, actor identity.Principal, id string, q InvitationChange) (out Invitation, err error) {
+	if !validID(id) || q.ExpectedRevision < 1 || !validOperationID(q.OperationID) {
+		return out, invalid("id", "expectedRevision", "operationId")
+	}
+	notes, e := invitationNotes(q.Notes)
+	if e != nil {
+		return out, e
+	}
+	q.Notes = notes
+	if q.Role != identity.TierMember && q.Role != identity.TierAdmin {
+		return out, invalid("role")
+	}
+	expiry, e := time.Parse(time.RFC3339, q.ExpiresAt)
+	if e != nil || expiry.UnixMilli() <= s.now() || expiry.After(s.Now().Add(720*time.Hour)) {
+		return out, invalid("expiresAt")
+	}
+	if len(q.AllowedLibraries) > 256 {
+		return out, invalid("allowedLibraries")
+	}
+	if q.AllowedLibraries == nil {
+		q.AllowedLibraries = []string{}
+	}
+	seen := map[string]bool{}
+	for _, v := range q.AllowedLibraries {
+		if !validID(v) || seen[v] {
+			return out, invalid("allowedLibraries")
+		}
+		seen[v] = true
+	}
+	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		current, e := invitationRow(tx.QueryRowContext(ctx, `SELECT `+invitationColumns+` FROM access_invitations WHERE id=?`, id))
+		if e != nil {
+			return e
+		}
+		if e = invitationManageTx(ctx, tx, actor, current.Role); e != nil {
+			return e
+		}
+		if e = invitationManageTx(ctx, tx, actor, q.Role); e != nil {
+			return e
+		}
+		currentExpiry, _ := time.Parse(time.RFC3339, current.ExpiresAt)
+		if current.State != "pending" || currentExpiry.UnixMilli() <= s.now() {
+			return ErrExpired
+		}
+		body, want, e := receipt(tx, "invite-edit:"+id, q.OperationID, q)
+		if e != nil {
+			return e
+		}
+		if body != "" {
+			return json.Unmarshal([]byte(body), &out)
+		}
+		if current.Revision != q.ExpectedRevision {
+			return &ConflictError{current.Revision}
+		}
+		for _, v := range q.AllowedLibraries {
+			var present bool
+			if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries WHERE id=?)`, v).Scan(&present); e != nil {
+				return e
+			}
+			if !present {
+				return invalid("allowedLibraries")
+			}
+		}
+		libraries, _ := json.Marshal(q.AllowedLibraries)
+		if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET notes=?,role=?,allowed_libraries=?,expires_ms=?,revision=revision+1 WHERE id=?`, notes, q.Role, string(libraries), expiry.UnixMilli(), id); e != nil {
+			return e
+		}
+		out, e = invitationRow(tx.QueryRowContext(ctx, `SELECT `+invitationColumns+` FROM access_invitations WHERE id=?`, id))
+		if e != nil {
+			return e
+		}
+		return saveReceipt(tx, "invite-edit:"+id, q.OperationID, want, out, s.now())
+	})
+	return
+}
+func (s *Store) PendingInvitationLink(ctx context.Context, auth Authorize, actor identity.Principal, id string, q InvitationLinkRequest) (out InvitationLink, err error) {
+	if !validID(id) || q.ExpectedRevision < 1 {
+		return out, invalid("id", "expectedRevision")
+	}
+	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		v, e := invitationRow(tx.QueryRowContext(ctx, `SELECT `+invitationColumns+` FROM access_invitations WHERE id=?`, id))
+		if e != nil {
+			return e
+		}
+		if e = invitationManageTx(ctx, tx, actor, v.Role); e != nil {
+			return e
+		}
+		if v.Revision != q.ExpectedRevision {
+			return &ConflictError{v.Revision}
+		}
+		expires, _ := time.Parse(time.RFC3339, v.ExpiresAt)
+		if v.State != "pending" || expires.UnixMilli() <= s.now() {
+			return ErrExpired
+		}
+		code := s.invitationCode(id)
+		var hash string
+		if e = tx.QueryRowContext(ctx, `SELECT code_hash FROM access_invitations WHERE id=?`, id).Scan(&hash); e != nil {
+			return e
+		}
+		if !hmac.Equal([]byte(hash), []byte(digest(code))) {
+			return ErrExpired
+		}
+		out = InvitationLink{Code: code, ExpiresAt: v.ExpiresAt}
+		return nil
+	})
+	return
+}
+
+// Published bounds are the same ones enforced by invitationNotes and the store.
+func notesShape(t reflect.Type) map[string]any {
+	shape, e := apikit.Schema(t)
+	if e != nil {
+		panic(e)
+	}
+	fields := shape["properties"].(map[string]any)
+	if note, ok := fields["notes"].(map[string]any); ok {
+		note["maxLength"] = 500
+	}
+	return shape
+}
+func (InvitationRequest) JSONSchema() map[string]any {
+	type wire InvitationRequest
+	return notesShape(reflect.TypeFor[wire]())
+}
+func (InvitationChange) JSONSchema() map[string]any {
+	type wire InvitationChange
+	return notesShape(reflect.TypeFor[wire]())
+}
+func (Invitation) JSONSchema() map[string]any {
+	type wire Invitation
+	return notesShape(reflect.TypeFor[wire]())
 }

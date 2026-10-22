@@ -2,8 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
+	"net/netip"
+	"portico.local/server/internal/access"
 
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
@@ -15,43 +18,80 @@ import (
 // showed. Turning a member off stays on PATCH /v1/direct/members/{id}; this is
 // the one that removes the person and their data.
 func registerMemberRoutes(registry *apikit.Registry, d Dependencies) error {
-	if err := apikit.Register(registry, apikit.Route[struct{}, identity.MemberDeletionPreview]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "get_direct_member_deletion_preview", Method: "GET", Path: "/v1/direct/members/{id}/deletion-preview", Summary: "Read what deleting a member will remove", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (identity.MemberDeletionPreview, error) {
+	if err := apikit.Register(registry, apikit.Route[struct{}, MemberDeletionDocument]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "get_direct_member_deletion_preview", Method: "GET", Path: "/v1/direct/members/{id}/deletion-preview", Summary: "Read what deleting a member will remove", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (MemberDeletionDocument, error) {
 		out, err := d.Identity.PreviewDirectMemberDeletion(ctx, directBearer(r), r.PathValue("id"))
-		return out, foundationAuthErrorOrNil(err)
+		if err != nil {
+			return MemberDeletionDocument{}, foundationAuthErrorOrNil(err)
+		}
+		p, e := d.administrator(r)
+		if e != nil {
+			return MemberDeletionDocument{}, foundationAuthError(e)
+		}
+		m, e := d.Access.Access.Member(ctx, d.accessTargetAuthority(p, r.PathValue("id"), false), r.PathValue("id"))
+		if e != nil {
+			return MemberDeletionDocument{}, foundationAuthError(e)
+		}
+		if m.Revision != out.Revision {
+			return MemberDeletionDocument{}, foundationAuthError(identity.ErrProfileChanged)
+		}
+		return MemberDeletionDocument{MemberDeletionPreview: out, Notes: m.Notes}, nil
 	}}); err != nil {
 		return err
 	}
 	// Every member's devices, for the owner and administrators: the same device
 	// records sessions are bound to, with their approval. An administrator
 	// who is not the owner sees and decides about plain members' devices.
-	if err := apikit.Register(registry, apikit.Route[struct{}, identity.MemberDevicePage]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "get_admin_access_devices", Method: "GET", Path: "/v1/admin/access/devices", Summary: "List members' devices and whether each is approved", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "members", Lane: apikit.Security, Cost: apikit.PageSized, Query: []string{"cursor", "limit", "trust", "account"}, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (identity.MemberDevicePage, error) {
+	if err := apikit.Register(registry, apikit.Route[struct{}, access.PeopleDevicePage]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "get_admin_access_devices", Method: "GET", Path: "/v1/admin/access/devices", Summary: "List members' devices and whether each is approved", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "members", Lane: apikit.Security, Cost: apikit.PageSized, Query: []string{"cursor", "limit", "trust", "account", "sort"}, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.PeopleDevicePage, error) {
 		p, err := d.foundationCaller(r.WithContext(ctx))
 		if err != nil {
-			return identity.MemberDevicePage{}, foundationAuthError(err)
+			return access.PeopleDevicePage{}, foundationAuthError(err)
 		}
 		query := r.URL.Query()
-		out, err := d.Identity.MemberDevices(ctx, p, identity.MemberDeviceQuery{Cursor: query.Get("cursor"), Limit: query.Get("limit"), Trust: query.Get("trust"), Account: query.Get("account")})
-		return out, memberDeviceError(err)
+		networks, e := d.peopleNetworks(ctx)
+		if e != nil {
+			return access.PeopleDevicePage{}, foundationAuthError(e)
+		}
+		out, err := d.Access.Access.PeopleDevices(ctx, d.accessAuthority(p, identity.TierAdmin), p, access.PeopleDeviceQuery{Cursor: query.Get("cursor"), Limit: query.Get("limit"), Trust: query.Get("trust"), Account: query.Get("account"), Sort: query.Get("sort")}, networks)
+		if err == nil {
+			document, e := d.settingsDocument(ctx)
+			if e != nil {
+				return out, foundationAuthError(e)
+			}
+			out.ApprovalRequired = document.Effective.DeviceApprovalRequired
+		}
+		return out, peopleDeviceError(err)
 	}}); err != nil {
 		return err
 	}
-	if err := apikit.Register(registry, apikit.Route[struct{}, identity.MemberDevice]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "get_admin_access_device", Method: "GET", Path: "/v1/admin/access/devices/{id}", Summary: "Read one member's device as the devices list shows it", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "members", Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (identity.MemberDevice, error) {
+	if err := apikit.Register(registry, apikit.Route[struct{}, access.PeopleDevice]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "get_admin_access_device", Method: "GET", Path: "/v1/admin/access/devices/{id}", Summary: "Read one member's device as the devices list shows it", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "members", Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.PeopleDevice, error) {
 		p, err := d.foundationCaller(r.WithContext(ctx))
 		if err != nil {
-			return identity.MemberDevice{}, foundationAuthError(err)
+			return access.PeopleDevice{}, foundationAuthError(err)
 		}
-		out, err := d.Identity.MemberDevice(ctx, p, r.PathValue("id"))
-		return out, memberDeviceError(err)
+		networks, e := d.peopleNetworks(ctx)
+		if e != nil {
+			return access.PeopleDevice{}, foundationAuthError(e)
+		}
+		out, err := d.Access.Access.PeopleDevice(ctx, d.accessAuthority(p, identity.TierAdmin), p, r.PathValue("id"), networks)
+		return out, peopleDeviceError(err)
 	}}); err != nil {
 		return err
 	}
-	if err := apikit.Register(registry, apikit.Route[identity.MemberDeviceTrust, identity.MemberDevice]{Metadata: apikit.Metadata{Admission: laneSecurityFence, ID: "put_admin_access_device_trust", Method: "PUT", Path: "/v1/admin/access/devices/{id}/trust", Summary: "Approve a member's device, block it, or put it back to waiting", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "members", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "revision_mismatch", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body identity.MemberDeviceTrust) (identity.MemberDevice, error) {
+	if err := apikit.Register(registry, apikit.Route[identity.MemberDeviceTrust, access.PeopleDevice]{Metadata: apikit.Metadata{Admission: laneSecurityFence, ID: "put_admin_access_device_trust", Method: "PUT", Path: "/v1/admin/access/devices/{id}/trust", Summary: "Approve a member's device, block it, or put it back to waiting", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "members", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "revision_mismatch", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body identity.MemberDeviceTrust) (access.PeopleDevice, error) {
 		p, err := d.foundationCaller(r.WithContext(ctx))
 		if err != nil {
-			return identity.MemberDevice{}, foundationAuthError(err)
+			return access.PeopleDevice{}, foundationAuthError(err)
 		}
-		out, err := d.Identity.SetMemberDeviceTrust(ctx, p, r.PathValue("id"), body)
-		return out, memberDeviceError(err)
+		_, err = d.Identity.SetMemberDeviceTrust(ctx, p, r.PathValue("id"), body)
+		if err != nil {
+			return access.PeopleDevice{}, memberDeviceError(err)
+		}
+		networks, e := d.peopleNetworks(ctx)
+		if e != nil {
+			return access.PeopleDevice{}, foundationAuthError(e)
+		}
+		out, err := d.Access.Access.PeopleDevice(ctx, d.accessAuthority(p, identity.TierAdmin), p, r.PathValue("id"), networks)
+		return out, peopleDeviceError(err)
 	}}); err != nil {
 		return err
 	}
@@ -113,4 +153,37 @@ func memberDeviceError(err error) error {
 		return &apierror.Error{Code: "revision_mismatch", Cause: err}
 	}
 	return foundationAuthError(err)
+}
+
+type MemberDeletionDocument struct {
+	identity.MemberDeletionPreview
+	Notes *string `json:"notes,omitempty"`
+}
+
+func (d Dependencies) peopleNetworks(ctx context.Context) ([]netip.Prefix, error) {
+	document, e := d.settingsDocument(ctx)
+	if e != nil {
+		return nil, e
+	}
+	out := []netip.Prefix{}
+	for _, raw := range document.Effective.LANNetworks {
+		p, e := netip.ParsePrefix(raw)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+func peopleDeviceError(e error) error {
+	if errors.Is(e, sql.ErrNoRows) {
+		return &apierror.Error{Code: "not_found"}
+	}
+	if e == nil {
+		return nil
+	}
+	if errors.Is(e, access.ErrInvalid) {
+		return &apierror.Error{Code: "invalid_request"}
+	}
+	return foundationAuthError(e)
 }

@@ -3,8 +3,11 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"portico.local/apikit"
+	"reflect"
 
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/hosted"
@@ -30,10 +33,15 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 			accessFailure(w, e)
 			return
 		}
-		out, e := store.Members(r.Context(), d.accessAuthority(p, identity.TierAdmin), access.MemberQuery{Cursor: r.URL.Query().Get("cursor"), Limit: r.URL.Query().Get("limit")})
+		out, e := store.Members(r.Context(), d.accessReadAuthority(&p, identity.TierAdmin), access.MemberQuery{Cursor: r.URL.Query().Get("cursor"), Limit: r.URL.Query().Get("limit")})
 		if e != nil {
 			accessFailure(w, e)
 			return
+		}
+		for i := range out.Items {
+			if p.Role != identity.TierOwner && !identity.ManagesTier(p.Role, out.Items[i].Role) {
+				out.Items[i].Notes = nil
+			}
 		}
 		write(w, 200, out)
 	})
@@ -43,10 +51,13 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 			accessFailure(w, e)
 			return
 		}
-		out, e := store.Member(r.Context(), d.accessAuthority(p, identity.TierAdmin), r.PathValue("id"))
+		out, e := store.Member(r.Context(), d.accessReadAuthority(&p, identity.TierAdmin), r.PathValue("id"))
 		if e != nil {
 			accessFailure(w, e)
 			return
+		}
+		if p.Role != identity.TierOwner && !identity.ManagesTier(p.Role, out.Role) {
+			out.Notes = nil
 		}
 		write(w, 200, out)
 	})
@@ -74,7 +85,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 			accessFailure(w, e)
 			return
 		}
-		out, e := store.Limits(r.Context(), d.accessAuthority(p, identity.TierAdmin), r.PathValue("id"))
+		out, e := store.Limits(r.Context(), d.accessTargetAuthority(p, r.PathValue("id"), false), r.PathValue("id"))
 		if e != nil {
 			accessFailure(w, e)
 			return
@@ -92,7 +103,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := store.SetLimits(r.Context(), d.accessAuthority(p, identity.TierAdmin), r.PathValue("id"), body)
+		out, e := store.SetLimits(r.Context(), d.accessTargetAuthority(p, r.PathValue("id"), false), r.PathValue("id"), body)
 		if e != nil {
 			accessFailure(w, e)
 			return
@@ -106,10 +117,15 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 			return
 		}
 		query := r.URL.Query()
-		out, e := store.Invitations(r.Context(), d.accessAuthority(p, identity.TierAdmin), access.InvitationQuery{Cursor: query.Get("cursor"), Limit: query.Get("limit"), State: query.Get("state")})
+		out, e := store.Invitations(r.Context(), d.accessReadAuthority(&p, identity.TierAdmin), access.InvitationQuery{Cursor: query.Get("cursor"), Limit: query.Get("limit"), State: query.Get("state")})
 		if e != nil {
 			accessFailure(w, e)
 			return
+		}
+		for i := range out.Items {
+			if !identity.ManagesTier(p.Role, out.Items[i].Role) {
+				out.Items[i].Notes = nil
+			}
 		}
 		write(w, 200, out)
 	})
@@ -119,7 +135,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 			accessFailure(w, e)
 			return
 		}
-		out, e := store.Invitation(r.Context(), d.accessAuthority(p, identity.TierAdmin), r.PathValue("id"))
+		out, e := store.Invitation(r.Context(), d.accessTargetAuthority(p, r.PathValue("id"), true), r.PathValue("id"))
 		if e != nil {
 			accessFailure(w, e)
 			return
@@ -155,20 +171,71 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := store.RevokeInvitation(r.Context(), d.accessAuthority(p, identity.TierAdmin), r.PathValue("id"), body)
+		out, e := store.RevokeInvitation(r.Context(), d.accessTargetAuthority(p, r.PathValue("id"), true), r.PathValue("id"), body)
 		if e != nil {
 			accessFailure(w, e)
 			return
 		}
 		write(w, 200, out)
 	})
-	d.httpHandle(mux, "POST /v1/access/invitations/accept", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			access.Acceptance
-			// PorticoIdentity accepts as a Portico Account instead of creating
-			// a password account; the answer is then a sign-in (DirectSignIn).
-			PorticoIdentity *hosted.Signed `json:"porticoIdentity,omitempty"`
+
+	d.httpHandle(mux, "PUT /v1/admin/access/members/{id}/notes", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.administrator(r)
+		if e != nil {
+			accessFailure(w, e)
+			return
 		}
+		var q access.MemberNotesChange
+		if e = decodeLegacyRevision(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		out, e := store.SetMemberNotes(r.Context(), d.accessAuthority(p, identity.TierAdmin), p, r.PathValue("id"), q)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
+	d.httpHandle(mux, "PUT /v1/admin/access/invitations/{id}", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.administrator(r)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		var q access.InvitationChange
+		if e = decodeLegacyRevision(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		out, e := store.EditInvitation(r.Context(), d.accessAuthority(p, identity.TierAdmin), p, r.PathValue("id"), q)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
+	d.httpHandle(mux, "POST /v1/admin/access/invitations/{id}/link", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.administrator(r)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		var q access.InvitationLinkRequest
+		if e = decodeLegacyRevision(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		out, e := store.PendingInvitationLink(r.Context(), d.accessAuthority(p, identity.TierAdmin), p, r.PathValue("id"), q)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		write(w, 200, out)
+	})
+	d.httpHandle(mux, "POST /v1/access/invitations/accept", func(w http.ResponseWriter, r *http.Request) {
+		var body InvitationAcceptRequest
 		if e := decodeLegacyRevision(w, r, &body); e != nil {
 			failure(w, e)
 			return
@@ -215,4 +282,61 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		write(w, 201, out)
 	})
+}
+
+// The live caller and target tiers are re-read in the transaction performing the operation.
+func (d Dependencies) accessTargetAuthority(p identity.Principal, id string, invitation bool) access.Authorize {
+	return func(ctx context.Context, tx *sql.Tx) error {
+		live, e := d.tierAuthorityTx(ctx, tx, p, identity.TierAdmin)
+		if e != nil {
+			return e
+		}
+		var role string
+		if invitation {
+			e = tx.QueryRowContext(ctx, `SELECT role FROM access_invitations WHERE id=?`, id).Scan(&role)
+		} else {
+			e = tx.QueryRowContext(ctx, `SELECT role FROM direct_memberships WHERE account_id=?`, id).Scan(&role)
+		}
+		if e != nil {
+			return e
+		}
+		if !identity.ManagesTier(live.Role, role) {
+			return identity.ErrForbidden
+		}
+		return nil
+	}
+}
+
+// InvitationAcceptRequest publishes the two actual authentication methods.
+type InvitationAcceptRequest struct {
+	access.Acceptance
+	PorticoIdentity *hosted.Signed `json:"porticoIdentity,omitempty"`
+}
+
+func (InvitationAcceptRequest) JSONSchema() map[string]any {
+	local, _ := apikit.Schema(reflect.TypeFor[access.Acceptance]())
+	portico, _ := apikit.Schema(reflect.TypeFor[struct {
+		Code            string        `json:"code"`
+		PorticoIdentity hosted.Signed `json:"porticoIdentity"`
+	}]())
+	return map[string]any{"oneOf": []any{local, portico}}
+}
+
+type InvitationAcceptanceResponse json.RawMessage
+
+func (InvitationAcceptanceResponse) JSONSchema() map[string]any {
+	local, _ := apikit.Schema(reflect.TypeFor[access.AcceptanceResult]())
+	portico, _ := apikit.Schema(reflect.TypeFor[identity.DirectSignIn]())
+	return map[string]any{"oneOf": []any{local, portico}}
+}
+
+// Keep response redaction tied to the exact read snapshot's live authority.
+func (d Dependencies) accessReadAuthority(p *identity.Principal, needed string) access.Authorize {
+	return func(ctx context.Context, tx *sql.Tx) error {
+		live, e := d.tierAuthorityTx(ctx, tx, *p, needed)
+		if e == nil {
+			*p = live
+		}
+		return e
+	}
 }

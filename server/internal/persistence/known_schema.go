@@ -16,7 +16,6 @@ import (
 // they have. Nothing is ever dropped automatically: a build that does not define
 // a table cannot know what removing it would cost.
 const knownSchemaObjects = `index access_invitation_page
-index access_invitation_pending
 index admin_channel_presets_page
 index admin_dvr_groups_page
 index admin_receipts_age
@@ -307,6 +306,8 @@ index identity_browser_accounts_recent
 index identity_credential_attempts_age
 index identity_device_families_device
 index identity_devices_account
+index identity_devices_people_first_seen
+index identity_devices_people_name
 index identity_devices_recent
 index identity_factor_challenge_expiry
 index identity_refresh_device

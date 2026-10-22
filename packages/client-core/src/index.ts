@@ -2035,3 +2035,7 @@ export * from './event-feed.ts';
 export * from './home-service.ts';
 export * from './scan-issues.ts';
 export * from './playback-controls.ts';
+
+export {PeopleInvitationsClient,parsePublicInvitation,privatePersonNotes,personIdentity} from './direct-account.ts';
+export type {ServerInvitation,PeopleMember,PublicInvitation} from './direct-account.ts';
+export {highestRatingChoices} from './profile-limits.ts';

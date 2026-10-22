@@ -8,9 +8,16 @@
   "status": 200,
   "response": {
     "serverName": "Portico",
-    "email": "j***@example.com",
-    "expiresAt": "2026-09-24T06:49:47Z",
+    "expiresAt": "2026-10-23T21:16:19Z",
     "role": "member",
-    "libraryCount": 1
+    "libraryCount": 1,
+    "libraries": [
+      {
+        "name": "Films"
+      }
+    ],
+    "allLibraries": false,
+    "signInMethod": "local",
+    "inviterUsername": "owner"
   }
 }

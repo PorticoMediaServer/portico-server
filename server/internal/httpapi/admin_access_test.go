@@ -262,7 +262,7 @@ func TestMemberLimitsChannelPolicyRejectsNonCanonicalIDs(t *testing.T) {
 
 func TestInvitationRouteIssuesACodeOnceAndAcceptanceCreatesTheAccount(t *testing.T) {
 	f := administrationFixtureNew(t)
-	w := f.call("POST", "/v1/admin/access/invitations", f.admin, `{"operationId":"invite-route-1","email":"guest@example.com","role":"member","allowedLibraries":[],"expiresInHours":24}`)
+	w := f.call("POST", "/v1/admin/access/invitations", f.admin, `{"operationId":"invite-route-1","notes":"private fixture","role":"member","allowedLibraries":[],"expiresInHours":24}`)
 	if w.Code != 201 {
 		t.Fatalf("invite: %d %s", w.Code, w.Body)
 	}
@@ -288,7 +288,10 @@ func TestInvitationRouteIssuesACodeOnceAndAcceptanceCreatesTheAccount(t *testing
 
 func TestInvitationPreviewIsOpaqueAndSharesAcceptBudget(t *testing.T) {
 	f := administrationFixtureNew(t)
-	w := f.call("POST", "/v1/admin/access/invitations", f.owner, `{"operationId":"preview-route-1","email":"justin@example.com","role":"member","allowedLibraries":["private-lib"],"expiresInHours":24}`)
+	if _, e := f.deps.DB.Exec(`INSERT INTO libraries(id,name,kind,root) VALUES('private-lib','Films','movie','/fixture')`); e != nil {
+		t.Fatal(e)
+	}
+	w := f.call("POST", "/v1/admin/access/invitations", f.owner, `{"operationId":"preview-route-1","notes":"private fixture","role":"member","allowedLibraries":["private-lib"],"expiresInHours":24}`)
 	if w.Code != 201 {
 		t.Fatalf("invite: %d %s", w.Code, w.Body)
 	}
@@ -302,10 +305,10 @@ func TestInvitationPreviewIsOpaqueAndSharesAcceptBudget(t *testing.T) {
 		t.Fatalf("preview: %d %s", w.Code, w.Body)
 	}
 	var preview access.InvitationPreview
-	if err := json.Unmarshal(w.Body.Bytes(), &preview); err != nil || preview.ServerName != f.deps.Identity.Name() || preview.Email != "j***@example.com" || preview.LibraryCount != 1 || preview.ExpiresAt != invite.ExpiresAt || preview.Role != "member" {
+	if err := json.Unmarshal(w.Body.Bytes(), &preview); err != nil || preview.ServerName != f.deps.Identity.Name() || preview.InviterUsername == "" || preview.SignInMethod != "local" || preview.LibraryCount != 1 || preview.ExpiresAt != invite.ExpiresAt || preview.Role != "member" {
 		t.Fatalf("preview: %+v %v", preview, err)
 	}
-	if strings.Contains(w.Body.String(), "private-lib") || strings.Contains(w.Body.String(), "justin@example.com") {
+	if strings.Contains(w.Body.String(), "notes") || strings.Contains(w.Body.String(), "private fixture") || strings.Contains(w.Body.String(), "email") {
 		t.Fatalf("preview leaked private detail: %s", w.Body)
 	}
 	if os.Getenv("PORTICO_CONTRACT_UPDATE") == "1" {
@@ -723,14 +726,14 @@ func TestAdministratorReadsOneMemberInvitationAndDeviceByID(t *testing.T) {
 		t.Fatalf("a viewer read a member: %d", w.Code)
 	}
 
-	w = f.call("POST", "/v1/admin/access/invitations", f.admin, `{"operationId":"invite-read-1","email":"guest@example.com","role":"member","allowedLibraries":[],"expiresInHours":24}`)
+	w = f.call("POST", "/v1/admin/access/invitations", f.admin, `{"operationId":"invite-read-1","notes":"private fixture","role":"member","allowedLibraries":[],"expiresInHours":24}`)
 	var created access.Invitation
 	if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &created) != nil || created.ID == "" || created.Code == "" {
 		t.Fatalf("invite: %d %s", w.Code, w.Body)
 	}
 	w = f.call("GET", "/v1/admin/access/invitations/"+created.ID, f.admin, "")
 	var read access.Invitation
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &read) != nil || read.ID != created.ID || read.Email != "guest@example.com" {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &read) != nil || read.ID != created.ID || (read.Notes == nil || *read.Notes != "private fixture") {
 		t.Fatalf("invitation: %d %s", w.Code, w.Body)
 	}
 	if strings.Contains(w.Body.String(), created.Code) {
@@ -750,5 +753,167 @@ func TestAdministratorReadsOneMemberInvitationAndDeviceByID(t *testing.T) {
 	}
 	if w = f.call("GET", "/v1/admin/access/devices/"+f.memberDevice, f.member, ""); w.Code != 401 && w.Code != 403 {
 		t.Fatalf("a viewer read a device: %d", w.Code)
+	}
+}
+
+func TestPeopleInvitationRoutesKeepNotesPrivateAndEnforceTiers(t *testing.T) {
+	f := administrationFixtureNew(t)
+	if _, e := f.deps.DB.Exec(`UPDATE direct_memberships SET notes='private owner note' WHERE account_id='owner'`); e != nil {
+		t.Fatal(e)
+	}
+	if w := f.call("GET", "/v1/admin/access/members", f.admin, ""); w.Code != 200 || strings.Contains(w.Body.String(), "private owner note") {
+		t.Fatalf("owner list note: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("GET", "/v1/admin/access/members/owner", f.admin, ""); w.Code != 200 || strings.Contains(w.Body.String(), "private owner note") {
+		t.Fatalf("owner record note: %d %s", w.Code, w.Body)
+	}
+
+	w := f.call("POST", "/v1/admin/access/invitations", f.owner, `{"operationId":"people-create-1","notes":"private fixture note","role":"member","allowedLibraries":[],"expiresInHours":24}`)
+	if w.Code != 201 {
+		t.Fatalf("create: %d %s", w.Code, w.Body)
+	}
+	var v access.Invitation
+	if e := json.Unmarshal(w.Body.Bytes(), &v); e != nil {
+		t.Fatal(e)
+	}
+	linkPath := "/v1/admin/access/invitations/" + v.ID + "/link"
+	for _, token := range []string{f.owner, f.admin} {
+		w := f.call("POST", linkPath, token, `{"expectedRevision":1}`)
+		if w.Code != 200 || strings.Contains(w.Body.String(), "notes") {
+			t.Fatalf("link: %d %s", w.Code, w.Body)
+		}
+	}
+	if w := f.call("POST", linkPath, f.member, `{"expectedRevision":1}`); w.Code != 403 {
+		t.Fatalf("member link: %d %s", w.Code, w.Body)
+	}
+	edit := `{"operationId":"people-edit-1","expectedRevision":1,"notes":"updated private fixture","role":"member","allowedLibraries":[],"expiresAt":"` + time.Now().Add(time.Hour).UTC().Format(time.RFC3339) + `"}`
+	if w := f.call("PUT", "/v1/admin/access/invitations/"+v.ID, f.admin, edit); w.Code != 200 {
+		t.Fatalf("edit: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("POST", linkPath, f.owner, `{"expectedRevision":1}`); w.Code != 409 {
+		t.Fatalf("stale link: %d %s", w.Code, w.Body)
+	}
+	preview := f.call("POST", "/v1/access/invitations/preview", "", `{"code":"`+v.Code+`"}`)
+	if preview.Code != 200 || strings.Contains(preview.Body.String(), "notes") || strings.Contains(preview.Body.String(), "private fixture") || strings.Contains(preview.Body.String(), "email") {
+		t.Fatalf("preview: %d %s", preview.Code, preview.Body)
+	}
+	w = f.call("POST", "/v1/admin/access/invitations", f.owner, `{"operationId":"people-peer-1","notes":"private peer note","role":"admin","allowedLibraries":[]}`)
+	if w.Code != 201 {
+		t.Fatalf("peer create: %d %s", w.Code, w.Body)
+	}
+	var peer access.Invitation
+	json.Unmarshal(w.Body.Bytes(), &peer)
+	if w := f.call("POST", "/v1/admin/access/invitations/"+peer.ID+"/link", f.admin, `{"expectedRevision":1}`); w.Code != 403 {
+		t.Fatalf("peer link: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("POST", "/v1/admin/access/invitations/"+peer.ID+"/revoke", f.admin, `{"expectedRevision":1,"operationId":"people-revoke-peer"}`); w.Code != 403 {
+		t.Fatalf("peer revoke: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("GET", "/v1/admin/access/invitations", f.admin, ""); w.Code != 200 || strings.Contains(w.Body.String(), "private peer note") {
+		t.Fatalf("peer list: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("PUT", "/v1/admin/access/members/member/notes", f.admin, `{"expectedRevision":1,"operationId":"person-notes-1","notes":"private member note"}`); w.Code != 200 {
+		t.Fatalf("member note: %d %s", w.Code, w.Body)
+	}
+	for _, id := range []string{"owner", "admin"} {
+		if w := f.call("PUT", "/v1/admin/access/members/"+id+"/notes", f.admin, `{"expectedRevision":1,"operationId":"person-notes-`+id+`","notes":"bad"}`); w.Code != 403 {
+			t.Fatalf("peer note %s: %d %s", id, w.Code, w.Body)
+		}
+	}
+	if w := f.call("GET", "/v1/direct", f.member, ""); w.Code != 200 || strings.Contains(w.Body.String(), "private member note") || strings.Contains(w.Body.String(), "notes") {
+		t.Fatalf("self leak: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("GET", "/v1/direct/members/member/deletion-preview", f.admin, ""); w.Code != 200 || !strings.Contains(w.Body.String(), "private member note") || !strings.Contains(w.Body.String(), `"profiles":1`) {
+		t.Fatalf("delete preview: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("GET", "/v1/direct/members/owner/deletion-preview", f.admin, ""); w.Code != 403 {
+		t.Fatalf("peer delete preview: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("POST", "/v1/admin/access/invitations", f.owner, `{"operationId":"email-rejected-1","email":"fixture@example.invalid"}`); w.Code != 400 {
+		t.Fatalf("retired email: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestPorticoProfilesRequireMainPINAndRetainRealWaitTimes(t *testing.T) {
+	f := administrationFixtureNew(t)
+	ctx := context.Background()
+	s := f.deps.Identity
+	pin := "4821"
+	if _, e := s.EditDirectProfile(ctx, f.member, "member-profile", identity.DirectProfileEdit{ExpectedRevision: 1, PIN: &pin}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.deps.DB.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('member','acc_private_fixture')`); e != nil {
+		t.Fatal(e)
+	}
+	login, e := s.PorticoSignIn(ctx, identity.PorticoIdentity{AccountID: "acc_private_fixture", Username: "member"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if login.CanManage {
+		t.Fatal("protected picker claimed profile-management authority")
+	}
+	bearer := login.Session.AccessToken
+	if _, e = s.CreateDirectProfile(ctx, bearer, "Fixture child", "mint"); !errors.Is(e, identity.ErrForbidden) {
+		t.Fatalf("unproved PIN managed profiles: %v", e)
+	}
+	if _, e = s.SelectDirectProfile(ctx, bearer, "member-profile", identity.DirectSelection{PIN: "0000"}); !errors.Is(e, identity.ErrProfilePIN) {
+		t.Fatalf("wrong PIN: %v", e)
+	} else {
+		var wait *identity.ProfilePINError
+		if !errors.As(e, &wait) || wait.RetryAfterSeconds != 2 {
+			t.Fatalf("wrong PIN wait: %+v %v", wait, e)
+		}
+	}
+	if _, e = f.deps.DB.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=? WHERE profile_id='member-profile'`, time.Now().Add(31*time.Second).UnixMilli()); e != nil {
+		t.Fatal(e)
+	}
+	_, e = s.SelectDirectProfile(ctx, bearer, "member-profile", identity.DirectSelection{PIN: pin})
+	var wait *identity.ProfilePINError
+	if !errors.As(e, &wait) || !wait.Locked || wait.RetryAfterSeconds < 30 || wait.RetryAfterSeconds > 31 {
+		t.Fatalf("real wait: %+v %v", wait, e)
+	}
+	w := httptest.NewRecorder()
+	failure(w, e)
+	if w.Code != 429 || w.Header().Get("Retry-After") != strconv.FormatInt(wait.RetryAfterSeconds, 10) {
+		t.Fatalf("wire wait: %d %v %s", w.Code, w.Header(), w.Body)
+	}
+	if _, e = f.deps.DB.Exec(`DELETE FROM direct_profile_pin_attempts WHERE profile_id='member-profile'`); e != nil {
+		t.Fatal(e)
+	}
+	selected, e := s.SelectDirectProfile(ctx, bearer, "member-profile", identity.DirectSelection{PIN: pin})
+	if e != nil {
+		t.Fatal(e)
+	}
+	snapshot, e := s.CreateDirectProfile(ctx, selected.Session.AccessToken, "Fixture child", "mint")
+	if e != nil {
+		t.Fatalf("linked CRUD create: %v", e)
+	}
+	var child identity.DirectProfile
+	for _, p := range snapshot.Profiles {
+		if !p.Primary {
+			child = p
+		}
+	}
+	name := "Fixture renamed"
+	_, e = s.EditDirectProfile(ctx, selected.Session.AccessToken, child.ID, identity.DirectProfileEdit{ExpectedRevision: child.Revision, Name: &name})
+	if e != nil {
+		t.Fatalf("linked CRUD edit: %v", e)
+	}
+	narrow, e := s.SelectDirectProfile(ctx, selected.Session.AccessToken, child.ID, identity.DirectSelection{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.CreateDirectProfile(ctx, narrow.Session.AccessToken, "Forbidden", "blue"); !errors.Is(e, identity.ErrForbidden) {
+		t.Fatalf("child managed profiles: %v", e)
+	}
+	preview, e := s.PreviewDirectProfileDeletion(ctx, selected.Session.AccessToken, child.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = s.DeleteDirectProfile(ctx, selected.Session.AccessToken, child.ID, preview.Revision, true); e != nil {
+		t.Fatalf("linked CRUD delete: %v", e)
+	}
+	if _, e = s.EditDirectProfile(ctx, f.owner, "member-profile", identity.DirectProfileEdit{ExpectedRevision: 2, Name: &name}); e == nil {
+		t.Fatal("another account edited a profile")
 	}
 }

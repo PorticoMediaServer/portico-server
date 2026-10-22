@@ -3,8 +3,11 @@ package access
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net/netip"
+	"portico.local/server/internal/networkpolicy"
 	"time"
 
 	"portico.local/server/internal/identity"
@@ -30,7 +33,13 @@ type Member struct {
 	Limits           Limits   `json:"limits"`
 	// HostedAccountID marks a Portico Account member: no password here; its
 	// password, email and second factor are managed at the Portico Account.
-	HostedAccountID string `json:"hostedAccountId,omitempty"`
+	HostedAccountID string   `json:"hostedAccountId,omitempty"`
+	Notes           *string  `json:"notes,omitempty"`
+	JoinedVia       string   `json:"joinedVia,omitempty"`
+	JoinedAt        string   `json:"joinedAt,omitempty"`
+	ProfileNames    []string `json:"profileNames"`
+	LastActiveAt    string   `json:"lastActiveAt,omitempty"`
+	LiveState       string   `json:"liveState"`
 }
 
 type MemberPage struct {
@@ -47,18 +56,29 @@ type MemberQuery struct {
 }
 
 const memberColumns = `a.id,a.username,a.profile_id,m.role,m.disabled,m.disabled_ms,m.disabled_reason,m.revision,m.allowed_libraries,
- COALESCE(l.revision,1),COALESCE(l.body,''),COALESCE(p.hosted_account_id,'')`
+ COALESCE(l.revision,1),COALESCE(l.body,''),COALESCE(p.hosted_account_id,''),m.notes,m.joined_via,m.joined_ms,
+ (SELECT json_group_array(name) FROM (SELECT name FROM direct_profiles WHERE account_id=a.id AND deleted=0 ORDER BY position,id)),
+ COALESCE((SELECT max(last_seen) FROM identity_devices WHERE account_id=a.id AND authority='local'),''),
+ CASE WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.account_id=a.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind NOT IN('music','audiobook','audio')) THEN 'watching'
+ WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.account_id=a.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind IN('music','audiobook','audio')) THEN 'listening' ELSE 'idle' END`
 const memberTables = `accounts a JOIN direct_memberships m ON m.account_id=a.id
  LEFT JOIN access_limits l ON l.account_id=a.id LEFT JOIN account_portico_links p ON p.account_id=a.id`
 
 func scanMember(row interface{ Scan(...any) error }) (Member, error) {
 	var m Member
-	var libraries, body string
-	var disabledMs int64
-	if e := row.Scan(&m.AccountID, &m.Username, &m.ProfileID, &m.Role, &m.Disabled, &disabledMs, &m.DisabledReason, &m.Revision, &libraries, &m.LimitsRevision, &body, &m.HostedAccountID); e != nil {
+	var libraries, body, profiles string
+	var disabledMs, joinedMs int64
+	if e := row.Scan(&m.AccountID, &m.Username, &m.ProfileID, &m.Role, &m.Disabled, &disabledMs, &m.DisabledReason, &m.Revision, &libraries, &m.LimitsRevision, &body, &m.HostedAccountID, &m.Notes, &m.JoinedVia, &joinedMs, &profiles, &m.LastActiveAt, &m.LiveState); e != nil {
 		return m, e
 	}
 	m.DisabledAt = disabledAt(disabledMs)
+	m.JoinedAt = disabledAt(joinedMs)
+	if e := json.Unmarshal([]byte(profiles), &m.ProfileNames); e != nil {
+		return m, e
+	}
+	if m.ProfileNames == nil {
+		m.ProfileNames = []string{}
+	}
 	if e := json.Unmarshal([]byte(libraries), &m.AllowedLibraries); e != nil {
 		return m, e
 	}
@@ -152,6 +172,18 @@ func (s *Store) SetRole(ctx context.Context, auth Authorize, actor identity.Prin
 		return out, identity.ErrForbidden
 	}
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		var current string
+		var revision int64
+		if e := tx.QueryRowContext(ctx, `SELECT role,revision FROM direct_memberships WHERE account_id=?`, account).Scan(&current, &revision); e != nil {
+			return e
+		}
+		live, e := Role(tx, actor.AccountID)
+		if e != nil {
+			return e
+		}
+		if !identity.ManagesTier(live, current) || !identity.ManagesTier(live, c.Role) || !identity.ManagesTier(actor.Role, current) || !identity.ManagesTier(actor.Role, c.Role) {
+			return identity.ErrForbidden
+		}
 		scope := "role:" + account
 		body, want, e := receipt(tx, scope, c.OperationID, c)
 		if e != nil {
@@ -159,14 +191,6 @@ func (s *Store) SetRole(ctx context.Context, auth Authorize, actor identity.Prin
 		}
 		if body != "" {
 			return json.Unmarshal([]byte(body), &out)
-		}
-		var current string
-		var revision int64
-		if e = tx.QueryRowContext(ctx, `SELECT role,revision FROM direct_memberships WHERE account_id=?`, account).Scan(&current, &revision); e != nil {
-			return e
-		}
-		if !identity.ManagesTier(actor.Role, current) || !identity.ManagesTier(actor.Role, c.Role) {
-			return identity.ErrForbidden
 		}
 		if revision != c.ExpectedRevision {
 			return &ConflictError{revision}
@@ -188,30 +212,57 @@ func (s *Store) SetRole(ctx context.Context, auth Authorize, actor identity.Prin
 }
 
 func readMember(ctx context.Context, tx *sql.Tx, account string) (Member, error) {
-	var m Member
-	var libraries, body string
-	var disabledMs int64
-	e := tx.QueryRowContext(ctx, `SELECT a.id,a.username,a.profile_id,m.role,m.disabled,m.disabled_ms,m.disabled_reason,m.revision,m.allowed_libraries,
- COALESCE(l.revision,1),COALESCE(l.body,''),COALESCE(p.hosted_account_id,'') FROM accounts a JOIN direct_memberships m ON m.account_id=a.id
- LEFT JOIN access_limits l ON l.account_id=a.id LEFT JOIN account_portico_links p ON p.account_id=a.id WHERE a.id=?`, account).Scan(&m.AccountID, &m.Username, &m.ProfileID, &m.Role, &m.Disabled, &disabledMs, &m.DisabledReason, &m.Revision, &libraries, &m.LimitsRevision, &body, &m.HostedAccountID)
+	return scanMember(tx.QueryRowContext(ctx, `SELECT `+memberColumns+` FROM `+memberTables+` WHERE a.id=?`, account))
+}
+
+// MemberNotesChange is revision-bound and never alters account identity.
+type MemberNotesChange struct {
+	ExpectedRevision int64   `json:"expectedRevision"`
+	OperationID      string  `json:"operationId"`
+	Notes            *string `json:"notes,omitempty"`
+}
+
+func (s *Store) SetMemberNotes(ctx context.Context, auth Authorize, actor identity.Principal, account string, q MemberNotesChange) (out Member, err error) {
+	if !validID(account) || q.ExpectedRevision < 1 || !validOperationID(q.OperationID) {
+		return out, invalid("accountId", "expectedRevision", "operationId")
+	}
+	notes, e := invitationNotes(q.Notes)
 	if e != nil {
-		return m, e
+		return out, e
 	}
-	m.DisabledAt = disabledAt(disabledMs)
-	if e = json.Unmarshal([]byte(libraries), &m.AllowedLibraries); e != nil {
-		return m, e
-	}
-	if m.AllowedLibraries == nil {
-		m.AllowedLibraries = []string{}
-	}
-	m.Limits = DefaultLimits()
-	if body != "" {
-		if e = json.Unmarshal([]byte(body), &m.Limits); e != nil {
-			return m, e
+	q.Notes = notes
+	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		current, e := readMember(ctx, tx, account)
+		if e != nil {
+			return e
 		}
-	}
-	m.Limits.MaximumAge = m.Limits.Ceiling()
-	return m, nil
+		live, e := Role(tx, actor.AccountID)
+		if e != nil {
+			return e
+		}
+		if !(live == identity.TierOwner && actor.Role == identity.TierOwner) && (!identity.ManagesTier(live, current.Role) || !identity.ManagesTier(actor.Role, current.Role)) {
+			return identity.ErrForbidden
+		}
+		body, want, e := receipt(tx, "member-notes:"+account, q.OperationID, q)
+		if e != nil {
+			return e
+		}
+		if body != "" {
+			return json.Unmarshal([]byte(body), &out)
+		}
+		if current.Revision != q.ExpectedRevision {
+			return &ConflictError{current.Revision}
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET notes=?,revision=revision+1 WHERE account_id=?`, notes, account); e != nil {
+			return e
+		}
+		out, e = readMember(ctx, tx, account)
+		if e != nil {
+			return e
+		}
+		return saveReceipt(tx, "member-notes:"+account, q.OperationID, want, out, s.now())
+	})
+	return
 }
 
 // Role reads one account's stored tier inside an existing transaction. The HTTP
@@ -237,4 +288,136 @@ func disabledAt(ms int64) string {
 		return ""
 	}
 	return time.UnixMilli(ms).UTC().Format(time.RFC3339)
+}
+
+// PeopleDevice adds the display trio and network class without exposing an IP.
+type PeopleDevice struct {
+	identity.MemberDevice
+	ProfileName string `json:"profileName,omitempty"`
+	LastNetwork string `json:"lastNetwork"`
+	LiveState   string `json:"liveState"`
+}
+type PeopleDevicePage struct {
+	Limit            int            `json:"limit"`
+	NextCursor       string         `json:"nextCursor,omitempty"`
+	ApprovalRequired bool           `json:"approvalRequired"`
+	Items            []PeopleDevice `json:"items"`
+}
+type PeopleDeviceQuery struct{ Cursor, Limit, Trust, Account, Sort string }
+
+const peopleDeviceColumns = `d.id,d.account_id,a.username,d.last_profile_id,d.name,d.platform,d.app,d.app_version,d.approval_state,d.first_seen,d.last_seen,d.revision,COALESCE(p.name,''),d.ip,
+ CASE WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.device_id=d.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind NOT IN('music','audiobook','audio')) THEN 'watching'
+ WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.device_id=d.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind IN('music','audiobook','audio')) THEN 'listening' ELSE 'idle' END`
+const peopleDeviceTables = `identity_devices d JOIN accounts a ON a.id=d.account_id JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN direct_profiles p ON p.id=d.last_profile_id AND p.account_id=d.account_id AND p.deleted=0`
+
+func scanPeopleDevice(row interface{ Scan(...any) error }, networks []netip.Prefix) (PeopleDevice, error) {
+	var v PeopleDevice
+	var ip string
+	e := row.Scan(&v.ID, &v.AccountID, &v.Username, &v.ProfileID, &v.Name, &v.Platform, &v.App, &v.AppVersion, &v.Trust, &v.FirstSeen, &v.LastSeen, &v.Revision, &v.ProfileName, &ip, &v.LiveState)
+	if v.Trust == "denied" {
+		v.Trust = "blocked"
+	}
+	v.LastNetwork = "away"
+	addr, _ := netip.ParseAddr(ip)
+	if networkpolicy.Contains(networks, addr) {
+		v.LastNetwork = "home"
+	}
+	return v, e
+}
+func (s *Store) PeopleDevices(ctx context.Context, auth Authorize, actor identity.Principal, q PeopleDeviceQuery, networks []netip.Prefix) (out PeopleDevicePage, err error) {
+	limit, e := pageLimit(q.Limit)
+	if e != nil {
+		return out, e
+	}
+	out.Limit = limit
+	out.Items = []PeopleDevice{}
+	if q.Sort == "" {
+		q.Sort = "lastSeen"
+	}
+	column := map[string]string{"lastSeen": "d.last_seen", "firstSeen": "d.first_seen", "name": "d.name"}[q.Sort]
+	if column == "" {
+		return out, invalid("sort")
+	}
+	trust := q.Trust
+	if trust == "blocked" {
+		trust = "denied"
+	}
+	if trust != "" && trust != "pending" && trust != "approved" && trust != "denied" {
+		return out, invalid("trust")
+	}
+	if q.Account != "" && !validID(q.Account) {
+		return out, invalid("account")
+	}
+	key, id := "", ""
+	if q.Cursor != "" {
+		raw, e := base64.RawURLEncoding.DecodeString(q.Cursor)
+		var c []string
+		if e != nil || len(raw) > 1024 || json.Unmarshal(raw, &c) != nil || len(c) != 6 || c[0] != q.Sort || c[1] != q.Trust || c[2] != q.Account || c[3] != actor.AccountID || !validID(c[5]) {
+			return out, invalid("cursor")
+		}
+		key, id = c[4], c[5]
+	}
+	direction, comparison := "DESC", "<"
+	if q.Sort == "name" {
+		direction, comparison = "ASC", ">"
+	}
+	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		live, e := Role(tx, actor.AccountID)
+		if e != nil {
+			return e
+		}
+		owner := live == identity.TierOwner && actor.Role == identity.TierOwner
+		if !identity.Administrative(live) || !identity.Administrative(actor.Role) {
+			return identity.ErrForbidden
+		}
+		query := `SELECT ` + peopleDeviceColumns + ` FROM ` + peopleDeviceTables + ` WHERE d.authority='local' AND (?='' OR d.approval_state=?) AND (?='' OR d.account_id=?) AND (? OR (m.role='member' AND d.account_id<>?)) AND (?='' OR (` + column + `,d.id)` + comparison + `(?,?)) ORDER BY ` + column + ` ` + direction + `,d.id ` + direction + ` LIMIT ?`
+		rows, e := tx.QueryContext(ctx, query, trust, trust, q.Account, q.Account, owner, actor.AccountID, id, key, id, limit+1)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		for rows.Next() {
+			v, e := scanPeopleDevice(rows, networks)
+			if e != nil {
+				return e
+			}
+			out.Items = append(out.Items, v)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return out, err
+	}
+	if len(out.Items) > limit {
+		out.Items = out.Items[:limit]
+		v := out.Items[limit-1]
+		key = v.LastSeen
+		if q.Sort == "firstSeen" {
+			key = v.FirstSeen
+		}
+		if q.Sort == "name" {
+			key = v.Name
+		}
+		raw, _ := json.Marshal([]string{q.Sort, q.Trust, q.Account, actor.AccountID, key, v.ID})
+		out.NextCursor = base64.RawURLEncoding.EncodeToString(raw)
+	}
+	return
+}
+func (s *Store) PeopleDevice(ctx context.Context, auth Authorize, actor identity.Principal, id string, networks []netip.Prefix) (out PeopleDevice, err error) {
+	if !validID(id) {
+		return out, invalid("id")
+	}
+	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		live, e := Role(tx, actor.AccountID)
+		if e != nil {
+			return e
+		}
+		if !identity.Administrative(live) || !identity.Administrative(actor.Role) {
+			return identity.ErrForbidden
+		}
+		owner := live == identity.TierOwner && actor.Role == identity.TierOwner
+		out, e = scanPeopleDevice(tx.QueryRowContext(ctx, `SELECT `+peopleDeviceColumns+` FROM `+peopleDeviceTables+` WHERE d.id=? AND d.authority='local' AND (? OR (m.role='member' AND d.account_id<>?))`, id, owner, actor.AccountID), networks)
+		return e
+	})
+	return
 }
