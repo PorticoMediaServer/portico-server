@@ -311,6 +311,11 @@
 @media (max-width:599px) {
   .cover .newBadge { left:6px; top:6px; font-size:11px; padding:2px 7px; }
   .selection { --selection-circle-size:24px; top:7px; left:7px; }
+  .card:not(.selecting):not(.selected) > .selection:not(:focus-visible) { opacity:0; pointer-events:none; }
+  .selecting .art::before { height:38%; background:linear-gradient(180deg,rgba(7,16,24,.55),transparent); opacity:1; }
+  .selected .art { box-shadow:0 0 0 3px var(--color-accent-strong); }
+  .cover.next:not(.selected) .title { color:var(--color-text); }
+  .cover.next .subtitle { color:var(--color-accent-strong); font-weight:700; }
   .episode .selection { top:6px; left:6px; }
   .episode { --cards-width:350px; }
   .episode .primary { display:grid; grid-template-columns:136px minmax(0,1fr); column-gap:14px; }
