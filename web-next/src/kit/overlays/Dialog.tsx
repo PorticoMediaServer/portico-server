@@ -30,12 +30,12 @@ function DesktopDialog({open, onOpenChange, title, children, description, footer
   const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef);
   const present = usePresence(open, 160), contentRef = useSurfaceMotion(open, placement === 'right' ? 'panel' : 'dialog'), scrimRef = useSurfaceMotion(open, 'fade');
   useOverlayKeys(open, onOpenChange, false, dismissOnBack);
-  const change = (value: boolean) => { onOpenChange(value, reason.current); reason.current = 'action'; };
+  const change = (value: boolean) => { if (value === open) return; onOpenChange(value, reason.current); reason.current = 'action'; };
   return <RadixDialog.Root open={open} onOpenChange={change} modal>
     {present && <RadixDialog.Portal forceMount>
       <RadixDialog.Overlay forceMount ref={scrimRef} className={styles.scrim} data-state={open ? 'open' : 'closed'} />
       <RadixDialog.Content forceMount ref={contentRef} className={classes(styles.dialog, className)} data-size={size} data-placement={placement} data-testid={testID}
-        data-state={open ? 'open' : 'closed'} role={role} aria-label={accessibilityLabel} aria-describedby={description === undefined ? undefined : `${id}-description`}
+        data-state={open ? 'open' : 'closed'} role={role} aria-modal={open || undefined} aria-label={accessibilityLabel} aria-describedby={description === undefined ? undefined : `${id}-description`}
         style={width === undefined ? undefined : {'--overlay-width': `${width}px`} as OverlayStyle}
         onOpenAutoFocus={focus.onOpenAutoFocus} onCloseAutoFocus={focus.onCloseAutoFocus}
         onEscapeKeyDown={event => { if (!dismissOnBack) event.preventDefault(); else reason.current = 'escape'; }}

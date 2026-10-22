@@ -1,4 +1,4 @@
-import {useCallback, useId, useLayoutEffect, useRef, useState, type ReactElement, type PointerEvent as ReactPointerEvent} from 'react';
+import {useCallback, useId, useLayoutEffect, useRef, useState, type ReactElement, type Ref, type PointerEvent as ReactPointerEvent} from 'react';
 import {Dialog as RadixDialog} from 'radix-ui';
 import {defaultI18n} from '@i18n';
 import {springs} from '@design';
@@ -14,6 +14,8 @@ export type BottomSheetProps = OverlaySurfaceProps & OverlayContentSlots & {
   onDetentChange?: (index: number) => void;
   /** Short action menus have one measured detent. */
   fitContent?: boolean;
+  /** The real scrolling region, for caller-owned restored position. */
+  scrollRef?: Ref<HTMLDivElement>;
   trigger?: ReactElement;
   dismissOnOutsidePress?: boolean;
   dismissOnBack?: boolean;
@@ -22,12 +24,13 @@ export type BottomSheetProps = OverlaySurfaceProps & OverlayContentSlots & {
 };
 type Drag = {pointer: number; startY: number; startHeight: number; y: number; time: number; velocity: number};
 
-export function BottomSheet({open, onOpenChange, title, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, detents, detent, onDetentChange, fitContent = false, trigger, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog'}: BottomSheetProps) {
+export function BottomSheet({open, onOpenChange, title, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, detents, detent, onDetentChange, scrollRef, fitContent = false, trigger, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog'}: BottomSheetProps) {
   const id = useId(), [viewport, setViewport] = useState(() => typeof window === 'undefined' ? 844 : window.visualViewport?.height ?? window.innerHeight);
   const [active, setActive] = useState(0), [naturalHeight, setNaturalHeight] = useState(0), [element, setElement] = useState<HTMLDivElement | null>(null);
   const body = useRef<HTMLDivElement | null>(null), header = useRef<HTMLDivElement | null>(null), footerRef = useRef<HTMLElement | null>(null), scrim = useRef<HTMLDivElement | null>(null);
   const drag = useRef<Drag | null>(null), height = useRef(0), animations = useRef<Animation[]>([]), closingVelocity = useRef(0), initialized = useRef<HTMLElement | null>(null);
-  const reason = useDismissReason(), reduced = useReducedMotion(), present = usePresence(open, 520), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef);
+  const triggerElement = useRef<HTMLButtonElement | null>(null);
+  const reason = useDismissReason(), reduced = useReducedMotion(), present = usePresence(open, 520), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef ?? triggerElement);
   const limits = sheetDetents(fitContent && naturalHeight ? [naturalHeight] : detents ?? [Math.round(viewport / 2), viewport - 100], viewport - 20);
   const maximum = limits.at(-1)?.height ?? Math.max(1, viewport - 100), selected = limits.find(value => value.index === (detent ?? active)) ?? limits[0];
   const callbacks = useRef({onOpenChange, onDetentChange}); callbacks.current = {onOpenChange, onDetentChange};
@@ -39,7 +42,7 @@ export function BottomSheet({open, onOpenChange, title, children, description, f
   }, []);
   useLayoutEffect(() => {
     if (!fitContent || !element) return;
-    const measure = () => setNaturalHeight((header.current?.offsetHeight ?? 0) + (body.current?.scrollHeight ?? 0) + (footerRef.current?.offsetHeight ?? 0) + 34);
+    const measure = () => setNaturalHeight((header.current?.offsetHeight ?? 0) + (body.current?.scrollHeight ?? 0) + (footerRef.current?.offsetHeight ?? 0) + Number.parseFloat(getComputedStyle(element).paddingBottom));
     const observer = new ResizeObserver(measure);
     if (body.current) observer.observe(body.current); if (header.current) observer.observe(header.current);
     measure(); return () => observer.disconnect();
@@ -110,10 +113,10 @@ export function BottomSheet({open, onOpenChange, title, children, description, f
     if (!target) { closingVelocity.current = velocity; callbacks.current.onOpenChange(false, 'gesture'); }
     else choose(target.index, velocity);
   };
-  const change = (value: boolean) => { onOpenChange(value, reason.current); reason.current = 'action'; };
-  return <RadixDialog.Root open={open} onOpenChange={change} modal>{trigger && <RadixDialog.Trigger asChild>{trigger}</RadixDialog.Trigger>}{present && <RadixDialog.Portal forceMount>
+  const change = (value: boolean) => { if (value === open) return; onOpenChange(value, reason.current); reason.current = 'action'; };
+  return <RadixDialog.Root open={open} onOpenChange={change} modal>{trigger && <RadixDialog.Trigger asChild ref={triggerElement}>{trigger}</RadixDialog.Trigger>}{present && <RadixDialog.Portal forceMount>
     <RadixDialog.Overlay forceMount ref={scrim} className={styles.sheetScrim} data-state={open ? 'open' : 'closed'} />
-    <RadixDialog.Content forceMount ref={setElement} className={classes(styles.sheet, className)} role={role} data-testid={testID} data-state={open ? 'open' : 'closed'}
+    <RadixDialog.Content forceMount ref={setElement} className={classes(styles.sheet, className)} role={role} aria-modal={open || undefined} data-testid={testID} data-state={open ? 'open' : 'closed'}
       data-full-height={selected?.height === maximum || undefined} data-has-footer={footer !== undefined || undefined} aria-label={accessibilityLabel} aria-describedby={description === undefined ? undefined : `${id}-description`}
       style={{'--overlay-sheet-height': `${maximum}px`} as OverlayStyle}
       onOpenAutoFocus={focus.onOpenAutoFocus} onCloseAutoFocus={focus.onCloseAutoFocus}
@@ -124,7 +127,7 @@ export function BottomSheet({open, onOpenChange, title, children, description, f
         <div className={styles.sheetHeading}><RadixDialog.Title className={styles.sheetTitle}>{title}</RadixDialog.Title>{showCloseButton && <Button variant="text" size="small" className={styles.sheetDone} onClick={() => onOpenChange(false, 'close-button')}>{defaultI18n.t('next.overlays.done')}</Button>}</div>
         {description !== undefined && <RadixDialog.Description id={`${id}-description`} className={styles.sheetDescription}>{description}</RadixDialog.Description>}
       </div>
-      <div className={classes(styles.sheetBody, bodyClassName)}><div ref={body}>{children}</div></div>
+      <div ref={scrollRef} className={classes(styles.sheetBody, bodyClassName)}><div ref={body}>{children}</div></div>
       {footer !== undefined && <footer ref={footerRef} className={classes(styles.sheetFooter, footerClassName)}>{footer}</footer>}
     </RadixDialog.Content>
   </RadixDialog.Portal>}</RadixDialog.Root>;

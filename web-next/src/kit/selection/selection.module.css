@@ -60,9 +60,9 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .selectedCount small { margin-left: 8px; font-size: 13.5px; font-weight: 600; color: var(--color-text-secondary); }
 .barSeparator { width: 1px; height: 26px; background: rgba(92,179,226,.32); margin: 0 4px; flex: none; }
 .barPrimary.barPrimary, .barAction.barAction, .barMore.barMore { height: 44px; min-height: 44px; min-width: 0; border-radius: 11px; flex: none; gap: 8px; }
-.barPrimary.barPrimary { padding: 0 18px; font-size: 15px; }
-.barAction.barAction { padding: 0 14px; font-size: 14.5px; background: rgba(237,245,250,.1); backdrop-filter: none; }
-.barAction > span { gap: 8px; }
+.desktopBar .barPrimary.barPrimary { padding: 0 18px; font-size: 15px; }
+.desktopBar .barAction.barAction { padding: 0 14px; font-size: 14.5px; background: rgba(237,245,250,.1); backdrop-filter: none; }
+.barAction > span { display: inline-flex; align-items: center; gap: 8px; }
 .barAction svg { color: var(--color-text-secondary); }
 .barAction:hover { background: rgba(237,245,250,.18); }
 .barAction[aria-expanded="true"] { background: rgba(237,245,250,.24); }
@@ -78,10 +78,15 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .stickyBar .desktopBar { margin: 0; }
 .stickyBar::after { content: ''; position: absolute; inset: 100% 0 auto; height: 28px; background: linear-gradient(180deg,rgba(7,16,24,.7),transparent); pointer-events: none; }
 .allNote { margin: 12px var(--selection-gutter) 0; display: flex; align-items: center; gap: 12px; padding: 0 6px; font-size: 14.5px; color: var(--color-text-secondary); }
-.allNote button { color: var(--color-accent-strong); }
+.allNote.allNote button { color: var(--color-accent-strong); }
+.stickyBar .allNote { margin: 12px 0 0; }
+.allNote b { color: var(--color-text); font-weight: 700; }
+.allNote.allNote button { height: auto; min-height: 0; padding: 0; font-size: 14.5px; font-weight: 800; }
+.ownerMenuLabel > span:last-child { padding: 3px 7px; border-radius: 5px; background: rgba(0,0,0,.3); color: var(--color-text-secondary); font-size: 11px; font-weight: 800; }
 .ownerMenuLabel { display: flex; align-items: center; gap: 8px; }
 .selectionMenu [data-owner-only="true"] { margin: 6px -2px 0; padding: 6px 6px 4px; border: 0; border-radius: 10px; background: radial-gradient(120% 140% at 100% 0%,rgba(47,134,187,.2),transparent 62%),#0b1822; box-shadow: inset 0 0 0 1px rgba(92,179,226,.16); }
 .selectionMenu button[role^="menuitem"] { min-height: 40px; }
+.selectionMenu [data-owner-only="true"] button[role^="menuitem"] { min-height: 38px; }
 .selectionMenu button[role^="menuitem"]:has(> span:nth-child(3)) { height: auto; min-height: 52px; padding-block: 8px; display: grid; grid-template-columns: 18px 1fr; column-gap: 12px; row-gap: 2px; }
 .selectionMenu button[role^="menuitem"]:has(> span:nth-child(3)) > span:first-child { grid-column: 1; grid-row: 1 / 3; align-self: start; margin-top: 3px; }
 .selectionMenu button[role^="menuitem"]:has(> span:nth-child(3)) > span:nth-child(2) { grid-column: 2; }
@@ -96,35 +101,42 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .mixedClose.mixedClose { width: 100%; }
 .editor.editor { padding: 0; }
 .editorHeader { padding: 26px 32px 18px; background: radial-gradient(120% 120% at 100% 0%,rgba(47,134,187,.26),transparent 62%),radial-gradient(100% 100% at 0% 100%,rgba(30,91,82,.2),transparent 66%); }
-.editorHeading { display: flex; flex-direction: column; gap: 16px; }
-.editorOwner { min-height: 30px; display: flex; align-items: center; }
-.editorTitle { font-size: 30px; font-weight: 800; letter-spacing: -.035em; }
-.editorBody { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; padding: 0 32px 16px; }
-.editorDescription { margin-top: -12px; padding-top: 12px; font-size: 14.5px; line-height: 1.5; color: var(--color-text-secondary); }
+.editorHeader h2 { width: 100%; }
+.editorHeader > h2 { margin: 0; }
+.editorHeading { display: flex; flex-direction: column; gap: 0; line-height: normal; }
+.editorOwner { min-height: 40px; display: flex; align-items: center; }
+.editorHeader > button { top: 26px; right: 24px; width: 40px; height: 40px; }
+.editorTitle { margin-top: 16px; font-size: 30px; font-weight: 800; letter-spacing: -.035em; }
+.editorBody { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; padding: 6px 32px 16px; }
+.editorDescription { margin-top: 6px; max-width: 470px; font-size: 14.5px; font-weight: 400; letter-spacing: normal; line-height: 1.5; color: var(--color-text-secondary); }
 .editorArtwork { display: flex; align-items: center; margin-top: 14px; }
 .editorArtwork > span { display: block; width: 40px; height: 60px; border-radius: 6px; overflow: hidden; margin-right: -8px; box-shadow: 0 0 0 2px var(--color-raised),0 8px 16px -6px var(--color-shadow); }
 .editorArtwork[data-kind="song"] > span { height: 40px; }
 .editorArtwork[data-kind="episode"] > span { width: 70px; height: 40px; }
 .editorArtwork img { width: 100%; height: 100%; object-fit: cover; }
 .editorArtwork small { margin-left: 18px; font-size: 13px; font-weight: 700; color: var(--color-text-tertiary); }
-.fieldGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; }
+.fieldGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
 .bulkField { min-width: 0; }
 .fullField { grid-column: 1 / -1; }
-.fieldLabel { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 13.5px; font-weight: 700; color: var(--color-text-tertiary); }
+.fieldLabel { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 13.5px; font-weight: 700; line-height: normal; color: var(--color-text-tertiary); }
 .changed { margin-left: auto; font-size: 12.5px; color: var(--color-accent-strong); }
 .resetField.resetField { height: 20px; min-height: 20px; min-width: 0; padding: 0; font-size: 12.5px; color: var(--color-accent-strong); }
 .scalarShell { position: relative; border-radius: 10px; }
 .scalarControl.scalarControl { margin: 0; width: 100%; }
-.scalarControl input, .scalarControl button { padding-right: 100px; font-size: 15.5px; font-weight: 600; height: 48px; }
-.scalarControl > div { background: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line); }
-.scalarShell[data-changed="true"] { box-shadow: 0 0 0 2px var(--color-accent-strong); background: #09151e; }
+.scalarControl input, .scalarControl button { font-size: 15.5px; font-weight: 600; height: 48px; }
+.scalarControl button { padding-right: 100px; }
+.scalarControl input { padding: 0; }
+.scalarControl > div { height: 48px; padding: 0 14px; background: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line); }
+.scalarShell[data-changed="true"] .scalarControl > div { box-shadow: inset 0 0 0 2px var(--color-accent-strong); background: #09151e; }
 .mixedValue { pointer-events: none; position: absolute; top: 50%; left: 14px; translate: 0 -50%; padding: 3px 9px; border-radius: 6px; font-size: 13.5px; font-weight: 700; color: var(--color-text-secondary); background: rgba(237,245,250,.09); }
 .scalarShell:focus-within .mixedValue { display: none; }
 .valueHint { pointer-events: none; position: absolute; right: 14px; top: 50%; translate: 0 -50%; font-size: 12.5px; font-weight: 600; color: var(--color-text-tertiary); }
+.scalarControl .valueHint { position: static; translate: none; white-space: nowrap; }
 .scalarShell[data-changed="true"] .valueHint { color: var(--color-accent-strong); }
 .listValues { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 52px; padding: 10px 12px; border-radius: 10px; background: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line); }
 .listChip.listChip { height: 30px; min-height: 30px; min-width: 0; padding: 0 8px 0 12px; border-radius: 15px; color: var(--color-text); background: var(--color-raised-bright); font-size: 13.5px; font-weight: 700; }
-.listChip > span { gap: 6px; }
+.listChip > span { display: inline-flex; align-items: center; gap: 6px; }
+.listChip svg { width: 12px; height: 12px; flex: none; }
 .listChip i { font-size: 12px; font-style: normal; color: var(--color-text-tertiary); }
 .phoneChipCount { display: none; }
 .listChip[data-partial="true"] { background: transparent; border: 1px dashed var(--color-line-strong); color: var(--color-text-secondary); }
@@ -132,20 +144,23 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .listChip[data-added] i { color: var(--color-accent-strong); }
 .listChip[data-removed="true"] { background: transparent; color: var(--color-text-tertiary); text-decoration: line-through; box-shadow: inset 0 0 0 1px rgba(241,121,121,.45); }
 .addListValue.addListValue { min-width: 90px; max-width: 180px; flex: 1; }
-.addListValue > div { height: 30px; padding: 0 4px; background: transparent; box-shadow: none; }
+.listValues .addListValue.addListValue > div { height: 30px; padding: 0 4px; background: transparent; box-shadow: none; }
+.addListValue input { padding: 0; }
 .addListValue input { font-size: 13.5px; height: 30px; }
 .fieldHelp { margin: 8px 2px 0; font-size: 12.5px; line-height: 1.45; color: var(--color-text-tertiary); }
+.editorBody .fieldHelp { margin: 8px 2px 0; }
 .singleItemNote { display: flex; gap: 10px; margin-top: 18px; padding: 12px 14px; border-radius: 10px; font-size: 13.5px; line-height: 1.5; color: var(--color-text-secondary); background: rgba(237,245,250,.05); }
 .singleItemNote svg { flex: none; margin-top: 1px; color: var(--color-text-tertiary); }
 .singleItemNote b { color: var(--color-text); }
 .lockRow { display: flex; align-items: center; gap: 12px; margin-top: 16px; font-size: 14.5px; font-weight: 600; color: var(--color-text); }
 .lockRow small { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 500; color: var(--color-text-tertiary); }
 .lockRow input { margin-left: auto; flex: none; }
-.editorFooter { display: block; flex: none; margin: 0; padding: 16px 32px 24px; box-shadow: 0 -1px 0 var(--color-line); background: var(--color-raised); }
-.editorButtons { display: flex; gap: 12px; }
-.editorButtons button { height: 50px; font-size: 16px; padding: 0 24px; }
+.lockRow input, .removeFilesRow input { --switch-width: 44px; --switch-height: 26px; --switch-thumb: 20px; --switch-distance: 18px; }
+.editorFooter.editorFooter { position: relative; inset: auto; display: block; flex: none; margin: 0; padding: 0; background: var(--color-raised); }
+.editorButtons { display: flex; gap: 12px; padding: 16px 32px 24px; box-shadow: 0 -1px 0 var(--color-line); }
+.editorButtons.editorButtons button { height: 50px; font-size: 16px; padding: 0 24px; }
 .editorButtons button:last-child:not(:first-child) { flex: 1; justify-content: center; }
-.summary { margin-bottom: 16px; padding: 14px 16px; border-radius: 12px; color: var(--color-text-secondary); background: rgba(64,159,212,.1); box-shadow: inset 0 0 0 1px rgba(92,179,226,.3); }
+.summary { margin: 0 32px 16px; padding: 14px 16px; border-radius: 12px; color: var(--color-text-secondary); background: rgba(64,159,212,.1); box-shadow: inset 0 0 0 1px rgba(92,179,226,.3); }
 .summary h5 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px; font-weight: 800; color: var(--color-text); }
 .summary h5 small { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--color-text-secondary); }
 .summary ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
@@ -153,10 +168,13 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .summary li::before { content: ''; position: absolute; top: .65em; left: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent-strong); }
 .summary p { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid rgba(92,179,226,.2); font-size: 12.5px; line-height: 1.5; color: var(--color-text-tertiary); }
 .resultBanner { display: flex; gap: 12px; margin-top: 14px; padding: 14px 16px; border-radius: 12px; font-size: 14px; line-height: 1.5; color: var(--color-text-secondary); background: rgba(241,121,121,.08); box-shadow: inset 0 0 0 1px rgba(241,121,121,.35); }
+.resultBanner p { margin: 0; }
 .resultBanner > svg { flex: none; margin-top: 2px; color: var(--color-record); }
 .resultBanner b { display: block; font-size: 15px; color: var(--color-text); }
 .resultRow { display: flex; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid rgba(40,64,79,.7); }
 .resultRow:first-of-type { border-top: 0; }
+.resultRows { margin-top: 16px; }
+.resultRow > button { height: 38px; min-height: 38px; font-size: 13.5px; padding: 0 14px; border-radius: 9px; }
 .resultRow > div { min-width: 0; flex: 1; }
 .resultRow b { display: block; font-size: 15px; font-weight: 700; color: var(--color-text); }
 .resultRow small { display: block; margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--color-text-tertiary); }
@@ -166,9 +184,10 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .resultStatus { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none; background: rgba(241,121,121,.16); color: var(--color-record); }
 .resultStatus[data-ok="true"] { background: rgba(134,207,179,.16); color: var(--color-healthy); }
 .picker.picker { padding: 8px; border-radius: 14px; background: var(--color-raised-high); }
-.pickerContent { min-width: 0; }
-.pickerHeading { padding: 10px 12px 8px; font-size: 13px; font-weight: 700; color: var(--color-text-tertiary); }
+.pickerContent { min-width: 0; display: flow-root; }
+.pickerHeading { line-height: normal; padding: 10px 12px 8px; font-size: 13px; font-weight: 700; color: var(--color-text-tertiary); }
 .pickerSearch { margin: 0 4px 6px; }
+.picker .pickerSearch.pickerSearch > div { height: 38px; }
 .pickerSearch input { height: 38px; font-size: 14px; }
 .pickerRow.pickerRow { display: flex; width: 100%; height: auto; min-height: 52px; padding: 6px 10px 6px 8px; border-radius: 10px; text-align: left; color: var(--color-text-secondary); }
 .pickerRow > span { display: flex; align-items: center; gap: 12px; width: 100%; }
@@ -182,25 +201,28 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .pickerSeparator { height: 1px; margin: 6px 4px; background: var(--color-line); }
 .pickerEntries { max-height: min(360px,50dvh); overflow: auto; overscroll-behavior: contain; }
 .pickerButtons { display: flex; gap: 8px; margin: 12px 4px 4px; }
-.pickerButtons button { height: 42px; padding: 0 16px; border-radius: 10px; font-size: 14.5px; }
+.pickerButtons.pickerButtons button { height: 42px; padding: 0 16px; border-radius: 10px; font-size: 14.5px; }
 .pickerButtons button:last-child { flex: 1; justify-content: center; }
 .pickerNew { margin: 4px 4px 0; }
+.pickerNew.pickerNew > div > div { height: 44px; }
 .pickerNew input { height: 44px; }
 .pickerFailure { margin: 0 8px 8px; padding: 12px; border-radius: 10px; font-size: 13.5px; line-height: 1.45; color: var(--color-text-secondary); background: rgba(241,121,121,.08); box-shadow: inset 0 0 0 1px rgba(241,121,121,.35); }
 .pickerFailure b { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 14px; color: var(--color-text); }
 .pickerFailure svg { color: var(--color-record); flex: none; }
 .pickerFailure p { margin: 0; }
 .pickerLoadMore.pickerLoadMore { width: 100%; color: var(--color-accent-strong); }
-.pickerToast.pickerToast { font-size: 15px; }
+.pickerToast.pickerToast { min-height: 64px; font-size: 15px; }
 .deleteDialog.deleteDialog { padding: 26px 28px 22px; border-radius: 18px; background: var(--color-raised-high); }
-.deleteHeading { display: flex; flex-direction: column; gap: 14px; }
+.deleteHeading { font-size: 22px; line-height: 1.2; display: flex; flex-direction: column; gap: 14px; }
 .deleteOwner { display: flex; align-items: center; gap: 10px; min-height: 24px; }
-.deleteBody { display: flex; flex-direction: column; gap: 14px; padding-top: 6px; font-size: 15px; line-height: 1.5; color: var(--color-text-secondary); }
+.deleteBody.deleteBody { display: flex; flex-direction: column; gap: 14px; padding-top: 6px; font-size: 15px; line-height: 1.5; color: var(--color-text-secondary); }
 .deleteBody p { margin: 0; }
+.deleteConfirmation > label { margin-bottom: 7px; color: var(--color-text-tertiary); }
+.deleteConfirmation > div { background: var(--color-ink); border-radius: 10px; }
 .deleteBody b { color: var(--color-text); }
 .deleteSmall.deleteSmall { font-size: 13px; line-height: 1.45; color: var(--color-text-tertiary); }
 .deleteFooter { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
-.deleteFooter button { height: 46px; padding: 0 22px; font-size: 15.5px; border-radius: 11px; }
+.deleteFooter.deleteFooter button { height: 46px; padding: 0 22px; font-size: 15.5px; border-radius: 11px; }
 .deleteButton.deleteButton { background: var(--color-record); color: #2a0808; }
 .deleteButton:hover { background: #f58a8a; }
 .removeFilesRow { display: flex; align-items: center; gap: 14px; font-size: 15px; font-weight: 700; color: var(--color-text); }
@@ -213,6 +235,8 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .deleteNotice[data-tone="error"] > svg { color: var(--color-record); }
 .deleteTargets { display: grid; gap: 8px; margin-top: 2px; }
 .deleteTargets > div { display: flex; align-items: center; gap: 12px; font-size: 14.5px; }
+.deleteTargets > div > span:last-child { min-width: 0; }
+.deleteTargets b, .deleteTargets small { display: block; }
 .deleteTargets small { font-size: 13px; color: var(--color-text-tertiary); }
 .deleteArtwork { display: block; width: 28px; height: 42px; border-radius: 4px; overflow: hidden; flex: none; }
 .deleteArtwork:empty { display: none; }
@@ -235,27 +259,42 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
   .allNote { margin: 0; padding: 0 20px 10px; font-size: 13px; }
 }
 @media (max-width: 599px) {
+  .selectionMenu > div:first-child > div:has(> h2) > button { display: none; }
+  .selectionMenu [role="group"] { margin: 0 20px; }
+  .selectionMenu [role="group"] > div:last-child { background: transparent; border-radius: 0; box-shadow: none; }
+  .selectionMenu [role="group"] button[role^="menuitem"] { min-height: 56px; height: 56px; padding: 0; gap: 14px; }
+  .selectionMenu [role="group"] button[data-destructive="true"] > span:first-child { color: var(--color-record); }
+  .selectionMenu [role="group"] button[role^="menuitem"]::before { display: none; }
+  .selectionMenu [role="group"] button[role^="menuitem"] > span:first-child { width: 24px; height: 24px; background: transparent; border-radius: 0; }
+  .selectionMenu [role="group"] button[role^="menuitem"] > span:first-child svg { width: 22px; height: 22px; }
+  .selectionMenu [role="group"] button[role^="menuitem"]:has(> span:nth-child(3)) { padding-block: 8px; grid-template-columns: 24px 1fr; column-gap: 14px; }
+  .selectionMenu [role="group"][data-owner-only="true"] { margin: 12px 12px 0; padding: 6px 14px 4px; border-radius: 16px; background: radial-gradient(120% 140% at 100% 0%,rgba(47,134,187,.2),transparent 62%),#0b1822; box-shadow: inset 0 0 0 1px rgba(92,179,226,.16); }
+  .selectionMenu [role="group"][data-owner-only="true"] > div:first-child { margin: 8px 0 4px; }
   .mixedSheet .mixedBody { padding: 4px 20px 0; }
   .keepTypes { display: block; }
-  .keepType.keepType { display: flex; min-height: 56px; width: 100%; height: auto; padding: 8px 0; background: transparent; text-align: left; font-size: 16px; }
+  .keepType.keepType { display: flex; justify-content: flex-start; min-height: 56px; width: 100%; height: auto; padding: 8px 0; background: transparent; text-align: left; font-size: 16px; }
   .keepType > span { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
   .keepType small { font-size: 12.5px; font-weight: 500; color: var(--color-text-tertiary); }
   .mixedClose.mixedClose { margin-top: 12px; }
-  .editor.editor { inset: auto 0 0; height: var(--overlay-sheet-height); border-radius: 26px 26px 0 0; padding: 0 0 34px; }
+  .editor.editor { inset: auto 0 0; height: var(--overlay-sheet-height); border-radius: 26px 26px 0 0; padding: 0; }
   .editorHeader { padding: 0; }
   .editorHeader > div { padding: 0; }
   .editorHeader > div:last-child { padding: 4px 20px 12px; }
-  .editorHeading { gap: 10px; }
-  .editorTitle { font-size: 24px; letter-spacing: -.03em; }
-  .editorOwner { font-size: 12px; }
-  .editorBody { padding: 4px 18px 0; }
+  .editorTitle { margin-top: 10px; font-size: 24px; letter-spacing: -.03em; }
+  .editorOwner { font-size: 12px; min-height: 34px; }
+  .editorOwner { position: relative; }
+  .editorClose.editorClose { position: absolute; right: 0; top: -4px; width: 34px; height: 34px; min-width: 34px; border-radius: 50%; background: rgba(237,245,250,.1); }
+  .editor.editor .editorBody { padding: 4px 18px 0; }
   .editorDescription { font-size: 13px; }
-  .editorArtwork { margin-top: 10px; }
+  .editorArtwork { display: none; }
   .fieldGrid { gap: 10px; margin-top: 8px; }
   .fieldLabel { font-size: 12.5px; margin-bottom: 5px; }
-  .scalarControl input, .scalarControl button { height: 44px; font-size: 14.5px; padding-right: 66px; }
+  .scalarControl input, .scalarControl button { height: 44px; font-size: 14.5px; }
+  .scalarControl button { padding-right: 66px; }
+  .scalarControl > div { height: 44px; padding: 0 12px; }
   .valueHint { font-size: 11.5px; right: 12px; }
   .scalarShell:not([data-changed="true"]) .valueHint { max-width: 65px; text-align: right; white-space: normal; }
+  .scalarControl .valueHint { max-width: none; white-space: nowrap; }
   .listValues { padding: 8px 10px; min-height: 46px; gap: 6px; }
   .listChip.listChip { height: 28px; min-height: 28px; font-size: 12.5px; }
   .desktopChipCount { display: none; }
@@ -264,13 +303,14 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
   .singleItemNote { margin-top: 12px; padding: 10px 12px; font-size: 12.5px; }
   .lockRow { margin-top: 12px; font-size: 13.5px; }
   .lockRow small { font-size: 11.5px; }
-  .editorFooter { padding: 10px 16px 30px; position: relative; inset: auto; }
-  .editorButtons { gap: 10px; }
-  .editorButtons button { height: 48px; font-size: 15.5px; padding: 0 20px; }
-  .summary { margin-bottom: 10px; padding: 10px 12px; }
+  .lockRow input { --switch-width: 48px; --switch-height: 29px; --switch-thumb: 23px; --switch-distance: 19px; }
+  .editorButtons { gap: 10px; padding: 10px 16px 30px; }
+  .editorButtons.editorButtons button { height: 48px; font-size: 15.5px; padding: 0 20px; }
+  .summary { margin: 0 16px 10px; padding: 10px 12px; }
   .summary h5 { font-size: 13px; margin-bottom: 4px; }
   .summary ul { font-size: 12.5px; gap: 3px; }
   .resultRow { padding: 9px 0; }
+  .resultRows { margin-top: 8px; }
   .resultRow > button { display: none; }
   .resultRow b { font-size: 14px; }
   .resultRow small { font-size: 12px; }
@@ -284,7 +324,7 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
   .pickerText b { font-size: 16px; }
   .pickerEntries { max-height: 50dvh; }
   .pickerButtons { margin: 12px 16px 0; gap: 10px; }
-  .pickerButtons button { height: 48px; font-size: 15.5px; }
+  .pickerButtons.pickerButtons button { height: 48px; font-size: 15.5px; }
   .pickerNew { margin: 4px 20px 0; }
   .pickerNew .pickerButtons { margin-inline: 0; }
   .pickerFailure { margin: 4px 16px 10px; padding: 12px 14px; border-radius: 12px; }
@@ -292,10 +332,11 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
   .pickerSearch { margin: 0 16px 6px; }
   .pickerToast.pickerToast { font-size: 14px; }
   .deleteDialog.deleteDialog { padding: 0 0 max(34px,env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--color-raised); }
-  .deleteBody { padding: 6px 20px 0; gap: 12px; font-size: 14px; }
+  .deleteDialog.deleteDialog .deleteBody { padding: 6px 20px 0; gap: 12px; font-size: 14px; }
+  .deleteDialog .deleteBody > div { display: flex; flex-direction: column; gap: 12px; padding-bottom: 16px; }
   .deleteHeading { gap: 12px; font-size: 21px; }
-  .deleteFooter { position: relative; inset: auto; margin: 16px 0 0; padding: 0 20px; }
-  .deleteFooter button { flex: 1; height: 48px; font-size: 15.5px; padding: 0 20px; }
+  .deleteFooter { position: relative; inset: auto; margin: 0; padding: 0 20px; }
+  .deleteFooter.deleteFooter button { flex: 1; height: 48px; font-size: 15.5px; padding: 0 20px; }
   .removeFilesRow { font-size: 14.5px; }
   .deleteNotice { padding: 11px 12px; font-size: 13.5px; }
   .deleteSmall.deleteSmall { font-size: 12px; }
