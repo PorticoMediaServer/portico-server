@@ -13,7 +13,7 @@ const defaultTranslate = createI18n().t;
 export type ServerMarkProps = Omit<HTMLAttributes<HTMLSpanElement>, 'children'> & ({size?: 22 | 24 | 26 | 34 | 38; context?: 'standard' | 'editor'} | {size: 36; context: 'file-info-phone'});
 export function ServerMark({size = 26, context = 'standard', className, ...props}: ServerMarkProps) {
   const iconSize = size === 36 ? 20 : size === 22 ? 13 : size === 24 || size === 26 ? 15 : size === 34 ? context === 'editor' ? 20 : 18 : 19;
-  return <span {...props} className={[styles.mark, className].filter(Boolean).join(' ')} data-size={size} data-context={context} aria-hidden="true"><Icon name="i-server" size={iconSize} /></span>;
+  return <span {...props} className={[styles.mark, className].filter(Boolean).join(' ')} data-size={size} data-context={context} aria-hidden="true"><Icon name={context === 'file-info-phone' ? 'i-server-file-info-phone' : 'i-server'} size={iconSize} /></span>;
 }
 
 /** An editor's authority is supplied by admission; a role alone never grants editing. */
