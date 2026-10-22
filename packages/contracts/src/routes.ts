@@ -4481,7 +4481,9 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 0,
     "query": [
-      "v"
+      "size",
+      "v",
+      "w"
     ],
     "errors": [
       "invalid_request",
@@ -5779,8 +5781,10 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "candidate",
+      "size",
       "subject",
-      "v"
+      "v",
+      "w"
     ],
     "errors": [
       "invalid_request",
