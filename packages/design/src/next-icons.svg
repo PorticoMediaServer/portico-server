@@ -250,5 +250,9 @@
 <symbol id="i-eyeoff-selection" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12s3.2-6 9-6c1.6 0 3 .5 4.2 1.2M21 12s-3.2 6-9 6c-1.6 0-3-.5-4.2-1.2"/><circle cx="12" cy="12" r="2.6"/><path d="m4 4 16 16"/></g></symbol>
 <!-- i-list-guide: phone List / Guide control. Pinned design/ui-v1 8377791ae573e17b0fc5199ae87f7ad3feee0f16 phone-guide.html:375; original #i-list. Only ID renamed; global #i-list retained. Body SHA-256 f207f15038fbffad2318d62e632876fd22ed92afe014e9db691af6639a18a968. -->
 <symbol id="i-list-guide" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9 6.5h11M9 12h11M9 17.5h11M4.5 6.5h.1M4.5 12h.1M4.5 17.5h.1"/></symbol>
+<!-- i-server-file-info-phone: phone File info owner Location and manage. Pinned design/ui-v1 5cbcc03681b22a4593b3e7c5c6878ae74ace22d1 phone-detail.html:732; original #i-server. Only ID renamed; global #i-server retained. Body SHA-256 0014a5502bad385d65fac5cc2337a82f4874f07fff60f8cd9a70352f4fad44d1. -->
+<symbol id="i-server-file-info-phone" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4.5" width="16" height="6.5" rx="1.8"/><rect x="4" y="13" width="16" height="6.5" rx="1.8"/><path d="M8 7.8h.1M8 16.3h.1"/></g></symbol>
+<!-- i-activity: chosen A Levels, static idle glyph. Pinned design/ui-v1 5cbcc03681b22a4593b3e7c5c6878ae74ace22d1 desktop-activity.html:198 (chosen:258-260; idle:278; quiet:309); original #i-act. Only ID renamed; global #i-act retained. Body SHA-256 9e70e6ccca178e2fd9a1ee2b2792284fe494e7da4b7a939dd1017e94efecb812. -->
+<symbol id="i-activity" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.25 16v-3.5M12 16V8M15.75 16v-5.5"/></g></symbol>
 </defs>
 </svg>
