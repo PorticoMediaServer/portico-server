@@ -178,13 +178,17 @@ export function countLiterals(source, {jsx = true} = {}) {
         visit(node.object, false, node); if (node.computed) visit(node.property, false, node); return;
       }
       if (node.type === 'CallExpression' || node.type === 'NewExpression') {
+        // Locale date options select formatter behavior; they are not interpolation
+        // values. Named copy properties remain independently checked below.
+        const dateOptions = node.callee.type === 'MemberExpression' && !node.callee.computed &&
+          (node.callee.property.name === 'formatDate' || node.type === 'NewExpression' && node.callee.object.type === 'Identifier' && node.callee.object.name === 'Intl' && node.callee.property.name === 'DateTimeFormat');
         if (copy && node.type === 'CallExpression' && node.callee.type === 'Identifier') follow(node.callee, node.arguments);
         if (copy && isFunction(node.callee)) invoke(node.callee, node.arguments);
         else if (node.callee.type === 'MemberExpression') {
           visit(node.callee.object, copy && structuredInput(node.callee.object), node.callee);
           if (node.callee.computed) visit(node.callee.property, false, node.callee);
         } else visit(node.callee, copy && structuredInput(node.callee), node);
-        node.arguments.forEach(argument => visit(argument, copy && structuredInput(argument), node)); return;
+        node.arguments.forEach((argument, index) => visit(argument, copy && structuredInput(argument) && !(dateOptions && index === 1), node)); return;
       }
       if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration') {
         node.params.forEach(parameter => visit(parameter, false, node));

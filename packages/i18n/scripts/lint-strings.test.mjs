@@ -4,6 +4,24 @@ import {countLiterals} from './lint-strings.mjs';
 
 const texts = (source, options) => countLiterals(source, options).hits.map(hit => hit.text);
 
+test('date formatter machine options do not become visible strings through a local display helper', () => {
+  const source = `
+    const dayName = day => i18n.formatDate(new Date(day), {weekday: 'long', timeZone: 'UTC'});
+    const view = <Text>{dayName(0)}{new Intl.DateTimeFormat(locale, {timeZone: 'America/Halifax'}).format(now)}</Text>;
+  `;
+  assert.deepEqual(texts(source), []);
+});
+
+test('date-option handling preserves visible values, named copy properties and ordinary interpolations', () => {
+  const source = `
+    const view = <Text>{'UTC'}{i18n.t('next.test', {timeZone: 'Visible interpolation'})}
+      {i18n.formatDate(now, {label: 'Visible named copy'})}
+      {formatMessage('next.test', {time: '4:02 PM'})}
+    </Text>;
+  `;
+  assert.deepEqual(texts(source), ['UTC', 'Visible interpolation', 'Visible named copy', '4:02 PM']);
+});
+
 test('TS generics, intersections and comparisons never become JSX text', () => {
   const source = `
     const scheduler = useMemo(() => new ArtworkScheduler<ArtworkImage>({load}), []);
