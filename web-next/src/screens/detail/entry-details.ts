@@ -40,7 +40,11 @@ export function createEntryDetailsBindings(context: ScreenContext, authority: En
       if (!data || !action?.playback || offered.itemId !== item.itemId || !offered.versions.some(value => value.id === versionId)) throw new Error('Version playback unavailable');
       if (data.scope.viewerFence !== captured.scope.privacyFence || String(data.revision.catalog) !== captured.revision.catalogRevision || String(data.revision.viewer) !== captured.revision.viewerRevision) throw new DOMException('Title revision changed', 'AbortError');
       detail.current(data);
-      await context.effects.play({...item, startSeconds: action.playback.startSeconds, versionId}, life.signal(signal));
+      // A manual choice resumes the title now, not the position captured by the menu.
+      // This remains an explicit one-shot version start; ordinary Play keeps its automatic choice.
+      const positionMs = offered.resume?.positionMs ?? 0;
+      if (!Number.isFinite(positionMs) || positionMs < 0) throw new Error('Unreadable title resume position');
+      await context.effects.play({...item, startSeconds: positionMs / 1000, versionId}, life.signal(signal));
     },
     dispose() { life.dispose(); detail.dispose(); },
   };

@@ -7,7 +7,8 @@ import {Button, Chip, TextField} from '../../kit/controls';
 import {PosterCard, SquareCard, CircleCard, EpisodeTile} from '../../kit/cards';
 import {Artwork} from '../../kit/artwork';
 import {WindowedGrid} from '../../kit/layout';
-import {StateView} from '../../kit/states';
+import {StateView, Skeleton} from '../../kit/states';
+import {Banner} from '../../kit/overlays';
 import {SearchEmpty} from '../../kit/states/SearchEmpty';
 import {entryCard} from '../detail/model';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
@@ -17,6 +18,8 @@ import type {SearchBindings} from './bindings';
 import {appendedWindow} from './window';
 import styles from './search.module.css';
 import {TopResult} from './TopResult';
+import {runScreenCommand} from '../detail/context';
+import {useLoadingClock} from '../detail/Loading';
 
 type ChipId = SearchGroup | 'all';
 const keyOf = (entry: SearchEntry) => JSON.stringify(['libraryId' in entry ? entry.libraryId : '', entry.kind, entry.id]);
@@ -80,7 +83,7 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
       }}>{t('web.search.clearRecent')}</Button></header><div>{recent.map(q => <Chip key={q} icon="i-clock" onClick={() => setText(q)}>{q}</Chip>)}</div></section>}
       {clearFailed && <p role="alert">{t('web.search.clearFailed')}</p>}
       {problem && <p role="status">{t(problem === 'short' ? 'web.search.tooShort' : problem === 'words' ? 'web.search.tooManyWords' : 'web.search.tooLong')}</p>}
-      {snapshot.phase === 'loading' && !showing && <div className={styles.skeleton} role="status" aria-label={t('next.states.loading')}>{Array.from({length: 7}, (_, index) => <span key={index} />)}</div>}
+      {snapshot.phase === 'loading' && !showing && <SearchLoading key={snapshot.generation} />}
       {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
         primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}} />}
       {failed.length > 0 && <div role="status" className={styles.partial}><Icon name="i-clock" size={22} /><span>{t('web.search.partial', {groups: new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format(failed.map(value => t(searchGroupLabel(value.id))))})}</span><Button icon="i-retry" size="small" onClick={() => { void service.refresh(); }}>{t('next.states.tryAgain')}</Button></div>}
@@ -101,8 +104,13 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
   </div>;
 }
 
+function SearchLoading() {
+  const elapsed = useLoadingClock();
+  return <div className={styles.skeleton} role="status" aria-label={t('next.states.loading')}>{elapsed >= 300 && Array.from({length: 7}, (_, index) => <Skeleton className={styles.skeletonBlock} sheen={index === 2} key={index} />)}{elapsed >= 8000 && <Banner variant="quiet">{t('next.states.stillLoading')}</Banner>}</div>;
+}
+
 export function SearchResult({entry, binding, onCommit}: {entry: SearchEntry; binding: SearchBindings; onCommit: () => void}) {
-  const {context} = binding, open = () => { binding.open(entry); onCommit(); };
+  const {context} = binding, open = () => runScreenCommand(context, () => { binding.open(entry); onCommit(); });
   const art = context.artwork.foreground(entry.posterUrl, 380, 2 / 3);
   if (entry.kind === 'channel') return <button className={styles.channel} type="button" onClick={open}><Icon name="i-tv" size={24} /><b>{entry.title}</b>{entry.subtitle && <small>{entry.subtitle}</small>}</button>;
   if (!('libraryId' in entry)) return <CircleCard context="search" model={{title: entry.title, caption: entry.subtitle ? [{id: 'caption', text: entry.subtitle, role: 'context'}] : []}} covers={art ? [art] : []}

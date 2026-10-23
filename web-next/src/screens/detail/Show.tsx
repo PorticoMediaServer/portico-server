@@ -21,11 +21,13 @@ import {useFreshDocument} from '../../platform/freshness';
 import {EpisodeDetailsLayout, TitleProse, TitleFactsLine} from '../../kit/title/TitleParts';
 import {TitlePeople} from './People';
 import {TitleTabs} from './TitleTabs';
+import {ScreenProblem} from './ScreenProblem';
+import {runScreenCommand} from './context';
 
 export type ShowScreenProps = {binding: ShowBindings; target: ShowWorkspaceRoute};
 export function ShowScreen({binding, target}: ShowScreenProps) {
   const key = JSON.stringify(target);
-  useEffect(() => { const route: ShowWorkspaceRoute = JSON.parse(key); void binding.select(route).catch(binding.context.effects.reportError); return () => binding.service.cancel(); }, [binding, key]);
+  useEffect(() => { const route: ShowWorkspaceRoute = JSON.parse(key), request = new AbortController(); void binding.select(route, request.signal).catch(error => { if (!request.signal.aborted) binding.context.effects.reportError(error); }); return () => { request.abort(); binding.cancel(); }; }, [binding, key]);
   return <ShowBody binding={binding} />;
 }
 
@@ -42,7 +44,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
   const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
   useEffect(() => { if (data && tab === 'related') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data, tab]);
   useEffect(() => setTab('episodes'), [data?.show.id]);
-  if (!data) return snapshot.phase === 'error' ? <ScreenFailure retry={() => { void binding.service.retry(); }} /> : <DetailLoading />;
+  if (!data) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} retry={() => { void binding.service.retry(); }} /> : <DetailLoading />;
   const {show} = data, selectedSeason = data.seasons.find(season => season.id === data.selected.seasonId);
   const episodes = data.episodes.sections[0]?.entries ?? [], art = binding.context.artwork;
   const actions = <div className={detail.actions}>
@@ -58,6 +60,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
       <div className={detail.copy}><Lockup title={show.title} platform={phone ? 'phone-web' : 'desktop'} /><TitleFactsLine parts={facts} />{show.overview && <TitleProse variant="hero" className={detail.blurb}>{show.overview}</TitleProse>}{actions}</div>
     </header> : <div className={detail.compactHeader}><h1>{show.title}</h1>{actions}</div>}
     <TitleTabs title={show.title} compact={compact}><Tabs value={tab} onValueChange={setTab} items={[{value: 'episodes', label: t('next.controls.episodes')}, {value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}]} /></TitleTabs>
+    <div key={tab} className={detail.tabPanel}>
     {tab === 'episodes' && <section className={styles.episodes}>
       <div className={styles.toolbar}>
         <Menu open={seasonMenu} onOpenChange={setSeasonMenu} title={t('title.seasonMenu')} trigger={<Chip variant="toolbar" trailingIcon="i-down">{selectedSeason ? selectedSeason.number === 0 ? t('next.kit.special') : t('next.kit.season', {number: selectedSeason.number}) : data.groups.find(group => group.id === data.selected.group)?.title ?? t('next.controls.episodes')}</Chip>}>
@@ -86,18 +89,19 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
     </section>}
     {tab === 'details' && <div className={detail.details}><section>{show.overview && <TitleProse className={detail.about}>{show.overview}</TitleProse>}<dl>{[[t('title.network'), show.network], [t('title.studio'), show.studio], [t('title.country'), show.country], [t('title.genres'), show.genres?.join(', ')]].filter(row => !!row[1]).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section></div>}
     {tab === 'related' && (recommendations.phase === 'error' ? <ScreenFailure retry={() => { void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }} /> : recommendations.phase === 'loading' ? <DetailLoading /> : titleRecommendationRows(recommendations.data).map(row => <TitleRow key={row.id} binding={binding} heading={row.title} entries={row.entries} guard={() => binding.current(data)} />))}
+    </div>
   </article>;
 }
 
 export function EpisodeBody({binding, data}: {binding: ShowBindings; data: ShowWorkspaceData}) {
   const snapshot = useSyncExternalStore(binding.episode.service.subscribe, binding.episode.service.getSnapshot, binding.episode.service.getSnapshot), episode = snapshot.data;
-  if (!episode) return snapshot.phase === 'error' ? <ScreenFailure retry={() => { void binding.episode.service.retry(); }} /> : <DetailLoading />;
+  if (!episode) return snapshot.phase === 'error' ? <ScreenFailure retry={() => { void binding.episode.service.retry(); }} /> : <DetailLoading shape="episode" />;
   const adjacent = <div className={styles.adjacent}>{(['previous', 'next'] as const).map(direction => { const target = episode.episodeDetails?.[direction]; return target && <Button key={direction} variant="text" size="small" aria-label={t(direction === 'previous' ? 'title.previousEpisode' : 'title.nextEpisode')} onClick={() => {
         binding.current(data); void binding.select({libraryId: data.scope.libraryId, showId: data.show.id, episodeId: target.id}).catch(binding.context.effects.reportError);
       }}>{target.title}<small>{t('next.kit.episode', {number: target.number})}</small></Button>; })}</div>;
-  return <EpisodeDetailsLayout title={episode.item.title} onClose={binding.closeEpisode} context={<b>{data.show.title}</b>}
+  return <EpisodeDetailsLayout title={episode.item.title} onClose={() => runScreenCommand(binding.context, binding.closeEpisode)} context={<b>{data.show.title}</b>}
     artwork={binding.context.artwork.foreground(episode.item.stillUrl ?? data.show.backdropUrl, 880, 16 / 9)} backdrop={!episode.item.stillUrl}
-    facts={<HeroFacts parts={titleFactParts({durationSeconds: episode.item.duration, contentRating: episode.episodeDetails?.contentRating}, env)} />}
+    facts={<TitleFactsLine parts={titleFactParts({durationSeconds: episode.item.duration, contentRating: episode.episodeDetails?.contentRating}, env)} />}
     synopsis={episode.item.overview} actions={<TitleActions binding={binding.episode} data={episode} />} adjacent={adjacent}
     credits={<TitlePeople binding={binding.episode} data={episode} episode />} />;
 }

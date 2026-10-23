@@ -60,6 +60,7 @@
 .people small { font-size: var(--type-label-size); color: var(--color-text-tertiary); margin-top: 4px; }
 
 .loading { display: grid; gap: 20px; padding: 100px 64px 50px; }
+.panelLoading { display: grid; gap: 20px; min-height: 180px; }
 
 .manageBody { display: grid; gap: 12px; }
 .manageBody [role=radiogroup] { display: grid; gap: 8px; }
@@ -104,3 +105,11 @@
  }
 @media(prefers-reduced-motion:reduce) { .page * { scroll-behavior: auto; }
  }
+
+.tabPanel { animation: titleTabIn var(--motion-quick) var(--ease-out) both; }
+@keyframes titleTabIn { from { opacity: 0; } to { opacity: 1; } }
+.episodeLoading { display: grid; grid-template-columns: 440px 1fr; gap: 40px; padding-top: 36px; }
+.episodeLoading > div + div { display: grid; align-content: start; gap: 16px; }
+:global([data-reduce-motion="true"]) .tabPanel { animation-duration: var(--motion-reduced); animation-timing-function: linear; }
+@media(prefers-reduced-motion:reduce) { .tabPanel { animation-duration: var(--motion-reduced); animation-timing-function: linear; } }
+@media(max-width:1023px) { .episodeLoading { display: block; } .episodeLoading > div + div { margin-top: 24px; } }

@@ -69,7 +69,7 @@
 
 .skeleton { width: 100%; display: grid; grid-template-columns: repeat(7,1fr); gap: 16px; }
 
-.skeleton span,.placeholder { display: block; aspect-ratio: 2/3; border-radius: 12px; background: var(--color-raised); }
+.skeletonBlock,.placeholder { display: block; aspect-ratio: 2/3; border-radius: 12px; background: var(--color-raised); }
 
 @media(max-width:1023px) { .search { padding: 80px 20px 110px; }
 

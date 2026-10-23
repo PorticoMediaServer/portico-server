@@ -6,12 +6,13 @@ import {Dialog} from '../../kit/overlays';
 import type {DetailBindings} from './bindings';
 import {t} from './text';
 import styles from './detail.module.css';
+import {runScreenCommand} from './context';
 
 function Person({credit, binding, data}: {credit: DetailCredit; binding: DetailBindings; data: DetailProjection}) {
   const art = binding.context.artwork.foreground(credit.portraitUrl, 208, 1);
-  return <button type="button" disabled={!credit.personId} onClick={() => {
+  return <button type="button" disabled={!credit.personId} onClick={() => runScreenCommand(binding.context, () => {
     binding.current(data); if (credit.personId) binding.context.effects.openEntry({id: credit.personId, kind: 'person', title: credit.name, navigation: {view: 'person', entityId: credit.personId}});
-  }}><PersonCircle covers={art ? [art] : []} initials={credit.name.split(/\s+/).slice(0, 2).map(word => word[0]).join('')} alt="" /><b>{credit.name}</b>{credit.role && <small>{credit.role}</small>}</button>;
+  })}><PersonCircle covers={art ? [art] : []} initials={credit.name.split(/\s+/).slice(0, 2).map(word => word[0]).join('')} alt="" /><b>{credit.name}</b>{credit.role && <small>{credit.role}</small>}</button>;
 }
 const castCredit = (credit: DetailCredit) => credit.department.toLowerCase() === 'acting' || credit.department.toLowerCase() === 'cast';
 export function TitlePeople({binding, data, episode = false}: {binding: DetailBindings; data: DetailProjection; episode?: boolean}) {

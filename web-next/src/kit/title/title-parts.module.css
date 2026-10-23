@@ -33,3 +33,5 @@
   .caret { left: 80px; }
 }
 @media(prefers-reduced-motion:reduce) { .searchHero [data-foreground-art] { transition: none; transform: none; } }
+
+:global([data-reduce-motion="true"]) .searchHero [data-foreground-art] { transition: none; transform: none; }

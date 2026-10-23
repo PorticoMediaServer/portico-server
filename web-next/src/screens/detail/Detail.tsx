@@ -11,7 +11,7 @@ import {Button, ResumeButton, Tabs} from '../../kit/controls';
 import {Lockup, Shelf} from '../../kit/layout';
 import {PosterCard, SquareCard} from '../../kit/cards';
 import {Menu, MenuItem, FileInfo, Dialog, type FileInfoAction} from '../../kit/overlays';
-import {StateView, Skeleton} from '../../kit/states';
+import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
 import {entryCard, fileFacts} from './model';
 import type {DetailBindings} from './bindings';
@@ -22,12 +22,16 @@ import {TitleProse, TitleFactsLine} from '../../kit/title/TitleParts';
 import {TitlePeople} from './People';
 import {FileManagement} from './FileManagement';
 import {TitleTabs} from './TitleTabs';
+import {ScreenProblem} from './ScreenProblem';
+import {runScreenCommand} from './context';
+import {DetailLoading} from './Loading';
+export {DetailLoading} from './Loading';
 
 export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string};
 export function DetailScreen({binding, itemId, libraryId}: DetailScreenProps) {
-  const [failure, setFailure] = useState<unknown>();
-  useEffect(() => { let active = true; setFailure(undefined); void binding.select(libraryId ? {itemId, libraryId} : {itemId}).catch(error => { if (active) setFailure(error); }); return () => { active = false; binding.service.cancel(); }; }, [binding, itemId, libraryId]);
-  return failure ? <ScreenFailure retry={() => { void binding.select(libraryId ? {itemId, libraryId} : {itemId}).catch(binding.context.effects.reportError); }} /> : <TitleBody binding={binding} />;
+  const [failure, setFailure] = useState<unknown>(), [attempt, setAttempt] = useState(0);
+  useEffect(() => { const request = new AbortController(); setFailure(undefined); void binding.select(libraryId ? {itemId, libraryId} : {itemId}, request.signal).catch(error => { if (!request.signal.aborted) setFailure(error); }); return () => { request.abort(); binding.service.cancel(); }; }, [binding, itemId, libraryId, attempt]);
+  return failure ? <ScreenProblem context={binding.context} error={failure} retry={() => setAttempt(value => value + 1)} /> : <TitleBody binding={binding} />;
 }
 
 /** Also mounted under the retained phone/tablet Watch surface. It owns no route or video. */
@@ -39,7 +43,7 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
   const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
   useEffect(() => { if (data?.item.kind === 'movie') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data]);
   useEffect(() => setTab('related'), [data?.scope.itemId]);
-  if (!data) return snapshot.phase === 'error' ? <ScreenFailure retry={() => { void binding.service.retry(); }} /> : <DetailLoading />;
+  if (!data) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} retry={() => { void binding.service.retry(); }} /> : <DetailLoading key={snapshot.target?.itemId} />;
   const tabs = [{value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}, ...(data.extras?.some(extra => extra.items.length) ? [{value: 'extras', label: t('next.controls.extras')}] : [])];
   return <article className={styles.page} data-compact={compact || undefined} data-title-id={data.scope.itemId}>
     {!compact && <TitleHero binding={binding} data={data} showBackdrops={preferenceValue<boolean>(preferences, 'appearance.showBackdrops')} />}
@@ -47,9 +51,9 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
     <TitleTabs title={data.item.title} compact={compact} actions={!compact && <TitleActions binding={binding} data={data} small />}><Tabs aria-label={t('next.controls.details')} value={tab} onValueChange={setTab} items={tabs} /></TitleTabs>
     {snapshot.phase === 'error' && <ScreenFailure retry={() => { void binding.service.retry(); }} />}
     {snapshot.mutationError && <ScreenFailure retry={() => { void binding.service.retryMutation(); }} />}
-    {tab === 'details' ? <TitleDetails binding={binding} data={data} /> : tab === 'extras' ? data.extras?.map(extra => <TitleRow key={extra.type} heading={extra.label} entries={extra.items} binding={binding} />)
+    <div key={tab} className={styles.tabPanel}>{tab === 'details' ? <TitleDetails binding={binding} data={data} /> : tab === 'extras' ? data.extras?.map(extra => <TitleRow key={extra.type} heading={extra.label} entries={extra.items} binding={binding} />)
       : recommendations.data ? titleRecommendationRows(recommendations.data).map(row => <TitleRow key={row.id} heading={row.title} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)
-        : data.related?.rows.map(row => <TitleRow key={row.id} heading={row.heading} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)}
+        : data.related?.rows.map(row => <TitleRow key={row.id} heading={row.heading} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)}</div>
   </article>;
 }
 
@@ -109,8 +113,8 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
       {data.actions.some(action => action.id === 'favorite' && action.enabled) && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
       <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
     </Menu>
-    {fileOpen && model && <FileInfo model={model} subject={data.item.title} layout={phone ? 'phone' : 'desktop'} open onOpenChange={closeFiles} returnFocusRef={trigger} onManage={action => { binding.current(data); closeFiles(false); setManage(action); }} />}
-    {fileOpen && !model && <Dialog open onOpenChange={closeFiles} title={t('next.overlays.fileInfo')} returnFocusRef={trigger}>{failed ? <ScreenFailure retry={loadFiles} /> : <DetailLoading />}</Dialog>}
+    {fileOpen && model && <FileInfo model={model} subject={data.item.title} layout={phone ? 'phone' : 'desktop'} open onOpenChange={closeFiles} returnFocusRef={trigger} onManage={action => runScreenCommand(binding.context, () => { binding.current(data); closeFiles(false); setManage(action); })} />}
+    {fileOpen && !model && <Dialog open onOpenChange={closeFiles} title={t('next.overlays.fileInfo')} returnFocusRef={trigger}>{failed ? <ScreenFailure retry={loadFiles} /> : <DetailLoading shape="panel" />}</Dialog>}
     {manage && files && <FileManagement binding={binding} data={data} files={files} action={manage} onClose={() => setManage(undefined)} returnFocusRef={trigger} />}
   </>;
 }
@@ -131,9 +135,8 @@ export function TitleDetails({binding, data}: {binding: DetailBindings; data: De
 
 export function TitleRow({heading, entries, binding, guard}: {heading: ReactNode; entries: readonly ContentEntry[]; binding: Pick<DetailBindings, 'context'>; guard?: () => void}) {
   return <Shelf heading={heading} items={entries} getKey={entry => entry.id} renderItem={entry => {
-    const props = {model: entryCard(entry, env), artwork: binding.context.artwork.foreground(entry.posterUrl, 380, 2 / 3), onNavigate: () => { if (binding.context.isCurrent()) { guard?.(); binding.context.effects.openEntry(entry); } }, watched: entry.watched};
+    const props = {model: entryCard(entry, env), artwork: binding.context.artwork.foreground(entry.posterUrl, 380, 2 / 3), onNavigate: () => runScreenCommand(binding.context, () => { if (binding.context.isCurrent()) { guard?.(); binding.context.effects.openEntry(entry); } }), watched: entry.watched};
     return ['album', 'book'].includes(entry.kind) ? <SquareCard {...props} /> : <PosterCard {...props} />;
   }} />;
 }
 export function ScreenFailure({retry}: {retry: () => void}) { return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retry}} />; }
-export function DetailLoading() { return <div className={styles.loading} role="status" aria-label={t('next.states.loading')}><Skeleton height={300} /><Skeleton width="50%" height={50} /><Skeleton height={20} /><Skeleton height={20} width="75%" /></div>; }

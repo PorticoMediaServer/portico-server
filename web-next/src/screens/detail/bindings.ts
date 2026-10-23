@@ -107,16 +107,20 @@ export function createDetailBindings(context: ScreenContext) {
       return page;
     },
     mutate: async (data: DetailProjection, action: PersonalIntent) => { current(data); await service.mutate(action); },
-    play: async (data: DetailProjection, actionId: string, versionId?: string) => {
-      current(data);
+    play: async (data: DetailProjection, actionId: string, versionId?: string, signal?: AbortSignal) => {
+      current(data); signal?.throwIfAborted();
       const action = data.actions.find(value => value.id === actionId && value.enabled && value.playback);
       if (!action?.playback || action.playback.itemId !== data.item.id) throw new Error('Title playback action unavailable');
+      let startSeconds = action.playback.startSeconds;
       if (versionId) {
-        const offered = await versions(data);
+        const offered = await versions(data, signal);
         if (!offered.versions.some(value => value.id === versionId)) throw new Error('Version no longer available');
+        const positionMs = offered.resume?.positionMs ?? 0;
+        if (!Number.isFinite(positionMs) || positionMs < 0) throw new Error('Unreadable title resume position');
+        startSeconds = positionMs / 1000;
       }
       current(data);
-      await context.effects.play({...action.playback, libraryId: data.scope.libraryId, ...(versionId ? {versionId} : {})}, life.signal());
+      await context.effects.play({...action.playback, startSeconds, libraryId: data.scope.libraryId, ...(versionId ? {versionId} : {})}, life.signal(signal));
     },
     dispose() { intent++; selected = undefined; life.dispose(); recommendations.dispose(); service.cancel(); service.dispose(); },
   };

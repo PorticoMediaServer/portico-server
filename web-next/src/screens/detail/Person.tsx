@@ -12,15 +12,17 @@ import {entryCard} from './model';
 import type {PersonBindings} from './person-bindings';
 import styles from './person.module.css';
 import {TitleProse} from '../../kit/title/TitleParts';
+import {ScreenProblem} from './ScreenProblem';
+import {runScreenCommand} from './context';
 
 const date = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) ? new Intl.DateTimeFormat(locale(), {year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC'}).format(new Date(`${value}T12:00:00Z`)) : undefined;
 export type PersonScreenProps = {binding: PersonBindings; personId: string};
 export function PersonScreen({binding, personId}: PersonScreenProps) {
-  useEffect(() => { void binding.select(personId).catch(binding.context.effects.reportError); }, [binding, personId]);
+  useEffect(() => { void binding.select(personId).catch(binding.context.effects.reportError); return () => binding.cancel(); }, [binding, personId]);
   const snapshot = useSyncExternalStore(binding.subscribe, binding.getSnapshot, binding.getSnapshot);
   const [full, setFull] = useState(false), width = useShellWidth(), phone = width < 1024;
   useEffect(() => setFull(false), [personId]);
-  if (!snapshot.page) return snapshot.phase === 'error' ? <ScreenFailure retry={() => { void binding.retry(); }} /> : <DetailLoading />;
+  if (!snapshot.page) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} retry={() => { void binding.retry(); }} /> : <DetailLoading />;
   const page = snapshot.page, {person} = page, art = binding.context.artwork;
   const initials = person.name.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('');
   const born = date(person.birthDate), died = date(person.deathDate);
@@ -34,7 +36,7 @@ export function PersonScreen({binding, personId}: PersonScreenProps) {
         {person.biographySource && <small className={styles.source}>{person.biographySource}</small>}
       </div><div className={styles.portrait}><PersonCircle covers={covers} initials={initials} alt={person.name} /></div>
     </header>
-    <div className={styles.toolbar}>{(['all', 'cast', 'crew'] as const).map(role => <Chip key={role} selected={snapshot.role === role} onClick={() => { void binding.select(personId, role); }}>{t(role === 'all' ? 'web.search.all' : role === 'cast' ? 'web.person.cast' : 'web.person.crew')}</Chip>)}</div>
+    <div className={styles.toolbar}>{(['all', 'cast', 'crew'] as const).map(role => <Chip key={role} selected={snapshot.role === role} onClick={() => { void binding.select(personId, role).catch(binding.context.effects.reportError); }}>{t(role === 'all' ? 'web.search.all' : role === 'cast' ? 'web.person.cast' : 'web.person.crew')}</Chip>)}</div>
     {page.pageInfo.total === 0 && <StateView title={t('web.person.noCredits')} body={t('web.person.noCreditsBody')} />}
     {page.groups.length > 0 && snapshot.role === 'all' ? page.groups.filter(group => group.kind).map(group => <PersonCredits key={group.id} binding={binding} page={page} kind={group.kind} heading={t(group.kind === 'movie' ? 'search.chip.movies' : group.kind === 'show' ? 'search.chip.shows' : 'web.person.credits')} />)
       : page.pageInfo.total > 0 && <PersonCredits binding={binding} page={page} heading={t('web.person.credits')} />}
@@ -42,8 +44,9 @@ export function PersonScreen({binding, personId}: PersonScreenProps) {
 }
 function PersonCredits({binding, page, kind, heading}: {binding: PersonBindings; page: PersonPage; kind?: string; heading: string}) {
   const collection = useMemo(() => binding.credits(page, kind), [binding, page, kind]);
-  return <section className={styles.group}><h2>{heading}</h2><WindowedGrid collection={collection} label={heading} cardWidth={190} rowHeight={350} height={kind ? 420 : 'calc(100vh - 240px)'} gap={20}
+  const state = useSyncExternalStore(collection.subscribe, collection.getSnapshot, collection.getSnapshot);
+  return <section className={styles.group}><h2>{heading}</h2>{state.status === 'error' && <ScreenFailure retry={() => collection.retry()} />}<WindowedGrid collection={collection} label={heading} cardWidth={190} rowHeight={350} height={kind ? 420 : 'calc(100vh - 240px)'} gap={20}
     renderPlaceholder={index => <span className={styles.placeholder} key={index} />} renderItem={(credit: PersonCredit) => <PosterCard model={entryCard(credit.media, {t, locale: locale()})} context="detail"
       artwork={binding.context.artwork.foreground(credit.media.posterUrl, 380, 2 / 3)} watched={credit.media.watched} extraCaption={[credit.roles.map((role, index) => ({id: String(index), text: role.role, role: 'context' as const}))]}
-      onNavigate={() => binding.open(page, credit)} />} /></section>;
+      onNavigate={() => runScreenCommand(binding.context, () => binding.open(page, credit))} />} /></section>;
 }

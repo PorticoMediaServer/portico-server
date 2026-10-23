@@ -5,12 +5,18 @@ import {createDetailBindings} from '../src/screens/detail/bindings.ts';
 import {createShowBindings} from '../src/screens/detail/show-bindings.ts';
 import {createPersonBindings} from '../src/screens/detail/person-bindings.ts';
 import {createSearchBindings} from '../src/screens/search/bindings.ts';
+import {createEntryDetailsBindings} from '../src/screens/detail/entry-details.ts';
+import type {SelectionContext} from '@core/selection-model/index.ts';
+import type {ContentEntry} from '@core/library-content.ts';
 
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return {promise, resolve}; }
 function setup(handler: (path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<unknown>) {
   let current = true, requests = 0;
   const context = {
-    api: {request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => { requests++; return handler(path, method, body, signal) as Promise<T>; }},
+    api: {
+      request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => { requests++; return handler(path, method, body, signal) as Promise<T>; },
+      requestRaw: async (path: string, method?: string, options?: {body?: unknown; signal?: AbortSignal}) => { requests++; return {status: 200, headers: {}, body: await handler(path, method, options?.body, options?.signal)}; },
+    },
     scope: {serverId: 'server', viewerId: JSON.stringify(['local', 'account', 'profile'])}, isCurrent: () => current,
     preferences: {getSnapshot: () => ({}), subscribe: () => () => {}},
     effects: {openEntry: () => {}, openSettings: () => {}, play: async () => {}, reportError: () => {}},
@@ -112,5 +118,35 @@ test('an owner panel permission is re-read before even preparing a delete comman
   const panel = await binding.readFileInfo(data);
   await assert.rejects(binding.previewDelete(data, panel, 'asset'), {name: 'AbortError'});
   assert.equal(fileReads, 2); assert.deepEqual(writes, []);
+  binding.dispose();
+});
+
+test('manual versions use fresh Options resume and never carry the choice into ordinary Play', async () => {
+  const starts: unknown[] = [];
+  const page = {...detailPage('one'), actions: [{id: 'play', labelKey: 'title.play', enabled: true, playback: {itemId: 'one', startMs: 100}}]};
+  const owner = setup(async path => path.includes('/playback-options') ? {itemId: 'one', versions: [{id: 'grouped-version', durationMs: 1000}], resume: {positionMs: 725, partIndex: 0}} : page);
+  const context = {...owner.context, effects: {...owner.context.effects, play: async (target: unknown) => { starts.push(target); }}};
+  const binding = createDetailBindings(context); await binding.select({libraryId: 'library', itemId: 'one'});
+  const data = binding.service.getSnapshot().data!;
+  await binding.play(data, 'play', 'grouped-version');
+  await binding.play(data, 'play');
+  assert.deepEqual(starts, [
+    {itemId: 'one', libraryId: 'library', startSeconds: 0.725, versionId: 'grouped-version'},
+    {itemId: 'one', libraryId: 'library', startSeconds: 0.1},
+  ]);
+  binding.dispose();
+});
+
+test('the entry version command preserves nested authority and refuses a removed grouped version', async () => {
+  let current = true, starts = 0;
+  const captured: SelectionContext = {scope: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', viewId: 'search', privacyFence: 'fence'}, revision: {catalogRevision: '1', viewerRevision: '1'}};
+  const entry: ContentEntry = {id: 'one', libraryId: 'library', kind: 'movie', title: 'one', navigation: {view: 'item', entityId: 'one'}};
+  const owner = setup(async path => path.includes('/playback-options') ? {itemId: 'one', versions: [{id: 'current-version', durationMs: 1000}]} : {...detailPage('one'), actions: [{id: 'play', labelKey: 'title.play', enabled: true, playback: {itemId: 'one', startMs: 0}}]});
+  const context = {...owner.context, effects: {...owner.context.effects, play: async () => { starts++; }}};
+  const binding = createEntryDetailsBindings(context, {isCurrent: value => current && value === captured});
+  await assert.rejects(binding.playVersion(entry, 'removed-version', captured, new AbortController().signal), /Version playback unavailable/);
+  current = false; const requests = owner.requests();
+  await assert.rejects(binding.playVersion(entry, 'current-version', captured, new AbortController().signal), {name: 'AbortError'});
+  assert.equal(owner.requests(), requests); assert.equal(starts, 0);
   binding.dispose();
 });

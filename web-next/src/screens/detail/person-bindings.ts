@@ -1,4 +1,4 @@
-import {createWindowedCollection, type WindowedCollection} from '@core/collections/index.ts';
+import {createWindowedCollection, type WindowedCollection, type PageResult} from '@core/collections/index.ts';
 import {readPerson, type PersonPage, type PersonCredit, type PersonRole} from '@core/people.ts';
 import {screenLifetime, type ScreenContext} from './context';
 
@@ -29,23 +29,28 @@ export function createPersonBindings(context: ScreenContext) {
     // Cursor addresses are retained; media pages belong only to the sparse collection.
     const cursors = new Map<number, string | null>([[0, null]]), pageSize = 40;
     let total = kind ? header.groups.find(group => group.kind === kind)?.total ?? header.pageInfo.total : header.pageInfo.total;
-    const pending = new Map<number, Promise<{items: readonly PersonCredit[]; total: number}>>();
-    const fetch = async (page: number, signal: AbortSignal): Promise<{items: readonly PersonCredit[]; total: number}> => {
+    let addressablePage = 0;
+    const pending = new Map<number, Promise<PageResult<PersonCredit>>>();
+    const fetch = async (page: number, signal: AbortSignal): Promise<PageResult<PersonCredit>> => {
       const existing = pending.get(page); if (existing) return existing;
       const work = (async () => {
-        if (!cursors.has(page)) await fetch(page - 1, signal);
+        // A cursor is an address, not permission to read every intervening page on a jump.
+        if (!cursors.has(page)) throw new DOMException('Person cursor unavailable', 'AbortError');
         if (cursors.get(page) === '') return {items: [], total};
         const value = await readPerson(life.api, context.scope, id, {...(kind ? {kind} : {role}), limit: pageSize, cursor: cursors.get(page), signal: life.signal(signal)});
         life.assert();
         if (request !== generation || state.page !== header || value.viewerFence !== header.viewerFence || value.revision.catalog !== header.revision.catalog || value.revision.viewer !== header.revision.viewer) throw new DOMException('Person credits changed', 'AbortError');
         if (value.pageInfo.nextCursor && [...cursors.values()].includes(value.pageInfo.nextCursor)) throw new Error('Repeated person cursor');
         total = value.pageInfo.total; cursors.set(page + 1, value.pageInfo.nextCursor);
-        return {items: value.credits, total: value.pageInfo.total};
+        if (value.pageInfo.nextCursor) addressablePage = Math.max(addressablePage, page + 1);
+        const exposed = value.pageInfo.nextCursor ? Math.min(total, (addressablePage + 1) * pageSize) : total;
+        // The header retains the real group total; the scroll surface grows as addresses arrive.
+        return {items: value.credits, total: exposed, totalIsLowerBound: exposed < total};
       })();
       pending.set(page, work);
       try { return await work; } finally { if (pending.get(page) === work) pending.delete(page); }
     };
-    const collection = createWindowedCollection<PersonCredit>({pageSize, maxResidentPages: 5, keyOf: credit => JSON.stringify([credit.media.libraryId, credit.media.id]), fetchPage: (start, _count, signal) => fetch(Math.floor(start / pageSize), signal)});
+    const collection = createWindowedCollection<PersonCredit>({pageSize, maxConcurrent: 1, maxResidentPages: 5, keyOf: credit => JSON.stringify([credit.media.libraryId, credit.media.id]), fetchPage: (start, _count, signal) => fetch(Math.floor(start / pageSize), signal)});
     collections.set(key, collection); return collection;
   };
   return {
@@ -58,6 +63,7 @@ export function createPersonBindings(context: ScreenContext) {
       context.effects.openEntry(credit.media);
     },
     retry: () => select(personId, state.role),
+    cancel() { generation++; read?.abort(); clear(); personId = ''; publish({phase: 'idle', role: 'all'}); },
     dispose() { generation++; life.dispose(); read?.abort(); clear(); personId = ''; publish({phase: 'idle', role: 'all'}); listeners.clear(); },
   };
 }
