@@ -329,14 +329,14 @@ func (s *Store) ImportConfiguration(ctx context.Context) error {
 		return nil
 	}
 	s.configMu.Lock()
-	err := s.importConfigurationLocked(ctx)
+	changed, err := s.importConfigurationLocked(ctx)
 	s.configMu.Unlock()
-	if err == nil && s.ConfigChanged != nil {
+	if err == nil && changed && s.ConfigChanged != nil {
 		s.ConfigChanged(context.WithoutCancel(ctx))
 	}
 	return err
 }
-func (s *Store) importConfigurationLocked(ctx context.Context) error {
+func (s *Store) importConfigurationLocked(ctx context.Context) (bool, error) {
 	bindings := ConfigurationBindings()
 	raw := map[string]any{}
 	allBindings := append([]ConfigurationBinding{}, bindings...)
@@ -346,13 +346,14 @@ func (s *Store) importConfigurationLocked(ctx context.Context) error {
 	for _, b := range allBindings {
 		value, err := s.ConfigFile.Resolve(configfile.Binding{Key: b.Key})
 		if err != nil {
-			return err
+			return false, err
 		}
 		if value.Source == configfile.File {
 			raw[b.Key] = value.Value
 		}
 	}
-	return dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+	applied := false
+	err := dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
 		document, err := readSettings(tx)
 		if err != nil {
 			return err
@@ -477,8 +478,10 @@ func (s *Store) importConfigurationLocked(ctx context.Context) error {
 			}
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE console_settings_revision SET revision=revision+1 WHERE singleton=1`)
+		applied = err == nil
 		return err
 	})
+	return applied, err
 }
 
 func (s *Store) FlushConfiguration(ctx context.Context) error {

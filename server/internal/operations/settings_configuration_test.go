@@ -122,6 +122,44 @@ func TestOwnAddressStartsOffAndCanKeepIncompleteDraft(t *testing.T) {
 	}
 }
 
+func TestSettingsConfigurationNotifiesOnlyCommittedFileChanges(t *testing.T) {
+	s, _, authorize := consoleFixture(t)
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "portico.toml")
+	if err := s.InitializeConfiguration(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	s.ConfigChanged = func(context.Context) { calls++ }
+	importFile := func(contents string) error {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.ConfigFile.Reload(); err != nil {
+			t.Fatal(err)
+		}
+		return s.ImportConfiguration(ctx)
+	}
+	if err := importFile("[streaming]\nallow_conversion='sound'\n"); err != nil || calls != 1 {
+		t.Fatal("committed policy did not notify", calls, err)
+	}
+	before, err := s.Settings(ctx, authorize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = importFile("[streaming]\nallow_conversion='sound'\n[unrelated]\nkept=true\n"); err != nil || calls != 1 {
+		t.Fatal("unchanged policy woke consumers", calls, err)
+	}
+	if err = importFile("[streaming]\nallow_conversion='invented'\n"); err == nil || calls != 1 {
+		t.Fatal("invalid policy notified consumers", calls, err)
+	}
+	after, err := s.Settings(ctx, authorize)
+	if err != nil || after.Revision != before.Revision || after.Requested.ConversionMode != "sound" {
+		t.Fatal("invalid/no-op import changed canonical policy", after, err)
+	}
+}
+
 func TestSettingsConfigurationPreservesIndependentFileEditWhileAppProjectionPending(t *testing.T) {
 	s, owner, authorize := consoleFixture(t)
 	ctx := context.Background()
