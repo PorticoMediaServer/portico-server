@@ -35,13 +35,19 @@ original copyrights. Notices are rendered as UTF-8; the few Windows-1252 source
 files retain their copyright symbols and quotation marks. Corresponding
 source/vendor URLs and hashes are in the lock.
 
-The minimum custom version is 1.70.0, derived from the required flag inventory:
-`--max-connections` was added in 1.70.0; `--vfs-read-chunk-streams` in 1.68.0;
-`--vfs-cache-min-free-space` in 1.64.0; all other locked flags exist in 1.70.0.
-Sources: the [pinned changelog](https://github.com/rclone/rclone/blob/v1.75.2/docs/content/changelog.md)
-and the real 1.70.0 `serve webdav --help` / `help flags` output. The minimum's
-flag availability is independent of the bundled version and G57 correctness.
-When a consumer adds an option it must update this inventory and its minimum.
+The minimum custom version is 1.71.0. The source egress policy requires
+`--http-proxy` / `RCLONE_HTTP_PROXY`, introduced in that release. Its explicit
+proxy uses `http.ProxyURL`; environment-only discovery uses
+`http.ProxyFromEnvironment`, which bypasses loopback destinations. Custom
+1.70.x programs therefore cannot enforce the required policy route.
+Sources: [1.71.0 release notes](https://github.com/rclone/rclone/blob/v1.71.0/docs/content/changelog.md),
+[option registration](https://github.com/rclone/rclone/blob/v1.71.0/fs/config.go),
+and [transport selection](https://github.com/rclone/rclone/blob/v1.71.0/fs/fshttp/http.go).
+The remaining flag inventory predates that release: `--max-connections` was
+added in 1.70.0, `--vfs-read-chunk-streams` in 1.68.0 and
+`--vfs-cache-min-free-space` in 1.64.0. The minimum's flag availability is
+independent of the bundled version and G57 correctness. When a consumer adds
+an option it must update this inventory and its minimum.
 
 `rcloneprogram.Resolve` uses `PORTICO_RCLONE` when supplied, otherwise
 `<server directory>/third_party/rclone/rclone[.exe]`; it never silently falls

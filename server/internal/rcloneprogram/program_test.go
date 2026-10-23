@@ -50,7 +50,7 @@ func TestPlatformPaths(t *testing.T) {
 }
 func TestVersionResults(t *testing.T) {
 	for _, tc := range []struct{ line, version, code string }{
-		{"rclone v1.70.0", "1.70.0", ""}, {"rclone v1.75.2", "1.75.2", ""}, {"rclone v2.0.0", "2.0.0", ""}, {"rclone v1.69.9", "", "rclone_too_old"}, {"rclone v1.58", "", "rclone_too_old"}, {"rclone vfixture", "", "not_rclone"}, {"rclone v1.75.2evil", "", "not_rclone"}, {"rclone v1.75.2-beta", "1.75.2-beta", ""}, {"other v9.0.0", "", "not_rclone"},
+		{"rclone v1.71.0", "1.71.0", ""}, {"rclone v1.70.0", "", "rclone_too_old"}, {"rclone v1.70.99", "", "rclone_too_old"}, {"rclone v1.75.2", "1.75.2", ""}, {"rclone v2.0.0", "2.0.0", ""}, {"rclone v1.69.9", "", "rclone_too_old"}, {"rclone v1.58", "", "rclone_too_old"}, {"rclone vfixture", "", "not_rclone"}, {"rclone v1.75.2evil", "", "not_rclone"}, {"rclone v1.75.2-beta", "1.75.2-beta", ""}, {"other v9.0.0", "", "not_rclone"},
 	} {
 		t.Run(tc.line, func(t *testing.T) {
 			v, err := parseVersion(tc.line)
@@ -79,6 +79,17 @@ func TestOnlyVersionAndChangedWrappers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Old custom versions must fail before a source can start, even when the
+	// wrapper itself starts successfully and accepts the version-only command.
+	write("1.70.99")
+	if _, err := CheckCustom(context.Background(), path); err == nil {
+		t.Fatal("custom program without explicit HTTP proxy support accepted")
+	} else {
+		var checkError *CheckError
+		if !errors.As(err, &checkError) || checkError.Code != "rclone_too_old" {
+			t.Fatalf("old custom program: %v", err)
+		}
+	}
 	write("1.75.2")
 	v, err := CheckCustom(context.Background(), path)
 	if err != nil || v.Version != "1.75.2" {
@@ -96,7 +107,7 @@ func TestOnlyVersionAndChangedWrappers(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = CheckCustom(context.Background(), path)
-	if err == nil || err.Error() != "This rclone is too old (1.58.0). Choose 1.70.0 or newer." {
+	if err == nil || err.Error() != "This rclone is too old (1.58.0). Choose 1.71.0 or newer." {
 		t.Fatalf("%v", err)
 	}
 }

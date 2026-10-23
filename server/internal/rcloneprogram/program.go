@@ -19,9 +19,10 @@ import (
 
 const BundledVersion = "1.75.2"
 
-// MinimumVersion is set by --max-connections (introduced in rclone 1.70.0).
-// The remaining serve/cache/pacing options predate that release; see the bundle notice.
-const MinimumVersion = "1.70.0"
+// MinimumVersion requires the explicit HTTP proxy option (rclone 1.71.0).
+// Environment-only proxy discovery bypasses loopback targets; source egress
+// policy requires --http-proxy / RCLONE_HTTP_PROXY. See the bundle notice.
+const MinimumVersion = "1.71.0"
 const CheckTimeout = 5 * time.Second
 
 type Program struct {
@@ -163,7 +164,7 @@ func parseVersion(line string) (Version, error) {
 		}
 	}
 	version := fmt.Sprintf("%d.%d.%d", numbers[0], numbers[1], numbers[2])
-	if numbers[0] < 1 || (numbers[0] == 1 && numbers[1] < 70) {
+	if numbers[0] < 1 || (numbers[0] == 1 && numbers[1] < 71) {
 		return Version{}, &CheckError{Code: "rclone_too_old", Version: version}
 	}
 	return Version{Version: version + match[4]}, nil

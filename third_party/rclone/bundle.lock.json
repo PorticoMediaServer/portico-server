@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "version": "1.75.2",
-  "minimumVersion": "1.70.0",
+  "minimumVersion": "1.71.0",
   "revision": "be8d6044eacb843b74d335db0c5fbe09222031fe",
   "license": "MIT",
   "signingFingerprint": "FBF737ECE9F8AB18604BD2AC93935E02FF3B54FA",
@@ -118,7 +118,8 @@
     "--tpslimit",
     "--tpslimit-burst",
     "--bwlimit",
-    "--max-connections"
+    "--max-connections",
+    "--http-proxy"
   ],
   "tagObject": "b0dd53938615bb610c64f610eb2b17be16752f77"
 }
