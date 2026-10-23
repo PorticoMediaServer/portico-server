@@ -158,6 +158,7 @@ const KIND_LABELS: Readonly<Record<string, MessageId>> = {
   audiobook_file: 'server.plays.kind.audiobook', extra: 'server.plays.kind.extra',
 };
 const PLATFORM_LABELS: Readonly<Record<string, MessageId>> = {
+  'google-cast': 'device.platform.googleCast',
   web: 'device.platform.web', ios: 'device.platform.ios', tvos: 'device.platform.tvos', android: 'device.platform.android', androidtv: 'device.platform.androidtv',
 };
 
