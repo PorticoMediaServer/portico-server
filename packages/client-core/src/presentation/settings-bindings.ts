@@ -1,11 +1,11 @@
 import type {InventorySource,SourceSettings} from '../library-inventory.ts';
 import type {SettingsConfiguration, ConfigurationValue} from '../settings-configuration.ts';
-import {canonicalQualityLadder} from '../../../contracts/src/types.ts';
+import {canonicalQualityLadder,canonicalMusicQualityLadder} from '../../../contracts/src/types.ts';
 import {validatePreferencePatch,type PreferenceSnapshot,type PreferenceScope,type PreferenceValue} from '../preferences.ts';
 import type {ReadingPreferences} from '../preference-effects.ts';
 
 export type SettingsBindingForm='runtime'|'connectivity'|'connectivityStatus'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library';
-export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
+export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'music-quality-choice'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
 export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>;deviceDefaults?:Readonly<Record<string,unknown>>}>;
 export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
 export type SettingsBindingPatch=Readonly<{form:SettingsBindingForm;values:Readonly<Record<string,unknown>>}>;
@@ -152,8 +152,22 @@ const source69PreferenceBindings:Readonly<Record<string,SettingsBinding>>={
  'quality.directStream':{form:'preferences',key:'delivery.directStream',scope:'profile-device-class'},
  'quality.transcode':{form:'preferences',key:'delivery.transcode',scope:'profile-device-class'},
 };
+// Runtime keys and scopes come from the published Music registry. CD is only
+// the drawn choice value; the canonical stored quality remains cd-quality.
+const musicPreferenceBindings:Readonly<Record<string,SettingsBinding>>={
+ 'music.audioNormalization':{form:'preferences',key:'music.audioNormalization',scope:'profile-server'},
+ 'music.crossfadeMs':{form:'preferences',key:'music.crossfadeMs',scope:'profile-server'},
+ 'music.gapless':{form:'preferences',key:'music.gapless',scope:'profile-server'},
+ 'music.neverBoost':{form:'preferences',key:'music.neverBoost',scope:'profile-server'},
+ 'music.smoothTransitions':{form:'preferences',key:'music.smoothTransitions',scope:'profile-server'},
+ 'music.dsdGainDb':{form:'preferences',key:'music.dsdGainDb',scope:'profile-server'},
+ 'music.qualityHome':{form:'preferences',key:'music.qualityHome',scope:'profile-device-class',codec:'music-quality-choice'},
+ 'music.qualityAway':{form:'preferences',key:'music.qualityAway',scope:'profile-device-class',codec:'music-quality-choice'},
+ 'music.qualityMobile':{form:'preferences',key:'music.qualityMobile',scope:'profile-device-class',codec:'music-quality-choice'},
+ 'music.downloadQuality':{form:'preferences',key:'music.qualityDownloads',scope:'profile-device-class',codec:'music-quality-choice'},
+};
 export function settingsBinding(rowId:string):SettingsBinding|undefined{
- for(const table of [bindings,source69PreferenceBindings])if(Object.hasOwn(table,rowId))return table[rowId];
+ for(const table of [bindings,source69PreferenceBindings,musicPreferenceBindings])if(Object.hasOwn(table,rowId))return table[rowId];
  return Object.hasOwn(preferenceKeys,rowId)?{form:'preferences',key:preferenceKeys[rowId]!}:undefined;
 }
 
@@ -181,6 +195,7 @@ function windowMode(binding:SettingsBinding,w:Readonly<Record<string,unknown>>):
 }
 function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSources):unknown{
  if(v===undefined)return undefined;
+ if(binding.codec==='music-quality-choice')return typeof v==='string'&&canonicalMusicQualityLadder.some(q=>q.id===v)?(v==='cd-quality'?'cd':v):undefined;
  if(binding.codec==='video-quality-choice')return typeof v==='string'&&canonicalQualityLadder.some(q=>q.id===v)&&(binding.key!=='downloadMaxQuality'||v!=='automatic')?(v==='2160p'?'4k':v):undefined;
  if(binding.codec==='boolean')return typeof v==='boolean'?v:undefined;
  if(binding.codec==='surround')return typeof v==='boolean'?(v?'stereo':'asis'):undefined;
@@ -281,6 +296,10 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
   const field=sources.preferences?.registry.fields.find(f=>f.key===binding.key);
   if(field?.type!=='integer')throw new Error('Invalid setting value.');
   raw=value==='server'||value===null?null:value;
+ }
+ if(binding.codec==='music-quality-choice'){
+  if(typeof value!=='string'||value==='cd-quality'||!canonicalMusicQualityLadder.some(q=>(q.id==='cd-quality'?'cd':q.id)===value))throw new Error('Invalid setting value.');
+  raw=value==='cd'?'cd-quality':value;
  }
  if(binding.codec==='video-quality-choice'){
   if(typeof value!=='string'||value==='2160p'||!canonicalQualityLadder.some(q=>(q.id==='2160p'?'4k':q.id)===value)||binding.key==='downloadMaxQuality'&&value==='automatic')throw new Error('Invalid setting value.');
