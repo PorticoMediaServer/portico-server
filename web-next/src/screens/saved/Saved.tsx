@@ -16,6 +16,7 @@ import {Skeleton, StateView} from '../../kit/states';
 import type {ShellArtwork} from '../../shell/artwork';
 import {useQuietRefresh} from '../../platform/freshness';
 import {homeCardModel} from '../home/model';
+import {BrowseEntryCard} from '../browse';
 import {LocalDownloads, ServerDownloads, type SavedDownloadEffects} from './Downloads';
 import {sameSavedDownloadsScope, type SavedDownloadsPort} from './downloads-port.ts';
 import type {SavedRuntime, SavedScreenRoute} from './runtime.ts';
@@ -39,6 +40,7 @@ export type SavedSelection = Readonly<{
 export type SavedPresentation = Readonly<{
   view: 'grid' | 'list';
   cardWidth: number;
+  backdrops: boolean;
   reducedMotion: boolean;
   backdrop?: AmbientArtSource;
   setView(view: 'grid' | 'list'): void;
@@ -168,11 +170,11 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
     {bindings.heading && <h2>{serverTextLabel(defaultI18n, section.heading)}</h2>}
     <WindowedGrid collection={collection} label={serverTextLabel(defaultI18n, section.heading)} height={height} cardWidth={presentation.view === 'list' ? Math.max(1, width) : presentation.cardWidth} rowHeight={rowHeight} rowGap={presentation.view === 'list' ? 0 : 30} gap={16} reducedMotion={presentation.reducedMotion} onVisibleRange={onVisibleRange}
       renderPlaceholder={() => <Skeleton width={presentation.cardWidth} height={presentation.cardWidth / ratio} />}
-      renderItem={entry => {
+      renderItem={(entry, context) => {
         const cardSelection = selection.card(service, section.id, entry), media = mediaEntry(entry);
         if (entry.kind === 'playlist') {
           const covers = (entry.artworkPaths ?? []).map(path => artwork.foreground(path, presentation.cardWidth, 1)).filter((source): source is ArtworkSource => !!source);
-          return <PlaylistMosaic model={{title: entry.title, caption: entry.count ? [{id: 'count', role: 'value', text: t('web.saved.items', {count: entry.count})}] : []}} covers={covers} context="grid" selection={cardSelection} onNavigate={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} onMore={anchor => effects.openMore(service, section.id, entry, anchor)} />;
+          return <PlaylistMosaic model={{title: entry.title, caption: entry.count !== undefined ? [{id: 'count', role: 'value', text: t('web.saved.items', {count: entry.count})}] : []}} covers={covers} context="grid" selection={cardSelection} onNavigate={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} onMore={anchor => effects.openMore(service, section.id, entry, anchor)} />;
         }
         if (!media) return <StateView title={t('card.unavailable')} />;
         const common = {model: homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), artwork: artwork.foreground(media.posterUrl, presentation.cardWidth * devicePixelRatio, ratio),
@@ -180,7 +182,8 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
           onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(() => effects.playEntry(media)).catch(effects.reportError); } : undefined,
           onMore: (anchor: HTMLButtonElement) => bindings.onMore ? bindings.onMore(entry, anchor) : effects.openMore(service, section.id, entry, anchor)};
         if (presentation.view === 'list') return <div className={styles.mediaListRow}><PosterCard {...common} /></div>;
-        return square ? <SquareCard {...common} /> : <PosterCard {...common} />;
+        return <BrowseEntryCard entry={media} artwork={artwork} env={{t, locale: defaultI18n.region.formatLocale}} width={presentation.cardWidth} mixed visible order={context.index} group={`saved:${section.id}`} backdrops={presentation.backdrops}
+          actions={{onOpen: common.onNavigate, onPlay: common.onPlay, onMore: common.onMore, selection: cardSelection}} />;
       }} />
     {section.nextCursor && <Button className={styles.showMore} size="small" loading={service.getSnapshot().phase === 'loading'} onClick={() => { void service.next(section.id); }}>{t('action.showMore')}</Button>}
   </section>;

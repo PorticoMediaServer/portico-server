@@ -13,6 +13,7 @@ import {Skeleton, StateView} from '../../kit/states';
 import {CircleCard, PosterCard, SquareCard} from '../../kit/cards';
 import {WindowedGrid} from '../../kit/layout';
 import {homeCardModel} from '../home/model';
+import {BrowseEntryCard} from '../browse';
 import type {SavedViewBindings} from './Saved';
 import {SavedSection} from './Saved';
 import {sameSavedRoute} from './route.ts';
@@ -120,7 +121,7 @@ function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings;
   const height = Math.max(rowHeight, Math.min(window.innerHeight, Math.ceil(entries.length / columns) * (rowHeight + (grid ? 30 : 0))));
   return <div className={styles.personalRows}><div ref={root}><WindowedGrid collection={collection} label={bindings.runtime.personal.getSnapshot().resource?.name ?? t('saved.title')}
     height={height} cardWidth={grid ? cardWidth : Math.max(1, width)} rowHeight={rowHeight} gap={16} rowGap={grid ? 30 : 0} reducedMotion={bindings.presentation.reducedMotion}
-    renderPlaceholder={() => <Skeleton width={grid ? cardWidth : width} height={grid ? cardWidth * 1.5 : 72} />} renderItem={entry => {
+    renderPlaceholder={() => <Skeleton width={grid ? cardWidth : width} height={grid ? cardWidth * 1.5 : 72} />} renderItem={(entry, context) => {
     const media = entry.media;
     if (!media || entry.hidden) return <div className={styles.hiddenRow}>{t('card.unavailable')}</div>;
     const model = homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), shape = shapeFor(media.kind, grid ? 'grid' : 'list');
@@ -128,6 +129,9 @@ function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings;
     const common = {model, context: grid ? 'grid' as const : 'detail' as const, selection: bindings.selection.personalCard(bindings.runtime.personal, entry), watched: media.watched,
       onNavigate: () => bindings.effects.openEntry(media), onMore: (anchor: HTMLButtonElement) => onMore(entry, anchor),
       onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(() => bindings.effects.playEntry(media)).catch(bindings.effects.reportError); } : undefined};
+    if (grid) return <BrowseEntryCard entry={media} artwork={bindings.artwork} env={{t, locale: defaultI18n.region.formatLocale}} width={cardWidth} mixed visible order={context.index}
+      group={`saved:${bindings.runtime.personal.getSnapshot().resource?.id ?? ''}`} backdrops={bindings.presentation.backdrops}
+      actions={{onOpen: common.onNavigate, onPlay: common.onPlay, onMore: common.onMore, selection: common.selection}} />;
     return <div className={grid ? undefined : styles.mediaListRow}>{shape === 'circle' ? <CircleCard {...common} covers={artwork ? [artwork] : []} variant="person" />
       : shape === 'square' ? <SquareCard {...common} artwork={artwork} /> : <PosterCard {...common} artwork={artwork} />}</div>;
   }} /></div>{bindings.runtime.personal.getSnapshot().nextCursor && <Button size="small" className={styles.showMore} loading={bindings.runtime.personal.getSnapshot().loading} onClick={() => { void bindings.runtime.personal.next(); }}>{t('action.showMore')}</Button>}</div>;
