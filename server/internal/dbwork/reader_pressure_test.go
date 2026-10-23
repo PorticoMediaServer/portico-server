@@ -324,6 +324,14 @@ func TestCheckpointHardPressureDrainsOverlappingReadersAndShrinksPhysicalWAL(t *
 		}
 		stopChurn()
 		workers.Wait()
+		// Context cancellation can win database/sql's Rollback before the
+		// driver's rollback finishes. Joining request goroutines alone does not
+		// join that cleanup; prove this fixture releases its physical readers
+		// before another test samples the process-wide lifetime counters.
+		waitReaderCondition(t, func() bool {
+			readers := scope.stats()
+			return readers.Snapshots == 0 && readers.ImplicitRows == 0 && readers.AdmissionWaiting == 0 && !readers.AdmissionPaused
+		})
 		select {
 		case err := <-failures:
 			t.Fatal(err)
