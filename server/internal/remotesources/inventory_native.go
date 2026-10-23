@@ -195,9 +195,6 @@ func (s *Service) startNativeListing(ctx context.Context, b binding, relative, i
 		if p.err != nil {
 			cleanup, done := context.WithTimeout(context.Background(), 5*time.Second)
 			code := ErrorCode(p.err)
-			if errors.Is(p.err, storage.ErrBusy) {
-				code = "capacity_busy" // Local contention is not a provider throttle report.
-			}
 			_, _ = dbwork.ExecWrite(cleanup, s.db, dbwork.ClassBackgroundMedia, `UPDATE remote_native_listings SET state='failed',error_code=?,updated_at=? WHERE listing_id=? AND owner=? AND state='running'`, code, time.Now().UnixMilli(), id, owner)
 			done()
 			s.health(b, generation, p.err)

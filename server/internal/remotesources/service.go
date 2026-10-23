@@ -293,7 +293,7 @@ func ErrorCode(err error) string {
 	case errors.Is(err, storage.ErrRemoteLimit):
 		return "budget_exceeded"
 	case errors.Is(err, storage.ErrBusy), errors.Is(err, remotemedia.ErrBusy):
-		return "rate_limited"
+		return "capacity_busy"
 	case errors.Is(err, context.Canceled):
 		return "cancelled"
 	default:
