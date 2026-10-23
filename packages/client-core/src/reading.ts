@@ -1,5 +1,5 @@
 import {
-  routePath, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
+  routePath, errors, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
   decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProgressResponse,
   decodePutReadingSessionsSessionIdProgressResponse,
   type GetReadingItemsResponse, type GetItemsItemIdReadingVersionsResponse,
@@ -26,6 +26,7 @@ export class ReadingError extends Error {
 type Sender = (path: string, init: RequestInit) => Promise<Response>;
 type Capture = Readonly<{send: Sender; isCurrent: () => boolean; subscribe: (retire: () => void) => () => void}>;
 const fail = (code: string): never => { throw new ReadingError(code); };
+const serverCodes = new Set<string>(errors.map(error => error.code));
 const cancellation = (signal: AbortSignal) => signal.reason instanceof ReadingError ? signal.reason : new ReadingError('cancelled');
 const integer = (n: number, low: number, high: number) => Number.isSafeInteger(n) && n >= low && n <= high;
 const id = (s: string) => typeof s === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(s);
@@ -159,6 +160,10 @@ export class ReadingClient {
       check(); const response = await received(this.#capture.send(path, {...init, signal: op.signal}), op.signal);
       try { check(); return await consume(response, op.signal, check); }
       catch (error) { await discard(response); throw error; }
+    } catch (error) {
+      if (op.signal.aborted) throw cancellation(op.signal);
+      if (error instanceof ReadingError) throw error;
+      throw new ReadingError('network_error');
     } finally { op.release(); }
   }
   async json<T>(path: string, method: string, body: unknown, signal: AbortSignal | undefined, decode: (value: unknown) => T, max: number, headers?: Record<string, string>, sessionSignal?: AbortSignal, sourceRevision?: (value: T) => string): Promise<T> {
@@ -181,7 +186,7 @@ export class ReadingClient {
     if (mime(response.headers.get('Content-Type')) === 'application/json') {
       try {
         const raw = JSON.parse(new TextDecoder().decode(await bytes(response, 64 << 10, signal, check)));
-        if (typeof raw?.error?.code === 'string' && /^[a-z][a-z0-9_]{0,95}$/.test(raw.error.code)) code = raw.error.code;
+        if (typeof raw?.error?.code === 'string' && serverCodes.has(raw.error.code)) code = raw.error.code;
       } catch (error) { check(); /* Never retain an untrusted error body. */ }
     }
     await discard(response); throw new ReadingError(code, response.status);

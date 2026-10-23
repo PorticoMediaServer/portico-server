@@ -125,3 +125,13 @@ test('nullable progress and paused history stay explicit; CAS conflict does not 
   f.retire(); const count = f.calls.length;
   await assert.rejects(session.progress(), coded('cancelled')); assert.equal(f.calls.length, count);
 });
+
+test('transport failures and unknown server errors never retain an origin or response text', async () => {
+  const f = setup(), session = await f.client.open({itemId: 'book', sourceId: 'asset'});
+  f.hook(() => { throw new Error('https://private-book-origin/?private=value'); });
+  await assert.rejects(session.readRange({start: 0, endExclusive: 5}), error => {
+    assert.ok(error instanceof ReadingError); assert.equal(error.code, 'network_error'); assert.equal('cause' in error, false); return true;
+  });
+  f.hook(() => json({error: {code: 'private_unrecognized_value', message: 'https://private-book-origin/'}}, 503));
+  await assert.rejects(session.progress(), coded('request_failed')); f.client.dispose();
+});
