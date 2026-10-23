@@ -58,3 +58,26 @@ func TestSettingsReaderRejectsMissingCanonicalColumn(t *testing.T) {
 		})
 	}
 }
+
+func TestIntegrationReaderRejectsMissingCanonicalTable(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "server.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	err = dbwork.WithWriteTx(context.Background(), db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		// This transaction is rolled back on exit. A missing producer must not
+		// turn global credential/webhook restrictions into factory defaults.
+		if _, err := tx.Exec(`ALTER TABLE server_settings RENAME TO missing_server_settings`); err != nil {
+			return err
+		}
+		out, err := ReadIntegrationSettingsTx(context.Background(), tx)
+		if err == nil || !strings.Contains(err.Error(), "server_settings") || !reflect.DeepEqual(out, IntegrationSettings{}) {
+			return fmt.Errorf("missing integration policy was replaced with defaults: %+v, %v", out, err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
