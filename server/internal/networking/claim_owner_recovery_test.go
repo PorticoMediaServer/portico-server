@@ -212,3 +212,66 @@ func TestOwnerPreinstallCancellationEnvelopeAndSuccessorFence(t *testing.T) {
 		t.Fatal("predecessor outbox survived successor generation", err)
 	}
 }
+
+func TestOwnerPreinstallCoordinatorArmsBeforeFinalizeAndWorkerReconciles(t *testing.T) {
+	f := fixtureCurrentSQL(t)
+	ctx := fixtureClaimContext(t)
+	v := firstSwitchApproved(t, f)
+	transport := &modelTransport{now: f.now}
+	transport.finalizeHook = func() error {
+		var count int
+		if err := f.db.QueryRow(`SELECT count(*) FROM networking_claim_cancellations WHERE operation_id=? AND mode='intent' AND claim_generation='' AND state='pending'`, v.OperationID).Scan(&count); err != nil || count != 1 {
+			t.Fatal("FINALIZE escaped before durable original-key cancellation", err)
+		}
+		// Central FINALIZE succeeded, but local Committed/Install can no longer
+		// cross the captured deadline. Recovery must not need a new signature.
+		f.now = f.now.Add(6 * time.Minute)
+		return nil
+	}
+	coordinator, err := NewCoordinator(v.OperationID, "https://hosted.example", f.store, transport, modelSigner{f.localKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator.now = func() time.Time { return f.now }
+	if _, err = coordinator.Step(ctx); !errors.Is(err, ErrApprovalRequired) || transport.finalizes != 1 {
+		t.Fatal("late FINALIZE response crossed the local deadline", err)
+	}
+	_, runner := lifecycleRunner(t)
+	tr, err := NewHTTPTransport("https://hosted.example", f.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(tr.CloseIdleConnections)
+	calls := 0
+	tr.client.Transport = claimRoundTrip(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if r.URL.Path != "/v1/server-claims/cancel" {
+			t.Fatal("recovery performed positive claim work", r.URL.Path)
+		}
+		var envelope proofEnvelope
+		if json.NewDecoder(r.Body).Decode(&envelope) != nil {
+			t.Fatal("missing stored cancellation envelope")
+		}
+		raw, _ := base64.RawURLEncoding.DecodeString(envelope.Payload)
+		var wire cancelWire
+		if json.Unmarshal(raw, &wire) != nil || wire.Mode != "intent" || wire.ClaimGeneration != "" {
+			t.Fatal("recovery fabricated a central generation")
+		}
+		body, _ := json.Marshal(map[string]string{"operationId": v.OperationID, "requestId": wire.RequestID})
+		return reply(200, string(body)), nil
+	})
+	h, err := NewClaimHandler(f.store, runner, tr, modelSigner{f.localKey}, func(*http.Request) (ClaimRequestOwner, error) { return ClaimRequestOwner{}, ErrClaimOwnerRequired }, func() string { return "Fixture" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.db.Exec(`UPDATE identity_moves SET owner_confirmed=0,stage='cancelled'`); err != nil {
+		t.Fatal(err)
+	}
+	if err = h.reconcileWebClaim(context.Background(), v.OperationID, nil, false); err != nil || calls != 1 {
+		t.Fatal("fresh lifecycle recovery could not deliver its stored denial", err)
+	}
+	loaded, err := f.store.Load(ctx, v.OperationID)
+	if err != nil || loaded.Stage != Cancelled {
+		t.Fatal("worker did not finish the durable cancellation", err)
+	}
+}

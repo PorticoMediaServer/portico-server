@@ -114,7 +114,7 @@ func (s *Service) passwordAccount(ctx context.Context, user, password string) (d
 	var hash []byte
 	var libs string
 	var linked bool
-	e := s.db.QueryRowContext(ctx, `SELECT a.id,a.username,a.profile_id,a.epoch,a.password_hash,m.role,m.revision,m.disabled,m.allowed_libraries,(EXISTS(SELECT 1 FROM account_portico_links l WHERE l.account_id=a.id) OR EXISTS(SELECT 1 FROM onboarding_state_v1 WHERE singleton=1 AND auth_mode='hosted')) FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE a.username=?`, strings.ToLower(strings.TrimSpace(user))).Scan(&c.account.ID, &c.account.Username, &c.account.PrimaryProfileID, &c.epoch, &hash, &c.account.Role, &c.account.Revision, &c.account.Disabled, &libs, &linked)
+	e := s.db.QueryRowContext(ctx, `SELECT a.id,a.username,a.profile_id,a.epoch,a.password_hash,m.role,m.revision,m.disabled,m.allowed_libraries,EXISTS(SELECT 1 FROM account_portico_links l WHERE l.account_id=a.id) FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE a.username=?`, strings.ToLower(strings.TrimSpace(user))).Scan(&c.account.ID, &c.account.Username, &c.account.PrimaryProfileID, &c.epoch, &hash, &c.account.Role, &c.account.Revision, &c.account.Disabled, &libs, &linked)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return directCaller{}, nil, e
 	}
