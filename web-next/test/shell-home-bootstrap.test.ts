@@ -96,7 +96,7 @@ test('hosted account handover reads the newly synchronized username and keeps th
 });
 
 function directRecord(username: string | undefined = 'local-user', profileName = 'Evening profile') {
-  return {authority: 'local', serverId: 'server-a', canManage: true,
+  return {authority: 'local', serverId: 'server-a', canManage: true, capabilities: {manageAccount:true,managePeople:true,manageServer:true,manageSignIn:true},
     account: {id: 'account-a', username, primaryProfileId: 'profile-a', role: 'owner', revision: 1, disabled: false, allowedLibraries: []},
     profiles: [{id: 'profile-a', name: profileName, primary: true, position: 0, art: 'mint', revision: 1, pinRevision: 1, pinRequired: false}]};
 }
