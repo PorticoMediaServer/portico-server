@@ -6,7 +6,7 @@ import {AuthLinks} from '../kit/accounts';
 import {HostedError, ServicesAccountLine, ServicesActions, ServicesAuthStage, ServicesCodeChip, ServicesFacts, ServicesHeading, ServicesLead, ServicesNotice, ServicesQuiet, ServicesStateIcon} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {ServicesAuthForm} from './AuthForm';
-import {accountIdentity, sameAccount, type ServicesAccount} from './session';
+import {accountIdentity, sameAccount, type AccountIdentity, type ServicesAccount} from './session';
 import {decideHostedDevice, reviewHostedDevice, type DeviceReview} from './device-approval';
 import {servicesI18n} from './i18n';
 import styles from './services.module.css';
@@ -18,15 +18,18 @@ export function DevicePage({account, initialCode = ''}: {account: ServicesAccoun
   const [authenticating, setAuthenticating] = useState(() => !session);
   useEffect(() => { if (!session) setAuthenticating(true); }, [session]);
   const [code, setCode] = useState(initialCode), [review, setReview] = useState<DeviceReview>();
-  const [busy, setBusy] = useState(false), [error, setError] = useState<unknown>(), [done, setDone] = useState<'approve' | 'deny'>();
+  const [busy, setBusy] = useState(false), [error, setError] = useState<unknown>();
+  const [done, setDone] = useState<{decision: 'approve' | 'deny'; identity: AccountIdentity}>();
+  const binding = review?.identity ?? done?.identity;
+  const stale = Boolean(binding && (!session?.familyId || !sameAccount(binding, accountIdentity(session))));
   const operation = useRef<AbortController | null>(null);
   useEffect(() => () => operation.current?.abort(), []);
   useEffect(() => {
-    if (review && (!session || !sameAccount(review.identity, accountIdentity(session)))) {
+    if (stale) {
       operation.current?.abort(); operation.current = null; setBusy(false); setReview(undefined); setDone(undefined);
       setError(new ApiError(409, 'account_changed', 'account_changed', false));
     }
-  }, [review, session]);
+  }, [stale]);
   const run = async (work: (signal: AbortSignal) => Promise<void>) => {
     if (operation.current) return;
     const controller = new AbortController(); operation.current = controller; setBusy(true); setError(undefined);
@@ -43,18 +46,18 @@ export function DevicePage({account, initialCode = ''}: {account: ServicesAccoun
     finally { clearTimeout(timeout); if (operation.current === controller) operation.current = null; if (!controller.signal.aborted || controller.signal.reason?.name === 'TimeoutError') setBusy(false); }
   };
   const inspect = () => run(async signal => { const value = await reviewHostedDevice(account, code, signal); if (!signal.aborted) setReview(value); });
-  const decide = (decision: 'approve' | 'deny') => run(async signal => { if (!review) return; await decideHostedDevice(account, review, decision, signal); if (!signal.aborted) { setDone(decision); setReview(undefined); } });
+  const decide = (decision: 'approve' | 'deny') => run(async signal => { if (!review) return; await decideHostedDevice(account, review, decision, signal); if (!signal.aborted) { setDone({decision, identity: review.identity}); setReview(undefined); } });
   const another = () => { setReview(undefined); setDone(undefined); setError(undefined); };
   const errorCode = (error as {code?: string} | undefined)?.code;
   const notFound = [400, 404, 410, 422].includes((error as {status?: number} | undefined)?.status ?? 0);
   let completeCode = false; try { normalizeSetupCode(code); completeCode = true; } catch { /* incomplete field */ }
   if (!session || authenticating) return <ServicesAuthStage><ServicesAuthForm account={account} onSignedIn={() => setAuthenticating(false)} embedded heading={t('web.device.title')} lead={t('web.device.lede')}
     before={<>{initialCode && <ServicesCodeChip label={t('services.device.codeFromTV')} code={initialCode} />}<ServicesQuiet>{t('services.device.signedOut')}</ServicesQuiet></>} /></ServicesAuthStage>;
-  if (done) return <ServicesAuthStage variant="state"><ServicesStateIcon tone={done === 'approve' ? 'success' : 'warning'} icon={done === 'approve' ? 'i-check' : 'i-close'} /><ServicesHeading>{t(done === 'approve' ? 'services.device.approvedTitle' : 'services.device.deniedTitle')}</ServicesHeading><ServicesLead>{t(done === 'approve' ? 'services.device.approved' : 'services.device.denied')}</ServicesLead><ServicesActions><Button onClick={another}>{t('web.device.anotherCode')}</Button></ServicesActions></ServicesAuthStage>;
+  if (done && !stale) return <ServicesAuthStage variant="state"><ServicesStateIcon tone={done.decision === 'approve' ? 'success' : 'warning'} icon={done.decision === 'approve' ? 'i-check' : 'i-close'} /><ServicesHeading>{t(done.decision === 'approve' ? 'services.device.approvedTitle' : 'services.device.deniedTitle')}</ServicesHeading><ServicesLead>{t(done.decision === 'approve' ? 'services.device.approved' : 'services.device.denied')}</ServicesLead><ServicesActions><Button onClick={another}>{t('web.device.anotherCode')}</Button></ServicesActions></ServicesAuthStage>;
   return <ServicesAuthStage variant="reset"><ServicesHeading>{t('web.device.title')}</ServicesHeading><ServicesLead>{t(review ? 'services.device.reviewLead' : 'web.device.lede')}</ServicesLead>
-    <ServicesAccountLine>{t('services.device.approving', {name: session.account.displayName || session.account.username})}<button type="button" disabled={busy} onClick={() => void account.service.logout()}>{t('services.device.notYou')}</button></ServicesAccountLine>
+    <ServicesAccountLine>{t('services.device.approving', {name: session.account.displayName || session.account.username})}<button type="button" disabled={busy} onClick={() => void account.service.logout().catch(setError)}>{t('services.device.notYou')}</button></ServicesAccountLine>
     {error && !notFound ? errorCode === 'account_changed' || errorCode === 'timeout' ? <ServicesNotice icon="i-clock">{t(errorCode === 'account_changed' ? 'services.device.accountChanged' : 'services.device.timeout')}</ServicesNotice> : <HostedError error={error} /> : null}
-    {review ? <>
+    {review && !stale ? <>
       <ServicesFacts items={[{id: 'device', label: t('services.device.device'), value: review.preview.deviceName}, {id: 'platform', label: t('services.device.platform'), value: platforms[review.preview.platform] ? t(platforms[review.preview.platform]!) : review.preview.platform}, {id: 'code', label: t('auth.code'), value: review.preview.userCode}]} />
       <ServicesNotice tone="info">{t('web.device.approveWarn')}</ServicesNotice>
       <ServicesActions><Button variant="primary" loading={busy} onClick={() => void decide('approve')}>{t('web.device.approveDevice')}</Button><Button disabled={busy} onClick={() => void decide('deny')}>{t('services.device.deny')}</Button></ServicesActions><AuthLinks><button type="button" disabled={busy} onClick={another}>{t('web.device.anotherCode')}</button></AuthLinks>

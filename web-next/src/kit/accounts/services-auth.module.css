@@ -58,7 +58,7 @@
 .strength[data-level="2"] { color: var(--color-amber); }
 .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(237,245,250,.16); border-top-color: var(--color-accent-strong); flex: none; animation: services-spin 1s linear infinite; }
 .state { align-items: center; text-align: center; width: 520px; }
-.state .heading { font-size: 52px; line-height: 1; letter-spacing: -.04em; }
+.state .heading { font-size: 52px; line-height: 1; letter-spacing: -.04em; text-shadow: none; }
 .stateIcon { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; margin: 0 0 26px; color: var(--color-healthy); background: rgba(134,207,179,.12); box-shadow: 0 0 0 8px rgba(134,207,179,.05); }
 .stateIcon[data-tone="warning"] { color: var(--color-amber); background: rgba(232,188,106,.12); box-shadow: 0 0 0 8px rgba(232,188,106,.05); }
 .stateIcon[data-tone="error"] { color: var(--color-danger); background: rgba(243,139,136,.12); box-shadow: 0 0 0 8px rgba(243,139,136,.05); }
@@ -70,17 +70,20 @@
   .stage > header img { height: 15px; }
   .stage > header > span, .stage > footer { display: none; }
   .stage [data-auth-content] { width: 100%; max-width: none; margin-left: 0; padding: 57px 20px 40px; }
-  .stage[data-layout="center"] [data-auth-content] { padding: 50px 28px; }
+  .stage[data-layout="center"] > header { display: none; }
+  .stage[data-layout="center"] [data-auth-content] { padding: 0 28px; justify-content: center; }
   .content { max-width: none; width: 100%; }
   .reset, .signup { padding: 0; align-self: stretch; }
   .heading, .reset .heading, .signup .heading { font-size: 30px; line-height: 1.06; letter-spacing: -.04em; margin-bottom: 8px; white-space: normal; }
   .lead, .reset .lead { font-size: 14.5px; line-height: 1.5; margin-bottom: 18px; }
   .quiet { font-size: 12.5px; margin-top: 14px; }
-  .label small { font-size: 12px; }
+  .label small { font-size: 13px; }
   .stage .content [data-variant="auth"] input[type="password"] { font-size: 18px; }
-  .content [data-variant="auth"] > label { font-size: 13px; margin-bottom: 6px; }
+  .stage .content [data-variant="auth"] > label { font-size: 13px; margin-bottom: 6px; }
+  .reset [data-variant="auth"]:has(input[name="new-password"][value]:not([value=""])) > div { background: rgba(64,159,212,.13); }
   .reset [data-variant="auth"]:has(input[name="new-password"]) label small { display: none; }
   .reset [data-variant="auth"]:has(input[name="confirm-password"]) button { display: none; }
+  .reset [data-variant="auth"] button svg { width: 18px; height: 18px; }
   .reset .backLink { display: none; }
   .reset form > .actions { margin-top: 6px; }
   .reset .lead { margin-bottom: 16px; }
@@ -92,10 +95,12 @@
   .codeChip { height: 36px; font-size: 13.5px; margin-bottom: 18px; }
   .accountLine { font-size: 13.5px; margin: -4px 0 16px; }
   .strength { margin-top: 8px; }
-  .strength i { width: 34px; }
+  .actions > button { height: 48px; font-size: 16px; line-height: normal; letter-spacing: normal; border-radius: 11px; padding: 0 20px; }
   .state { padding: 0 8px; }
   .state .heading { font-size: 26px; line-height: 1.12; letter-spacing: -.03em; margin-bottom: 10px; }
   .state .lead { font-size: 15px; margin-bottom: 24px; }
+  .state .actions { width: 100%; }
+  .state .actions > button { margin-bottom: 10px; }
   .stateIcon { width: 76px; height: 76px; margin-bottom: 22px; box-shadow: 0 0 0 10px rgba(134,207,179,.05); }
 }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
