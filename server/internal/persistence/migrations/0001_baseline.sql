@@ -8399,3 +8399,25 @@ CREATE TRIGGER owner_change_account_insert BEFORE INSERT ON accounts WHEN EXISTS
 CREATE TRIGGER owner_change_account_rename BEFORE UPDATE OF username ON accounts WHEN NEW.username<>OLD.username COLLATE NOCASE AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND approved_username=NEW.username COLLATE NOCASE) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
 CREATE TRIGGER owner_change_link_insert BEFORE INSERT ON account_portico_links WHEN EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
 CREATE TRIGGER owner_change_link_update BEFORE UPDATE OF hosted_account_id ON account_portico_links WHEN NEW.hosted_account_id<>OLD.hosted_account_id AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
+
+-- One identity authority per configured server. Before setup there is no row;
+-- setup defaults to Portico and installs its explicit choice before accounts.
+CREATE TABLE identity_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),sign_in_kind TEXT NOT NULL CHECK(sign_in_kind IN('portico','local')),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
+CREATE TRIGGER identity_local_no_portico_link BEFORE INSERT ON account_portico_links
+ WHEN (SELECT sign_in_kind FROM identity_state WHERE singleton=1)='local'
+ BEGIN SELECT RAISE(ABORT,'sign_in_kind_local'); END;
+CREATE TRIGGER identity_local_no_portico_link_update BEFORE UPDATE ON account_portico_links
+ WHEN (SELECT sign_in_kind FROM identity_state WHERE singleton=1)='local'
+ BEGIN SELECT RAISE(ABORT,'sign_in_kind_local'); END;
+CREATE TRIGGER identity_portico_no_password_insert BEFORE INSERT ON accounts
+ WHEN length(NEW.password_hash)>0 AND (SELECT sign_in_kind FROM identity_state WHERE singleton=1)='portico'
+ BEGIN SELECT RAISE(ABORT,'sign_in_kind_portico'); END;
+CREATE TRIGGER identity_portico_no_password_update BEFORE UPDATE OF password_hash ON accounts
+ WHEN length(NEW.password_hash)>0 AND (SELECT sign_in_kind FROM identity_state WHERE singleton=1)='portico'
+ BEGIN SELECT RAISE(ABORT,'sign_in_kind_portico'); END;
+CREATE TRIGGER identity_kind_local_fence BEFORE UPDATE OF sign_in_kind ON identity_state
+ WHEN NEW.sign_in_kind='local' AND EXISTS(SELECT 1 FROM account_portico_links)
+ BEGIN SELECT RAISE(ABORT,'sign_in_kind_local'); END;
+CREATE TRIGGER identity_kind_portico_fence BEFORE UPDATE OF sign_in_kind ON identity_state
+ WHEN NEW.sign_in_kind='portico' AND EXISTS(SELECT 1 FROM accounts WHERE length(password_hash)>0)
+ BEGIN SELECT RAISE(ABORT,'sign_in_kind_portico'); END;

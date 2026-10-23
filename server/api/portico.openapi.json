@@ -34068,6 +34068,29 @@
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -34135,7 +34158,8 @@
           "serverId",
           "account",
           "profiles",
-          "canManage"
+          "canManage",
+          "capabilities"
         ],
         "type": "object"
       },
@@ -141954,6 +141978,13 @@
           "setupRequired": {
             "type": "boolean"
           },
+          "signIn": {
+            "enum": [
+              "portico",
+              "local"
+            ],
+            "type": "string"
+          },
           "version": {
             "type": "string"
           }
@@ -141961,6 +141992,7 @@
         "required": [
           "id",
           "name",
+          "signIn",
           "setupRequired",
           "hostedConfigured",
           "hostedAttached",
@@ -160352,6 +160384,29 @@
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -160419,7 +160474,8 @@
           "serverId",
           "account",
           "profiles",
-          "canManage"
+          "canManage",
+          "capabilities"
         ],
         "type": "object"
       },
@@ -162041,6 +162097,29 @@
               "canManage": {
                 "type": "boolean"
               },
+              "capabilities": {
+                "properties": {
+                  "manageAccount": {
+                    "type": "boolean"
+                  },
+                  "managePeople": {
+                    "type": "boolean"
+                  },
+                  "manageServer": {
+                    "type": "boolean"
+                  },
+                  "manageSignIn": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "manageAccount",
+                  "managePeople",
+                  "manageServer",
+                  "manageSignIn"
+                ],
+                "type": "object"
+              },
               "custodyPending": {
                 "type": "boolean"
               },
@@ -162199,6 +162278,7 @@
               "account",
               "profiles",
               "canManage",
+              "capabilities",
               "session"
             ],
             "type": "object"
@@ -162257,6 +162337,29 @@
               "canManage": {
                 "type": "boolean"
               },
+              "capabilities": {
+                "properties": {
+                  "manageAccount": {
+                    "type": "boolean"
+                  },
+                  "managePeople": {
+                    "type": "boolean"
+                  },
+                  "manageServer": {
+                    "type": "boolean"
+                  },
+                  "manageSignIn": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "manageAccount",
+                  "managePeople",
+                  "manageServer",
+                  "manageSignIn"
+                ],
+                "type": "object"
+              },
               "challenge": {
                 "properties": {
                   "expiresAt": {
@@ -162288,6 +162391,7 @@
               "account",
               "profiles",
               "canManage",
+              "capabilities",
               "challenge"
             ],
             "type": "object"
@@ -162346,6 +162450,29 @@
               "canManage": {
                 "type": "boolean"
               },
+              "capabilities": {
+                "properties": {
+                  "manageAccount": {
+                    "type": "boolean"
+                  },
+                  "managePeople": {
+                    "type": "boolean"
+                  },
+                  "manageServer": {
+                    "type": "boolean"
+                  },
+                  "manageSignIn": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "manageAccount",
+                  "managePeople",
+                  "manageServer",
+                  "manageSignIn"
+                ],
+                "type": "object"
+              },
               "custodyPending": {
                 "type": "boolean"
               },
@@ -162371,6 +162498,7 @@
               "account",
               "profiles",
               "canManage",
+              "capabilities",
               "deviceApprovalPending",
               "deviceId",
               "installationId"
@@ -168949,6 +169077,29 @@
               "canManage": {
                 "type": "boolean"
               },
+              "capabilities": {
+                "properties": {
+                  "manageAccount": {
+                    "type": "boolean"
+                  },
+                  "managePeople": {
+                    "type": "boolean"
+                  },
+                  "manageServer": {
+                    "type": "boolean"
+                  },
+                  "manageSignIn": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "manageAccount",
+                  "managePeople",
+                  "manageServer",
+                  "manageSignIn"
+                ],
+                "type": "object"
+              },
               "custodyPending": {
                 "type": "boolean"
               },
@@ -169116,6 +169267,7 @@
               "account",
               "profiles",
               "canManage",
+              "capabilities",
               "session",
               "passwordChangeRequired"
             ],
@@ -169177,6 +169329,29 @@
               },
               "canManage": {
                 "type": "boolean"
+              },
+              "capabilities": {
+                "properties": {
+                  "manageAccount": {
+                    "type": "boolean"
+                  },
+                  "managePeople": {
+                    "type": "boolean"
+                  },
+                  "manageServer": {
+                    "type": "boolean"
+                  },
+                  "manageSignIn": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "manageAccount",
+                  "managePeople",
+                  "manageServer",
+                  "manageSignIn"
+                ],
+                "type": "object"
               },
               "custodyPending": {
                 "type": "boolean"
@@ -169345,6 +169520,7 @@
               "account",
               "profiles",
               "canManage",
+              "capabilities",
               "session",
               "resetFileOwnerSession"
             ],
@@ -169453,6 +169629,29 @@
           },
           "canManage": {
             "type": "boolean"
+          },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
           },
           "challenge": {
             "properties": {
@@ -169632,7 +169831,8 @@
           "serverId",
           "account",
           "profiles",
-          "canManage"
+          "canManage",
+          "capabilities"
         ],
         "type": "object"
       },
@@ -169811,6 +170011,29 @@
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "challenge": {
             "properties": {
               "expiresAt": {
@@ -169989,7 +170212,8 @@
           "serverId",
           "account",
           "profiles",
-          "canManage"
+          "canManage",
+          "capabilities"
         ],
         "type": "object"
       },
@@ -170123,6 +170347,29 @@
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "challenge": {
             "properties": {
               "expiresAt": {
@@ -170301,7 +170548,8 @@
           "serverId",
           "account",
           "profiles",
-          "canManage"
+          "canManage",
+          "capabilities"
         ],
         "type": "object"
       },
@@ -171120,6 +171368,29 @@
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -171287,6 +171558,7 @@
           "account",
           "profiles",
           "canManage",
+          "capabilities",
           "session",
           "passwordChangeRequired"
         ],
@@ -171398,6 +171670,29 @@
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -171465,7 +171760,8 @@
           "serverId",
           "account",
           "profiles",
-          "canManage"
+          "canManage",
+          "capabilities"
         ],
         "type": "object"
       },
@@ -171767,6 +172063,29 @@
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -171834,7 +172153,8 @@
           "serverId",
           "account",
           "profiles",
-          "canManage"
+          "canManage",
+          "capabilities"
         ],
         "type": "object"
       },
@@ -172037,6 +172357,29 @@
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "challenge": {
             "properties": {
               "expiresAt": {
@@ -172215,7 +172558,8 @@
           "serverId",
           "account",
           "profiles",
-          "canManage"
+          "canManage",
+          "capabilities"
         ],
         "type": "object"
       },
@@ -183846,6 +184190,29 @@
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "challenge": {
             "properties": {
               "expiresAt": {
@@ -184024,7 +184391,8 @@
           "serverId",
           "account",
           "profiles",
-          "canManage"
+          "canManage",
+          "capabilities"
         ],
         "type": "object"
       },
@@ -190385,6 +190753,29 @@
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -190452,7 +190843,8 @@
           "serverId",
           "account",
           "profiles",
-          "canManage"
+          "canManage",
+          "capabilities"
         ],
         "type": "object"
       },
@@ -210163,6 +210555,29 @@
                         "canManage": {
                           "type": "boolean"
                         },
+                        "capabilities": {
+                          "properties": {
+                            "manageAccount": {
+                              "type": "boolean"
+                            },
+                            "managePeople": {
+                              "type": "boolean"
+                            },
+                            "manageServer": {
+                              "type": "boolean"
+                            },
+                            "manageSignIn": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "manageAccount",
+                            "managePeople",
+                            "manageServer",
+                            "manageSignIn"
+                          ],
+                          "type": "object"
+                        },
                         "custodyPending": {
                           "type": "boolean"
                         },
@@ -210321,6 +210736,7 @@
                         "account",
                         "profiles",
                         "canManage",
+                        "capabilities",
                         "session"
                       ],
                       "type": "object"
@@ -210379,6 +210795,29 @@
                         "canManage": {
                           "type": "boolean"
                         },
+                        "capabilities": {
+                          "properties": {
+                            "manageAccount": {
+                              "type": "boolean"
+                            },
+                            "managePeople": {
+                              "type": "boolean"
+                            },
+                            "manageServer": {
+                              "type": "boolean"
+                            },
+                            "manageSignIn": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "manageAccount",
+                            "managePeople",
+                            "manageServer",
+                            "manageSignIn"
+                          ],
+                          "type": "object"
+                        },
                         "challenge": {
                           "properties": {
                             "expiresAt": {
@@ -210410,6 +210849,7 @@
                         "account",
                         "profiles",
                         "canManage",
+                        "capabilities",
                         "challenge"
                       ],
                       "type": "object"
@@ -210468,6 +210908,29 @@
                         "canManage": {
                           "type": "boolean"
                         },
+                        "capabilities": {
+                          "properties": {
+                            "manageAccount": {
+                              "type": "boolean"
+                            },
+                            "managePeople": {
+                              "type": "boolean"
+                            },
+                            "manageServer": {
+                              "type": "boolean"
+                            },
+                            "manageSignIn": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "manageAccount",
+                            "managePeople",
+                            "manageServer",
+                            "manageSignIn"
+                          ],
+                          "type": "object"
+                        },
                         "custodyPending": {
                           "type": "boolean"
                         },
@@ -210493,6 +210956,7 @@
                         "account",
                         "profiles",
                         "canManage",
+                        "capabilities",
                         "deviceApprovalPending",
                         "deviceId",
                         "installationId"
@@ -255515,6 +255979,29 @@
                         "canManage": {
                           "type": "boolean"
                         },
+                        "capabilities": {
+                          "properties": {
+                            "manageAccount": {
+                              "type": "boolean"
+                            },
+                            "managePeople": {
+                              "type": "boolean"
+                            },
+                            "manageServer": {
+                              "type": "boolean"
+                            },
+                            "manageSignIn": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "manageAccount",
+                            "managePeople",
+                            "manageServer",
+                            "manageSignIn"
+                          ],
+                          "type": "object"
+                        },
                         "custodyPending": {
                           "type": "boolean"
                         },
@@ -255682,6 +256169,7 @@
                         "account",
                         "profiles",
                         "canManage",
+                        "capabilities",
                         "session",
                         "passwordChangeRequired"
                       ],
@@ -255743,6 +256231,29 @@
                         },
                         "canManage": {
                           "type": "boolean"
+                        },
+                        "capabilities": {
+                          "properties": {
+                            "manageAccount": {
+                              "type": "boolean"
+                            },
+                            "managePeople": {
+                              "type": "boolean"
+                            },
+                            "manageServer": {
+                              "type": "boolean"
+                            },
+                            "manageSignIn": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "manageAccount",
+                            "managePeople",
+                            "manageServer",
+                            "manageSignIn"
+                          ],
+                          "type": "object"
                         },
                         "custodyPending": {
                           "type": "boolean"
@@ -255911,6 +256422,7 @@
                         "account",
                         "profiles",
                         "canManage",
+                        "capabilities",
                         "session",
                         "resetFileOwnerSession"
                       ],
@@ -256096,6 +256608,29 @@
                     "canManage": {
                       "type": "boolean"
                     },
+                    "capabilities": {
+                      "properties": {
+                        "manageAccount": {
+                          "type": "boolean"
+                        },
+                        "managePeople": {
+                          "type": "boolean"
+                        },
+                        "manageServer": {
+                          "type": "boolean"
+                        },
+                        "manageSignIn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "manageAccount",
+                        "managePeople",
+                        "manageServer",
+                        "manageSignIn"
+                      ],
+                      "type": "object"
+                    },
                     "challenge": {
                       "properties": {
                         "expiresAt": {
@@ -256274,7 +256809,8 @@
                     "serverId",
                     "account",
                     "profiles",
-                    "canManage"
+                    "canManage",
+                    "capabilities"
                   ],
                   "type": "object"
                 }
@@ -256583,6 +257119,29 @@
                     "canManage": {
                       "type": "boolean"
                     },
+                    "capabilities": {
+                      "properties": {
+                        "manageAccount": {
+                          "type": "boolean"
+                        },
+                        "managePeople": {
+                          "type": "boolean"
+                        },
+                        "manageServer": {
+                          "type": "boolean"
+                        },
+                        "manageSignIn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "manageAccount",
+                        "managePeople",
+                        "manageServer",
+                        "manageSignIn"
+                      ],
+                      "type": "object"
+                    },
                     "challenge": {
                       "properties": {
                         "expiresAt": {
@@ -256761,7 +257320,8 @@
                     "serverId",
                     "account",
                     "profiles",
-                    "canManage"
+                    "canManage",
+                    "capabilities"
                   ],
                   "type": "object"
                 }
@@ -257093,6 +257653,29 @@
                     "canManage": {
                       "type": "boolean"
                     },
+                    "capabilities": {
+                      "properties": {
+                        "manageAccount": {
+                          "type": "boolean"
+                        },
+                        "managePeople": {
+                          "type": "boolean"
+                        },
+                        "manageServer": {
+                          "type": "boolean"
+                        },
+                        "manageSignIn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "manageAccount",
+                        "managePeople",
+                        "manageServer",
+                        "manageSignIn"
+                      ],
+                      "type": "object"
+                    },
                     "challenge": {
                       "properties": {
                         "expiresAt": {
@@ -257271,7 +257854,8 @@
                     "serverId",
                     "account",
                     "profiles",
-                    "canManage"
+                    "canManage",
+                    "capabilities"
                   ],
                   "type": "object"
                 }
@@ -268702,6 +269286,29 @@
                     "canManage": {
                       "type": "boolean"
                     },
+                    "capabilities": {
+                      "properties": {
+                        "manageAccount": {
+                          "type": "boolean"
+                        },
+                        "managePeople": {
+                          "type": "boolean"
+                        },
+                        "manageServer": {
+                          "type": "boolean"
+                        },
+                        "manageSignIn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "manageAccount",
+                        "managePeople",
+                        "manageServer",
+                        "manageSignIn"
+                      ],
+                      "type": "object"
+                    },
                     "custodyPending": {
                       "type": "boolean"
                     },
@@ -268769,7 +269376,8 @@
                     "serverId",
                     "account",
                     "profiles",
-                    "canManage"
+                    "canManage",
+                    "capabilities"
                   ],
                   "type": "object"
                 }
@@ -269975,6 +270583,29 @@
                     "canManage": {
                       "type": "boolean"
                     },
+                    "capabilities": {
+                      "properties": {
+                        "manageAccount": {
+                          "type": "boolean"
+                        },
+                        "managePeople": {
+                          "type": "boolean"
+                        },
+                        "manageServer": {
+                          "type": "boolean"
+                        },
+                        "manageSignIn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "manageAccount",
+                        "managePeople",
+                        "manageServer",
+                        "manageSignIn"
+                      ],
+                      "type": "object"
+                    },
                     "custodyPending": {
                       "type": "boolean"
                     },
@@ -270142,6 +270773,7 @@
                     "account",
                     "profiles",
                     "canManage",
+                    "capabilities",
                     "session",
                     "passwordChangeRequired"
                   ],
@@ -270546,6 +271178,29 @@
                     "canManage": {
                       "type": "boolean"
                     },
+                    "capabilities": {
+                      "properties": {
+                        "manageAccount": {
+                          "type": "boolean"
+                        },
+                        "managePeople": {
+                          "type": "boolean"
+                        },
+                        "manageServer": {
+                          "type": "boolean"
+                        },
+                        "manageSignIn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "manageAccount",
+                        "managePeople",
+                        "manageServer",
+                        "manageSignIn"
+                      ],
+                      "type": "object"
+                    },
                     "custodyPending": {
                       "type": "boolean"
                     },
@@ -270613,7 +271268,8 @@
                     "serverId",
                     "account",
                     "profiles",
-                    "canManage"
+                    "canManage",
+                    "capabilities"
                   ],
                   "type": "object"
                 }
@@ -270864,6 +271520,29 @@
                     "canManage": {
                       "type": "boolean"
                     },
+                    "capabilities": {
+                      "properties": {
+                        "manageAccount": {
+                          "type": "boolean"
+                        },
+                        "managePeople": {
+                          "type": "boolean"
+                        },
+                        "manageServer": {
+                          "type": "boolean"
+                        },
+                        "manageSignIn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "manageAccount",
+                        "managePeople",
+                        "manageServer",
+                        "manageSignIn"
+                      ],
+                      "type": "object"
+                    },
                     "custodyPending": {
                       "type": "boolean"
                     },
@@ -270931,7 +271610,8 @@
                     "serverId",
                     "account",
                     "profiles",
-                    "canManage"
+                    "canManage",
+                    "capabilities"
                   ],
                   "type": "object"
                 }
@@ -271189,6 +271869,29 @@
                     "canManage": {
                       "type": "boolean"
                     },
+                    "capabilities": {
+                      "properties": {
+                        "manageAccount": {
+                          "type": "boolean"
+                        },
+                        "managePeople": {
+                          "type": "boolean"
+                        },
+                        "manageServer": {
+                          "type": "boolean"
+                        },
+                        "manageSignIn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "manageAccount",
+                        "managePeople",
+                        "manageServer",
+                        "manageSignIn"
+                      ],
+                      "type": "object"
+                    },
                     "custodyPending": {
                       "type": "boolean"
                     },
@@ -271256,7 +271959,8 @@
                     "serverId",
                     "account",
                     "profiles",
-                    "canManage"
+                    "canManage",
+                    "capabilities"
                   ],
                   "type": "object"
                 }
@@ -271708,6 +272412,29 @@
                     "canManage": {
                       "type": "boolean"
                     },
+                    "capabilities": {
+                      "properties": {
+                        "manageAccount": {
+                          "type": "boolean"
+                        },
+                        "managePeople": {
+                          "type": "boolean"
+                        },
+                        "manageServer": {
+                          "type": "boolean"
+                        },
+                        "manageSignIn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "manageAccount",
+                        "managePeople",
+                        "manageServer",
+                        "manageSignIn"
+                      ],
+                      "type": "object"
+                    },
                     "custodyPending": {
                       "type": "boolean"
                     },
@@ -271775,7 +272502,8 @@
                     "serverId",
                     "account",
                     "profiles",
-                    "canManage"
+                    "canManage",
+                    "capabilities"
                   ],
                   "type": "object"
                 }
@@ -273137,6 +273865,29 @@
                     "canManage": {
                       "type": "boolean"
                     },
+                    "capabilities": {
+                      "properties": {
+                        "manageAccount": {
+                          "type": "boolean"
+                        },
+                        "managePeople": {
+                          "type": "boolean"
+                        },
+                        "manageServer": {
+                          "type": "boolean"
+                        },
+                        "manageSignIn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "manageAccount",
+                        "managePeople",
+                        "manageServer",
+                        "manageSignIn"
+                      ],
+                      "type": "object"
+                    },
                     "challenge": {
                       "properties": {
                         "expiresAt": {
@@ -273315,7 +274066,8 @@
                     "serverId",
                     "account",
                     "profiles",
-                    "canManage"
+                    "canManage",
+                    "capabilities"
                   ],
                   "type": "object"
                 }
@@ -437064,6 +437816,29 @@
                     "canManage": {
                       "type": "boolean"
                     },
+                    "capabilities": {
+                      "properties": {
+                        "manageAccount": {
+                          "type": "boolean"
+                        },
+                        "managePeople": {
+                          "type": "boolean"
+                        },
+                        "manageServer": {
+                          "type": "boolean"
+                        },
+                        "manageSignIn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "manageAccount",
+                        "managePeople",
+                        "manageServer",
+                        "manageSignIn"
+                      ],
+                      "type": "object"
+                    },
                     "challenge": {
                       "properties": {
                         "expiresAt": {
@@ -437242,7 +438017,8 @@
                     "serverId",
                     "account",
                     "profiles",
-                    "canManage"
+                    "canManage",
+                    "capabilities"
                   ],
                   "type": "object"
                 }
@@ -454075,6 +454851,13 @@
                     "setupRequired": {
                       "type": "boolean"
                     },
+                    "signIn": {
+                      "enum": [
+                        "portico",
+                        "local"
+                      ],
+                      "type": "string"
+                    },
                     "version": {
                       "type": "string"
                     }
@@ -454082,6 +454865,7 @@
                   "required": [
                     "id",
                     "name",
+                    "signIn",
                     "setupRequired",
                     "hostedConfigured",
                     "hostedAttached",

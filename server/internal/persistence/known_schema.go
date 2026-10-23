@@ -908,6 +908,7 @@ table identity_recovery_codes
 table identity_refresh_credentials
 table identity_refresh_predecessors
 table identity_refresh_receipts
+table identity_state
 table identity_unknown_attempts
 table inventory_analysis_queue
 table inventory_artwork_sources
@@ -1883,6 +1884,12 @@ trigger identity_devices_account_removed
 trigger identity_devices_devices_list_delete
 trigger identity_devices_devices_list_insert
 trigger identity_devices_devices_list_update
+trigger identity_kind_local_fence
+trigger identity_kind_portico_fence
+trigger identity_local_no_portico_link
+trigger identity_local_no_portico_link_update
+trigger identity_portico_no_password_insert
+trigger identity_portico_no_password_update
 trigger identity_restrictions_revision
 trigger inventory_availability_object
 trigger inventory_availability_source
@@ -2553,8 +2560,7 @@ view catalog_related_facets_serving
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context
-`
+view listening_book_context`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need
