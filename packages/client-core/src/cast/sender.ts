@@ -127,7 +127,8 @@ export class CastController {
     let loading = false;
     this.publish({phase: 'pairing', deviceName: transport.deviceName, title: meta.title, itemId: undefined, error: undefined, errorId: undefined, takeover: undefined, audioTracks: [], textTracks: []});
     try {
-      const issued = await this.api.request<{bootstrap?: {code?: unknown}}>(routePath("social_post_v1_cast_bootstrap"), 'POST', routeBody("social_post_v1_cast_bootstrap", {protocolVersion: CAST_PROTOCOL_VERSION, displayName: transport.deviceName.slice(0, 64)}));
+      const displayName = transport.deviceName.trim().slice(0, 64);
+      const issued = await this.api.request<{bootstrap?: {code?: unknown}}>(routePath("social_post_v1_cast_bootstrap"), 'POST', routeBody("social_post_v1_cast_bootstrap", {protocolVersion: CAST_PROTOCOL_VERSION, ...(displayName ? {displayName} : {})}));
       if (generation !== this.startGeneration) return false;
       const code = issued?.bootstrap?.code;
       if (typeof code !== 'string' || !code) throw new CastFailure('cast.error.noCode');
