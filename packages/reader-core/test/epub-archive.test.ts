@@ -30,3 +30,17 @@ test('EPUB rejects traversal/aliases, encrypted entries, truncated ZIP and decla
   const bomb=await zip({'bomb.xhtml':'a'.repeat(1024*1024)});
   await assert.rejects(openEpubArchive(sourceFromBlob(new Blob([bomb]),'test','1'),new AbortController().signal),{code:'limit_exceeded'});
 });
+test('cancelling one extraction aborts its actual range request without retiring the archive',async()=>{
+  const bytes=await zip({'chapter.xhtml':'<html xmlns="http://www.w3.org/1999/xhtml"><body>Actual test content</body></html>'});
+  const base=sourceFromBlob(new Blob([bytes]),'local-test','revision-1');let hold=false,entered!:()=>void;
+  const started=new Promise<void>(resolve=>{entered=resolve;});
+  const source={...base,async read(range:import('../src/ports.ts').ReaderRange,signal:AbortSignal){
+    if(!hold)return base.read!(range,signal);entered();
+    return new Promise<Uint8Array>((_,reject)=>{const stop=()=>reject(new DOMException('Closed','AbortError'));if(signal.aborted)stop();else signal.addEventListener('abort',stop,{once:true});});
+  }};
+  const lifetime=new AbortController(),archive=await openEpubArchive(source,lifetime.signal),caller=new AbortController();
+  hold=true;const read=archive.read('chapter.xhtml',caller.signal),rejected=assert.rejects(read);
+  await started;caller.abort();await rejected;assert.equal(lifetime.signal.aborted,false);
+  hold=false;assert.match(new TextDecoder().decode(await archive.read('chapter.xhtml',lifetime.signal)),/Actual test content/);
+  await archive.dispose();
+});

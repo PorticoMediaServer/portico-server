@@ -18,6 +18,7 @@ export function safeArchivePath(path: string): string {
 class RangeReader extends Reader<ReaderSource> {
   private source: ReaderSource; private signal: AbortSignal;
   constructor(source: ReaderSource, signal: AbortSignal) {super(source); this.source = source; this.signal = signal; this.size = source.size;}
+  setSignal(signal: AbortSignal) {this.signal=signal;}
   readUint8Array(start: number, length: number) {
     return readRange(this.source, {start, endExclusive: Math.min(this.size, start + length)}, this.signal);
   }
@@ -41,7 +42,8 @@ async function checkDirectory(source: ReaderSource, signal: AbortSignal) {
 export async function openEpubArchive(source: ReaderSource, parent: AbortSignal): Promise<EpubAssets> {
   const abort = new AbortController(), signal = AbortSignal.any([parent, abort.signal]);
   await checkDirectory(source, signal);
-  const zip = new ZipReader(new RangeReader(source, signal), {useWebWorkers: false, checkCrc32: true, strictness: 'strict'});
+  const reader=new RangeReader(source,signal);
+  const zip = new ZipReader(reader, {useWebWorkers: false, checkCrc32: true, strictness: 'strict'});
   const entries = new Map<string, FileEntry>(); let total = 0;
   try {
     for await (const entry of zip.getEntriesGenerator()) {
@@ -70,7 +72,9 @@ export async function openEpubArchive(source: ReaderSource, parent: AbortSignal)
             if (size > MAX_ENTRY || size > entry.uncompressedSize) throw new ReaderError('limit_exceeded');
             chunks.push(chunk.slice());
           }});
-          await entry.getData(sink, {signal: readSignal, checkCrc32: true, useWebWorkers: false});
+          reader.setSignal(readSignal);
+          try {await entry.getData(sink, {signal: readSignal, checkCrc32: true, useWebWorkers: false});}
+          finally {reader.setSignal(signal);}
           throwIfAborted(readSignal);
           if (size !== entry.uncompressedSize) throw new ReaderError('invalid_book');
           const bytes = new Uint8Array(size); let at=0; for(const chunk of chunks) {bytes.set(chunk,at); at+=chunk.length;}

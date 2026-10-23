@@ -87,10 +87,10 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
     let book: Book | undefined, mounted=false, disposed=false, view: ReaderView<P>|undefined;
     const byPath=new Map(assets.entries.map(e=>[e.path,e]));
     const decoder=new TextDecoder('utf-8',{fatal:true});
-    async function loadText(path:string):Promise<string|null> {
-      throwIfAborted(signal);
+    async function loadText(path:string,callerSignal:AbortSignal=signal):Promise<string|null> {
+      const active=AbortSignal.any([signal,callerSignal]);throwIfAborted(active);
       const entry=byPath.get(safeArchivePath(path));if(!entry)return null;
-      let text=decoder.decode(await assets.read(path,signal));throwIfAborted(signal);
+      let text=decoder.decode(await assets.read(path,active));throwIfAborted(active);
       const mime='mime' in entry ? entry.mime : '';
       if(mime==='text/html'||mime==='application/xhtml+xml'||/\.x?html?$/i.test(path)||/<(?:\w+:)?html[\s>]/i.test(text))
         text=secureMarkup(text,'application/xhtml+xml');
@@ -164,7 +164,12 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
           const searchSignal=AbortSignal.any([signal,search.signal]);let count=0;
           for(let index=0;index<b.sections.length;index++) {
             throwIfAborted(searchSignal);
-            const doc=await b.sections[index].createDocument();throwIfAborted(searchSignal);
+            // Search has its own read signal, so cancelling a query cancels its
+            // asset request without closing the mounted publication.
+            const textSource=await loadText(b.sections[index].id,searchSignal);throwIfAborted(searchSignal);
+            if(!textSource)continue;
+            const doc=new DOMParser().parseFromString(textSource,'application/xhtml+xml');
+            if(doc.querySelector('parsererror'))throw new ReaderError('invalid_book');
             const walker=doc.createTreeWalker(doc.body??doc.documentElement,NodeFilter.SHOW_TEXT,{acceptNode(node){
               return node.parentElement?.closest('style,script,head')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT;
             }});
