@@ -10,6 +10,7 @@ import re
 import struct
 import subprocess
 import tempfile
+from xml.sax.saxutils import escape as xml_escape
 
 
 def main():
@@ -35,7 +36,8 @@ def main():
 
     def command(tool, flags):
         proc = subprocess.run([str(tool), *flags], stdin=subprocess.DEVNULL,
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60, cwd=work)
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60, cwd=work,
+                              env=dict(os.environ, FONTCONFIG_FILE=str(work / 'fonts.conf'), FONTCONFIG_PATH=str(work)))
         if len(proc.stdout) > 4 << 20 or len(proc.stderr) > 4 << 20:
             raise ValueError('recipe output exceeded 4 MiB')
         if proc.returncode:
@@ -51,6 +53,8 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix='ffmpeg-recipes-', dir=args.scratch) as directory:
         work = Path(directory)
+        (work / 'fonts.conf').write_text('<fontconfig><dir>' + xml_escape(str(work / 'fonts')) +
+            '</dir><cachedir>' + xml_escape(str(work / 'font-cache')) + '</cachedir></fontconfig>')
         video = work / 'synthetic.mp4'
         convert('-f', 'lavfi', '-i', 'testsrc2=size=128x72:rate=24:duration=1',
                 '-f', 'lavfi', '-i', 'sine=frequency=997:sample_rate=48000:duration=1',

@@ -102,6 +102,10 @@ def main():
         (stage / name).mkdir(exist_ok=True)
     (stage / 'contract.json').write_text(contract_file.read_text())
     (stage / 'expected.json').write_text(json.dumps(expected))
+    frozen_builder = stage / 'builder.py'
+    shutil.copyfile(Path(__file__), frozen_builder)
+    if digest(frozen_builder) != expected['builderSHA256']:
+        raise ValueError('libdovi builder changed during capture')
     script = stage / 'build.sh'
     script.write_text('''#!/bin/bash
 set -euo pipefail
@@ -152,7 +156,7 @@ cargo vendor --locked --sync dolby_vision/Cargo.toml --versioned-dirs /dovi/vend
     subprocess.run(['docker', 'run', '--rm', '--name', 'portico-hardware-r29-libdovi',
         '--label', 'portico.lane=hardware-r29', '--cpus', '2', '--memory', '4g', '--memory-swap', '4g', '--network', 'none',
         '-v', str(stage) + ':/dovi', '-v', str(prefix) + ':/opt/ffbuild',
-        '-v', str(Path(__file__).resolve()) + ':/builder.py:ro',
+        '-v', str(frozen_builder) + ':/builder.py:ro',
         '-e', 'SOURCE_DATE_EPOCH=' + str(lock['sourceDateEpoch']),
         lock['linuxSourceBuild']['compilerImage'], 'bash', '/dovi/build.sh'], check=True)
     installed = ['lib/libdovi.a', 'include/libdovi/rpu_parser.h', 'lib/pkgconfig/dovi.pc']

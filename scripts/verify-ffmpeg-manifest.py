@@ -7,7 +7,7 @@ actual={str(p.relative_to(root)) for p in root.rglob('*') if p.is_file() and p.n
 if actual!=set(files):raise SystemExit('Bundle file inventory mismatch')
 def digest_file(path):
  with path.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
-for required in ['corresponding-source.tar.xz','NOTICE.md','sources.lock.json','requirements.v1.json','portico-disc-build.json','LICENSES/portico-disc.txt']:
+for required in ['corresponding-source.tar.xz','NOTICE.md','sources.lock.json','requirements.v1.json','portico-dovi-profile.v1.json','portico-disc-build.json','LICENSES/portico-disc.txt']:
  if required not in files:raise SystemExit('Missing provenance: '+required)
 if m['target']=='linux-x64':
  for required in ['dependency-inputs.json','compiler.txt','compiler-linked-inputs.json','license-inventory.json','linux-build-inputs.json','repeat-build.json','libdovi-build.json','dovi-profile-build.json']:
@@ -36,6 +36,9 @@ if m['target']=='linux-x64':
  if (profile.get('qualified') is not True or profile.get('ffmpegSHA256')!=files['bin/ffmpeg'] or
      profile.get('sourceArchiveSHA256')!=inputs['sourceArchiveSHA256'] or
      profile.get('patchSHA256')!=contract['ffmpeg']['patchSha256'] or
+     profile.get('packetTestSourceSHA256')!=contract['hostProof']['packetTestSourceSha256'] or
+     profile.get('packetTestSourceSHA256')!=inputs['files'].get('dovi-profile-packets.c') or
+     profile.get('fixtureManifestSHA256')!=inputs['files'].get('fixtures/manifest.json') or
      not all(profile.get('packetTests',{}).get(k)==v for k,v in expected_packet.items()) or
      not all(all(r.get('packetTests',{}).get(k)==v for k,v in expected_packet.items()) for r in rounds)):
   raise SystemExit('Canonical Dolby Vision packet proof does not match this bundle')
