@@ -108,7 +108,8 @@ func TestPorticoOrdinaryReturnKeepsCodeAndCredentialFreeTransport(t *testing.T) 
 		t.Fatal(e)
 	}
 	q := RegisteredReturnExchange{Code: strings.Repeat("c", 43), TransactionID: "return_transaction", Verifier: strings.Repeat("v", 43), RegistrationID: "ret_valid_shape", InstallationID: installation, ServerChallenge: challenge, Purpose: "setup"}
-	c := serverReturnAssertion{Kind: "portico.server-return.v1", AccountID: f.installed.AccountID, Username: "verified_owner", ServerID: f.id.ID(), Challenge: challenge, Nonce: identity.Token(), IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute), Purpose: q.Purpose, InstallationID: q.InstallationID, RegistrationID: q.RegistrationID, ClaimOperationID: f.installed.OperationID, ClaimGeneration: 1, CredentialGeneration: 1}
+	now := time.Now().UTC()
+	c := serverReturnAssertion{Kind: "portico.server-return.v1", AccountID: f.installed.AccountID, Username: "verified_owner", ServerID: f.id.ID(), Challenge: challenge, Nonce: identity.Token(), IssuedAt: now, ExpiresAt: now.Add(time.Minute), Purpose: q.Purpose, InstallationID: q.InstallationID, RegistrationID: q.RegistrationID, ClaimOperationID: f.installed.OperationID, ClaimGeneration: 1, CredentialGeneration: 1}
 	raw, _ := json.Marshal(c)
 	signed := Signed{Payload: base64.RawURLEncoding.EncodeToString(raw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(f.hostedKey, raw)), KeyID: "pin1", Certificate: testSigningCertificate(f.hostedKey, "pin1")}
 	grant, _ := json.Marshal(struct {
