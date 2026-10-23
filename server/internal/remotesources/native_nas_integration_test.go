@@ -5,7 +5,11 @@ package remotesources
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/x509"
 	"database/sql"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +22,9 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
+
 	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/mounts"
@@ -27,7 +34,13 @@ import (
 // An actual owner command saves a real read-only NAS connection, then the
 // retained shared serve producer reads fresh metadata. No content/decode grant
 // or immutable-version claim follows from this connection-only acceptance.
-func TestNativeSMBSavedNASConnectionAndForbiddenEdits(t *testing.T) {
+func TestNativeSavedNASConnectionAndForbiddenEdits(t *testing.T) {
+	for _, backend := range []string{"sftp", "smb"} {
+		t.Run(backend, func(t *testing.T) { testNativeSavedNAS(t, backend) })
+	}
+}
+
+func testNativeSavedNAS(t *testing.T, backend string) {
 	program := lockedRcloneFixture(t)
 	image, job := os.Getenv("PORTICO_SAMBA_TEST_IMAGE"), os.Getenv("PORTICO_SAMBA_TEST_JOB")
 	if !regexp.MustCompile(`^sha256:[a-f0-9]{64}$`).MatchString(image) || !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,79}$`).MatchString(job) {
@@ -53,7 +66,7 @@ func TestNativeSMBSavedNASConnectionAndForbiddenEdits(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(label)) != job {
 		t.Fatal("NAS image belongs to another job", err)
 	}
-	network := job + "-nas"
+	network := job + "-nas-" + backend
 	third := 1 + int(time.Now().UnixNano()%250)
 	address := ""
 	for attempt := 0; attempt < 8; attempt++ {
@@ -90,7 +103,48 @@ func TestNativeSMBSavedNASConnectionAndForbiddenEdits(t *testing.T) {
 	if err := os.WriteFile(configPath, configuration, 0600); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := docker(ctx, "run", "--detach", "--label", "portico=remote-sources-r40", "--label", "portico.job="+job, "--read-only", "--memory=256m", "--cpus=1", "--pids-limit=128", "--network", network, "--ip", address, "--log-driver=none", "--tmpfs", "/run", "--tmpfs", "/var/lib/samba", "--tmpfs", "/var/cache/samba", "--tmpfs", "/var/log/samba", "--mount", "type=bind,source="+root+",target=/media,readonly", "--mount", "type=bind,source="+configPath+",target=/etc/samba/smb.conf,readonly", image).Output()
+	arguments := []string{"run", "--detach", "--label", "portico=remote-sources-r40", "--label", "portico.job=" + job, "--read-only", "--memory=256m", "--cpus=1", "--pids-limit=128", "--network", network, "--ip", address, "--log-driver=none", "--tmpfs", "/run", "--tmpfs", "/var/lib/samba", "--tmpfs", "/var/cache/samba", "--tmpfs", "/var/log/samba", "--mount", "type=bind,source=" + root + ",target=/media,readonly", "--mount", "type=bind,source=" + configPath + ",target=/etc/samba/smb.conf,readonly"}
+	known, password := "", ""
+	if backend == "sftp" {
+		private := t.TempDir()
+		public, key, e := ed25519.GenerateKey(rand.Reader)
+		if e != nil {
+			t.Fatal(e)
+		}
+		encoded, e := x509.MarshalPKCS8PrivateKey(key)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = os.WriteFile(filepath.Join(private, "key"), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: encoded}), 0600); e != nil {
+			t.Fatal(e)
+		}
+		clear(encoded)
+		clear(key)
+		if e = os.WriteFile(filepath.Join(private, "authorized"), nil, 0600); e != nil {
+			t.Fatal(e)
+		}
+		serverKey, e := ssh.NewPublicKey(public)
+		if e != nil {
+			t.Fatal(e)
+		}
+		known = filepath.Join(private, "known-hosts")
+		if e = os.WriteFile(known, []byte(knownhosts.Line([]string{address + ":2222"}, serverKey)+"\n"), 0600); e != nil {
+			t.Fatal(e)
+		}
+		obscure := exec.CommandContext(ctx, program, "obscure", "fixture-only")
+		obscure.Env, obscure.Stderr = environment, io.Discard
+		childprocess.Configure(obscure)
+		value, e := obscure.Output()
+		if e != nil || len(value) > 512 {
+			t.Fatal("fixture password encoding", e)
+		}
+		password = strings.TrimSpace(string(value))
+		clear(value)
+		arguments = append(arguments, "--entrypoint=/fixture/rclone", "--mount", "type=bind,source="+program+",target=/fixture/rclone,readonly", "--mount", "type=bind,source="+private+",target=/fixture/private,readonly", image, "serve", "sftp", "/media", "--addr", "0.0.0.0:2222", "--key", "/fixture/private/key", "--authorized-keys", "/fixture/private/authorized", "--user=fixture", "--pass=fixture-only", "--read-only", "--dir-cache-time=0s", "--buffer-size=0", "--log-level=ERROR")
+	} else {
+		arguments = append(arguments, image)
+	}
+	raw, err := docker(ctx, arguments...).Output()
 	if err != nil {
 		t.Fatal("owned NAS start", err)
 	}
@@ -105,8 +159,17 @@ func TestNativeSMBSavedNASConnectionAndForbiddenEdits(t *testing.T) {
 			t.Error("owned NAS container did not retire", err)
 		}
 	})
-	config := func(host string) string { return "[nas]\ntype=smb\nhost=" + host + "\nuser=fixture-guest\n" }
-	command := mounts.Command{OperationID: nativeSaveOperation(101), Action: "create", Name: "NAS", Executable: program, Remote: "nas:media", Config: config(address)}
+	config := func(host string) string {
+		if backend == "sftp" {
+			return "[nas]\ntype=sftp\nhost=" + host + "\nport=2222\nuser=fixture\npass=" + password + "\nknown_hosts_file=" + known + "\nshell_type=none\ndisable_hashcheck=true\n"
+		}
+		return "[nas]\ntype=smb\nhost=" + host + "\nuser=fixture-guest\n"
+	}
+	remote := "nas:media"
+	if backend == "sftp" {
+		remote = "nas:/"
+	}
+	command := mounts.Command{OperationID: nativeSaveOperation(101), Action: "create", Name: "NAS", Executable: program, Remote: remote, Config: config(address)}
 	// The real backend connection test supplies readiness; no synthetic success
 	// or pre-created approval enters the source transaction.
 	var receipt mounts.Receipt
