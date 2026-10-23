@@ -114,12 +114,15 @@ func (s *Service) ViewerStatus(ctx context.Context, path string) (string, error)
 	if !ok {
 		return analysisState, nil
 	}
-	var state, code string
+	var state, code, generation string
 	var removed bool
-	if err := s.db.QueryRowContext(ctx, `SELECT state,error_code,removed FROM remote_sources WHERE id=?`, b.ID).Scan(&state, &code, &removed); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT state,error_code,removed,CASE WHEN kind IN('rclone','sftp','smb') THEN (SELECT CAST(m.generation AS TEXT) FROM mount_backend_configs m WHERE m.mount_id=remote_sources.mount_id) ELSE CAST(generation AS TEXT) END FROM remote_sources WHERE id=?`, b.ID).Scan(&state, &code, &removed, &generation); err != nil {
 		return "unavailable", err
 	}
 	if removed {
+		return "unavailable", nil
+	}
+	if code == "" && s.sourcePacerBackoff(b.ID, generation) {
 		return "unavailable", nil
 	}
 	switch code {

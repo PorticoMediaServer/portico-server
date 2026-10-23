@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -29,22 +28,11 @@ func bwrapPath() (string, error) {
 	return filepath.Abs(path)
 }
 
-var libraryCache sync.Map // executable identity → []string
-
 func librariesFor(executable string, extra []string) ([]string, error) {
-	key := executable + "\x00" + strings.Join(extra, "\x00")
-	if info, err := os.Stat(executable); err == nil {
-		key += fmt.Sprintf("\x00%d\x00%d", info.Size(), info.ModTime().UnixNano())
-	}
-	if cached, ok := libraryCache.Load(key); ok {
-		return cached.([]string), nil
-	}
-	libraries, err := ResolveLibraries(executable, executable, extra)
-	if err != nil {
-		return nil, err
-	}
-	libraryCache.Store(key, libraries)
-	return libraries, nil
+	// ResolveLibraries already memoizes ELF parsing while revalidating every
+	// alias, library and searched directory. An executable-only outer cache
+	// must not bypass those checks after a dependency or RUNPATH change.
+	return ResolveLibraries(executable, executable, extra)
 }
 
 // probeSandbox starts a trivial program (true) inside the sandbox a job gets,

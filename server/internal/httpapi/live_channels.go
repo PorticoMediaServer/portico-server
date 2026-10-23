@@ -326,6 +326,9 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 		if restrictions.Active() {
 			query.ProgrammeAllowed = func(rating string) bool { return catalog.RatingAllowed(restrictions, rating) }
 		}
+		query.MarkChannels = func(ctx context.Context, tx *sql.Tx, channels []livechannels.Channel) error {
+			return store.ChannelMarksTx(ctx, tx, d.guideDirectoryAuthority(p, restrictionFence), channels)
+		}
 
 		var guide livechannels.Guide
 		var e error

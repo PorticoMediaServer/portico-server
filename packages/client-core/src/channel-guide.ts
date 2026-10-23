@@ -12,6 +12,8 @@ export type LinearUnavailableReason = '' | 'delivery-unavailable' | 'recording-u
 export type GuideProgrammeEpisode = Readonly<{season?: number; number?: number; display?: string}>;
 export type GuideProgrammeRating = Readonly<{system: string; value: string}>;
 export type GuideProgrammeFlags = Readonly<{live?: boolean; premiere?: boolean; new?: boolean; repeat?: boolean}>;
+/** Authored by the server from the complete authorized source, before paging. */
+export type GuideChannelMark = Readonly<{text: string; seed: string}>;
 export type GuideProgramme = Readonly<{
  id: string; channelId: string; title: string; start: string; end: string;
  lineage: 'provider-id' | 'interval-only' | 'generated'; seriesId: string; episodeId: string;
@@ -22,7 +24,7 @@ export type GuideProgramme = Readonly<{
 }>;
 export type GuideChannel = Readonly<{
  id: string; sourceId: string; provenance: ChannelKind; name: string; number: string; group: string;
- generation: string; logoPath?: string; programmes: readonly GuideProgramme[]; tuneAvailable: boolean; recordAvailable: boolean;
+ generation: string; logoPath?: string; mark?: GuideChannelMark; programmes: readonly GuideProgramme[]; tuneAvailable: boolean; recordAvailable: boolean;
  tuneUnavailableReason: LinearUnavailableReason; recordUnavailableReason: LinearUnavailableReason;
  favorite: boolean; hidden: boolean; preferenceRevision: number;
 }>;
@@ -44,6 +46,12 @@ const instant = (v: unknown): v is string => {
 const kind = (v: unknown): v is ChannelKind => v === 'live-source' || v === 'library-channel';
 const reasons: readonly string[] = ['', 'delivery-unavailable', 'recording-unavailable', 'not-recordable', 'source-disabled', 'source-unavailable', 'capacity-unavailable', 'permission-denied', 'no-schedule', 'decoder_confinement_unavailable', 'ffmpeg_not_configured', 'decoder_dependencies_unavailable', 'schedule_preparing', 'delivery_unavailable', 'ffprobe_not_configured', 'channel_runtime_unavailable'];
 function invalid(): never { throw new Error(unreadableServerResponse); }
+function parseChannelMark(v: unknown): GuideChannelMark | undefined {
+ if (v === undefined) return undefined;
+ if (object(v) && text(v.text, 1024) && v.text.trim() && text(v.seed, 513) && v.seed.trim()) return {text: v.text, seed: v.seed};
+ noteSkipped('guide', 'channel.mark');
+ return undefined;
+}
 /**
  * Guide programme facts (FEAT-04, Channels spec §8.1): subtitle, episode, categories, rating,
  * year, starRating, flags and image. Every value is optional (older servers send none of them);
@@ -149,6 +157,7 @@ export function parseGuideChannels(value: unknown, sources: readonly GuideSource
   const tuneUnavailableReason = unavailable('channel.tuneUnavailableReason', tuneAvailable, v.tuneUnavailableReason ?? ''), recordUnavailableReason = unavailable('channel.recordUnavailableReason', recordAvailable, v.recordUnavailableReason ?? '');
   // A logo that is not one of this server's own pictures is not shown.
   let logoPath=v.logoPath??'';if(typeof logoPath!=='string'||logoPath!==''&&!/^\/v1\/items\/[A-Za-z0-9_-]{1,128}\/art\/poster$/.test(logoPath)){noteSkipped('guide','channel.logoPath');logoPath='';}
+  const mark = parseChannelMark(v.mark);
   ids.add(v.id);
   const source=sources.find(s=>s.id===v.sourceId&&s.provenance===v.provenance)!;
   if (source.generation!==v.generation||source.provenance!==v.provenance||!route&&v.programmes.length!==0) invalid();
@@ -158,7 +167,7 @@ export function parseGuideChannels(value: unknown, sources: readonly GuideSource
    if (programmeIDs.has(p.id) || Date.parse(p.start) < previousEnd || route !== undefined && (Date.parse(p.end) <= Date.parse(route.start) || Date.parse(p.start) >= Date.parse(route.end)) || ++total > 10000) invalid();
    previousEnd = Date.parse(p.end); programmeIDs.add(p.id); return p;
   });
-  return {id: v.id, sourceId: v.sourceId, provenance: v.provenance, name: v.name, number: (v.number ?? '') as string, group: (v.group ?? '') as string, generation: v.generation, logoPath: logoPath as string, programmes, tuneAvailable, recordAvailable, tuneUnavailableReason, recordUnavailableReason, favorite: v.favorite === true, hidden: v.hidden === true, preferenceRevision: v.preferenceRevision as number} as GuideChannel;
+  return {id: v.id, sourceId: v.sourceId, provenance: v.provenance, name: v.name, number: (v.number ?? '') as string, group: (v.group ?? '') as string, generation: v.generation, logoPath: logoPath as string, ...(mark ? {mark} : {}), programmes, tuneAvailable, recordAvailable, tuneUnavailableReason, recordUnavailableReason, favorite: v.favorite === true, hidden: v.hidden === true, preferenceRevision: v.preferenceRevision as number} as GuideChannel;
  }); return channels;
 }
 export function parseChannelGuide(raw: unknown, serverId: string, route: GuideRoute): ChannelGuide {

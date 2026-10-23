@@ -608,6 +608,7 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 		if strings.HasPrefix(actual.Name, "browse:") {
 			want.Response = goldenHomeCoverDecoration(t, f, actual, want.Response)
 		}
+		want.Response = goldenUnselectedDetailArtwork(t, f, actual, want.Response)
 		want.Response = goldenBrowseExtension(t, f, actual, want.Response)
 		want.Response = goldenListeningExtension(t, f, actual, want.Response)
 		if want.Status != actual.Status {
@@ -771,6 +772,39 @@ func goldenHomeCoverDecoration(t *testing.T, f *goldenFixture, actual goldenCase
 		}
 	}
 	encoded, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return canonical(string(encoded))
+}
+
+// 209d71b9 deliberately changed detail to advertise only immutable, ready
+// selected artwork (held by catalog.TestDetailArtworkUsesReadySelectedDescriptors).
+// The original frozen fixture has local hints only. Account for exactly those
+// two obsolete URLs, with an independent producer-fact guard; never re-record
+// the matrix or copy an observed answer into its expected value.
+func goldenUnselectedDetailArtwork(t *testing.T, f *goldenFixture, actual goldenCase, frozen string) string {
+	t.Helper()
+	if actual.Name != "detail/open" && actual.Name != "detail/restricted" {
+		return frozen
+	}
+	var poster, backdrop string
+	var selected int
+	err := f.db.QueryRow(`SELECT d.poster_url,d.backdrop_url,(SELECT count(*) FROM artwork_selections a WHERE a.kind='item' AND a.entity_id=e.id) FROM catalog_entities e JOIN catalog_item_details d ON d.entity_id=e.id WHERE e.public_id=pid_blob(?)`, f.item).Scan(&poster, &backdrop, &selected)
+	if err != nil || poster != "local:poster/movie-0000000" || backdrop != "local:backdrop/movie-0000000" || selected != 0 {
+		t.Fatalf("review changed golden artwork producer facts: poster=%q backdrop=%q selected=%d err=%v", poster, backdrop, selected, err)
+	}
+	var document map[string]any
+	if err = json.Unmarshal([]byte(frozen), &document); err != nil {
+		t.Fatal(err)
+	}
+	item, ok := document["item"].(map[string]any)
+	if !ok || item["id"] != "movie-0000000" || item["posterUrl"] != "/v1/items/movie-0000000/art/poster" || item["backdropUrl"] != "/v1/items/movie-0000000/art/backdrop" {
+		t.Fatal("review changed frozen detail artwork expectation")
+	}
+	delete(item, "posterUrl")
+	delete(item, "backdropUrl")
+	encoded, err := json.Marshal(document)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -84,6 +84,10 @@ func TestRestrictedProfileWriteRouteMatrix(t *testing.T) {
 	probed := 0
 	for _, pattern := range patterns {
 		route := routes[pattern]
+		if route.check != nil {
+			t.Run(pattern, route.check)
+			continue
+		}
 		if route.probes == nil {
 			if route.reason == "" {
 				t.Errorf("%s: an exemption needs a reason", pattern)
@@ -342,6 +346,7 @@ func hiddenReferenceDigest(t *testing.T, m *restrictionEnv) string {
 }
 
 type writeRoute struct {
+	check  func(*testing.T)
 	probes func(m *restrictionEnv) []idProbe
 	reason string
 }
@@ -396,7 +401,11 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
-		"DELETE /v1/me/removed-titles/{id}": perHidden("DELETE", "/v1/me/removed-titles/ID", "", "item"),
+		"POST /v1/reading/sessions":                     {check: readingRestrictionCheck("POST /v1/reading/sessions")},
+		"HEAD /v1/reading/sessions/{sessionId}/source":  {check: readingRestrictionCheck("HEAD /v1/reading/sessions/{sessionId}/source")},
+		"PUT /v1/reading/sessions/{sessionId}/progress": {check: readingRestrictionCheck("PUT /v1/reading/sessions/{sessionId}/progress")},
+		"DELETE /v1/reading/sessions/{sessionId}":       {check: readingRestrictionCheck("DELETE /v1/reading/sessions/{sessionId}")},
+		"DELETE /v1/me/removed-titles/{id}":             perHidden("DELETE", "/v1/me/removed-titles/ID", "", "item"),
 		"POST /v1/home/destination-picker": writeProbes(func(m *restrictionEnv) []idProbe {
 			var out []idProbe
 			for _, kind := range []string{"playlist", "collection"} {

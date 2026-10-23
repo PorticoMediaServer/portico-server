@@ -3,6 +3,17 @@ import assert from 'node:assert/strict';
 import {ChannelGuideService,parseChannelGuide,topChannelGroups,stripDays,dayPrimeTime,type ChannelApi,type GuideRoute} from '../src/channel-guide.ts';
 const route:GuideRoute={kind:'live-source',start:'2026-09-05T12:00:00Z',end:'2026-09-05T15:00:00Z',timezone:'UTC',search:'',sourceId:''};
 const fixture=()=>({protocolVersion:'1.0',serverId:'server',guide:{state:'ready',viewerFence:'viewer',start:route.start,end:route.end,timezone:route.timezone,nextCursor:'',observedAt:'2026-09-05T12:00:00Z',sources:[{id:'source',name:'Live source',generation:'generation',publishedAt:'2026-09-05T11:00:00Z',refreshState:'manual',availableStart:'2026-09-05T12:00:00Z',availableEnd:'2026-09-05T13:00:00Z',provenance:'live-source'}],channels:[{id:'channel',sourceId:'source',provenance:'live-source',name:'Channel one',number:'1',group:'Local',generation:'generation',tuneAvailable:false,recordAvailable:false,tuneUnavailableReason:'delivery-unavailable',recordUnavailableReason:'recording-unavailable',favorite:false,hidden:false,preferenceRevision:0,programmes:[{id:'occurrence',channelId:'channel',title:'Programme',start:'2026-09-05T12:00:00Z',end:'2026-09-05T13:00:00Z',lineage:'provider-id'}]}]}});
+test('guide preserves genuine full-source marks and never derives missing or malformed marks',()=>{
+ const value=fixture();
+ Object.assign(value.guide.channels[0],{mark:{text:'N24',seed:'source:channel',privateFact:'discard'}});
+ assert.deepEqual(parseChannelGuide(value,'server',route).channels[0].mark,{text:'N24',seed:'source:channel'});
+ for(const mark of [undefined,null,{},'N24',{text:'',seed:'source:channel'},{text:'N24',seed:''},{text:'N24\nprivate',seed:'source:channel'},{text:'N24',seed:'x'.repeat(514)}]){
+  Object.assign(value.guide.channels[0],{mark});
+  const channel=parseChannelGuide(value,'server',route).channels[0];
+  assert.equal(channel.name,'Channel one');
+  assert.equal(channel.mark,undefined);
+ }
+});
 test('guide validates source/generation/interval and strips unknown fields',()=>{const value=fixture();Object.assign(value.guide,{providerURL:'secret'});const guide=parseChannelGuide(value,'server',route);assert.equal(guide.channels[0].programmes[0].title,'Programme');assert.ok(!JSON.stringify(guide).includes('secret'));assert.throws(()=>parseChannelGuide(value,'other-server',route));
  // A channel from another generation of its source is left out alone; so is a programme that is not a real interval.
  value.guide.channels[0].generation='old';assert.deepEqual(parseChannelGuide(value,'server',route).channels,[]);value.guide.channels[0].generation='generation';value.guide.channels[0].programmes[0].end=route.start;assert.deepEqual(parseChannelGuide(value,'server',route).channels[0].programmes,[]);});

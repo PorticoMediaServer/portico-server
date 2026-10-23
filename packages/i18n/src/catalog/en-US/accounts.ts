@@ -1,6 +1,7 @@
 /** Canonical account/session language from design 14a9a19: auth, connect,
  * account and Settings spec. Names and counts always come from the live authority. */
 export const accountMessages = {
+  'accounts.signIn.recoveryCode': 'Recovery code',
   'accounts.brand': 'Portico',
   'accounts.provider.google': 'Google',
   'accounts.provider.apple': 'Apple',
@@ -46,6 +47,8 @@ export const accountMessages = {
   'accounts.profiles.serverContext': 'On {server}',
   'accounts.profiles.retry': 'Try again',
   'accounts.servers.title': 'Your servers',
+  'accounts.servers.local': 'Local servers',
+  'accounts.servers.refresh': 'Refresh servers',
   'accounts.move.oldPasswordAction': 'Use your old username and password',
   'accounts.move.oldSignIn': 'Your old sign-in',
   'accounts.move.oldSignInBody': 'The username and password you used on {server}.',
