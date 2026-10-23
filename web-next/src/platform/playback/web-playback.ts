@@ -30,7 +30,6 @@ import {AutomaticQuality, qualityRequest, type FixedQuality} from '@core/playbac
 import {PlaybackApiError, idempotencyKey, type V1Http} from '@core/playback-v1/http.ts';
 import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
 import type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource} from '@core/playback-v1/port.ts';
-import {localPlayerSource, localPlayerLoadReceipt, type LocalPlayerSource, type LocalPlayerLoadContext, type LocalPlayerLoadReceipt} from '@core/playback-v1/local-port.ts';
 import {PlaybackSessionController, SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from '@core/playback-v1/sessions.ts';
 import {toPlaybackSession} from '@core/playback-v1/session-shape.ts';
 import {parseEqualizer, type EqualizerSettings} from './audio/equalizer';
@@ -115,10 +114,7 @@ export class PlayerSlot implements MediaPlayer {
   private real?: PlaybackMediaPort;
   private off?: () => void;
   private offNotice?: () => void;
-  private source?: PlayerSource | LocalPlayerSource;
-  private localReceipt?: LocalPlayerLoadReceipt;
-  private localLoad?: AbortController;
-  private loadEpoch = 0;
+  private source?: PlayerSource;
   private want?: 'play' | 'pause';
   private rate = 1;
   private held = false;
@@ -126,33 +122,9 @@ export class PlayerSlot implements MediaPlayer {
   private readonly notices = new Set<(notice: WebPlayerNotice) => void>();
 
   load(source: PlayerSource): void {
-    this.invalidateLocal();
     this.source = source;
     this.want = undefined;
     if (!this.held) this.real?.load(source);
-  }
-  private invalidateLocal(): void {++this.loadEpoch;this.localReceipt = undefined;this.localLoad?.abort();this.localLoad = undefined;}
-  get canLoadLocal(): boolean {return !this.held && typeof this.real?.loadLocal === 'function';}
-  async loadLocal(input: LocalPlayerSource, context: LocalPlayerLoadContext): Promise<LocalPlayerLoadReceipt> {
-    if (!this.canLoadLocal) throw new Error('local_playback_unavailable');
-    const source = localPlayerSource(input), real = this.real!;
-    if (context.signal.aborted || !context.isCurrent()) throw new DOMException('Local load retired', 'AbortError');
-    this.invalidateLocal();
-    const epoch = this.loadEpoch, life = new AbortController();this.localLoad = life;
-    this.source = source;this.want = undefined;
-    const signal = AbortSignal.any([context.signal, life.signal]);
-    const current = () => !signal.aborted && this.loadEpoch === epoch && this.real === real && this.source === source && !this.held && context.isCurrent();
-    try {
-      const receipt = localPlayerLoadReceipt(await real.loadLocal!(source, {signal, isCurrent: current}), source);
-      if (!current()) throw new DOMException('Local load retired', 'AbortError');
-      this.localReceipt = receipt;
-      return receipt;
-    } catch (error) {
-      // The adapter retires its accepted private load, never a newer replacement. The slot
-      // must not issue a generic unload after an obsolete promise resolves.
-      if (this.loadEpoch === epoch && this.source === source) {this.source = undefined;this.invalidateLocal();if (this.real === real) real.unload();}
-      throw error;
-    }
   }
   play(): void { this.want = 'play'; if (!this.held) this.real?.play(); }
   pause(): void { this.want = 'pause'; if (!this.held) this.real?.pause(); }
@@ -163,11 +135,7 @@ export class PlayerSlot implements MediaPlayer {
   setRate(rate: number): void { this.rate = rate; this.real?.setRate(rate); }
   selectSidecarSubtitle(trackId: string | null): void { this.real?.selectSidecarSubtitle(trackId); }
   observe(): PlayerObservation {
-    if (this.real && !this.held && this.loaded) return this.real.observe();
-    if (this.real && !this.held && this.source && 'kind' in this.source && this.localReceipt) {
-      const actual = this.real.observe();
-      if (actual.generation === this.source.generation && actual.state === 'error') return actual;
-    }
+    if (this.real && !this.held && this.real.loaded) return this.real.observe();
     return {generation: this.source?.generation ?? 0, state: 'idle', positionMs: this.source?.startPositionMs ?? 0, rate: this.rate};
   }
   onEvent(listener: (event: PlayerEvent) => void): () => void {
@@ -184,14 +152,14 @@ export class PlayerSlot implements MediaPlayer {
   applyAudioEffects(snapshot: PlaybackSnapshot): void { this.real?.applyAudioEffects?.(snapshot); }
   get nativeSurfaceActive(): boolean {
     const real = this.real, source = this.source;
-    if (this.held || !source || !real || !this.loaded || real.loaded !== source.generation || real.nativeSurfaceActive !== true) return false;
+    if (this.held || !source || !real || !real.loaded || real.loaded !== source.generation || real.nativeSurfaceActive !== true) return false;
     const observed = real.observe();
     return observed.generation === source.generation && !['idle', 'ended', 'error'].includes(observed.state);
   }
   get mounted(): boolean { return !!this.real; }
   get canStepFrame(): boolean {
     const real = this.real, source = this.source;
-    if (this.held || !source || !real || !this.loaded || real.loaded !== source.generation || real.settling || typeof real.stepFrame !== 'function') return false;
+    if (this.held || !source || !real || !real.loaded || real.loaded !== source.generation || real.settling || typeof real.stepFrame !== 'function') return false;
     const observed = real.observe();
     return observed.generation === source.generation && observed.state === 'paused';
   }
@@ -202,10 +170,10 @@ export class PlayerSlot implements MediaPlayer {
     if (this.real !== real || this.source !== source || this.source?.generation !== generation || !this.canStepFrame) throw new Error('stale_playback_command');
   }
   /** The generation the element has loaded (0: nothing). */
-  get loaded(): number { return this.real && !this.held && (!this.source || !('kind' in this.source) || !!this.localReceipt) ? this.real.loaded : 0; }
+  get loaded(): number { return this.real && !this.held ? this.real.loaded : 0; }
   get audioProcessing(): PlaybackMediaPort['audioProcessing'] {
     const source = this.source, real = this.real;
-    if (this.held || !source || !real || !this.loaded || real.loaded !== source.generation) return undefined;
+    if (this.held || !source || !real || real.loaded !== source.generation) return undefined;
     const facts = real.audioProcessing, observed = real.observe();
     if (this.real !== real || this.source !== source || !facts || facts.generation !== source.generation || observed.generation !== source.generation
       || !['playing', 'paused', 'buffering'].includes(observed.state) || typeof facts.eqApplied !== 'boolean' || typeof facts.levelingApplied !== 'boolean') return undefined;
@@ -215,17 +183,15 @@ export class PlayerSlot implements MediaPlayer {
   mount(real: PlaybackMediaPort): void {
     this.unmount();
     this.real = real;
-    this.off = real.onEvent(e => {if (this.source && 'kind' in this.source && !this.localReceipt) return;for (const l of [...this.listeners]) l(e);});
+    this.off = real.onEvent(e => { for (const l of [...this.listeners]) l(e); });
     this.offNotice = real.onNotice(n => { for (const l of [...this.notices]) l(n); });
     real.setRate(this.rate);
-    if (this.source && !('kind' in this.source) && !this.held) real.load({...this.source, autoplay: this.want ? this.want === 'play' : this.source.autoplay});
+    if (this.source && !this.held) real.load({...this.source, autoplay: this.want ? this.want === 'play' : this.source.autoplay});
   }
 
   unmount(): void {
     const real = this.real;
     if (!real) return;
-    this.invalidateLocal();
-    if (this.source && 'kind' in this.source) this.source = undefined;
     // The presentation is remembered where it was, for the next element.
     if (this.source && !this.held && real.loaded === this.source.generation) this.source = {...this.source, startPositionMs: real.observe().positionMs};
     this.off?.();
@@ -238,11 +204,10 @@ export class PlayerSlot implements MediaPlayer {
   hold(on: boolean): void {
     if (this.held === on) return;
     this.held = on;
-    if (on) {this.invalidateLocal();this.real?.unload();}
+    if (on) this.real?.unload();
   }
 
   unload(): void {
-    this.invalidateLocal();
     this.source = undefined;
     this.want = undefined;
     this.real?.unload();
@@ -295,7 +260,6 @@ export class WebPlayback implements PlaybackAdapter {
   private automaticStep?: FixedQuality;
   private decidedAt = 0;
   private offs: (() => void)[] = [];
-  private localMode = false;
 
   constructor(host: WebPlaybackHost) {
     this.host = host;
@@ -363,16 +327,13 @@ export class WebPlayback implements PlaybackAdapter {
   /** The speed the viewer chose for the element (the music engine has its own). */
   setRate(rate: number): void { if (Number.isFinite(rate) && rate >= 0.25 && rate <= 4) this.slot.setRate(rate); }
 
-  /** Local queues use this same engine slot but no server-session adapter or renderer. */
-  beginLocal(): void {if (this.localMode) return;this.localMode = true;this.release();}
-
   /** The v1 session behind the service's session, for screens that show what the server decided. */
   session(id: string | undefined): Session | undefined { return id ? this.known.get(id) : undefined; }
 
   // ── The service's adapter ───────────────────────────────────────────────
 
   apply = (next: PlaybackSnapshot): void => {
-    if (this.disposed || this.localMode) return;
+    if (this.disposed) return;
     this.slot.applyAudioEffects(next);
     const session = next.session;
     // Nothing to play, or a failed play: the media is let go. A delayed event cannot revive it.
@@ -459,7 +420,6 @@ export class WebPlayback implements PlaybackAdapter {
   // ── Facts from the element ──────────────────────────────────────────────
 
   private current(o: PlayerObservation): {service: PlaybackService; snapshot: PlaybackSnapshot} | undefined {
-    if (this.localMode) return;
     const service = this.service, snapshot = service?.getSnapshot(), session = snapshot?.session;
     if (!service || !snapshot || !session || !!this.render || this.blocked || snapshot.phase === 'error') return undefined;
     if (o.generation !== session.generation || this.loadedKey !== `${session.id}:${session.generation}`) return undefined;
@@ -639,7 +599,6 @@ export class WebPlayback implements PlaybackAdapter {
   // ── Routes (the app moving between a server's addresses) ────────────────
 
   private routeChanged() {
-    if (this.localMode) return;
     const route = this.host.getRouteSnapshot?.(), service = this.service;
     if (!route || !service) return;
     if (route.phase !== 'ready') {
@@ -753,7 +712,6 @@ export class WebPlayback implements PlaybackAdapter {
    * (a hidden tab, a page kept for Back) the newest position is reported and playback stays.
    */
   pageHidden(final: boolean): void {
-    if (this.localMode) return;
     const held = this.controller.getSnapshot();
     // A live channel's session belongs to the channel control, not the controller: closing the tab
     // ends it too, so its tuner (or its conversion) is free at once instead of when its lease lapses.
