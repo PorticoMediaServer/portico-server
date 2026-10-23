@@ -60,7 +60,11 @@ func readingRemoteProgram(t *testing.T) string {
 	return program
 }
 
-func TestReadingRemoteRegistered(t *testing.T) {
+func TestReadingRemoteRegistered(t *testing.T)                { readingRemoteRegistered(t, true) }
+func TestReadingRemoteDefaultProfilePreparation(t *testing.T) { readingRemoteRegistered(t, false) }
+
+func readingRemoteRegistered(t *testing.T, savedProfile bool) {
+	t.Helper()
 	_ = readingRemoteProgram(t)
 	var err error
 	f := newV1Fixture(t, 0)
@@ -104,18 +108,21 @@ func TestReadingRemoteRegistered(t *testing.T) {
 		t.Fatal("supported actual DAV configuration", err)
 	}
 	remoteRoot := configured.Source.RootPath
-	// These are real saved owner settings for this throwaway source, matching
-	// the cap1 sequential fixture. No default/policy is rewritten to authorize
-	// Reading, and the scan tier remains file_list_only.
-	profile, _ := remotesources.SourceReadPreset("list")
-	profile.Limits = remotesources.ReadLimits{Connections: 1, RequestsPerSecond: 50}
-	err = dbwork.WithWriteTx(context.Background(), f.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
-		_, err := remote.ApplySourceReadProfileTx(context.Background(), tx, f.id, principal, remotesources.SourceReadProfileChange{SourceID: configured.Source.ID, Generation: "1", Profile: profile})
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
+	if savedProfile {
+		// These are real saved owner settings for this throwaway source, matching
+		// the cap1 sequential fixture. No default/policy is rewritten to authorize
+		// Reading, and the scan tier remains file_list_only.
+		profile, _ := remotesources.SourceReadPreset("list")
+		profile.Limits = remotesources.ReadLimits{Connections: 1, RequestsPerSecond: 50}
+		err = dbwork.WithWriteTx(context.Background(), f.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+			_, err := remote.ApplySourceReadProfileTx(context.Background(), tx, f.id, principal, remotesources.SourceReadProfileChange{SourceID: configured.Source.ID, Generation: "1", Profile: profile})
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
+
 	f.deps.Storage.Remote = remote
 	f.cat.SetStorage(f.deps.Storage)
 	life, cancel := context.WithCancel(context.Background())
@@ -151,7 +158,11 @@ func TestReadingRemoteRegistered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []string{"book", "comic"} {
+	kinds := []string{"book", "comic"}
+	if !savedProfile {
+		kinds = []string{"book"}
+	}
+	for _, kind := range kinds {
 		t.Run(kind, func(t *testing.T) {
 			library, err := f.cat.Create("Real remote "+kind, kind, filepath.Join(remoteRoot, kind))
 			if err != nil {
@@ -175,12 +186,25 @@ func TestReadingRemoteRegistered(t *testing.T) {
 				t.Fatal("actual remote scan/list", w.Code, w.Body.String())
 			}
 			for _, item := range items.Items {
+				if !savedProfile && item.Format != "epub" {
+					continue
+				}
 				w = readingHTTP(t, h, "POST", "/v1/reading/sessions", token, "", ReadingSessionRequest{item.ID, item.SourceID})
 				var manifest ReadingSessionResponse
 				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &manifest) != nil || manifest.SessionID == "" || manifest.Sequential {
 					t.Fatal("real remote prepare", w.Code, w.Body.String())
 				}
 				base := "/v1/reading/sessions/" + manifest.SessionID
+				if !savedProfile {
+					if len(manifest.Resources) == 0 || len(manifest.Spine) == 0 || manifest.Metadata.Author != "" {
+						t.Fatal("default-profile manifest did not inspect original source", manifest)
+					}
+					w = readingHTTP(t, h, "DELETE", base, token, "", nil)
+					if w.Code != 204 {
+						t.Fatal(w.Code, w.Body.String())
+					}
+					continue
+				}
 				read := func() *httptest.ResponseRecorder {
 					if item.Format == "pdf" {
 						req := httptest.NewRequest("GET", base+"/source", nil)
@@ -255,6 +279,9 @@ func TestReadingRemoteRegistered(t *testing.T) {
 				if w = read(); w.Code != 403 {
 					t.Fatal("closed remote reader delivered bytes", w.Code)
 				}
+			}
+			if !savedProfile {
+				return
 			}
 			// Keep an acquired extent reader alive across actual member policy
 			// narrowing; a previously validated source/cached range is no grant.
