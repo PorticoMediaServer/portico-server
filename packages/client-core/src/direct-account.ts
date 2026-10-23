@@ -33,11 +33,13 @@ export function parsePublicInvitation(raw:unknown):PublicInvitation{
  if(raw.inviterUsername!==undefined&&!bounded(raw.inviterUsername,64))invalidPeople();
  return Object.freeze({serverName:raw.serverName,expiresAt:raw.expiresAt,role:raw.role as 'member'|'admin',libraries:Object.freeze(libraries),allLibraries:raw.allLibraries,signInMethod:raw.signInMethod as 'local'|'portico',...(raw.inviterUsername?{inviterUsername:raw.inviterUsername as string}:{})});
 }
-function parseServerInvitation(raw:unknown):ServerInvitation{
- if(!object(raw)||!bounded(raw.id,128)||!rev(raw.revision)||!['member','admin'].includes(String(raw.role))||!['pending','accepted','revoked','expired'].includes(String(raw.state))||!timestamp(raw.createdAt)||!timestamp(raw.expiresAt)||!Array.isArray(raw.allowedLibraries)||raw.allowedLibraries.some(v=>!bounded(v,128)))invalidPeople();
+export function parseServerInvitation(raw:unknown):ServerInvitation{
+ if(!object(raw)||!bounded(raw.id,128)||!rev(raw.revision)||!['member','admin'].includes(String(raw.role))||!['pending','accepted','revoked','expired'].includes(String(raw.state))||!timestamp(raw.createdAt)||!timestamp(raw.expiresAt)||!Array.isArray(raw.allowedLibraries)||raw.allowedLibraries.length>1000||raw.allowedLibraries.some(v=>!bounded(v,128)))invalidPeople();
  if(raw.email!==undefined)invalidPeople();if(raw.notes!==undefined&&raw.notes!==null&&(typeof raw.notes!=='string'||privatePersonNotes(raw.notes)!==raw.notes))invalidPeople();
+ if(raw.acceptedAt!==undefined&&!timestamp(raw.acceptedAt)||raw.accountId!==undefined&&!bounded(raw.accountId,128)||raw.porticoUsername!==undefined&&!bounded(raw.porticoUsername,64)||raw.code!==undefined&&(typeof raw.code!=='string'||!/^[-_A-Za-z0-9]{43}$/.test(raw.code)))invalidPeople();
  if(raw.serverId!==undefined){if(typeof raw.serverId!=='string')invalidPeople();try{identityCode(raw.serverId);}catch{invalidPeople();}}
- return Object.freeze({...raw,allowedLibraries:Object.freeze([...raw.allowedLibraries])}) as ServerInvitation;
+ const {notes,...rest}=raw;
+ return Object.freeze({...rest,...(typeof notes==='string'?{notes}:{}),allowedLibraries:Object.freeze([...raw.allowedLibraries])}) as ServerInvitation;
 }
 export function parsePeopleInvitationPage(raw:unknown):PeopleInvitationPage{
  if(!object(raw)||!Array.isArray(raw.items)||!Number.isSafeInteger(raw.limit)||Number(raw.limit)<1||Number(raw.limit)>100||raw.items.length>Number(raw.limit)||!Number.isSafeInteger(raw.totalCount)||Number(raw.totalCount)<0||!Number.isSafeInteger(raw.matchedCount)||Number(raw.matchedCount)<raw.items.length||Number(raw.matchedCount)>Number(raw.totalCount)||raw.nextCursor!==undefined&&(typeof raw.nextCursor!=='string'||raw.nextCursor.length>2048||/[\p{Cc}\p{Cf}]/u.test(raw.nextCursor)))invalidPeople();

@@ -44,7 +44,8 @@ export async function prepareRegisteredSignIn(api:Pick<HttpLocalApi,'request'|'g
  const raw:unknown=await api.request(routePath('post_auth_portico_return_prepare'),'POST',{origin:input.origin,nonce},options.signal);check();
  const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
  if(!obj(raw)||raw.serverId!==pin.serverId||raw.hostedOrigin!==input.hostedOrigin||typeof raw.claimOperationId!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(raw.claimOperationId)||!obj(raw.registration)||typeof raw.registration.id!=='string'||!/^ret_[A-Za-z0-9_-]{43}$/.test(raw.registration.id)||raw.registration.origin!==input.origin||typeof raw.challenge!=='string'||!/^[A-Za-z0-9_-]{32,128}$/.test(raw.challenge)||typeof raw.expiresAt!=='string'||!obj(raw.proof))throw invalid();
- const now=Date.now(),proof=await verifyRegisteredSignInContext(raw.context,now,crypto);
+ const now=Date.now();let proof:Awaited<ReturnType<typeof verifyRegisteredSignInContext>>;
+ try{proof=await verifyRegisteredSignInContext(raw.context,now,crypto);}catch{check();throw invalid();}
  if(proof.serverId!==pin.serverId||proof.nonce!==nonce||proof.installationId!==input.installationId||proof.challenge!==raw.challenge||proof.registrationId!==raw.registration.id||proof.registrationOrigin!==input.origin||proof.hostedOrigin!==input.hostedOrigin||proof.claimOperationId!==raw.claimOperationId||proof.expiresAt!==raw.expiresAt)throw invalid();
  const actual=await serverPin(pin.serverId,proof.publicKey,proof.fingerprint,crypto);
  if(!sameServerPin(actual,pin))throw invalid();check();
