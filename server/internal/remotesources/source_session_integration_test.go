@@ -165,6 +165,14 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			if observed.Snapshot().Size != int64(len(payload)) || ref.Revision != 1 {
 				t.Fatal(observed.Snapshot(), ref)
 			}
+			stat, err := f.s.Stat(ctx, f.file)
+			if err != nil || stat.Revision != observed.Snapshot().Revision || stat.ObjectIdentity != observed.Snapshot().ObjectIdentity || stat.Size != observed.Snapshot().Size {
+				t.Fatal("storage Stat and normalized scan disagreed", stat, observed.Snapshot(), err)
+			}
+			root, err := f.s.InspectRoot(ctx, filepath.Dir(f.file))
+			if err != nil || !root.Directory || root.ObjectIdentity == "" {
+				t.Fatal("storage root inspection escaped the source producer", root, err)
+			}
 			b, _, _ := f.s.find(f.file)
 			listingID := "streamed-directory"
 			if _, err = f.s.db.ExecContext(ctx, `INSERT INTO remote_listing_sessions(id,job_id,source_id,generation,directory,created_at) VALUES(?,?,'remote','1',?,0)`, listingID, f.job, b.Root); err != nil {

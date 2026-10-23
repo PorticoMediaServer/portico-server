@@ -32,7 +32,7 @@ export type LibraryBindings = Readonly<{
   onAppearanceChange: (change: Partial<Pick<BrowsePresentation, 'view' | 'cardSize'>>) => void;
   onLibrary: (id: string) => void;
   onLibraries: () => void;
-  onPivot: (pivot: string) => void;
+  onPivot?: (pivot: string) => void;
   libraryMenu: ReactNode;
   /** Required real selection bar and per-entry capabilities from the selected viewer. */
   selection: Readonly<{toolbar?: ReactNode; actions: (member: BrowseMember, index: number) => BrowseItemActions; registerWindow?: (first: number, last: number) => void}>;
@@ -72,7 +72,7 @@ export function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLib
   const appearance = browsePresentation(base, preferences, libraryViewOverride);
   const compact = useShellWidth() < 600;
   const switcher = <LibrarySwitcher libraries={libraries} value={library.id} onValueChange={onLibrary} compact={compact}/>;
-  const navigation = <Tabs className={compact ? styles.phoneTabs : styles.headerTabs} value={pivot} onValueChange={onPivot} items={tabs} phone={compact}/>;
+  const navigation = tabs.length && onPivot ? <Tabs className={compact ? styles.phoneTabs : styles.headerTabs} value={pivot} onValueChange={onPivot} items={tabs} phone={compact}/> : undefined;
   const ambient = appearance.backdrops && library.latestArtwork ? <AmbientArt source={artwork.ambient(library.latestArtwork, {group: library.id, order: 0})} treatment="library" width="100%" height={560}/> : undefined;
   return compact ? <StickyBrowseHeader name={library.name} switcher={switcher} menu={libraryMenu} onLibraries={onLibraries} topInset={0}>{navigation}</StickyBrowseHeader> :
     <LibraryHeader name={library.name} switcher={switcher} menu={libraryMenu} ambient={ambient}>{navigation}</LibraryHeader>;

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -30,6 +31,11 @@ type porticoReturnPrepared struct {
 	Challenge string             `json:"challenge"`
 	ExpiresAt string             `json:"expiresAt"`
 	Proof     porticoReturnProof `json:"proof"`
+	Context   porticoReturnProof `json:"context"`
+}
+
+type registeredSignInPrepareSigner interface {
+	SignRegisteredSignInPrepare(context.Context, networking.RegisteredSignInPrepareInput) (networking.RegisteredSignInPrepare, string, string, error)
 }
 
 type porticoReturnRequest struct {
@@ -104,7 +110,8 @@ func (d Dependencies) serverReturnRoutes(mux *http.ServeMux) {
 			return
 		}
 		signer, ok := d.RouteIdentity.(challengeSigner)
-		if d.Hosted == nil || !ok {
+		contextSigner, contextOK := d.RouteIdentity.(registeredSignInPrepareSigner)
+		if d.Hosted == nil || !ok || !contextOK {
 			failure(w, identity.ErrUnauthorized)
 			return
 		}
@@ -127,7 +134,12 @@ func (d Dependencies) serverReturnRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		writeAuth(w, r, 200, porticoReturnPrepared{RegisteredReturnPreparation: prepared, Challenge: challenge, ExpiresAt: expires.UTC().Format("2006-01-02T15:04:05Z"), Proof: porticoReturnProof{payload, signature}})
+		bound, contextPayload, contextSignature, e := contextSigner.SignRegisteredSignInPrepare(r.Context(), networking.RegisteredSignInPrepareInput{ServerID: prepared.ServerID, RegistrationID: prepared.Registration.ID, RegistrationOrigin: prepared.Registration.Origin, HostedOrigin: prepared.HostedOrigin, ClaimOperationID: prepared.ClaimOperationID, Challenge: challenge, Nonce: q.Nonce, InstallationID: installation})
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		writeAuth(w, r, 200, porticoReturnPrepared{RegisteredReturnPreparation: prepared, Challenge: challenge, ExpiresAt: bound.ExpiresAt, Proof: porticoReturnProof{payload, signature}, Context: porticoReturnProof{contextPayload, contextSignature}})
 	})
 	d.httpHandle(mux, "POST /v1/auth/portico-return/exchange", func(w http.ResponseWriter, r *http.Request) {
 		var q porticoReturnRequest

@@ -21,8 +21,19 @@ import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-con
 import {useScreenAppearance} from './screen-preferences';
 import {parseLibraryScreenSearch, type LibraryScreenSearch} from './route-search';
 import {SaveView} from './SaveView';
+import {ReadLibraryEntry} from '../read';
+import {isReadingLibrary} from './reading-library';
 
 const t = defaultI18n.t;
+function ReadingLibrary({captured, library}: {captured: ProtectedLibraryScreen; library: Library}) {
+  const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
+  const header = <LibraryIdentity library={library} libraries={context.identity?.libraries ?? []} pivot="" tabs={[]}
+    appearance={{view: appearance.libraryView, cardWidth: width < 600 ? 108 : 190, cardSize: 'medium', backdrops: appearance.showBackdrops}}
+    preferences={appearance} artwork={context.artwork} libraryMenu={undefined}
+    onLibrary={libraryId => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {}}).catch(context.effects.reportError);}}
+    onLibraries={() => {if (context.isCurrent()) void router.navigate({to: '/libraries'}).catch(context.effects.reportError);}}/>;
+  return <ReadLibraryEntry libraryId={library.id} header={header}/>;
+}
 function LibraryShow({context, libraryId, search}: {context: ScreenContext; libraryId: string; search: LibraryScreenSearch}) {
   const binding = useMemo(() => createShowBindings(context), [context]);
   useEffect(() => () => binding.dispose(), [binding]);
@@ -82,7 +93,8 @@ function LibraryRouteScreen() {
   const captured = useProtectedWebScreenContext(), {libraryId} = useParams({from: '/library/$libraryId'});
   const search = parseLibraryScreenSearch(useSearch({from: '/library/$libraryId'}));
   const library = captured?.context.facts.identity.libraries.find(library => library.id === libraryId);
-  return !captured ? null : library ? <BoundLibrary key={libraryId} captured={captured} library={library} search={search}/>
+  return !captured ? null : library ? isReadingLibrary(library.kind) ? <ReadingLibrary key={libraryId} captured={captured} library={library}/>
+    : <BoundLibrary key={libraryId} captured={captured} library={library} search={search}/>
     : <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
 }
 export default defineWebScreen({id: 'library', component: LibraryRouteScreen, validateSearch: parseLibraryScreenSearch});

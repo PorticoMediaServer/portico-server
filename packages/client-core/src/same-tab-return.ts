@@ -6,6 +6,7 @@ import type {HttpLocalApi,LocalSession} from './index.ts';
 import {CodedError} from './server-messages.ts';
 import {routeBase64,routeBytes,routeOrigin,sameServerPin,serverPin,webRouteCrypto,type RouteCrypto} from './route-identity.ts';
 import {validInstallationId} from './installation.ts';
+import {verifyRegisteredSignInContext, type RegisteredSignInContext} from './registered-sign-in-context.ts';
 
 export type ReturnPurpose='setup'|'switch'|'change-owner'|'sign-in';
 export type ReturnPending=Readonly<{serverId:string;purpose:ReturnPurpose;claimOperationId:string;registrationId:string;state:string;verifier:string;serverChallenge:string;installationId:string;createdAt:number;registrationOrigin?:string;moveTicket?:string;moveCode?:string}>;
@@ -30,9 +31,10 @@ export async function prepareSameTabReturn(api:HttpLocalApi,store:ReturnPendingS
  const {verifier:_,createdAt:__,registrationOrigin:___,moveTicket:____,moveCode:_____,...body}=pending;return {...body,codeChallenge};
 }
 export type RegisteredSignIn=Readonly<{start:SameTabReturnStart;registration:{id:string;origin:string};hostedOrigin:string;expiresAt:string}>;
+export type RegisteredSignInWithContext=RegisteredSignIn&Readonly<{context:RegisteredSignInContext}>;
 /** Ordinary member sign-in uses the registration resolved by the installed
  * server. Local owner claims have a separate producer and cannot call this. */
-export async function prepareRegisteredSignIn(api:Pick<HttpLocalApi,'request'|'getRouteConnection'>,store:ReturnPendingStore,input:{origin:string;hostedOrigin:string;installationId:string;moveTicket?:string;moveCode?:string},options:{signal?:AbortSignal;isCurrent?:()=>boolean;crypto?:RouteCrypto}={}):Promise<RegisteredSignIn>{
+export async function prepareRegisteredSignIn(api:Pick<HttpLocalApi,'request'|'getRouteConnection'>,store:ReturnPendingStore,input:{origin:string;hostedOrigin:string;installationId:string;moveTicket?:string;moveCode?:string},options:{signal?:AbortSignal;isCurrent?:()=>boolean;crypto?:RouteCrypto}={}):Promise<RegisteredSignInWithContext>{
  const invalid=()=>new CodedError('invalid_return_preparation','The server could not prepare this sign-in.');
  const pin=api.getRouteConnection()?.pin,crypto=options.crypto??webRouteCrypto;
  if(!pin||!input.origin.startsWith('https://')||routeOrigin(input.origin)!==input.origin||!input.hostedOrigin.startsWith('https://')||routeOrigin(input.hostedOrigin)!==input.hostedOrigin||!validMemberProof({...input,purpose:'sign-in',claimOperationId:''}))throw invalid();
@@ -42,22 +44,19 @@ export async function prepareRegisteredSignIn(api:Pick<HttpLocalApi,'request'|'g
  const raw:unknown=await api.request(routePath('post_auth_portico_return_prepare'),'POST',{origin:input.origin,nonce},options.signal);check();
  const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
  if(!obj(raw)||raw.serverId!==pin.serverId||raw.hostedOrigin!==input.hostedOrigin||typeof raw.claimOperationId!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(raw.claimOperationId)||!obj(raw.registration)||typeof raw.registration.id!=='string'||!/^ret_[A-Za-z0-9_-]{43}$/.test(raw.registration.id)||raw.registration.origin!==input.origin||typeof raw.challenge!=='string'||!/^[A-Za-z0-9_-]{32,128}$/.test(raw.challenge)||typeof raw.expiresAt!=='string'||!obj(raw.proof))throw invalid();
- const payload=routeBytes(raw.proof.payload,undefined,6144),signature=routeBytes(raw.proof.signature,64);
- let proof:unknown;try{proof=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(payload));}catch{throw invalid();}
- if(!obj(proof)||proof.kind!=='portico.challenge-proof'||proof.version!=='1'||proof.serverId!==pin.serverId||proof.nonce!==nonce||proof.installationId!==input.installationId||proof.challenge!==raw.challenge||typeof proof.publicKey!=='string'||typeof proof.fingerprint!=='string'||typeof proof.issuedAt!=='string'||typeof proof.expiresAt!=='string')throw invalid();
- const issued=Date.parse(proof.issuedAt),expires=Date.parse(raw.expiresAt),signedExpires=Date.parse(proof.expiresAt),now=Date.now();
- // The HTTP producer formats the summary to whole seconds; its signed proof
- // retains the actual expiry's fractional seconds.
- if(!Number.isFinite(issued)||!Number.isFinite(expires)||!Number.isFinite(signedExpires)||Math.floor(signedExpires/1000)*1000!==expires||issued>now+60000||expires<=now||signedExpires<=issued||signedExpires-issued>5*60000)throw invalid();
+ const now=Date.now();let proof:Awaited<ReturnType<typeof verifyRegisteredSignInContext>>;
+ try{proof=await verifyRegisteredSignInContext(raw.context,now,crypto);}catch{check();throw invalid();}
+ if(proof.serverId!==pin.serverId||proof.nonce!==nonce||proof.installationId!==input.installationId||proof.challenge!==raw.challenge||proof.registrationId!==raw.registration.id||proof.registrationOrigin!==input.origin||proof.hostedOrigin!==input.hostedOrigin||proof.claimOperationId!==raw.claimOperationId||proof.expiresAt!==raw.expiresAt)throw invalid();
  const actual=await serverPin(pin.serverId,proof.publicKey,proof.fingerprint,crypto);
- if(!sameServerPin(actual,pin)||!await crypto.verify(routeBytes(pin.publicKey,32),signature,payload))throw invalid();check();
+ if(!sameServerPin(actual,pin))throw invalid();check();
  const verifier=routeBase64(crypto.random(32)),state=routeBase64(crypto.random(32));
  const pending:ReturnPending={serverId:pin.serverId,purpose:'sign-in',claimOperationId:raw.claimOperationId,registrationId:raw.registration.id,registrationOrigin:input.origin,installationId:input.installationId,serverChallenge:raw.challenge,verifier,state,createdAt:now,...(input.moveTicket?{moveTicket:input.moveTicket}:{}),...(input.moveCode?{moveCode:input.moveCode}:{})};
  const codeChallenge=routeBase64(await crypto.sha256(new TextEncoder().encode(verifier)));check();
  await store.change(()=>{check();return pending;});
  if(!current()){await store.change(old=>old?.state===state?undefined:old);check();}
  const {verifier:_,createdAt:__,registrationOrigin:___,moveTicket:____,moveCode:_____,...body}=pending;
- return {start:{...body,codeChallenge},registration:{id:pending.registrationId,origin:input.origin},hostedOrigin:input.hostedOrigin,expiresAt:raw.expiresAt};
+ const context=raw.context as Record<'payload'|'signature',string>;
+ return {start:{...body,codeChallenge},registration:{id:pending.registrationId,origin:input.origin},hostedOrigin:input.hostedOrigin,expiresAt:raw.expiresAt,context:Object.freeze({payload:context.payload,signature:context.signature})};
 }
 // The Hosted account client calls this only after its lookup exposes an actual
 // current registered route. No return URL is accepted or inferred here.
