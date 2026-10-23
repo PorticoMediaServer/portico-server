@@ -9,7 +9,7 @@ test -f ../third_party/rclone/bundle.lock.json
 test -n "${TMPDIR:-}"
 test "$(realpath "$TMPDIR")" = "$TMPDIR"
 case "$TMPDIR" in /tmp|/var/tmp|/|"$HOME") exit 2 ;; esac
-for required in docker python3; do
+for required in python3; do
     if ! command -v "$required" >/dev/null; then
         echo "Native fixture prerequisite is missing: $required" >&2
         exit 2
@@ -18,10 +18,12 @@ done
 
 fixture_scratch=$(mktemp -d "$TMPDIR/remote-native-XXXXXXXX")
 export PORTICO_SAMBA_TEST_JOB="remote-sources-$(basename "$fixture_scratch" | tr '[:upper:]' '[:lower:]')"
+docker_fixture=0
 cleanup() {
     result=$?
     trap - EXIT HUP INT TERM
     cleanup_failed=0
+    if test "$docker_fixture" = 1; then
     containers=$(docker ps -aq --filter label=portico=remote-sources-r40 --filter "label=portico.job=$PORTICO_SAMBA_TEST_JOB") || cleanup_failed=1
     while read -r container; do
         if test -n "$container"; then
@@ -36,6 +38,7 @@ cleanup() {
     done <<< "${networks:-}"
     if test -f "$fixture_scratch/samba-image"; then
         docker image rm "$(cat "$fixture_scratch/samba-image")" >/dev/null || cleanup_failed=1
+    fi
     fi
     rm -rf -- "$fixture_scratch"
     if test "$cleanup_failed" != 0; then
@@ -89,6 +92,20 @@ print('Official locked rclone archive and executable verified; no owner state us
 PY
 export PORTICO_RCLONE_TEST_PROGRAM="$fixture_scratch/rclone"
 
+if test "${PORTICO_CONTROLLER_ONLY_TEST:-}" = 1; then
+    go test -json -tags=rcloneintegration -count=1 -timeout=180s "$@" \
+        ./internal/remotesources -run '^TestSourceControllerRealSharedProcessAndScanPublication$'
+    exit 0
+fi
+if ! command -v docker >/dev/null; then
+    echo 'Native fixture prerequisite is missing: docker' >&2
+    exit 2
+fi
+if docker info --format '{{json .SecurityOptions}}' | python3 -c 'import json,sys; sys.exit(0 if "name=rootless" in json.load(sys.stdin) else 1)'; then
+    echo 'Native NAS fixtures require rootful Docker routing for their isolated 192.168 network.' >&2
+    exit 2
+fi
+docker_fixture=1
 docker build --network=host --label portico=remote-sources-r40 --label "portico.job=$PORTICO_SAMBA_TEST_JOB" \
     --iidfile "$fixture_scratch/samba-image" internal/rcloneprogram/testdata/smb
 export PORTICO_SAMBA_TEST_IMAGE="$(cat "$fixture_scratch/samba-image")"
