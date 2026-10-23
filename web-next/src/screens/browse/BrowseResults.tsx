@@ -66,16 +66,16 @@ export function BrowseResults(props: BrowseResultsProps) {
 }
 function BrowseListRow({member, index, artwork, env, actions}: BrowseResultsProps & {member: BrowseMember; index: number}) {
   const source = useRef<'pointer' | 'keyboard'>('pointer');
-  const {entry} = member, action = actions(member, index), progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
+  const {entry} = member, title = entry.displayTitle ?? entry.title, action = actions(member, index), progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
   const art = artwork.foreground(entry.posterUrl, 72 * devicePixelRatio, 2 / 3, {group: entry.libraryId, order: index});
   const added = entry.addedAt && Number.isFinite(Date.parse(entry.addedAt)) ? new Intl.DateTimeFormat(env.locale ?? 'en-US', {month: 'short', day: 'numeric', year: 'numeric'}).format(new Date(entry.addedAt)) : undefined;
   const resolution = entry.resolution === '4k' ? t('quality.4k') : entry.resolution === '1080p' ? t('downloads.quality.1080p') : entry.resolution === '720p' ? t('downloads.quality.720p') : entry.resolution === 'sd' ? t('quality.sd') : undefined;
   return <div className={styles.listRow} data-browse-entry={entry.id} onKeyDown={event => {if (event.key === 'Escape' && action.selection?.active) {event.preventDefault();action.selection.onExit();}}}>
     <div className={styles.listTitle}>{action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: source.current})} onKeyDownCapture={() => {source.current = 'keyboard';}} onPointerDownCapture={() => {source.current = 'pointer';}} accessibilityLabel={t('next.selection.select')} variant="row"/>}
-      <button type="button" data-layout-primary onClick={action.onOpen}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(entry.title)[0] ?? ''}/>}/></span><span>{entry.title}</span></button></div>
+      <button type="button" data-layout-primary onClick={action.onOpen}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(title)[0] ?? ''}/>}/></span><span>{title}</span></button></div>
     <span>{entry.year}</span><span>{durationText(entry.duration, env.t)}</span><span>{entry.rating !== undefined && <><Icon name="i-star" size={13}/>{defaultI18n.number(entry.rating, {maximumFractionDigits: 1})}</>}</span>
     <span>{resolution && <span className={styles.resolution}>{resolution}</span>}</span><span>{added}</span>
     <span>{entry.watched ? <Icon name="i-check" size={18}/> : progress !== undefined && <span className={styles.miniProgress}><span style={{width: `${progress * 100}%`}}/></span>}</span>
-    <span className={styles.listActions}>{action.onPlay && <Button variant="primary" size="small" icon="i-play" iconOnly onClick={action.onPlay} aria-label={t('next.browse.play', {title: entry.title})}/>}{action.onMore && <Button variant="icon" size="small" icon="i-more" iconOnly onClick={event => action.onMore?.(event.currentTarget)} aria-label={t('next.browse.moreFor', {title: entry.title})}/>}</span>
+    <span className={styles.listActions}>{action.onPlay && <Button variant="primary" size="small" icon="i-play" iconOnly onClick={action.onPlay} aria-label={t('next.browse.play', {title})}/>}{action.onMore && <Button variant="icon" size="small" icon="i-more" iconOnly onClick={event => action.onMore?.(event.currentTarget)} aria-label={t('next.browse.moreFor', {title})}/>}</span>
   </div>;
 }

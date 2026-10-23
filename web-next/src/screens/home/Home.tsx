@@ -223,7 +223,7 @@ function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, s
   const props = {model, visible: interest.visible, watched: entry.watched, isNew: entry.new,
     artwork: artwork.foreground(source, width * devicePixelRatio, wide ? 16 / 9 : square ? 1 : 2 / 3, {order: rowIndex * 1000 + index, group: row.id}),
     ambient: square ? artwork.ambient(source, {order: rowIndex * 1000 + index, group: row.id}) : undefined,
-    fallback: <GeneratedArt glyph={Array.from(entry.title.trim())[0] ?? ''} />,
+    fallback: <GeneratedArt glyph={Array.from((entry.displayTitle ?? entry.title).trim())[0] ?? ''} />,
     onNavigate: () => effects.openEntry(entry),
     onPlay: target ? () => { void effects.play(entry, resume).catch(effects.reportError); } : undefined,
     selection: selection.card(row, entry),
