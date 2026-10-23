@@ -227,6 +227,9 @@ func TestReadingRemoteRegistered(t *testing.T) {
 				if n, err := child.ReadAt(cancelledExtent[:], 0); n != 0 || err == nil {
 					t.Fatal("canceled Reading child returned bytes", n, err)
 				}
+				if err := child.Validate(); err == nil {
+					t.Fatal("cancelled buffered remote publication validated")
+				}
 				_ = child.Close()
 				w = read()
 				if w.Code != want {

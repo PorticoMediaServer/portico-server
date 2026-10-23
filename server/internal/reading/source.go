@@ -319,7 +319,7 @@ func (f *Source) Close() error {
 // before publication; CPU work must not turn a revoked read into a response.
 func (f *Source) Validate() (failure error) {
 	defer func() {
-		if failure != nil && f.onFailure != nil {
+		if failure != nil && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
 			f.onFailure()
 			f.Close()
 		}
