@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/artifactlease"
@@ -10,18 +11,30 @@ import (
 
 var recordingObjectID = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
-func (c *Client) managedRecording(path string) bool {
-	if c.RecordingRoot == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return false
+func (c *Client) managedRecording(ctx context.Context, path string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
 	}
-	relative, e := filepath.Rel(c.RecordingRoot, path)
-	if e != nil {
-		return false
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return false, nil
 	}
-	parts := strings.Split(filepath.ToSlash(relative), "/")
-	return (len(parts) == 3 && recordingObjectID.MatchString(parts[0]) && parts[1] == "objects" && recordingObjectID.MatchString(parts[2])) ||
-		(len(parts) == 5 && recordingObjectID.MatchString(parts[0]) && parts[1] == "captures" && recordingObjectID.MatchString(parts[2]) && parts[3] == "objects" && recordingObjectID.MatchString(parts[4]))
+	if c.RecordingRoot != "" {
+		relative, err := filepath.Rel(c.RecordingRoot, path)
+		if err != nil {
+			return false, err
+		}
+		parts := strings.Split(filepath.ToSlash(relative), "/")
+		if (len(parts) == 3 && recordingObjectID.MatchString(parts[0]) && parts[1] == "objects" && recordingObjectID.MatchString(parts[2])) ||
+			(len(parts) == 5 && recordingObjectID.MatchString(parts[0]) && parts[1] == "captures" && recordingObjectID.MatchString(parts[2]) && parts[3] == "objects" && recordingObjectID.MatchString(parts[4])) {
+			return true, nil
+		}
+	}
+	if c.RecordingLayout != nil {
+		return c.RecordingLayout(ctx, path)
+	}
+	return false, nil
 }
+
 func lockRecordingFile(req request, f *os.File) error {
 	if !req.ManagedArtifact {
 		return nil
