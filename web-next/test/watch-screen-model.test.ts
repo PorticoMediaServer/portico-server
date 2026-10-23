@@ -5,7 +5,8 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformTsx} from './transform-tsx.mjs';
 import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds} from '../src/screens/watch/model.ts';
-import {readWatchFileInfo, watchFileGroups} from '../src/screens/watch/file-info.ts';
+import {readWatchFileInfo, readWatchFiles, watchFileGroups} from '../src/screens/watch/file-info.ts';
+import {parseSession} from '@core/playback-v1/types.ts';
 import type {FileInfoProjection} from '@core/detail.ts';
 import type {PlaybackOptions, MediaVersion} from '@core/playback-v1/types.ts';
 import type {WebPlaybackAction, WebPlaybackRuntimeSnapshot} from '../src/platform/playback/types.ts';
@@ -45,11 +46,13 @@ test('a retained local callback cannot act after an actual confirmed remote dock
   dock.start(playback);
   dock.beginRemote({id: 'cast', kind: 'cast', phase: 'connecting', sequence: '1', playback, positionSeconds: 0}, 0);
   assert.equal(dock.getSnapshot().local?.playing, true);
+  let effects = 0;
+  await dispatchWatch({getSnapshot: () => snapshot({dock: dock.getSnapshot()}), onAction: async () => { effects++; }}, shown, {kind: 'pause'});
+  assert.equal(effects, 1);
   dock.remote({id: 'cast', kind: 'cast', phase: 'playing', sequence: '2', playback, positionSeconds: 35}, 1000);
   assert.equal(dock.getSnapshot().local?.playing, false);
-  let effects = 0;
   await assert.rejects(dispatchWatch({getSnapshot: () => snapshot({dock: dock.getSnapshot()}), onAction: async () => { effects++; }}, shown, {kind: 'seek', seconds: 60}), /stale_watch_command/);
-  assert.equal(effects, 0);
+  assert.equal(effects, 1);
 });
 test('seek bounds respect the actual retained live window and never invent a clock', () => {
   const live = snapshot();
@@ -102,6 +105,36 @@ test('File info joins only actual server groups, with no raw-file count or infer
   assert.throws(() => watchFileGroups(files, {...options, itemId: 'another-title'}), /target_changed/);
 });
 
+test('paged File info retains current offered groups and session version without picking a physical member', async () => {
+  const options: PlaybackOptions = {itemId: 'item', kind: 'movie', versions: [{id: 'group', label: '', durationMs: 200000, parts: [{id: 'one', index: 0, durationMs: 100000}, {id: 'two', index: 1, durationMs: 100000}], video: [], audio: [], subtitles: []}], chapters: [], markers: [], qualities: []};
+  const session = parseSession({id: 'session', revision: '1', kind: 'vod', role: 'local', state: 'playing', itemId: 'item', versionId: 'group', presentation: {generation: 1, mode: 'direct', engine: 'native', url: '/v1/playback/sessions/session/media'}});
+  let live = snapshot({options, session});
+  const paths: string[] = [], controller = new AbortController();
+  const projection = {scope: {serverId: 'server', libraryId: 'library', itemId: 'item', viewerFence: 'viewer'}, revision: {catalog: 1, viewer: 1}, kind: 'movie', files: [{id: 'two', available: true, container: 'mkv', duration: 100, size: 1, audio: [], subtitles: []}]};
+  let respond = async () => projection;
+  const source = {scope: {serverId: 'server', viewerId: 'viewer'}, authority, getSnapshot: () => live, isCurrent: () => true,
+    api: {request: async <T>(path: string): Promise<T> => { paths.push(path); return await respond() as T; }}};
+  const page = await readWatchFiles(source, fence, {libraryId: 'library', itemId: 'item'}, controller.signal, {cursor: 'second page&next'});
+  assert.deepEqual(paths, ['/v1/items/item/file-info?cursor=second+page%26next&limit=50']);
+  assert.equal(page?.selectedVersionId, 'group');
+  assert.equal(page?.availableVersionCount, 1);
+  assert.equal(page?.groups[0]?.members[0]?.file, undefined);
+  assert.equal(page?.groups[0]?.members[1]?.file?.id, 'two');
+  assert.equal(Object.hasOwn(page!, 'pickedFileId'), false);
+  respond = async () => { live = snapshot({options: {...options}, session}); return projection; };
+  assert.equal(await readWatchFiles(source, fence, {libraryId: 'library', itemId: 'item'}, controller.signal), null);
+});
+
+test('File info suppresses a late failed read only after its captured source has retired', async () => {
+  const controller = new AbortController(), shown = snapshot();
+  let fail = async () => { throw new Error('actual_transport_failure'); };
+  const source = {scope: {serverId: 'server', viewerId: 'viewer'}, authority, getSnapshot: () => shown, isCurrent: () => true,
+    api: {request: async <T>(): Promise<T> => fail()}};
+  await assert.rejects(readWatchFileInfo(source, fence, {libraryId: 'library', itemId: 'item'}, controller.signal), /actual_transport_failure/);
+  fail = async () => { controller.abort(); throw new Error('actual_transport_failure'); };
+  assert.equal(await readWatchFileInfo(source, fence, {libraryId: 'library', itemId: 'item'}, controller.signal), null);
+});
+
 test('the actual screen renders one empty picture target and real identity, without owning media', async context => {
   const loader = registerHooks({load(url, context, next) {
     if (url.endsWith('.module.css')) return {format: 'module', source: 'export default new Proxy({}, {get: (_, key) => String(key)});', shortCircuit: true};
@@ -120,4 +153,15 @@ test('the actual screen renders one empty picture target and real identity, with
   assert.doesNotMatch(html, /<video|<audio|Movie night|1080p/);
   assert.match(html, /<h2>Title<\/h2>/);
   assert.match(html, /aria-label="Pause"/);
+  const dock = new PlaybackDock(fence.playback.scope), playback = {kind: 'video' as const, fence, queue: null, positionSeconds: 30, playing: true, expanded: true};
+  dock.start(playback);
+  dock.beginRemote({id: 'cast', kind: 'cast', phase: 'connecting', sequence: '1', playback, positionSeconds: 0}, 0);
+  const pending = snapshot({dock: dock.getSnapshot()});
+  const render = (value: WebPlaybackRuntimeSnapshot) => renderToStaticMarkup(createElement(WatchScreen, {
+    binding: {runtime: {getSnapshot: () => value} as never, artwork: {} as never, environment: {t: (key: string) => key} as never, skips: {back: 10, forward: 30}, reportError: error => { throw error; }},
+    snapshot: value, expanded: true, surfaceSlotRef: {current: null}, onCollapse() {},
+  }));
+  assert.doesNotMatch(render(pending), /class="watch" hidden/);
+  dock.remote({id: 'cast', kind: 'cast', phase: 'playing', sequence: '2', playback, positionSeconds: 35}, 1000);
+  assert.match(render(snapshot({dock: dock.getSnapshot()})), /class="watch" hidden/);
 });

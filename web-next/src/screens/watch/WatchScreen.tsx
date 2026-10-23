@@ -47,7 +47,10 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const mode = geometry?.mode ?? (!fullWindow && shapePortrait ? 'portrait' : 'full');
   const portrait = mode === 'portrait' || mode === 'book', permanent = mode === 'tabletop';
   const mobile = width < 1024;
-  const open = expanded && valid && presentation.kind === 'video' && !snapshot.dock.remote;
+  // Playback info f1: the film keeps playing with no player controls under the panel.
+  const infoHidesChrome = panel === 'info' && !mobile;
+  const chromeVisible = (visible || permanent) && !infoHidesChrome;
+  const open = expanded && valid && presentation.kind === 'video' && snapshot.dock.remote?.phase !== 'playing';
   const identity = presentation ? playbackIdentity(presentation.subject, 'full', binding.environment) : undefined;
   const can = (kind: string) => !!presentation?.controls.includes(kind as never);
   const send = useCallback((intent: WatchIntent) => {
@@ -57,7 +60,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   }, []);
   const effect = (action: () => void | Promise<void>) => {
     const value = current.current, live = value.binding.runtime.getSnapshot();
-    if (!value.expanded || live.disposed || !value.snapshot.fence || !sameFence(live.fence, value.snapshot.fence) || live.authority !== value.snapshot.authority) return;
+    if (!value.expanded || live.disposed || live.dock.remote?.phase === 'playing' || !value.snapshot.fence || !sameFence(live.fence, value.snapshot.fence) || live.authority !== value.snapshot.authority) return;
     try { void Promise.resolve(action()).catch(value.binding.reportError); } catch (error) { value.binding.reportError(error); }
   };
   const clearTimer = useCallback(() => { if (timer.current !== undefined) clearTimeout(timer.current); timer.current = undefined; }, []);
@@ -74,7 +77,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     }, 3000);
   }, [clearTimer, open, permanent, panel, more, shortcuts, presentation?.playing]);
   useEffect(() => { reveal(); return clearTimer; }, [reveal, clearTimer, width, height, geometry?.revision]);
-  useEffect(() => { onControlsVisibleChange?.(open && (visible || permanent)); }, [onControlsVisibleChange, open, visible, permanent]);
+  useEffect(() => { onControlsVisibleChange?.(open && chromeVisible); }, [onControlsVisibleChange, open, chromeVisible]);
   useLayoutEffect(() => { setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); }, [binding.runtime, playbackKey]);
   useLayoutEffect(() => { setFullWindow(false); }, [shapePortrait]);
   useEffect(() => { if (!open) { clearTimer(); setPanel(null); setMore(false); setShortcuts(false); } }, [open, clearTimer]);
@@ -145,7 +148,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     ...(surfaces?.more ?? []).map(item => ({id: item.id, label: item.label, onSelect: () => effect(item.action)})),
     {id: 'shortcuts', label: t('player.shortcuts'), icon: 'i-kbd', onSelect: () => setShortcuts(true)},
   ];
-  return <div ref={root} className={styles.watch} hidden={!open} data-watch-screen data-mode={mode} data-controls-visible={visible || permanent} data-panel-open={!!panel}
+  return <div ref={root} className={styles.watch} hidden={!open} data-watch-screen data-mode={mode} data-controls-visible={chromeVisible} data-panel-open={!!panel}
     onPointerDownCapture={() => { keyboardFocus.current = false; }}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
