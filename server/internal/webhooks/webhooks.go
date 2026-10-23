@@ -27,6 +27,7 @@ import (
 	"unicode/utf8"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/operations"
 )
 
 // Event types. The test event is sent only by "send test" and cannot be
@@ -233,6 +234,14 @@ func ValidURL(raw string) bool {
 	return true
 }
 
+func policyURL(raw string, policy operations.IntegrationSettings) bool {
+	if !ValidURL(raw) {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	return err == nil && (!policy.WebhookHTTPSOnly || parsed.Scheme == "https")
+}
+
 func validSecret(secret string) bool {
 	if len(secret) < 16 || len(secret) > 128 {
 		return false
@@ -380,6 +389,13 @@ func (s *Store) Create(ctx context.Context, auth Authorize, q Create) (Issued, e
 	enabled := q.Enabled == nil || *q.Enabled
 	id := identifier()
 	err := s.write(ctx, auth, func(tx *sql.Tx) error {
+		policy, err := operations.ReadIntegrationSettingsTx(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if !policyURL(q.URL, policy) {
+			return &ValidationError{[]string{"url"}}
+		}
 		var count int
 		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM webhooks`).Scan(&count); err != nil {
 			return err
@@ -391,7 +407,6 @@ func (s *Store) Create(ctx context.Context, auth Authorize, q Create) (Issued, e
 		if _, err := tx.ExecContext(ctx, `INSERT INTO webhooks(id,name,url,secret,events,enabled,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?)`, id, name, q.URL, secret, packEvents(events), enabled, now, now); err != nil {
 			return err
 		}
-		var err error
 		out.Webhook, err = scanWebhook(tx.QueryRowContext(ctx, `SELECT `+webhookColumns+` FROM webhooks w WHERE w.id=?`, id))
 		return err
 	})
@@ -444,6 +459,18 @@ func (s *Store) Update(ctx context.Context, auth Authorize, id string, q Change)
 		if current.Revision != q.ExpectedRevision {
 			return &RevisionError{Current: current}
 		}
+		policy, err := operations.ReadIntegrationSettingsTx(ctx, tx)
+		if err != nil {
+			return err
+		}
+		target := current.URL
+		if q.URL != nil {
+			target = *q.URL
+		}
+		if (q.URL != nil || q.Enabled != nil && *q.Enabled) && !policyURL(target, policy) {
+			return &ValidationError{[]string{"url"}}
+		}
+
 		now := s.now()
 		// One change is one revision, whatever it touches.
 		if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET updated_ms=?,revision=revision+1 WHERE id=?`, now, id); err != nil {
@@ -624,11 +651,21 @@ func (s *Store) SendTest(ctx context.Context, auth Authorize, id string) (Delive
 		if waiting >= 5 {
 			return ErrCapacity
 		}
+		policy, err := operations.ReadIntegrationSettingsTx(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM webhook_deliveries WHERE webhook_id=? AND state='pending'`, id).Scan(&waiting); err != nil {
+			return err
+		}
+		if waiting >= policy.WebhookQueueSize {
+			return ErrCapacity
+		}
+
 		delivery, now := identifier(), s.now()
 		if _, err := tx.ExecContext(ctx, `INSERT INTO webhook_deliveries(id,webhook_id,type,data,next_attempt_ms,created_ms) VALUES(?,?,?,?,?,?)`, delivery, id, Test, `{"message":"This is a test from Portico."}`, now, now); err != nil {
 			return err
 		}
-		var err error
 		out, _, err = scanDelivery(tx.QueryRowContext(ctx, `SELECT `+deliveryColumns+` FROM webhook_deliveries WHERE id=?`, delivery))
 		return err
 	})

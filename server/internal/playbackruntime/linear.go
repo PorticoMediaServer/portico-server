@@ -45,6 +45,8 @@ type LinearConfig struct {
 	DecoderLibraries                               []string
 	Retention                                      time.Duration
 	MaxBytes                                       int64
+	// Read at each new buffer; an existing active buffer retains its own budget.
+	TimeShiftPolicy func(context.Context) (time.Duration, int64, error)
 }
 type LinearRuntime struct {
 	owner *Runtime
@@ -316,7 +318,15 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 			return
 		}
 	}
-	buffer, e := linearbuffer.New(linearbuffer.Options{Parent: l.config.CacheDirectory, OriginMS: time.Now().UnixMilli(), MaxBytes: l.config.MaxBytes, Retention: l.config.Retention, Scheduled: work.Selection.Reference.Kind == "library-channel"})
+	retention, maxBytes := l.config.Retention, l.config.MaxBytes
+	if l.config.TimeShiftPolicy != nil {
+		retention, maxBytes, e = l.config.TimeShiftPolicy(ctx)
+		if e != nil {
+			l.report(ctx, entry, work, "timeshift_policy_unavailable", "delivery", e)
+			return
+		}
+	}
+	buffer, e := linearbuffer.New(linearbuffer.Options{Parent: l.config.CacheDirectory, OriginMS: time.Now().UnixMilli(), MaxBytes: maxBytes, Retention: retention, Scheduled: work.Selection.Reference.Kind == "library-channel"})
 	if e != nil {
 		l.report(ctx, entry, work, "timeshift_storage_unavailable", "delivery", e)
 		return

@@ -22,10 +22,13 @@ type LiveDefaults = livechannels.LiveDefaults
 
 // DefaultLiveDefaults is the answer before any owner write.
 func DefaultLiveDefaults() LiveDefaults {
-	return LiveDefaults{ImportLimits: livechannels.ImportLimits{Bytes: livechannels.MaxUploadBytes, Channels: livechannels.MaxChannels, Programmes: livechannels.MaxProgrammes}, StreamBufferMs: 8000, RetryWindowMs: 60000, UserAgent: "Portico/1.0", GuideDays: 7, LogoImport: true, DiscoveryEnabled: true}
+	return livechannels.DefaultLiveDefaults()
 }
 
 func validateLiveDefaults(v *LiveDefaults) error {
+	if _, _, err := v.TimeShiftLimits(); err != nil {
+		return invalid("settings.timeshiftMinutes")
+	}
 	if !safeText(v.UserAgent, 200) || strings.ContainsAny(v.UserAgent, "\r\n") {
 		return invalid("settings.userAgent")
 	}
@@ -189,12 +192,54 @@ func liveSourceScope(id string) string { return scopeFor("live-source", id) }
 
 // LiveDefaultsDocument reads the server-wide live settings.
 func (s *Service) LiveDefaultsDocument(ctx context.Context, auth Authorize) (Document[LiveDefaults], error) {
-	return loadDocument(ctx, s, auth, liveScope, DefaultLiveDefaults(), nil)
+	var out Document[LiveDefaults]
+	err := s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		v, revision, err := livechannels.ReadLiveDefaultsTx(ctx, tx)
+		if err == nil {
+			out = Document[LiveDefaults]{Scope: liveScope, Revision: revision, Digest: digestOf(v), Settings: v}
+		}
+		return err
+	})
+	return out, err
 }
 
 // SaveLiveDefaults writes the server-wide live settings.
 func (s *Service) SaveLiveDefaults(ctx context.Context, auth Authorize, change Change[LiveDefaults]) (Document[LiveDefaults], error) {
-	return saveDocument(ctx, s, auth, liveScope, DefaultLiveDefaults(), change, validateLiveDefaults, nil)
+	var out Document[LiveDefaults]
+	if !validOperationID(change.OperationID) {
+		return out, ErrInput
+	}
+	if err := validateLiveDefaults(&change.Settings); err != nil {
+		return out, err
+	}
+	want := digestOf(change)
+	err := s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		saved, replay, err := receipt[Document[LiveDefaults]](ctx, tx, liveScope, change.OperationID, want)
+		if err != nil {
+			return err
+		}
+		if replay {
+			out = saved
+			return nil
+		}
+		before, _, err := livechannels.ReadLiveDefaultsTx(ctx, tx)
+		if err != nil {
+			return err
+		}
+		revision, err := livechannels.ReplaceLiveDefaultsTx(ctx, tx, change.ExpectedRevision, change.Settings)
+		if errors.Is(err, livechannels.ErrConflict) {
+			return ErrConflict
+		}
+		if err != nil {
+			return err
+		}
+		if err = queueLiveConfiguration(ctx, tx, before, change.Settings); err != nil {
+			return err
+		}
+		out = Document[LiveDefaults]{Scope: liveScope, Revision: revision, Digest: digestOf(change.Settings), Settings: change.Settings}
+		return saveReceipt(ctx, tx, liveScope, change.OperationID, want, out, s.milliseconds())
+	})
+	return out, err
 }
 
 // LiveSourceDocument is one source's configuration plus the effective values
@@ -232,7 +277,7 @@ func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string)
 		return out, err
 	}
 	out.SourceName, out.TunerCount = name, tuners
-	defaults, _, err := readDocument(ctx, tx, liveScope, DefaultLiveDefaults())
+	defaults, _, err := livechannels.ReadLiveDefaultsTx(ctx, tx)
 	if err != nil {
 		return out, err
 	}
@@ -576,7 +621,7 @@ func (s *Service) DiscoverTuners(ctx context.Context, auth Authorize, window tim
 	}
 	configured := map[string]bool{}
 	err := s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		defaults, _, err := readDocument(ctx, tx, liveScope, DefaultLiveDefaults())
+		defaults, _, err := livechannels.ReadLiveDefaultsTx(ctx, tx)
 		if err != nil {
 			return err
 		}

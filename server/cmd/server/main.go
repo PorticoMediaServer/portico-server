@@ -394,7 +394,7 @@ func run() (runErr error) {
 	// but is joined below before constructing the first playback service.
 	doneQualification := reporter.step("toolchain", "Verify and qualify the media tools")
 	configSettings := operations.New(db)
-	configSettings.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}}
+	configSettings.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}, adminops.LiveConfiguration{}}
 	if e = configSettings.InitializeConfiguration(ctx, layout.Config); e != nil {
 		return e
 	}
@@ -749,7 +749,9 @@ func run() (runErr error) {
 	if e != nil {
 		return e
 	}
-	if e = currentPlayback.ConfigureChannels(playbackruntime.LinearConfig{DB: db, Live: liveSources, Library: generatedChannels, Policy: recordingaccess.Policy{Cached: control}, CacheDirectory: filepath.Join(cache, "linear-media"), LockDirectory: storagepaths.Path(state, "live-source-locks"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, DecoderLibraries: filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES"))}); e != nil {
+	if e = currentPlayback.ConfigureChannels(playbackruntime.LinearConfig{DB: db, TimeShiftPolicy: func(ctx context.Context) (time.Duration, int64, error) {
+		return livechannels.ReadTimeShiftLimits(ctx, db)
+	}, Live: liveSources, Library: generatedChannels, Policy: recordingaccess.Policy{Cached: control}, CacheDirectory: filepath.Join(cache, "linear-media"), LockDirectory: storagepaths.Path(state, "live-source-locks"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, DecoderLibraries: filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES"))}); e != nil {
 		return e
 	}
 	// Channels on v1 sessions open a Library Channels title the way every v1

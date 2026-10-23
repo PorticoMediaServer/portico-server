@@ -29,6 +29,7 @@ type connectionSettingValue struct {
 	certificateDomain string
 	// apiPerMinute is the owner's rate for one API key or access token.
 	apiPerMinute int
+	integrations operations.IntegrationSettings
 	// remoteSignIn is the owner's choice for sign-in from outside the home
 	// network: one of the identity.RemoteSignIn* values.
 	remoteSignIn string
@@ -58,7 +59,7 @@ func (c *connectionPolicyCache) setLocked(document operations.SettingsDocument) 
 		urls = append(urls, document.Effective.AdvertiseURL)
 	}
 	urls = append(urls, document.Effective.AccessURLs...)
-	c.setting.Store(&connectionSettingValue{revision: document.Revision, locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: ownAddressDomain(document.Effective), apiPerMinute: document.Effective.APIRequestsPerMinute, remoteSignIn: remoteSignInPolicy(document.Effective.RemoteSignInPolicy), dlna: document.Effective.DLNAEnabled})
+	c.setting.Store(&connectionSettingValue{revision: document.Revision, locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: ownAddressDomain(document.Effective), apiPerMinute: document.Effective.APIRequestsPerMinute, integrations: document.Effective.Integrations(), remoteSignIn: remoteSignInPolicy(document.Effective.RemoteSignInPolicy), dlna: document.Effective.DLNAEnabled})
 }
 
 // remoteSignInPolicy reads the stored choice. An empty value is the default,

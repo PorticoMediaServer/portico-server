@@ -23,6 +23,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
+	"portico.local/server/internal/operations"
 	"portico.local/server/internal/worker"
 )
 
@@ -92,7 +93,7 @@ func NewDispatcher(store *Store) *Dispatcher {
 		Proxy:                  nil,
 		DialContext:            (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
 		TLSHandshakeTimeout:    5 * time.Second,
-		ResponseHeaderTimeout:  10 * time.Second,
+		ResponseHeaderTimeout:  0, // The current policy's attempt context bounds the response.
 		MaxResponseHeaderBytes: 16 << 10,
 		DisableKeepAlives:      true,
 		TLSClientConfig:        &tls.Config{MinVersion: tls.VersionTLS12},
@@ -107,7 +108,7 @@ func NewDispatcher(store *Store) *Dispatcher {
 // Run sends until ctx ends. It wakes when a delivery is queued and otherwise
 // looks again when the next retry is due.
 func (d *Dispatcher) Run(ctx context.Context) {
-	unregister := dbwork.WakeOnTables(d.signal, "webhook_deliveries", "webhook_events", "webhooks")
+	unregister := dbwork.WakeOnTables(d.signal, "webhook_deliveries", "webhook_events", "webhooks", "server_settings")
 	defer unregister()
 	worker.Run(ctx, "webhooks.dispatch", d.signal, func(ctx context.Context) time.Duration {
 		return d.Step(dbwork.WithClass(ctx, dbwork.ClassMaintenance))
@@ -265,19 +266,28 @@ func (d *Dispatcher) settle(webhook string, delivered bool, now time.Time) {
 // queue should continue this step.
 func (d *Dispatcher) attempt(ctx context.Context, q queued) bool {
 	store := d.Store
+	policy, err := operations.ReadIntegrationSettings(ctx, store.DB)
+	if err != nil {
+		return false
+	} // No attempt or permissive policy on a failed read.
 	body, err := d.payload(ctx, q)
 	status, code := 0, ""
 	started := time.Now()
 	if err != nil {
 		code = "payload_too_large"
 	} else {
-		status, code = d.post(ctx, q, body)
+		status, code = d.postWithPolicy(ctx, q, body, policy)
 	}
 	elapsed := time.Since(started).Milliseconds()
 	now := store.now()
 	delivered := code == ""
 	attempts := q.attempts + 1
 	err = dbwork.WithWriteTx(ctx, store.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		current, err := operations.ReadIntegrationSettingsTx(ctx, tx)
+		if err != nil {
+			return err
+		}
+		delays := policyRetries(current.WebhookRetries)
 		switch {
 		case delivered:
 			if _, e := tx.ExecContext(ctx, `UPDATE webhook_deliveries SET state='delivered',attempts=?,finished_ms=?,status=?,duration_ms=?,error='' WHERE id=? AND state='pending'`, attempts, now, status, elapsed, q.id); e != nil {
@@ -286,7 +296,7 @@ func (d *Dispatcher) attempt(ctx context.Context, q queued) bool {
 			if _, e := tx.ExecContext(ctx, `UPDATE webhooks SET failures=0 WHERE id=? AND failures<>0`, q.webhook); e != nil {
 				return e
 			}
-		case attempts > len(retryDelays) || code == "payload_too_large":
+		case attempts > len(delays) || code == "payload_too_large" || code == "secure_address_required":
 			if _, e := tx.ExecContext(ctx, `UPDATE webhook_deliveries SET state='failed',attempts=?,finished_ms=?,status=?,duration_ms=?,error=? WHERE id=? AND state='pending'`, attempts, now, status, elapsed, code, q.id); e != nil {
 				return e
 			}
@@ -294,7 +304,7 @@ func (d *Dispatcher) attempt(ctx context.Context, q queued) bool {
 				return e
 			}
 		default:
-			next := now + retryDelays[attempts-1].Milliseconds()
+			next := now + delays[attempts-1].Milliseconds()
 			if _, e := tx.ExecContext(ctx, `UPDATE webhook_deliveries SET attempts=?,next_attempt_ms=?,status=?,duration_ms=?,error=? WHERE id=? AND state='pending'`, attempts, next, status, elapsed, code, q.id); e != nil {
 				return e
 			}
@@ -303,14 +313,14 @@ func (d *Dispatcher) attempt(ctx context.Context, q queued) bool {
 			}
 		}
 		// The log keeps the most recent finished deliveries and no more.
-		_, e := tx.ExecContext(ctx, `DELETE FROM webhook_deliveries WHERE webhook_id=? AND state<>'pending' AND id NOT IN(SELECT id FROM webhook_deliveries WHERE webhook_id=? AND state<>'pending' ORDER BY created_ms DESC,id DESC LIMIT ?)`, q.webhook, q.webhook, LogKept)
+		_, e := tx.ExecContext(ctx, `DELETE FROM webhook_deliveries WHERE webhook_id=? AND state<>'pending' AND id NOT IN(SELECT id FROM webhook_deliveries WHERE webhook_id=? AND state<>'pending' ORDER BY created_ms DESC,id DESC LIMIT ?)`, q.webhook, q.webhook, current.WebhookLogSize)
 		return e
 	})
 	if err != nil {
 		return false
 	}
 	d.settle(q.webhook, delivered, store.Now())
-	if !delivered && attempts > len(retryDelays) {
+	if !delivered && attempts > len(policyRetries(policy.WebhookRetries)) {
 		// Neither the address nor the secret is ever logged.
 		log.Printf("Webhook %.8s: gave up on a %s delivery after %d attempts (%s)", q.webhook, q.event, attempts, code)
 	}
@@ -392,11 +402,34 @@ func (d *Dispatcher) present(ctx context.Context, event string, data map[string]
 // post sends one attempt. It returns the HTTP status (0 when there was no
 // response) and a short reason for a failure, or "" for a delivery. The reason
 // never contains the address.
+func policyRetries(mode string) []time.Duration {
+	switch mode {
+	case "long":
+		return retryDelays
+	case "short":
+		return retryDelays[:3]
+	default:
+		return nil
+	}
+}
+
 func (d *Dispatcher) post(ctx context.Context, q queued, body []byte) (int, string) {
+	policy, err := operations.ReadIntegrationSettings(ctx, d.Store.DB)
+	if err != nil {
+		return 0, "policy_unavailable"
+	}
+	return d.postWithPolicy(ctx, q, body, policy)
+}
+
+func (d *Dispatcher) postWithPolicy(ctx context.Context, q queued, body []byte, policy operations.IntegrationSettings) (int, string) {
 	if !ValidURL(q.url) {
 		return 0, "address_not_valid"
 	}
-	ctx, cancel := context.WithTimeout(ctx, attemptTimeout)
+	if !policyURL(q.url, policy) {
+		return 0, "secure_address_required"
+	}
+	timeout := time.Duration(policy.WebhookTimeoutSeconds) * time.Second
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, q.url, bytes.NewReader(body))
 	if err != nil {
@@ -408,7 +441,9 @@ func (d *Dispatcher) post(ctx context.Context, q queued, body []byte) (int, stri
 	request.Header.Set(HeaderEventID, q.id)
 	request.Header.Set(HeaderAttempt, strconv.Itoa(q.attempts+1))
 	request.Header.Set(HeaderSignature, Sign(q.secret, d.Store.Now().Unix(), body))
-	response, err := d.Client.Do(request)
+	client := *d.Client
+	client.Timeout = timeout
+	response, err := client.Do(request)
 	if err != nil {
 		var netError net.Error
 		var certificate *tls.CertificateVerificationError

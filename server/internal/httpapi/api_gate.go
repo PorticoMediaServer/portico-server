@@ -99,6 +99,9 @@ func newCredentialGate() *credentialGate {
 
 type credentialNestedKey struct{}
 
+// Marks a lifted query credential without retaining its original URL or secret.
+type queryCredentialKey struct{}
+
 // withNestedCredential marks a request the server issues to itself on behalf
 // of a credential it has already admitted and charged (an MCP tool call). The
 // scope check still runs; the rate and concurrency charge is not taken twice.
@@ -162,6 +165,7 @@ func liftQueryCredential(r *http.Request) *http.Request {
 	out.RequestURI = out.URL.RequestURI()
 	if (r.Method == http.MethodGet || r.Method == http.MethodHead) && len(secrets) == 1 && identity.CredentialShaped(secrets[0]) {
 		out.Header.Add("Authorization", "Bearer "+secrets[0])
+		out = out.WithContext(context.WithValue(out.Context(), queryCredentialKey{}, true))
 	}
 	return out
 }
@@ -489,6 +493,20 @@ func registryScopeGate(q *http.Request, need apikit.Scope) error {
 // stamped request and a release function, or writes the refusal and reports
 // false.
 func (d Dependencies) admitCredential(w http.ResponseWriter, r *http.Request, mux *http.ServeMux) (*http.Request, func(), bool) {
+	// Closing the assistant address also closes unauthenticated requests and
+	// its otherwise unsupported GET door. It never changes ordinary API grants.
+	if r.URL.Path == mcpPath {
+		setting, err := d.connectionSetting(r.Context())
+		if err != nil {
+			policyErrors.Write(w, "", &apierror.Error{Code: "internal", Cause: err})
+			return nil, nil, false
+		}
+		if setting != nil && !setting.integrations.AssistantsEnabled {
+			closeUnreadUpload(w, r)
+			write(w, http.StatusNotFound, map[string]any{"error": map[string]any{"code": "not_found", "message": "This address is not available.", "retryable": false}})
+			return nil, nil, false
+		}
+	}
 	secret, present, ambiguous := presentedAPICredential(r)
 	if !present {
 		return r, nil, true
@@ -498,6 +516,15 @@ func (d Dependencies) admitCredential(w http.ResponseWriter, r *http.Request, mu
 		w.Header().Set("WWW-Authenticate", `Bearer realm="Portico"`)
 		policyErrors.Write(w, "", err)
 		return nil, nil, false
+	}
+	if query, _ := r.Context().Value(queryCredentialKey{}).(bool); query {
+		setting, err := d.connectionSetting(r.Context())
+		if err != nil {
+			return refuse(&apierror.Error{Code: "internal", Cause: err})
+		}
+		if setting != nil && !setting.integrations.KeyInAddress {
+			return refuse(&apierror.Error{Code: "unauthorized"})
+		}
 	}
 	gate, store := d.credentials, d.Access.Access
 	if ambiguous || gate == nil || store == nil || len(secret) > 256 {

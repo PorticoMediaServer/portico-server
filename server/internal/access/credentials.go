@@ -11,6 +11,7 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/operations"
 )
 
 // API keys and personal access tokens.
@@ -249,16 +250,26 @@ func (s *Store) CreateCredential(ctx context.Context, auth Authorize, issuer *id
 			out.Credential, e = s.credentialTx(ctx, tx, made.ID)
 			return e
 		}
+		policy, e := operations.ReadIntegrationSettingsTx(ctx, tx)
+		if e != nil {
+			return e
+		}
+		// Keep the submitted request as the receipt fingerprint. The effective
+		// limits are read and applied under this same authorized transaction.
+		scopes, expires, e = credentialCeilings(policy, kind, scopes, expires, s.Now())
+		if e != nil {
+			return e
+		}
 		now := s.now()
 		var count int
 		if kind == identity.CredentialKindKey {
 			e = tx.QueryRowContext(ctx, `SELECT count(*) FROM api_credentials WHERE kind='key' AND revoked_ms=0 AND (expires_ms=0 OR expires_ms>?)`, now).Scan(&count)
-			if e == nil && count >= MaxAPIKeys {
+			if e == nil && count >= policy.APIKeysMax {
 				e = ErrCapacity
 			}
 		} else {
 			e = tx.QueryRowContext(ctx, `SELECT count(*) FROM api_credentials WHERE kind='token' AND account_id=? AND revoked_ms=0 AND (expires_ms=0 OR expires_ms>?)`, maker.AccountID, now).Scan(&count)
-			if e == nil && count >= MaxAccessTokens {
+			if e == nil && count >= policy.TokensPerMember {
 				e = ErrCapacity
 			}
 		}
@@ -292,6 +303,29 @@ func (s *Store) CreateCredential(ctx context.Context, auth Authorize, issuer *id
 		return IssuedCredential{}, err
 	}
 	return out, nil
+}
+
+// credentialCeilings intersects a request; it never manufactures a scope.
+func credentialCeilings(policy operations.IntegrationSettings, kind string, scopes []string, expires, now time.Time) ([]string, time.Time, error) {
+	if policy.CredentialMaxDays > 0 {
+		cap := now.Add(time.Duration(policy.CredentialMaxDays) * 24 * time.Hour).UTC().Truncate(time.Second)
+		if expires.IsZero() || expires.After(cap) {
+			expires = cap
+		}
+	}
+	if kind == identity.CredentialKindToken && policy.MemberTokenScope != "same" {
+		limited := make([]string, 0, len(scopes))
+		for _, scope := range scopes {
+			if scope == "read" || scope == "playback" && policy.MemberTokenScope == "play" {
+				limited = append(limited, scope)
+			}
+		}
+		if len(limited) == 0 {
+			return nil, time.Time{}, invalid("scopes")
+		}
+		scopes = limited
+	}
+	return scopes, expires, nil
 }
 
 type CredentialQuery struct {

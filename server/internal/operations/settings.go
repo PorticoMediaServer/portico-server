@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const RegistryRevision = "settings-14a9a19.2"
+const RegistryRevision = "settings-14a9a19.3"
 
 type Field struct {
 	ID          string   `json:"id"`
@@ -136,6 +136,17 @@ func Registry() []Field {
 		field("lanDiscoveryEnabled", "connectivity", "boolean", true, nil, nil, nil, "hot", "LAN discovery advertisement", "Advertise this server on the local network with mDNS/Bonjour. The connectivity status report says whether this host can."),
 		field("dlnaEnabled", "connectivity", "boolean", false, nil, nil, nil, "hot", "DLNA server", "Let DLNA players on the home networks browse and play every library without signing in. Off by default; never offered outside the home networks."),
 		field("apiRequestsPerMinute", "access", "integer", 0, bounded(0), bounded(100000), nil, "hot", "API key and access token admission", "How many requests one API key or personal access token may make each minute. 0 uses the default of 600."),
+		field("webhookRetries", "integrations", "enumeration", "long", nil, nil, []string{"long", "short", "none"}, "hot", "webhook retry scheduling", "How long failed webhook deliveries are retried."),
+		field("webhookTimeoutSeconds", "integrations", "integer", 15, bounded(5), bounded(60), nil, "hot", "webhook attempt context", "Seconds allowed for a webhook answer."),
+		field("webhookQueueSize", "integrations", "integer", 1000, bounded(100), bounded(5000), nil, "hot", "webhook fanout trigger", "Most pending messages per webhook; newer messages are dropped when full."),
+		field("webhookLogSize", "integrations", "integer", 200, bounded(50), bounded(1000), nil, "hot", "webhook finished-delivery pruning", "Finished deliveries retained per webhook."),
+		field("webhookHTTPSOnly", "integrations", "boolean", false, nil, nil, nil, "hot", "webhook validation and dispatch", "Refuse plaintext webhook addresses, including private addresses."),
+		field("credentialMaxDays", "integrations", "integer", 0, bounded(0), bounded(365), nil, "hot", "API credential creation", "Maximum lifetime in days; zero permits no expiry."),
+		field("memberTokenScope", "integrations", "enumeration", "same", nil, nil, []string{"same", "play", "read"}, "hot", "personal token scope intersection", "Restrict requested scopes without raising the member's access."),
+		field("tokensPerMember", "integrations", "integer", 25, bounded(5), bounded(50), nil, "hot", "personal token creation", "Most working tokens for one member."),
+		field("apiKeysMax", "integrations", "integer", 100, bounded(10), bounded(250), nil, "hot", "API key creation", "Most working API keys on the server."),
+		field("keyInAddress", "integrations", "boolean", true, nil, nil, nil, "hot", "query credential admission", "Permit API credentials in GET and HEAD addresses."),
+		field("assistantsEnabled", "integrations", "boolean", true, nil, nil, nil, "hot", "MCP route admission", "Open the assistant address for existing authorized credentials."),
 		field("logLevel", "diagnostics", "enumeration", "info", nil, nil, LogLevels, "hot", "servicelog.Recorder", "How much detail the message log keeps. A debug window raises this temporarily without changing the saved value."),
 		field("logRetention", "diagnostics", "log-retention-list", []LogRetention{}, nil, nil, LogCategories, "hot", "servicelog.Recorder and ClientLogStore prune", "Days of message log and client report history to keep per category. A category with no entry keeps its bounded history."),
 	}
@@ -187,6 +198,19 @@ type Settings struct {
 	// held to; 0, the value a document saved before the field existed reads as,
 	// is the default (DefaultAPIRequestsPerMinute).
 	APIRequestsPerMinute int `json:"apiRequestsPerMinute"`
+	// Integration limits restrict existing credentials and deliveries; they grant no authority.
+	WebhookRetries        string `json:"webhookRetries"`
+	WebhookTimeoutSeconds int    `json:"webhookTimeoutSeconds"`
+	WebhookQueueSize      int    `json:"webhookQueueSize"`
+	WebhookLogSize        int    `json:"webhookLogSize"`
+	WebhookHTTPSOnly      bool   `json:"webhookHTTPSOnly"`
+	CredentialMaxDays     int    `json:"credentialMaxDays"`
+	MemberTokenScope      string `json:"memberTokenScope"`
+	TokensPerMember       int    `json:"tokensPerMember"`
+	APIKeysMax            int    `json:"apiKeysMax"`
+	KeyInAddress          bool   `json:"keyInAddress"`
+	AssistantsEnabled     bool   `json:"assistantsEnabled"`
+
 	// Aggregated server-wide play counts stay off until an owner opts in.
 	CommunityActivityEnabled bool `json:"home.communityActivityEnabled"`
 	// Update reporting and the default trash retention are owner administration
@@ -244,7 +268,7 @@ type LogRetention struct {
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
 	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, SegmentDetection: "standard",
-		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
+		WebhookRetries: "long", WebhookTimeoutSeconds: 15, WebhookQueueSize: 1000, WebhookLogSize: 200, WebhookHTTPSOnly: false, CredentialMaxDays: 0, MemberTokenScope: "same", TokensPerMember: 25, APIKeysMax: 100, KeyInAddress: true, AssistantsEnabled: true, RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
 type SettingsDocument struct {
@@ -470,6 +494,7 @@ func validateSettings(v *Settings) error {
 		fields = append(fields, "values.library.segmentDetection")
 	}
 	fields = append(fields, validateAdministration(v)...)
+	fields = append(fields, validateIntegrations(*v)...)
 	if len(fields) > 0 {
 		return &ValidationError{fields}
 	}
