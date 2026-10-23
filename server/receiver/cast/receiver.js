@@ -225,6 +225,11 @@
     var caps = {};
     try { caps = context ? context.getDeviceCapabilities() || {} : {}; } catch (_) { /* no output facts */ }
     function supports(codec, width, height, fps) { try { var parts=codec.split('; codecs=');return !!context && context.canDisplayType(parts[0],parts[1]?parts[1].replace(/"/g,''):'',width,height,fps); } catch (_) { return false; } }
+    var client = {family:'cast',form:'cast',platform:'cast',app:'portico-cast'};
+    try {
+      var info = context && typeof context.getDeviceInformation === 'function' ? context.getDeviceInformation() : null;
+      if (info && typeof info['model-name'] === 'string' && info['model-name'].trim() && info['model-name'].trim().toLowerCase()!=='unknown') client.model=info['model-name'].trim().slice(0,64);
+    } catch (_) { /* a codec probe is not a device identity */ }
     var fourK = supports('video/mp4; codecs="hev1.2.4.L153.B0"', 3840, 2160, 60);
     var ranges = ['sdr'];
     if (caps.is_hdr_supported === true) ranges.push('hdr10');
@@ -261,7 +266,7 @@
     var names=video.map(function (v) {return v.codec;});
     var transports=[{transport:'direct',containers:['mp4','m4v'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:hlsAudio},{transport:'direct',containers:['webm'],video:names.filter(function(c){return c==='vp8'||c==='vp9'||c==='av1';}),audio:audio.filter(function(a){return ['opus','vorbis'].indexOf(a.codec)>=0;}).map(function(a){return a.codec;})},{transport:'direct',containers:audio.reduce(function(all,a){return all.concat(({aac:['m4a','aac'],mp3:['mp3'],flac:['flac'],opus:['ogg','opus'],vorbis:['ogg'],pcm:['wav']})[a.codec]||[]);},[]),video:[],audio:audio.map(function(a){return a.codec;})},{transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:hlsAudio},{transport:'hls_fmp4',containers:['fmp4'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:fmp4Audio}];
     // The capability document (version 2): the device, and what its one player engine can do.
-    return {version:2,client:{family:'cast',form:'cast',platform:'cast',app:'portico-cast',model:fourK?'uhd_probed':'cast'},engineSetting:'automatic',display:{width:width,height:height,maxFrameRate:fourK||h264At60?60:30,dynamicRanges:ranges},audioOutput:{route:caps.display_supported===false?'speaker':'hdmi',maxChannels:surround?Math.max.apply(null,passthrough.map(function(a){return a.maxChannels;})):2},engines:{native:{name:'caf-shaka',evidence:'mixed',video:video,audio:audio,audioPassthrough:passthrough,transports:transports,subtitleRendering:['text']}}};
+    return {version:2,client:client,engineSetting:'automatic',display:{dynamicRanges:ranges},audioOutput:{route:caps.display_supported===false?'speaker':'hdmi',maxChannels:surround?Math.max.apply(null,passthrough.map(function(a){return a.maxChannels;})):2},engines:{native:{name:'caf-shaka',evidence:'mixed',video:video,audio:audio,audioPassthrough:passthrough,transports:transports,subtitleRendering:['text']}}};
   }
   /** CAF's type probe has no channel/rate arguments. Where the receiver also exposes the
    * MediaCapabilities API, ask exact decoded configurations; silence/timeout stays stereo. */
