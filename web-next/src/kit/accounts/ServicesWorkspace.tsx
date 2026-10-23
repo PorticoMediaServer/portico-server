@@ -25,6 +25,26 @@ export function ServicesHeader({avatar, unread = false, notifications = true}: {
   </header>;
 }
 
+/** account22: display the actual enrollment secret; copying keeps its original bytes. */
+export function ServicesAuthenticator({secret, uri, qr, onCopy}: {secret: string; uri?: string; qr?: ReactNode; onCopy: () => void}) {
+  return <div className={styles.authenticator}>{qr}<div>
+    <div className={styles.keyLine}><code>{secret.match(/.{1,4}/g)?.join(' ') ?? secret}</code><button type="button" aria-label={t('web.twoStep.copy')} onClick={onCopy}><Icon name="i-copy" size={18} /></button></div>
+    {uri && <a className={styles.authenticatorLink} href={uri}>{t('web.hostedSecurity.openAuthenticator')}</a>}
+  </div></div>;
+}
+
+/** Keep every returned recovery code, in its original order and spelling. */
+export function ServicesRecoveryCodes({codes, onCopy, onDownload}: {codes: readonly string[]; onCopy: () => void; onDownload: () => void}) {
+  const rows = Math.ceil(codes.length / 2);
+  return <><div className={styles.recoveryCodes} style={{gridTemplateRows: `repeat(${Math.max(1, rows)}, auto)`}}>
+    {codes.map((code, index) => <span key={index} data-first-row={index === 0 || index === rows || undefined}><i>{index + 1}</i>{code}</span>)}
+  </div><div className={styles.recoveryActions}><Button size="small" icon="i-copy" onClick={onCopy}>{t('web.twoStep.copy')}</Button><Button size="small" icon="i-download" onClick={onDownload}>{t('action.download')}</Button></div></>;
+}
+
+export function ServicesDangerAction({children, onClick, disabled = false, loading = false, compact = false}: {children: ReactNode; onClick: () => void; disabled?: boolean; loading?: boolean; compact?: boolean}) {
+  return <Button className={styles.dangerAction} size={compact ? 'xs' : 'small'} onClick={onClick} disabled={disabled} loading={loading}>{children}</Button>;
+}
+
 export function ServicesWorkspace({header, account, section, onSection, onSignOut, description, actions, children}: {
   header: ReactNode; account: {name: string; email?: string; initial: string}; section: ServicesSection;
   onSection: (section: ServicesSection) => void; onSignOut: () => void; description?: ReactNode; actions?: ReactNode; children: ReactNode;
@@ -50,6 +70,7 @@ export function ServicesWorkspaceRow({title, help, children, icon, badge}: {titl
   if (!icon) return <SettingsRow label={<>{title}{badge}</>} help={help}>{children}</SettingsRow>;
   return <div className={styles.iconRow}><span className={styles.icon}><Icon name={icon} size={24} /></span><div><b>{title}{badge}</b>{help && <p>{help}</p>}</div><div>{children}</div></div>;
 }
+export function ServicesRowNote({children}: {children: ReactNode}) { return <p className={styles.rowNote}>{children}</p>; }
 export function ServicesBadge({children, tone = 'default'}: {children: ReactNode; tone?: 'default' | 'accent' | 'healthy'}) { return <span className={styles.badge} data-tone={tone}>{children}</span>; }
 export function ServicesEmpty({title, description, actions}: {title: ReactNode; description: ReactNode; actions?: ReactNode}) { return <div className={styles.empty}><b>{title}</b><p>{description}</p>{actions}</div>; }
 export function ServicesFeedRow({unread, icon, tone = 'blue', title, body, when, actions}: {unread: boolean; icon: IconName; tone?: 'blue' | 'green' | 'amber'; title: ReactNode; body: ReactNode; when: ReactNode; actions?: ReactNode}) {

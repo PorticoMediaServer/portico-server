@@ -1,10 +1,10 @@
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {Fragment, useEffect, useMemo, useRef, useState} from 'react';
 import type {DeletionPreview, IdentityProvider, SecurityIntent, SecurityPurpose, SecurityResult, SecurityState} from '@core/hosted-security.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {ApiError} from '@core/index.ts';
 import {runAccountExport} from '@core/account-notifications.ts';
 import {AuthCodeBoxes, AuthPasswordField} from '../kit/accounts';
-import {ServicesBadge, ServicesGroup, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
+import {ServicesAuthenticator, ServicesBadge, ServicesDangerAction, ServicesGroup, ServicesRecoveryCodes, ServicesRowNote, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
 import {HostedError, ServicesNotice, ServicesQuiet, ServicesStrength} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
@@ -80,34 +80,35 @@ export function SecurityPanel({account, api, identity, username, error: parentEr
     {connected && <ServicesNotice tone="success">{t('web.hostedSecurity.providerConnected', {provider: providerName(connected)})}</ServicesNotice>}
     {state && <>
       <ServicesGroup title={t('web.hostedSecurity.signingIn')}>
-        <ServicesWorkspaceRow title={t('web.password')} help={state.hasPassword ? t('web.hostedSecurity.passwordHelp') : t('web.hostedSecurity.noPasswordOther')}>
+        <ServicesWorkspaceRow title={t('web.password')} help={state.hasPassword ? t('web.hostedSecurity.passwordHelp') : state.providers.length ? t('web.hostedSecurity.noPassword', {providers: state.providers.map(value => providerName(value.provider)).join(', ')}) : t('web.hostedSecurity.noPasswordOther')}>
           {state.hasPassword && <Button size="small" onClick={() => setTask('password_set_or_change')}>{t('web.hostedSecurity.change')}</Button>}
         </ServicesWorkspaceRow>
         <ServicesWorkspaceRow title={t('web.hostedSecurity.email')} help={<>{state.contactAddress}{state.contactAddress && <br />}{t('services.security.emailHelp')}</>}>
           {state.hasPassword && <Button size="small" onClick={() => setTask('email_change')}>{t('web.hostedSecurity.change')}</Button>}
         </ServicesWorkspaceRow>
-        {state.providers.map(provider => <ServicesWorkspaceRow key={provider.id} icon={provider.provider === 'apple' ? 'i-apple' : 'i-google'} title={t('web.hostedSecurity.signInWith', {provider: providerName(provider.provider)})}
-          help={onlyProvider ? t('web.hostedSecurity.onlyWayIn') : t('web.hostedSecurity.connected')}>
-          {!onlyProvider && <Button size="small" disabled={busy} onClick={() => setDisconnecting(provider)}>{t('web.hostedSecurity.disconnect')}</Button>}
-        </ServicesWorkspaceRow>)}
+        {state.providers.map(provider => <Fragment key={provider.id}><ServicesWorkspaceRow icon={provider.provider === 'apple' ? 'i-apple' : 'i-google'} title={t('web.hostedSecurity.signInWith', {provider: providerName(provider.provider)})}
+          help={t('web.hostedSecurity.connected')}>
+          <Button size="small" disabled={onlyProvider || busy} onClick={() => setDisconnecting(provider)}>{t('web.hostedSecurity.disconnect')}</Button>
+        </ServicesWorkspaceRow>{onlyProvider && <ServicesRowNote>{t('web.hostedSecurity.lastMethod')}</ServicesRowNote>}</Fragment>)}
         {offered.filter(provider => !state.providers.some(item => item.provider === provider)).map(provider => <ServicesWorkspaceRow key={provider} icon={provider === 'apple' ? 'i-apple' : 'i-google'} title={t('web.hostedSecurity.signInWith', {provider: providerName(provider)})}
           help={t('web.hostedSecurity.connectHelp', {provider: providerName(provider)})}><Button size="small" disabled={busy} onClick={() => void connect(provider)}>{t('web.hostedSecurity.connect')}</Button></ServicesWorkspaceRow>)}
       </ServicesGroup>
+      {!state.hasPassword && <ServicesNotice tone="info">{t('web.hostedSecurity.providerOnly')}</ServicesNotice>}
       <ServicesGroup title={t('web.twoStep.title')} description={t('web.hostedSecurity.twoStepHelp')}>
         <ServicesWorkspaceRow title={t('web.twoStep.title')} badge={<ServicesBadge tone={state.mfaEnabled ? 'healthy' : 'default'}>{t(state.mfaEnabled ? 'web.hostedSecurity.on' : 'web.hostedSecurity.off')}</ServicesBadge>}
           help={state.mfaEnabled ? t('web.hostedSecurity.codesLeft', {count: state.recoveryCodesRemaining}) : t('web.hostedSecurity.recommended')}>
           {state.hasPassword && <Button size="small" onClick={() => setTask(state.mfaEnabled ? 'mfa_disable' : 'mfa_enroll')}>{t(state.mfaEnabled ? 'web.hostedSecurity.turnOff' : 'web.twoStep.turnOn')}</Button>}
         </ServicesWorkspaceRow>
-        {state.mfaEnabled && <ServicesWorkspaceRow title={t('web.hostedSecurity.recoveryCodes')} help={t('web.hostedSecurity.recoveryCodesHelp')}><Button size="small" onClick={() => setTask('recovery_codes')}>{t('web.hostedSecurity.makeCodes')}</Button></ServicesWorkspaceRow>}
+        {state.mfaEnabled && state.hasPassword && <ServicesWorkspaceRow title={t('web.hostedSecurity.recoveryCodes')} help={t('web.hostedSecurity.recoveryCodesHelp')}><Button size="small" onClick={() => setTask('recovery_codes')}>{t('web.hostedSecurity.makeCodes')}</Button></ServicesWorkspaceRow>}
       </ServicesGroup>
       <ServicesGroup title={t('services.security.yourData')}><ServicesWorkspaceRow title={t('web.account.export.button')} help={t('web.account.export.help')}><Button size="small" icon="i-download" loading={exporting} onClick={() => void download()}>{t('web.account.export.button')}</Button></ServicesWorkspaceRow></ServicesGroup>
       {exportPending && <ServicesQuiet>{t('web.account.export.preparing')}</ServicesQuiet>}
-      <ServicesGroup title={t('web.deleteAccount.title')} danger><ServicesWorkspaceRow title={t('web.deleteAccount.row')}><Button size="small" icon="i-trash" onClick={() => setDeleting(true)}>{t('web.deleteAccount.action')}</Button></ServicesWorkspaceRow></ServicesGroup>
+      <ServicesGroup title={t('web.deleteAccount.title')} danger><ServicesWorkspaceRow title={t('web.deleteAccount.row')}><ServicesDangerAction compact onClick={() => setDeleting(true)}>{t('web.deleteAccount.action')}</ServicesDangerAction></ServicesWorkspaceRow></ServicesGroup>
       {task && <SecurityTask key={task} account={account} identity={identity} state={state} task={task} onClose={() => { setTask(undefined); void api.security(life.current?.signal).then(setState, setError); }} />}
       {deleting && <DeleteAccount account={account} identity={identity} target={state.contactAddress || username} onClose={() => setDeleting(false)} />}
     </>}
     <Dialog open={Boolean(disconnecting)} onOpenChange={open => { if (!open && !busy) setDisconnecting(undefined); }} title={t('web.hostedSecurity.disconnectTitle', {provider: disconnecting ? providerName(disconnecting.provider) : ''})}
-      description={t('web.hostedSecurity.disconnectBody', {provider: disconnecting ? providerName(disconnecting.provider) : ''})} footer={<><Button size="small" disabled={busy} onClick={() => setDisconnecting(undefined)}>{t('action.cancel')}</Button><Button size="small" loading={busy} onClick={() => void disconnect()}>{t('web.hostedSecurity.disconnect')}</Button></>}><></></Dialog>
+      description={t('web.hostedSecurity.disconnectBody', {provider: disconnecting ? providerName(disconnecting.provider) : ''})} footer={<><Button size="small" disabled={busy} onClick={() => setDisconnecting(undefined)}>{t('action.cancel')}</Button><ServicesDangerAction loading={busy} onClick={() => void disconnect()}>{t('web.hostedSecurity.disconnect')}</ServicesDangerAction></>}><></></Dialog>
   </>;
 }
 
@@ -138,11 +139,15 @@ function SecurityTask({account, identity, state, task, onClose}: {account: Servi
     finally { if (!signal.aborted) setBusy(false); }
   };
   const ready = confirm ? code.length === 6 : Boolean(password) && (!state.mfaEnabled || Boolean(factor.trim())) && (task === 'password_set_or_change' ? passwordStrength(value).acceptable : task !== 'email_change' || /^\S+@\S+\.\S+$/.test(value.trim()));
+  const commitLabel = t(confirm ? 'web.hostedSecurity.confirm' : task === 'password_set_or_change' ? 'account.changePasswordTitle' : task === 'email_change' ? 'services.security.sendCode' : task === 'mfa_disable' ? 'web.hostedSecurity.turnOff' : 'action.continue');
+  const commitAction = task === 'mfa_disable' && !confirm ? <ServicesDangerAction disabled={!ready} loading={busy} onClick={() => void submit()}>{commitLabel}</ServicesDangerAction>
+    : <Button size="small" variant="primary" disabled={!ready} loading={busy} onClick={() => void submit()}>{commitLabel}</Button>;
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }} title={title} showCloseButton={false}
-    footer={codes ? <Button size="small" variant="primary" onClick={onClose}>{t('action.done')}</Button> : <><Button size="small" disabled={busy} onClick={onClose}>{t('action.cancel')}</Button><Button size="small" variant="primary" disabled={!ready} loading={busy} onClick={() => void submit()}>{t(confirm ? 'web.hostedSecurity.confirm' : task === 'password_set_or_change' ? 'account.changePasswordTitle' : task === 'email_change' ? 'services.security.sendCode' : task === 'mfa_disable' ? 'web.hostedSecurity.turnOff' : 'action.continue')}</Button></>}>
+    footer={codes ? <Button size="small" variant="primary" onClick={onClose}>{t('action.done')}</Button> : <><Button size="small" disabled={busy} onClick={onClose}>{t('action.cancel')}</Button>{commitAction}</>}>
     {error ? <HostedError error={error} /> : null}
-    {codes ? <><ServicesQuiet>{t('services.security.codesBody')}</ServicesQuiet><pre>{codes.join('\n')}</pre><Button size="small" icon="i-copy" onClick={() => void navigator.clipboard.writeText(codes.join('\n')).catch(setError)}>{t('web.twoStep.copy')}</Button><Button size="small" icon="i-download" onClick={() => downloadText(codes.join('\n'), 'portico-recovery-codes.txt')}>{t('action.download')}</Button></> :
-      confirm ? <div className={styles.form}>{task === 'mfa_enroll' ? <><ServicesQuiet>{t('web.hostedSecurity.enterKey')}</ServicesQuiet><code>{result?.secret}</code>{result?.otpAuthUri && <a href={result.otpAuthUri}>{t('web.hostedSecurity.openAuthenticator')}</a>}</> : <ServicesQuiet>{t('web.hostedSecurity.sentCode', {address: value.trim()})}</ServicesQuiet>}<AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('web.twoStep.code')} disabled={busy} /></div> :
+    {codes ? <><ServicesQuiet>{t('services.security.codesBody')}</ServicesQuiet><ServicesRecoveryCodes codes={codes}
+      onCopy={() => void navigator.clipboard.writeText(codes.join('\n')).catch(setError)} onDownload={() => downloadText(codes.join('\n'), 'portico-recovery-codes.txt')} /></> :
+      confirm ? <div className={styles.form}>{task === 'mfa_enroll' ? <><ServicesQuiet>{t('web.hostedSecurity.enterKey')}</ServicesQuiet>{result?.secret && <ServicesAuthenticator secret={result.secret} uri={result.otpAuthUri} onCopy={() => void navigator.clipboard.writeText(result.secret!).catch(setError)} />}</> : <ServicesQuiet>{t('web.hostedSecurity.sentCode', {address: value.trim()})}</ServicesQuiet>}<AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('web.twoStep.code')} disabled={busy} /></div> :
       <form className={styles.form} onSubmit={event => { event.preventDefault(); if (ready) void submit(); }}>
         {task === 'password_set_or_change' && <ServicesQuiet>{t('web.hostedSecurity.othersSignedOut')}</ServicesQuiet>}
         {task === 'mfa_disable' && <ServicesQuiet>{t('services.security.disableBody')}</ServicesQuiet>}
@@ -172,7 +177,7 @@ function DeleteAccount({account, identity, target, onClose}: {account: ServicesA
     finally { if (!signal.aborted) setBusy(false); }
   };
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }} title={t('web.deleteAccount.confirmTitle')} showCloseButton={false}
-    footer={<><Button size="small" disabled={busy} onClick={onClose}>{t('action.cancel')}</Button>{preview?.canDelete && <Button size="small" loading={busy} disabled={!target || typed.trim().toLowerCase() !== target.toLowerCase()} onClick={() => void remove()}>{t('web.deleteAccount.confirmAction')}</Button>}</>}>
+    footer={<><Button size="small" disabled={busy} onClick={onClose}>{t('action.cancel')}</Button>{preview?.canDelete && <ServicesDangerAction loading={busy} disabled={!target || typed.trim().toLowerCase() !== target.toLowerCase()} onClick={() => void remove()}>{t('web.deleteAccount.confirmAction')}</ServicesDangerAction>}</>}>
     {error ? <HostedError error={error} /> : null}
     {!preview && !error && <ServicesQuiet>{t('web.deleteAccount.checking')}</ServicesQuiet>}
     {preview?.ownedServers.length ? <ServicesNotice tone="info">{t('services.security.stillOwn', {servers: preview.ownedServers.map(server => server.name).join(', ')})}</ServicesNotice> : preview?.canDelete ? <><ServicesQuiet>{t('web.deleteAccount.member', {count: preview.affectedServers.length})}</ServicesQuiet><TextField label={t('web.deleteAccount.typeLabel', {value: target})} value={typed} onChange={event => setTyped(event.currentTarget.value)} disabled={busy} /></> : preview ? <ServicesNotice>{t('web.deleteAccount.cannot')}</ServicesNotice> : null}
