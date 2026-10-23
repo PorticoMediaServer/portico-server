@@ -41,16 +41,16 @@ function ReaderBook({book, active, reportError, onBack}: {book: OpenBook; active
   };
   useEffect(() => {
     if (!active || panel !== 'search' || !query.trim()) {setHits([]); setSearching(false); return;}
-    const life = new AbortController(); let active = true;
+    const life = new AbortController(); let queryCurrent = true;
     setSearching(true); setHits([]);
     void (async () => {
       const found: ReaderSearchResult[] = [];
       for await (const hit of controller.search(query, {signal: life.signal, limit: 100})) {
-        if (!active || !authority.isCurrent()) return;
+        if (!queryCurrent || !authority.isCurrent()) return;
         found.push(hit); setHits([...found]);
       }
-    })().catch(error => {if (active && authority.isCurrent()) reportError(error);}).finally(() => {if (active) setSearching(false);});
-    return () => {active = false; life.abort();};
+    })().catch(error => {if (queryCurrent && authority.isCurrent()) reportError(error);}).finally(() => {if (queryCurrent) setSearching(false);});
+    return () => {queryCurrent = false; life.abort();};
   }, [controller, authority, active, panel, query, reportError]);
   const contents = (items: readonly ReaderTocItem[]): readonly ReaderContentsEntry[] => items.map(item => ({id: item.id, label: item.label,
     page: item.location.pageLabel, onNavigate: () => navigate(item.location), children: item.children ? contents(item.children) : undefined}));

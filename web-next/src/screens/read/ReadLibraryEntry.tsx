@@ -30,7 +30,7 @@ function LibraryRows({resources, name, comic, onMore}: {resources: Resources; na
   return <div ref={root} className={styles.results} data-view="grid">
     {state.total === 0 ? <StateView title={t('library.emptyLibrary')} body={t('library.emptyLibraryBody')}/> : <WindowedGrid collection={resources.collection} label={name}
       height={height} cardWidth={cardWidth} rowHeight={cardWidth * 1.5 + 58} gap={20} rowGap={30} renderPlaceholder={() => <Skeleton width={cardWidth} height={cardWidth * 1.5}/>}
-      renderItem={item => <CoverCard kind={comic ? 'comic' : 'book'} model={{id: item.id, title: item.title, caption: []}} context="grid" density="grid" visible
+      renderItem={item => <CoverCard kind={comic ? 'comic' : 'book'} model={{title: item.title, caption: []}} context="grid" density="grid" visible
         generated={{title: item.title, glyph: Array.from(item.title)[0] ?? '', tint: generatedCoverTint(item.title)}} disabled={!item.inventoryAvailable}
         onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: item.id}}).catch(resources.reportError);}}
         onPlay={item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(item.id, item.sourceId)).catch(resources.reportError);} : undefined}
