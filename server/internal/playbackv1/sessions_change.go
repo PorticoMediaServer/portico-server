@@ -534,7 +534,7 @@ func (s *Service) Timeline(ctx context.Context, c Caller, id string, report Repo
 		if n, _ := res.RowsAffected(); n == 0 {
 			return nil
 		}
-		if err = playback.StoreObservedPlaybackTx(ctx, tx, r.id, c.DeviceID, report.Generation, report.Seq, now.UnixMilli(), report.ObservedPlayback); err != nil {
+		if err = playback.StoreObservedPlaybackTx(ctx, tx, r.id, c.DeviceID, r.generation, report.Generation, report.Seq, now.UnixMilli(), report.ObservedPlayback); err != nil {
 			return err
 		}
 		r.state, r.position, r.lastSeq, r.partIndex, r.audioTrack, r.subtitleTrack, r.revision, r.lease = state, report.PositionMs, report.Seq, part, audio, subtitle, revision, lease

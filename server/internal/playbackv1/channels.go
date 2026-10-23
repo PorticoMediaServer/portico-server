@@ -394,8 +394,12 @@ func (s *Service) timelineChannel(ctx context.Context, r row, report Report) (ti
 		if changed {
 			revision++
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,position_ms=?,last_seq=?,lease_expires_ms=?,revision=?,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND ended_ms=0`, state, report.PositionMs, report.Seq, lease, revision, now.UnixMilli(), state, now.UnixMilli(), r.id); err != nil {
+		result, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,position_ms=?,last_seq=?,lease_expires_ms=?,revision=?,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND ended_ms=0 AND generation=? AND last_seq<?`, state, report.PositionMs, report.Seq, lease, revision, now.UnixMilli(), state, now.UnixMilli(), r.id, r.generation, report.Seq)
+		if err != nil {
 			return err
+		}
+		if accepted, _ := result.RowsAffected(); accepted == 0 {
+			return nil
 		}
 		st, err := s.Channels.ReadTx(ctx, tx, rowPrincipal(r), r.id)
 		if err == nil && strconv.Itoa(report.Generation) == st.Media.BufferGeneration {
@@ -408,7 +412,11 @@ func (s *Service) timelineChannel(ctx context.Context, r row, report Report) (ti
 			}
 			// A position outside the window or a gap is recorded as the seek's error;
 			// neither fails the report.
-			if err := s.Channels.ObserveTx(ctx, tx, r.id, st.Media.BufferGeneration, report.Seq, report.PositionMs*1000, ack); err != nil && !isControlFault(err) {
+			if observedErr := s.Channels.ObserveTx(ctx, tx, r.id, st.Media.BufferGeneration, report.Seq, report.PositionMs*1000, ack); observedErr != nil {
+				if !isControlFault(observedErr) {
+					return observedErr
+				}
+			} else if err := playback.StoreObservedPlaybackTx(ctx, tx, r.id, r.device, r.generation, report.Generation, report.Seq, now.UnixMilli(), report.ObservedPlayback); err != nil {
 				return err
 			}
 		}
