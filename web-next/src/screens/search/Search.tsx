@@ -7,7 +7,7 @@ import {Button, Chip, TextField} from '../../kit/controls';
 import {PosterCard, SquareCard, CircleCard, EpisodeTile} from '../../kit/cards';
 import {Artwork} from '../../kit/artwork';
 import {WindowedGrid} from '../../kit/layout';
-import {StateView, Skeleton} from '../../kit/states';
+import {Skeleton} from '../../kit/states';
 import {Banner} from '../../kit/overlays';
 import {SearchEmpty} from '../../kit/states/SearchEmpty';
 import {entryCard} from '../detail/model';
@@ -20,6 +20,7 @@ import styles from './search.module.css';
 import {TopResult} from './TopResult';
 import {runScreenCommand} from '../detail/context';
 import {useLoadingClock} from '../detail/Loading';
+import {ScreenProblem} from '../detail/ScreenProblem';
 
 type ChipId = SearchGroup | 'all';
 const keyOf = (entry: SearchEntry) => JSON.stringify(['libraryId' in entry ? entry.libraryId : '', entry.kind, entry.id]);
@@ -84,8 +85,7 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
       {clearFailed && <p role="alert">{t('web.search.clearFailed')}</p>}
       {problem && <p role="status">{t(problem === 'short' ? 'web.search.tooShort' : problem === 'words' ? 'web.search.tooManyWords' : 'web.search.tooLong')}</p>}
       {snapshot.phase === 'loading' && !showing && <SearchLoading key={snapshot.generation} />}
-      {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
-        primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}} />}
+      {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <ScreenProblem context={context} error={snapshot.error} retry={() => { void service.retry(); }} />}
       {failed.length > 0 && <div role="status" className={styles.partial}><Icon name="i-clock" size={22} /><span>{t('web.search.partial', {groups: new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format(failed.map(value => t(searchGroupLabel(value.id))))})}</span><Button icon="i-retry" size="small" onClick={() => { void service.refresh(); }}>{t('next.states.tryAgain')}</Button></div>}
       {empty && <SearchEmpty title={t(group ? 'web.search.nothingIn' : 'web.search.noMatches', group ? {group: t(searchGroupLabel(group))} : {query: text.trim()})} body={group ? undefined : t('web.search.noMatchesBody')}
         action={group ? <Button variant="primary" size="compact" onClick={() => setChip('all')}>{t('web.search.everything')}</Button> : undefined} />}
