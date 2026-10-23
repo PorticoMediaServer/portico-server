@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
@@ -101,5 +102,49 @@ func TestRangeSessionMissingAuthorityAndReadFailure(t *testing.T) {
 	}
 	if reads != 1 {
 		t.Fatal("retried failed session")
+	}
+}
+
+func TestRangeSessionCloseCancelsInFlightReadWithoutPublishingBytes(t *testing.T) {
+	scan := scannedRangeObservation()
+	life, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	s := &RangeSession{life: life, cancel: cancel, admission: RangeAdmission{Scan: scan, Check: func(context.Context) error { return nil }, Observe: func(context.Context) (remotemedia.FileObservation, error) { return scan, nil }, OnChanged: func() {}}}
+	reads := 0
+	s.readRange = func(ctx context.Context, _ string, _ string, _, _, _ int64) ([]byte, error) {
+		reads++
+		close(started)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	type result struct {
+		n   int
+		err error
+	}
+	done := make(chan result, 1)
+	buffer := []byte("----")
+	go func() {
+		n, err := s.ReadAt(context.Background(), buffer, 0)
+		done <- result{n, err}
+	}()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("read never started")
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-done:
+		if got.n != 0 || got.err == nil || string(buffer) != "----" {
+			t.Fatal("closing exposed incomplete bytes", got, string(buffer))
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("closing did not cancel the active read")
+	}
+	if n, err := s.ReadAt(context.Background(), buffer, 0); n != 0 || err == nil || reads != 1 {
+		t.Fatal("closed acquisition reopened", n, err, reads)
 	}
 }

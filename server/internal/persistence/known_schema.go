@@ -1202,7 +1202,10 @@ table remote_object_refs
 table remote_playback
 table remote_scan_cursors
 table remote_scan_generations
+table remote_scan_observation_hashes
+table remote_scan_observations
 table remote_source_operations
+table remote_source_read_profiles
 table remote_sources
 table reset_file_sessions
 table restriction_outbox
@@ -2553,8 +2556,7 @@ view catalog_related_facets_serving
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context
-`
+view listening_book_context`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

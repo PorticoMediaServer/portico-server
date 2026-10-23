@@ -12,8 +12,11 @@ import (
 
 type episodeFactsFixture struct {
 	mode, providerState string
+	processGeneration   string
 	still               bool
 	artworkRevision     int64
+	leaseRevision       int64
+	leaseError          error
 	limits              ReadLimits
 }
 
@@ -23,18 +26,18 @@ func (f *episodeFactsFixture) ReadEpisodeStateTx(ctx context.Context, tx *sql.Tx
 }
 
 func (f *episodeFactsFixture) ReadEpisodeWorkTx(context.Context, *sql.Tx, EpisodeTarget, EpisodePurpose) (EpisodeWorkState, error) {
-	return EpisodeWorkState{ServerRevision: 1, LibraryRevision: 1, ProviderRevision: 1, ReadLeaseRevision: 1, RemoteProcessGeneration: "fixture-process", ProviderState: f.providerState, Server: ReadCeiling{Known: true}, Library: ReadCeiling{Known: true}, Provider: ReadCeiling{Known: true}}, nil
+	return EpisodeWorkState{ServerRevision: 1, LibraryRevision: 1, ProviderRevision: 1, ReadLeaseRevision: f.leaseRevision, RemoteProcessGeneration: f.processGeneration, ProviderState: f.providerState, Server: ReadCeiling{Known: true}, Library: ReadCeiling{Known: true}, Provider: ReadCeiling{Known: true}}, nil
 }
 
 func (f *episodeFactsFixture) CheckEpisodeReadLease(_ context.Context, binding EpisodeReadLeaseBinding) error {
 	if binding.Purpose != EpisodeExplicitOneEpisode || binding.Limits != f.limits || binding.RemoteProcessGeneration != "fixture-process" || binding.ReadLeaseRevision != 1 || binding.Observation.SourceID != "remote" || binding.Observation.Generation != "1" || binding.RootIncarnation == "" || binding.LibrarySourceGeneration < 1 {
 		return ErrEpisodeAuthority
 	}
-	return nil
+	return f.leaseError
 }
 
 func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
-	for _, changed := range []string{"profile", "generation", "object", "actor", "range", "library", "provider"} {
+	for _, changed := range []string{"profile", "generation", "object", "actor", "range", "library", "provider", "process", "lease_revision", "lease", "publication_actor", "publication_profile", "publication_object"} {
 		t.Run(changed, func(t *testing.T) {
 			ctx := context.Background()
 			f := newObservationFixture(t)
@@ -59,7 +62,7 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 			if err := f.s.db.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE kind=4`).Scan(&episode); err != nil {
 				t.Fatal(err)
 			}
-			facts := &episodeFactsFixture{mode: "off", providerState: "ready", artworkRevision: 1, limits: ReadLimits{Connections: 2, RequestsPerSecond: 2}}
+			facts := &episodeFactsFixture{mode: "off", providerState: "ready", artworkRevision: 1, leaseRevision: 1, processGeneration: "fixture-process", limits: ReadLimits{Connections: 2, RequestsPerSecond: 2}}
 			resolver := EpisodeAuthorityResolver{Sources: f.s, Identities: identities, Episodes: facts, Work: facts}
 			request := EpisodeAuthorityRequest{Target: EpisodeTarget{LibraryID: f.library, LibrarySourceID: f.library, ObjectID: "object", SourceRevision: "1:a", EpisodeID: episode}, Purpose: EpisodeExplicitOneEpisode, Owner: owner, Operation: "episode_thumbnail", CostClass: "decode"}
 			gated, err := dbwork.BeginSnapshot(ctx, f.s.db)
@@ -95,6 +98,41 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 				mutation = `UPDATE library_scan_policies SET revision=revision+1`
 			case "provider":
 				facts.providerState = "throttled"
+			case "process":
+				facts.processGeneration = "replacement-process"
+			case "lease_revision":
+				facts.leaseRevision++
+			case "lease":
+				facts.leaseError = ErrEpisodeAuthority
+			case "publication_actor", "publication_profile", "publication_object":
+				publication, e := dbwork.Begin(ctx, f.s.db, dbwork.ClassBackgroundMedia)
+				if e != nil {
+					t.Fatal(e)
+				}
+				defer publication.Rollback()
+				switch changed {
+				case "publication_actor":
+					_, e = publication.Tx().ExecContext(ctx, `UPDATE authorization_session_families SET revoked=1 WHERE id=?`, family)
+				case "publication_profile":
+					list, _ := SourceReadPreset("list")
+					_, e = f.s.ApplySourceReadProfileTx(ctx, publication.Tx(), identities, owner, SourceReadProfileChange{SourceID: "remote", Generation: "1", Profile: list})
+				case "publication_object":
+					_, e = publication.Tx().ExecContext(ctx, `UPDATE inventory_objects SET revision='replacement' WHERE id='object'`)
+				}
+				if e != nil {
+					t.Fatal(e)
+				}
+				// The recheck sees the caller-owned publication transaction, not
+				// a separate earlier read snapshot. This tests the DB guard;
+				// no production artwork publication/lease adapter is implied.
+				if e = authority.CheckTx(ctx, publication.Tx()); e == nil {
+					t.Fatal("publication ignored transaction-local revocation", changed)
+				}
+				publication.Rollback()
+				if e = authority.Check(ctx); e == nil {
+					t.Fatal("failed publication fence revived after rollback")
+				}
+				return
 			}
 			if mutation != "" {
 				if _, err = f.s.db.Exec(mutation, args...); err != nil {

@@ -7,7 +7,8 @@ package persistence
 // It exists so a database can be asked whether it still has the columns this
 // build's statements name, without anything to compare it against but the
 // build itself.
-const knownSchemaColumns = `access_invitations.accepted_ms
+const knownSchemaColumns = `
+access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
 access_invitations.bound_username
@@ -4218,11 +4219,33 @@ remote_scan_cursors.path
 remote_scan_generations.generation
 remote_scan_generations.job_id
 remote_scan_generations.source_id
+remote_scan_observation_hashes.kind
+remote_scan_observation_hashes.relative_path
+remote_scan_observation_hashes.source_id
+remote_scan_observation_hashes.value
+remote_scan_observations.last_scan_job
+remote_scan_observations.modified_ns
+remote_scan_observations.object_id
+remote_scan_observations.provider_etag
+remote_scan_observations.relative_path
+remote_scan_observations.revision
+remote_scan_observations.scan_revision
+remote_scan_observations.served_etag
+remote_scan_observations.size
+remote_scan_observations.source_generation
+remote_scan_observations.source_id
 remote_source_operations.actor
 remote_source_operations.created_at
 remote_source_operations.fingerprint
 remote_source_operations.operation_id
 remote_source_operations.response
+remote_source_read_profiles.bytes_per_second
+remote_source_read_profiles.connections
+remote_source_read_profiles.requests_per_second
+remote_source_read_profiles.revision
+remote_source_read_profiles.scan_depth
+remote_source_read_profiles.source_id
+remote_source_read_profiles.whole_file_reads
 remote_sources.config
 remote_sources.credential_present
 remote_sources.error_code
@@ -4934,4 +4957,5 @@ webhooks.name
 webhooks.revision
 webhooks.secret
 webhooks.updated_ms
-webhooks.url`
+webhooks.url
+`
