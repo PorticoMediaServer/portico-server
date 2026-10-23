@@ -8,6 +8,15 @@ import {defaultI18n} from '@i18n';
 
 export const mediaKinds = ['movies', 'tv', 'music', 'audiobooks', 'live'] as const;
 export type MediaKind = typeof mediaKinds[number];
+/** The drawing's main title is the show, book or current live programme.
+ * Channel and episode names remain their separate facts below it. */
+export function sessionTitle(session: AdminSession): string {
+  if (session.live) return session.programme?.title || '';
+  return session.item?.showTitle || session.item?.bookTitle || session.title;
+}
+export function sessionStopTitle(session: AdminSession): string {
+  return sessionTitle(session) || session.channel?.name || session.title;
+}
 export function orderedSessions(sessions: readonly AdminSession[]): readonly AdminSession[] {
   const converts = (s: AdminSession) => Object.values(s.decision).some(d => d?.action === 'transcode' || d?.action === 'burn');
   return [...sessions].sort((a, b) => Number(!!b.problem) - Number(!!a.problem) || Number(converts(b)) - Number(converts(a)) || Date.parse(b.startedAt ?? '') - Date.parse(a.startedAt ?? '') || a.id.localeCompare(b.id));

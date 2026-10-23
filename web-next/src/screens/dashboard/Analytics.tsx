@@ -5,7 +5,7 @@ import type {PlayHistoryPeriod} from '@core/play-history.ts';
 import {Select, Button, Segmented} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
 import type {DashboardBindings} from './bindings';
-import {useDashboardAccounts} from './use-read';
+import type {DashboardAccounts} from './use-read';
 import type {DashboardReportController} from './use-report';
 import {fmtDur, fmtHrs, formatReportBucketTitle, formatHourOrdinal, formatQuietHours, niceScale} from './format';
 import {curveSegments, historyAxisTicks, plotLine, hours, mediaKinds, quietestHours} from './model';
@@ -16,7 +16,7 @@ const historyKinds = mediaKinds;
 const ranges = ['7d', '30d', '90d', 'all'] as const;
 const duration = (ms: number) => fmtHrs(hours(ms));
 const watchedDuration = (ms: number) => fmtDur(hours(ms));
-export function Analytics({bindings: b, report}: {bindings: DashboardBindings; report: DashboardReportController}) {
+export function Analytics({bindings: b, report, accounts}: {bindings: DashboardBindings; report: DashboardReportController; accounts: DashboardAccounts}) {
   const [showAll, setShowAll] = useState(false), [personTip, showPersonTip] = useState<{person: NonNullable<DashboardReportController['state']['value']>['people']['items'][number]; point: TipPoint} | undefined>();
   const {query, change, state} = report;
   const peopleRange = query.peoplePeriod, historyRange = query.period, media = query.media ?? 'all', person = query.accountId ?? 'all', topKind = query.topKind, topRange = query.topPeriod, topPerson = query.topAccountId ?? 'all';
@@ -28,7 +28,6 @@ export function Analytics({bindings: b, report}: {bindings: DashboardBindings; r
   const setTopRange = (topPeriod: PlayHistoryPeriod) => change({topPeriod});
   const setTopPerson = (value: string) => change({topAccountId: value === 'all' ? undefined : value});
   const people = {...state, value: state.value?.people}, history = {...state, value: state.value?.history}, top = {...state, value: state.value?.topPlayed};
-  const accounts = useDashboardAccounts(b);
   const peopleOptions = [{value: 'all', label: t('next.dashboard.everyone')}, ...accounts.items.map(p => ({value: p.accountId, label: p.username}))];
   const firstTop = top.value?.items[0], topBackdrop = firstTop ? b.artwork(firstTop.itemId, 'backdrop', firstTop.backdropRevision) : undefined;
   const peoplePage = people.value?.items ?? [], maxTime = Math.max(1, ...peoplePage.map(p => p.watchedMs));

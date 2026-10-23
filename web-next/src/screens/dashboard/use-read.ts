@@ -31,11 +31,12 @@ export function useDashboardRead<T>(bindings: DashboardBindings, load: (signal: 
 }
 
 /** The filter enumerates actual account IDs, including servers with more than one hundred people. */
-export function useDashboardAccounts(bindings: DashboardBindings) {
+export function useDashboardAccounts(bindings: DashboardBindings, enabled = true) {
   const load = useCallback((signal: AbortSignal) => readDashboardAccounts(bindings, signal), [bindings]);
-  const state = useDashboardRead(bindings, load, true, 0, accountChanges);
-  return {items: state.value ?? [], loading: state.loading};
+  const state = useDashboardRead(bindings, load, enabled, 0, accountChanges);
+  return {...state, items: state.value ?? []};
 }
+export type DashboardAccounts = ReturnType<typeof useDashboardAccounts>;
 
 const noAuthoritySubscription = () => () => {};
 export function useDashboardAuthority(bindings: DashboardBindings): boolean {

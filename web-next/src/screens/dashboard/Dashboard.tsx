@@ -9,8 +9,8 @@ import {Dialog, ToastHost, type ToastData} from '../../kit/overlays';
 import {Icon} from '../../kit/Icon';
 import type {DashboardAlert, DashboardBindings, DashboardSessions} from './bindings';
 import {fmtMbps, fmtPct} from './format';
-import {loadTileValue, orderedSessions} from './model';
-import {useDashboardAuthority, useDashboardRead, type ReadState} from './use-read';
+import {loadTileValue, orderedSessions, sessionStopTitle} from './model';
+import {useDashboardAccounts, useDashboardAuthority, useDashboardRead, type ReadState} from './use-read';
 import {Range, ReadFeedback, Section, t} from './shared';
 import {Chart, type ChartSeries} from './Chart';
 import {SessionCard} from './SessionCard';
@@ -20,7 +20,11 @@ import {readNowPlaying} from './pages';
 import styles from './dashboard.module.css';
 
 export type DashboardScreenProps = Readonly<{bindings: DashboardBindings; embedded?: boolean; initialSection?: 'streams' | 'activity' | 'updates'}>;
-export function DashboardScreen({bindings: b, embedded = false, initialSection}: DashboardScreenProps) {
+export function DashboardScreen(props: DashboardScreenProps) {
+  const b = props.bindings;
+  return <DashboardView key={JSON.stringify([b.scope.serverId, b.scope.viewerId, b.role])} {...props} />;
+}
+function DashboardView({bindings: b, embedded = false, initialSection}: DashboardScreenProps) {
   const current = useDashboardAuthority(b);
   const ref = useRef<HTMLDivElement>(null), allowed = current && b.isMainProfile() && (b.role === 'owner' || b.role === 'admin');
   const statusLoad = useCallback((signal: AbortSignal) => b.read.status(signal), [b]);
@@ -30,15 +34,16 @@ export function DashboardScreen({bindings: b, embedded = false, initialSection}:
   const liveLoad = useCallback((signal: AbortSignal) => b.read.telemetry('live', signal), [b]);
   const live = useDashboardRead(b, liveLoad, allowed && b.role === 'owner', 2000);
   const report = useDashboardReport(b, allowed && b.role === 'owner');
+  const accounts = useDashboardAccounts(b, allowed && b.role === 'owner');
   useEffect(() => {if (initialSection) ref.current?.querySelector(`[data-dashboard-section="${initialSection}"]`)?.scrollIntoView({block: 'start'});}, [initialSection]);
   if (!allowed) return null;
-  const failed = sessions.failed || b.role === 'owner' && (status.failed || live.failed || report.state.failed);
-  const retry = () => {sessions.refresh(); if (b.role === 'owner') {status.refresh(); live.refresh(); report.state.refresh();}};
+  const failed = sessions.failed || b.role === 'owner' && (status.failed || live.failed || report.state.failed || accounts.failed);
+  const retry = () => {sessions.refresh(); if (b.role === 'owner') {status.refresh(); live.refresh(); report.state.refresh(); accounts.refresh();}};
   return <div className={styles.dashboard} ref={ref}>{!embedded && <h2 className={styles.pageTitle}>{t('next.dashboard.title')}</h2>}
     {failed ? <ReadFeedback openHome={b.effects.openHome} state={{failed: true, loading: false, refresh: retry}} /> : <>
       {b.role === 'owner' && <Status bindings={b} status={status} />}
       <div data-dashboard-section="streams"><NowPlaying bindings={b} state={sessions} /></div>
-      {b.role === 'owner' && <><Load bindings={b} report={report} live={live} /><div data-dashboard-section="activity"><Analytics bindings={b} report={report} /></div><Tasks status={status} /></>}
+      {b.role === 'owner' && <><Load bindings={b} report={report} live={live} /><div data-dashboard-section="activity"><Analytics bindings={b} report={report} accounts={accounts} /></div><Tasks status={status} /></>}
     </>}
   </div>;
 }
@@ -55,7 +60,7 @@ function NowPlaying({bindings: b, state}: {bindings: DashboardBindings; state: S
     (buttons?.[Math.min(target.index, buttons.length - 1)] ?? stack.current)?.focus({preventScroll: true}); removed.current = undefined;
   }, [state.value, state.loading, state.failed]);
   return <Section title={t('next.dashboard.now')} extra={totals && totals.streams > 0 && <><span>{t('next.dashboard.streams', {count: totals.streams})}</span><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>}>
-    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <div className={styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}>{sessions.map((s, index) => <SessionCard key={s.id} session={s} bindings={b} refresh={id => {if (id) {removed.current = {id, index}; showToast({id, message: t('next.dashboard.stopped', {title: s.title}), icon: 'i-check'});} state.refresh();}} />)}
+    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <div className={styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}>{sessions.map((s, index) => <SessionCard key={s.id} session={s} bindings={b} refresh={id => {if (id) {removed.current = {id, index}; showToast({id, message: t('next.dashboard.stopped', {title: sessionStopTitle(s)}), icon: 'i-check'});} state.refresh();}} />)}
       {!sessions.length && <p className={styles.empty}>{t('next.dashboard.nobody')}</p>}
     </div>}
     <ToastHost toast={toast} onDismiss={() => showToast(null)} />

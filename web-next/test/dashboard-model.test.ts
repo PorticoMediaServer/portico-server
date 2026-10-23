@@ -1,8 +1,15 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {chartPaths, loadTileValue, orderedSessions, quietestHours, sessionTracks} from '../src/screens/dashboard/model.ts';
+import {chartPaths, loadTileValue, orderedSessions, quietestHours, sessionTitle, sessionStopTitle, sessionTracks} from '../src/screens/dashboard/model.ts';
 import type {DashboardSession} from '../src/screens/dashboard/bindings.ts';
 const base: DashboardSession = {id: 'session', user: 'account', profile: 'Kids', device: 'TV', title: 'Actual title', kind: 'vod', state: 'playing', positionMs: 1, location: 'local', startedAt: '2026-10-23T01:00:00Z', decision: {}};
+test('current programme, show and book titles retain their actual meaning in the card and Stop', () => {
+  const live = {...base, live: true, title: 'Actual channel', channel: {name: 'Actual channel', number: '101'}, programme: {title: 'Actual programme', endsAt: '2026-10-23T02:00:00Z'}};
+  assert.equal(sessionTitle(live), 'Actual programme'); assert.equal(sessionStopTitle(live), 'Actual programme');
+  assert.equal(sessionTitle({...live, programme: undefined}), ''); assert.equal(sessionStopTitle({...live, programme: undefined}), 'Actual channel');
+  assert.equal(sessionTitle({...base, title: 'Actual episode', item: {id: 'item', kind: 'episode', title: 'Actual episode', art: [], showTitle: 'Actual show'}}), 'Actual show');
+  assert.equal(sessionTitle({...base, item: {id: 'item', kind: 'audiobook_file', title: 'Actual chapter', art: [], bookTitle: 'Actual book'}}), 'Actual book');
+});
 test('source/delivery actions use committed modes and unknown hardware remains absent', () => {
   const session = {...base, media: {video: {id: 'v', codec: 'hevc', height: 2160}}, delivery: {streams: [{kind: 'video', inputCodec: 'hevc', outputCodec: 'h264', action: 'convert'}]}};
   assert.deepEqual(sessionTracks(session), [{reportedAction: 'convert', route: 'converted', kind: 'video', source: '4K HEVC', action: 'transcode', output: undefined, hardware: false}]);

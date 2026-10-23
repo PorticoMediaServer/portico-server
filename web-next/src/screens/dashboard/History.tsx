@@ -10,7 +10,7 @@ import styles from './dashboard.module.css';
 export function HistoryScreen({bindings: b, embedded = false}: {bindings: DashboardBindings; embedded?: boolean}) {
   const current = useDashboardAuthority(b);
   if (!current || !b.isMainProfile() || b.role !== 'owner') return null;
-  return <div className={styles.dashboard}>{!embedded && <h2 className={styles.pageTitle}>{t('next.dashboard.history')}</h2>}<HistoryTable bindings={b} /></div>;
+  return <div className={styles.dashboard}>{!embedded && <h2 className={styles.pageTitle}>{t('next.dashboard.history')}</h2>}<HistoryTable key={JSON.stringify([b.scope.serverId, b.scope.viewerId])} bindings={b} /></div>;
 }
 function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
   const [query, setQuery] = useState<TableQuery>({search: '', filters: {media: 'all', person: 'all', range: 'all'}, sort: {by: 'played', direction: 'desc'}});
@@ -26,6 +26,7 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
     if (page.total !== undefined) setTotal(page.total);
   }, [state.value, cursor]);
   const people = useDashboardAccounts(b);
+  const failed = state.failed || people.failed;
   useEffect(() => {const reset = () => setCursor(''); const offs = ['session.updated', 'playback.history'].map(type => b.events?.on(type, reset)); return () => offs.forEach(off => off?.());}, [b]);
   const tableRows = useMemo(() => rows.map((entry): SettingsTableRow => {
     const artwork = entry.itemId ? b.artwork(entry.itemId, entry.kind === 'song' || entry.kind === 'audiobook_file' ? 'square' : 'poster') : undefined;
@@ -39,7 +40,7 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
       ...(entry.location === 'local' || entry.location === 'remote' ? {where: {title: t(entry.location === 'local' ? 'next.dashboard.home' : 'next.dashboard.away'), tone: 'quiet' as const}} : {}),
     }};
   }), [rows, b]);
-  return <Section title={t('next.dashboard.playsHeading')}><ReadFeedback openHome={b.effects.openHome} state={state} />{!state.failed && <SettingsTable label={t('next.dashboard.history')} searchLabel={t('next.dashboard.search')} rows={tableRows}
+  return <Section title={t('next.dashboard.playsHeading')}><ReadFeedback openHome={b.effects.openHome} state={failed ? {loading: false, failed: true, refresh: () => {state.refresh(); people.refresh();}} : state} />{!failed && <SettingsTable label={t('next.dashboard.history')} searchLabel={t('next.dashboard.search')} rows={tableRows}
     columns={[
       {id: 'title', label: t('next.dashboard.titleColumn'), kind: 'main', sortable: true, width: '27%'},
       {id: 'person', label: t('next.dashboard.person'), kind: 'main', sortable: true, width: '15%'},
