@@ -143,11 +143,7 @@ func (d Dependencies) readingSessionProgress(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer f.Close()
-	p, ok := d.readingPrincipal(w, r)
-	if !ok {
-		return
-	}
-	progress, err := d.readingService().SessionProgress(r.Context(), p, r.PathValue("sessionId"))
+	progress, err := f.Progress()
 	if err != nil {
 		readingFailure(w, err)
 		return
@@ -165,10 +161,6 @@ func (d Dependencies) readingSaveSessionProgress(w http.ResponseWriter, r *http.
 		return
 	}
 	defer f.Close()
-	p, ok := d.readingPrincipal(w, r)
-	if !ok {
-		return
-	}
 	var request ReadingProgressRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 	if err := decode(w, r, &request); err != nil {
@@ -176,7 +168,7 @@ func (d Dependencies) readingSaveSessionProgress(w http.ResponseWriter, r *http.
 		return
 	}
 	l := request.Location
-	progress, saved, err := d.readingService().SaveSessionProgress(r.Context(), p, r.PathValue("sessionId"), request.ExpectedRevision, reading.Location{Format: string(l.Format), CFI: l.CFI, Section: l.Section, PageIndex: l.PageIndex, Progression: l.Progression})
+	progress, saved, err := f.SaveProgress(request.ExpectedRevision, reading.Location{Format: string(l.Format), CFI: l.CFI, Section: l.Section, PageIndex: l.PageIndex, Progression: l.Progression})
 	if err != nil {
 		readingFailure(w, err)
 		return
