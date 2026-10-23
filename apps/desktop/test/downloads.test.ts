@@ -65,3 +65,48 @@ test('other-profile removal sends exact native confirmation and rejects every di
   assert.deepEqual(calls.at(-1),{action:'removeOtherProfiles',snapshotToken:token});
  }finally{store.dispose();}
 });
+
+const prepared=()=>({preparationId:'f'.repeat(64),scope,selectionRevision:'d'.repeat(64),items:[
+ {id:'1'.repeat(64),revision:2,itemId:'second',localSourceId:'2'.repeat(64),durationMs:181000,title:row.title},
+ {id:'3'.repeat(64),revision:4,itemId:'first',localSourceId:'4'.repeat(64),durationMs:181000,title:{...row.title,number:3}},
+]});
+const selection={kind:'group' as const,selector:{kind:'songs' as const,parentId:'album',groupId:'disc'},expectedRevision:'d'.repeat(64)};
+
+test('complete native queue preparation preserves native order and releases only its opaque preparation',async()=>{
+ const calls:Record<string,unknown>[]=[];
+ const store=await DesktopDownloadStore.bind(scope,()=>true,bridge(async(_,operation)=>{
+  calls.push({...operation});return operation.action==='prepareLocalQueue'?{kind:'localQueue',value:{...prepared(),path:'/private/not-public'}}:{kind:'done'};
+ }));
+ try{
+  const queue=await store.prepareLocalQueue(selection,new AbortController().signal);
+  assert.deepEqual(queue.items.map(value=>value.itemId),['second','first']);assert.equal(queue.items[0].title.durationSeconds,181);
+  assert.equal(Object.isFrozen(queue.items),true);assert.doesNotMatch(JSON.stringify(queue),/private|path|lease/);
+  await store.releaseLocalQueue(queue);
+  assert.deepEqual(calls.at(-1),{action:'releaseLocalQueue',preparationId:'f'.repeat(64)});
+  await assert.rejects(store.releaseLocalQueue({...queue}),/downloads_conflict/);
+ }finally{store.dispose();}
+});
+
+test('late native preparation after cancellation and disposal retires its real opaque result',async()=>{
+ let finish!:(value:unknown)=>void;const calls:Record<string,unknown>[]=[];
+ const store=await DesktopDownloadStore.bind(scope,()=>true,bridge(async(_,operation)=>{
+  calls.push({...operation});return operation.action==='prepareLocalQueue'?new Promise(resolve=>{finish=resolve}):{kind:'done'};
+ }));
+ const abort=new AbortController(),pending=store.prepareLocalQueue(selection,abort.signal);
+ abort.abort();store.dispose();finish({kind:'localQueue',value:prepared()});
+ await assert.rejects(pending,{name:'AbortError'});
+ assert.deepEqual(calls.at(-1),{action:'releaseLocalQueue',preparationId:'f'.repeat(64)});
+});
+
+test('a wrong family, selection revision or duplicate native queue handle is rejected and retired',async()=>{
+ for(const bad of [
+  {...prepared(),scope:{...scope,sessionFamilyId:'other'}},
+  {...prepared(),selectionRevision:'a'.repeat(64)},
+  {...prepared(),items:[prepared().items[0],{...prepared().items[1],localSourceId:prepared().items[0].localSourceId}]},
+ ]){
+  const calls:Record<string,unknown>[]=[];
+  const store=await DesktopDownloadStore.bind(scope,()=>true,bridge(async(_,operation)=>{calls.push({...operation});return operation.action==='prepareLocalQueue'?{kind:'localQueue',value:bad}:{kind:'done'};}));
+  try{await assert.rejects(store.prepareLocalQueue(selection,new AbortController().signal),/downloads_unavailable/);assert.equal(calls.at(-1)?.action,'releaseLocalQueue');}
+  finally{store.dispose();}
+ }
+});

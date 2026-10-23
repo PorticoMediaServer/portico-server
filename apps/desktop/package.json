@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite --config vite.config.ts",
     "build:web": "vite build --config vite.config.ts",
-    "check": "tsc --noEmit && node --experimental-strip-types --test test/*.test.ts",
+    "check": "tsc --noEmit && node --experimental-transform-types --test test/*.test.ts",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --lib",
     "build:unsigned": "npm run build:web && cargo build --manifest-path src-tauri/Cargo.toml --features shell --bin portico-desktop",
     "tauri": "tauri"

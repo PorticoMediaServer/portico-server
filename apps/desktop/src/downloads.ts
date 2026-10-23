@@ -11,6 +11,11 @@ export type DownloadCursor = Readonly<{addedMs:number;id:string}>;
 export type DownloadPage = Readonly<{items:readonly LocalDownload[];nextCursor:DownloadCursor|null}>;
 export type Capacity = Readonly<{totalBytes:number;freeBytes:number;usedBytes:number;otherDownloadsBytes:number}>;
 export type PendingPlay = Readonly<{playId:string;itemId:string;positionMs:number;ended:boolean;observedMs:number}>;
+export type LocalSelection = Readonly<{kind:'entry';entryId:string;expectedRevision:number}> | Readonly<{kind:'group';selector:SavedLocalGroupSelector;expectedRevision:string}>;
+export type PreparedLocalQueue = Readonly<{
+  preparationId:string;scope:DownloadScope;selectionRevision:string;
+  items:readonly Readonly<{id:string;revision:number;itemId:string;title:DownloadTitle;durationMs:number;localSourceId:string}>[];
+}>;
 export type NativeDownloadsBridge = Readonly<{
   bind(scope:DownloadScope):Promise<string>;
   release(lease:string):Promise<void>;
@@ -89,6 +94,8 @@ export class DesktopDownloadStore {
   private disposed=false;
   private readonly isCurrent:()=>boolean;
   private readonly bridge:NativeDownloadsBridge;
+  private currentPreparation?:PreparedLocalQueue;
+  private readonly preparations=new WeakMap<PreparedLocalQueue,{lease:string;retired:boolean}>();
   private constructor(scope:DownloadScope,isCurrent:()=>boolean,bridge:NativeDownloadsBridge){this.scope=checkScope(scope);this.isCurrent=isCurrent;this.bridge=bridge;}
   static async bind(scope:DownloadScope,isCurrent:()=>boolean,bridge:NativeDownloadsBridge=nativeDownloadsBridge,signal?:AbortSignal):Promise<DesktopDownloadStore>{
     const store=new DesktopDownloadStore(scope,isCurrent,bridge);store.guard(signal);
@@ -97,6 +104,52 @@ export class DesktopDownloadStore {
   }
   private guard(signal?:AbortSignal){if(this.disposed||!this.isCurrent()||signal?.aborted)aborted();}
   assertCurrent(signal?:AbortSignal):void{this.guard(signal);}
+  async prepareLocalQueue(input:LocalSelection,signal:AbortSignal):Promise<PreparedLocalQueue>{
+    this.guard(signal);
+    const selection=input.kind==='entry'?{kind:'entry',entryId:digest(input.entryId),expectedRevision:integer(input.expectedRevision)}:
+      input.kind==='group'?{kind:'group',selector:selector(input.selector),expectedRevision:digest(input.expectedRevision)}:invalid();
+    const lease=this.lease;
+    let preparationId:string|undefined;
+    try{
+      const reply=object(await this.bridge.command(lease,{action:'prepareLocalQueue',selection}));
+      if(reply.kind!=='localQueue')return invalid();
+      const value=object(reply.value);preparationId=digest(value.preparationId);
+      const scope=checkScope(object(value.scope) as unknown as DownloadScope);
+      if(!sameSavedDownloadsScope(this.scope,scope))return invalid();
+      const selectionRevision=text(value.selectionRevision);
+      if(selectionRevision!==String(input.expectedRevision)||!Array.isArray(value.items)||!value.items.length)return invalid();
+      const ids=new Set<string>(),sources=new Set<string>();
+      const items=value.items.map(raw=>{
+        const row=object(raw),entryId=digest(row.id),localSourceId=digest(row.localSourceId),durationMs=integer(row.durationMs),title=parseDownloadTitle(row.title);
+        if(ids.has(entryId)||sources.has(localSourceId)||Math.round(title.durationSeconds*1000)!==durationMs)return invalid();
+        ids.add(entryId);sources.add(localSourceId);
+        if(input.kind==='entry'&&(value.items as unknown[]).length!==1)return invalid();
+        if(input.kind==='entry'&&(entryId!==input.entryId||row.revision!==input.expectedRevision))return invalid();
+        if(input.kind==='group'&&(title.parentId!==input.selector.parentId||input.selector.groupId!==undefined&&title.groupId!==input.selector.groupId||!(input.selector.kind==='songs'?['song','track']:['episode']).includes(title.kind)))return invalid();
+        return Object.freeze({id:entryId,revision:integer(row.revision),itemId:id(row.itemId),title,durationMs,localSourceId});
+      });
+      const prepared=Object.freeze({preparationId,scope,selectionRevision,items:Object.freeze(items)});
+      this.guard(signal);
+      this.preparations.set(prepared,{lease,retired:false});this.currentPreparation=prepared;
+      return prepared;
+    }catch(error){
+      // Cancellation can arrive after native committed the preparation. Retire that
+      // exact opaque result using its original lease, even after this store disposed.
+      if(preparationId)await this.bridge.command(lease,{action:'releaseLocalQueue',preparationId}).catch(()=>{});
+      this.guard(signal);throw downloadFailure(error);
+    }
+  }
+  async releaseLocalQueue(prepared:PreparedLocalQueue):Promise<void>{
+    const owned=this.preparations.get(prepared);
+    if(!owned)throw new Error('downloads_conflict');
+    owned.retired=true;
+    if(this.currentPreparation===prepared)this.currentPreparation=undefined;
+    try{
+      const reply=object(await this.bridge.command(owned.lease,{action:'releaseLocalQueue',preparationId:prepared.preparationId}));
+      if(reply.kind!=='done')return invalid();
+      this.preparations.delete(prepared);
+    }catch(error){throw downloadFailure(error);}
+  }
   async request<T>(operation:Readonly<Record<string,unknown>>,kind:string,parse:(value:unknown)=>T,signal?:AbortSignal):Promise<T>{
     this.guard(signal);
     try{
@@ -157,5 +210,8 @@ export class DesktopDownloadStore {
     return Object.freeze(value.map(raw=>{const v=object(raw);return Object.freeze({playId:id(v.playId),itemId:id(v.itemId),positionMs:integer(v.positionMs),ended:boolean(v.ended),observedMs:integer(v.observedMs)});}));
   },signal);}
   acknowledgePlay(play:Pick<PendingPlay,'playId'|'observedMs'>,signal?:AbortSignal){return this.request({action:'acknowledgePlay',playId:id(play.playId),observedMs:integer(play.observedMs)},'done',()=>undefined,signal);}
-  dispose(){if(this.disposed)return;this.disposed=true;const lease=this.lease;this.lease='';if(lease)void this.bridge.release(lease).catch(()=>{});}
+  dispose(){if(this.disposed)return;this.disposed=true;const lease=this.lease;this.lease='';
+    const cleanup=this.currentPreparation?this.releaseLocalQueue(this.currentPreparation):Promise.resolve();
+    if(lease)void cleanup.catch(()=>{}).then(()=>this.bridge.release(lease)).catch(()=>{});
+  }
 }
