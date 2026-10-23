@@ -4,7 +4,10 @@ import {BrowserProtectedStore} from './server-connections';
 type PendingStorage<T> = Pick<BrowserProtectedStore<T>, 'read' | 'change'>;
 export type SecurePendingEnvironment = Readonly<{protocol: string; hostname: string; secureContext: boolean; encryption: boolean; indexedDB: boolean; locks: boolean}>;
 const browserEnvironment = (): SecurePendingEnvironment => ({protocol: location.protocol, hostname: location.hostname, secureContext: globalThis.isSecureContext === true,
-  encryption: Boolean(globalThis.crypto?.subtle), indexedDB: typeof indexedDB !== 'undefined', locks: Boolean(navigator.locks?.request)});
+  encryption: Boolean(globalThis.crypto?.subtle), indexedDB: typeof indexedDB !== 'undefined',
+  // The LAN compatibility lock serializes only this tab. It cannot protect a
+  // continuation shared by two tabs and must never satisfy this precondition.
+  locks: typeof LockManager !== 'undefined' && navigator.locks instanceof LockManager});
 
 /** Ruling 17.5: network HTTP refuses before preview/pending/handoff. The
  * explicit localhost exception still requires a real secure browser context. */
@@ -24,6 +27,8 @@ export class SecurePendingStorage<T> {
       throw new RouteError('secure_context_required', 'This continuation requires a secure browser context.');
   }
   private store() {this.requireSecure(); return this.storage ??= this.create();}
+  /** Check before creating even a tab locator or issuing a preparation request. */
+  assertAvailable() {this.requireSecure();}
   async read() {const value = await this.store().read(); this.requireSecure(); return value;}
   async change(update: (current: T | undefined) => T | undefined) {
     await this.store().change(current => {this.requireSecure(); return update(current);});
