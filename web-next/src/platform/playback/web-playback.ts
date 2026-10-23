@@ -51,6 +51,9 @@ export type PlaybackMediaPort = MediaPlayer & {
   stepFrame?(direction: -1 | 1, generation: number): void | Promise<void>;
   /** Validated session/processing input. Native adapters serialize commands and fence by session+generation. */
   applyAudioEffects?(snapshot: PlaybackSnapshot): void;
+  /** Actual current-load observation. The adapter clears it on replacement, including reuse
+   * of a public generation, and publishes only after its private engine has observed the graph. */
+  readonly audioProcessing?: Readonly<{generation: number; eqApplied: boolean; levelingApplied: boolean}>;
   readonly nativeSurfaceActive?: boolean;
   readonly loaded: number;
   readonly settling: boolean;
@@ -168,6 +171,14 @@ export class PlayerSlot implements MediaPlayer {
   }
   /** The generation the element has loaded (0: nothing). */
   get loaded(): number { return this.real && !this.held ? this.real.loaded : 0; }
+  get audioProcessing(): PlaybackMediaPort['audioProcessing'] {
+    const source = this.source, real = this.real;
+    if (this.held || !source || !real || real.loaded !== source.generation) return undefined;
+    const facts = real.audioProcessing, observed = real.observe();
+    if (this.real !== real || this.source !== source || !facts || facts.generation !== source.generation || observed.generation !== source.generation
+      || !['playing', 'paused', 'buffering'].includes(observed.state) || typeof facts.eqApplied !== 'boolean' || typeof facts.levelingApplied !== 'boolean') return undefined;
+    return Object.freeze({generation: facts.generation, eqApplied: facts.eqApplied, levelingApplied: facts.levelingApplied});
+  }
 
   mount(real: PlaybackMediaPort): void {
     this.unmount();
@@ -419,6 +430,8 @@ export class WebPlayback implements PlaybackAdapter {
     const now = this.current(e.observation);
     if (!now) return;
     const {service, snapshot} = now, o = e.observation, intent = snapshot.intentId, seconds = o.positionMs / 1000;
+    const processing = e.type !== 'error' ? this.slot.audioProcessing : undefined;
+    if (processing && snapshot.session) service.audioProcessingApplied({intentId: intent, sessionId: snapshot.session.id, generation: snapshot.session.generation}, processing);
     if (this.direct && !snapshot.channel && e.type !== 'error' && o.state !== 'idle' && o.state !== 'loading' && !this.slot.settling) this.controller.observe({state: o.state, positionMs: o.positionMs, rate: o.rate, volume: o.volume, muted: o.muted}, e.type);
     switch (e.type) {
       case 'error': this.engineError(service, intent, e.code, e.detail ?? ''); return;
