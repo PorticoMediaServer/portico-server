@@ -10,12 +10,15 @@ import {findLibraryFile, libraryFolders, folderOfPath, separateLibraryFile, canM
 import {validateContentEntry, type ContentEntry} from '@core/library-content.ts';
 import {titleView} from './view-state';
 import {openGenre} from './genre-binding';
+import type {PlaybackOptions} from '@core/playback-v1/types.ts';
+import type {RefObject} from 'react';
 
 /** Constructor is inert. Only select/readFileInfo/readVersions perform reads. */
 export function createDetailBindings(context: ScreenContext) {
   const life = screenLifetime(context);
   const service = new DetailService({api: life.api, scope: context.scope, requestId: async () => { life.assert(); return crypto.randomUUID(); }});
   const options = new PlaybackOptionsClient(localV1Http(life.api));
+  const versionReads = new WeakSet<PlaybackOptions>();
   const recommendations = createRecommendations(context);
   const view = titleView('related', ['related', 'details', 'extras'], life.assert);
   let viewIdentity = '';
@@ -74,12 +77,22 @@ export function createDetailBindings(context: ScreenContext) {
   const versions = async (data: DetailProjection, signal?: AbortSignal) => {
     current(data); const value = await options.options(data.item.id, {}, life.signal(signal)); current(data);
     if (value.itemId !== data.item.id) throw new Error('Playback options target mismatch');
+    versionReads.add(value);
     return value;
   };
-  return {
+  const binding = {
     context, service, select, current, recommendations, view,
     subject() { const target = service.getSnapshot().target; return life.current() && target?.itemId === subject?.itemId && target?.libraryId === subject?.libraryId ? subject?.title : undefined; },
     readFileInfo: files, readVersions: versions,
+    async chooseVersion(data: DetailProjection, captured: PlaybackOptions, signal: AbortSignal, returnFocusRef?: RefObject<HTMLElement | null>): Promise<void> {
+      current(data);signal.throwIfAborted();
+      const action = data.actions.find(value => value.enabled && value.playback?.itemId === data.item.id && value.id !== 'start_over');
+      if (!context.effects.chooseVersion || !action || !versionReads.has(captured) || captured.itemId !== data.item.id || captured.versions.length < 2) throw new DOMException('Version choice unavailable', 'AbortError');
+      const isCurrent = () => {try {current(data);return !signal.aborted;} catch {return false;}};
+      await context.effects.chooseVersion({subject: {libraryId: data.scope.libraryId, itemId: data.item.id, title: data.item.title}, options: captured,
+        signal: life.signal(signal), isCurrent, returnFocusRef,
+        playVersion: (versionId, active) => binding.play(data, action.id, versionId, active)});
+    },
     browseGenre(data: DetailProjection, genre: string) {
       current(data);
       if (!data.metadata.genres.some(value => value.name === genre)) throw new DOMException('Title genre changed', 'AbortError');
@@ -145,5 +158,6 @@ export function createDetailBindings(context: ScreenContext) {
     },
     dispose() { intent++; selected = undefined; subject = undefined; offSubject(); viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); service.cancel(); service.dispose(); },
   };
+  return binding;
 }
 export type DetailBindings = ReturnType<typeof createDetailBindings>;
