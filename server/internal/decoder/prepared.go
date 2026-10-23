@@ -223,7 +223,7 @@ func runPrepared(ctx context.Context, s *storage.Supervisor, key string, cmd *ex
 	return e
 }
 func RunPreparedProbe(ctx context.Context, s *storage.Supervisor, key, executable, input string, res *EndpointReservation, custody *os.File, libraries ...string) ([]byte, error) {
-	cmd, e := probeCommand(executable, input, res, preparedInputFormats, libraries...)
+	cmd, e := probeFormatsCommand(executable, input, res, preparedInputFormats, libraries...)
 	if e != nil {
 		return nil, e
 	}

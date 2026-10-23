@@ -33,12 +33,12 @@ var tokenPath = regexp.MustCompile(`^/input/[a-f0-9]{64}(\.m3u8)?$`)
 // sandboxed where the platform can, the baseline elsewhere (mediaexec). Input is
 // always a private bridge.
 func ProbeCommand(executable, input string, reservation *EndpointReservation, libraries ...string) (*exec.Cmd, error) {
-	return probeCommand(executable, input, reservation, "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi", libraries...)
+	return probeFormatsCommand(executable, input, reservation, "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi", libraries...)
 }
 
-// probeCommand accepts only package-owned format lists; public callers retain
+// probeFormatsCommand accepts only package-owned format lists; public callers retain
 // the ordinary probe list. Prepared music uses its separately closed suite.
-func probeCommand(executable, input string, reservation *EndpointReservation, formats string, libraries ...string) (*exec.Cmd, error) {
+func probeFormatsCommand(executable, input string, reservation *EndpointReservation, formats string, libraries ...string) (*exec.Cmd, error) {
 	if !filepath.IsAbs(executable) || filepath.Clean(executable) != executable {
 		return nil, ErrInvalidConfiguration
 	}

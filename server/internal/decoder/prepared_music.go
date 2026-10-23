@@ -67,6 +67,7 @@ func PreparedMusicFormat(r PreparedRecipe) (PreparedMusicOutput, error) {
 		switch o.Codec {
 		case "opus":
 			o.Container, o.Rate = "ogg", 48000
+			o.BitrateBPS = min(o.BitrateBPS, 256000*o.Channels)
 			if o.BitrateBPS < 6000 {
 				return o, ErrInvalidConfiguration
 			}
@@ -152,6 +153,13 @@ func musicResampleFilters(sourceRate, rate, sourceDepth, depth int, processed bo
 			format = "s16"
 		}
 		out = append(out, fmt.Sprintf("aresample=%d:resampler=swr:osf=%s:output_sample_bits=%d:dither_method=triangular", rate, format, depth))
+		if depth > 16 && depth < 32 {
+			// SWR adds TPDF at the requested width but keeps the low storage
+			// bits in s32. FLAC discards those bits; round explicitly first so
+			// that discard cannot introduce a half-LSB DC bias.
+			scale := int64(1) << (depth - 1)
+			out = append(out, "aformat=sample_fmts=dbl", fmt.Sprintf("aeval=round(val(ch)*%d)/%d:c=same", scale, scale))
+		}
 	}
 	return out
 }
