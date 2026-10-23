@@ -4,6 +4,7 @@ import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {HomeBindings} from '../screens/home/Home';
 import type {ShellProps} from './Shell';
 import type {ShellPlaybackBinding} from './Playback';
+import type {SettingsBindings} from '../screens/settings/Settings';
 
 /** One verified, current session. The runtime owner fences/disposes it on authority changes. */
 export type ShellBindings = Readonly<{
@@ -13,6 +14,7 @@ export type ShellBindings = Readonly<{
   shell: Omit<ShellProps, 'children'>;
   home: HomeBindings;
   playback: ShellPlaybackBinding;
+  settings?: SettingsBindings;
 }>;
 const Context = createContext<ShellBindings | undefined>(undefined);
 export function ShellBindingsProvider({value, children}: {value: ShellBindings | undefined; children: ReactNode}) {

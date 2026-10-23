@@ -4,8 +4,14 @@ import {ShellRoot} from './shell/Root';
 import {useShellBindings} from './shell/bindings';
 import {HomeScreen} from './screens/home/Home';
 import {librarySearch, searchQuery} from './shell/navigation';
+import {SettingsScreen} from './screens/settings/Settings';
+import {settingsRoute as resolveSettingsRoute, type SettingsRoute} from './kit/settings/search';
 
 function BoundHome() { const binding = useShellBindings(); return binding ? <HomeScreen {...binding.home} /> : null; }
+function BoundSettings() {
+  const binding = useShellBindings(), route = resolveSettingsRoute(settingsRoute.useSearch(), () => true), navigate = settingsRoute.useNavigate();
+  return binding?.settings ? <SettingsScreen bindings={binding.settings} route={route} navigate={next => {void navigate({search: next});}} /> : null;
+}
 
 export const rootRoute = createRootRoute({component: ShellRoot, notFoundComponent: () => null});
 // Screen owners supply components in task 1.6 and later phases. These are structural outlets.
@@ -18,7 +24,8 @@ export const savedRoute = createRoute({getParentRoute: () => rootRoute, path: '/
 export const itemRoute = createRoute({getParentRoute: () => rootRoute, path: '/item/$itemId'});
 export const homeRowRoute = createRoute({getParentRoute: () => rootRoute, path: '/home/rows/$rowId'});
 export const playerRoute = createRoute({getParentRoute: () => rootRoute, path: '/player'});
-export const settingsRoute = createRoute({getParentRoute: () => rootRoute, path: '/settings'});
+export const settingsRoute = createRoute({getParentRoute: () => rootRoute, path: '/settings', component: BoundSettings,
+  validateSearch: (raw: Record<string, unknown>): Partial<SettingsRoute> => resolveSettingsRoute(raw, () => true)});
 export const dashboardRoute = createRoute({getParentRoute: () => rootRoute, path: '/dashboard', validateSearch: (raw: Record<string, unknown>): {section?: 'streams' | 'activity' | 'updates'} => ['streams', 'activity', 'updates'].includes(String(raw.section)) ? {section: raw.section as 'streams' | 'activity' | 'updates'} : {}});
 export const notificationsRoute = createRoute({getParentRoute: () => rootRoute, path: '/notifications'});
 export const profilesRoute = createRoute({getParentRoute: () => rootRoute, path: '/profiles', validateSearch: (raw: Record<string, unknown>): {profileId?: string; add?: boolean} => ({...(typeof raw.profileId === 'string' && raw.profileId.length <= 128 ? {profileId: raw.profileId} : {}), ...(raw.add === true ? {add: true} : {})})});

@@ -86,6 +86,7 @@ export class SettingsController {
   }
   private current = () => !this.closed && this.options.isCurrent();
   getSnapshot = () => this.snapshot;
+  preferencesSnapshot = () => this.current() ? this.preferences : undefined;
   serverHealth = () => this.current() ? this.header.health : undefined;
   serverFacts = () => this.current() ? this.header.facts : [];
   subscribe = (listener: () => void) => {this.listeners.add(listener); return () => {this.listeners.delete(listener);};};

@@ -15,7 +15,9 @@ import styles from './settings.module.css';
 const t = defaultI18n.t;
 export type SettingPresentation = Readonly<{
   present: boolean; value?: SettingsValue; defaultValue?: SettingsValue; changed?: boolean; displayValue?: string; defaultLabel?: string;
-  disabled?: boolean; saving?: boolean; error?: string; choices?: readonly SettingsOption[]; label?: string; help?: string;
+  disabled?: boolean; saving?: boolean; readOnly?: boolean; error?: string;
+  /** Static copy is translated once; dynamic names are genuine producer values. */
+  choices?: readonly (Omit<SettingsOption, 'label' | 'hint'> & {label: string; hint?: string})[]; label?: string; help?: string;
   gridRows?: readonly SettingsTableRow[];
 }>;
 export type SettingsRowsProps = Readonly<{
@@ -52,19 +54,20 @@ function Row({row, flat, dependent = false, inheritedDisabled = false, ...props}
   const condition = parent && props.state(parent).value;
   const conditionMet = !row.enableWhen || (row.enableWhen.in ? row.enableWhen.in.some(value => String(value) === String(condition)) : !row.enableWhen.notIn?.some(value => String(value) === String(condition)));
   const disabled = inheritedDisabled || state.disabled || state.saving || !conditionMet;
-  const c = row.control, label = state.label ?? t(row.label), options = state.choices ?? c.options ?? [];
+  const c = row.control, label = state.label ?? t(row.label), options = state.choices ?? c.options?.map(option => ({...option, label: t(option.label), hint: option.hint && t(option.hint)})) ?? [];
   const changed = state.changed && !row.noChanged;
-  const defaultLabel = state.defaultLabel ?? (options.find(option => option.value === state.defaultValue)?.label ? t(options.find(option => option.value === state.defaultValue)!.label) : typeof state.defaultValue === 'boolean' ? t(state.defaultValue ? 'next.settings.on' : 'next.settings.off') : state.defaultValue === null ? t('next.settings.notSet') : state.defaultValue === undefined ? undefined : String(state.defaultValue));
+  const defaultLabel = state.defaultLabel ?? (options.find(option => option.value === state.defaultValue)?.label ?? (typeof state.defaultValue === 'boolean' ? t(state.defaultValue ? 'next.settings.on' : 'next.settings.off') : state.defaultValue === null ? t('next.settings.notSet') : state.defaultValue === undefined ? undefined : String(state.defaultValue)));
   const reset = changed && <span className={styles.changed}>{t('next.shell.changed')}<button type="button" disabled={disabled} onClick={() => props.reset(row)}>{t('next.shell.reset')}</button></span>;
   let control: ReactNode;
   const change = (value: SettingsValue) => {if (!disabled) props.change(row, value);};
   const option = (text: string) => options.find(option => String(option.value) === text)?.value;
-  if (c.type === 'toggle' && typeof state.value === 'boolean') control = <Switch aria-label={label} checked={state.value} disabled={disabled} onCheckedChange={change} />;
+  if (state.readOnly && (state.displayValue !== undefined || state.value !== undefined)) control = <span className={c.mono ? styles.readonlyMono : styles.readonly}>{state.displayValue ?? String(state.value)}</span>;
+  else if (c.type === 'toggle' && typeof state.value === 'boolean') control = <Switch aria-label={label} checked={state.value} disabled={disabled} onCheckedChange={change} />;
   else if (c.type === 'select' && state.value !== undefined) {
     const preset = options.some(option => option.sets);
     const locked = options.find(option => option.value === state.value)?.locked;
-    control = locked ? <span className={styles.readonly}>{options.find(option => option.value === state.value) && t(options.find(option => option.value === state.value)!.label)}</span> : <RichSelect className={styles.settingSelect} aria-label={label} disabled={disabled} value={String(state.value)} options={options.filter(option => !option.locked).map(option => ({value: String(option.value), label: t(option.label), description: option.hint && t(option.hint), isDefault: option.value === state.defaultValue, disabled: preset && !option.sets}))} onValueChange={value => {const next = option(value); if (next !== undefined) change(next);}} />;
-  } else if (c.type === 'segmented' && state.value !== undefined) control = <Segmented aria-label={label} value={String(state.value)} disabled={disabled} items={options.map(option => ({value: String(option.value), label: t(option.label), disabled: options.some(value => value.sets) && !option.sets}))} onValueChange={value => {const next = option(value); if (next !== undefined) change(next);}} />;
+    control = locked ? <span className={styles.readonly}>{options.find(option => option.value === state.value)?.label}</span> : <RichSelect className={styles.settingSelect} aria-label={label} disabled={disabled} value={String(state.value)} options={options.filter(option => !option.locked).map(option => ({value: String(option.value), label: option.label, description: option.hint, isDefault: option.value === state.defaultValue, disabled: preset && !option.sets}))} onValueChange={value => {const next = option(value); if (next !== undefined) change(next);}} />;
+  } else if (c.type === 'segmented' && state.value !== undefined) control = <Segmented aria-label={label} value={String(state.value)} disabled={disabled} items={options.map(option => ({value: String(option.value), label: option.label, disabled: options.some(value => value.sets) && !option.sets}))} onValueChange={value => {const next = option(value); if (next !== undefined) change(next);}} />;
   else if (c.type === 'number' && (typeof state.value === 'number' || state.value === null)) control = <SettingNumber label={label} value={state.value} min={c.min ?? 0} max={c.max ?? Number.MAX_SAFE_INTEGER} step={c.step} optional={c.optional} unit={c.unit && t(c.unit)} placeholder={c.placeholder && t(c.placeholder)} disabled={disabled} plain={c.style === 'field'} onCommit={change} />;
   else if (c.type === 'text' && !c.secret && typeof state.value === 'string') control = <SettingText label={label} value={state.value} disabled={disabled} placeholder={c.placeholder && t(c.placeholder)} onCommit={change} />;
   else if (c.type === 'readonly' && (state.displayValue !== undefined || state.value !== undefined)) control = <span className={c.mono ? styles.readonlyMono : styles.readonly}>{state.displayValue ?? String(state.value)}</span>;
