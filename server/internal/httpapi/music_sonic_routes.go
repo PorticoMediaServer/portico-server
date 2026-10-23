@@ -12,7 +12,7 @@ import (
 func decodeSonicSettings(w http.ResponseWriter, r *http.Request) (SonicSettingsChange, error) {
 	var out SonicSettingsChange
 	var fields map[string]json.RawMessage
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	if err := lyricDecode(w, r, &fields); err != nil {
 		return out, errStrictJSON
 	}

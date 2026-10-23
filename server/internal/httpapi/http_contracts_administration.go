@@ -14,7 +14,7 @@ import (
 )
 
 func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
-	sonicErrors := []string{"invalid_request", "invalid_analysis", "unauthorized", "not_permitted", "not_found", "library_configuration_conflict", "analysis_conflict", "analysis_unavailable", "internal"}
+	sonicErrors := []string{"invalid_request", "invalid_analysis", "unauthorized", "not_permitted", "not_found", "revision_required", "library_configuration_conflict", "analysis_conflict", "analysis_unavailable", "internal"}
 	if err := apikit.RegisterHTTP[struct{}, mediaanalysis.SonicStatusView](registry, apikit.Metadata{ID: "get_admin_libraries_id_sonic_analysis", Method: "GET", Path: "/v1/admin/libraries/{id}/sonic-analysis", Summary: "Read current library sound analysis status", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.PageSized, Status: 200, Errors: sonicErrors}); err != nil {
 		return err
 	}
