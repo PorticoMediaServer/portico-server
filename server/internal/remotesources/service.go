@@ -49,6 +49,7 @@ type Service struct {
 	commands            sync.Mutex
 	serveMu             sync.Mutex
 	serveLeases         map[string]*sourceProcessLease
+	serveClosed         bool
 	mu                  sync.Mutex
 	active              map[string]map[string]activeRead
 	bindings            atomic.Value

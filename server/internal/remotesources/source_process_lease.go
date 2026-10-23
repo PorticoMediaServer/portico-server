@@ -52,6 +52,12 @@ func (s *Service) reserveSourceProcess(ctx context.Context, source, generation s
 	}
 	s.serveMu.Lock()
 	defer s.serveMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s.serveClosed {
+		return nil, storage.ErrRemoteOffline
+	}
 	if s.serveLeases == nil {
 		s.serveLeases = make(map[string]*sourceProcessLease)
 	}
@@ -77,6 +83,9 @@ func (l *sourceProcessLease) CheckLocal() error {
 }
 
 func (l *sourceProcessLease) Check(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := l.CheckLocal(); err != nil {
 		return err
 	}
@@ -87,16 +96,25 @@ func (l *sourceProcessLease) Check(ctx context.Context) error {
 	defer snapshot.Rollback()
 	current, err := observationGenerationTx(ctx, snapshot.Tx(), l.source)
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		l.cancel()
 		return err
 	}
 	profile, err := SourceReadProfileTx(ctx, snapshot.Tx(), l.source)
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		l.cancel()
 		return err
 	}
 	var root string
 	err = snapshot.Tx().QueryRowContext(ctx, `SELECT root FROM remote_sources WHERE id=? AND removed=0`, l.source).Scan(&root)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if err != nil || root != l.root || current != l.generation || profile != l.profile {
 		l.cancel()
 		return storage.ErrRemoteChanged
@@ -127,6 +145,7 @@ func (s *Service) stopServeProcess(source string) {
 func (s *Service) stopServeProcesses() {
 	s.serveMu.Lock()
 	defer s.serveMu.Unlock()
+	s.serveClosed = true
 	for _, lease := range s.serveLeases {
 		lease.cancel()
 	}
@@ -136,6 +155,9 @@ func (s *Service) stopServeProcesses() {
 // It never changes root/source identity and never releases a physical slot.
 // A missed notification is also caught by Check's actual DB/profile recheck.
 func (s *Service) ReadProfileCommitted(ctx context.Context, source string, revision int64) error {
+	if s == nil || s.db == nil || source == "" || revision < 0 {
+		return storage.ErrRemoteConfig
+	}
 	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
 	if err != nil {
 		return err
