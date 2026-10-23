@@ -29,12 +29,12 @@ func nativeListingFence(ctx context.Context, db interface {
 }, id, owner string) error {
 	var actualOwner, status, directory, root, generation, current string
 	var incarnationOK, removed bool
-	err := db.QueryRowContext(ctx, `SELECT n.owner,j.status,l.directory,ls.root,l.generation,CAST(m.generation AS TEXT),
- (r.source_generation=ls.generation AND r.root_incarnation=ls.incarnation AND r.root_identity=ls.root_identity AND ls.enabled=1),rs.removed
+	err := db.QueryRowContext(ctx, `SELECT n.owner,j.status,l.directory,ls.root,l.generation,CASE WHEN rs.kind='rclone' THEN CAST(m.generation AS TEXT) ELSE CAST(rs.generation AS TEXT) END,
+ (r.source_generation=ls.generation AND r.root_incarnation=ls.incarnation AND r.root_identity=ls.root_identity AND ls.enabled=1 AND ls.identity_confirmed=1 AND r.policy_revision=p.revision),rs.removed
  FROM remote_listing_sessions l JOIN remote_native_listings n ON n.listing_id=l.id AND n.state='running'
- JOIN remote_sources rs ON rs.id=l.source_id JOIN mount_backend_configs m ON m.mount_id=rs.mount_id
+ JOIN remote_sources rs ON rs.id=l.source_id LEFT JOIN mount_backend_configs m ON m.mount_id=rs.mount_id
  JOIN jobs j ON j.id=COALESCE((SELECT c.job_id FROM remote_inventory_checks c WHERE c.check_job=l.job_id),l.job_id)
- JOIN inventory_runs r ON r.job_id=j.id JOIN library_sources ls ON ls.id=r.source_id
+ JOIN inventory_runs r ON r.job_id=j.id JOIN library_sources ls ON ls.id=r.source_id JOIN library_scan_policies p ON p.library_id=ls.library_id
  WHERE l.id=? AND l.ready=0`, id).Scan(&actualOwner, &status, &directory, &root, &generation, &current, &incarnationOK, &removed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return context.Canceled
@@ -66,7 +66,7 @@ func nativeListingError(code string) error {
 		return storage.ErrRemoteBinary
 	case "invalid_configuration":
 		return storage.ErrRemoteConfig
-	case "rate_limited":
+	case "capacity_busy":
 		return storage.ErrBusy
 	default:
 		return storage.ErrRemoteOffline
@@ -77,6 +77,12 @@ func (s *Service) startNativeListing(ctx context.Context, b binding, relative, i
 	defer s.listings.Unlock()
 	if s.nativeClosed {
 		return context.Canceled
+	}
+	s.serveMu.Lock()
+	runtime := s.serveLife
+	s.serveMu.Unlock()
+	if runtime == nil || runtime.Err() != nil {
+		return storage.ErrRemoteOffline
 	}
 	if existing := s.nativeListings[id]; existing != nil {
 		select {
@@ -91,7 +97,7 @@ func (s *Service) startNativeListing(ctx context.Context, b binding, relative, i
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if state == "failed" && code != "cancelled" && code != "rate_limited" {
+	if state == "failed" && code != "cancelled" && code != "capacity_busy" {
 		return nativeListingError(code)
 	}
 	if state == "complete" {
@@ -130,7 +136,7 @@ func (s *Service) startNativeListing(ctx context.Context, b binding, relative, i
 	if err = gated.Commit(); err != nil {
 		return err
 	}
-	life, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	life, cancel := context.WithTimeout(runtime, 30*time.Minute)
 	p := &nativeListing{done: make(chan struct{}), retired: make(chan struct{}), cancel: cancel}
 	if s.nativeListings == nil {
 		s.nativeListings = map[string]*nativeListing{}
@@ -188,7 +194,11 @@ func (s *Service) startNativeListing(ctx context.Context, b binding, relative, i
 		<-watchDone
 		if p.err != nil {
 			cleanup, done := context.WithTimeout(context.Background(), 5*time.Second)
-			_, _ = dbwork.ExecWrite(cleanup, s.db, dbwork.ClassBackgroundMedia, `UPDATE remote_native_listings SET state='failed',error_code=?,updated_at=? WHERE listing_id=? AND owner=? AND state='running'`, ErrorCode(p.err), time.Now().UnixMilli(), id, owner)
+			code := ErrorCode(p.err)
+			if errors.Is(p.err, storage.ErrBusy) {
+				code = "capacity_busy" // Local contention is not a provider throttle report.
+			}
+			_, _ = dbwork.ExecWrite(cleanup, s.db, dbwork.ClassBackgroundMedia, `UPDATE remote_native_listings SET state='failed',error_code=?,updated_at=? WHERE listing_id=? AND owner=? AND state='running'`, code, time.Now().UnixMilli(), id, owner)
 			done()
 			s.health(b, generation, p.err)
 		}

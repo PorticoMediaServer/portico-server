@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // VisitSnapshot stages one complete Depth1 response without retaining its
@@ -19,11 +20,25 @@ func (s *ServeEndpoint) VisitSnapshot(ctx context.Context, relative string, reco
 	if reconnect == nil || visit == nil || !cleanDAVRelative(relative) || strings.Contains(relative, ":") {
 		return ErrPolicy
 	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
 	if err := reconnect(ctx); err != nil {
 		return err
 	}
 	requestContext := ctx
 	ctx = context.WithValue(ctx, serveReconnectKey{}, func() error { return reconnect(requestContext) })
+	ctx = context.WithValue(ctx, serveListingReadKey{}, true)
+	client := s.client
+	if transport, ok := s.client.Transport.(*http.Transport); ok {
+		// Enumeration can legitimately outlive a worker quantum before headers
+		// arrive. Isolate that retained listing from metadata/range deadlines.
+		owned := transport.Clone()
+		owned.ResponseHeaderTimeout = 0 // The bounded listing context owns this deadline.
+		defer owned.CloseIdleConnections()
+		copy := *s.client
+		copy.Transport = owned
+		client = &copy
+	}
 	target := s.root
 	target.Path = strings.TrimSuffix(target.Path+relative, "/") + "/"
 	req, err := http.NewRequestWithContext(ctx, "PROPFIND", target.String(), strings.NewReader(serveListingProperties))
@@ -34,7 +49,7 @@ func (s *ServeEndpoint) VisitSnapshot(ctx context.Context, relative string, reco
 	req.Header.Set("Depth", "1")
 	req.Header.Set("Content-Type", "application/xml; charset=utf-8")
 	req.Header.Set("Accept-Encoding", "identity")
-	response, err := s.client.Do(req)
+	response, err := client.Do(req)
 	if err != nil {
 		if errors.Is(err, ErrObservationChanged) {
 			return ErrObservationChanged
@@ -96,7 +111,7 @@ func (d *DAV) visitServedSnapshot(ctx context.Context, input io.Reader, director
 		if !response || start.Name.Space != "DAV:" || start.Name.Local != "response" {
 			envelopeBytes += tokens.decoder.InputOffset() - before
 		}
-		if err != nil || envelopeBytes > 1<<20 {
+		if err != nil || envelopeBytes > 1<<20+int64(children)*256 {
 			return ErrDAVResponse
 		}
 		switch t := token.(type) {

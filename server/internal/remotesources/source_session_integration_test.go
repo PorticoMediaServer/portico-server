@@ -172,6 +172,58 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			if err = f.s.db.QueryRowContext(ctx, `SELECT ready,(SELECT COUNT(*) FROM remote_listing_entries WHERE listing_id=?) FROM remote_listing_sessions WHERE id=?`, listingID, listingID).Scan(&ready, &children); err != nil || !ready || children != 1 {
 				t.Fatal("incomplete streaming snapshot published", ready, children, err)
 			}
+			page, err := f.s.ListPage(ctx, f.job, b.Root, "")
+			if err != nil || page.Pending || len(page.Entries) != 1 || !page.Complete {
+				t.Fatal("actual retained listing page", page, err)
+			}
+			for _, mutation := range []string{"page-bytes", "profile", "observation-aba", "source-root"} {
+				writer, err = dbwork.Begin(ctx, f.s.db, dbwork.ClassBackgroundMedia)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = f.s.CommitPage(ctx, writer.Tx(), page); err != nil {
+					writer.Rollback()
+					t.Fatal("positive publication prerequisite", mutation, err)
+				}
+				writer.Rollback()
+				writer, err = dbwork.Begin(ctx, f.s.db, dbwork.ClassBackgroundMedia)
+				if err != nil {
+					t.Fatal(err)
+				}
+				forged := page
+				forged.Entries = append([]storage.Snapshot(nil), page.Entries...)
+				switch mutation {
+				case "page-bytes":
+					forged.Entries[0].Size++
+				case "profile":
+					_, err = writer.Tx().ExecContext(ctx, `UPDATE remote_source_read_profiles SET revision=revision+1 WHERE source_id='remote'`)
+				case "observation-aba":
+					_, err = writer.Tx().ExecContext(ctx, `UPDATE remote_scan_observations SET revision=revision+2 WHERE source_id='remote'`)
+				case "source-root":
+					_, err = writer.Tx().ExecContext(ctx, `UPDATE remote_sources SET root=root||'/replacement' WHERE id='remote'`)
+				}
+				if err != nil {
+					writer.Rollback()
+					t.Fatal(err)
+				}
+				err = f.s.CommitPage(ctx, writer.Tx(), forged)
+				writer.Rollback()
+				if err == nil {
+					t.Fatal("page publication ignored changed bytes/authority", mutation)
+				}
+			}
+			writer, err = dbwork.Begin(ctx, f.s.db, dbwork.ClassBackgroundMedia)
+			if err == nil {
+				err = f.s.CommitPage(ctx, writer.Tx(), page)
+			}
+			if err == nil {
+				err = writer.Commit()
+			} else if writer != nil {
+				writer.Rollback()
+			}
+			if err != nil {
+				t.Fatal("actual catalogue transaction did not publish observations", err)
+			}
 			first := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
 			defer first.Close()
 			second := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})

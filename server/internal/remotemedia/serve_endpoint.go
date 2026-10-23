@@ -24,6 +24,7 @@ type ServeEndpoint struct {
 }
 
 type serveReconnectKey struct{}
+type serveListingReadKey struct{}
 
 func NewServeEndpoint(port int, username, password string, connections int) (*ServeEndpoint, error) {
 	if port < 1 || port > 65535 || connections < 1 || connections > 256 || username == "" || password == "" || len(username) > 1024 || len(password) > 8192 || strings.ContainsAny(username, ":\r\n\x00") || strings.ContainsAny(password, "\r\n\x00") {
@@ -53,7 +54,11 @@ func NewServeEndpoint(port int, username, password string, connections int) (*Se
 				conn.Close()
 				return nil, err
 			}
-			return &timedConn{Conn: conn, timeout: 15 * time.Second}, nil
+			deadline := 15 * time.Second
+			if ctx.Value(serveListingReadKey{}) == true {
+				deadline = 30 * time.Minute
+			}
+			return &timedConn{Conn: conn, timeout: deadline}, nil
 		},
 	}
 	return &ServeEndpoint{

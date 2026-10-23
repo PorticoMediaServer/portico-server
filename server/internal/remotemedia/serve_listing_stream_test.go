@@ -25,7 +25,7 @@ func TestServeListingStreamsBeyondOldPageBounds(t *testing.T) {
 	go func() {
 		_, err := io.WriteString(output, listingStart)
 		for i := 0; i < 25000 && err == nil; i++ {
-			_, err = io.WriteString(output, listingChild(fmt.Sprintf("file%05d.mkv", i)))
+			_, err = io.WriteString(output, strings.Repeat(" ", 48)+listingChild(fmt.Sprintf("file%05d.mkv", i)))
 		}
 		if err == nil {
 			_, err = io.WriteString(output, listingEnd)

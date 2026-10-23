@@ -298,6 +298,11 @@ func ErrorCode(err error) string {
 	}
 }
 func (s *Service) health(b binding, generation string, err error) {
+	// Scheduling/capacity contention is not an asynchronous provider report.
+	// Leave the last actual source health intact instead of claiming throttling.
+	if errors.Is(err, storage.ErrBusy) || errors.Is(err, remotemedia.ErrBusy) {
+		return
+	}
 	code, state := "", "healthy"
 	if err != nil {
 		code = ErrorCode(err)

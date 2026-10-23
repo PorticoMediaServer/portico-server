@@ -15,13 +15,27 @@ import (
 
 type serveListingCapture struct {
 	job     string
+	owner   string
 	source  catalog.LibrarySource
 	profile SourceReadProfile
 }
 
 func (c serveListingCapture) same(other serveListingCapture) bool {
 	a, b := c.source, other.source
-	return c.job == other.job && c.profile == other.profile && a.ID == b.ID && a.LibraryID == b.LibraryID && a.Generation == b.Generation && a.Incarnation == b.Incarnation && a.RootIdentity == b.RootIdentity && a.ResolvedPath == b.ResolvedPath && a.IdentityConfirmed == b.IdentityConfirmed && a.FollowSymlinks == b.FollowSymlinks
+	return c.job == other.job && c.owner == other.owner && c.profile == other.profile && a.ID == b.ID && a.LibraryID == b.LibraryID && a.Generation == b.Generation && a.Incarnation == b.Incarnation && a.RootIdentity == b.RootIdentity && a.ResolvedPath == b.ResolvedPath && a.IdentityConfirmed == b.IdentityConfirmed && a.FollowSymlinks == b.FollowSymlinks
+}
+
+// This JSON is private listing staging, never a DTO or byte-version grant.
+// File facts are enriched after the complete listing body has closed, avoiding
+// metadata deadlock on a one-connection source. Publication uses the captured
+// expected observation revision in the catalogue's own transaction.
+type serveListingEntry struct {
+	storage.Snapshot
+	Observation *ScanObservation  `json:"scanObservation,omitempty"`
+	Expected    int64             `json:"expectedObservationRevision,omitempty"`
+	Epoch       string            `json:"processEpoch"`
+	Profile     SourceReadProfile `json:"readProfile"`
+	rawBytes    int
 }
 
 // serveListingFenceTx resolves the actual running inventory, including the
@@ -69,6 +83,16 @@ func (s *Service) serveListingFenceTx(ctx context.Context, tx *sql.Tx, b binding
 		return capture, storage.ErrRemoteChanged
 	}
 	capture.profile, err = SourceReadProfileTx(ctx, tx, b.ID)
+	if err == nil {
+		var state string
+		e := tx.QueryRowContext(ctx, `SELECT owner,state FROM remote_native_listings WHERE listing_id=?`, id).Scan(&capture.owner, &state)
+		if e != nil && e != sql.ErrNoRows {
+			return capture, e
+		}
+		if e == nil && (state != "running" || capture.owner == "") {
+			return capture, storage.ErrRemoteCursor
+		}
+	}
 	return capture, err
 }
 
@@ -88,12 +112,16 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 	if err != nil {
 		return err
 	}
+	defer initial.Rollback()
 	capture, err := s.serveListingFenceTx(ctx, initial.Tx(), b, relative, id, generation)
 	if err == nil {
 		err = process.CheckLocal(ctx)
 	}
 	if err == nil {
 		_, err = initial.Tx().ExecContext(ctx, `DELETE FROM remote_listing_entries WHERE listing_id=?`, id)
+	}
+	if err == nil {
+		_, err = initial.Tx().ExecContext(ctx, `DELETE FROM remote_listing_progress WHERE listing_id=?`, id)
 	}
 	if err == nil {
 		err = initial.Commit()
@@ -111,7 +139,8 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 		if !current.same(capture) {
 			return storage.ErrRemoteChanged
 		}
-		return process.CheckLocal(ctx)
+		_, err = s.currentServeProcessTx(ctx, tx, b.ID, capture.profile, process.Generation())
+		return err
 	}
 	check := func(ctx context.Context) error {
 		if err := process.Check(ctx); err != nil {
@@ -150,6 +179,13 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 			}
 		}
 		if ready {
+			receipt, err := json.Marshal(serveListingReceipt{Epoch: process.Generation(), Profile: capture.profile})
+			if err != nil {
+				return err
+			}
+			if _, err = writer.Tx().ExecContext(ctx, `INSERT INTO remote_listing_progress(listing_id,token,mode,steps,restarted) VALUES(?,?,'serve',1,0)`, id, receipt); err != nil {
+				return err
+			}
 			result, err := writer.Tx().ExecContext(ctx, `UPDATE remote_listing_sessions SET ready=1 WHERE id=? AND source_id=? AND generation=? AND ready=0`, id, b.ID, generation)
 			if err != nil {
 				return err
@@ -157,6 +193,15 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 			n, err := result.RowsAffected()
 			if err != nil || n != 1 {
 				return storage.ErrRemoteChanged
+			}
+			if capture.owner != "" {
+				if _, err = writer.Tx().ExecContext(ctx, `UPDATE remote_native_listings SET state='complete',entries=?,bytes=? WHERE listing_id=? AND owner=? AND state='running'`, count, bytes, id, capture.owner); err != nil {
+					return err
+				}
+			}
+		} else if capture.owner != "" {
+			if _, err = writer.Tx().ExecContext(ctx, `UPDATE remote_native_listings SET entries=?,bytes=? WHERE listing_id=? AND owner=? AND state='running'`, count, bytes, id, capture.owner); err != nil {
+				return err
 			}
 		}
 		if err = writer.Commit(); err != nil {
@@ -166,7 +211,7 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 		return nil
 	}
 	err = endpoint.VisitSnapshot(ctx, relative, check, func(entry remotemedia.DAVEntry) error {
-		value := davSnapshot(entry, b.Root)
+		value := inventorySnapshot(b, generation, davSnapshot(entry, b.Root))
 		if filepath.Dir(value.Path) != filepath.Join(b.Root, filepath.FromSlash(relative)) {
 			return storage.ErrRemoteConfig
 		}
@@ -178,6 +223,108 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 	})
 	if err != nil {
 		return mapError(err)
+	}
+	if err = flush(false); err != nil {
+		return err
+	}
+	// The complete listing request is closed before any backend metadata call.
+	// Only bounded batches live in memory; every rewritten row remains private.
+	after := ""
+	for {
+		rows, err := s.db.QueryContext(ctx, `SELECT name,snapshot FROM remote_listing_entries WHERE listing_id=? AND name>? ORDER BY name LIMIT 128`, id, after)
+		if err != nil {
+			return err
+		}
+		values := make([]serveListingEntry, 0, 128)
+		for rows.Next() {
+			var raw string
+			var entry serveListingEntry
+			if err = rows.Scan(&after, &raw); err == nil {
+				err = json.Unmarshal([]byte(raw), &entry.Snapshot)
+			}
+			if err != nil {
+				break
+			}
+			entry.rawBytes = len(raw)
+			entry.Epoch, entry.Profile = process.Generation(), capture.profile
+			values = append(values, entry)
+		}
+		rowErr := rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		if rowErr != nil {
+			return rowErr
+		}
+		if len(values) == 0 {
+			break
+		}
+		for i := range values {
+			entry := &values[i]
+			if entry.Directory {
+				continue
+			}
+			object, err := filepath.Rel(b.Root, entry.Path)
+			if err != nil || !validObservationObject(filepath.ToSlash(object)) {
+				return storage.ErrRemoteConfig
+			}
+			observed, err := observeProcessFile(ctx, process, filepath.ToSlash(object), check)
+			if err != nil {
+				return mapError(err)
+			}
+			if observed.Size != entry.Size {
+				return storage.ErrRemoteChanged
+			}
+			entry.Snapshot, err = observationSnapshot(b, generation, observed)
+			if err != nil {
+				return err
+			}
+			entry.Observation = &ScanObservation{Facts: observed, ScanRevision: entry.Revision}
+			view, err := dbwork.BeginSnapshot(ctx, s.db)
+			if err != nil {
+				return err
+			}
+			previous, err := readScanObservationTx(ctx, view.Tx(), b.ID, filepath.ToSlash(object))
+			view.Rollback()
+			if err != nil && err != sql.ErrNoRows {
+				return err
+			}
+			entry.Expected = previous.Ref.Revision
+		}
+		writer, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+		if err != nil {
+			return err
+		}
+		if err = fence(ctx, writer.Tx()); err == nil {
+			for _, entry := range values {
+				var raw []byte
+				raw, err = json.Marshal(entry)
+				if err != nil {
+					break
+				}
+				bytes += int64(len(raw) - entry.rawBytes)
+				if bytes > 512<<20 {
+					err = storage.ErrRemoteLimit
+					break
+				}
+				_, err = writer.Tx().ExecContext(ctx, `UPDATE remote_listing_entries SET snapshot=? WHERE listing_id=? AND name=?`, string(raw), id, entry.Path)
+				if err != nil {
+					break
+				}
+			}
+		}
+		if err == nil {
+			err = writer.Commit()
+		} else {
+			writer.Rollback()
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if err = check(ctx); err != nil {
+		return err
 	}
 	return flush(true)
 }
