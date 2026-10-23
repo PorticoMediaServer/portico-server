@@ -55,8 +55,17 @@ func TestReadingRemoteRegistered(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
+	for _, kind := range []string{"book", "comic"} {
+		if err = os.Mkdir(filepath.Join(root, kind), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for format, raw := range map[string][]byte{"pdf": readingtest.PDF(), "epub": readingtest.EPUB(), "cbz": readingtest.CBZ()} {
-		if err = os.WriteFile(filepath.Join(root, "Original."+format), raw, 0600); err != nil {
+		kind := "book"
+		if format == "cbz" {
+			kind = "comic"
+		}
+		if err = os.WriteFile(filepath.Join(root, kind, "Original."+format), raw, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -105,7 +114,7 @@ func TestReadingRemoteRegistered(t *testing.T) {
 	}
 	for _, kind := range []string{"book", "comic"} {
 		t.Run(kind, func(t *testing.T) {
-			library, err := f.cat.Create("Real remote "+kind, kind, mount.MountPath)
+			library, err := f.cat.Create("Real remote "+kind, kind, filepath.Join(mount.MountPath, kind))
 			if err != nil {
 				t.Fatal("real remote library", err)
 			}
@@ -121,7 +130,7 @@ func TestReadingRemoteRegistered(t *testing.T) {
 			token := login.Session.AccessToken
 			w := readingHTTP(t, h, "GET", "/v1/reading/items?libraryId="+library.ID, token, "", nil)
 			var items ReadingItemsResponse
-			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &items) != nil || len(items.Items) != 2 {
+			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &items) != nil || len(items.Items) != map[string]int{"book": 2, "comic": 1}[kind] {
 				t.Fatal("actual remote scan/list", w.Code, w.Body.String())
 			}
 			for _, item := range items.Items {
