@@ -447,10 +447,14 @@ impl Mpv {
     pub(crate) fn cached_native_window(&self)->usize{self.native_window.load(Ordering::Acquire)}
     pub fn audio_facts(&self)->AudioFacts {
         let transport=self.generation.lock().unwrap_or_else(|x|x.into_inner());
+        let current=self.matches_generation(*transport)&&self.loaded.load(Ordering::Acquire)
+            &&!self.starting.load(Ordering::Acquire)&&!self.failed.load(Ordering::Acquire)
+            &&!self.flag("eof-reached")&&!self.flag("idle-active");
+        let positive=|name:&str|if current{self.number(name).filter(|n|*n>0.0&&*n<=9_007_199_254_740_991.0).map(|n|n as u64)}else{None};
         let (equalizer_enabled,eq_applied)=self.equalizer.lock().map(|settings|(settings.enabled,self.actual_equalizer_applied())).unwrap_or((false,false));
-        AudioFacts{generation:*transport,requested_exclusive:self.exclusive,source_rate:self.number("audio-params/samplerate").map(|x|x as u64),
-            output_rate:self.number("audio-out-params/samplerate").map(|x|x as u64),output_channels:self.number("audio-out-params/channel-count").map(|x|x as u64),
-            output_format:self.property("audio-out-params/format"),bit_exact_capture_verified:false,
+        AudioFacts{generation:*transport,requested_exclusive:self.exclusive,source_rate:positive("audio-params/samplerate"),
+            output_rate:positive("audio-out-params/samplerate"),output_channels:positive("audio-out-params/channel-count"),
+            output_format:if current{self.property("audio-out-params/format").filter(|format|!format.is_empty())}else{None},bit_exact_capture_verified:false,
             equalizer_enabled,eq_applied,leveling_applied:self.actual_leveling_applied(),
             bit_perfect_excluded_by_equalizer:equalizer_enabled||!self.equalizer_chain_known.load(Ordering::Acquire)}
     }
@@ -500,6 +504,7 @@ mod local_source_tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(advanced,"native PCM did not advance");
+        assert_eq!(engine.audio_facts().source_rate,Some(48000));assert_eq!(engine.audio_facts().output_rate,Some(48000));
         for gain in [f64::NAN,0.0,33.0]{assert_eq!(engine.execute(Command::Processing{generation:1,gain}),Err(Error::InvalidCommand));}
         engine.execute(Command::Processing{generation:1,gain:0.5}).unwrap();
         assert!(engine.property("af").unwrap().contains("@portico-leveling:"));
@@ -511,6 +516,7 @@ mod local_source_tests {
         assert_eq!(engine.started_entry.load(Ordering::Acquire),first_entry);
         engine.frame_drawn(1);
         engine.load_local(Path::new(&fixture),2,0.0,true).unwrap();
+        let loading=engine.audio_facts();assert_eq!(loading.generation,2);assert_eq!(loading.source_rate,None);assert_eq!(loading.output_rate,None);assert_eq!(loading.output_channels,None);assert_eq!(loading.output_format,None);
         assert_eq!(engine.execute(Command::Processing{generation:1,gain:0.25}),Err(Error::StaleGeneration));
         let second_entry=engine.expected_entry.load(Ordering::Acquire);assert!(second_entry>first_entry);
         assert_eq!(engine.frame_drawn.load(Ordering::Acquire),0);
