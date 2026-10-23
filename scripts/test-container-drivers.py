@@ -88,7 +88,7 @@ def main():
                 subprocess.run(['docker', 'rm', '-f', *containers], check=True)
             images = subprocess.check_output(['docker', 'images', '-aq', '--filter', 'label=' + label], text=True).split()
             if images:
-                subprocess.run(['docker', 'rmi', '-f', *dict.fromkeys(images)], check=True)
+                subprocess.run(['docker', 'rmi', '--no-prune', '-f', *dict.fromkeys(images)], check=True)
 
 
 if __name__ == '__main__':
