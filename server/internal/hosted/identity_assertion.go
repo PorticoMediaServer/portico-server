@@ -24,6 +24,7 @@ type IdentityClaims struct {
 	AccountID   string `json:"accountId"`
 	Username    string `json:"username"`
 	DisplayName string `json:"displayName"`
+	Email       string `json:"email"`
 	ServerID    string `json:"serverId"`
 	Challenge   string `json:"challenge"`
 	Nonce       string `json:"nonce"`
@@ -172,5 +173,5 @@ func (s *Service) verifyAssertion(ctx context.Context, assertion Signed, install
 			return none, e
 		}
 	}
-	return identity.PorticoIdentity{AccountID: c.AccountID, Username: c.Username, DisplayName: c.DisplayName, Consent: string(consent), SignerKeyID: assertion.KeyID}, nil
+	return identity.PorticoIdentity{AccountID: c.AccountID, Username: c.Username, DisplayName: c.DisplayName, Email: c.Email, Consent: string(consent), SignerKeyID: assertion.KeyID}, nil
 }

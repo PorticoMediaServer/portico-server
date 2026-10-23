@@ -25,14 +25,14 @@ func TestRecordingOwnerDirectoryCurrentMembershipAndPagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = db.Exec(`INSERT INTO accounts VALUES('owner','Owner',x'00','primary',1);
+	_, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','Owner',x'00','primary',1);
 INSERT INTO direct_profiles(id,account_id,name) VALUES('child','owner','Child'),('deleted','owner','Deleted');
 UPDATE direct_profiles SET deleted=1 WHERE id='deleted';
-INSERT INTO accounts VALUES('disabled','Disabled',x'00','disabled-profile',1);
+INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('disabled','Disabled',x'00','disabled-profile',1);
 UPDATE direct_memberships SET disabled=1 WHERE account_id='disabled';
-INSERT INTO accounts VALUES('a-revoked','Revoked',x'00','revoked-profile',1);
+INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('a-revoked','Revoked',x'00','revoked-profile',1);
 UPDATE direct_memberships SET disabled=1 WHERE account_id='a-revoked';
-INSERT INTO accounts VALUES('hosted-account','Hosted account',x'00','hosted-profile',1);
+INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('hosted-account','Hosted account',x'00','hosted-profile',1);
 UPDATE direct_profiles SET name='Hosted child' WHERE id='hosted-profile';
 INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('hosted-account','portico-account');`)
 	if err != nil {

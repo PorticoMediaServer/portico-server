@@ -33,7 +33,7 @@ func noticeFixture(t *testing.T, root string) (*sql.DB, *Service, catalog.Librar
 	}
 	t.Cleanup(func() { db.Close() })
 	// The first account is the owner, whose inbox receives the notice.
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1)`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1)`); err != nil {
 		t.Fatal(err)
 	}
 	cat := catalog.New(db)
@@ -127,7 +127,7 @@ func TestStoppedScanNoticeNamesTheFolderItStoppedAt(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1)`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1)`); err != nil {
 		t.Fatal(err)
 	}
 	where := filepath.Join("Films", "Unreadable")

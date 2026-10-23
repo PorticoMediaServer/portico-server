@@ -312,7 +312,7 @@ func (s *Service) VerifyOwnerReset(ctx context.Context, q OwnerResetVerify) (Dir
 				return e
 			}
 			if out.Session == nil {
-				return ErrDevicePending
+				return ErrUnauthorized
 			}
 			if e = markResetSessionTx(ctx, tx, out.Session, "password"); e != nil {
 				return e
@@ -419,11 +419,17 @@ func refuseResetDescendantTx(ctx context.Context, tx *sql.Tx, family string) err
 }
 
 func (s *Service) MakeMemberResetCode(ctx context.Context, bearer, target string, q MemberResetRequest) (MemberResetCode, error) {
+	if e := s.RequireSignInKind(ctx, SignInLocal); e != nil {
+		return MemberResetCode{}, e
+	}
 	if !validFamilyID(target) || q.ExpectedRevision < 1 {
 		return MemberResetCode{}, ErrDirectInput
 	}
 	out := MemberResetCode{Code: Token(), ExpiresAt: time.Now().UTC().Truncate(time.Second).Add(time.Hour).Format(time.RFC3339)}
 	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		if e := RequireSignInKindTx(ctx, tx, SignInLocal); e != nil {
+			return e
+		}
 		c, e := s.profileManagerTx(ctx, tx, bearer)
 		if e != nil {
 			return e
@@ -462,6 +468,9 @@ func (s *Service) MakeMemberResetCode(ctx context.Context, bearer, target string
 	return out, nil
 }
 func (s *Service) VerifyMemberReset(ctx context.Context, q MemberResetVerify) (DirectSignIn, error) {
+	if e := s.RequireSignInKind(ctx, SignInLocal); e != nil {
+		return DirectSignIn{}, e
+	}
 	if len(q.Username) > 64 || len(q.Code) > 128 {
 		q.Username = ""
 		q.Code = ""
@@ -472,6 +481,9 @@ func (s *Service) VerifyMemberReset(ctx context.Context, q MemberResetVerify) (D
 	invalid := false
 	var out DirectSignIn
 	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		if e := RequireSignInKindTx(ctx, tx, SignInLocal); e != nil {
+			return e
+		}
 		var account, hash, issuer string
 		var membershipRevision int64
 		var issuerEpoch int
@@ -530,7 +542,7 @@ func (s *Service) VerifyMemberReset(ctx context.Context, q MemberResetVerify) (D
 			return e
 		}
 		if out.Session == nil {
-			return ErrDevicePending
+			return ErrUnauthorized
 		}
 		return markResetSessionTx(ctx, tx, out.Session, "password")
 	})
