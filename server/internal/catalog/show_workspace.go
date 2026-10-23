@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/metadatalanguage"
 	"portico.local/server/internal/personalstate"
 	"portico.local/server/internal/requestinput"
 	"strconv"
@@ -181,11 +182,13 @@ func (s *Service) showHeroEvidence(show string, viewer Viewer, out *ShowWorkspac
 	var rawGenres, rawRating string
 	err := s.read().QueryRow(`SELECT
 	 COALESCE((SELECT value FROM screen_metadata_fields WHERE target_kind='show' AND target_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND field='genres'),'[]'),
-	 COALESCE((SELECT json_extract(value,'$') FROM screen_metadata_fields WHERE target_kind='show' AND target_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND field='language'),''),
 	 COALESCE((SELECT json_extract(value,'$') FROM screen_metadata_fields WHERE target_kind='show' AND target_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND field='status'),''),
 	 COALESCE((SELECT json_extract(value,'$') FROM screen_metadata_fields WHERE target_kind='show' AND target_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND field='date'),''),
-	 COALESCE((SELECT value FROM screen_metadata_fields WHERE target_kind='show' AND target_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND field='rating'),'')`, show, show, show, show, show).Scan(&rawGenres, &out.Show.OriginalLanguage, &out.Show.Status, &out.Show.FirstAired, &rawRating)
+	 COALESCE((SELECT value FROM screen_metadata_fields WHERE target_kind='show' AND target_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND field='rating'),'')`, show, show, show, show).Scan(&rawGenres, &out.Show.Status, &out.Show.FirstAired, &rawRating)
 	if err != nil {
+		return err
+	}
+	if out.Show.OriginalLanguage, err = metadatalanguage.Published(s.Context(), s.read(), show); err != nil {
 		return err
 	}
 	var names []struct {
