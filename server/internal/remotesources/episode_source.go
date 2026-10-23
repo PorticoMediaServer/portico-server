@@ -206,7 +206,13 @@ func (i *episodeRangeInput) Evidence() string {
 }
 func (i *episodeRangeInput) Size() int64                        { return i.source.authority.captured.Size }
 func (i *episodeRangeInput) Validate(ctx context.Context) error { return i.reader.Check(ctx) }
-func (i *episodeRangeInput) Close() error                       { return i.reader.Close() }
+func (i *episodeRangeInput) StopAndRecheck(ctx context.Context) error {
+	if i.source == nil || i.source.remote == nil {
+		return ErrEpisodeAuthority
+	}
+	return i.source.remote.StopAndRecheck(ctx)
+}
+func (i *episodeRangeInput) Close() error { return i.reader.Close() }
 func (i *episodeRangeInput) ReadExtent(ctx context.Context, offset, length int64) ([]byte, error) {
 	if length < 1 || length > 1<<20 || offset < 0 || offset > i.Size()-length {
 		return nil, ErrEpisodeAuthority

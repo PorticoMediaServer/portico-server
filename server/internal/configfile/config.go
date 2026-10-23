@@ -210,3 +210,46 @@ func (l *Loader) Watch(ctx context.Context, interval time.Duration, onChange fun
 		}
 	}
 }
+
+// Patch keeps other registered domains when one settings authority publishes its
+// values. Dotted keys are written as TOML tables, without parallel literal keys.
+func (l *Loader) Patch(patch map[string]any) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	// Read the file again while holding the writer lock: another editor may have
+	// changed an unrelated domain since the watcher's last poll.
+	raw, err := l.read()
+	if err != nil {
+		return err
+	}
+	values := map[string]any{}
+	if err = toml.Unmarshal(raw, &values); err != nil {
+		return err
+	}
+	for key, value := range patch {
+		delete(values, key)
+		parts := strings.Split(key, ".")
+		at := values
+		for _, part := range parts[:len(parts)-1] {
+			child, ok := at[part].(map[string]any)
+			if !ok {
+				child = map[string]any{}
+				at[part] = child
+			}
+			at = child
+		}
+		at[parts[len(parts)-1]] = value
+	}
+	raw, err = toml.Marshal(values)
+	if err != nil {
+		return err
+	}
+	if len(raw) > MaxBytes {
+		return errors.New("config exceeds 1 MiB")
+	}
+	if err = atomicfile.Write(l.path, raw, 0600); err != nil {
+		return err
+	}
+	l.values, l.digest, l.loaded = values, sha256.Sum256(raw), true
+	return nil
+}
