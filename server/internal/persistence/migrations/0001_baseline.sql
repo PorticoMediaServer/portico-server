@@ -8150,7 +8150,8 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "logLevel" TEXT,
  "conversionMode" TEXT CHECK("conversionMode" IN('all','sound','never')),
  "outputFormat" TEXT CHECK("outputFormat" IN('auto','h264')),
- "downloadMaxQuality" TEXT) STRICT;
+ "downloadMaxQuality" TEXT,
+ "musicAwayQuality" TEXT NOT NULL DEFAULT 'original' CHECK("musicAwayQuality" IN('original','cd-quality','320','96'))) STRICT;
 
 CREATE TABLE server_setting_lists(setting TEXT NOT NULL,position INTEGER NOT NULL CHECK(position>=0),value TEXT NOT NULL,PRIMARY KEY(setting,position)) WITHOUT ROWID, STRICT;
 
