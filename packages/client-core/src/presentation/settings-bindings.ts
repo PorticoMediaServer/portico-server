@@ -8,15 +8,15 @@ import type {ConnectivityStatus} from '../server-administration.ts';
 import type {ReadingPreferences} from '../preference-effects.ts';
 
 export type SettingsBindingForm='runtime'|'connectivity'|'connectivityStatus'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library';
-export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
+export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
 export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;connectivityStatus?:ConnectivityStatus;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>;deviceDefaults?:Readonly<Record<string,unknown>>}>;
 export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
 export type SettingsBindingPatch=Readonly<{form:SettingsBindingForm;values:Readonly<Record<string,unknown>>}>;
 const bindings:Readonly<Record<string,SettingsBinding>>={
  'device.player':{form:'device',key:'playerEngine',codec:'player-engine'},
- 'device.receive':{form:'device',key:'receiveFromDevices'},
+ 'device.receive':{form:'device',key:'receiveFromDevices',codec:'boolean'},
  'audioSubtitles.surround':{form:'device',key:'forceStereo',codec:'surround'},
- 'quality.disableHdr':{form:'device',key:'disableHdr'},
+ 'quality.disableHdr':{form:'device',key:'disableHdr',codec:'boolean'},
  'quality.tvSupports':{form:'device',key:'tvSupports',fields:{hdr:'tvHdr',surround:'tvSurround'},codec:'tv-support'},
  'playback.skipping':{form:'preferences',key:'playback.skipping',scope:'profile-server',fields:{intro:'playback.introSkip',credits:'playback.creditsSkip',recap:'playback.recapSkip'}},
  'playback.stillWatching':{form:'preferences',key:'playback.passoutProtection',scope:'profile-server',fields:{enabled:'playback.passoutProtection',episodes:'playback.passoutAfterEpisodes'},codec:'still-watching'},
@@ -206,6 +206,7 @@ function windowMode(binding:SettingsBinding,w:Readonly<Record<string,unknown>>):
 function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSources):unknown{
  if(v===undefined)return undefined;
  if(binding.codec==='video-quality-choice')return typeof v==='string'&&canonicalQualityLadder.some(q=>q.id===v)&&(binding.key!=='downloadMaxQuality'||v!=='automatic')?(v==='2160p'?'4k':v):undefined;
+ if(binding.codec==='boolean')return typeof v==='boolean'?v:undefined;
  if(binding.codec==='surround')return typeof v==='boolean'?(v?'stereo':'asis'):undefined;
  if(binding.codec==='player-engine')return v==='automatic'?'auto':v==='native'||v==='mpv'?v:undefined;
 
@@ -262,10 +263,10 @@ export function readSettingsBinding(binding:SettingsBinding,sources:SettingsBind
  }
  const alias=rowId==='general.updateChecks'?'general.updateFeed':rowId==='streaming.awayQuality'?'streaming.awayExact':rowId==='storage.backupKeep'?'storage.backupKeepExact':rowId;
  const fact:ConfigurationValue|undefined=alias?sources.configuration?.fields.find(f=>f.id===alias):undefined;
- if(fact){const display={...binding,scale:undefined,...(rowId==='streaming.awayQuality'?{scale:1/1000}:{})};const show=(v:unknown)=>rowId==='streaming.awayQuality'?presented(binding,typeof v==='number'?v*1000:v,sources):presented(display,v,sources);return {current:show(fact.current),effective:show(fact.effective),default:show(fact.default),source:fact.source,configOnly:fact.configOnly,applicationMode:fact.applicationMode};}
+ if(fact){const display={...binding,scale:undefined,...(rowId==='streaming.awayQuality'?{scale:1/1000}:{})};const show=(v:unknown)=>rowId==='streaming.awayQuality'?presented(binding,typeof v==='number'?v*1000:v,sources):presented(display,v,sources);const current=show(fact.current),effective=show(fact.effective);if(current===undefined||effective===undefined)return undefined;return {current,effective,default:show(fact.default),source:fact.source,configOnly:fact.configOnly,applicationMode:fact.applicationMode};}
  const w=binding.window?windows(sources).find(w=>w.id===binding.window):undefined;
  const raw=binding.window?(binding.codec==='window-mode'?w&&windowMode(binding,w):w?.[binding.key]):at(binding.form==='device'?sources.device:sources.forms?.[binding.form],binding.key);if(raw===undefined)return undefined;
- return {current:presented(binding,raw,sources),effective:presented(binding,raw,sources),default:binding.form==='device'?presented(binding,at(sources.deviceDefaults,binding.key),sources):undefined,source:binding.form,configOnly:false};
+ const current=presented(binding,raw,sources);if(current===undefined)return undefined;return {current,effective:current,default:binding.form==='device'?presented(binding,at(sources.deviceDefaults,binding.key),sources):undefined,source:binding.form,configOnly:false};
 }
 function checkedPreferencePatch(snapshot:PreferenceSnapshot,scope:PreferenceScope,values:Readonly<Record<string,unknown>>):Readonly<Record<string,PreferenceValue|null>>{
  const patch=validatePreferencePatch(snapshot.registry,scope,values as Readonly<Record<string,PreferenceValue|null>>);
@@ -309,6 +310,7 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
   if(typeof value!=='string'||value==='2160p'||!canonicalQualityLadder.some(q=>(q.id==='2160p'?'4k':q.id)===value)||binding.key==='downloadMaxQuality'&&value==='automatic')throw new Error('Invalid setting value.');
   raw=value==='4k'?'2160p':value;
  }
+ if(binding.codec==='boolean'&&typeof value!=='boolean')throw new Error('Invalid setting value.');
  if(binding.codec==='surround'){if(value!=='asis'&&value!=='stereo')throw new Error('Invalid setting value.');raw=value==='stereo';}
  if(binding.codec==='player-engine'){if(value!=='auto'&&value!=='native'&&value!=='mpv')throw new Error('Invalid setting value.');raw=value==='auto'?'automatic':value;}
  if(binding.form==='preferences')return preferenceBindingPatch(binding,{[binding.key]:raw},sources);

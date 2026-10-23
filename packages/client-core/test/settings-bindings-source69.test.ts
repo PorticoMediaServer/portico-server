@@ -116,6 +116,11 @@ test('four presets derive and reset through actual child codecs; Custom never wr
  assert.deepEqual(settingsBindingPatch(binding('device.player'),'auto').values,{playerEngine:'automatic'});
  assert.throws(()=>settingsBindingPatch(binding('device.player'),'automatic'));
  assert.deepEqual(settingsBindingPatch(binding('quality.tvSupports'),'hdr-surround').values,{tvHdr:true,tvSurround:true});
+ assert.equal(readSettingsBinding(binding('device.player'),{device:{playerEngine:'invented'}}),undefined);
+ assert.equal(readSettingsBinding(binding('quality.disableHdr'),{device:{disableHdr:'false'}}),undefined);
+ assert.throws(()=>settingsBindingPatch(binding('quality.disableHdr'),'false'));
+ assert.equal(readSettingsBinding(binding('quality.disableHdr'),{device:{disableHdr:false}})?.default,undefined);
+ assert.equal(readSettingsBinding(binding('quality.disableHdr'),{device:{disableHdr:false},deviceDefaults:{disableHdr:true}})?.default,true);
 });
 
 test('retired and unknown rows have no binding or prototype fallback',()=>{
