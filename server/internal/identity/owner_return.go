@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"strconv"
 	"time"
 
@@ -262,4 +263,39 @@ func (s *Service) AbandonOwnerReturnTx(ctx context.Context, tx *sql.Tx, operatio
 		return ErrForbidden
 	}
 	return s.endOwnerReturnTx(ctx, tx, c, "superseded")
+}
+
+// RetireOwnerCompletionForClaimTx composes the existing deny-only claim hook.
+// The caller has already fenced this exact claim in the same writer. It cannot
+// retire a live claim or touch a successor's family; no positive owner proof or
+// unexpired browser challenge is needed to finish an already authorized denial.
+func (s *Service) RetireOwnerCompletionForClaimTx(ctx context.Context, tx *sql.Tx, operation string) error {
+	c, err := ownerCompletionTx(ctx, tx, operation)
+	if errors.Is(err, ErrUnauthorized) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if c.phase != "prepared" && c.phase != "installed" && c.phase != "consumed" {
+		return nil
+	}
+	var denied bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_claim_intents i LEFT JOIN networking_claim_authority a ON a.operation_id=i.operation_id WHERE i.operation_id=? AND i.server_id=? AND (i.stage IN('cancel_pending','cancelled') OR a.state IN('revoked','account_deleted','unclaimed','reassigned')))`, operation, s.ID()).Scan(&denied); err != nil {
+		return err
+	}
+	if !denied {
+		return ErrForbidden
+	}
+	phase := "superseded"
+	if c.phase == "prepared" {
+		phase = "cancelled"
+		if _, err = tx.ExecContext(ctx, `UPDATE identity_moves SET stage='cancelled',revision=revision+1 WHERE id=? AND owner_id=? AND revision=? AND stage='preview'`, c.move, c.owner, c.moveRevision); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE identity_owner_completions SET phase='cancelled' WHERE operation_id=? AND phase='prepared'`, operation); err != nil {
+			return err
+		}
+	}
+	return s.endOwnerReturnTx(ctx, tx, c, phase)
 }

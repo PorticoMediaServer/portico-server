@@ -116,6 +116,11 @@ func prepareOwnerInstallFixture(t *testing.T) (ownerCaptureFixture, networking.I
 	}, func() {}); err != nil {
 		t.Fatal(err)
 	}
+	if err = f.store.SetTerminalRevoker(func(ctx context.Context, tx *sql.Tx, v networking.Intent, _ string) error {
+		return f.s.RetireOwnerCompletionForClaimTx(ctx, tx, v.OperationID)
+	}); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now().UTC()
 	// Exact production approval order; the fixture signature is checked by
 	// NewApprovalVerifier, rather than bypassing the authenticated facts.
@@ -129,6 +134,11 @@ func prepareOwnerInstallFixture(t *testing.T) (ownerCaptureFixture, networking.I
 	err = f.runner.Do(ctx, func(ctx context.Context) error {
 		v, err := f.store.Approve(ctx, f.intent, proof)
 		if err != nil {
+			return err
+		}
+		request := identity.Token()
+		cancelRaw := []byte(fmt.Sprintf(`{"kind":"portico.claim.cancel","version":"1","audience":"https://hosted.example","operationId":%q,"serverId":%q,"accountId":%q,"publicKey":%q,"localGeneration":"%d","requestId":%q,"mode":"intent"}`, v.OperationID, v.ServerID, v.AccountID, base64.RawURLEncoding.EncodeToString(v.PublicKey), v.LocalGeneration, request))
+		if _, err = f.store.ArmPreinstallCancellation(ctx, v, networking.Cancellation{Binding: v.Binding, RequestID: request, Proof: networking.SignedProof{Payload: cancelRaw, Signature: ed25519.Sign(f.key, cancelRaw)}}); err != nil {
 			return err
 		}
 		v, err = f.store.BeginFinalizing(ctx, v)
