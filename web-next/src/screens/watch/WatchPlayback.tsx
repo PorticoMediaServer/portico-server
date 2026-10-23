@@ -74,7 +74,6 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   }, [expanded, activeVideo, binding]);
   const [notice, setNotice] = useState<{runtime: WebShellPlaybackRuntime; value: DockNoticeData} | null>(null), [now, setNow] = useState(() => performance.now());
   const previous = useRef<{runtime?: WebShellPlaybackRuntime; audio?: string; video?: string}>({});
-  const leaving = useRef<string | undefined>(undefined);
   useLayoutEffect(() => { setNotice(null); previous.current = {}; }, [runtime]);
   useLayoutEffect(() => {
     const unmount = media.adopt(runtime, video.current!);
@@ -100,20 +99,14 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
     return () => timers.forEach(clearTimeout);
   }, [currentNotice]);
   useEffect(() => {
-    if (!binding) { leaving.current = undefined; return; }
-    if (expanded && router.state.location.pathname !== '/player') {
-      leaving.current = router.state.location.href;
-      void router.navigate({to: '/player'}).catch(binding.reportError);
-    } else if (!expanded && router.state.location.pathname === '/player' && leaving.current) {
-      const href = leaving.current; leaving.current = undefined;
-      void router.navigate({href, replace: true}).catch(binding.reportError);
-    }
-  }, [expanded, binding]);
-  useEffect(() => {
     if (!runtime) return;
+    let previous = router.state.location.href;
     return router.subscribe('onResolved', () => {
+      const href = router.state.location.href, navigated = href !== previous; previous = href;
       const current = runtime.getSnapshot();
-      if (current.dock.local?.expanded && current.fence && router.state.location.pathname !== '/player') runtime.collapse(current.fence);
+      // Expansion and posture never navigate: the underlying route's real DOM/services stay
+      // alive. Only a subsequent explicit destination change collapses the local overlay.
+      if (navigated && current.dock.local?.expanded && current.fence && router.state.location.pathname !== '/player') runtime.collapse(current.fence);
     });
   }, [runtime]);
   const collapse = () => {
