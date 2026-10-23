@@ -69,7 +69,7 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
     <button type="button" disabled={disabled} ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={props.onFocus} onBlur={props.onBlur}
       {...touch.handlers}
       onKeyDown={event => {if (event.key === 'Escape' && selection?.active) {event.preventDefault(); event.stopPropagation(); selection.onExit();}}}
-      onContextMenu={event => {if (onMore || selection?.active) event.preventDefault();}}>
+      onContextMenu={event => {if (touch.phase !== 'idle') event.preventDefault();}}>
 
       {children}
     </button>

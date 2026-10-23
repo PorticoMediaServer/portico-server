@@ -23,7 +23,7 @@ export function TouchBrowseItem({itemId, onMore, selectionState, moreExpanded = 
     onPointerUp={event => {props.onPointerUp?.(event); touch.handlers.onPointerUp();}}
     onPointerCancel={event => {props.onPointerCancel?.(event); touch.handlers.onPointerCancel();}}
     onPointerLeave={event => {props.onPointerLeave?.(event); touch.handlers.onPointerLeave();}}
-    onContextMenu={event => {props.onContextMenu?.(event); if (onMore || selectionState?.active) event.preventDefault();}}
+    onContextMenu={event => {props.onContextMenu?.(event); if (touch.phase !== 'idle') event.preventDefault();}}
     onClickCapture={event => {
       props.onClickCapture?.(event);
       if (event.defaultPrevented) return;

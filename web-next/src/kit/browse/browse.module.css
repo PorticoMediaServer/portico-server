@@ -330,3 +330,6 @@
 
 .filterBuilder[data-platform=tv] .facetChip:focus-visible { background: color-mix(in srgb, var(--color-text) 16%, transparent); color: var(--browse-text); }
 .filterBuilder[data-platform=tv] .facetChip[data-selected] small { color: var(--browse-secondary); }
+
+/* Q6/select16: the touch hold timer owns callouts on the primary item target. */
+.trackTitle, .trackPlay, .songMain { -webkit-touch-callout:none; user-select:none; -webkit-user-select:none; }
