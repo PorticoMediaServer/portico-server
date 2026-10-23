@@ -164,6 +164,11 @@ func (s *Store) Configuration(ctx context.Context, auth Authorize) (out Settings
 			source := sources[b.Field]
 			if source == "" {
 				source = "default"
+				// Existing normalized domain writers can predate this file bridge.
+				// A non-factory database value is still a stored server policy.
+				if !reflect.DeepEqual(current[b.Field], defaults[b.Field]) {
+					source = "server"
+				}
 			}
 			out.Fields = append(out.Fields, ConfigurationValue{b.ID, b.Key, configurationAtom(configurationValue(b, current[b.Field])), configurationAtom(configurationValue(b, effective[b.Field])), configurationAtom(configurationValue(b, defaults[b.Field])), source, b.ConfigOnly, definitions[b.Field].Apply})
 		}

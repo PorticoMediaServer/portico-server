@@ -238,3 +238,27 @@ func TestSettingsConfigurationCanonicalVideoPolicyAndManualUploadRange(t *testin
 		t.Fatal("independent legacy gate exposed")
 	}
 }
+
+func TestSettingsConfigurationReportsExistingServerPolicySource(t *testing.T) {
+	s, _, authorize := consoleFixture(t)
+	ctx := context.Background()
+	if _, err := s.DB.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=0,per_account_cap=2 WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := s.Configuration(ctx, authorize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, field := range doc.Fields {
+		if field.ID == "streaming.allowConversion" || field.ID == "people.maxStreamsEach" {
+			if field.Source != "server" || field.Current == nil {
+				t.Fatal("stored server policy presented as factory default", field)
+			}
+			found[field.ID] = true
+		}
+	}
+	if len(found) != 2 {
+		t.Fatal("existing policy fields missing", found)
+	}
+}
