@@ -3,7 +3,7 @@ import {PreferencesReader} from '@core/preferences-reader.ts';
 import {validatePreferencePatch, type PreferencePatch, type PreferenceScope, type PreferenceSnapshot} from '@core/preferences.ts';
 import {searchConfiguration, type SettingsConfiguration} from '@core/settings-configuration.ts';
 import {applySettingsBindingPatch, changedFromDefault, exactPresetValue, presetPatch, readSettingsBinding, settingsBinding, settingsBindingPatch, type SettingsBindingForm, type SettingsBindingSources, type SettingsBindingValue} from '@core/presentation/settings-bindings.ts';
-import {settingsRowIndex, type SettingsRow, type SettingsSection, type SettingsValue} from '@core/presentation/settings-spec.ts';
+import {settingsRowIndex, settingsSpec, type SettingsRow, type SettingsSection, type SettingsValue} from '@core/presentation/settings-spec.ts';
 import {runtimeForm, connectivityForm, maintenanceForm, alertsForm, logsForm, type ServerFormDeps} from '@core/server-admin/server-forms.ts';
 import type {DraftForm} from '@core/server-admin/draft-form.ts';
 import {randomId} from '@core/random-id.ts';
@@ -156,7 +156,7 @@ export class SettingsController {
       readOnly: settingsBinding(row.id)?.readOnly === true || row.id === 'device.appVersion' || row.id === 'device.name' && (!settingsBinding(row.id) || this.options.device?.getSnapshot().facts.name?.readOnly === true),
       error: this.rowErrors.has(row.id) ? defaultI18n.t('next.states.pageFailedBody') : undefined};
   };
-  configurationMatches = (query: string) => this.configuration && this.options.role === 'owner' && this.options.mainProfile ? searchConfiguration(this.configuration, query).filter(field => configurationFieldEligible(field, this.eligible)).map(field => ({...field, label: settingsRowIndex.has(field.id) ? defaultI18n.t(settingsRowIndex.get(field.id)!.row.label) : field.key, path: this.configuration!.path})) : [];
+  configurationMatches = (query: string) => this.configuration && this.options.role === 'owner' && this.options.mainProfile ? searchConfiguration(this.configuration, query).filter(field => configurationFieldEligible(field, this.eligible) && (!field.configOnly || settingsSpec.some(section => section.configOnly.some(item => item.key === field.key)))).map(field => ({...field, label: settingsRowIndex.has(field.id) ? defaultI18n.t(settingsRowIndex.get(field.id)!.row.label) : defaultI18n.t(settingsSpec.flatMap(section => section.configOnly).find(item => item.key === field.key)!.label), path: this.configuration!.path})) : [];
   load = (section: SettingsSection): Promise<void> => {
     if (!this.current() || !this.sectionVisible(section)) return Promise.resolve();
     if (section.scope === 'server' && this.forms.runtime && !this.headerLoading) this.headerLoading = (async () => {

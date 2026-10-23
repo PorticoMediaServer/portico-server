@@ -4,11 +4,13 @@ import {settingsRowIndex, settingsSpec, type SettingsHolder, type SettingsRow, t
 import {SettingsNav, type SettingsSearchGroup} from '../../kit/shell/SettingsSurfaces';
 import {SettingsPageFailure, SettingsPageHeading, SettingsPanel, SettingsRows, SettingsWorkspace, searchSettings, settingsRoute, type SettingPresentation, type SettingsRoute, type SettingsPanelProps} from '../../kit/settings';
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
+import {Icon} from '../../kit/Icon';
 import {settingsIconName} from '../../kit/settings/icons';
 import {ServerHeader, type ServerAudience} from '../../kit/shell/ServerIdentity';
 import {useShellWidth} from '../../shell/viewport';
 import {configurationFieldEligible} from './eligibility';
 import {settingsRowVisible, settingsSectionVisible, type SettingsEnvironment} from '@core/presentation/settings-visibility.ts';
+import styles from '../../kit/settings/settings.module.css';
 
 const t = defaultI18n.t;
 export type SettingsContext = Readonly<{section: SettingsSection; panelId?: string; tabId?: string; recordId?: string}>;
@@ -61,15 +63,15 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
   };
   const matches = searchSettings(query, t, (row, owner) => sectionVisible(owner) && rowState(row, rowContext(row, owner)).present);
   const configuration = (bindings.configurationMatches?.(query) ?? []).filter(field => configurationFieldEligible(field, (row, context) => settingsRowVisible(row, environment) && bindings.eligible(row, rowContext(row, context.section))));
-  const configurationGroups: SettingsSearchGroup[] = configuration.filter(fact => fact.configOnly).length ? [{id: 'configuration', label: t('next.settings.configurationFile'), icon: 'i-server', area: 'server', configuration: true, rows: configuration.filter(fact => fact.configOnly).map(fact => ({id: fact.key, label: fact.label, description: fact.key}))}] : [];
-  const groups: SettingsSearchGroup[] = settingsSpec.map(section => ({id: `${section.scope}/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), area: section.scope,
-    rows: matches.filter(hit => hit.section === section).map(hit => ({id: hit.rowId, label: hit.label, description: hit.context.join(' · ')}))})).filter(group => group.rows.length);
+  const groups: SettingsSearchGroup[] = settingsSpec.filter(sectionVisible).map(section => ({id: `${section.scope}/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), area: section.scope,
+    rows: [...matches.filter(hit => hit.section === section).map(hit => ({id: hit.rowId, label: hit.label, description: hit.context.join(' · ')})),
+      ...configuration.filter(fact => fact.configOnly && section.configOnly.some(field => field.key === fact.key)).map(fact => ({id: fact.key, label: fact.label, description: fact.key}))]})).filter(group => group.rows.length);
   const go = (id: string, row?: string) => {
-    if (id === 'configuration') {setConfigurationKey(row); setCompactPage(true); return;}
     const [scope, page] = id.split('/');
     if (scope !== 'account' && scope !== 'server') return;
     const location = row && settingsRowIndex.get(row);
-    navigate({scope, section: page, ...(row ? {row} : {})}); setConfigurationKey(undefined);
+    const configuration = row && bindings.configurationMatches?.(query).find(field => field.key === row && field.configOnly);
+    navigate({scope, section: page, ...(row && !configuration ? {row} : {})}); setConfigurationKey(configuration ? row : undefined);
     setPanel(current => current && location && location.panelId === current.id && selected.scope === scope && selected.section === page ? {...current, tab: location.tabId} : undefined);
     setAdvanced(false); setCompactPage(true);
   };
@@ -90,7 +92,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
     account={settingsSpec.filter(section => section.scope === 'account' && sectionVisible(section)).map(section => ({id: `account/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
     server={settingsSpec.filter(section => section.scope === 'server' && sectionVisible(section)).map(section => ({id: `server/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
     selectedId={`${selected.scope}/${selected.section}`} selectedSearchResult={selected.row ? {pageId: `${selected.scope}/${selected.section}`, rowId: selected.row} : undefined}
-    query={query} onQueryChange={setQuery} onNavigate={go} matches={[...groups, ...configurationGroups]} onSearchResult={go} layout={compact ? 'phone' : 'desktop'} />;
+    query={query} onQueryChange={setQuery} onNavigate={go} matches={groups} onSearchResult={go} layout={compact ? 'phone' : 'desktop'} />;
   const panelSpec = panel && section.panels?.[panel.id], tab = panelSpec?.tabs?.find(tab => tab.id === panel?.tab);
   const panelContext: SettingsContext = {section, panelId: panel?.id, tabId: tab?.id, recordId: panel?.recordId};
   const panelState = bindings.panel?.(panelContext);
@@ -109,8 +111,5 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
 
 function ConfigurationFact({fact}: {fact: SettingsConfigurationMatch}) {
   const value = (value: unknown) => value === null ? t('next.settings.notSet') : typeof value === 'string' ? value : JSON.stringify(value);
-  return <section aria-label={fact.label}><h2>{fact.label}</h2><p>{t('next.settings.configOnly', {path: fact.path})}</p><code>{fact.key}</code><dl>
-    <dt>{t('next.settings.current')}</dt><dd>{value(fact.current)}</dd><dt>{t('next.settings.effective')}</dt><dd>{value(fact.effective)}</dd>
-    <dt>{t('next.settings.default')}</dt><dd>{value(fact.default)}</dd><dt>{t('next.settings.source')}</dt><dd>{t(fact.source === 'file' ? 'next.settings.source.file' : fact.source === 'server' ? 'next.settings.source.server' : 'next.settings.source.default')}</dd>
-  </dl></section>;
+  return <section className={styles.configurationNote} aria-label={fact.label}><Icon name="i-info" size={20} /><span>{fact.label}{fact.label ? '. ' : ''}{t('next.settings.configOnly.before')}{' '}<code>{fact.key}</code>{' = '}<code>{value(fact.default)}</code>{t('next.settings.configOnly.after')}</span></section>;
 }
