@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 )
 
@@ -113,5 +114,104 @@ func TestObservedOutputStoreCannotBypassAcceptedTimelineBinding(t *testing.T) {
 				t.Fatalf("unaccepted binding wrote observation: %d %v", count, err)
 			}
 		})
+	}
+}
+
+// This models the existing ChannelEngine authority for transaction tests. It
+// does not qualify a tuner/provider/runtime/native renderer. The canonical DB
+// buffer_ordinal guard is intentionally independent of this callback's answer.
+type observedChannelAuthority struct {
+	generation   string
+	reject       bool
+	observations int
+}
+
+func (*observedChannelAuthority) Configured() bool { return true }
+func (*observedChannelAuthority) StartTx(context.Context, *sql.Tx, identity.Principal, playback.ChannelStart) (playback.LinearSelection, error) {
+	panic("not a start test")
+}
+func (a *observedChannelAuthority) ReadTx(context.Context, *sql.Tx, identity.Principal, string) (playback.ChannelState, error) {
+	return playback.ChannelState{Media: playback.LinearMedia{BufferGeneration: a.generation}}, nil
+}
+func (*observedChannelAuthority) SetIntentTx(context.Context, *sql.Tx, identity.Principal, string, playback.LinearDesired) (playback.LinearDesired, error) {
+	panic("not an intent test")
+}
+func (a *observedChannelAuthority) ObserveTx(context.Context, *sql.Tx, string, string, int64, int64, string) error {
+	if a.reject {
+		return &playback.ControlFault{Code: "stale_generation", HTTPStatus: 409}
+	}
+	a.observations++
+	return nil
+}
+func (*observedChannelAuthority) EndTx(context.Context, *sql.Tx, string) (bool, error) {
+	return false, nil
+}
+
+func TestObservedLiveOutputKeepsSessionAndBufferGenerationsDistinct(t *testing.T) {
+	db := pausedTestDB(t)
+	ctx := context.Background()
+	now := time.UnixMilli(1_750_000_000_000)
+	insertPausedSession(t, db, "observed-live", "channel", "playing", now.UnixMilli(), 0)
+	_, err := db.Exec(`INSERT INTO playback_channel_sessions(session_id,authority,account_id,profile_id,server_id,role,account_epoch,family_id,kind,source_id,channel_id,selection_json,transport_json,buffer_ordinal,status,stage,created_ms) VALUES('observed-live','local','owner','primary','unit','local',1,'unit','live-source','unit-source','unit-channel','{}','{}',7,'active','engine',?)`, now.UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := &observedChannelAuthority{generation: "7"}
+	s := &Service{DB: db, Channels: authority, Now: func() time.Time { return now }}
+	actual := &playback.ObservedPlayback{Video: &playback.ObservedVideo{Width: 1280, Height: 720}}
+	read := func(sessionGeneration, bufferGeneration int) *playback.ObservedPlayback {
+		t.Helper()
+		tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		got, err := playback.ReadObservedPlayback(ctx, tx, "observed-live", sessionGeneration, bufferGeneration)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if _, err = s.Timeline(ctx, pausedCaller(), "observed-live", Report{Seq: 1, Generation: 7, State: "playing", ObservedPlayback: actual}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(read(1, 7), actual) || read(7, 7) != nil || read(1, 1) != nil {
+		t.Fatal("session/buffer generations were collapsed")
+	}
+	if _, err = db.Exec(`UPDATE playback_channel_sessions SET buffer_ordinal=8 WHERE session_id='observed-live'`); err != nil {
+		t.Fatal(err)
+	}
+	authority.generation = "8"
+	if read(1, 7) != nil || read(1, 8) != nil {
+		t.Fatal("new buffer inherited previous output")
+	}
+	if _, err = s.Timeline(ctx, pausedCaller(), "observed-live", Report{Seq: 2, Generation: 8, State: "playing", ObservedPlayback: actual}); err != nil {
+		t.Fatal(err)
+	}
+	wrong := &playback.ObservedPlayback{Screen: &playback.ObservedScreen{DynamicRange: "hdr10"}}
+	if _, err = s.Timeline(ctx, pausedCaller(), "observed-live", Report{Seq: 3, Generation: 7, State: "playing", ObservedPlayback: wrong}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(read(1, 8), actual) {
+		t.Fatal("stale buffer changed output")
+	}
+	authority.reject = true
+	if _, err = s.Timeline(ctx, pausedCaller(), "observed-live", Report{Seq: 4, Generation: 8, State: "playing", ObservedPlayback: wrong}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(read(1, 8), actual) {
+		t.Fatal("rejected engine observation changed output")
+	}
+	// Even a stale callback reporting success cannot override the actual
+	// persisted buffer tuple. Its old output also becomes unreadable.
+	authority.reject = false
+	if _, err = db.Exec(`UPDATE playback_channel_sessions SET buffer_ordinal=9 WHERE session_id='observed-live'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Timeline(ctx, pausedCaller(), "observed-live", Report{Seq: 5, Generation: 8, State: "playing", ObservedPlayback: wrong}); err != nil {
+		t.Fatal(err)
+	}
+	if read(1, 8) != nil || read(1, 9) != nil {
+		t.Fatal("callback bypassed canonical buffer generation")
 	}
 }

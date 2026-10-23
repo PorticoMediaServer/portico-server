@@ -388,9 +388,6 @@ func (s *Service) timelineChannel(ctx context.Context, r row, report Report) (ti
 		}
 		changed := state != r.state
 		revision := r.revision
-		if e := catalog.RecordLivePlaybackTx(tx, r.id, now.UnixMilli(), report.State); e != nil {
-			return e
-		}
 		if changed {
 			revision++
 		}
@@ -400,6 +397,9 @@ func (s *Service) timelineChannel(ctx context.Context, r row, report Report) (ti
 		}
 		if accepted, _ := result.RowsAffected(); accepted == 0 {
 			return nil
+		}
+		if e := catalog.RecordLivePlaybackTx(tx, r.id, now.UnixMilli(), report.State); e != nil {
+			return e
 		}
 		st, err := s.Channels.ReadTx(ctx, tx, rowPrincipal(r), r.id)
 		if err == nil && strconv.Itoa(report.Generation) == st.Media.BufferGeneration {
