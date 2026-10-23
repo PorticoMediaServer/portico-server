@@ -13,3 +13,5 @@ export type {ReaderSurfaceProps} from './ReaderSurface';
 export type {ReaderMountAuthority} from './mount';
 export {ReadReader} from './ReadReader';
 export type {ReadReaderProps, ReaderChromePresentation} from './ReadReader';
+export {ReaderDisplayControls, ReaderDisplayPopover, ReaderDisplaySheet} from '../../kit/reader/ReaderDisplay';
+export type {ReaderDisplayControlsProps, ReaderDisplayProps, ReaderDisplaySize, ReaderDisplayRow, ReaderThemeOption, ReaderFontOption} from '../../kit/reader/ReaderDisplay';
