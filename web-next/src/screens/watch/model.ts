@@ -9,7 +9,7 @@ export function watchStepIntent(runtime: Pick<WebShellPlaybackRuntime, 'getSnaps
   shown: WebPlaybackRuntimeSnapshot, key: string): WatchIntent | null {
   if (!['<', '>', ',', '.'].includes(key)) return null;
   const live = runtime.getSnapshot(), fence = shown.fence, presentation = shown.presentation;
-  if (!fence || shown.disposed || live.disposed || shown.authority !== live.authority || !sameFence(fence, live.fence)
+  if (!fence || !live.fence || shown.disposed || live.disposed || shown.authority !== live.authority || !sameFence(fence, live.fence)
     || !presentation?.expanded || presentation.kind !== 'video' || presentation.finished || !sameFence(presentation.fence, fence)
     || live.dock.remote?.phase === 'playing') return null;
   if (key === '<' || key === '>') return runtime.speedChoices(fence).length ? {kind: 'step-speed', direction: key === '<' ? -1 : 1} : null;
