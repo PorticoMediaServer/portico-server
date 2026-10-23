@@ -400,7 +400,7 @@ export const HOME_ROW_PREFETCH_REMAINING = 10;
 export function homeRowPagingState(row: HomeRow, lastVisibleIndex: number, pending: boolean): Readonly<{prefetch: boolean; skeletons: number; exhausted: boolean}> {
   const count = row.live?.channels.length ?? row.entries.length;
   const more = row.nextCursor.length > 0;
-  return Object.freeze({prefetch: more && !pending && count - 1 - lastVisibleIndex <= HOME_ROW_PREFETCH_REMAINING, skeletons: pending && more ? row.limit : 0, exhausted: !more});
+  return Object.freeze({prefetch: more && !pending && count - 1 - lastVisibleIndex <= HOME_ROW_PREFETCH_REMAINING, skeletons: pending && more ? 1 : 0, exhausted: !more});
 }
 
 /** These server rows reject cursors from any different selected membership. */
