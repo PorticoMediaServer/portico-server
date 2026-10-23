@@ -83,6 +83,12 @@ func TestHomeSavedBookViewHydratesPublishedEndpoint(t *testing.T) {
 	if endpoint != "/v1/home/rows/"+rowID {
 		t.Fatalf("published endpoint: %q", endpoint)
 	}
+	t.Run("requires_session", func(t *testing.T) {
+		w := homeAPIRequest(t, h, "", "GET", endpoint, "")
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("saved row bypassed session admission: %d %s", w.Code, w.Body.String())
+		}
+	})
 	for _, path := range []string{endpoint, "/v1/home/rows/view%3A" + resourceID} {
 		t.Run(path, func(t *testing.T) {
 			var first catalog.HomeRow
@@ -120,6 +126,11 @@ func TestHomeSavedBookViewHydratesPublishedEndpoint(t *testing.T) {
 				t.Fatal("Home changed the saved browse order")
 			}
 		})
+	}
+	read("DELETE", "/v1/saved-resources/"+resourceID, map[string]any{"operationId": "home-book-view-delete", "expectedRevision": created.Receipt.Revision}, nil)
+	w := homeAPIRequest(t, h, owner.AccessToken, "GET", endpoint, "")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("deleted view remained reachable: %d %s", w.Code, w.Body.String())
 	}
 }
 
