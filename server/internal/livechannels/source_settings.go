@@ -18,6 +18,29 @@ func DefaultLiveSourceSettings() LiveSourceSettings {
 	}
 }
 
+// ReadSourceLogoImportTx is the bounded current-policy reader used before
+// provider I/O and before installation. It does not load a large channel list.
+func ReadSourceLogoImportTx(ctx context.Context, tx *sql.Tx, source string) (LogoImport, bool, error) {
+	if tx == nil || source == "" {
+		return LogoImport{}, false, ErrInvalid
+	}
+	defaults, _, err := ReadLiveDefaultsTx(ctx, tx)
+	if err != nil {
+		return LogoImport{}, false, err
+	}
+	var value LogoImport
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(p.logo_mode,'follow') FROM live_sources s LEFT JOIN live_source_preferences p ON p.source_id=s.id WHERE s.id=?`, source).Scan(&value.Mode)
+	if err != nil {
+		return LogoImport{}, false, err
+	}
+	switch value.Mode {
+	case "follow", "import", "replace", "none":
+		return value, value.Enabled(defaults.LogoImport), nil
+	default:
+		return LogoImport{}, false, ErrInvalid
+	}
+}
+
 // ReadLiveSourceSettingsTx reads one normalized policy in the caller's snapshot.
 // No row means the source has not been configured, at revision 1. A missing or
 // invalid schema is an error, never a fallback to a second document store.

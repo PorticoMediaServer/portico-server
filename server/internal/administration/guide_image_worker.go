@@ -190,6 +190,20 @@ func (s *Service) importGuideImagesBatch(ctx context.Context, source, generation
 			out.Skipped++
 			continue
 		}
+		var allowed bool
+		err = s.snapshot(ctx, nil, func(tx *sql.Tx) error {
+			var err error
+			allowed, err = guideImageImportCandidateTx(ctx, tx, source, generation, url)
+			return err
+		})
+		if err != nil {
+			return out, after, false, err
+		}
+		if !allowed {
+			after = url
+			out.Skipped++
+			continue
+		}
 		out.Requested++
 		fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		raw, fetchErr := s.LogoFetch(fetchCtx, url)
@@ -242,14 +256,33 @@ func (s *Service) importGuideImagesBatch(ctx context.Context, source, generation
 			}
 		}
 		s.files.Unlock()
-		if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `INSERT INTO live_programme_images(url,digest,media_type,width,height,stored_ms) VALUES(?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, url, digest, mime, config.Width, config.Height, s.milliseconds()); err != nil {
-			return out, after, false, err
-		}
-		if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM live_logo_failures WHERE url=?`, url); err != nil {
+		imported := false
+		err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+			allowed, err := guideImageImportCandidateTx(ctx, tx, source, generation, url)
+			if err != nil || !allowed {
+				return err
+			}
+			result, err := tx.ExecContext(ctx, `INSERT INTO live_programme_images(url,digest,media_type,width,height,stored_ms) VALUES(?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, url, digest, mime, config.Width, config.Height, s.milliseconds())
+			if err != nil {
+				return err
+			}
+			n, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			imported = n == 1
+			_, err = tx.ExecContext(ctx, `DELETE FROM live_logo_failures WHERE url=?`, url)
+			return err
+		})
+		if err != nil {
 			return out, after, false, err
 		}
 		after = url
-		out.Imported++
+		if imported {
+			out.Imported++
+		} else {
+			out.Skipped++
+		}
 	}
 	return out, after, len(candidates) < limit, nil
 }

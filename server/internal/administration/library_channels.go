@@ -755,6 +755,20 @@ func (s *Service) importLogosBatch(ctx context.Context, auth Authorize, source, 
 			out.Skipped++
 			continue
 		}
+		var allowed bool
+		err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+			var err error
+			allowed, err = logoImportCandidateTx(ctx, tx, source, channel, candidates[channel])
+			return err
+		})
+		if err != nil {
+			return out, after, false, err
+		}
+		if !allowed {
+			after = channel
+			out.Skipped++
+			continue
+		}
 		out.Requested++
 		fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		raw, fetchErr := fetch(fetchCtx, candidates[channel])
@@ -781,9 +795,17 @@ func (s *Service) importLogosBatch(ctx context.Context, auth Authorize, source, 
 		if err != nil && err != sql.ErrNoRows {
 			return out, after, false, err
 		}
-		if _, err = s.UploadChannelLogo(ctx, auth, "live:"+source+":"+channel, raw, &current, operation); err != nil {
+		if _, err = s.UploadChannelLogo(ctx, logoImportAuthority(auth, source, channel, candidates[channel]), "live:"+source+":"+channel, raw, &current, operation); err != nil {
 			if ctx.Err() != nil {
 				return out, after, false, ctx.Err()
+			}
+			if errors.Is(err, ErrDenied) {
+				return out, after, false, err
+			}
+			if errors.Is(err, ErrConflict) {
+				after = channel
+				out.Skipped++
+				continue
 			}
 			if rememberErr := s.rememberLogoFailure(ctx, candidates[channel]); rememberErr != nil {
 				return out, after, false, rememberErr

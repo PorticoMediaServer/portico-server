@@ -957,10 +957,8 @@ func run() (runErr error) {
 	// it (B85). The step runs a pass at startup and after such a change.
 	supervise.Supervise(ctx, "cmd.listening-groups", func(life context.Context) {
 		wake, changed := worker.NewSignal(), worker.NewSignal()
-		unregisterWake := dbwork.WakeOnTables(wake, "books", "book_files")
-		defer unregisterWake()
-		unregisterChanged := dbwork.WakeOnTables(changed, "books", "book_files")
-		defer unregisterChanged()
+		unregister := subscribeListeningGroups(wake, changed)
+		defer unregister()
 		worker.Run(life, "cmd.listening-groups", wake, cat.ListeningGroupStep(changed))
 	})
 	meta.LocalArtwork = localMeta.Open

@@ -42,7 +42,7 @@ func TestLiveSourcePolicyCASRollbackAndImportUseOneNormalizedStore(t *testing.T)
 		t.Fatal(err)
 	}
 	replay, err := s.SaveLiveSourceConfiguration(ctx, nil, source.ID, change)
-	if err != nil || !reflect.DeepEqual(saved, replay) {
+	if err != nil || digestOf(saved) != digestOf(replay) {
 		t.Fatalf("owner replay: %+v %v", replay, err)
 	}
 	change.OperationID = "live-source-stale-write"
