@@ -49,3 +49,32 @@ func TestServeListingSnapshotNeverReturnsPartialChildren(t *testing.T) {
 		})
 	}
 }
+
+func TestServeStatHasExactMemberAndDoesNotInventProviderEvidence(t *testing.T) {
+	s, err := NewServeEndpoint(12345, "private", "secret", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.client.Transport = serveRoundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.Method != "PROPFIND" || r.URL.Path != "/disc/file.iso" || r.Header.Get("Depth") != "0" {
+			t.Fatal("stat escaped exact member")
+		}
+		wire := `<d:multistatus xmlns:d="DAV:"><d:response><d:href>/disc/file.iso</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:getetag>"served"</d:getetag><d:getlastmodified>Fri, 23 Oct 2026 00:00:00 GMT</d:getlastmodified></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`
+		return &http.Response{StatusCode: 207, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(wire))}, nil
+	})
+	checks := 0
+	entry, err := s.Stat(context.Background(), "disc/file.iso", func(context.Context) error { checks++; return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := ServedFileObservation("source", "1", "disc", "file.iso", entry)
+	if err != nil || o.Size != 8 || !o.ModifiedKnown || o.ServeETag != `"served"` || o.ProviderETag != "" || len(o.ProviderHashes) != 0 || o.ObjectID != "" || checks != 2 {
+		t.Fatalf("invented evidence or lost fence: %+v %v %d", o, err, checks)
+	}
+	entry.Modified = ""
+	o, err = ServedFileObservation("source", "1", "disc", "file.iso", entry)
+	if err != nil || o.ModifiedKnown || o.ValidateForRange() == nil {
+		t.Fatal("missing modified time admitted a range")
+	}
+}

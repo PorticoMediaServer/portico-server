@@ -38,9 +38,11 @@ type RangeSession struct {
 }
 
 func OpenRangeSession(ctx context.Context, endpoint *remotemedia.ServeEndpoint, admission RangeAdmission) (*RangeSession, error) {
-	if endpoint == nil || admission.Check == nil || admission.Observe == nil || admission.OnChanged == nil || admission.Scan.Validate() != nil {
+	if endpoint == nil || admission.Check == nil || admission.Observe == nil || admission.OnChanged == nil || admission.Scan.ValidateForRange() != nil {
 		return nil, storage.ErrRemoteConfig
 	}
+	// Retain an owned copy so a caller cannot mutate a hash slice after capture.
+	admission.Scan, _ = admission.Scan.Canonical()
 	life, cancel := context.WithCancel(context.Background())
 	s := &RangeSession{admission: admission, life: life, cancel: cancel}
 	s.readRange = func(ctx context.Context, relative, tag string, size, offset, length int64) ([]byte, error) {

@@ -11,7 +11,7 @@ import (
 )
 
 func scannedRangeObservation() remotemedia.FileObservation {
-	return remotemedia.FileObservation{SourceID: "source", Incarnation: "root-1", Root: "disc", Object: "BDMV/clip", Size: 100, ModifiedNS: 123, ModifiedKnown: true, ProviderHashKind: "md5", ProviderHash: "opaque", ProviderETag: `"provider"`, ServeETag: `"served"`}
+	return remotemedia.FileObservation{SourceID: "source", Incarnation: "root-1", Root: "disc", Object: "BDMV/clip", Size: 100, ModifiedNS: 123, ModifiedKnown: true, ProviderHashes: []remotemedia.ProviderHash{{Kind: "md5", Value: "opaque"}}, ProviderETag: `"provider"`, ServeETag: `"served"`}
 }
 
 func TestRangeSessionDiscardsPostReadChangeAndNeverReconnects(t *testing.T) {
@@ -19,6 +19,7 @@ func TestRangeSessionDiscardsPostReadChangeAndNeverReconnects(t *testing.T) {
 		t.Run(field, func(t *testing.T) {
 			scan := scannedRangeObservation()
 			current := scan
+			current.ProviderHashes = append([]remotemedia.ProviderHash(nil), scan.ProviderHashes...)
 			reads, notices := 0, 0
 			s := &RangeSession{admission: RangeAdmission{Scan: scan, Check: func(context.Context) error { return nil }, Observe: func(context.Context) (remotemedia.FileObservation, error) { return current, nil }, OnChanged: func() { notices++ }}}
 			s.readRange = func(context.Context, string, string, int64, int64, int64) ([]byte, error) {
@@ -37,7 +38,7 @@ func TestRangeSessionDiscardsPostReadChangeAndNeverReconnects(t *testing.T) {
 				case "mtime":
 					current.ModifiedNS++
 				case "hash":
-					current.ProviderHash = "new"
+					current.ProviderHashes[0].Value = "new"
 				case "provider_etag":
 					current.ProviderETag = `"new"`
 				case "served_etag":

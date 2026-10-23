@@ -3605,6 +3605,16 @@ CREATE TABLE remote_inventory_checks(job_id TEXT NOT NULL,directory TEXT NOT NUL
 CREATE TABLE remote_scan_cursors(job_id TEXT NOT NULL,path TEXT NOT NULL,listing_id TEXT NOT NULL,cursor TEXT NOT NULL DEFAULT '',PRIMARY KEY(job_id,path)) STRICT;
 CREATE TABLE remote_scan_generations(job_id TEXT NOT NULL,source_id TEXT NOT NULL,generation TEXT NOT NULL,PRIMARY KEY(job_id,source_id)) STRICT;
 CREATE TABLE remote_object_refs(path TEXT PRIMARY KEY,revision TEXT NOT NULL) STRICT;
+CREATE TABLE remote_scan_observations(
+ source_id TEXT NOT NULL REFERENCES remote_sources(id) ON DELETE CASCADE,
+ relative_path TEXT NOT NULL,source_generation TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),
+ object_id TEXT NOT NULL,size INTEGER NOT NULL CHECK(size>=0),modified_ns INTEGER,
+ provider_etag TEXT NOT NULL,served_etag TEXT NOT NULL,scan_revision TEXT NOT NULL,last_scan_job TEXT NOT NULL,
+ PRIMARY KEY(source_id,relative_path)) STRICT;
+CREATE TABLE remote_scan_observation_hashes(
+ source_id TEXT NOT NULL,relative_path TEXT NOT NULL,kind TEXT NOT NULL,value TEXT NOT NULL,
+ PRIMARY KEY(source_id,relative_path,kind),
+ FOREIGN KEY(source_id,relative_path) REFERENCES remote_scan_observations(source_id,relative_path) ON DELETE CASCADE) STRICT;
 CREATE TABLE remote_analysis_status(path TEXT PRIMARY KEY,code TEXT NOT NULL,observed_at INTEGER NOT NULL) STRICT;
 CREATE TABLE live_logo_failures(
  url TEXT PRIMARY KEY,

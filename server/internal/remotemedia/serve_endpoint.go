@@ -73,6 +73,9 @@ func (s *ServeEndpoint) ReadRange(ctx context.Context, relative, etag string, si
 	if reconnect == nil {
 		return nil, ErrPolicy
 	}
+	if err := reconnect(ctx); err != nil {
+		return nil, err
+	}
 	requestContext := ctx
 	ctx = context.WithValue(ctx, serveReconnectKey{}, func() error { return reconnect(requestContext) })
 	if relative == "" || !cleanDAVRelative(relative) || strings.Contains(relative, ":") || !serveETag(etag) || size <= 0 || offset < 0 || length < 1 || length > 1<<20 || offset >= size || length > size-offset {
@@ -109,7 +112,12 @@ func (s *ServeEndpoint) ReadRange(ctx context.Context, relative, etag string, si
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, length+1))
 	if err != nil || int64(len(data)) != length {
+		clear(data)
 		return nil, ErrRepresentationRange
+	}
+	if err = reconnect(ctx); err != nil {
+		clear(data)
+		return nil, err
 	}
 	return data, nil
 }
