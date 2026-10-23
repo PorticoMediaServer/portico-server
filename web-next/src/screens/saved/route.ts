@@ -1,7 +1,33 @@
-import type {SavedRoute} from '@core/saved.ts';
+import {historyPeriods, playlistListFilters, savedListFilters, type SavedRoute} from '@core/saved.ts';
 import type {SavedDownloadsScope} from './downloads-port.ts';
 
 type Route = SavedRoute | Readonly<{view: 'downloads'}>;
+
+const names = ['watchlist', 'favorites', 'playlists', 'playlist', 'collections', 'views', 'history', 'resource', 'downloads'] as const;
+const text = (value: unknown, max = 256): value is string => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value);
+function invalid(): never {throw new Error('invalid-saved-route');}
+/** The owned URL schema forwards only the selected server policy, never raw keys. */
+export function parseSavedScreenRoute(raw: Record<string, unknown>): Route {
+  const view = names.find(name => name === (raw.view ?? (raw.resourceId === undefined ? 'watchlist' : 'resource')));
+  if (!view) invalid();
+  if (view === 'downloads') return {view};
+  if (view === 'playlist') return text(raw.playlistId) ? {view, playlistId: raw.playlistId} : invalid();
+  if (view === 'resource' && !text(raw.resourceId)) invalid();
+  if (raw.resourceId !== undefined && !text(raw.resourceId)) invalid();
+  if (raw.sort !== undefined && !text(raw.sort, 64)) invalid();
+  if (raw.direction !== undefined && raw.direction !== 'asc' && raw.direction !== 'desc') invalid();
+  if (raw.filter !== undefined && !(view === 'playlists' ? playlistListFilters : view === 'watchlist' || view === 'favorites' ? savedListFilters : []).some(value => value === raw.filter)) invalid();
+  if (raw.shape !== undefined && (!['watchlist', 'favorites', 'collections', 'views'].includes(String(view)) || raw.shape !== 'posters' && raw.shape !== 'squares')) invalid();
+  if (raw.period !== undefined && (view !== 'history' || !historyPeriods.some(value => value === raw.period))) invalid();
+  const filter = [...playlistListFilters, ...savedListFilters].find(value => value === raw.filter);
+  const period = historyPeriods.find(value => value === raw.period);
+  return {view,
+    ...(text(raw.resourceId) ? {resourceId: raw.resourceId} : {}), ...(text(raw.sort, 64) ? {sort: raw.sort} : {}),
+    ...(raw.direction === 'asc' || raw.direction === 'desc' ? {direction: raw.direction} : {}),
+    ...(filter === undefined ? {} : {filter}),
+    ...(raw.shape === 'posters' || raw.shape === 'squares' ? {shape: raw.shape} : {}),
+    ...(period === undefined ? {} : {period})};
+}
 
 /** The core normalizes query property order. A render must compare the actual
  * destination/query, independent of how the router constructed its object. */
