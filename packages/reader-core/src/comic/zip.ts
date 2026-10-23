@@ -1,3 +1,5 @@
+import {throwSignalAborted as throwIfAborted} from '../abort.ts';
+import {abortReason} from '../abort.ts';
 import type {ReaderSource} from '../ports.ts';
 
 /** Local/offline CBZ only. Online readers use authorised page variants. */
@@ -8,7 +10,7 @@ export class ComicInputError extends Error {
   readonly code:'archive_invalid'|'archive_limit'|'archive_unsupported'|'image_invalid'|'image_limit'|'page_invalid'|'closed';
   constructor(code:ComicInputError['code']){super(code);this.name='ComicInputError';this.code=code;}
 }
-export function checkAbort(signal:AbortSignal):void {signal.throwIfAborted();}
+export function checkAbort(signal:AbortSignal):void {throwIfAborted(signal);}
 const fail = (code:ComicInputError['code']='archive_invalid'):never => {throw new ComicInputError(code);};
 const u16 = (b:Uint8Array,n:number) => new DataView(b.buffer,b.byteOffset,b.byteLength).getUint16(n,true);
 const u32 = (b:Uint8Array,n:number) => new DataView(b.buffer,b.byteOffset,b.byteLength).getUint32(n,true);
@@ -86,9 +88,9 @@ export async function readEntry(source:ReaderSource,entry:ZipEntry,signal:AbortS
     // Stream into a capped destination; never allocate from an inflater's output claim.
     const stream=new Blob([bytes as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
     const reader=stream.getReader();result=new Uint8Array(entry.size);let length=0;
-    const abort=()=>{void reader.cancel(signal.reason).catch(()=>{});};signal.addEventListener('abort',abort,{once:true});
+    const abort=()=>{void reader.cancel(abortReason(signal)).catch(()=>{});};signal.addEventListener('abort',abort,{once:true});
     try{for(;;){checkAbort(signal);const next=await reader.read();checkAbort(signal);if(next.done)break;if(length+next.value.length>entry.size)return fail('archive_limit');result.set(next.value,length);length+=next.value.length;}if(length!==entry.size)return fail();}
-    catch(error){if(signal.aborted)throw signal.reason;if(error instanceof ComicInputError)throw error;return fail();}
+    catch(error){if(signal.aborted)throw abortReason(signal);if(error instanceof ComicInputError)throw error;return fail();}
     finally{signal.removeEventListener('abort',abort);await reader.cancel().catch(()=>{});reader.releaseLock();}
   }
   checkAbort(signal);if(crc32(result)!==entry.crc)return fail();return result;
