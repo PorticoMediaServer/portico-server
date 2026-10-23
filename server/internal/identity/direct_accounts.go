@@ -45,12 +45,13 @@ type DirectAccount struct {
 	HostedAccountID string `json:"hostedAccountId,omitempty"`
 }
 type DirectSnapshot struct {
-	Authority    string                 `json:"authority"`
-	ServerID     string                 `json:"serverId"`
-	Account      DirectAccount          `json:"account"`
-	Profiles     []DirectProfile        `json:"profiles"`
-	CanManage    bool                   `json:"canManage"`
-	Capabilities ManagementCapabilities `json:"capabilities"`
+	TwoStepSetupRequired bool                   `json:"twoStepSetupRequired,omitempty"`
+	Authority            string                 `json:"authority"`
+	ServerID             string                 `json:"serverId"`
+	Account              DirectAccount          `json:"account"`
+	Profiles             []DirectProfile        `json:"profiles"`
+	CanManage            bool                   `json:"canManage"`
+	Capabilities         ManagementCapabilities `json:"capabilities"`
 	// CustodyPending: this account owns the server and is a Portico Account,
 	// but Hosted's custody of the server's claim (retiring it, its
 	// certificates) is not with it. The owner accepts it with a custody
@@ -113,7 +114,7 @@ func (s *Service) passwordAccount(ctx context.Context, user, password string) (d
 	var hash []byte
 	var libs string
 	var linked bool
-	e := s.db.QueryRowContext(ctx, `SELECT a.id,a.username,a.profile_id,a.epoch,a.password_hash,m.role,m.revision,m.disabled,m.allowed_libraries,(EXISTS(SELECT 1 FROM account_portico_links l WHERE l.account_id=a.id) OR EXISTS(SELECT 1 FROM onboarding_state_v1 WHERE singleton=1 AND auth_mode='hosted')) FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE a.username=?`, strings.ToLower(strings.TrimSpace(user))).Scan(&c.account.ID, &c.account.Username, &c.account.PrimaryProfileID, &c.epoch, &hash, &c.account.Role, &c.account.Revision, &c.account.Disabled, &libs, &linked)
+	e := s.db.QueryRowContext(ctx, `SELECT a.id,a.username,a.profile_id,a.epoch,a.password_hash,m.role,m.revision,m.disabled,m.allowed_libraries,EXISTS(SELECT 1 FROM account_portico_links l WHERE l.account_id=a.id) FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE a.username=?`, strings.ToLower(strings.TrimSpace(user))).Scan(&c.account.ID, &c.account.Username, &c.account.PrimaryProfileID, &c.epoch, &hash, &c.account.Role, &c.account.Revision, &c.account.Disabled, &libs, &linked)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return directCaller{}, nil, e
 	}
@@ -280,8 +281,7 @@ func (s *Service) directAccountTx(ctx context.Context, tx *sql.Tx, account strin
 // directSignInTx mints one rotating device session. Until profile selection,
 // that family has account scope and cannot authorize media.
 func (s *Service) directSignInTx(ctx context.Context, tx *sql.Tx, c directCaller, private bool) (DirectSignIn, error) {
-	// Waiting for device approval is still sign-in admission. Check before
-	// registering a device or returning a pending response, which commits too.
+	// Apply access admission before registering a device or creating a family.
 	if err := s.admitSignInTx(ctx, tx, c.account.ID); err != nil {
 		return DirectSignIn{}, err
 	}
@@ -305,8 +305,17 @@ func (s *Service) directSignInTx(ctx context.Context, tx *sql.Tx, c directCaller
 		return out, err
 	}
 	out.PasswordChangeRequired = required
+	factorSetup, e := missingRequiredFactorTx(ctx, tx, c.account.ID)
+	if e != nil {
+		return out, e
+	}
+	out.TwoStepSetupRequired = factorSetup
+	if factorSetup {
+		out.CanManage = false
+		out.Capabilities = ManagementCapabilities{}
+	}
 	role := "account"
-	if !required && len(out.Profiles) == 1 && !out.Profiles[0].PINRequired {
+	if !required && !factorSetup && len(out.Profiles) == 1 && !out.Profiles[0].PINRequired {
 		role = c.account.Role
 	}
 	envelope, err := s.IssueTx(withExistingDevice(ctx, device.ID), tx, c.account.ID, c.account.PrimaryProfileID, "local", role, c.epoch, time.Time{})
@@ -339,9 +348,8 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	if _, err = s.SessionFamilyTx(ctx, tx, record.principal); err != nil {
 		return c, err
 	}
-	// A screen paired as a Cast target plays and does nothing else: no account
-	// route is open to it, whichever profile paired it.
-	if record.principal.Grant == GrantCastTarget {
+	// Narrowed families have no ordinary account authority, regardless of role.
+	if record.principal.Grant != "" {
 		return c, ErrForbidden
 	}
 	c.account.ID = record.principal.AccountID
@@ -371,6 +379,15 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 		// A valid profile session that cannot manage the account (CD-51).
 		return c, ErrForbidden
 	}
+	if sessionRole == "account" && ctx.Value(factorSetupContextKey{}) != true && ctx.Value(passwordChangeContextKey{}) != true {
+		missing, e := missingRequiredFactorTx(ctx, tx, c.account.ID)
+		if e != nil {
+			return c, e
+		}
+		if missing {
+			return c, ErrFactorSetupRequired
+		}
+	}
 	if json.Unmarshal([]byte(libs), &c.account.AllowedLibraries) != nil {
 		return c, ErrUnauthorized
 	}
@@ -382,6 +399,7 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	return c, nil
 }
 func (s *Service) DirectMe(ctx context.Context, bearer string) (DirectSnapshot, error) {
+	ctx = factorSetupContext(ctx)
 	gated2, e := dbwork.BeginSnapshot(ctx, s.db)
 	if e != nil {
 		return DirectSnapshot{}, e
@@ -572,6 +590,9 @@ func (s *Service) ChangeDirectPassword(ctx context.Context, bearer, current, nex
 	if e = s.verifySecondFactorTx(ctx, tx, c.account.ID, code); e != nil {
 		return e
 	}
+	if e = ValidateNewLocalPasswordTx(ctx, tx, next); e != nil {
+		return e
+	}
 	if e = s.revokeCredentialsTx(ctx, tx, c.account.ID); e != nil {
 		return e
 	}
@@ -684,6 +705,9 @@ func (s *Service) CreateDirectMember(ctx context.Context, bearer string, q Direc
 	}
 	if q.AllowedLibraries == nil {
 		q.AllowedLibraries = []string{}
+	}
+	if e = ValidateNewLocalPasswordTx(ctx, tx, q.Password); e != nil {
+		return DirectAccount{}, e
 	}
 	out := DirectAccount{ID: Token(), Username: q.Username, PrimaryProfileID: Token(), Role: "member", Revision: 1, AllowedLibraries: q.AllowedLibraries}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,?,?)`, out.ID, out.Username, hash, out.PrimaryProfileID); e != nil {

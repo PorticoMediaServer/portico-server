@@ -1,5 +1,6 @@
 import {routePath,routeBody} from '../../contracts/src/routes.ts';
 import {parseDirectSignIn,type DirectSignIn,type ProfileAPI} from './profile-management.ts';
+import {identityCode} from './route-identity.ts';
 
 export type ResetFileLocation=Readonly<{systemKind:'linux'|'windows'|'macos'|'docker';dataDirectory:string;fileDirectory:string;fileName:'reset-code.txt';retryAfterSeconds:number}>;
 export function parseResetFileLocation(raw:unknown):ResetFileLocation {
@@ -15,10 +16,12 @@ export async function verifyOwnerResetFile(api:ProfileAPI,code:string,turnOffTwo
  if(out.kind!=='signed-in'||(!out.passwordChangeRequired&&!out.resetFileOwnerSession)||out.session.refreshToken)throw new Error('The reset file did not return the expected session.');
  return out;
 }
-export async function makeMemberResetCode(api:ProfileAPI,id:string,expectedRevision:number,turnOffTwoStep=false,signal?:AbortSignal):Promise<Readonly<{code:string;expiresAt:string}>>{
- const raw=await api.request<{code?:unknown;expiresAt?:unknown}>(routePath('post_direct_members_id_reset_code',{id}),'POST',routeBody('post_direct_members_id_reset_code',{expectedRevision,turnOffTwoStep}),signal);
+export type MemberResetCode=Readonly<{code:string;expiresAt:string;serverId?:string}>;
+export async function makeMemberResetCode(api:ProfileAPI,id:string,expectedRevision:number,turnOffTwoStep=false,signal?:AbortSignal):Promise<MemberResetCode>{
+ const raw=await api.request<{code?:unknown;expiresAt?:unknown;serverId?:unknown}>(routePath('post_direct_members_id_reset_code',{id}),'POST',routeBody('post_direct_members_id_reset_code',{expectedRevision,turnOffTwoStep}),signal);
  if(typeof raw?.code!=='string'||!/^[-_A-Za-z0-9]{43}$/.test(raw.code)||typeof raw.expiresAt!=='string'||!Number.isFinite(Date.parse(raw.expiresAt)))throw new Error('The member reset response was invalid.');
- return Object.freeze({code:raw.code,expiresAt:raw.expiresAt});
+ if(raw.serverId!==undefined){if(typeof raw.serverId!=='string')throw new Error('The member reset response was invalid.');identityCode(raw.serverId);}
+ return Object.freeze({code:raw.code,expiresAt:raw.expiresAt,...(raw.serverId===undefined?{}:{serverId:raw.serverId as string})});
 }
 export async function verifyMemberResetCode(api:ProfileAPI,username:string,code:string,signal?:AbortSignal):Promise<DirectSignIn>{
  const out=parseDirectSignIn(await api.request(routePath('post_direct_password_reset'),'POST',routeBody('post_direct_password_reset',{username,code:code.trim()}),signal));
