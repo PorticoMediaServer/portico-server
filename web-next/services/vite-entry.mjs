@@ -12,5 +12,6 @@ export function selectServicesEntry(html, env) {
 /** @returns {import('vite').Plugin} */
 export function servicesEntryPlugin(env) {
   const selected = {VITE_HOSTED_WEB: env.VITE_HOSTED_WEB, VITE_ACCOUNT_WORKSPACE: env.VITE_ACCOUNT_WORKSPACE};
-  return {name: 'portico-services-entry', transformIndexHtml: {order: 'pre', handler: html => selectServicesEntry(html, selected)}};
+  return {name: 'portico-services-entry', transformIndexHtml: {order: 'pre', handler: (html, context) =>
+    context.path === '/index.html' || context.path === '/' ? selectServicesEntry(html, selected) : html}};
 }
