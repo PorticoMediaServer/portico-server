@@ -57,6 +57,17 @@ func TestHeavyWorkFactsReadCurrentWindowsAndIndependentPause(t *testing.T) {
 	if trickplay := read("trickplay", inside); !trickplay.WindowOpen || trickplay.Revision != first.Revision {
 		t.Fatalf("trickplay did not read the same policy: %+v", trickplay)
 	}
+	for _, check := range []struct {
+		at      time.Time
+		allowed bool
+	}{{inside, false}, {inside.Add(2 * time.Hour), true}, {inside.Add(10 * time.Hour), false}} {
+		gate := workpolicy.Service{DB: db, Now: func() time.Time { return check.at }}
+		for _, task := range []string{"analysis", "trickplay"} {
+			if allowed, err := gate.Admit(ctx, nil, task); err != nil || allowed != check.allowed {
+				t.Fatalf("actual %s batch admission at %v = %v, %v", task, check.at, allowed, err)
+			}
+		}
+	}
 	// A committed owner edit is visible through a new snapshot and revision.
 	if err = dbwork.WithWriteTx(ctx, db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
 		return workpolicy.SaveTx(ctx, tx, workpolicy.Policy{Windows: []workpolicy.Window{}})
