@@ -222,7 +222,8 @@
     }
   }
   function buildProfile(context) {
-    var caps = context ? context.getDeviceCapabilities() || {} : {};
+    var caps = {};
+    try { caps = context ? context.getDeviceCapabilities() || {} : {}; } catch (_) { /* no output facts */ }
     function supports(codec, width, height, fps) { try { var parts=codec.split('; codecs=');return !!context && context.canDisplayType(parts[0],parts[1]?parts[1].replace(/"/g,''):'',width,height,fps); } catch (_) { return false; } }
     var fourK = supports('video/mp4; codecs="hev1.2.4.L153.B0"', 3840, 2160, 60);
     var ranges = ['sdr'];
@@ -479,12 +480,14 @@
     var started = answer.body;
     if (!started || !started.presentation) throw new Error('playback_not_ready');
     var image = await Promise.race([art, wait(1500).then(function () { return ''; })]);
-    var load = loadRequest(started, image, true);
+    var load;
+    try { load = loadRequest(started, image, true); }
+    catch (e) { await api(sessionPath(started.id), {method:'DELETE'}).catch(function(){}); throw e; }
     playback = track(started);
     reportSeq = 0; reportFailures = 0;
     return load;
   }
-  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){try{queueNext=null;queueNonce=token(16);var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await manager.load(load);showPlaying();scheduleReport(0);await enqueueNext().catch(function(){});return playback;}catch(e){showError(e&&(e.code||e.message));throw e;}}); }
+  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){try{queueNext=null;queueNonce=token(16);var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await manager.load(load);showPlaying();scheduleReport(0);await enqueueNext().catch(function(){});return playback;}catch(e){if(playback)await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e;}}); }
 
   /** CAF owns the media queue/preload buffer; the server owns order, grants and session slots.
    * A queue item is only a nonce until PRELOAD asks the server for its private next window. */
