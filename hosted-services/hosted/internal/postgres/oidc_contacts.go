@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -116,11 +117,31 @@ func (o *OIDCLogin) SendContact(ctx context.Context, id, binding, address, reque
 		return ContactChallenge{}, e
 	}
 	defer tx.Rollback()
+	// Match CompleteFlow's subject-before-transaction order. A verified login
+	// assertion alone is not authority to send account-setup contact email.
+	var issuer, subject string
+	if e = tx.QueryRowContext(ctx, `SELECT a.issuer,a.subject FROM identity_transactions t JOIN identity_verified_assertions a ON a.transaction_id=t.id WHERE t.id=$1 AND t.binding_hash=$2`, id, security.Hash(binding)).Scan(&issuer, &subject); e != nil {
+		return ContactChallenge{}, identity.ErrChallenge
+	}
+	if _, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,193))`, hex.EncodeToString(security.Hash(issuer+"\x00"+subject))); e != nil {
+		return ContactChallenge{}, e
+	}
 	r, e := o.lock(ctx, tx, id, binding)
 	if e != nil {
 		return ContactChallenge{}, e
 	}
 	if r.Mode != "login" || r.Status != "verified" {
+		return ContactChallenge{}, identity.ErrChallenge
+	}
+	var currentIssuer, currentSubject string
+	if e = tx.QueryRowContext(ctx, `SELECT issuer,subject FROM identity_verified_assertions WHERE transaction_id=$1`, id).Scan(&currentIssuer, &currentSubject); e != nil || issuer != currentIssuer || subject != currentSubject {
+		return ContactChallenge{}, identity.ErrChallenge
+	}
+	signup, e := oidcSignupContactTx(ctx, tx, o.Keys, id)
+	if e != nil {
+		return ContactChallenge{}, e
+	}
+	if !signup {
 		return ContactChallenge{}, identity.ErrChallenge
 	}
 	var cid, priorAddress string
@@ -209,4 +230,21 @@ func (o *OIDCLogin) VerifyContact(ctx context.Context, id, binding, cid, code st
 		return nil, e
 	}
 	return v, tx.Commit()
+}
+
+// Caller serializes this immutable subject with CompleteFlow. Email identity
+// similarity is deliberately irrelevant; revoked mappings are still mappings.
+func oidcSignupContactTx(ctx context.Context, tx *sql.Tx, keys *security.Keys, id string) (bool, error) {
+	var issuer, subject, marker, mode, status string
+	var expected sql.NullString
+	e := tx.QueryRowContext(ctx, `SELECT a.issuer,a.subject,t.marker_key_id,t.mode,t.status,t.expected_account_id FROM identity_transactions t JOIN identity_verified_assertions a ON a.transaction_id=t.id WHERE t.id=$1 FOR SHARE OF t`, id).Scan(&issuer, &subject, &marker, &mode, &status, &expected)
+	if e != nil {
+		return false, e
+	}
+	if mode != "login" || status != "verified" || expected.Valid || keys == nil || len(keys.SealKey) == 0 {
+		return false, nil
+	}
+	var eligible bool
+	e = tx.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM account_external_identities WHERE issuer=$1 AND subject=$2) AND NOT EXISTS(SELECT 1 FROM deleted_identity_markers WHERE marker_key_id=$3 AND subject_digest=$4 AND expires_at>clock_timestamp())`, issuer, subject, marker, identity.SecretDigest(keys.SealKey, "deleted-identity", issuer, subject)).Scan(&eligible)
+	return eligible, e
 }

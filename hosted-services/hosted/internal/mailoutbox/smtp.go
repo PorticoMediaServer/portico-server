@@ -15,15 +15,14 @@ import (
 )
 
 type SMTPConfig struct {
-	Host            string `json:"host"`
-	Port            int    `json:"port"`
-	TLS             string `json:"tls"` // "starttls" (mandatory upgrade) or "implicit"
-	From            string `json:"from"`
-	ReplyTo         string `json:"replyTo,omitempty"`
-	ListUnsubscribe string `json:"listUnsubscribe,omitempty"`
-	Username        string `json:"username"`
-	PasswordFile    string `json:"passwordFile"`
-	password        string
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+	TLS          string `json:"tls"` // "starttls" (mandatory upgrade) or "implicit"
+	From         string `json:"from"`
+	ReplyTo      string `json:"replyTo,omitempty"`
+	Username     string `json:"username"`
+	PasswordFile string `json:"passwordFile"`
+	password     string
 }
 
 func LoadSMTP(path string) (*SMTPConfig, error) {
@@ -70,14 +69,10 @@ func (c SMTPConfig) Validate() error {
 	if c.ReplyTo != "" && !ValidAddress(c.ReplyTo) {
 		return errors.New("SMTP reply-to must be a valid address")
 	}
-	if c.ListUnsubscribe != "" && !ValidListUnsubscribe(c.ListUnsubscribe) {
-		return errors.New("SMTP list-unsubscribe must be a valid URL")
-	}
 	return nil
 }
-func (c *SMTPConfig) FromAddress() string { return c.From }
+func (c *SMTPConfig) FromAddress() string    { return c.From }
 func (c *SMTPConfig) ReplyToAddress() string { return c.ReplyTo }
-func (c *SMTPConfig) InvitationListUnsubscribe() string { return c.ListUnsubscribe }
 func (c *SMTPConfig) Send(ctx context.Context, to string, message []byte) error {
 	if e := c.Validate(); e != nil {
 		return e

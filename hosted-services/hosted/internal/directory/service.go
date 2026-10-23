@@ -20,7 +20,14 @@ var ErrDenied = errors.New("not authorized")
 var ErrConflict = errors.New("revision or operation conflict")
 var ErrInvalid = errors.New("invalid directory input")
 
+type ServerRole string
+
+func (ServerRole) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []string{"owner", "admin", "member"}}
+}
+
 type Server struct {
+	Role             ServerRole    `json:"role"`
 	LastSeenAt       time.Time     `json:"lastSeenAt"`
 	Status           string        `json:"status"`
 	OwnedByMe        bool          `json:"ownedByMe"`

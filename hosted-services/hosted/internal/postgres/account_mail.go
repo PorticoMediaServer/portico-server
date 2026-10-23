@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -103,13 +104,34 @@ func (m *AccountMail) MailEligible(ctx context.Context, d mailoutbox.Delivery) (
 		e := m.Store.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_registrations WHERE id=$1 AND revision=$2 AND address=$3 AND verified_at IS NULL AND completed_at IS NULL AND cancelled_at IS NULL AND code_expires_at>clock_timestamp() AND expires_at>clock_timestamp() AND attempts<5)`, d.ResourceID, d.Revision, d.Payload.To).Scan(&live)
 		return live, e
 	case mailoutbox.OIDCContact:
-		e := m.Store.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_contact_challenges c JOIN identity_transactions t ON t.id=c.transaction_id JOIN identity_browser_bindings b ON b.binding_hash=t.binding_hash JOIN identity_protocol_policy p ON p.singleton JOIN identity_provider_descriptors pd ON pd.id=t.descriptor_id WHERE c.id=$1 AND c.revision=$2 AND c.address=$3 AND c.is_current AND c.verified_at IS NULL AND c.attempt_count<5 AND c.expires_at>clock_timestamp() AND t.terminal_at IS NULL AND t.expires_at>clock_timestamp() AND t.binding_generation=b.generation AND b.expires_at>clock_timestamp() AND p.enabled AND p.revision=t.policy_revision AND pd.enabled AND pd.revision=t.descriptor_revision)`, d.ResourceID, d.Revision, d.Payload.To).Scan(&live)
-		return live, e
+		tx, e := m.Store.DB.BeginTx(ctx, nil)
+		if e != nil {
+			return false, e
+		}
+		defer tx.Rollback()
+		var transaction, issuer, subject string
+		e = tx.QueryRowContext(ctx, `SELECT t.id,a.issuer,a.subject FROM identity_contact_challenges c JOIN identity_transactions t ON t.id=c.transaction_id JOIN identity_verified_assertions a ON a.transaction_id=t.id WHERE c.id=$1`, d.ResourceID).Scan(&transaction, &issuer, &subject)
+		if errors.Is(e, sql.ErrNoRows) {
+			return false, nil
+		}
+		if e != nil {
+			return false, e
+		}
+		if _, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,193))`, hex.EncodeToString(security.Hash(issuer+"\x00"+subject))); e != nil {
+			return false, e
+		}
+		signup, e := oidcSignupContactTx(ctx, tx, m.Keys, transaction)
+		if e != nil || !signup {
+			return false, e
+		}
+		e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_contact_challenges c JOIN identity_transactions t ON t.id=c.transaction_id JOIN identity_browser_bindings b ON b.binding_hash=t.binding_hash JOIN identity_protocol_policy p ON p.singleton JOIN identity_provider_descriptors pd ON pd.id=t.descriptor_id WHERE t.mode='login' AND t.status='verified' AND t.expected_account_id IS NULL AND c.id=$1 AND c.revision=$2 AND c.address=$3 AND c.is_current AND c.verified_at IS NULL AND c.attempt_count<5 AND c.expires_at>clock_timestamp() AND t.terminal_at IS NULL AND t.expires_at>clock_timestamp() AND t.binding_generation=b.generation AND b.expires_at>clock_timestamp() AND p.enabled AND p.revision=t.policy_revision AND pd.enabled AND pd.revision=t.descriptor_revision AND EXISTS(SELECT 1 FROM account_mail_outbox q WHERE q.id=$4 AND q.lease_id=$5 AND q.status='sending' AND q.lease_until>clock_timestamp() AND q.expires_at>clock_timestamp()))`, d.ResourceID, d.Revision, d.Payload.To, d.ID, d.Lease).Scan(&live)
+		if e != nil {
+			return false, e
+		}
+		return live, tx.Commit()
+
 	case mailoutbox.PasswordReset, mailoutbox.EmailChange:
 		e := m.Store.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_email_challenges c JOIN accounts a ON a.id=c.account_id WHERE c.id=$1 AND c.purpose=$2 AND c.revision=$3 AND c.address=$4 AND a.auth_epoch=c.account_epoch AND c.consumed_at IS NULL AND c.superseded_at IS NULL AND c.attempts<5 AND c.expires_at>clock_timestamp() AND (c.purpose<>'password_reset' OR (a.password_hash IS NOT NULL AND EXISTS(SELECT 1 FROM account_contact_emails e WHERE e.account_id=a.id AND e.id=c.contact_id AND e.address=c.address AND e.is_primary))) AND (c.purpose<>'email_change' OR EXISTS(SELECT 1 FROM session_families f JOIN account_sessions s ON s.family_id=f.id WHERE f.id=c.family_id AND f.account_id=a.id AND f.account_epoch=a.auth_epoch AND f.generation=c.family_generation AND f.revoked_at IS NULL AND LEAST(f.idle_expires_at,f.absolute_expires_at)>clock_timestamp() AND s.token_hash=c.access_hash AND s.expires_at>clock_timestamp())))`, d.ResourceID, string(d.Kind), d.Revision, d.Payload.To).Scan(&live)
-		return live, e
-	case mailoutbox.Invitation:
-		e := m.Store.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM invitations i WHERE i.id=$1 AND i.status='pending' AND i.expires_at>clock_timestamp() AND i.delivery_revision=$5 AND ((i.recipient_kind='email' AND i.recipient_email=$2 AND $3='') OR (i.recipient_kind='username' AND EXISTS(SELECT 1 FROM accounts a JOIN account_contact_emails c ON c.account_id=a.id AND c.is_primary WHERE a.id=i.recipient_id AND c.address=$2 AND a.id=$3 AND a.auth_epoch=$4))))`, d.ResourceID, d.Payload.To, d.AccountID, d.AccountEpoch, d.Revision).Scan(&live)
 		return live, e
 	}
 	return false, nil

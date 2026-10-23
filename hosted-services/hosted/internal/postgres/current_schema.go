@@ -11,7 +11,7 @@ import (
 // formats are explicitly reset, never adopted or upgraded in place.
 // CurrentHostedSchemaVersion is the exact format this build provisions and
 // accepts. Tests assert against it so a bump cannot leave a stale expectation.
-const CurrentHostedSchemaVersion = 22
+const CurrentHostedSchemaVersion = 23
 
 func InitializeCurrentHostedSchemaTx(ctx context.Context, tx *sql.Tx) error {
 	var marker bool
@@ -262,6 +262,9 @@ func runHostedMigrations(ctx context.Context, tx *sql.Tx, current int) error {
 	}
 
 	if _, err := tx.ExecContext(ctx, serverReturnSchema+`INSERT INTO hosted_schema_migrations(version,name) VALUES(22,'0022_registered_server_returns'); UPDATE hosted_schema_contract SET version=22 WHERE singleton;`); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, migration0023+`INSERT INTO hosted_schema_migrations(version,name) VALUES(23,'0023_account_email_only');UPDATE hosted_schema_contract SET version=23 WHERE singleton;`); err != nil {
 		return err
 	}
 	return nil

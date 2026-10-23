@@ -16,7 +16,6 @@ import (
 	"mime/quotedprintable"
 	"net/mail"
 	"net/textproto"
-	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -29,16 +28,11 @@ const (
 	OIDCContact   Kind = "oidc_contact"
 	PasswordReset Kind = "password_reset"
 	EmailChange   Kind = "email_change"
-	Invitation    Kind = "invitation"
 )
 
-// Email is sent only to set up an account (address verification), to invite
-// someone, and to reset a password (Justin, 23 Sep: no extra reasons to send
-// email). Alerts, security notices and new sign-ins are in-app notifications.
-
+// Account email is limited to registration/contact verification, password reset
+// and email change. People invitations remain links and in-app facts.
 // ResourceID/Revision are authoritative eligibility fences, not template data.
-// Invitation owners may use this boundary without implementing invitation logic
-// in the account service. They must commit the invitation before enqueueing.
 type Intent struct {
 	ID           string
 	Kind         Kind
@@ -50,11 +44,9 @@ type Intent struct {
 	Payload      Payload
 }
 type Payload struct {
-	Inviter string `json:"inviter,omitempty"`
-	Server  string `json:"server,omitempty"`
-	To      string `json:"to"`
-	Code    string `json:"code,omitempty"`
-	Event   string `json:"event,omitempty"`
+	To    string `json:"to"`
+	Code  string `json:"code,omitempty"`
+	Event string `json:"event,omitempty"`
 }
 type Delivery struct {
 	Intent
@@ -76,9 +68,6 @@ type Sender interface {
 	FromAddress() string
 	// ReplyToAddress is the optional Reply-To config value; empty omits it.
 	ReplyToAddress() string
-	// InvitationListUnsubscribe is the optional List-Unsubscribe URL for
-	// invitation mail only; empty omits it.
-	InvitationListUnsubscribe() string
 }
 
 func ValidAddress(value string) bool {
@@ -89,36 +78,12 @@ func ValidAddress(value string) bool {
 	return e == nil && a.Address == value && a.Name == ""
 }
 
-// ValidListUnsubscribe reports whether value is a usable List-Unsubscribe URL:
-// an https URL with a host, or a mailto address, without whitespace or
-// header-breaking characters.
-func ValidListUnsubscribe(value string) bool {
-	if len(value) == 0 || len(value) > 2048 || strings.ContainsAny(value, "\r\n\x00 \t") {
-		return false
-	}
-	u, e := url.Parse(value)
-	if e != nil {
-		return false
-	}
-	switch strings.ToLower(u.Scheme) {
-	case "https":
-		return u.Host != ""
-	case "mailto":
-		rest := strings.TrimPrefix(value, "mailto:")
-		if i := strings.Index(rest, "?"); i >= 0 {
-			rest = rest[:i]
-		}
-		return ValidAddress(rest)
-	}
-	return false
-}
-
 func (i Intent) Validate() error {
-	if !regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`).MatchString(i.ID) || len(i.ResourceID) > 128 || i.Revision < 0 || !ValidAddress(i.Payload.To) || len(i.Payload.Code) > 160 || len(i.Payload.Event) > 160 || len(i.Payload.Inviter) > 120 || len(i.Payload.Server) > 120 || i.ExpiresAt.IsZero() {
+	if !regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`).MatchString(i.ID) || len(i.ResourceID) > 128 || i.Revision < 0 || !ValidAddress(i.Payload.To) || len(i.Payload.Code) > 160 || len(i.Payload.Event) > 160 || i.ExpiresAt.IsZero() {
 		return errors.New("invalid mail intent")
 	}
 	switch i.Kind {
-	case Registration, OIDCContact, PasswordReset, EmailChange, Invitation:
+	case Registration, OIDCContact, PasswordReset, EmailChange:
 		return nil
 	}
 	return errors.New("unknown mail kind")
@@ -167,7 +132,7 @@ func sendingDomain(from string) string {
 }
 
 // Tokens are confined to fragments. Mail retries keep the exact link and ID.
-func Render(d Delivery, from, replyTo, listUnsubscribe string) ([]byte, error) {
+func Render(d Delivery, from, replyTo string) ([]byte, error) {
 	if e := d.Intent.Validate(); e != nil {
 		return nil, e
 	}
@@ -176,9 +141,6 @@ func Render(d Delivery, from, replyTo, listUnsubscribe string) ([]byte, error) {
 	}
 	if replyTo != "" && !ValidAddress(replyTo) {
 		return nil, errors.New("invalid reply-to")
-	}
-	if listUnsubscribe != "" && !ValidListUnsubscribe(listUnsubscribe) {
-		return nil, errors.New("invalid list-unsubscribe")
 	}
 	domain := sendingDomain(from)
 	if domain == "" {
@@ -206,11 +168,6 @@ func Render(d Delivery, from, replyTo, listUnsubscribe string) ([]byte, error) {
 		heading = "Confirm your new email"
 		body = "Your previous email remains active until you confirm this address."
 		button = "Confirm email"
-	case Invitation:
-		subject = "You are invited to " + d.Payload.Server
-		heading = "An invitation from " + d.Payload.Inviter
-		body = d.Payload.Inviter + " invited you to " + d.Payload.Server + ". Sign in to review the invitation and choose whether to join."
-		button = "Review invitation"
 	}
 	link := Link(d)
 	expiry := d.ExpiresAt.UTC().Format(time.RFC1123)
@@ -278,9 +235,6 @@ func Render(d Delivery, from, replyTo, listUnsubscribe string) ([]byte, error) {
 		fmt.Fprintf(&out, "Reply-To: %s\r\n", (&mail.Address{Address: replyTo}).String())
 	}
 	fmt.Fprintf(&out, "Date: %s\r\nMessage-ID: <%s@%s>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=%q\r\n", d.CreatedAt.UTC().Format(time.RFC1123Z), d.ID, domain, boundary)
-	if d.Kind == Invitation && listUnsubscribe != "" {
-		fmt.Fprintf(&out, "List-Unsubscribe: <%s>\r\n", listUnsubscribe)
-	}
 	fmt.Fprintf(&out, "\r\n")
 	out.Write(bodyBuffer.Bytes())
 	return out.Bytes(), nil

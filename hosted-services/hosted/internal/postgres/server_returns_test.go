@@ -257,7 +257,7 @@ func TestClaimV2SignedPurposeCannotChooseCurrentOwner(t *testing.T) {
 		t.Fatal("selected current owner")
 	}
 	// Signature covers each binding, including an empty provisional registration.
-	a := claims.Approval{Kind: "portico.claim.approval", Version: "2", Audience: "https://hosted.example", OperationID: in.OperationID, ServerID: in.ServerID, AccountID: "strict-other", PublicKey: in.PublicKey, ApprovalRevision: 1, Purpose: "change-owner", CurrentOwnerAccountID: f.expected.AccountID, PreviousOwnerRole: "admin", IssuedAt: time.Now().UTC().Format(time.RFC3339Nano), ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano)}
+	a := claims.Approval{TargetUsername: "strict-other", Kind: "portico.claim.approval", Version: "2", Audience: "https://hosted.example", OperationID: in.OperationID, ServerID: in.ServerID, AccountID: "strict-other", PublicKey: in.PublicKey, ApprovalRevision: 1, Purpose: "change-owner", CurrentOwnerAccountID: f.expected.AccountID, PreviousOwnerRole: "admin", IssuedAt: time.Now().UTC().Format(time.RFC3339Nano), ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano)}
 	env, e := claims.SignApproval(a, f.keys.PrivateKey, f.keys.KeyID, f.keys.Certificate)
 	if e != nil {
 		t.Fatal(e)

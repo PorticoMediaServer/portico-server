@@ -16,13 +16,12 @@ import (
 // HTTPConfig targets an operator-configured transactional mail gateway accepting
 // {from,to,rawMessage}. Credentials and response bodies are never logged.
 type HTTPConfig struct {
-	Endpoint        string `json:"endpoint"`
-	From            string `json:"from"`
-	ReplyTo         string `json:"replyTo,omitempty"`
-	ListUnsubscribe string `json:"listUnsubscribe,omitempty"`
-	TokenFile       string `json:"tokenFile"`
-	token           string
-	client          *http.Client
+	Endpoint  string `json:"endpoint"`
+	From      string `json:"from"`
+	ReplyTo   string `json:"replyTo,omitempty"`
+	TokenFile string `json:"tokenFile"`
+	token     string
+	client    *http.Client
 }
 
 func LoadHTTP(path string) (*HTTPConfig, error) {
@@ -50,9 +49,6 @@ func LoadHTTP(path string) (*HTTPConfig, error) {
 	if c.ReplyTo != "" && !ValidAddress(c.ReplyTo) {
 		return nil, errors.New("mail HTTP reply-to must be a valid address")
 	}
-	if c.ListUnsubscribe != "" && !ValidListUnsubscribe(c.ListUnsubscribe) {
-		return nil, errors.New("mail HTTP list-unsubscribe must be a valid URL")
-	}
 	info, e = os.Stat(c.TokenFile)
 	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("mail HTTP token must be private")
@@ -68,9 +64,8 @@ func LoadHTTP(path string) (*HTTPConfig, error) {
 	c.client = &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return &c, nil
 }
-func (c *HTTPConfig) FromAddress() string { return c.From }
+func (c *HTTPConfig) FromAddress() string    { return c.From }
 func (c *HTTPConfig) ReplyToAddress() string { return c.ReplyTo }
-func (c *HTTPConfig) InvitationListUnsubscribe() string { return c.ListUnsubscribe }
 func (c *HTTPConfig) Send(ctx context.Context, to string, message []byte) error {
 	if !ValidAddress(to) || len(message) > 256<<10 {
 		return errors.New("invalid message")

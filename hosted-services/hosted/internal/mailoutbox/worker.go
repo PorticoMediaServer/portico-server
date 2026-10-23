@@ -83,7 +83,7 @@ func (w *Worker) Once(ctx context.Context) bool {
 		w.finish(ctx, *d, "ineligible", true)
 		return true
 	}
-	raw, e := Render(*d, w.Sender.FromAddress(), w.Sender.ReplyToAddress(), w.Sender.InvitationListUnsubscribe())
+	raw, e := Render(*d, w.Sender.FromAddress(), w.Sender.ReplyToAddress())
 	if e != nil {
 		w.finish(ctx, *d, "invalid", true)
 		return true

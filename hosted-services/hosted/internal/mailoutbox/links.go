@@ -19,6 +19,7 @@ func WebHost() string {
 	}
 	return u.Host
 }
+
 const (
 	ResetPath        = "/reset"
 	VerifyEmailPath  = "/verify-email"
@@ -58,8 +59,6 @@ func Link(d Delivery) string {
 		return WebOrigin + VerifyEmailPath + "#token=" + url.QueryEscape(VerificationToken(d.Kind, d.ResourceID, d.Payload.Code))
 	case PasswordReset:
 		return WebOrigin + ResetPath + "#token=" + url.QueryEscape(d.Payload.Code)
-	case Invitation:
-		return WebOrigin + JoinPath + "#invite=" + url.QueryEscape(d.Payload.Code)
 	default:
 		return WebOrigin + AccountPath
 	}

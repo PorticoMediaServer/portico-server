@@ -161,18 +161,33 @@ func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 	p.PreviousOwnerRole = q.PreviousOwnerRole
 	if q.CurrentOwnerAccountID != "" {
 		var owner string
-		if e = tx.QueryRowContext(ctx, `SELECT owner_account_id FROM servers WHERE id=$1 AND revoked_at IS NULL`, q.ServerID).Scan(&owner); e != nil || owner != q.CurrentOwnerAccountID {
+		if e = tx.QueryRowContext(ctx, `SELECT owner_account_id FROM servers WHERE id=$1 AND revoked_at IS NULL AND NOT custody_released`, q.ServerID).Scan(&owner); e != nil {
 			return p, claims.ErrStale
+		}
+		if owner != q.CurrentOwnerAccountID {
+			var installed bool
+			e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM claim_operations o JOIN servers s ON s.id=o.server_id JOIN server_members m ON m.server_id=s.id AND m.account_id=o.account_id AND m.role='owner' WHERE o.id=$1 AND o.server_id=$2 AND o.account_id=$3 AND s.owner_account_id=o.account_id AND o.state='installed' AND o.public_key=$4 AND o.local_generation=$5 AND o.purpose=$6 AND o.current_owner_account_id=$7 AND o.previous_owner_role=$8 AND o.return_registration_id=$9 AND o.claim_generation=s.claim_generation AND o.credential_generation=s.credential_generation AND o.committed_token_hash=s.token_hash AND s.revoked_at IS NULL AND NOT s.custody_released)`, q.OperationID, q.ServerID, a.AccountID, mustWebPublicKey(q.PublicKey), q.LocalGeneration, q.Purpose, q.CurrentOwnerAccountID, q.PreviousOwnerRole, q.ReturnRegistrationID).Scan(&installed)
+			if e != nil || !installed || p.Status != "approved" {
+				return p, claims.ErrStale
+			}
 		}
 		if e = tx.QueryRowContext(ctx, `SELECT username FROM accounts WHERE id=$1`, q.CurrentOwnerAccountID).Scan(&p.CurrentOwnerUsername); e != nil {
 			return p, claims.ErrStale
 		}
 	}
-	// Projection proves an exact current registration; signed Address alone does not.
+	// A signed address is not a registration. Resolve only this exact installed
+	// operation and its current route generation, including owner membership.
 	var claim, cred, gen int64
-	if tx.QueryRowContext(ctx, `SELECT s.claim_generation,s.credential_generation,n.generation FROM servers s JOIN networking_route_state n ON n.server_id=s.id JOIN networking_route_candidates c ON c.server_id=n.server_id AND c.operation_id=n.operation_id AND c.generation=n.generation AND c.origin=$2 AND c.state='verified' WHERE s.id=$1 AND s.owner_account_id=$3 AND s.revoked_at IS NULL AND n.operation_id=$4 AND n.claim_generation=s.claim_generation AND n.credential_generation=s.credential_generation AND (n.remote_enabled OR c.class='lan')`, q.ServerID, q.Address, a.AccountID, q.OperationID).Scan(&claim, &cred, &gen) == nil && serverreturn.Origin(q.Address) {
-		p.ReturnRegistration = &serverreturn.Registration{ID: serverreturn.RegistrationID(q.ServerID, q.OperationID, claim, cred, gen, q.Address), Origin: q.Address}
+	e = tx.QueryRowContext(ctx, `SELECT s.claim_generation,s.credential_generation,n.generation FROM servers s JOIN networking_route_state n ON n.server_id=s.id JOIN networking_route_candidates c ON c.server_id=n.server_id AND c.operation_id=n.operation_id AND c.generation=n.generation AND c.origin=$2 AND c.state='verified' WHERE s.id=$1 AND s.owner_account_id=$3 AND s.revoked_at IS NULL AND n.operation_id=$4 AND n.claim_generation=s.claim_generation AND n.credential_generation=s.credential_generation AND (n.remote_enabled OR c.class='lan')`, q.ServerID, q.Address, a.AccountID, q.OperationID).Scan(&claim, &cred, &gen)
+	if e == nil && serverreturn.Origin(q.Address) {
+		registration := serverreturn.RegistrationID(q.ServerID, q.OperationID, claim, cred, gen, q.Address)
+		tuple, e := returnTupleTx(ctx, tx, a.AccountID, q.ServerID, q.OperationID, q.Purpose, registration)
+		if e != nil || tuple.current != q.CurrentOwnerAccountID || tuple.previous != q.PreviousOwnerRole {
+			return p, claims.ErrStale
+		}
+		p.ReturnRegistration = &serverreturn.Registration{ID: registration, Origin: q.Address}
 	}
+
 	return p, tx.Commit()
 }
 func (s *Store) DecideWebClaim(ctx context.Context, a identity.CurrentFamilyExpectation, code, profile, replaces string, approve bool, service *claims.Service) error {
@@ -293,4 +308,9 @@ func (s *Store) WaitWebClaim(ctx context.Context, q claimweb.Request) (json.RawM
 		case <-ch:
 		}
 	}
+}
+
+func mustWebPublicKey(raw string) []byte {
+	key, _ := base64.RawURLEncoding.DecodeString(raw)
+	return key
 }

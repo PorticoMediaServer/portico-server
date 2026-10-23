@@ -24,11 +24,11 @@ func fixtureDelivery() Delivery {
 }
 func TestRenderStableSafeMultipart(t *testing.T) {
 	d := fixtureDelivery()
-	first, e := Render(d, "sender@example.test", "", "")
+	first, e := Render(d, "sender@example.test", "")
 	if e != nil {
 		t.Fatal(e)
 	}
-	second, e := Render(d, "sender@example.test", "", "")
+	second, e := Render(d, "sender@example.test", "")
 	if e != nil || !bytes.Equal(first, second) {
 		t.Fatal("retry changes message bytes")
 	}
@@ -66,12 +66,12 @@ func TestRenderStableSafeMultipart(t *testing.T) {
 		t.Fatal("text and HTML required")
 	}
 	d.Payload.To = "person@example.test\r\nBcc: other@example.test"
-	if _, e = Render(d, "sender@example.test", "", ""); e == nil {
+	if _, e = Render(d, "sender@example.test", ""); e == nil {
 		t.Fatal("header injection")
 	}
 	d = fixtureDelivery()
 	d.Payload.Code = "<script>alert(1)</script>"
-	raw, e := Render(d, "sender@example.test", "", "")
+	raw, e := Render(d, "sender@example.test", "")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -113,7 +113,6 @@ type fakeSender struct {
 
 func (s *fakeSender) FromAddress() string                        { return "sender@example.test" }
 func (s *fakeSender) ReplyToAddress() string                     { return "" }
-func (s *fakeSender) InvitationListUnsubscribe() string           { return "" }
 func (s *fakeSender) Send(context.Context, string, []byte) error { s.calls++; return s.err }
 func TestWorkerChecksEligibilityAndClassifiesDelivery(t *testing.T) {
 	for _, tc := range []struct {
@@ -229,9 +228,9 @@ func TestWorkerDrainsBehindDiscardedRowsWithoutIdleDelay(t *testing.T) {
 }
 
 func TestEveryEmailUsesCentralLinkContract(t *testing.T) {
-	for _, kind := range []Kind{Registration, OIDCContact, PasswordReset, EmailChange, Invitation} {
-		d := Delivery{Intent: Intent{ID: "mail_1234567890123456", Kind: kind, ResourceID: "resource_1234567890", Revision: 1, ExpiresAt: time.Now().Add(time.Hour), Payload: Payload{To: "recipient@example.test", Code: "secret_abcdefghijklmnopqrstuv", Inviter: "Sam", Server: "Home"}}, CreatedAt: time.Now()}
-		raw, e := Render(d, "portico@example.test", "", "")
+	for _, kind := range []Kind{Registration, OIDCContact, PasswordReset, EmailChange} {
+		d := Delivery{Intent: Intent{ID: "mail_1234567890123456", Kind: kind, ResourceID: "resource_1234567890", Revision: 1, ExpiresAt: time.Now().Add(time.Hour), Payload: Payload{To: "recipient@example.test", Code: "secret_abcdefghijklmnopqrstuv"}}, CreatedAt: time.Now()}
+		raw, e := Render(d, "portico@example.test", "")
 		if e != nil {
 			t.Fatal(kind, e)
 		}
@@ -250,7 +249,6 @@ func TestEveryEmailUsesCentralLinkContract(t *testing.T) {
 			OIDCContact:   {VerifyEmailPath, "token=" + VerificationToken(OIDCContact, d.ResourceID, d.Payload.Code)},
 			EmailChange:   {VerifyEmailPath, "token=" + VerificationToken(EmailChange, d.ResourceID, d.Payload.Code)},
 			PasswordReset: {ResetPath, "token=" + d.Payload.Code},
-			Invitation:    {JoinPath, "invite=" + d.Payload.Code},
 		}[kind]
 		if u.Path != want[0] || u.Fragment != want[1] || u.RawQuery != "" {
 			t.Fatalf("%s: %s, want %s#%s", kind, link, want[0], want[1])
@@ -304,7 +302,7 @@ func TestCodeEmailsPutCodeFirst(t *testing.T) {
 	for _, kind := range []Kind{Registration, OIDCContact, EmailChange} {
 		created := time.Date(2026, 9, 6, 12, 20, 0, 0, time.UTC)
 		d := Delivery{Intent: Intent{ID: "mail_fixture_0123456789", Kind: kind, ResourceID: "resource_1234567890", Revision: 1, ExpiresAt: created.Add(10 * time.Minute), Payload: Payload{To: "recipient@example.test", Code: "482913"}}, CreatedAt: created}
-		raw, e := Render(d, "sender@example.test", "", "")
+		raw, e := Render(d, "sender@example.test", "")
 		if e != nil {
 			t.Fatal(kind, e)
 		}
@@ -345,7 +343,7 @@ func TestCodeEmailsPutCodeFirst(t *testing.T) {
 func TestCodePreheaderUsesRealTTL(t *testing.T) {
 	created := time.Date(2026, 9, 6, 12, 20, 0, 0, time.UTC)
 	d := Delivery{Intent: Intent{ID: "mail_fixture_0123456789", Kind: Registration, ResourceID: "resource_1234567890", Revision: 1, ExpiresAt: created.Add(7 * time.Minute), Payload: Payload{To: "recipient@example.test", Code: "771204"}}, CreatedAt: created}
-	raw, e := Render(d, "sender@example.test", "", "")
+	raw, e := Render(d, "sender@example.test", "")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -360,13 +358,13 @@ func TestCodePreheaderUsesRealTTL(t *testing.T) {
 
 // MAIL-07: header basics. Date, MIME-Version and multipart/alternative are
 // always present; Message-ID uses the sending domain; Reply-To is omitted
-// unless configured; List-Unsubscribe appears only on invitations.
+// unless configured; account mail never includes List-Unsubscribe.
 func TestMailHeaderBasics(t *testing.T) {
 	created := time.Date(2026, 9, 6, 12, 20, 0, 0, time.UTC)
 	mk := func(kind Kind) Delivery {
-		return Delivery{Intent: Intent{ID: "mail_fixture_0123456789", Kind: kind, ResourceID: "resource_1234567890", Revision: 1, ExpiresAt: created.Add(time.Hour), Payload: Payload{To: "recipient@example.test", Code: "482913", Inviter: "Sam", Server: "Home"}}, CreatedAt: created}
+		return Delivery{Intent: Intent{ID: "mail_fixture_0123456789", Kind: kind, ResourceID: "resource_1234567890", Revision: 1, ExpiresAt: created.Add(time.Hour), Payload: Payload{To: "recipient@example.test", Code: "482913"}}, CreatedAt: created}
 	}
-	raw, e := Render(mk(Registration), "accounts@send.example.test", "", "")
+	raw, e := Render(mk(Registration), "accounts@send.example.test", "")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -386,7 +384,7 @@ func TestMailHeaderBasics(t *testing.T) {
 	if message.Header.Get("List-Unsubscribe") != "" {
 		t.Fatal("List-Unsubscribe on a code email")
 	}
-	raw, e = Render(mk(Registration), "accounts@send.example.test", "support@example.test", "https://web.getportico.tv/unsubscribe#x")
+	raw, e = Render(mk(Registration), "accounts@send.example.test", "support@example.test")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -395,28 +393,22 @@ func TestMailHeaderBasics(t *testing.T) {
 		t.Fatal("configured Reply-To omitted")
 	}
 	if message.Header.Get("List-Unsubscribe") != "" {
-		t.Fatal("List-Unsubscribe must be invitation-only")
+		t.Fatal("unexpected List-Unsubscribe on account mail")
 	}
-	raw, e = Render(mk(Invitation), "accounts@send.example.test", "support@example.test", "https://web.getportico.tv/unsubscribe#x")
-	if e != nil {
-		t.Fatal(e)
-	}
-	message, _, _ = decodeMailParts(t, raw)
-	if got := message.Header.Get("List-Unsubscribe"); got != "<https://web.getportico.tv/unsubscribe#x>" {
-		t.Fatalf("invitation List-Unsubscribe %q", got)
-	}
-	raw, e = Render(mk(Invitation), "accounts@send.example.test", "", "")
-	if e != nil {
-		t.Fatal(e)
-	}
-	message, _, _ = decodeMailParts(t, raw)
-	if message.Header.Get("List-Unsubscribe") != "" {
-		t.Fatal("List-Unsubscribe invented without config")
-	}
-	if _, e = Render(mk(Registration), "sender@example.test", "not-an-address", ""); e == nil {
+	if _, e = Render(mk(Registration), "sender@example.test", "not-an-address"); e == nil {
 		t.Fatal("invalid reply-to accepted")
 	}
-	if _, e = Render(mk(Invitation), "sender@example.test", "", "not a url"); e == nil {
-		t.Fatal("invalid list-unsubscribe accepted")
+}
+
+func TestInvitationEmailLiteralIsRetired(t *testing.T) {
+	d := Delivery{Intent: Intent{ID: "mail_fixture_0123456789", Kind: Kind("invitation"), ResourceID: "fixture", ExpiresAt: time.Now().Add(time.Hour), Payload: Payload{To: "recipient@example.test", Code: "private"}}, CreatedAt: time.Now()}
+	if d.Intent.Validate() == nil {
+		t.Fatal("retired invitation kind accepted")
+	}
+	if raw, e := Render(d, "sender@example.test", ""); e == nil || len(raw) > 0 {
+		t.Fatal("retired invitation rendered")
+	}
+	if strings.Contains(Link(d), "invite=") {
+		t.Fatal("retired invitation link produced")
 	}
 }

@@ -5338,6 +5338,14 @@ export const schemas = {
             "publicKey": {
               "type": "string"
             },
+            "role": {
+              "enum": [
+                "owner",
+                "admin",
+                "member"
+              ],
+              "type": "string"
+            },
             "routes": {
               "properties": {
                 "certificate": {
@@ -5408,6 +5416,7 @@ export const schemas = {
             }
           },
           "required": [
+            "role",
             "lastSeenAt",
             "status",
             "ownedByMe",

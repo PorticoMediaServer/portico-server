@@ -5351,6 +5351,14 @@
                 "publicKey": {
                   "type": "string"
                 },
+                "role": {
+                  "enum": [
+                    "owner",
+                    "admin",
+                    "member"
+                  ],
+                  "type": "string"
+                },
                 "routes": {
                   "properties": {
                     "certificate": {
@@ -5421,6 +5429,7 @@
                 }
               },
               "required": [
+                "role",
                 "lastSeenAt",
                 "status",
                 "ownedByMe",
@@ -14263,6 +14272,14 @@
                           "publicKey": {
                             "type": "string"
                           },
+                          "role": {
+                            "enum": [
+                              "owner",
+                              "admin",
+                              "member"
+                            ],
+                            "type": "string"
+                          },
                           "routes": {
                             "properties": {
                               "certificate": {
@@ -14333,6 +14350,7 @@
                           }
                         },
                         "required": [
+                          "role",
                           "lastSeenAt",
                           "status",
                           "ownedByMe",

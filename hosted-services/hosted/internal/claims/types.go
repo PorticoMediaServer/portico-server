@@ -53,6 +53,7 @@ func (a ApprovalInput) IntentDigest(account, audience string) [32]byte {
 }
 
 type Approval struct {
+	TargetUsername        string `json:"targetUsername,omitempty"`
 	Kind                  string `json:"kind"`
 	Version               string `json:"version"`
 	Audience              string `json:"audience"`
@@ -72,7 +73,7 @@ type Approval struct {
 type Envelope = trust.Envelope
 
 func SignApproval(a Approval, key ed25519.PrivateKey, keyID string, certificate *trust.Certificate) (Envelope, error) {
-	if len(key) != ed25519.PrivateKeySize || keyID == "" || a.Kind != "portico.claim.approval" || a.Version != "2" || !serverreturn.Binding(a.Purpose, a.CurrentOwnerAccountID, a.PreviousOwnerRole) || !validAudience(a.Audience) || !validBinding(a.OperationID, a.ServerID, a.AccountID, a.LocalGeneration) || a.ApprovalRevision < 1 {
+	if len(key) != ed25519.PrivateKeySize || keyID == "" || a.Kind != "portico.claim.approval" || a.Version != "2" || !serverreturn.Binding(a.Purpose, a.CurrentOwnerAccountID, a.PreviousOwnerRole) || !validAudience(a.Audience) || !validBinding(a.OperationID, a.ServerID, a.AccountID, a.LocalGeneration) || a.ApprovalRevision < 1 || (a.Purpose == "change-owner" && !identity.ValidUsername(a.TargetUsername)) || (a.Purpose != "change-owner" && a.TargetUsername != "") {
 		return Envelope{}, ErrInvalid
 	}
 	public, ok := decode(a.PublicKey, 32)

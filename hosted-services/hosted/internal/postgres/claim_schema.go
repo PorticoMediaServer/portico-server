@@ -26,6 +26,7 @@ CREATE TABLE claim_operations(
  local_generation bigint NOT NULL CHECK(local_generation>=0),
  purpose text NOT NULL DEFAULT 'setup' CHECK(purpose IN('setup','switch','change-owner')),
  current_owner_account_id text NOT NULL DEFAULT '', previous_owner_role text NOT NULL DEFAULT '',return_registration_id text NOT NULL DEFAULT '',
+ target_username text NOT NULL DEFAULT '',
  server_name text NOT NULL CHECK(octet_length(server_name) BETWEEN 1 AND 120),
  owner_profile_id text REFERENCES profiles(id) ON DELETE SET NULL,
  intent_digest bytea NOT NULL CHECK(octet_length(intent_digest)=32),

@@ -40,14 +40,23 @@ func lockClaim(ctx context.Context, tx *sql.Tx, v claims.Verified) (lockedClaim,
 	if !sameClaimApproval(preliminary, current) || current.revision != v.Wire.ApprovalRevision {
 		return empty, claims.ErrApprovalRequired
 	}
-	var server, account, state string
+	var server, account, state, targetUsername, purpose string
 	var key []byte
 	var generation int64
-	if e = tx.QueryRowContext(ctx, `SELECT server_id,account_id,public_key,local_generation,state FROM claim_operations WHERE id=$1 FOR UPDATE`, v.Wire.OperationID).Scan(&server, &account, &key, &generation, &state); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT server_id,account_id,public_key,local_generation,state,target_username,purpose FROM claim_operations WHERE id=$1 FOR UPDATE`, v.Wire.OperationID).Scan(&server, &account, &key, &generation, &state, &targetUsername, &purpose); e != nil {
 		return empty, claimAuthError(e)
 	}
 	if server != v.Wire.ServerID || account != v.Wire.AccountID || base64.RawURLEncoding.EncodeToString(key) != v.Wire.PublicKey || generation != v.Wire.LocalGeneration {
 		return empty, claims.ErrStale
+	}
+	if purpose == "change-owner" && state == "approved" {
+		var live string
+		if e = tx.QueryRowContext(ctx, `SELECT username FROM accounts WHERE id=$1`, account).Scan(&live); e != nil {
+			return empty, e
+		}
+		if live != targetUsername || !identity.ValidUsername(targetUsername) {
+			return empty, claims.ErrStale
+		}
 	}
 	if state == "cancelled" {
 		return empty, claims.ErrCancelled

@@ -12,6 +12,7 @@
         "lastSeenAt": "<time>"
       },
       "publicKey": "<publicKey>",
+      "role": "owner",
       "status": "quiet"
     }
   ],
