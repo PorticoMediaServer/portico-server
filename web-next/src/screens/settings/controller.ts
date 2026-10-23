@@ -11,6 +11,7 @@ import {defaultI18n} from '@i18n';
 import type {HttpLocalApi} from '@core/index.ts';
 import type {SettingPresentation} from '../../kit/settings';
 import type {SettingsPageSnapshot} from './Settings';
+import {settingsServerHeader} from './server-header';
 
 type DocumentForm = Readonly<{
   load: () => Promise<void>; dispose: () => void;
@@ -54,6 +55,7 @@ export class SettingsController {
   private loaded = false;
   private loading?: Promise<void>;
   private writing = false;
+  private header: ReturnType<typeof settingsServerHeader> = {facts: []};
   constructor(options: SettingsControllerOptions) {
     this.options = options; this.preferences = options.preferences;
     const scope = {serverId: options.serverId, viewerId: options.viewerId};
@@ -70,6 +72,8 @@ export class SettingsController {
   }
   private current = () => !this.closed && this.options.isCurrent();
   getSnapshot = () => this.snapshot;
+  serverHealth = () => this.current() ? this.header.health : undefined;
+  serverFacts = () => this.current() ? this.header.facts : [];
   subscribe = (listener: () => void) => {this.listeners.add(listener); return () => {this.listeners.delete(listener);};};
   private publish(patch: Partial<SettingsPageSnapshot>) {
     if (!this.current()) return;
@@ -121,6 +125,12 @@ export class SettingsController {
     this.publish({loading: true, error: undefined});
     const task = (async () => {
       try {
+        if (this.forms.runtime) {
+          const [health, storage] = await Promise.allSettled([this.console.measurement('health'), this.console.measurement('storage')]);
+          if (!this.current()) return;
+          this.header = settingsServerHeader(health.status === 'fulfilled' ? health.value : undefined, storage.status === 'fulfilled' ? storage.value : undefined);
+          this.publish({});
+        }
         await Promise.all(Object.values(this.forms).map(async form => {await form.load(); if (form.error()) throw form.error();}));
         if (this.forms.runtime) this.configuration = await loadSettingsConfiguration(this.options.api, this.options.serverId, this.lifetime.signal);
         if (!this.current()) return;
@@ -180,6 +190,6 @@ export class SettingsController {
   dispose = () => {
     this.closed = true; this.lifetime.abort(); this.console.dispose(); this.preferencesReader.dispose();
     for (const form of Object.values(this.forms)) form.dispose();
-    this.configuration = undefined; this.rowErrors.clear(); this.listeners.clear();
+    this.configuration = undefined; this.header = {facts: []}; this.rowErrors.clear(); this.listeners.clear();
   };
 }

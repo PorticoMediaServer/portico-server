@@ -27,6 +27,8 @@ export type SelectProps = {
   form?: string;
   id?: string;
   placeholder?: string;
+  /** Display-only trigger text; option text and values remain exact in the menu. */
+  triggerLabel?: string;
   sheetTitle?: ReactNode;
   className?: string;
   containerClassName?: string;
@@ -49,7 +51,7 @@ function tabFrom(trigger: HTMLElement, direction: number) {
   if (index >= 0) stops[index + direction]?.focus();
 }
 
-const ChoiceSelect = forwardRef<HTMLButtonElement, ChoiceSelectProps>(function ChoiceSelect({options, value, defaultValue, onValueChange, open, defaultOpen, onOpenChange, label, description, error, disabled, required, name, form, id, placeholder, sheetTitle, className, containerClassName, style, rich, 'aria-label': accessibleLabel, 'aria-labelledby': labelledBy, 'aria-describedby': describedBy}, ref) {
+const ChoiceSelect = forwardRef<HTMLButtonElement, ChoiceSelectProps>(function ChoiceSelect({options, value, defaultValue, onValueChange, open, defaultOpen, onOpenChange, label, description, error, disabled, required, name, form, id, placeholder, triggerLabel, sheetTitle, className, containerClassName, style, rich, 'aria-label': accessibleLabel, 'aria-labelledby': labelledBy, 'aria-describedby': describedBy}, ref) {
   const generated = useId();
   const phone = useSyncExternalStore(subscribePhone, phoneSnapshot, desktopSnapshot);
   const [localValue, setLocalValue] = useState(defaultValue ?? '');
@@ -105,10 +107,10 @@ const ChoiceSelect = forwardRef<HTMLButtonElement, ChoiceSelectProps>(function C
     {label && <label htmlFor={inputId} id={labelId} className={styles.fieldLabel}>{label}</label>}
     {phone ? <PhoneSelect options={options} value={currentValue} onValueChange={changeValue} open={currentOpen} onOpenChange={changeOpen}
       title={sheetTitle ?? label ?? accessibleLabel} rich={rich} trigger={trigger} bindTrigger={bindTrigger} triggerProps={triggerProps}
-      disabled={disabled} required={required} name={name} form={form} placeholder={placeholder} resetValue={initialValue.current} onReset={() => changeValue(initialValue.current)} />
+      disabled={disabled} required={required} name={name} form={form} placeholder={placeholder} triggerLabel={triggerLabel} resetValue={initialValue.current} onReset={() => changeValue(initialValue.current)} />
       : <SelectPrimitive.Root value={currentValue} onValueChange={changeValue} open={currentOpen} onOpenChange={changeOpen} disabled={disabled} required={required} name={name} form={form}>
       <SelectPrimitive.Trigger {...triggerProps} ref={bindTrigger}>
-        <span className={styles.selectValue}><SelectPrimitive.Value placeholder={placeholder} /></span>
+        <span className={styles.selectValue}><SelectPrimitive.Value placeholder={placeholder}>{triggerLabel}</SelectPrimitive.Value></span>
         <SelectPrimitive.Icon><Icon name="i-down" size={18} /></SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal><div className={styles.selectPortal}>
@@ -167,9 +169,10 @@ type PhoneSelectProps = {
   name?: string;
   form?: string;
   placeholder?: string;
+  triggerLabel?: string;
 };
 
-function PhoneSelect({options, value, onValueChange, open, onOpenChange, onReset, resetValue, title, rich, trigger, bindTrigger, triggerProps, disabled, required, name, form, placeholder}: PhoneSelectProps) {
+function PhoneSelect({options, value, onValueChange, open, onOpenChange, onReset, resetValue, title, rich, trigger, bindTrigger, triggerProps, disabled, required, name, form, placeholder, triggerLabel}: PhoneSelectProps) {
   const selected = options.findIndex(option => option.value === value && !option.disabled);
   const [active, setActive] = useState(selected >= 0 ? selected : moveOption(options, -1, 1));
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -198,7 +201,7 @@ function PhoneSelect({options, value, onValueChange, open, onOpenChange, onReset
     <button {...triggerProps} ref={bindTrigger} type="button" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-controls={listId} aria-required={required || undefined} disabled={disabled}
       data-state={open ? 'open' : 'closed'} onClick={() => open ? onOpenChange(false) : begin()}
       onKeyDown={event => {if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {event.preventDefault(); begin(event.key === 'ArrowUp' ? -1 : 1);}}}>
-      <span className={styles.selectValue}>{options.find(option => option.value === value)?.label ?? placeholder}</span><span><Icon name="i-down" size={18} /></span>
+      <span className={styles.selectValue}>{triggerLabel ?? options.find(option => option.value === value)?.label ?? placeholder}</span><span><Icon name="i-down" size={18} /></span>
     </button>
     <select ref={element => {nativeSelect.current = element; if (element) {for (const option of element.options) option.defaultSelected = option.value === resetValue; element.value = value;}}}
       className={styles.formSelect} tabIndex={-1} aria-hidden="true" name={name} form={form} required={required} disabled={disabled} value={value}

@@ -6,10 +6,10 @@ import {nextTableSort, selectTableRows, settingsTableHeaderHeight, settingsTable
 import styles from './settings.module.css';
 
 const t = defaultI18n.t;
-export type SettingsTableCell = string | Readonly<{title: string; meta?: string; avatar?: string; image?: string; tone?: 'ok' | 'warn' | 'bad' | 'quiet'}>;
+export type SettingsTableCell = string | Readonly<{title: string; meta?: string; avatar?: string; image?: string; tone?: 'ok' | 'accent' | 'warn' | 'bad' | 'quiet'}>;
 export type SettingsTableRow = Readonly<{id: string; label: string; selectable?: boolean; cells: Readonly<Record<string, SettingsTableCell>>}>;
 export type SettingsTableColumn = Readonly<{id: string; label: string; kind?: 'main' | 'text' | 'muted' | 'badge' | 'num'; sortable?: boolean; width?: string}>;
-export type SettingsTableFilter = Readonly<{id: string; label: string; options: readonly {value: string; label: string}[]}>;
+export type SettingsTableFilter = Readonly<{id: string; label: string; options: readonly {value: string; label: string}[]; showAllValue?: boolean}>;
 export type SettingsTableAction = Readonly<{id: string; label: string; destructive?: boolean; onAction: (ids: readonly string[], opener: HTMLElement) => void}>;
 export type SettingsTableHandle = {focusRow: (id: string) => void};
 export type SettingsTableProps = Readonly<{
@@ -87,7 +87,7 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
     <div className={styles.tableToolbar}>
       {selectedCount ? <><span role="status" className={styles.selectionCount}>{t('next.settings.selected', {count: selectedCount})}</span>{bulkActions.map(action => <Button size="xs" key={action.id} className={action.destructive ? styles.danger : undefined} onClick={event => action.onAction([...(selected ?? [])], event.currentTarget)}>{action.label}</Button>)}<Button size="xs" variant="text" onClick={() => {restoreSearch.current = true; onSelectionChange?.(new Set());}}>{t('next.settings.clear')}</Button></> : <>
         <TextField ref={search} type="search" variant="search" value={query.search} placeholder={searchLabel} aria-label={searchLabel} onChange={event => changeQuery({...query, search: event.currentTarget.value})} />
-        {filters.map(filter => <Select key={filter.id} aria-label={filter.label} value={query.filters[filter.id] ?? 'all'} options={filter.options.map(option => ({...option, label: option.value === 'all' ? filter.label : option.label}))} onValueChange={value => changeQuery({...query, filters: {...query.filters, [filter.id]: value}})} />)}
+        {filters.map(filter => <Select key={filter.id} aria-label={`${filter.label}: ${filter.options.find(option => option.value === (query.filters[filter.id] ?? 'all'))?.label ?? ''}`} value={query.filters[filter.id] ?? 'all'} triggerLabel={!filter.showAllValue && (query.filters[filter.id] ?? 'all') === 'all' ? filter.label : undefined} options={filter.options} onValueChange={value => changeQuery({...query, filters: {...query.filters, [filter.id]: value}})} />)}
         <span className={styles.tableCount} role="status">{countLabel}</span>{actions}
       </>}
     </div>

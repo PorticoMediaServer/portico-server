@@ -3,7 +3,8 @@ import {useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {defaultI18n} from '@i18n';
 import {settingsSpec, settingsRowIndex, type SettingsRow, type SettingsValue} from '../../../packages/client-core/src/presentation/settings-spec';
-import {SettingsAdvanced, SettingsGroup, SettingsOrderedList, SettingsPanel, SettingsPageHeading, SettingsRows, SettingsTable, SettingsWorkspace, SettingNumber, type TableQuery} from '../../src/kit/settings';
+import {SettingsAdvanced, SettingsGroup, SettingsOrderedList, SettingsPanel, SettingsPageHeading, SettingsRows, SettingsTable, SettingsWorkspace, SettingNumber, type TableQuery, type SettingsTableRow} from '../../src/kit/settings';
+import {settingsIconName} from '../../src/kit/settings/icons';
 import {SettingsNav, SettingsRow as Row} from '../../src/kit/shell/SettingsSurfaces';
 import {ServerHeader} from '../../src/kit/shell/ServerIdentity';
 import {Button, RichSelect, TextField} from '../../src/kit/controls';
@@ -13,18 +14,19 @@ import '../../src/kit/fonts.css';
 import '../../src/bootstrap.css';
 
 const t = defaultI18n.t;
-const initialPeople = Array.from({length: 500}, (_, index) => ({id: `fixture-${index}`, label: `Fixture person ${index}`, role: index % 2 ? 'member' : 'admin', cells: {
-  person: {title: `fixture_${String(index).padStart(3,'0')}`, meta: `person${index}@example.test`, avatar: 'F'}, role: {title: index % 2 ? 'Member' : 'Administrator'},
+const peopleTable = settingsRowIndex.get('people.table')!.row.control;
+const initialPeople: (SettingsTableRow & {role: string; status: string})[] = Array.from({length: 500}, (_, index) => ({id: `fixture-${index}`, label: `Fixture person ${index}`, role: index === 0 ? 'owner' : index % 2 ? 'member' : 'admin', status: ['all', 'now', 'month', 'idle', 'off'][index % 5], cells: {
+  person: {title: `fixture_${String(index).padStart(3,'0')}`, meta: `person${index}@example.test`, avatar: 'F'}, role: {title: t(index === 0 ? 'next.shell.owner' : index % 2 ? 'next.settings.member' : 'next.shell.administrator'), tone: index === 0 ? 'ok' : index % 2 ? 'quiet' : 'accent'},
   access: {title: 'Synthetic library', meta: '2 streams'}, profiles: {title: '2 profiles'}, active: {title: 'Fixture time'},
 }}));
 const proof = {queries: [] as TableQuery[], bulk: [] as readonly string[][], changes: [] as unknown[], creates: 0};
 Object.assign(window, {settingsProof: proof});
 function Fixture() {
-  const [page, setPage] = useState('people'), [query, setQuery] = useState<TableQuery>({search: '', filters: {role: 'all'}, sort: {by: 'person', direction: 'asc'}}), [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [page, setPage] = useState('people'), [query, setQuery] = useState<TableQuery>({search: '', filters: {role: 'all', status: 'all'}, sort: {by: 'person', direction: 'asc'}}), [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [panel, setPanel] = useState<string>(), [tab, setTab] = useState('account'), [advanced, setAdvanced] = useState(false), [upload, setUpload] = useState<number | null>(null), [order, setOrder] = useState(['one','two','three']);
   const opener = useRef<HTMLElement | null>(null), [values, setValues] = useState<Record<string, SettingsValue>>({});
-  const rows = useMemo(() => initialPeople.filter(row => row.cells.person.title.includes(query.search) && (query.filters.role === 'all' || row.role === query.filters.role)).sort((a,b) => query.sort.direction === 'asc' ? a.id.localeCompare(b.id,undefined,{numeric:true}) : b.id.localeCompare(a.id,undefined,{numeric:true})), [query]);
-  const nav = (scope: string) => settingsSpec.filter(section => section.scope === scope).map(section => ({id: section.id, label: t(section.title), icon: 'i-server' as const, cluster: section.navGroup}));
+  const rows = useMemo(() => initialPeople.filter(row => row.id.includes(query.search) && (query.filters.role === 'all' || query.filters.role === 'admin' && row.role === 'owner' || row.role === query.filters.role) && (query.filters.status === 'all' || row.status === query.filters.status)).sort((a,b) => query.sort.direction === 'asc' ? a.id.localeCompare(b.id,undefined,{numeric:true}) : b.id.localeCompare(a.id,undefined,{numeric:true})), [query]);
+  const nav = (scope: string) => settingsSpec.filter(section => section.scope === scope).map(section => ({id: section.id, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}));
   const pick = (id: string, element: HTMLElement) => {opener.current = element; setTab('account'); setPanel(id);};
   const state = (row: SettingsRow) => {
     const c = row.control, fallback = c.type === 'matrix' ? Object.fromEntries(c.items!.map(item => [item.id!, item.default!])) : c.default;
@@ -32,13 +34,16 @@ function Fixture() {
     return {present: true, value, defaultValue: fallback, changed: JSON.stringify(value) !== JSON.stringify(fallback), displayValue: String(value)};
   };
   return <><IconSprite /><SettingsWorkspace scope={page === 'playback' ? 'account' : 'server'} compactPage onBack={() => setPage('people')} navigation={<SettingsNav accountName="Synthetic profile" serverName="Synthetic server" viewerRole="owner" account={nav('account')} server={nav('server')} selectedId={page} query="" onQueryChange={() => {}} onNavigate={setPage} onSearchResult={() => {}} />}>
-    {page !== 'playback' && <ServerHeader serverName="Synthetic server" viewerRole="owner" audience="administrators" health="normal" />}
+    {page !== 'playback' && <ServerHeader serverName="Synthetic server" viewerRole="owner" audience="administrators" health="normal" facts={[
+      {id: 'uptime', role: 'value', text: t('settings.server.health.upFor', {duration: defaultI18n.number(6, {style: 'unit', unit: 'day', unitDisplay: 'long'})})},
+      {id: 'free', role: 'value', text: t('settings.server.health.free', {bytes: defaultI18n.bytes(1.2 * 1024 ** 4)})},
+      {id: 'database', role: 'value', text: t('settings.server.health.database', {bytes: defaultI18n.bytes(412 * 1024 ** 2)})},
+    ]} />}
     <SettingsPageHeading title={page === 'playback' ? 'Playback' : 'People'} />
     {page === 'playback' ? <SettingsRows holder={settingsSpec.find(section => section.id === 'playback')!} state={state} change={(row,value) => {proof.changes.push({id:row.id,value});setValues(old => ({...old,[row.id]:value}));}} reset={row => setValues(old => ({...old,[row.id]:state(row).defaultValue!}))} renderSpecial={() => null} advancedOpen={advanced} onAdvancedChange={setAdvanced} /> : <>
-      <SettingsGroup title="People" plain actions={<Button size="compact" variant="primary" onClick={event => pick('new',event.currentTarget)}>Invite someone</Button>}>
-        <SettingsTable label="Synthetic people" searchLabel="Search people" countLabel={`${rows.length} of 500 people`} emptyLabel="No one matches." rows={rows} columns={[
-          {id:'person',label:'Person',kind:'main',sortable:true,width:'27%'},{id:'role',label:'Role',kind:'badge',sortable:true,width:'18%'},{id:'access',label:'Access',kind:'text',width:'22%'},{id:'profiles',label:'Profiles',kind:'muted',width:'15%'},{id:'active',label:'Last active',sortable:true,width:'18%'}]}
-          query={query} onQueryChange={value => {proof.queries.push(value);setQuery(value);}} filters={[{id:'role',label:'Role',options:[{value:'all',label:'Everyone'},{value:'admin',label:'Administrators'},{value:'member',label:'Members'}]}]} matchedCount={rows.length} selected={selected} onSelectionChange={setSelected}
+      <SettingsGroup title="People" plain actions={<Button size="compact" variant="primary" icon="i-plus" iconSize={20} onClick={event => pick('new',event.currentTarget)}>{t(peopleTable.addLabel!)}</Button>}>
+        <SettingsTable label="Synthetic people" searchLabel={t(peopleTable.search!)} countLabel={t(query.search || Object.values(query.filters).some(value => value !== 'all') ? 'next.settings.peopleCount' : 'next.settings.peopleTotal', {matched: rows.length, total: initialPeople.length})} emptyLabel={t(peopleTable.empty!)} rows={rows} height={peopleTable.height} columns={peopleTable.columns!.map(column => ({id: column.id!, label: t(column.label), kind: column.kind as 'main', sortable: column.sort, width: column.width}))}
+          query={query} onQueryChange={value => {proof.queries.push(value);setQuery(value);}} filters={peopleTable.filters!.map(filter => ({id: filter.id, label: t(filter.label), options: filter.options.map(option => ({value: option.value, label: t(option.label)}))}))} matchedCount={rows.length} selected={selected} onSelectionChange={setSelected}
           bulkActions={[{id:'disable',label:'Turn off',onAction:ids => {proof.bulk=[...proof.bulk,ids];setSelected(new Set());}}]} rowAction={{label:'Edit',onAction:(row,element) => pick(row.id,element)}} />
       </SettingsGroup>
       <SettingsGroup title="Upload"><Row label="Upload speed"><SettingNumber label="Upload speed" value={upload} optional min={1} max={100000} unit="Mbps" plain onCommit={setUpload} /></Row></SettingsGroup>

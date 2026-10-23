@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import {SettingsPeopleClient, type SettingsPeoplePage, type SettingsPeopleQuery, type SettingsPersonRow, type SettingsBulkAccess, type SettingsBulkAction} from '@core/settings-people.ts';
 import {settingsRowIndex, settingsSpec, type SettingsRow, type SettingsValue} from '@core/presentation/settings-spec.ts';
 import {managesTier, type AccessMember, type AccessTier, type MemberLimits} from '@core/server-administration.ts';
-import {SettingsHours, SettingsSelectionList, SettingsStringList, SettingsPanel, SettingsRows, SettingsTable, type SettingPresentation, type SettingsTableHandle, type TableQuery} from '../../kit/settings';
+import {SettingsGroup, SettingsHours, SettingsSelectionList, SettingsStringList, SettingsPanel, SettingsRows, SettingsTable, type SettingPresentation, type SettingsTableHandle, type TableQuery} from '../../kit/settings';
 import {Button} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays/Dialog';
 import {SettingsRow as Row} from '../../kit/shell/SettingsSurfaces';
@@ -16,7 +16,7 @@ const initialQuery: TableQuery = {search: '', filters: {role: 'all', status: 'al
 function queryOf(query: TableQuery): SettingsPeopleQuery {
   return {search: query.search, role: query.filters.role as SettingsPeopleQuery['role'], status: query.filters.status as SettingsPeopleQuery['status'], sort: query.sort.by as SettingsPeopleQuery['sort'], direction: query.sort.direction};
 }
-export type PeopleBindings = Readonly<{client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier}; reportError: (error: unknown) => void}>;
+export type PeopleBindings = Readonly<{client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier}; invite: (opener: HTMLElement) => void; reportError: (error: unknown) => void}>;
 
 /** The table query, detail revision and bulk transaction stay bound to one real session. */
 export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
@@ -107,6 +107,7 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
     confirmOpener.current = element ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null); setCommand({action, rows}); if (action === 'access') setBulk({});
   };
   const personRow = page?.items.find(row => row.accountId === personId);
+  const filtered = !!query.search.trim() || Object.values(query.filters).some(value => value !== 'all');
   const special = (row: SettingsRow) => {
     if (!person) return null;
     if (row.id === 'people.libraryList') return <SettingsSelectionList label={label(row.id)} minimum={1} items={bindings.libraries.map(library => ({id: library.id, label: library.name}))} selected={person.allowedLibraries} disabled={!canEdit || saving} onChange={ids => {void run(() => libraryAccess(ids));}} />;
@@ -121,15 +122,16 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
     return null;
   };
   return <>
-    {error && !page && !personId ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRefresh(value => value + 1)}} /> : <SettingsTable ref={tableRef}
+    <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="compact" variant="primary" icon="i-plus" iconSize={20} onClick={event => bindings.invite(event.currentTarget)}>{t(table.addLabel!)}</Button>}>
+    {error && !page && !personId ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRefresh(value => value + 1)}} /> : <SettingsTable ref={tableRef} height={table.height}
       label={t(section.title)} rows={(page?.items ?? []).map(row => ({id: row.accountId, label: row.username, selectable: row.accountId !== bindings.actor.accountId && managesTier(bindings.actor.role, row.role), cells: {
         person: {title: row.username, meta: row.email, avatar: Array.from(row.username)[0]},
-        role: {title: t(row.role === 'owner' ? 'next.shell.owner' : row.role === 'admin' ? 'next.shell.administrator' : 'next.settings.member'), tone: row.role === 'owner' ? 'ok' : 'quiet'},
+        role: {title: t(row.role === 'owner' ? 'next.shell.owner' : row.role === 'admin' ? 'next.shell.administrator' : 'next.settings.member'), tone: row.role === 'owner' ? 'ok' : row.role === 'admin' ? 'accent' : 'quiet'},
         access: {title: row.libraryNames.length ? row.libraryNames.join(', ') : t('next.settings.allLibraries'), meta: row.maxStreams ? t('next.settings.streams', {count: row.maxStreams}) : t('next.settings.unlimitedStreams')},
         profiles: row.profileNames.join(', '), active: {title: row.liveState === 'watching' ? t('next.settings.watchingNow') : row.liveState === 'listening' ? t('next.settings.listeningNow') : row.status !== 'active' ? t(`next.settings.personStatus.${row.status}` as 'next.settings.personStatus.off') : row.lastActiveAt ? new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'}).format(new Date(row.lastActiveAt)) : t('next.settings.never')},
       }}))} columns={table.columns!.map(column => ({id: column.id!, label: t(column.label), kind: column.kind as 'main', sortable: column.sort, width: column.width}))}
       query={query} onQueryChange={setQuery} filters={table.filters!.map(filter => ({id: filter.id, label: t(filter.label), options: filter.options.map(option => ({value: option.value, label: t(option.label)}))}))}
-      searchLabel={t(table.search!)} countLabel={t('next.settings.peopleCount', {matched: page?.matchedCount ?? 0, total: page?.totalCount ?? 0})} emptyLabel={t(table.empty!)} loading={loading}
+      searchLabel={t(table.search!)} countLabel={t(filtered ? 'next.settings.peopleCount' : 'next.settings.peopleTotal', {matched: page?.matchedCount ?? 0, total: page?.totalCount ?? 0})} emptyLabel={t(table.empty!)} loading={loading}
       matchedCount={page?.matchedCount ?? 0} hasMore={!!page?.nextCursor} onLoadMore={more} selected={selected} onSelectionChange={setSelected}
       rowAction={{label: t(table.rowAction!.label), onAction: (row, element) => {opener.current = element; setPersonId(row.id); setTab(personSpec.tabs![0].id);}}}
       bulkActions={[
@@ -137,6 +139,7 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
         {id: 'disable', label: t(table.select!.bulk[1].label), onAction: (ids, element) => ask('disable', ids, element)},
         {id: 'remove', label: t(table.select!.bulk[2].label), destructive: true, onAction: (ids, element) => ask('remove', ids, element)},
       ]} />}
+    </SettingsGroup>
     {personId && <SettingsPanel open onClose={() => {setPersonId(undefined); setPerson(undefined);}} title={person?.username ?? personRow?.username ?? t(section.title)} audience={t(bindings.actor.role === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}
       returnFocusRef={opener} selectedTab={tab} onTabChange={setTab} saveState={saving ? 'saving' : saved ? 'saved' : undefined}
       error={error ? t('next.states.pageFailedBody') : undefined} tabs={personSpec.tabs!.map(tab => ({id: tab.id, title: t(tab.title), content: !person ? <p role="status">{t('next.settings.loading')}</p> : <SettingsRows holder={tab} state={state} change={change} reset={() => {}} advancedOpen={advanced} onAdvancedChange={setAdvanced}

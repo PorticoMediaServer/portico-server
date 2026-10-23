@@ -4,7 +4,8 @@ import {settingsRowIndex, settingsSpec, type SettingsRow, type SettingsSection, 
 import {SettingsNav, type SettingsSearchGroup} from '../../kit/shell/SettingsSurfaces';
 import {SettingsPageHeading, SettingsPanel, SettingsRows, SettingsWorkspace, searchSettings, settingsRoute, type SettingPresentation, type SettingsRoute, type SettingsPanelProps} from '../../kit/settings';
 import {StateView} from '../../kit/states';
-import type {IconName} from '../../kit/Icon';
+import type {FactPart} from '@core/presentation/kit-model/index.ts';
+import {settingsIconName} from '../../kit/settings/icons';
 import {ServerHeader, type ServerAudience} from '../../kit/shell/ServerIdentity';
 import {useShellWidth} from '../../shell/viewport';
 
@@ -19,6 +20,8 @@ export type SettingsBindings = Readonly<{
   sectionVisible: (section: SettingsSection) => boolean;
   audience: (section: SettingsSection) => ServerAudience;
   serverHealth?: () => 'normal' | 'attention' | undefined;
+  /** Approved uptime, free-space and database facts, in order, from checked live readers. */
+  serverFacts: () => readonly FactPart[];
   rowState: (row: SettingsRow, context: SettingsContext) => SettingPresentation;
   change: (row: SettingsRow, value: SettingsValue, context: SettingsContext) => void;
   reset: (row: SettingsRow, context: SettingsContext) => void;
@@ -48,7 +51,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
   const matches = searchSettings(query, t, (row, owner) => bindings.sectionVisible(owner) && rowState(row, {section: owner}).present);
   const configuration = bindings.configurationMatches?.(query) ?? [];
   const configurationGroups: SettingsSearchGroup[] = configuration.filter(fact => fact.configOnly).length ? [{id: 'configuration', label: t('next.settings.configurationFile'), icon: 'i-server', area: 'server', configuration: true, rows: configuration.filter(fact => fact.configOnly).map(fact => ({id: fact.key, label: fact.label, description: fact.key}))}] : [];
-  const groups: SettingsSearchGroup[] = settingsSpec.map(section => ({id: `${section.scope}/${section.id}`, label: t(section.title), icon: `i-${section.icon}` as IconName, area: section.scope,
+  const groups: SettingsSearchGroup[] = settingsSpec.map(section => ({id: `${section.scope}/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), area: section.scope,
     rows: matches.filter(hit => hit.section === section).map(hit => ({id: hit.rowId, label: hit.label, description: hit.context.join(' · ')}))})).filter(group => group.rows.length);
   const go = (id: string, row?: string) => {
     if (id === 'configuration') {setConfigurationKey(row); setCompactPage(true); return;}
@@ -70,8 +73,8 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
     change={(row, value) => bindings.change(row, value, context)} reset={row => bindings.reset(row, context)} renderSpecial={(row, state) => bindings.special(row, state, context, openPanel)}
     query={query} foundRowId={selected.row} advancedOpen={advanced} onAdvancedChange={setAdvanced} />;
   const navigation = <SettingsNav accountName={bindings.accountName} serverName={bindings.serverName} viewerRole={bindings.role === 'admin' ? 'administrator' : bindings.role}
-    account={settingsSpec.filter(section => section.scope === 'account' && bindings.sectionVisible(section)).map(section => ({id: `account/${section.id}`, label: t(section.title), icon: `i-${section.icon}` as IconName, cluster: section.navGroup}))}
-    server={settingsSpec.filter(section => section.scope === 'server' && bindings.sectionVisible(section)).map(section => ({id: `server/${section.id}`, label: t(section.title), icon: `i-${section.icon}` as IconName, cluster: section.navGroup}))}
+    account={settingsSpec.filter(section => section.scope === 'account' && bindings.sectionVisible(section)).map(section => ({id: `account/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
+    server={settingsSpec.filter(section => section.scope === 'server' && bindings.sectionVisible(section)).map(section => ({id: `server/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
     selectedId={`${selected.scope}/${selected.section}`} selectedSearchResult={selected.row ? {pageId: `${selected.scope}/${selected.section}`, rowId: selected.row} : undefined}
     query={query} onQueryChange={setQuery} onNavigate={go} matches={[...groups, ...configurationGroups]} onSearchResult={go} layout={compact ? 'phone' : 'desktop'} />;
   const panelSpec = panel && section.panels?.[panel.id], tab = panelSpec?.tabs?.find(tab => tab.id === panel?.tab);
@@ -80,7 +83,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
   const audience = bindings.audience(section);
   const fact = configuration.find(fact => fact.key === configurationKey);
   return <SettingsWorkspace scope={selected.scope} navigation={navigation} compactPage={compactPage} onBack={() => setCompactPage(false)}>
-    {selected.scope === 'server' && bindings.role !== 'member' && (bindings.role === 'owner' ? <ServerHeader serverName={bindings.serverName} viewerRole="owner" audience={audience} health={bindings.serverHealth?.()} /> : <ServerHeader serverName={bindings.serverName} viewerRole="administrator" audience="administrators" health={bindings.serverHealth?.()} />)}
+    {selected.scope === 'server' && bindings.role !== 'member' && (bindings.role === 'owner' ? <ServerHeader serverName={bindings.serverName} viewerRole="owner" audience={audience} health={bindings.serverHealth?.()} facts={bindings.serverFacts()} /> : <ServerHeader serverName={bindings.serverName} viewerRole="administrator" audience="administrators" health={bindings.serverHealth?.()} facts={bindings.serverFacts()} />)}
     <div ref={heading}><SettingsPageHeading title={t(section.title)} saveState={snapshot.saveState} /></div>
     {fact ? <ConfigurationFact fact={fact} /> : snapshot.error ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {void bindings.load();}}} /> : snapshot.loading ? <p role="status">{t('next.settings.loading')}</p> : bindings.section?.(context, openPanel) ?? rows(section, context)}
     {panel && panelSpec && <SettingsPanel open onClose={() => setPanel(undefined)} audience={t(audience === 'owner' ? 'next.shell.editorAudience.owner' : 'next.shell.serverVisibility.ownerShared')} title={panelState?.title ?? (panelSpec.title ? t(panelSpec.title) : t(section.title))} description={panelState?.description} create={panelState?.create} returnFocusRef={opener}

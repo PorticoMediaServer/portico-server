@@ -69,10 +69,12 @@
 .cell[data-kind='num'] { justify-content: flex-end; }
 .avatar { width: 36px; height: 36px; border-radius: 50%; background: color-mix(in srgb, var(--color-accent) 20%, transparent); color: var(--color-accent-strong); display: grid; place-items: center; flex: none; font-size: 16px; font-weight: 700; }
 .poster { width: 32px; height: 48px; object-fit: cover; border-radius: 4px; flex: none; }
-.badge { border-radius: 6px; background: color-mix(in srgb, var(--color-text) 7%, transparent); color: var(--color-text-secondary); padding: 4px 8px; font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.badge[data-tone='ok'] { color: var(--color-accent-strong); background: color-mix(in srgb, var(--color-accent) 13%, transparent); }
-.badge[data-tone='bad'], .danger { color: var(--color-record); }
-.badge[data-tone='warn'] { color: var(--color-warning, var(--color-text-secondary)); }
+.badge { border: 1px solid color-mix(in srgb, var(--color-text) 24%, transparent); border-radius: 6px; color: var(--color-text-secondary); padding: 2px 8px; font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge[data-tone='ok'] { border-color: transparent; color: var(--color-healthy); background: color-mix(in srgb, var(--color-healthy) 14%, transparent); }
+.badge[data-tone='accent'] { border-color: transparent; color: var(--color-accent-strong); background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.badge[data-tone='bad'] { border-color: transparent; color: var(--color-record); background: color-mix(in srgb, var(--color-record) 12%, transparent); }
+.badge[data-tone='warn'] { border-color: transparent; color: var(--color-amber); background: color-mix(in srgb, var(--color-amber) 14%, transparent); }
+.danger { color: var(--color-record); }
 .sortIdle { opacity: 0; }
 .table th button:hover .sortIdle, .table th button:focus-visible .sortIdle { opacity: .5; }
 .table .tableEmpty { height: 150px; text-align: center; color: var(--color-text-tertiary); }
@@ -127,7 +129,7 @@
 .selectionList { display: grid; gap: 12px; border: 0; margin: 0; padding: 12px 0; }
 .selectionList legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .selectionList label { display: flex; align-items: center; gap: 12px; }
-.selectionList input { appearance: none; width: 24px; height: 24px; border: 2px solid var(--color-border); border-radius: 6px; background: transparent; accent-color: var(--color-accent); }
+.selectionList input { appearance: none; width: 24px; height: 24px; border: 2px solid var(--color-line-strong); border-radius: 6px; background: transparent; accent-color: var(--color-accent); }
 .selectionList input:checked { appearance: auto; }
 .hours { display: grid; gap: 12px; }
 .hoursWindow { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
