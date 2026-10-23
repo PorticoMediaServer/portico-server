@@ -2,8 +2,10 @@ package operations
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/dbwork"
 	"strings"
 	"testing"
 
@@ -298,5 +300,39 @@ func TestSettingsConfigurationReportsExistingServerPolicySource(t *testing.T) {
 	}
 	if len(found) != 2 {
 		t.Fatal("existing policy fields missing", found)
+	}
+}
+
+func TestSettingsConfigurationProjectionAcknowledgementPreservesLowerDomainRevision(t *testing.T) {
+	s, _, _ := consoleFixture(t)
+	ctx := context.Background()
+	enqueue := func(field string, revision int64) {
+		t.Helper()
+		if err := dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error { return QueueConfigurationProjectionTx(ctx, tx, field, revision) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	enqueue("name", 20)
+	// The file writer captured this row before another normalized domain commits.
+	written := map[string]int64{"name": 20}
+	enqueue("musicAwayQuality", 2)
+	if err := s.acknowledgeConfigurationProjection(ctx, written); err != nil {
+		t.Fatal(err)
+	}
+	var pending, queued int64
+	if err := s.DB.QueryRow(`SELECT pending_revision FROM server_configuration_state WHERE singleton=1`).Scan(&pending); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.QueryRow(`SELECT revision FROM server_configuration_pending WHERE field='musicAwayQuality'`).Scan(&queued); err != nil {
+		t.Fatal(err)
+	}
+	if pending != 2 || queued != 2 {
+		t.Fatal("later domain commit became invisible to the file drainer", pending, queued)
+	}
+	if err := s.acknowledgeConfigurationProjection(ctx, map[string]int64{"musicAwayQuality": 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.QueryRow(`SELECT pending_revision FROM server_configuration_state WHERE singleton=1`).Scan(&pending); err != nil || pending != 0 {
+		t.Fatal(pending, err)
 	}
 }
