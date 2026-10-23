@@ -45,11 +45,12 @@ type DirectAccount struct {
 	HostedAccountID string `json:"hostedAccountId,omitempty"`
 }
 type DirectSnapshot struct {
-	Authority string          `json:"authority"`
-	ServerID  string          `json:"serverId"`
-	Account   DirectAccount   `json:"account"`
-	Profiles  []DirectProfile `json:"profiles"`
-	CanManage bool            `json:"canManage"`
+	Authority    string                 `json:"authority"`
+	ServerID     string                 `json:"serverId"`
+	Account      DirectAccount          `json:"account"`
+	Profiles     []DirectProfile        `json:"profiles"`
+	CanManage    bool                   `json:"canManage"`
+	Capabilities ManagementCapabilities `json:"capabilities"`
 	// CustodyPending: this account owns the server and is a Portico Account,
 	// but Hosted's custody of the server's claim (retiring it, its
 	// certificates) is not with it. The owner accepts it with a custody
@@ -198,6 +199,9 @@ func (s *Service) DirectLogin(ctx context.Context, user, password string) (Direc
 	return s.DirectLoginFrom(ctx, user, password, true)
 }
 func (s *Service) DirectLoginFrom(ctx context.Context, user, password string, private bool) (DirectSignIn, error) {
+	if err := s.RequireSignInKind(ctx, SignInLocal); err != nil {
+		return DirectSignIn{}, err
+	}
 	if RemoteSignInClosed(ctx) {
 		return DirectSignIn{}, ErrRemoteSignIn
 	}
@@ -541,6 +545,9 @@ func (s *Service) RevokeDirectSessions(ctx context.Context, bearer, family strin
 	return gated4.Commit()
 }
 func (s *Service) ChangeDirectPassword(ctx context.Context, bearer, current, next, code string) error {
+	if err := s.RequireSignInKind(ctx, SignInLocal); err != nil {
+		return err
+	}
 	ctx = context.WithValue(ctx, passwordChangeContextKey{}, true)
 	if !directPassword(next) || len(current) > 72 || current == next {
 		return ErrDirectInput
@@ -645,6 +652,9 @@ func (s *Service) DirectMembers(ctx context.Context, bearer string) ([]DirectAcc
 	return out, rows.Err()
 }
 func (s *Service) CreateDirectMember(ctx context.Context, bearer string, q DirectMemberCreate) (DirectAccount, error) {
+	if err := s.RequireSignInKind(ctx, SignInLocal); err != nil {
+		return DirectAccount{}, err
+	}
 	q.Username = strings.ToLower(strings.TrimSpace(q.Username))
 	q.Name = strings.TrimSpace(q.Name)
 	if len(q.Username) < 3 || len(q.Username) > 64 || strings.ContainsAny(q.Username, " \t\r\n@") || !directPassword(q.Password) || !directName(q.Name) || !directLibraries(q.AllowedLibraries) {
@@ -750,6 +760,9 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 	return gated8.Commit()
 }
 func (s *Service) TransferDirectOwnership(ctx context.Context, bearer, target, password string, expected int64) error {
+	if err := s.RequireSignInKind(ctx, SignInLocal); err != nil {
+		return err
+	}
 	if len(password) > 72 || target == "" {
 		return ErrDirectInput
 	}
