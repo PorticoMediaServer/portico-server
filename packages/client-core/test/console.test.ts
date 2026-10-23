@@ -1,3 +1,4 @@
+import {decode} from '../../contracts/src/runtime.ts';
 import {wireFixture} from './wire-fixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -19,7 +20,7 @@ const settings=(revision=1)=>({revision,digest:'b'.repeat(64),requested:values,e
 const report={id:'report-one',revision:1,createdAt:100,updatedAt:100,status:'open',category:'playback',message:'Playback stopped.',contextAvailable:true};
 const submission={category:'playback' as const,message:report.message,itemId:''};
 function client(handler:(path:string,method:string,body:any,signal:AbortSignal)=>Promise<unknown>){
- const api:ConsoleAPI={async request<T>(){throw new Error('unbounded fallback must not be used');},async requestConsole<T>(path,method,body,signal){return wireFixture(await handler(path,method,body,signal),{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']) as T;}};
+ const api:ConsoleAPI={async request<T>(){throw new Error('unbounded fallback must not be used');},async requestConsole<T>(path,method,body,signal){if(path==='/v1/admin/console/settings'&&method==='PATCH')decode('ChangeConsoleSettingsRequest',body);return wireFixture(await handler(path,method,body,signal),{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']) as T;}};
  return new ConsoleClient(api,{serverId:'server-one',viewerId:'local:one:profile'});
 }
 test('settings preserve explicit unlimited caps and reject invalid limits',()=>{
@@ -57,7 +58,8 @@ test('unknown mutations cannot silently become a changed intent; explicit recove
  fail=false;await c.reconcilePending();assert.deepEqual(bodies[0],bodies[1]);assert.equal(recovered,1);assert.equal(c.getDraft('feedback'),undefined);assert.deepEqual(c.getDraft('unrelated'),{keep:true});c.dispose();
 });
 test('known revision conflicts keep drafts but permit a deliberate revised submission',async()=>{
- let conflict=true;const c=client(async()=>{if(conflict)throw new ConsoleTransportError(409,'console_conflict',4,['values.serverCap']);return envelope(settings(5));});
+ let conflict=true,current=1;const c=client(async(_path,method)=>{if(method==='GET')return envelope(settings(current));if(conflict)throw new ConsoleTransportError(409,'console_conflict',4,['values.serverCap']);return envelope(settings(5));});
+ await c.settings();current=4;
  c.setDraft('runtime-settings',{revision:1,values});await assert.rejects(c.applySettings(1,values),/revision: 4/);assert.equal(c.hasUnconfirmed(),false);assert.ok(c.getDraft('runtime-settings'));
  conflict=false;assert.equal((await c.applySettings(4,values)).revision,5);c.dispose();
 });
@@ -207,7 +209,8 @@ test('a runtime save rebases only edited fields and preserves concurrent owner c
  const initial=await c.settings();stored={...stored,connectionLimit:123};rev=2;
  try {await c.applySettings(initial.revision,{...initial.requested,name:'Renamed'});
   assert.equal(stored.name,'Renamed');assert.equal(stored.connectionLimit,123);
-  assert.deepEqual(Object.keys(bodies.at(-1).values),['name']);
+  assert.deepEqual(Object.keys(bodies.at(-1).values).sort(),Object.keys(values).sort(),'the strict server receives a complete document');
+  assert.equal(bodies[0].values.connectionLimit,values.connectionLimit);assert.equal(bodies.at(-1).values.connectionLimit,123);
  }finally{c.dispose();}
 });
 
@@ -287,4 +290,16 @@ test('retrying a save after a rebase and a lost response reuses the exact commit
  });
  await c.settings();stored={...stored,connectionLimit:123};rev=2;
  try {await assert.rejects(c.applySettings(1,{...values,name:'Renamed'}));assert.equal(c.hasUnconfirmed(),true);await c.applySettings(1,{...values,name:'Renamed'});assert.deepEqual(sent[2],sent[1]);assert.equal(stored.connectionLimit,123);}finally{c.dispose();}
+});
+
+test('a first partial edit reads a genuine complete document and refuses an unknown stale baseline',async()=>{
+ const calls:any[]=[];
+ const c=client(async(_path,method,body)=>{calls.push({method,body});return envelope(method==='GET'?settings(4):{...settings(5),requested:{...values,name:'First edit'},effective:{...values,name:'First edit'}});});
+ try{
+  await assert.rejects(c.applySettings(1,{name:'First edit'}),/Reload/);
+  assert.deepEqual(calls.map(call=>call.method),['GET']);
+  await c.applySettings(4,{name:'First edit'});
+  assert.equal(calls.at(-1).body.expectedRevision,4);
+  assert.deepEqual(calls.at(-1).body.values,{...values,name:'First edit'});
+ }finally{c.dispose();}
 });
