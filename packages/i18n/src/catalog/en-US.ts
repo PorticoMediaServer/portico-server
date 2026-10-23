@@ -20,6 +20,7 @@ import {ownerConsoleMessages} from './en-US/owner-console.ts';
 import {ownerParityMessages} from './en-US/owner-parity.ts';
 import {connectionTrustMessages} from './en-US/connection-trust.ts';
 import {secureConnectionMessages} from './en-US/secure-connection.ts';
+import {servicesMessages} from './en-US/services.ts';
 
 export const enUS = {
   'listening.rewound': 'Rewound {seconds} seconds',
@@ -2120,6 +2121,7 @@ export const enUS = {
   // ── Owner certificates and Apple's local plain HTTP (catalog/en-US/connection-trust.ts) ──
   ...connectionTrustMessages,
   ...secureConnectionMessages,
+  ...servicesMessages,
   ...nextMessages,
 } as const satisfies Record<string, string>;
 
