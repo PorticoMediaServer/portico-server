@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"portico.local/server/internal/operations"
 )
 
 func readingHTTP(t *testing.T, handler http.Handler, method, path, token, revision string, body any) *httptest.ResponseRecorder {
@@ -29,6 +31,9 @@ func readingHTTP(t *testing.T, handler http.Handler, method, path, token, revisi
 	}
 	if body != nil {
 		r.Header.Set("Content-Type", "application/json")
+		if method == http.MethodPatch {
+			r.Header.Set("Content-Type", "application/merge-patch+json")
+		}
 	}
 	if revision != "" {
 		r.Header.Set("If-Match", `"`+revision+`"`)
@@ -36,6 +41,45 @@ func readingHTTP(t *testing.T, handler http.Handler, method, path, token, revisi
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 	return w
+}
+
+func TestReadingRegisteredPausedHistoryDoesNotWrite(t *testing.T) {
+	r := newReadingFixture(t, "book", "pdf")
+	h := New(r.d)
+	token := r.f.owner.AccessToken
+	m := readingOpened(t, r, h)
+	w := readingHTTP(t, h, "GET", "/v1/preferences?deviceClass=web", token, "", nil)
+	var preferences struct {
+		Data operations.PreferenceSnapshot `json:"data"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &preferences) != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var revision int64
+	for _, document := range preferences.Data.Documents {
+		if document.Scope == operations.ScopeProfileServer {
+			revision = document.Revision
+		}
+	}
+	if revision < 1 {
+		t.Fatal("actual profile preference revision is absent")
+	}
+	w = readingHTTP(t, h, "PATCH", "/v1/preferences", token, "", map[string]any{
+		"expectedRevision": revision, "idempotencyKey": "reading-http-pause", "scope": "profile-server", "deviceClass": "web", "values": map[string]any{"privacy.pauseWatchHistory": true},
+	})
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	page := int64(0)
+	w = readingHTTP(t, h, "PUT", "/v1/reading/sessions/"+m.SessionID+"/progress", token, m.Revision, ReadingProgressRequest{Location: ReadingLocation{Format: "pdf", PageIndex: &page, Progression: .7}})
+	var saved ReadingProgressSavedResponse
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &saved) != nil || saved.Saved || saved.Progress != nil {
+		t.Fatal("paused history must report no saved position", w.Code, w.Body.String())
+	}
+	var count int
+	if err := r.f.db.QueryRow(`SELECT count(*) FROM reading_progress`).Scan(&count); err != nil || count != 0 {
+		t.Fatal(count, err)
+	}
 }
 
 func readingOpened(t *testing.T, r *readingFixture, h http.Handler) ReadingSessionResponse {

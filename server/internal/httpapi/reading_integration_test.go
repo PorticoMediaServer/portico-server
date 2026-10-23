@@ -197,6 +197,9 @@ func TestReadingPrivateCancellationAndSessionClosureStopReaders(t *testing.T) {
 		t.Fatal(n, err)
 	}
 	cancel()
+	if err := reader.Context().Err(); err == nil {
+		t.Fatal("buffered operations retained a cancelled request")
+	}
 	if n, err := reader.ReadAt(make([]byte, 5), 0); n != 0 || err == nil {
 		t.Fatal("cancelled request returned bytes", n, err)
 	}
@@ -227,6 +230,9 @@ func TestReadingPrivateCancellationAndSessionClosureStopReaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, source := range []*reading.Source{a, b} {
+		if err := source.Context().Err(); err == nil {
+			t.Fatal("buffered operations retained a closed book")
+		}
 		if n, err := source.ReadAt(make([]byte, 5), 0); n != 0 || err == nil {
 			t.Fatal("closed session returned bytes", n, err)
 		}
