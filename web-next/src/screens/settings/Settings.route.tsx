@@ -75,4 +75,4 @@ export function SettingsEntry() {
   return <SettingsScreen bindings={settings} route={route} navigate={navigate} />;
 }
 
-export default defineWebScreen({id: 'settings', component: SettingsEntry});
+export default defineWebScreen({id: 'settings', component: SettingsEntry, validateSearch: raw => settingsRoute(raw, () => true)});
