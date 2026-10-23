@@ -34,7 +34,7 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
   onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, subscribeSurfaceInput}: ReaderChromeProps) {
   const root = useRef<HTMLDivElement>(null), timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
-  const held = holdOpen || textSelectionActive || panel !== undefined && panel !== null || focusWithin;
+  const held = holdOpen || textSelectionActive || Boolean(panel) || focusWithin;
   const cancel = useCallback(() => { if (timer.current !== undefined) clearTimeout(timer.current); timer.current = undefined; }, []);
   const show = useCallback(() => { cancel(); setVisible(true); }, [cancel]);
   const arm = useCallback(() => {
