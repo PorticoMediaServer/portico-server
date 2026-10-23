@@ -17,8 +17,10 @@ const EpisodeThumbnailOffMode = "off"
 
 // EpisodeThumbnailRequest is the seam consumed by the effective library/source
 // policy owner. Authorize must recheck the effective library/source intersection
-// for the supplied operation and cost class. Open acquires a retained range
-// reader only after permission is granted; provider/off never acquire media.
+// for the supplied operation, cost class and automatic/explicit invocation.
+// Open acquires a retained range reader only after permission is granted.
+// Automatic provider/off requests never acquire media. An explicit owner request
+// can generate under every stored mode, without changing that mode or scan depth.
 // The publication transaction must independently recheck the same authority.
 type EpisodeThumbnailRequest struct {
 	Mode          string
@@ -27,7 +29,7 @@ type EpisodeThumbnailRequest struct {
 	DurationUS    int64
 	Open          func(context.Context) (Input, error)
 	Decoder       func(Input) Decode
-	Authorize     func(context.Context, string, string) error
+	Authorize     func(ctx context.Context, operation, costClass string, manual bool) error
 	SourceVideo   decoder.PreviewVideoFacts
 }
 type EpisodeThumbnailResult struct {
@@ -47,35 +49,31 @@ func EpisodeThumbnailMode(libraryKind string) string {
 }
 
 // MakeEpisodeThumbnail produces exactly one bounded picture, or chooses an
-// already available provider still. Manual generation obeys the same permission
-// callback and cannot bypass an off/provider choice. ProviderStill describes an
-// already permitted provider picture; this function never performs a lookup.
+// already available provider still for automatic work. Manual generation ignores
+// the automatic mode restriction and provider presence, but still requires fresh
+// explicit-owner source authority. ProviderStill describes an already permitted
+// provider picture; this function never performs a lookup.
 func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (EpisodeThumbnailResult, error) {
 	out := EpisodeThumbnailResult{Origin: "fallback"}
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
 	switch r.Mode {
-	case EpisodeThumbnailOffMode:
-		if r.Manual {
-			return out, ErrUnsupported
-		}
-		return out, nil
-	case EpisodeThumbnailProviderMode:
-		if r.Manual {
-			return out, ErrUnsupported
-		}
-		if r.ProviderStill {
-			out.Origin = "provider"
-		}
-		return out, nil
-	case EpisodeThumbnailDefaultMode:
+	case EpisodeThumbnailOffMode, EpisodeThumbnailProviderMode, EpisodeThumbnailDefaultMode:
 	default:
 		return out, ErrInput
 	}
-	if r.ProviderStill && !r.Manual {
-		out.Origin = "provider"
-		return out, nil
+	if !r.Manual {
+		if r.Mode == EpisodeThumbnailOffMode {
+			return out, nil
+		}
+		if r.ProviderStill {
+			out.Origin = "provider"
+			return out, nil
+		}
+		if r.Mode == EpisodeThumbnailProviderMode {
+			return out, nil
+		}
 	}
 	if r.Open == nil || r.Decoder == nil || r.Authorize == nil || r.DurationUS <= 0 || r.DurationUS > (1<<53)-1 {
 		return out, ErrInput
@@ -84,7 +82,7 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return r.Authorize(ctx, EpisodeThumbnailOperation, EpisodeThumbnailCostClass)
+		return r.Authorize(ctx, EpisodeThumbnailOperation, EpisodeThumbnailCostClass, r.Manual)
 	}
 	if err := authorize(); err != nil {
 		return out, err
