@@ -15,7 +15,7 @@ import {PlaybackDock, PlaybackPolicy} from '../../packages/player-core/src/index
 import {parseTrickplay, trickplayFrameAt} from '@core/trickplay.ts';
 import {createArtworkRuntime} from '../src/kit/artwork/source.ts';
 import {scrubImageStyle, watchPreviewFrame} from '../src/screens/watch/preview.ts';
-import {dispatchWatchMarker} from '../src/screens/watch/policy.ts';
+import {dispatchWatchMarker, watchUndoOffer} from '../src/screens/watch/policy.ts';
 import {dispatchWatchVersion, watchVersionRows} from '../src/screens/watch/versions.ts';
 import {WatchPictureInput} from '../src/screens/watch/picture.ts';
 
@@ -252,6 +252,28 @@ test('a retained Undo action cannot outlive the real current policy offer', asyn
   live = snapshot({presentation: {...shown.presentation!, policy: policy.update({...frame, nowMs: 6000, positionSeconds: 120})!.view}});
   assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'undo', markerId: 'intro'}), false);
   assert.equal(called, 1);
+});
+
+test('Undo progress comes from the live policy, expires while paused and stays out of a collapsed or retired source', () => {
+  const policy = new PlaybackPolicy();
+  policy.begin(fence, [{id: 'intro', kind: 'intro', startSeconds: 60, endSeconds: 120, automaticSafe: true}], 600);
+  const frame = {fence, nowMs: 0, positionSeconds: 80, durationSeconds: 600, rate: 1, playing: true, expanded: true, ended: false, kind: 'episode', modes: {intro: 'auto' as const}, postPlay: null};
+  const view = policy.update(frame)!.view;
+  const shown = snapshot({presentation: {...snapshot().presentation!, policy: view}});
+  let live = shown;
+  const binding = {getSnapshot: () => live, isCurrent: () => true, policyAction: async () => {}, reportError: (error: unknown) => { throw error; }};
+  assert.equal(watchUndoOffer(binding, shown)?.fraction, 1);
+  const elapsed = policy.update({...frame, nowMs: 4000, positionSeconds: 119, playing: false})!.view;
+  live = {...shown, presentation: {...shown.presentation!, policy: elapsed}};
+  assert.equal(watchUndoOffer(binding, shown)?.remainingSeconds, 2);
+  assert.equal(watchUndoOffer(binding, shown)?.fraction, 1 / 3);
+  const expired = policy.update({...frame, nowMs: 6001, positionSeconds: 119, playing: false})!.view;
+  live = {...shown, presentation: {...shown.presentation!, policy: expired}};
+  assert.equal(watchUndoOffer(binding, shown), null);
+  live = {...shown, presentation: {...shown.presentation!, expanded: false}};
+  assert.equal(watchUndoOffer(binding, shown), null);
+  live = {...shown, fence: {...fence, generation: 2}};
+  assert.equal(watchUndoOffer(binding, shown), null);
 });
 
 test('the version chooser follows actual grouped options order and permits one remaining failure choice', async () => {

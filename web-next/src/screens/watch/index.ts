@@ -3,6 +3,7 @@ export type {WatchBindings, WatchScreenProps, WatchSurfaces, WatchPanel, WatchPa
 export {readWatchFileInfo, readWatchFiles, watchFileGroups} from './file-info';
 export type {WatchFileInfoSource, WatchFileGroup, WatchFiles} from './file-info';
 export {WatchSkipPrompt} from './SkipPrompt';
+export {WatchUndoPrompt} from './UndoPrompt';
 export type {WatchPolicyBinding, WatchMarkerAction} from './policy';
 export {WatchVersionChooser} from './VersionChooser';
 export type {WatchVersionChooserProps} from './VersionChooser';

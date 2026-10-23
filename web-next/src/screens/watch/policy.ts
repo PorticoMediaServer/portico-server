@@ -1,4 +1,4 @@
-import {sameFence, type PolicyView, type QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
+import {sameFence, UNDO_SECONDS, type PolicyView, type QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback';
 
 /** Structural subset of the media owner's action port; no policy execution here. */
@@ -17,6 +17,16 @@ export function currentWatchPolicy(binding: WatchPolicyBinding, shown: WebPlayba
     || shown.presentation?.kind !== 'video' || !shown.presentation.expanded || live.presentation?.kind !== 'video' || !live.presentation.expanded) return null;
   if (!sameFence(shown.presentation.fence, fence) || !sameFence(live.presentation.fence, fence)) return null;
   return {fence, shown: shown.presentation.policy, live: live.presentation.policy};
+}
+
+/** The policy owns this lifetime, including expiry while paused. No renderer clock. */
+export function watchUndoOffer(binding: WatchPolicyBinding, shown: WebPlaybackRuntimeSnapshot) {
+  const current = currentWatchPolicy(binding, shown), policy = current?.shown, live = current?.live;
+  if (!policy || !live || policy.attention || live.attention || policy.finished || live.finished
+    || !policy.undo || !live.undo || policy.undo.marker.id !== live.undo.marker.id || policy.undo.marker.kind !== live.undo.marker.kind) return null;
+  if ([policy.undo.remainingSeconds, live.undo.remainingSeconds].some(value => !Number.isFinite(value) || value <= 0 || value > UNDO_SECONDS)) return null;
+  const remainingSeconds = Math.min(policy.undo.remainingSeconds, live.undo.remainingSeconds);
+  return {marker: policy.undo.marker, remainingSeconds, fraction: remainingSeconds / UNDO_SECONDS};
 }
 
 function offersMarker(policy: PolicyView | null, action: WatchMarkerAction): boolean {
