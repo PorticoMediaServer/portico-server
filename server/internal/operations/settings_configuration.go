@@ -329,7 +329,14 @@ func (s *Store) ImportConfiguration(ctx context.Context) error {
 		return nil
 	}
 	s.configMu.Lock()
-	defer s.configMu.Unlock()
+	err := s.importConfigurationLocked(ctx)
+	s.configMu.Unlock()
+	if err == nil && s.ConfigChanged != nil {
+		s.ConfigChanged(context.WithoutCancel(ctx))
+	}
+	return err
+}
+func (s *Store) importConfigurationLocked(ctx context.Context) error {
 	bindings := ConfigurationBindings()
 	raw := map[string]any{}
 	allBindings := append([]ConfigurationBinding{}, bindings...)

@@ -550,6 +550,9 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 	})
 	if e == nil {
 		e = s.FlushConfiguration(context.WithoutCancel(ctx))
+		if s.ConfigChanged != nil {
+			s.ConfigChanged(context.WithoutCancel(ctx))
+		}
 	}
 	if e == nil {
 		s.projectAppliedSettings(&out)
