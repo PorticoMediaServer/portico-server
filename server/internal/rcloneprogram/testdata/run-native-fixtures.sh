@@ -9,8 +9,12 @@ test -f ../third_party/rclone/bundle.lock.json
 test -n "${TMPDIR:-}"
 test "$(realpath "$TMPDIR")" = "$TMPDIR"
 case "$TMPDIR" in /tmp|/var/tmp|/|"$HOME") exit 2 ;; esac
-command -v docker >/dev/null
-command -v python3 >/dev/null
+for required in docker python3; do
+    if ! command -v "$required" >/dev/null; then
+        echo "Native fixture prerequisite is missing: $required" >&2
+        exit 2
+    fi
+done
 
 fixture_scratch=$(mktemp -d "$TMPDIR/remote-native-XXXXXXXX")
 export PORTICO_SAMBA_TEST_JOB="remote-sources-$(basename "$fixture_scratch" | tr '[:upper:]' '[:lower:]')"

@@ -161,7 +161,7 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 	})
 	config := func(host string) string {
 		if backend == "sftp" {
-			return "[nas]\ntype=sftp\nhost=" + host + "\nport=2222\nuser=fixture\npass=" + password + "\nknown_hosts_file=" + known + "\nshell_type=none\ndisable_hashcheck=true\n"
+			return "[nas]\ntype=sftp\nhost=" + host + "\nport=2222\nuser=fixture\npass=" + password + "\nknown_hosts_file=" + known + "\ndisable_hashcheck=true\n"
 		}
 		return "[nas]\ntype=smb\nhost=" + host + "\nuser=fixture-guest\n"
 	}
