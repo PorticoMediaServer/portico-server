@@ -24,6 +24,7 @@ export class ReaderController<P extends object> {
   private base: Readonly<P>;
   private overrides: Partial<P> = {};
   private session?: Session<P>;
+  private lifecycleVersion = 0;
   private viewport: ReaderViewport = Object.freeze({width: 1, height: 1});
   private snapshot: ReaderSnapshot<P>;
   constructor(options: Readonly<{adapters: readonly ReaderAdapter<P>[]; preferences: Readonly<P>}>) {
@@ -59,6 +60,7 @@ export class ReaderController<P extends object> {
     this.publish({preferences: this.effective(), overriddenKeys: Object.freeze(Object.keys(this.overrides) as (keyof P)[])});
   }
   async open(options: Readonly<{source: ReaderSource; format: ReaderFormat; container: HTMLElement; location?: ReaderLocation; viewport?: ReaderViewport; metadata?: ReaderMetadata}>): Promise<void> {
+    const lifecycleVersion = ++this.lifecycleVersion;
     // Invalidate before waiting for disposal, so simultaneous opens cannot adopt
     // a stale document/view. A late adapter result is disposed in its own turn.
     const previous = this.session;
@@ -123,6 +125,9 @@ export class ReaderController<P extends object> {
       session.abort.abort();
       this.session = undefined;
       await this.disposeSession(session);
+      // A replacement or explicit close can complete while failed resources
+      // retire. That newer lifecycle owns the snapshot, including when closed.
+      if (this.lifecycleVersion !== lifecycleVersion) return;
       this.publish({status: 'error', error: readerErrorCode(error), selection: null});
     }
   }
@@ -134,6 +139,7 @@ export class ReaderController<P extends object> {
     finally { await session.document?.dispose(); }
   }
   async close(): Promise<void> {
+    this.lifecycleVersion++;
     const session = this.session;
     this.session = undefined;
     session?.abort.abort(); this.overrides = {};
