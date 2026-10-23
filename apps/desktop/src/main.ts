@@ -7,6 +7,7 @@ import {nativeWindowBridge} from './window';
 import {installSettingsPlatform} from '../../../web-next/src/platform/settings-platform.ts';
 import {DesktopSettingsEqualizer,desktopEqualizerPort} from './SettingsEqualizer';
 import {createDesktopDevicePort,nativeDeviceFacts} from './device';
+import {nativeCapabilities} from './capabilities';
 
 async function startDesktop() {
   // The Settings shell captures its platform before restoration. Only the native
@@ -21,6 +22,8 @@ async function startDesktop() {
   windowChrome.updateEnvironment({os:native.os,fullscreen:native.fullscreen});
   window.addEventListener('pagehide',()=>{stopSettings();device?.dispose();windowChrome?.dispose();},{once:true});
   installPlaybackEnvironment({
+    // Provider presence blocks WebView codec/output fallback even on native failure.
+    capabilities:()=>facts?nativeCapabilities(native.os,facts.appVersion!):Promise.reject(new Error('engine_unavailable')),
     createPlayer: (video, options) => new DesktopMediaPlayer(video, options, nativeBridge),
     createRender: null,
     subtitleSurface: false,
