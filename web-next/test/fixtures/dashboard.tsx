@@ -7,6 +7,7 @@ import type {DashboardSession} from '../../src/screens/dashboard/bindings';
 import {IconSprite} from '../../src/kit/Icon';
 import {Button} from '../../src/kit/controls';
 import {fixtureContext, fixturePeople, fixturePlays, fixtureReading, fixtureReport} from './dashboard-data';
+import {fixtureHistoryFrame} from './history-frame';
 import '../../src/kit/tokens.css';
 import '../../src/kit/fonts.css';
 import '../../src/bootstrap.css';
@@ -29,6 +30,7 @@ function makeBindings(role: 'owner' | 'admin' | 'member', serverId = 'fixture', 
     plays: async (filters, cursor, signal) => {
       proof.queries.push({kind: 'plays', filters, cursor, context, serverId});
       if (scenario === 'historyFailure') throw new Error('controlled history failure');
+      if (scenario === 'historyFrame') return fixtureHistoryFrame(filters.period);
       const page = fixturePlays(filters, cursor);
       if (scenario !== 'context') return page;
       const generation = context.timeZone !== fixtureContext.timeZone ? 'zone' : context.until !== fixtureContext.until ? 'refresh' : 'original';
