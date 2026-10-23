@@ -119,9 +119,7 @@ func TestEncryptedBackupRelocatesAndRestoresWithKeysAndHistory(t *testing.T) {
 	}
 	after := NewPolicyStore(restored, targetState)
 	snapshot, e := after.Snapshot(ctx)
-	if e != nil || snapshot.Passphrase != password {
-		t.Fatal("portable sealed policy", e)
-	}
+	assertDerivedSnapshot(t, snapshot, e, password)
 	assertNoScratch(t, state, dest)
 	assertNoScratch(t, targetState, filepath.Join(targetState, BackupsDir))
 }
@@ -209,9 +207,8 @@ func TestBackupPolicyDestinationSecretsAndSourceRotation(t *testing.T) {
 		t.Fatal("secret stored plaintext", e)
 	}
 	reopened := NewPolicyStore(s.db, state)
-	if snap, e := reopened.Snapshot(ctx); e != nil || snap.Passphrase != password {
-		t.Fatal("policy restart", e)
-	}
+	snap, e := reopened.Snapshot(ctx)
+	assertDerivedSnapshot(t, snap, e, password)
 	// A source key rotation between database copy and file copy invalidates this run.
 	s.SetCopyScrubber(func(context.Context, string) error {
 		return writeTestFile(filepath.Join(state, "Keys", "rotated.key"), []byte("new key"), 0600)
@@ -229,7 +226,7 @@ func TestBackupPolicyDestinationSecretsAndSourceRotation(t *testing.T) {
 		t.Fatal(e)
 	}
 	if got, e := p.Settings(ctx); e != nil || got.PassphraseSet || got.PassphraseProtected {
-		t.Fatal("disable did not erase sealed password", e)
+		t.Fatal("disable did not erase derived key material", e)
 	}
 }
 
@@ -377,11 +374,11 @@ func (w *failWriter) Write(b []byte) (int, error) {
 }
 func TestEncryptedStreamShortIOAndChunkReordering(t *testing.T) {
 	password := "stream fixture phrase"
-	if _, e := newEncryptedWriter(&failWriter{}, password); e == nil {
+	if _, e := encryptedFixtureWriter(&failWriter{}, password); e == nil {
 		t.Fatal("header short write accepted")
 	}
 	var good bytes.Buffer
-	w, e := newEncryptedWriter(&good, password)
+	w, e := encryptedFixtureWriter(&good, password)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -396,7 +393,7 @@ func TestEncryptedStreamShortIOAndChunkReordering(t *testing.T) {
 		t.Fatal(e)
 	}
 	b := good.Bytes()
-	header := len(envelopeMagic) + 16
+	header := len(envelopeMagic) + kdfSaltBytes + archiveSaltBytes
 	end := header + 4 + chunkBytes + 16
 	changed := append(bytes.Clone(b[:header]), b[end:len(b)-20]...)
 	changed = append(changed, b[header:end]...)
@@ -416,7 +413,7 @@ func TestEncryptedStreamShortIOAndChunkReordering(t *testing.T) {
 	if e != nil || !bytes.Equal(raw, append(block, []byte("second")...)) {
 		t.Fatal("multi-chunk roundtrip", e)
 	}
-	partial, e := newEncryptedWriter(&failWriter{left: 100}, password)
+	partial, e := encryptedFixtureWriter(&failWriter{left: 100}, password)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -505,7 +502,7 @@ func TestAuthenticatedArchiveCannotEscapeOrInstallUnownedFiles(t *testing.T) {
 	password := "Fixture malicious archive passphrase"
 	for _, name := range []string{"../escape", "/absolute", "Cache/escape", "Keys/../../escape", "Keys", "Metadata", "portico.toml/child"} {
 		var b bytes.Buffer
-		enc, e := newEncryptedWriter(&b, password)
+		enc, e := encryptedFixtureWriter(&b, password)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -595,5 +592,27 @@ func TestBackupDiskEstimateFollowsArtworkPolicy(t *testing.T) {
 	}
 	if full-minimal != 64<<20 {
 		t.Fatalf("excluded artwork inflated disk requirement: minimal=%d full=%d", minimal, full)
+	}
+}
+
+func encryptedFixtureWriter(out io.Writer, password string) (*encryptedWriter, error) {
+	material, err := newArchiveKeyMaterial(password)
+	if err != nil {
+		return nil, err
+	}
+	defer material.clear()
+	return newEncryptedWriter(out, material)
+}
+
+func assertDerivedSnapshot(t *testing.T, snapshot Snapshot, err error, password string) {
+	t.Helper()
+	defer snapshot.clear()
+	if err != nil || snapshot.material == nil {
+		t.Fatal("derived policy capability unavailable", err)
+	}
+	expected := deriveMaster(password, snapshot.material.salt[:])
+	defer clear(expected)
+	if !bytes.Equal(snapshot.material.key, expected) {
+		t.Fatal("wrong derived policy capability")
 	}
 }

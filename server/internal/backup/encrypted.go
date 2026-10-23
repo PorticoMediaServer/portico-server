@@ -6,7 +6,9 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -22,14 +24,49 @@ const encryptedSummary = "encrypted.json"
 const maxEncryptedSummaryBytes = 64 << 10
 const chunkBytes = 64 << 10
 
-var envelopeMagic = []byte("PORTICO-BACKUP-ENC\x00\x01")
+var envelopeMagic = []byte("PORTICO-BACKUP-ENC\x00\x02")
 
-// The version fixes the KDF parameters; an untrusted header cannot request
-// unbounded CPU/RAM. Each archive gets an independent 128-bit random salt/key.
-func archiveAEAD(passphrase string, salt []byte) (cipher.AEAD, error) {
-	key := argon2.IDKey([]byte(passphrase), salt, 3, 64*1024, 4, 32)
+const kdfSaltBytes = 16
+const archiveSaltBytes = 16
+
+// Only derived material is retained for unattended backups. The passphrase
+// remains a write-only input. Fixed v2 KDF parameters bound untrusted headers.
+type archiveKeyMaterial struct {
+	salt [kdfSaltBytes]byte
+	key  []byte
+}
+
+func (m *archiveKeyMaterial) clear() {
+	if m != nil {
+		clear(m.key)
+	}
+}
+func deriveMaster(password string, salt []byte) []byte {
+	input := []byte(password)
+	defer clear(input)
+	return argon2.IDKey(input, salt, 3, 64*1024, 4, 32)
+}
+func newArchiveKeyMaterial(password string) (*archiveKeyMaterial, error) {
+	m := &archiveKeyMaterial{}
+	if _, err := rand.Read(m.salt[:]); err != nil {
+		return nil, err
+	}
+	m.key = deriveMaster(password, m.salt[:])
+	return m, nil
+}
+
+// A fresh archive salt derives an independent AES key, so sequence zero can
+// safely start every archive even while the saved master remains unchanged.
+func archiveAEAD(master, salt []byte) (cipher.AEAD, error) {
+	if len(master) != 32 || len(salt) != archiveSaltBytes {
+		return nil, ErrInvalid
+	}
+	key, err := hkdf.Key(sha256.New, master, salt, "portico backup envelope v2", 32)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(key)
 	block, err := aes.NewCipher(key)
-	clear(key)
 	if err != nil {
 		return nil, err
 	}
@@ -43,13 +80,16 @@ type encryptedWriter struct {
 	sequence uint64
 }
 
-func newEncryptedWriter(out io.Writer, password string) (*encryptedWriter, error) {
-	salt := make([]byte, 16)
+func newEncryptedWriter(out io.Writer, material *archiveKeyMaterial) (*encryptedWriter, error) {
+	if material == nil || len(material.key) != 32 {
+		return nil, ErrInvalid
+	}
+	salt := make([]byte, archiveSaltBytes)
 	if _, err := rand.Read(salt); err != nil {
 		return nil, err
 	}
-	header := append(append([]byte(nil), envelopeMagic...), salt...)
-	aead, err := archiveAEAD(password, salt)
+	header := append(append(append([]byte(nil), envelopeMagic...), material.salt[:]...), salt...)
+	aead, err := archiveAEAD(material.key, salt)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +148,7 @@ type encryptedReader struct {
 }
 
 func newEncryptedReader(in io.Reader, password string) (*encryptedReader, error) {
-	header := make([]byte, len(envelopeMagic)+16)
+	header := make([]byte, len(envelopeMagic)+kdfSaltBytes+archiveSaltBytes)
 	if _, e := io.ReadFull(in, header); e != nil {
 		return nil, ErrIntegrity
 	}
@@ -118,7 +158,9 @@ func newEncryptedReader(in io.Reader, password string) (*encryptedReader, error)
 	if password == "" || len(password) > 1024 {
 		return nil, ErrIntegrity
 	}
-	aead, e := archiveAEAD(password, header[len(envelopeMagic):])
+	master := deriveMaster(password, header[len(envelopeMagic):len(envelopeMagic)+kdfSaltBytes])
+	defer clear(master)
+	aead, e := archiveAEAD(master, header[len(envelopeMagic)+kdfSaltBytes:])
 	if e != nil {
 		return nil, e
 	}
@@ -172,13 +214,13 @@ func (r *encryptedReader) Read(b []byte) (int, error) {
 	return r.Read(b)
 }
 
-func encryptFolder(ctx context.Context, folder string, destination *os.Root, password string, manifest Manifest) error {
+func encryptFolder(ctx context.Context, folder string, destination *os.Root, material *archiveKeyMaterial, manifest Manifest) error {
 	f, e := destination.OpenFile(encryptedPayload, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if e != nil {
 		return e
 	}
 	defer f.Close()
-	enc, e := newEncryptedWriter(f, password)
+	enc, e := newEncryptedWriter(f, material)
 	if e != nil {
 		return e
 	}
@@ -298,6 +340,11 @@ func (s *Service) decryptSource(ctx context.Context, source Source, password str
 		_, e = io.ReadFull(f, magic)
 		f.Close()
 		if e != nil || !bytes.Equal(magic, envelopeMagic) {
+			// Unsupported encrypted versions are never passed to the plaintext
+			// database staging path. Refuse before creating any restore state.
+			if bytes.HasPrefix(magic, envelopeMagic[:len(envelopeMagic)-1]) {
+				return source, func() {}, ErrSourceInvalid
+			}
 			return source, func() {}, nil
 		}
 		payload = folder

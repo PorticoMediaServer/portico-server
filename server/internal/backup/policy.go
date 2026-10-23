@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -17,7 +18,7 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-// Settings is safe to publish. Passwords and their encrypted form never leave
+// Settings is safe to publish. Passphrases and derived key material never leave
 // the domain through a read/projection/config DTO.
 type Settings struct {
 	BackupFolder        string `json:"backupFolder"`
@@ -36,8 +37,14 @@ type SettingsPatch struct {
 // copy or switch its encryption halfway through publication.
 type Snapshot struct {
 	Settings
-	Passphrase string `json:"-"`
+	material *archiveKeyMaterial
 }
+
+// An authenticated versioned blob contains only a derived 32-byte master.
+var policyMaterialMagic = []byte("PBAKEY\x00\x02")
+
+func (s Snapshot) clear() { s.material.clear() }
+
 type PolicyStore struct {
 	db    *sql.DB
 	state string
@@ -86,15 +93,20 @@ func (p *PolicyStore) Snapshot(ctx context.Context) (Snapshot, error) {
 		if e != nil {
 			return out, e
 		}
-		if len(sealed) < a.NonceSize() {
+		// Reject pre-release sealed-passphrase blobs without opening/converting
+		// them. A new write through Change supplies v2 key material.
+		prefixBytes := len(policyMaterialMagic) + kdfSaltBytes
+		if len(sealed) != prefixBytes+a.NonceSize()+32+a.Overhead() || !bytes.HasPrefix(sealed, policyMaterialMagic) {
 			return out, ErrInvalid
 		}
-		plain, e := a.Open(nil, sealed[:a.NonceSize()], sealed[a.NonceSize():], []byte("portico backup passphrase v1"))
+		prefix := sealed[:prefixBytes]
+		nonce := sealed[prefixBytes : prefixBytes+a.NonceSize()]
+		master, e := a.Open(nil, nonce, sealed[prefixBytes+a.NonceSize():], prefix)
 		if e != nil {
 			return out, ErrInvalid
 		}
-		out.Passphrase = string(plain)
-		clear(plain)
+		out.material = &archiveKeyMaterial{key: master}
+		copy(out.material.salt[:], prefix[len(policyMaterialMagic):])
 	}
 	return out, nil
 }
@@ -147,7 +159,13 @@ func (p *PolicyStore) UpdateTx(ctx context.Context, tx *sql.Tx, patch SettingsPa
 		if _, e = rand.Read(nonce); e != nil {
 			return s, e
 		}
-		sealed = a.Seal(nonce, nonce, []byte(*patch.Passphrase), []byte("portico backup passphrase v1"))
+		material, e := newArchiveKeyMaterial(*patch.Passphrase)
+		if e != nil {
+			return s, e
+		}
+		defer material.clear()
+		prefix := append(append([]byte(nil), policyMaterialMagic...), material.salt[:]...)
+		sealed = a.Seal(append(prefix, nonce...), nonce, material.key, prefix)
 	}
 	if s.PassphraseProtected && len(sealed) == 0 {
 		return s, ErrInvalid
@@ -379,6 +397,7 @@ func (s *Service) destinations(ctx context.Context) ([]string, error) {
 		if e != nil {
 			return nil, e
 		}
+		defer snapshot.clear()
 		active = snapshot.BackupFolder
 	}
 	roots := []string{active}

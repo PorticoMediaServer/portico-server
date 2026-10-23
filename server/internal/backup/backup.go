@@ -425,6 +425,7 @@ func (s *Service) backupsDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer snapshot.clear()
 	dir := snapshot.BackupFolder
 	if err := canonicalDirectory(dir, true); err != nil {
 		return "", err
@@ -457,6 +458,7 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 	if err != nil {
 		return "", err
 	}
+	defer policy.clear()
 	dir := policy.BackupFolder
 	if err = ValidateDirectory(s.state, dir); err != nil {
 		return "", err
@@ -593,10 +595,10 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 		return "", err
 	}
 	if policy.PassphraseProtected {
-		if policy.Passphrase == "" {
+		if policy.material == nil {
 			return "", ErrInvalid
 		}
-		if err = encryptFolder(ctx, partial, target, policy.Passphrase, manifest); err != nil {
+		if err = encryptFolder(ctx, partial, target, policy.material, manifest); err != nil {
 			return "", err
 		}
 	} else if err = publishPlain(ctx, partial, target, manifest); err != nil {
@@ -893,6 +895,7 @@ func (s *Service) Directory() string {
 	if e != nil {
 		return ""
 	}
+	defer p.clear()
 	return p.BackupFolder
 }
 
