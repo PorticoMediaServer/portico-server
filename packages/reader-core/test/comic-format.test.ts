@@ -29,6 +29,35 @@ test('stored and deflated CBZ read actual images in natural page order, never hi
   assert.ok(input.reads.every(r=>r.endExclusive-r.start<=archiveLimits.rangeBytes));
   await assert.rejects(archive.page(2,{width:300,signal:signal()}),{code:'page_invalid'});archive.dispose();await assert.rejects(archive.page(0,{width:300,signal:signal()}),{code:'closed'});
 });
+
+test('offline deflated CBZ extraction does not require a native DecompressionStream',async()=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'DecompressionStream');
+  const bytes=zip([{name:'page.png',bytes:png,deflate:true}]);
+  Object.defineProperty(globalThis,'DecompressionStream',{configurable:true,value:undefined});
+  try {
+    const archive=await openComicArchive(source(bytes),signal());
+    try{assert.deepEqual((await archive.page(0,{width:300,signal:signal()})).bytes,new Uint8Array(png));}finally{archive.dispose();}
+  }finally{if(previous)Object.defineProperty(globalThis,'DecompressionStream',previous);else Reflect.deleteProperty(globalThis,'DecompressionStream');}
+});
+
+test('bundled DEFLATE fallback retains CRC, expansion, exact-size and cancellation fences',async()=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'DecompressionStream');
+  // Some hosts expose the constructor but cannot accept deflate-raw.
+  Object.defineProperty(globalThis,'DecompressionStream',{configurable:true,value:class {constructor(){throw new TypeError('format unavailable');}}});
+  try {
+    const input=source(zip([{name:'page.png',bytes:png,deflate:true}])),[entry]=await readDirectory(input,signal());
+    assert.deepEqual(await readEntry(input,entry,signal()),new Uint8Array(png));assert.ok(input.reads.every(range=>range.endExclusive-range.start<=archiveLimits.rangeBytes));
+    const lying=source(zip([{name:'page.png',bytes:Buffer.alloc(10000),deflate:true}])),[large]=await readDirectory(lying,signal());
+    await assert.rejects(readEntry(lying,large,signal(),{...archiveLimits,pageBytes:100}),{code:'archive_limit'});
+    await assert.rejects(readEntry(input,{...entry,crc:0},signal()),{code:'archive_invalid'});
+    const corrupted=zip([{name:'page.png',bytes:png,deflate:true}]),central=corrupted.length-22-46-8;
+    corrupted.writeUInt32LE(0,14);corrupted.writeUInt32LE(0,central+16);
+    const bad=source(corrupted),[badEntry]=await readDirectory(bad,signal());await assert.rejects(readEntry(bad,badEntry,signal()),{code:'archive_invalid'});
+    const tooSmall=zip([{name:'page.png',bytes:png,deflate:true}]);tooSmall.writeUInt32LE(1,22);tooSmall.writeUInt32LE(1,tooSmall.length-22-46-8+24);
+    const lyingSize=source(tooSmall),[smallEntry]=await readDirectory(lyingSize,signal());await assert.rejects(readEntry(lyingSize,smallEntry,signal()),{code:'archive_limit'});
+    const abort=new AbortController();abort.abort();await assert.rejects(readEntry(input,entry,abort.signal),{name:'AbortError'});
+  }finally{if(previous)Object.defineProperty(globalThis,'DecompressionStream',previous);else Reflect.deleteProperty(globalThis,'DecompressionStream');}
+});
 test('central directory CRC, local name, truncation and overlapping data fail closed',async()=>{
   const good=zip([{name:'p.png',bytes:png}]);
   const corrupt=Buffer.from(good);corrupt[35]^=1;let s=source(corrupt);const [entry]=await readDirectory(s,signal());await assert.rejects(readEntry(s,entry,signal()),{code:'archive_invalid'});

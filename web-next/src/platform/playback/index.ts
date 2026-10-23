@@ -1,5 +1,6 @@
 export {WebShellPlaybackRuntime} from './runtime.ts';
 export type {WebPlaybackScreenTarget, WebPlaybackScreenLifetime} from './types.ts';
+export type {WebPlaybackQueueSource} from './queue-source.ts';
 export type {WebPlaybackSource, WebPlaybackAuthority, WebPlaybackSettings, WebPlaybackEnvironment, WebPlaybackStart, WebPlaybackVersionStart, WebPlaybackRuntimeSnapshot, WebPlaybackPresentation, WebPlaybackAction, WebPlaybackElement} from './types.ts';
 export {WebPlayback, PlayerSlot} from './web-playback.ts';
 export {WebMediaPlayer} from './web-media-player.ts';
@@ -7,6 +8,7 @@ export type {VideoLike, HlsModule, WebPlayerTimers, SubtitleTimeline} from './we
 
 export {installPlaybackEnvironment} from './environment.ts';
 export type {PlaybackMediaPort, RenderEngine} from './web-playback.ts';
+export type {LocalPlayerSource, LocalPlayerLoadContext, LocalPlayerLoadReceipt} from '@core/playback-v1/port.ts';
 export type {WebMediaPlayerOptions, WebPlayerNotice} from './web-media-player.ts';
 export {eqFrequencies, flatEqualizer, parseEqualizer, equalizerResponse} from './audio/equalizer.ts';
 export type {EqualizerSettings} from './audio/equalizer.ts';
