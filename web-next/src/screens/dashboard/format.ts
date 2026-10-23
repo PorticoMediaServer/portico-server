@@ -91,7 +91,7 @@ export function formatSubtitleSource(subtitle: NonNullable<NonNullable<Dashboard
   return [formatLanguage(subtitle.language), formatCodec(subtitle.format)].filter(Boolean).join(' ');
 }
 export function formatDeliveryTarget(session: DashboardSession, kind: 'video' | 'audio' | 'subtitles', codec?: string): string | undefined {
-  if (kind === 'video') return formatResolution(session.delivery?.videoHeight) ?? (codec ? formatCodec(codec) : undefined);
+  if (kind === 'video') return formatResolution(session.delivery?.videoHeight);
   if (!codec) return undefined;
   if (kind === 'audio') return [formatCodec(codec), (session.delivery?.audioChannels ?? session.decision.audio?.channels) === 2 ? t('next.dashboard.format.stereo') : undefined].filter(Boolean).join(' ');
   return formatCodec(codec);

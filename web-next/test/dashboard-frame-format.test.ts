@@ -25,7 +25,7 @@ test('absent source facts never become guessed language, quality, or multichanne
   assert.equal(formatSubtitleSource({id: 's', format: 'srt'}), 'SRT');
   assert.equal(formatAudioSource({id: 'a', codec: 'truehd', channels: 8, atmos: false, commentary: false, default: true, visualImpaired: false}, false), 'TrueHD');
   assert.equal(formatDeliveryTarget(session, 'video'), undefined);
-  assert.equal(formatDeliveryTarget(session, 'video', 'h264'), 'H.264');
+  assert.equal(formatDeliveryTarget(session, 'video', 'h264'), undefined);
 });
 test('niceScale uses the drawing steps instead of fractional quarters of the data max', () => {
   assert.deepEqual(niceScale(20 * 1.06), {top: 30, ticks: [0, 10, 20, 30]});

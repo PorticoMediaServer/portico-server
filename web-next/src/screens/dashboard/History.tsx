@@ -33,7 +33,8 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
     return {id: entry.id, label: entry.title, cells: {
       title: {title: entry.kind === 'episode' && entry.parentTitle ? entry.parentTitle : entry.title, meta: entry.kind === 'episode' ? [entry.episode !== undefined && (entry.season === undefined ? t('title.episodeOnly', {episode: entry.episode}) : t('title.episodeCode', {season: entry.season, episode: entry.episode})), entry.title].filter(Boolean).join(' ') : entry.parentTitle, image: artwork},
       person: {title: entry.user || t('next.dashboard.removedPerson'), avatar: entry.user.slice(0, 1).toUpperCase(), meta: entry.profile !== entry.user ? entry.profile : undefined},
-      player: {title: entry.platform ?? '', meta: entry.device},
+      // The platform wire identifier is not an app display name. Actual app waits for the checked producer.
+      player: {title: '', meta: entry.device},
       played: {title: defaultI18n.date(Date.parse(entry.startedAt), 'medium'), meta: defaultI18n.time(Date.parse(entry.startedAt))},
       for: {title: entry.completed ? t('next.dashboard.finished') : entry.watchedMs !== undefined ? formatHistoryDuration(entry.watchedMs / 1000) : '—', ...(entry.durationSeconds > 0 ? {meta: entry.completed ? formatHistoryDuration(entry.durationSeconds) : t('next.dashboard.ofDuration', {duration: formatHistoryDuration(entry.durationSeconds, true)})} : entry.kind === 'channel' ? {meta: t('next.dashboard.live')} : {})},
       where: {title: entry.location === 'local' ? t('next.dashboard.home') : entry.location === 'remote' ? t('next.dashboard.away') : t('next.dashboard.unknownLocation'), tone: 'quiet' as const},

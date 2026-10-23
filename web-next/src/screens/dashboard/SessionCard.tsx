@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import type {DashboardSession as AdminSession} from './bindings';
 import {Button, TextField} from '../../kit/controls';
 import {Dialog, Menu} from '../../kit/overlays';
-import {Icon} from '../../kit/Icon';
+import {Icon, type IconName} from '../../kit/Icon';
 import type {DashboardBindings} from './bindings';
 import {fmtDur, formatStreamRate, formatTrackRoute} from './format';
 import {clock, sessionTracks, type Track} from './model';
@@ -15,6 +15,14 @@ function TrackIcon({kind}: {kind: Track['kind']}) {
   return <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{kind === 'video'
     ? <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="m10.4 9.4 4.2 2.6-4.2 2.6z" fill="currentColor" /></>
     : <><path d="M4 10v4h3.6L12.5 18V6L7.6 10z" /><path d="M16 9.4a4 4 0 0 1 0 5.2M18.6 6.8a7.6 7.6 0 0 1 0 10.4" /></>}</g></svg>;
+}
+function DeviceGlyph({platform, device}: Pick<AdminSession, 'platform' | 'device'>) {
+  const p = platform?.toLowerCase();
+  const name: IconName = p === 'ipados' || /\bipad\b/i.test(device) ? 'i-tablet'
+    : p && ['tvos', 'androidtv', 'firetv', 'roku', 'tizen', 'webos'].includes(p) ? 'i-tv'
+    : p === 'ios' || p === 'android' ? 'i-phone'
+    : p && ['web', 'desktop', 'macos', 'windows', 'linux'].includes(p) ? 'i-laptop' : 'i-device';
+  return <Icon name={name} size={20} />;
 }
 export function SessionCard({session: s, bindings: b, refresh}: {session: AdminSession; bindings: DashboardBindings; refresh: (removedId?: string) => void}) {
   const [menu, setMenu] = useState(false), [stop, setStop] = useState(false), [message, setMessage] = useState(''), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), [leaving, setLeaving] = useState(false);
@@ -41,11 +49,11 @@ export function SessionCard({session: s, bindings: b, refresh}: {session: AdminS
       const label = formatTrackRoute(track);
       return <div className={styles.track} key={track.kind}><span className={styles.source} title={t(`next.dashboard.${track.kind}`)}><TrackIcon kind={track.kind} /><span>{track.source || t(`next.dashboard.${track.kind}`)}</span></span>{label && <><svg className={styles.trackArrow} width="20" height="10" viewBox="0 0 20 10" aria-hidden="true"><path d="M0 5h18M14 1.2 18.4 5 14 8.8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg><span className={styles.delivery} data-route={track.route}><i className={styles.routeDot} aria-hidden="true" /><span>{label}</span>{track.hardware && <b>{t('next.dashboard.hardware')}</b>}</span><span className={styles.trackStub} aria-hidden="true" /></>}</div>;
     })}</div>
-    <div className={styles.device}><span className={styles.appIcon}><Icon name="i-device" size={20} /></span><div><b>{s.app || s.platform}</b><span>{s.device}</span><strong className={styles.network}><i data-series={s.location === 'remote' ? 'away' : 'home'} />{s.location === 'local' ? t('next.dashboard.home') : s.location === 'remote' ? t('next.dashboard.away') : t('next.dashboard.unknownLocation')}{current !== null && current !== undefined && <em>{formatStreamRate(current)}</em>}</strong><small>{s.address}</small></div></div>
-    <div className={styles.who}><span className={styles.avatar} aria-hidden="true">{s.user.slice(0, 1)}</span><b>{s.user}</b>{s.profile && s.profile !== s.user && <small>{s.profile}</small>}
+    <div className={styles.device}><span className={styles.appIcon}><DeviceGlyph platform={s.platform} device={s.device} /></span><div><b>{s.app}</b><span>{s.device}</span><strong className={styles.network}><i data-series={s.location === 'remote' ? 'away' : 'home'} />{s.location === 'local' ? t('next.dashboard.home') : s.location === 'remote' ? t('next.dashboard.away') : t('next.dashboard.unknownLocation')}{current !== null && current !== undefined && <em>{formatStreamRate(current)}</em>}</strong><small>{s.address}</small></div></div>
+    <div className={styles.who}><span className={styles.avatar} aria-hidden="true">{s.user.slice(0, 1).toUpperCase()}</span><b>{s.user}{s.profile && s.profile !== s.user && <small>{s.profile}</small>}</b>
       <Menu open={menu} onOpenChange={setMenu} title={t('next.dashboard.sessionMenu', {title})} trigger={<Button ref={opener} data-session-menu icon="i-more" iconOnly size="xs" disabled={busy} aria-label={t('next.dashboard.sessionMenu', {title})} />} items={[
-        ...(['paused', 'playing'].includes(s.state) ? [{id: 'transport', label: s.state === 'paused' ? t('next.dashboard.resume') : t('next.dashboard.pause'), onSelect: () => {void act(() => b.effects.transport(s.id, s.state === 'paused' ? 'resume' : 'pause'));}}] : []),
-        ...(b.role === 'owner' ? [{id: 'stop', label: t('next.dashboard.stop'), destructive: true, onSelect: () => {setMessage(''); setStop(true);}}] : []),
+        ...(['paused', 'playing'].includes(s.state) ? [{id: 'transport', icon: s.state === 'paused' ? 'i-play' as const : 'i-pause' as const, label: s.state === 'paused' ? t('next.dashboard.resume') : t('next.dashboard.pause'), onSelect: () => {void act(() => b.effects.transport(s.id, s.state === 'paused' ? 'resume' : 'pause'));}}] : []),
+        ...(b.role === 'owner' ? [{id: 'stop', icon: 'i-stop' as const, label: t('next.dashboard.stop'), destructive: true, onSelect: () => {setMessage(''); setStop(true);}}] : []),
       ]} />
     </div>
     {failed && <p className={styles.actionError} role="alert">{t('next.dashboard.error')}</p>}
