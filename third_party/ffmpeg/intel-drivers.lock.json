@@ -1,7 +1,14 @@
 {
-  "policy": "Runtime OpenCL drivers, separate from the GPLv3 FFmpeg build. Modern and legacy ICDs coexist; hardware capability still requires a real probe. Preserve package copyrights.",
+  "policy": "Runtime Intel drivers, separate from the GPLv3 FFmpeg build. Modern and legacy ICDs coexist; the exact Debian legacy Media SDK package is retained because Trixie no longer distributes it. Hardware capability still requires a real probe. Preserve package copyrights.",
   "architecture": "amd64",
   "packages": [
+    {
+      "name": "libmfx1_22.5.4-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/i/intel-mediasdk/libmfx1_22.5.4-1_amd64.deb",
+      "sha256": "19754c2ad5cf13015ebe8e1bd7fbc412ca410d810c036b167ba2b0d9bee36926",
+      "release": "https://packages.debian.org/bookworm/amd64/libmfx1/download",
+      "sourceRepository": "https://github.com/Intel-Media-SDK/MediaSDK"
+    },
     {
       "name": "intel-opencl-icd_26.35.39758.10-0_amd64.deb",
       "url": "https://github.com/intel/compute-runtime/releases/download/26.35.39758.10/intel-opencl-icd_26.35.39758.10-0_amd64.deb",

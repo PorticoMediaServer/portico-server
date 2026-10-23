@@ -22,6 +22,7 @@ lock = json.loads(pathlib.Path('/usr/share/doc/portico/intel-drivers.lock.json')
 for item in lock['packages']:
     # The checksum-pinned archive filename has an exact Debian package name.
     required.append(item['name'].split('_', 1)[0])
+required = sorted(set(required))
 for package in required:
     status = subprocess.check_output(['dpkg-query', '-W', '-f=${Status}', package], text=True)
     assert status == 'install ok installed', (package, status)
@@ -32,7 +33,7 @@ sources = pathlib.Path('/etc/apt/sources.list.d/debian.sources').read_text()
 assert 'Components: main non-free\n' in sources
 assert 'contrib' not in sources and 'non-free-firmware' not in sources
 for name in ['libva.so.2', 'libva-drm.so.2', 'libvulkan.so.1', 'libOpenCL.so.1',
-             'libvpl.so.2', 'libmfx.so.1', 'libmfx-gen.so.1.2']:
+             'libvpl.so.2', 'libmfx.so.1', 'libmfxhw64.so.1', 'libmfx-gen.so.1.2']:
     ctypes.CDLL(name)
 icds = list(pathlib.Path('/etc/OpenCL/vendors').glob('*.icd'))
 assert len(icds) >= 3, [str(i) for i in icds]
