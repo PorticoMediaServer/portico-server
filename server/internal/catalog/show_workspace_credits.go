@@ -28,12 +28,12 @@ func (s *Service) workspaceEpisodeCredits(item string, viewer Viewer) ([]ShowCre
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	digests, err := s.portraitDigests(ids, viewer)
+	portraits, err := s.portraitSelections(ids, viewer)
 	if err != nil {
 		return nil, err
 	}
 	for i := range credits {
-		credits[i].PortraitURL = personPortraitURL(credits[i].ID, digests[credits[i].ID])
+		credits[i].PortraitURL = portraits[credits[i].ID].url()
 	}
 	return credits, nil
 }
