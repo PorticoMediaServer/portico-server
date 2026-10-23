@@ -192,7 +192,22 @@ func TestRoleChangeRequiresRevisionAppliesLiveAndRefusesPeers(t *testing.T) {
 	}
 	// An admin may not edit a peer. The refusal is of a valid session: a
 	// refusal (403), not a failed credential (401).
-	admin := identity.Principal{Viewer: identity.Viewer{AccountID: "admin-actor", Role: identity.TierAdmin}}
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('admin-actor','admin-actor',x'00','admin-main',1);
+ UPDATE direct_memberships SET role='admin' WHERE account_id='admin-actor'`); err != nil {
+		t.Fatal(err)
+	}
+	issuer, err := identity.New(db, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminSession, err := issuer.Issue("admin-actor", "admin-main", "local", identity.TierAdmin, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := issuer.Authenticate(adminSession.AccessToken)
+	if err != nil || admin.Role != identity.TierAdmin || admin.ProfileID != "admin-main" {
+		t.Fatalf("live admin fixture: %+v %v", admin, err)
+	}
 	if _, err = store.SetRole(ctx, nil, admin, "member", RoleChange{ExpectedRevision: 2, OperationID: "operation-2", Role: identity.TierMember}); !errors.Is(err, identity.ErrForbidden) {
 		t.Fatalf("an admin edited a peer: %v", err)
 	}

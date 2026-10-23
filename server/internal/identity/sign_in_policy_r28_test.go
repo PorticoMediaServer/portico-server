@@ -168,12 +168,14 @@ func TestSignInPolicyRetiresPINProofsRememberedRowsAndEndedHistory(t *testing.T)
 	if _, e = s.RememberBrowserAccount(ctx, login.AccountToken, installation, true); !errors.Is(e, ErrUnauthorized) {
 		t.Fatalf("remembered write while off: %v", e)
 	}
-	if _, e = s.SelectDirectProfile(ctx, login.AccountToken, child.ID, DirectSelection{TrustToken: selected.TrustedSelection.Token, InstallationID: "installation"}); !errors.Is(e, ErrProfilePIN) {
-		t.Fatalf("retired PIN proof admitted: %v", e)
-	}
 	withoutProof, e := s.SelectDirectProfile(ctx, login.AccountToken, child.ID, DirectSelection{PIN: pin, Trust: true, InstallationID: "installation"})
 	if e != nil || withoutProof.TrustedSelection != nil {
 		t.Fatalf("remember-off issued proof: %+v %v", withoutProof, e)
+	}
+	// A rejected retired token charges the real PIN budget. Keep this negative
+	// after the independent valid-PIN check rather than bypassing that budget.
+	if _, e = s.SelectDirectProfile(ctx, login.AccountToken, child.ID, DirectSelection{TrustToken: selected.TrustedSelection.Token, InstallationID: "installation"}); !errors.Is(e, ErrProfilePIN) {
+		t.Fatalf("retired PIN proof admitted: %v", e)
 	}
 	if n, e := s.PruneEndedSessions(ctx); e != nil || n != 1 {
 		t.Fatalf("policy retention pruned%d: %v", n, e)
