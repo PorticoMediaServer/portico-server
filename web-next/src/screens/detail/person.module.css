@@ -4,15 +4,15 @@
 
 .wash { position: absolute; inset: 0; pointer-events: none; }
 
-.copy { position: relative; z-index: 1; max-width: 730px; flex: 1; }
+.copy { position: relative; z-index: 1; max-width: 720px; flex: 1; }
 
 .copy h1 { margin: 0 0 24px; }
 
-.roles { color: var(--color-accent-strong); text-transform: uppercase; font-size: var(--type-label-size); font-weight: var(--type-lockup-weight); letter-spacing: .18em; margin: 0 0 16px; }
+.roles { color: var(--color-text-secondary); text-transform: none; font-size: var(--type-body-strong-size); font-weight: var(--type-body-strong-weight); line-height: normal; letter-spacing: normal; margin: 0 0 12px; }
 
 .birth { color: var(--color-text-secondary); display: flex; gap: 20px; font-size: var(--type-person-title-size); margin: 0 0 20px; }
 
-.biography { font-size: var(--type-episode-title-size); color: var(--color-text-secondary); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
+.biography { max-width: 620px; font-size: var(--type-episode-title-size); color: var(--color-text-secondary); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
 
 .biography[data-full] { display: block; }
 
