@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./ports": "./src/ports.ts"
+    "./ports": "./src/ports.ts",
+    "./fonts": "./src/fonts.ts"
   },
   "scripts": {
     "test": "node --experimental-strip-types --test-concurrency=1 --test test/*.test.ts",
