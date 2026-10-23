@@ -707,8 +707,9 @@ export class WebShellPlaybackRuntime {
         ...(kind === 'song' && title.parentTitle ? {album: title.parentTitle} : {}),
         ...(kind === 'episode' ? {show: {id: title.parentId, title: title.parentTitle}, episode: {mode: 'seasonal' as const,
           ...(title.groupNumber === null ? {} : {season: title.groupNumber}), ...(title.number === null ? {} : {episode: title.number})}} : {})};
-      stack.subject = {kind: kind === 'song' ? 'music' : kind === 'audiobook_file' ? 'audiobook' : 'video', item};
-      if (stack.subject.kind === 'music') stack.expanded = false;
+      const subject: Exclude<PlaybackSubject, {kind: 'channel'}> = {kind: kind === 'song' ? 'music' : kind === 'audiobook_file' ? 'audiobook' : 'video', item};
+      stack.subject = subject;
+      if (subject.kind === 'music') stack.expanded = false;
       if (fence && observed && !['idle', 'loading'].includes(observed.state)) {
         this.choices.begin(fence.playback);this.choices.bindSource(fence);
         const positionSeconds = Math.min(member.durationMs, observed.positionMs) / 1000, finished = state.phase === 'ended', active = !finished && state.phase !== 'error';
@@ -718,9 +719,9 @@ export class WebShellPlaybackRuntime {
         if (active && (state.index > 0 || positionSeconds > 3)) controls.push('previous');
         // The optional opaque native port has no volume command. Do not offer a
         // slider backed by the idle browser video's unrelated volume property.
-        const local: DockPlayback = {kind: stack.subject.kind, fence, queue: null, positionSeconds, playing: observed.state === 'playing', expanded: stack.expanded};
+        const local: DockPlayback = {kind: subject.kind, fence, queue: null, positionSeconds, playing: observed.state === 'playing', expanded: stack.expanded};
         if (sameFence(this.dock.getSnapshot().local?.fence, fence)) this.dock.update(local);else this.dock.start(local);
-        presentation = {fence, subject: stack.subject, kind: stack.subject.kind, durationSeconds: member.durationMs / 1000, positionSeconds,
+        presentation = {fence, subject, kind: subject.kind, durationSeconds: member.durationMs / 1000, positionSeconds,
           playing: local.playing, expanded: stack.expanded, finished, controls, volume: observed.volume ?? 1, muted: observed.muted ?? false, rate: observed.rate, policy: null};
       }
     }
