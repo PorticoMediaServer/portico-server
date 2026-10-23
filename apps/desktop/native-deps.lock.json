@@ -16,10 +16,15 @@
     "lockPath": "third_party/ffmpeg/sources.lock.json",
     "preparerPath": "scripts/prepare-ffmpeg-source.py",
     "sourceCommit": "253db2a7b0a8045c54ce68ce33d7f601229b1822",
+    "preparedReceiptSha256": "6f7ecd90b606318d25eb905ee6538a30550393282b35c446f10f2d6c5396de3f",
     "sharedAbi": {
       "avcodec": 62,
       "avformat": 62,
-      "avutil": 60
+      "avutil": 60,
+      "avfilter": 11,
+      "avdevice": 62,
+      "swscale": 9,
+      "swresample": 6
     },
     "license": "GPL-3.0-or-later",
     "requiredPatches": 100

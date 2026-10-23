@@ -18,7 +18,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   private polling = false;
   private surfaceActive = false;
   private processing?:Readonly<{generation:number;eqApplied:boolean;levelingApplied:boolean}>;
-  private readonly hole?: NativeHole;
+  private hole?: NativeHole;
   private seeking = false;
   private ticker?: ReturnType<typeof setInterval>;
   private readonly volumeChanged = () => this.send({action: 'volume', volume: this.video.volume, muted: this.video.muted});
@@ -28,10 +28,9 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
 
   constructor(video: VideoLike, options: WebMediaPlayerOptions, bridge: Bridge, poll = true) {
     this.video = video; this.options = options; this.bridge = bridge;
-    if (typeof HTMLVideoElement !== 'undefined' && video instanceof HTMLVideoElement) this.hole = new NativeHole(video, bounds => this.bridge.surface?.(bounds, this.nativeGeneration) ?? Promise.reject(new Error('unsupported')), () => this.surfaceActive);
     video.addEventListener('volumechange', this.volumeChanged);
-    // The original element remains the shell's geometry/volume owner. It never opens a decoder.
-    video.pause(); video.removeAttribute('src'); video.load();
+    // The factory receives the shell's fresh geometry/volume element. Native playback never
+    // starts HTML media resource selection or measures an idle/unmounted surface.
     if (poll) this.ticker = setInterval(() => { void this.tick(); }, 200);
   }
   get loaded() { return this.source?.generation ?? 0; }
@@ -60,6 +59,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
     const epoch = ++this.epoch; this.source = source; this.seeking = false;
     this.surfaceActive = false;this.processing=undefined;
     this.nativeGeneration = ++nextNativeGeneration;
+    if(!this.hole&&typeof HTMLVideoElement!=='undefined'&&this.video instanceof HTMLVideoElement)this.hole=new NativeHole(this.video,bounds=>this.bridge.surface?.(bounds,this.nativeGeneration)??Promise.reject(new Error('unsupported')),()=>this.surfaceActive);
     this.hole?.invalidate();
     this.reading = {generation: source.generation, state: 'loading', positionMs: source.startPositionMs, rate: this.reading.rate};
     this.emit({type: 'state', observation: this.reading});
@@ -100,6 +100,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   unload() {
     if (this.source) this.send({action: 'stop'});
     ++this.epoch; this.source = undefined; this.seeking = false; this.surfaceActive = false;this.processing=undefined;
+    this.hole?.dispose();this.hole=undefined;
     this.reading = {generation: 0, state: 'idle', positionMs: 0, rate: this.reading.rate};
   }
   suspend() { this.pause(); }

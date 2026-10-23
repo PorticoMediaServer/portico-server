@@ -176,6 +176,13 @@ fn library(app:&tauri::AppHandle)->Result<PathBuf> {
     let name=if cfg!(target_os="windows"){"mpv-2.dll"}else if cfg!(target_os="macos"){"libmpv.2.dylib"}else{"libmpv.so.2"};
     Ok(app.path().resource_dir().map_err(|_|Error::EngineUnavailable)?.join("native").join(name))
 }
+fn local_data(app:&tauri::AppHandle)->Result<PathBuf>{
+    #[cfg(debug_assertions)]
+    if let Some(path)=std::env::var_os("PORTICO_SPIKE_DATA"){
+        let path=PathBuf::from(path);if !path.is_absolute(){return Err(Error::InvalidCommand)}return Ok(path)
+    }
+    app.path().app_local_data_dir().map_err(|_|Error::PreferencesUnavailable)
+}
 
 pub fn run() {
     let builder=tauri::Builder::default()
@@ -187,20 +194,23 @@ pub fn run() {
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");
-            let path=app.path().app_local_data_dir().map_err(|_|preference_error())?.join("equalizer.sqlite3");
+            let data=local_data(app.handle()).map_err(|_|preference_error())?;
+            let path=data.join("equalizer.sqlite3");
             let store=EqualizerStore::open(&path).map_err(|_|preference_error())?;
             *app.state::<EqualizerState>().0.lock().map_err(|_|preference_error())?=Ok(store);
-            let downloads=app.path().app_local_data_dir().map_err(|_|preference_error())?.join("offline");
+            let downloads=data.join("offline");
             *app.state::<DownloadsState>().0.lock().map_err(|_|preference_error())?=crate::download_commands::DownloadsSession::open(&downloads);
             let main=tauri::WebviewWindowBuilder::new(app,"main",tauri::WebviewUrl::App("index.html".into()))
                 .title("Portico").inner_size(1440.0,900.0).min_inner_size(600.0,600.0)
                 // Linux uses the desktop's title bar. Windows keeps OS controls until the
                 // installed web caption host supplies its actual control rectangles.
                 .decorations(true)
+                .incognito(cfg!(debug_assertions)&&std::env::var_os("PORTICO_SPIKE_DATA").is_some())
                 .transparent(true)
                 .on_navigation(|url|boundary::local_origin("main",url.as_str(),cfg!(debug_assertions)).is_ok())
                 .on_page_load(|window,payload| {
                     if cfg!(debug_assertions)&&std::env::var_os("PORTICO_SPIKE_REPORT").is_some()&&payload.event()==tauri::webview::PageLoadEvent::Finished {
+                        if std::env::var_os("PORTICO_SPIKE_MEDIA").is_some(){let _=window.eval(r#"window.__porticoNativeProbe=setInterval(()=>window.__TAURI_INTERNALS__.invoke('desktop_observe').then(o=>o.generation?window.__TAURI_INTERNALS__.invoke('desktop_surface',{generation:o.generation,bounds:{x:0,y:0,width:innerWidth,height:innerHeight}}):undefined).catch(()=>{}),200);setTimeout(()=>clearInterval(window.__porticoNativeProbe),9000)"#);}
                         let _=window.eval(r#"setTimeout(()=>{let frames=0,start=performance.now(),last=start,longest=0;function measure(now){longest=Math.max(longest,now-last);last=now;frames++;if(now-start<5000)requestAnimationFrame(measure);else window.__TAURI_INTERNALS__.invoke('desktop_spike_report',{report:{frames,elapsedMs:now-start,longestFrameMs:longest,width:innerWidth,height:innerHeight}})}requestAnimationFrame(measure)},3000)"#);
                     }
                 });

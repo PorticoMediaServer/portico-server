@@ -405,10 +405,20 @@ mod local_source_tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(advanced,"native PCM did not advance");
+        let first_entry=engine.expected_entry.load(Ordering::Acquire);assert!(first_entry>0);
+        assert_eq!(engine.started_entry.load(Ordering::Acquire),first_entry);
+        engine.frame_drawn(1);
+        engine.load_local(Path::new(&fixture),2,0.0,true).unwrap();
+        let second_entry=engine.expected_entry.load(Ordering::Acquire);assert!(second_entry>first_entry);
+        assert_eq!(engine.frame_drawn.load(Ordering::Acquire),0);
+        let until=std::time::Instant::now()+std::time::Duration::from_secs(5);
+        while std::time::Instant::now()<until{let observation=engine.observation();if observation.position_ms>10.0{break}std::thread::sleep(std::time::Duration::from_millis(10));}
+        assert_eq!(engine.started_entry.load(Ordering::Acquire),second_entry);
+        assert_eq!(engine.observation().generation,2);
         let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();listener.set_nonblocking(true).unwrap();
         let playlist=std::env::temp_dir().join(format!("desktop-denied-playlist-{}.media",std::process::id()));
         std::fs::write(&playlist,format!("#EXTM3U\n#EXTINF:1,fixture\nhttp://127.0.0.1:{}/forbidden.wav\n",listener.local_addr().unwrap().port())).unwrap();
-        engine.load_local(&playlist,2,0.0,true).unwrap();
+        engine.load_local(&playlist,3,0.0,true).unwrap();
         let until=std::time::Instant::now()+std::time::Duration::from_secs(2);
         while std::time::Instant::now()<until {
             assert!(matches!(listener.accept(),Err(e) if e.kind()==std::io::ErrorKind::WouldBlock),"native local input opened a network reference");
