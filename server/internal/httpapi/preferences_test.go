@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +18,100 @@ import (
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
 )
+
+// Exercise the real HTTP producer and optionally retain its non-secret data
+// bytes for a client-parser check. The response contains fixture preferences,
+// never the fixture's sign-in token.
+func TestApprovedPreferencesHTTPDefaultsAndNoPreference(t *testing.T) {
+	f := preferenceHTTP(t)
+	read := f.data(f.call("GET", "/v1/preferences?deviceClass=tablet", nil))
+	effective := read["effective"].(map[string]any)
+	if effective["playback.subtitleMode"] != "foreign" || effective["privacy.showActivityToMembers"] != false {
+		t.Fatal(effective)
+	}
+	data := f.data(f.call("PATCH", "/v1/preferences", map[string]any{"scope": "profile-server", "deviceClass": "tablet", "expectedRevision": 1, "idempotencyKey": "no-preference", "values": map[string]any{"playback.preferredAudioLanguages": []string{}, "playback.preferredSubtitleLanguages": []string{}, "playback.subtitleColor": "yellow", "reading.theme": "sepia", "reading.textSize": 7}}))
+	effective = data["effective"].(map[string]any)
+	if len(effective["playback.preferredAudioLanguages"].([]any)) != 0 || len(effective["playback.preferredSubtitleLanguages"].([]any)) != 0 || effective["playback.subtitleColor"] != "yellow" || effective["reading.theme"] != "sepia" {
+		t.Fatal(effective)
+	}
+	for _, entry := range []struct {
+		key   string
+		value any
+	}{{"music.defaultSpeed", 1}, {"appearance.reduceMotion", true}, {"playback.preferredAudioLanguages", []string{"@original", "@original"}}, {"playback.preferredSubtitleLanguages", []string{"@original"}}} {
+		bad := f.call("PATCH", "/v1/preferences", map[string]any{"scope": "profile-server", "deviceClass": "tablet", "expectedRevision": 2, "idempotencyKey": "negative-" + entry.key, "values": map[string]any{entry.key: entry.value}})
+		if bad.Code != 400 {
+			t.Fatal(entry, bad.Code, bad.Body.String())
+		}
+	}
+	if out := os.Getenv("PORTICO_PREFERENCE_CONTRACT_FILE"); out != "" {
+		bytes, err := json.Marshal(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(out, append(bytes, '\n'), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// This proves Settings persistence for the fifteen approved Reading rows. It
+// does not claim a reader effect; the reader core owns those effects in Phase 8.
+func TestReadingPreferencesSaveReloadAndClearAllFifteenRows(t *testing.T) {
+	f := preferenceHTTP(t)
+	initial := f.data(f.call("GET", "/v1/preferences?deviceClass=web", nil))
+	defaults := initial["effective"].(map[string]any)
+	choices := []struct {
+		key   string
+		value any
+	}{
+		{"reading.theme", "sepia"}, {"reading.font", "manrope"}, {"reading.textSize", float64(7)},
+		{"reading.lineSpacing", "loose"}, {"reading.margins", "wide"}, {"reading.alignment", "left"},
+		{"reading.layout", "scroll"}, {"reading.twoPages", false}, {"reading.tapToTurn", false},
+		{"reading.hyphenation", false}, {"reading.highlightColour", "pink"}, {"reading.pdfView", "spread"},
+		{"comics.fit", "height"}, {"comics.direction", "rtl"}, {"comics.firstPageAlone", false},
+	}
+	revision := int64(1)
+	expected := map[string]any{}
+	check := func(snapshot map[string]any) {
+		t.Helper()
+		effective := snapshot["effective"].(map[string]any)
+		sources := snapshot["effectiveSource"].(map[string]any)
+		for _, choice := range choices {
+			want, stored := expected[choice.key]
+			source := "profile-server"
+			if !stored {
+				want, source = defaults[choice.key], "default"
+			}
+			if !reflect.DeepEqual(effective[choice.key], want) || sources[choice.key] != source {
+				t.Fatalf("%s: value/source %v/%v, want %v/%s", choice.key, effective[choice.key], sources[choice.key], want, source)
+			}
+		}
+		for _, raw := range snapshot["documents"].([]any) {
+			document := raw.(map[string]any)
+			if document["scope"] == "profile-server" && document["revision"] != float64(revision) {
+				t.Fatalf("revision %v, want %d", document["revision"], revision)
+			}
+		}
+	}
+	for _, clear := range []bool{false, true} {
+		for _, choice := range choices {
+			value, operation := choice.value, "save-"
+			if clear {
+				value, operation = nil, "clear-"
+				delete(expected, choice.key)
+			} else {
+				expected[choice.key] = value
+			}
+			saved := f.data(f.call("PATCH", "/v1/preferences", map[string]any{
+				"scope": "profile-server", "deviceClass": "web", "expectedRevision": revision,
+				"idempotencyKey": operation + choice.key, "values": map[string]any{choice.key: value},
+			}))
+			revision++
+			check(saved)
+			check(f.data(f.call("GET", "/v1/preferences?deviceClass=web", nil)))
+		}
+	}
+}
 
 type preferenceFixture struct {
 	handler http.Handler

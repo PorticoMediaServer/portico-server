@@ -242,6 +242,7 @@ func TestHomeCommunityUsesThirtyDaysAndPreservesPrivacyThreshold(t *testing.T) {
 	r := engineRequest("movies")
 	r.CommunityActivity = true
 	engineExec(t, f, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["movies"]' WHERE account_id IN('b','c')`)
+	shareFixtureProfiles(t, f.db)
 	for i, key := range []string{persistence.PersonalOwnerKey("local", "a", "p"), persistence.PersonalOwnerKey("local", "b", "q"), persistence.PersonalOwnerKey("local", "c", "r")} {
 		at := r.Now.Add(-20 * 24 * time.Hour).Format("2006-01-02T15:04:05.000Z")
 		engineExec(t, f, `INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed)VALUES(?,?,?,?,?,1,600000,0,1)`, fmt.Sprint(i), key, f.items["m1"].ID, at, at)
@@ -258,7 +259,7 @@ func TestHomeCommunityUsesThirtyDaysAndPreservesPrivacyThreshold(t *testing.T) {
 		t.Fatal("two eligible viewers disclosed popularity", empty, err)
 	}
 	engineExec(t, f, `UPDATE personal_history SET updated_at=? WHERE id='2'`, r.Now.Format("2006-01-02T15:04:05.000Z"))
-	engineExec(t, f, `INSERT OR REPLACE INTO console_documents VALUES(?,1,?,0)`, `profile:["local","b","q"]`, `{"privacy.pauseWatchHistory":true}`)
+	storePreference(t, f.db, identity.Viewer{Authority: "local", AccountID: "b", ProfileID: "q"}, map[string]any{"privacy.pauseWatchHistory": true})
 	empty, err = s.HomeSingleRow(r, "community_watching", HomeRowPage{})
 	if err != nil || empty.Total != 0 {
 		t.Fatal("paused viewer contributed", empty, err)
@@ -271,6 +272,7 @@ func TestHomeCommunityRanksOnlyVideoBeforeTotalsAndPaging(t *testing.T) {
 	r := engineRequest()
 	r.CommunityActivity = true
 	engineExec(t, f, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["movies","tv","music","books"]' WHERE account_id IN('b','c')`)
+	shareFixtureProfiles(t, f.db)
 	at := r.Now.Add(-time.Hour).Format("2006-01-02T15:04:05.000Z")
 	for i, key := range []string{persistence.PersonalOwnerKey("local", "a", "p"), persistence.PersonalOwnerKey("local", "b", "q"), persistence.PersonalOwnerKey("local", "c", "r")} {
 		for _, name := range []string{"m1", "e101", "t1", "p1", "m2"} {

@@ -17,16 +17,17 @@ type SourceVideo struct {
 }
 
 type SourceAudio struct {
-	NativeCodec string `json:"-"`
-	Title       string `json:"title,omitempty"`
-	Index       int    `json:"index"`
-	Ordinal     int    `json:"ordinal"`
-	Codec       string `json:"codec"`
-	Channels    int    `json:"channels"`
-	Layout      string `json:"layout,omitempty"`
-	Language    string `json:"language,omitempty"`
-	Default     bool   `json:"default,omitempty"`
-	Commentary  bool   `json:"commentary,omitempty"`
+	AudioDescription bool   `json:"audioDescription,omitempty"`
+	NativeCodec      string `json:"-"`
+	Title            string `json:"title,omitempty"`
+	Index            int    `json:"index"`
+	Ordinal          int    `json:"ordinal"`
+	Codec            string `json:"codec"`
+	Channels         int    `json:"channels"`
+	Layout           string `json:"layout,omitempty"`
+	Language         string `json:"language,omitempty"`
+	Default          bool   `json:"default,omitempty"`
+	Commentary       bool   `json:"commentary,omitempty"`
 	assets.StreamDetail
 }
 
@@ -107,6 +108,10 @@ func loadDeliverySource(ctx context.Context, q sourceQuery, asset string) (Deliv
 	if s.Duration > 0 && size > 0 {
 		s.BitRate = int64(float64(size) * 8 / s.Duration)
 	}
+	breadth, err := assets.ReadStreamBreadth(ctx, q, asset)
+	if err != nil {
+		return s, err
+	}
 	rows, err := q.QueryContext(ctx, `SELECT stream_index,type,codec,language,title,channels,channel_layout,is_default,color_transfer,detail_json FROM asset_streams WHERE asset_id=? AND type IN('video','audio') ORDER BY stream_index LIMIT 129`, asset)
 	if err != nil {
 		return s, err
@@ -119,6 +124,10 @@ func loadDeliverySource(ctx context.Context, q sourceQuery, asset string) (Deliv
 			return s, err
 		}
 		st.DecodeDetail(detail)
+		st.Detail.StreamBreadth = breadth[st.Index]
+		if st.Type == "audio" && st.Detail.AudioVariant == "" {
+			st.Detail.AudioVariant = assets.AudioVariant(st.Codec, st.Detail.Profile, st.Detail.ObjectAudio)
+		}
 		switch st.Type {
 		case "video":
 			if s.Video != nil {
@@ -134,7 +143,7 @@ func loadDeliverySource(ctx context.Context, q sourceQuery, asset string) (Deliv
 			}
 			s.Video = v
 		case "audio":
-			s.Audio = append(s.Audio, SourceAudio{Index: st.Index, Ordinal: len(s.Audio), Codec: audioFamily(st.Codec), NativeCodec: st.Codec, Channels: st.Channels, Layout: st.ChannelLayout, Language: st.Language, Title: publicAudioText(st.Title, 96), Default: st.Default, Commentary: st.Commentary, StreamDetail: st.Detail})
+			s.Audio = append(s.Audio, SourceAudio{Index: st.Index, Ordinal: len(s.Audio), Codec: audioFamily(st.Codec), NativeCodec: st.Codec, Channels: st.Channels, Layout: st.ChannelLayout, Language: st.Language, Title: publicAudioText(st.Title, 96), Default: st.Default, Commentary: st.Commentary, AudioDescription: st.Detail.AudioDescription, StreamDetail: st.Detail})
 		}
 	}
 	if err = rows.Err(); err != nil {

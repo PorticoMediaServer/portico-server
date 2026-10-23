@@ -1,0 +1,99 @@
+package playback
+
+import "portico.local/server/internal/assets"
+
+var audioVariants = map[string]bool{"dts_core": true, "dts_hd_hra": true, "dts_hd_ma": true, "dtsx": true, "dts_express": true, "truehd": true, "truehd_atmos": true, "ac3": true, "eac3": true, "eac3_joc": true, "ac4": true, "lpcm": true}
+
+func validAudioVariants(v []string) bool {
+	if len(v) > 16 {
+		return false
+	}
+	for _, x := range v {
+		if !audioVariants[x] {
+			return false
+		}
+	}
+	return true
+}
+func validChroma(v []string) bool {
+	if len(v) > 4 {
+		return false
+	}
+	for _, x := range v {
+		if x != "4:2:0" && x != "4:2:2" && x != "4:4:4" && x != "4:0:0" {
+			return false
+		}
+	}
+	return true
+}
+func validFrameRateModes(v []string) bool {
+	if len(v) > 2 {
+		return false
+	}
+	for _, x := range v {
+		if x != "constant" && x != "variable" {
+			return false
+		}
+	}
+	return true
+}
+func sourceVariant(a *SourceAudio) string {
+	if a == nil {
+		return ""
+	}
+	if a.AudioVariant != "" {
+		return a.AudioVariant
+	}
+	return assets.AudioVariant(a.Codec, a.Profile, a.ObjectAudio)
+}
+
+// A family-only DTS declaration does not promise DTS-HD. Object-bearing
+// codecs may decode a channel bed; preserved objects require their own claim.
+func acceptsAudioVariant(variants []string, a *SourceAudio, objects []string, passthrough bool) bool {
+	v := sourceVariant(a)
+	if v == "" {
+		return true
+	}
+	if len(variants) > 0 {
+		return containsString(variants, v)
+	}
+	switch v {
+	case "dts_hd_hra", "dts_hd_ma", "dtsx", "dts_express":
+		return false
+	case "truehd_atmos", "eac3_joc":
+		if passthrough {
+			return containsString(objects, "atmos")
+		}
+		return true
+	}
+	return true
+}
+func audioDisplayName(variant, codec, objects string) string {
+	switch variant {
+	case "dts_core":
+		return "DTS"
+	case "dts_hd_hra":
+		return "DTS-HD High Resolution"
+	case "dts_hd_ma":
+		return "DTS-HD Master Audio"
+	case "dtsx":
+		return "DTS-HD Master Audio (DTS:X)"
+	case "dts_express":
+		return "DTS Express"
+	case "truehd_atmos":
+		return "Dolby TrueHD with Atmos"
+	case "truehd":
+		return "Dolby TrueHD"
+	case "eac3_joc":
+		return "Dolby Digital Plus with Atmos"
+	case "eac3":
+		return "Dolby Digital Plus"
+	case "ac3":
+		return "Dolby Digital"
+	case "ac4":
+		return "Dolby AC-4"
+	case "lpcm":
+		return "LPCM"
+	}
+	return codec
+}
