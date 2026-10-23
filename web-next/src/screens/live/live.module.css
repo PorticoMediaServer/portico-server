@@ -3,6 +3,15 @@
 .header h1 { margin: 0; font-size: calc(var(--type-lockup-long-size) - 4px); line-height: calc(.95em); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-lockup-tracking); }
 .sourceFacts { margin: 0 0 10px auto; display: flex; gap: 12px; color: var(--color-text-tertiary); font-size: var(--type-row-subtitle-size); }
 .sourceFacts strong { color: var(--color-text-secondary); font-weight: var(--type-row-heading-weight); }
+.onNow { position: relative; margin-top: 30px; }
+.nowViewport { overflow-x: auto; overflow-y: hidden; margin-inline: var(--shell-gutter, var(--gutter-desktop)); padding-block: 8px 16px; scrollbar-width: none; }
+.nowViewport::-webkit-scrollbar { display: none; }
+.nowSpace { position: relative; height: 204px; }
+.nowSlot { position: absolute; top: 0; width: 344px; }
+.nowArrow { position: absolute; right: 16px; top: 40px; bottom: 16px; height: auto; width: 44px; }
+.nowPrevious { right: auto; left: 16px; }
+.onNow[data-reduced-motion] article, .onNow[data-reduced-motion] article > button { transition: none; }
+.onNow[data-reduced-motion] article:hover, .onNow[data-reduced-motion] article:focus-within { transform: none; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 22px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .controls { display: flex; align-items: center; gap: 12px; margin-top: 36px; padding: 0 var(--shell-gutter, var(--gutter-desktop)); }
 .controls > :has(input) { width: 220px; }
