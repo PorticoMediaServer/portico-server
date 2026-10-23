@@ -54,9 +54,6 @@ func (h *ClaimHandler) currentManagedHTTPSTx(ctx context.Context, tx *sql.Tx) (s
 	if e != nil {
 		return "", e
 	}
-	if e = RequireActiveClaimAuthority(ctx, tx, q.Scope.Intent); e != nil {
-		return "", e
-	}
 	var publicAddress string
 	var publicPort int
 	// Do not call snapshotTx/readCertificateConfigTx here: those initialize or
@@ -130,9 +127,12 @@ func (h *ClaimHandler) currentManagedHTTPSTx(ctx context.Context, tx *sql.Tx) (s
 	if !valid || !m.listening.Load() || m.listenPort.Load() < 1 {
 		return "", nil
 	}
-	// Current authority is not taken from the saved display observation. The
-	// same typed installed tuple must remain positive at the return boundary.
-	if e = RequireActiveClaimAuthority(ctx, tx, q.Scope.Intent); e != nil {
+	// Use the same installed authority as the TLS serving path, including the
+	// current key/reset/credential tuple and sticky terminal denials. A historical
+	// claim-observation row is not produced by normal installation and cannot be
+	// a prerequisite for observing this genuinely serving address. Neither that
+	// row nor the remote display observation grants membership or a registration.
+	if e = GuardInstalledClaim(ctx, tx, q.Scope.Intent); e != nil {
 		return "", e
 	}
 	return q.RouteURL, nil

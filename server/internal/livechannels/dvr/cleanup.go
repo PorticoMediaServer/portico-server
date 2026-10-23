@@ -53,7 +53,11 @@ func (s *Store) CleanupOne(ctx context.Context) error {
 		_, e = dbwork.ExecWrite(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), `UPDATE dvr_cleanup_work SET not_before_ms=? WHERE recording_id=?`, s.now().Add(2*time.Minute).UnixMilli(), id)
 		return e
 	}
-	if e = s.driver.Remove(ctx, o, key, mediaartifact.Object{Digest: hash, Size: size}); e != nil {
+	e = s.retireRecordingLayout(ctx, id, o, key, mediaartifact.Object{Digest: hash, Size: size})
+	if e == nil {
+		e = s.driver.Remove(ctx, o, key, mediaartifact.Object{Digest: hash, Size: size})
+	}
+	if e != nil {
 		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), `UPDATE dvr_cleanup_work SET not_before_ms=? WHERE recording_id=?`, s.now().Add(2*time.Minute).UnixMilli(), id)
 		return e
 	}
