@@ -1,0 +1,71 @@
+package networking
+
+import (
+	"bytes"
+	"encoding/json"
+
+	"portico.local/server/internal/claimweb"
+	"portico.local/server/internal/serverreturn"
+	"portico.local/server/internal/wirejson"
+)
+
+// ClaimOwnerStartRequest contains browser protected-state bindings only. The
+// server chooses the fresh challenge, original signed Address and expiry.
+type ClaimOwnerStartRequest struct {
+	State          string `json:"state"`
+	CodeChallenge  string `json:"codeChallenge"`
+	InstallationID string `json:"installationId"`
+}
+
+func (q *ClaimOwnerStartRequest) UnmarshalJSON(raw []byte) error {
+	*q = ClaimOwnerStartRequest{}
+	fields, err := wirejson.Object(raw, "state", "codeChallenge", "installationId")
+	type plain ClaimOwnerStartRequest
+	var next plain
+	if err != nil || len(fields) != 3 || json.Unmarshal(raw, &next) != nil || !ownerRandom32(next.State) || !ownerRandom32(next.CodeChallenge) || len(next.InstallationID) < 32 || !validID(next.InstallationID) {
+		return ErrInvalid
+	}
+	*q = ClaimOwnerStartRequest(next)
+	return nil
+}
+
+type ClaimActionRequest struct {
+	Expected         ClaimExpected           `json:"expected"`
+	ApprovalEnvelope string                  `json:"approvalEnvelope,omitempty"`
+	OwnerStart       *ClaimOwnerStartRequest `json:"ownerStart,omitempty"`
+}
+
+func (q *ClaimActionRequest) UnmarshalJSON(raw []byte) error {
+	*q = ClaimActionRequest{}
+	fields, err := wirejson.Object(raw, "expected", "approvalEnvelope", "ownerStart")
+	if err != nil {
+		return ErrInvalid
+	}
+	expected, err := wirejson.Object(fields["expected"], "operationId", "localGeneration", "revision")
+	if err != nil || len(expected) != 3 {
+		return ErrInvalid
+	}
+	type plain ClaimActionRequest
+	var next plain
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.DisallowUnknownFields()
+	if d.Decode(&next) != nil {
+		return ErrInvalid
+	}
+	*q = ClaimActionRequest(next)
+	return nil
+}
+
+// OwnerContinuation exposes only normalized progress on GET. Full proof is
+// attached solely to the initiating authenticated POST response.
+type OwnerContinuation struct {
+	TransactionID      string                     `json:"transactionId"`
+	Phase              string                     `json:"phase"`
+	ExpiresAt          string                     `json:"expiresAt"`
+	ReturnRegistration *serverreturn.Registration `json:"returnRegistration,omitempty"`
+	Claim              *claimweb.Signed           `json:"claim,omitempty"`
+	Start              *claimweb.Signed           `json:"start,omitempty"`
+}
+
+func (OwnerContinuation) String() string   { return "[owner continuation redacted]" }
+func (OwnerContinuation) GoString() string { return "[owner continuation redacted]" }

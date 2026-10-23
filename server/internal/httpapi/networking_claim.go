@@ -59,7 +59,7 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 			return networking.ClaimRequestOwner{}, identity.ErrUnauthorized
 		}
 		resume, _ := json.Marshal(claimResume{Digest: p.Hash, AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch})
-		return networking.ClaimRequestOwner{Owner: networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, WebOrigin: d.ownerSwitchWebOrigin(r), Guard: func(ctx context.Context, tx *sql.Tx) error {
+		actor := networking.ClaimRequestOwner{Owner: networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, WebOrigin: d.ownerSwitchWebOrigin(r), Guard: func(ctx context.Context, tx *sql.Tx) error {
 			e := id.CheckClaimRequestOwnerTx(ctx, tx, p)
 			if errors.Is(e, identity.ErrUnauthorized) || errors.Is(e, identity.ErrForbidden) {
 				return networking.ErrClaimOwnerRequired
@@ -73,7 +73,14 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 			BindTx: func(ctx context.Context, tx *sql.Tx, operation, transaction string) error {
 				return networkingOwnerStartError(id.BindOwnerClaimTransactionTx(ctx, tx, p, operation, transaction))
 			},
-		}}, nil
+		}}
+		if d.Hosted != nil && d.Networking != nil && actor.WebOrigin != "" {
+			actor.ResolveOwnerReturn = func(ctx context.Context) error {
+				_, err := d.Hosted.PrepareOwnerCompletion(ctx, d.Networking, secret, actor.WebOrigin)
+				return networkingOwnerStartError(err)
+			}
+		}
+		return actor, nil
 	}
 }
 

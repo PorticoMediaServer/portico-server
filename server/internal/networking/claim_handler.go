@@ -13,6 +13,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"portico.local/server/internal/serverreturn"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,9 @@ type ClaimRequestOwner struct {
 	Resume string
 	// OwnerStart is a captured live family capability, never client input.
 	OwnerStart *OwnerStartAuthority
+	// ResolveOwnerReturn is a captured same-origin local-owner callback. It
+	// obtains the actual installed HTTPS resolver fact after installation.
+	ResolveOwnerReturn func(context.Context) error
 }
 type ClaimRequestAuthorizer func(*http.Request) (ClaimRequestOwner, error)
 type ClaimExpected struct {
@@ -63,6 +67,7 @@ type ClaimStatus struct {
 	ApprovalRequired         bool                  `json:"approvalRequired"`
 	Actions                  []string              `json:"actions"`
 	ApprovalRequest          *ClaimApprovalRequest `json:"approvalRequest,omitempty"`
+	OwnerContinuation        *OwnerContinuation    `json:"ownerContinuation,omitempty"`
 }
 type ClaimHandler struct {
 	recoveryWake        chan struct{}
@@ -238,10 +243,7 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 		}
 		return h.snapshot(ctx)
 	}
-	var body struct {
-		Expected         ClaimExpected `json:"expected"`
-		ApprovalEnvelope string        `json:"approvalEnvelope,omitempty"`
-	}
+	var body ClaimActionRequest
 	if e := readClaimBody(w, r, &body); e != nil {
 		return ClaimStatus{}, e
 	}
@@ -260,14 +262,31 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 			}
 			address = actor.WebOrigin
 		}
-		pending, e := h.beginWebClaim(ctx, expected, address)
+		var pending localWebClaim
+		if expected.Purpose == "switch" && expected.CurrentOwnerAccountID == "" {
+			if body.OwnerStart == nil || actor.OwnerStart == nil || actor.WebOrigin == "" || body.ApprovalEnvelope != "" || len(r.Header.Values("X-Portico-Installation-Id")) != 1 || body.OwnerStart.InstallationID != r.Header.Get("X-Portico-Installation-Id") {
+				return ClaimStatus{}, ErrInvalid
+			}
+			pending, e = h.beginOwnerWebClaim(ctx, expected, address, body.OwnerStart.State, body.OwnerStart.CodeChallenge, body.OwnerStart.InstallationID, actor.OwnerStart)
+		} else {
+			if body.OwnerStart != nil {
+				return ClaimStatus{}, ErrInvalid
+			}
+			pending, e = h.beginWebClaim(ctx, expected, address)
+		}
 		if e != nil {
 			return ClaimStatus{}, e
 		}
 		status, e := h.snapshot(ctx)
 		status.ApprovalURL = pending.URL
 		status.ClaimCode = pending.Code
+		if pending.OwnerStart != nil {
+			status.OwnerContinuation = &OwnerContinuation{TransactionID: pending.OwnerTransactionID, Phase: "prepared", ExpiresAt: pending.ExpiresAt.UTC().Format(time.RFC3339Nano), Claim: &pending.Signed, Start: pending.OwnerStart}
+		}
 		return status, e
+	}
+	if body.OwnerStart != nil {
+		return ClaimStatus{}, ErrInvalid
 	}
 	if r.URL.Path == "/v1/networking/claim/approve" {
 		if len(body.ApprovalEnvelope) < 1 || len(body.ApprovalEnvelope) > 16<<10 {
@@ -294,7 +313,19 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 	if r.URL.Path == "/v1/networking/claim/cancel" {
 		_, e = coordinator.Cancel(ctx)
 	} else {
-		_, e = coordinator.Step(ctx)
+		var next Intent
+		next, e = coordinator.Step(ctx)
+		if e == nil && next.Stage == Installed && next.InstallationAcknowledged && actor.ResolveOwnerReturn != nil {
+			var captured bool
+			if e = h.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_owner_completions WHERE operation_id=? AND phase='installed')`, next.OperationID).Scan(&captured); e == nil && captured {
+				e = actor.ResolveOwnerReturn(ctx)
+				// TLS/route provisioning can exceed this bounded attempt. The
+				// installed progress remains true; no deadline is extended.
+				if errors.Is(e, ErrUnavailable) {
+					e = nil
+				}
+			}
+		}
 	}
 	if e != nil {
 		return ClaimStatus{}, e
@@ -364,6 +395,20 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 	result.AccountID = v.AccountID
 	result.InstallationAcknowledged = v.InstallationAcknowledged
 	result.Actions = []string{}
+	var continuation OwnerContinuation
+	var expires int64
+	var registration, origin string
+	ce := tx.QueryRowContext(ctx, `SELECT transaction_id,phase,expires_ms,registration_id,registration_origin FROM identity_owner_completions WHERE operation_id=?`, v.OperationID).Scan(&continuation.TransactionID, &continuation.Phase, &expires, &registration, &origin)
+	if ce != nil && !errors.Is(ce, sql.ErrNoRows) {
+		return ClaimStatus{}, ce
+	}
+	if ce == nil {
+		continuation.ExpiresAt = time.UnixMilli(expires).UTC().Format(time.RFC3339Nano)
+		if registration != "" && origin != "" {
+			continuation.ReturnRegistration = &serverreturn.Registration{ID: registration, Origin: origin}
+		}
+		result.OwnerContinuation = &continuation
+	}
 	if v.Stage == CancelPending {
 		result.Actions = []string{"continue"}
 		return result, nil
@@ -377,6 +422,10 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 		}
 		if terminalClaimState(state) {
 			result.State = "disconnected"
+			return result, nil
+		}
+		if result.OwnerContinuation != nil && result.OwnerContinuation.Phase == "installed" {
+			result.Actions = []string{"continue"}
 			return result, nil
 		}
 		if !v.InstallationAcknowledged {
