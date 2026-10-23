@@ -142,7 +142,7 @@ func TestCredentialScopeNeverRaisesTheMemberBehindIt(t *testing.T) {
 	if w := f.call("POST", "/v1/admin/api-keys", f.member, `{"operationId":"key-member-1","name":"Nope","scopes":["read"]}`); w.Code != 403 {
 		t.Fatalf("member made an API key: %d %s", w.Code, w.Body)
 	}
-	if w := f.call("GET", "/v1/admin/access-tokens", f.member, ""); w.Code != 403 {
+	if w := f.call("GET", "/v1/admin/access-tokens", f.member, ""); w.Code != 404 {
 		t.Fatalf("member listed everyone's tokens: %d %s", w.Code, w.Body)
 	}
 	other := issueCredential(t, f, "/v1/me/access-tokens", f.admin, `{"operationId":"token-create-2","name":"Admin script","scopes":["read"]}`)
@@ -152,12 +152,19 @@ func TestCredentialScopeNeverRaisesTheMemberBehindIt(t *testing.T) {
 	if w := f.call("GET", "/v1/me/access-tokens", f.member, ""); w.Code != 200 || strings.Contains(w.Body.String(), other.Credential.ID) || !strings.Contains(w.Body.String(), token.Credential.ID) {
 		t.Fatalf("member's own list: %d %s", w.Code, w.Body)
 	}
-	// The owner sees and can end any member's token.
-	if w := f.call("GET", "/v1/admin/access-tokens", f.owner, ""); w.Code != 200 || !strings.Contains(w.Body.String(), token.Credential.ID) || !strings.Contains(w.Body.String(), other.Credential.ID) {
-		t.Fatalf("owner's list of tokens: %d %s", w.Code, w.Body)
+	// Personal token inventory belongs only to its member, including against
+	// owner credentials. The retired administration routes expose no inventory.
+	if w := f.call("GET", "/v1/admin/access-tokens", f.owner, ""); w.Code != 404 || strings.Contains(w.Body.String(), token.Credential.ID) || strings.Contains(w.Body.String(), other.Credential.ID) {
+		t.Fatalf("retired owner token inventory: %d %s", w.Code, w.Body)
 	}
-	if w := f.call("DELETE", "/v1/admin/access-tokens/"+token.Credential.ID, f.owner, ""); w.Code != 200 {
-		t.Fatalf("owner ended a member's token: %d %s", w.Code, w.Body)
+	if w := f.call("DELETE", "/v1/admin/access-tokens/"+token.Credential.ID, f.owner, ""); w.Code != 404 {
+		t.Fatalf("retired owner token deletion: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("GET", "/v1/me", token.Secret, ""); w.Code != 200 {
+		t.Fatalf("a retired route changed a member's token: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("DELETE", "/v1/me/access-tokens/"+token.Credential.ID, f.member, ""); w.Code != 200 {
+		t.Fatalf("member could not end their own token: %d %s", w.Code, w.Body)
 	}
 	if w := f.call("GET", "/v1/me", token.Secret, ""); w.Code != 401 {
 		t.Fatalf("ended token still works: %d", w.Code)
@@ -285,7 +292,7 @@ func TestPasswordChangeAndSignOutEverywhereKeepKeysWorking(t *testing.T) {
 	// A key's own entry is not among the member's devices, where "sign out"
 	// and "forget" would act on it by accident.
 	var listed int
-	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM identity_devices WHERE platform='api' AND approval_state='approved'`).Scan(&listed); err != nil || listed == 0 {
+	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM identity_devices WHERE platform='api' AND id IN(SELECT device_id FROM api_credentials)`).Scan(&listed); err != nil || listed == 0 {
 		t.Fatalf("credential devices: %d %v", listed, err)
 	}
 	if w = f.call("GET", "/v1/devices", fresh, ""); w.Code == 200 && strings.Contains(w.Body.String(), "Script") {
@@ -310,8 +317,8 @@ func TestDisablingOrDeletingTheMemberEndsTheirKeysForGood(t *testing.T) {
 		t.Fatalf("a disabled member's token works: %d %s", w.Code, w.Body)
 	}
 	w := f.call("GET", "/v1/admin/access-tokens?accountId=member", f.owner, "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"state":"ended"`) || !strings.Contains(w.Body.String(), `"endedReason":"member_disabled"`) {
-		t.Fatalf("list after disabling: %d %s", w.Code, w.Body)
+	if w.Code != 404 || strings.Contains(w.Body.String(), token.Credential.ID) {
+		t.Fatalf("retired inventory after disabling: %d %s", w.Code, w.Body)
 	}
 	// Enabling the member again does not bring the token back.
 	if _, err := f.deps.DB.Exec(`UPDATE direct_memberships SET disabled=0,revision=revision+1 WHERE account_id='member'`); err != nil {

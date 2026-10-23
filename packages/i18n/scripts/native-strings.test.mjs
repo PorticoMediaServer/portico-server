@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {nativeText,nativeTables,nativeOutputs,androidText,appleLocale,androidFolder,generateNativeStrings} from './native-strings.mjs';
+import {nativeText,nativeTables,nativeOutputs,shortcutStrings,androidText,appleLocale,androidFolder,generateNativeStrings} from './native-strings.mjs';
 
 // Expected text is independently copied from the binding system-copy note, not generated.
 const ios='Portico looks for servers, TVs and Google Cast devices on your network. Without it, addresses and TV codes still work.';
@@ -53,8 +53,12 @@ test('production tables have complete regional keys, exact system words and para
  const siri=JSON.parse(outputs.get('ios/Portico/Strings/Localizable.xcstrings').value);
  assert.equal(siri.strings['Play a title'].localizations.en.stringUnit.value,'Play a title');
  assert.equal(siri.strings['Which title?'].localizations['en-GB'].stringUnit.value,'Which title?');
- const shortcuts=JSON.parse(outputs.get('ios/Portico/Strings/AppShortcuts.xcstrings').value);
- assert.ok(shortcuts.strings['Play ${title} in ${applicationName}']);
+ assert.equal(outputs.has('ios/Portico/Strings/AppShortcuts.xcstrings'),false);
+ const expected=['Continue watching in ${applicationName}','Play ${title} in ${applicationName}','Resume ${applicationName}','Watch ${title} in ${applicationName}'];
+ for(const locale of ['en','en-CA','en-GB']){
+  const shortcuts=outputs.get(`ios/Portico/Strings/${locale}.lproj/AppShortcuts.strings`).value;
+  assert.deepEqual(shortcuts.split('\n').filter(line=>line.startsWith('"')),expected.map(phrase=>`"${phrase}" = "${phrase}";`));
+ }
  const android=outputs.get('android/app/src/main/res/values/portico_system_strings.xml').value;
  assert.ok(android.includes('<string name="system_android_download_running" formatted="false">Downloading</string>'));
  assert.ok(android.includes('name="next_home_continueWatching"'));
@@ -68,7 +72,7 @@ test('invalid phrases and duplicate Apple source text are refused',()=>{
 });
 test('generator writes complete outputs, check is read-only and reports a stale committed resource',t=>{
  const {root}=fixture(t);const result=generateNativeStrings({nativeRoot:root});
- assert.equal(result.outputs.length,9);assert.equal(generateNativeStrings({nativeRoot:root,check:true}).outputs.length,9);
+ assert.equal(result.outputs.length,11);assert.equal(generateNativeStrings({nativeRoot:root,check:true}).outputs.length,11);
  const file=path.join(root,'android/app/src/main/res/values/portico_system_strings.xml');
  writeFileSync(file,'stale');assert.throws(()=>generateNativeStrings({nativeRoot:root,check:true}),/Stale native system strings/);assert.equal(readFileSync(file,'utf8'),'stale');
 });
@@ -96,8 +100,16 @@ struct PorticoTitleEntity: AppEntity {
 `;
 test('actual AppEntity content title interpolation is not an uncatalogued system literal',t=>{
  const {root,put}=fixture(t);put('ios/Portico/PorticoIntents.swift',swift+contentEntity);
- assert.equal(generateNativeStrings({nativeRoot:root,platform:'apple'}).outputs.length,5);
- assert.equal(generateNativeStrings({nativeRoot:root,platform:'apple',check:true}).outputs.length,5);
+ assert.equal(generateNativeStrings({nativeRoot:root,platform:'apple'}).outputs.length,7);
+ assert.equal(generateNativeStrings({nativeRoot:root,platform:'apple',check:true}).outputs.length,7);
+});
+test('AppShortcuts strings escape source and translations without changing parameter tokens',()=>{
+ const source={'system.siri.phrase.test':'Play "{title}" in {app}'};
+ const title='${title}',applicationName='${applicationName}';
+ assert.equal(shortcutStrings(source,{'system.siri.phrase.test':'Use \\ "{title}"\n{app}\t\u0001'}),String.raw`/* Generated from packages/i18n; do not edit. */
+"Play \"${title}\" in ${applicationName}" = "Use \\ \"${title}\"\n${applicationName}\t\U0001";
+`);
+ assert.throws(()=>shortcutStrings({...source,'system.siri.phrase.duplicate':source['system.siri.phrase.test']},source),/Duplicate Apple source text/);
 });
 for(const extra of [
  String.raw`@Parameter(title: "\(title)") var other: String`,

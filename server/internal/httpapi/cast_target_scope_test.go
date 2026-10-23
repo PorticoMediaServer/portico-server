@@ -46,6 +46,9 @@ func TestACastTargetPairedByTheOwnerCanOnlyPlay(t *testing.T) {
 	if w := f.as(bearer, "GET", "/v1/me", nil); w.Code != 200 {
 		t.Fatalf("reading who it is: %d %s", w.Code, w.Body.String())
 	}
+	if w := f.as(bearer, "GET", "/v1/items/"+f.item, nil); w.Code != 403 {
+		t.Fatalf("screen without adopted playback read item: %d", w.Code)
+	}
 	if id := f.play(bearer); id == "" {
 		t.Fatal("the television could not start playback")
 	}
@@ -58,7 +61,6 @@ func TestACastTargetPairedByTheOwnerCanOnlyPlay(t *testing.T) {
 	}{
 		{"GET", "/v1/libraries", nil},
 		{"GET", "/v1/items?libraryId=" + f.library, nil},
-		{"GET", "/v1/items/" + f.item, nil},
 		{"GET", "/v1/search?q=film", nil},
 		{"GET", "/v1/home", nil},
 		{"GET", "/v1/receivers", nil},
@@ -175,7 +177,7 @@ func TestCastTargetRoutes(t *testing.T) {
 		{"GET", "/v1/items/abc/art/poster", true},
 		{"GET", "/v1/items/abc/chapters/3/image", true},
 		{"GET", "/v1/items/abc/playback/session/subtitles", true},
-		{"GET", "/v1/items/abc", false},
+		{"GET", "/v1/items/abc", true},
 		{"GET", "/v1/items", false},
 		{"PUT", "/v1/items/abc/art/poster", false},
 		{"DELETE", "/v1/items/abc", false},
