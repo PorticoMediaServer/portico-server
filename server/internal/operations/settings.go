@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const RegistryRevision = "p09.4"
+const RegistryRevision = "settings-38b51b9.1"
 
 type Field struct {
 	ID          string   `json:"id"`
@@ -126,6 +126,7 @@ func Registry() []Field {
 		field("uploadCapacityKbps", "connectivity", "integer", 0, bounded(0), bounded(10000000), nil, "next-operation", "remote playback admission", "The home connection's upload speed in kbps. New remote streams share about 80% of it and get a lower quality when it is busy. 0 means unknown: no budget."),
 		field("pausedSessionTimeoutMinutes", "connectivity", "integer", 0, bounded(0), bounded(1440), nil, "hot", "playback session sweeper", "End video sessions paused for longer than this many minutes, freeing their stream slot. Audio and Live are never ended. 0 means never."),
 		field("advertisedInterface", "connectivity", "string", "", nil, nil, nil, "hot", "LAN route publication", "The network interface whose address LAN clients are given. Empty advertises all available interfaces."),
+		field("ownAddressEnabled", "connectivity", "boolean", false, nil, nil, nil, "hot", "custom certificate TLS and route publication", "Serve the owner's own secure address independently of the Portico route."),
 		field("customCertificatePath", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener", "Path to a PEM certificate chain for a custom domain. Reloaded when the file changes."),
 		field("customCertificateKeyPath", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener", "Path to the PEM private key for the custom certificate."),
 		field("customCertificateDomain", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener and route publication", "The domain the custom certificate serves. It is published to members as an access URL on the remote access port."),
@@ -223,6 +224,7 @@ type Settings struct {
 	UploadCapacityKbps          int            `json:"uploadCapacityKbps"`
 	PausedSessionTimeoutMinutes int            `json:"pausedSessionTimeoutMinutes"`
 	AdvertisedInterface         string         `json:"advertisedInterface"`
+	OwnAddressEnabled           bool           `json:"ownAddressEnabled"`
 	CustomCertificatePath       string         `json:"customCertificatePath"`
 	CustomCertificateKeyPath    string         `json:"customCertificateKeyPath"`
 	CustomCertificateDomain     string         `json:"customCertificateDomain"`
@@ -262,14 +264,9 @@ type SettingsChange struct {
 
 func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 	v := DefaultSettings()
-	var body string
 	var revision int64 = 1
-	e := tx.QueryRow(`SELECT revision,body FROM console_documents WHERE scope='server'`).Scan(&revision, &body)
-	if e == nil {
-		if e = decodeDocument(body, &v); e != nil {
-			return SettingsDocument{}, e
-		}
-	} else if !errors.Is(e, sql.ErrNoRows) {
+	e := readStoredSettings(tx, &v)
+	if e != nil {
 		return SettingsDocument{}, e
 	}
 	if e = tx.QueryRow(`SELECT revision FROM console_settings_revision WHERE singleton=1`).Scan(&revision); e != nil {
@@ -500,8 +497,7 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 			return &ConflictError{current.Revision}
 		}
 		revision := current.Revision + 1
-		b, _ := json.Marshal(c.Values)
-		if _, err = tx.Exec(`INSERT INTO console_documents VALUES('server',?,?,?) ON CONFLICT(scope) DO UPDATE SET revision=excluded.revision,body=excluded.body,updated_ms=excluded.updated_ms`, revision, string(b), s.now()); err != nil {
+		if err = writeStoredSettings(tx, c.Values, s.now()); err != nil {
 			return err
 		}
 		if _, err = tx.Exec(`INSERT INTO configuration VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, c.Values.Name); err != nil {
@@ -522,6 +518,14 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 		if _, err = tx.Exec(`UPDATE console_settings_revision SET revision=? WHERE singleton=1`, revision); err != nil {
 			return err
 		}
+		if _, err = tx.Exec(`UPDATE server_configuration_state SET pending_revision=? WHERE singleton=1`, revision); err != nil {
+			return err
+		}
+		for key := range SettingsValues(c.Values) {
+			if _, err = tx.Exec(`INSERT INTO server_setting_sources VALUES(?,'server') ON CONFLICT(field) DO UPDATE SET source=excluded.source`, key); err != nil {
+				return err
+			}
+		}
 		if err = Audit(tx, s.now(), AccountKey(p), "settings.apply", "server", revision); err != nil {
 			return err
 		}
@@ -531,6 +535,9 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 		}
 		return SaveReceipt(tx, scope, c.IdempotencyKey, digest, out, s.now())
 	})
+	if e == nil {
+		e = s.FlushConfiguration(context.WithoutCancel(ctx))
+	}
 	if e == nil {
 		s.projectAppliedSettings(&out)
 		if s.FFmpegValidation != nil {

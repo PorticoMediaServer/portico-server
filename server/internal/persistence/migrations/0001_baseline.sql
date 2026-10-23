@@ -2334,6 +2334,57 @@ CREATE TABLE analysis_stage_runs (
  next_ms INTEGER NOT NULL DEFAULT 0, updated_ms INTEGER NOT NULL,
  PRIMARY KEY(job_id,object_id,source_revision,policy_revision,stage,algorithm)
 ) STRICT;
+
+CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), updated_ms INTEGER NOT NULL DEFAULT 0,
+ "analysisStorageGiB" INTEGER,
+ "analysisStageStorageMiB" INTEGER,
+ "subtitleTrackLimit" INTEGER,
+ "subtitleFileLimitMiB" INTEGER,
+ "hardwareBackend" TEXT,
+ "hardwareDevice" TEXT,
+ "hdrToneMapping" INTEGER,
+ "hdrToneMappingAlgorithm" TEXT,
+ "x264Preset" TEXT,
+ "directStreamRemux" INTEGER,
+ "planningPolicy" TEXT,
+ "throttleBufferMs" INTEGER,
+ "playedRetentionMs" INTEGER,
+ "temporaryDirectory" TEXT,
+ "ffmpegPath" TEXT,
+ "sessionStorageMiB" INTEGER,
+ "maxConcurrentSessions" INTEGER,
+ "maxHardwareSessions" INTEGER,
+ "maxSoftwareSessions" INTEGER,
+ "maxBackgroundSessions" INTEGER,
+ "diagnosticDays" INTEGER,
+ "notificationDays" INTEGER,
+ "jobDays" INTEGER,
+ "playHistoryDays" INTEGER,
+ "apiRequestsPerMinute" INTEGER,
+ "blockMemberAccessTokens" INTEGER,
+ "home.communityActivityEnabled" INTEGER,
+ "updates.releaseChannel" TEXT,
+ "updates.feedUrl" TEXT,
+ "library.missingTitles" TEXT,
+ "library.missingTitlesDays" INTEGER,
+ "library.segmentDetection" TEXT,
+ "remoteSignInPolicy" TEXT,
+ "remoteBitrateLimitKbps" INTEGER,
+ "connectionLimit" INTEGER,
+ "advertiseUrl" TEXT,
+ "lanDiscoveryEnabled" INTEGER,
+ "dlnaEnabled" INTEGER,
+ "uploadCapacityKbps" INTEGER,
+ "pausedSessionTimeoutMinutes" INTEGER,
+ "advertisedInterface" TEXT,
+ "ownAddressEnabled" INTEGER,
+ "customCertificatePath" TEXT,
+ "customCertificateKeyPath" TEXT,
+ "customCertificateDomain" TEXT,
+ "logLevel" TEXT) STRICT;
+CREATE TABLE server_setting_lists(setting TEXT NOT NULL,position INTEGER NOT NULL CHECK(position>=0),value TEXT NOT NULL,PRIMARY KEY(setting,position)) WITHOUT ROWID, STRICT;
+CREATE TABLE server_log_retention(category TEXT PRIMARY KEY,days INTEGER NOT NULL CHECK(days BETWEEN 1 AND 90)) STRICT;
+
 CREATE TABLE console_documents(scope TEXT PRIMARY KEY,revision INTEGER NOT NULL,body TEXT NOT NULL,updated_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE console_receipts(scope TEXT NOT NULL,key TEXT NOT NULL,digest TEXT NOT NULL,result TEXT NOT NULL,expires_ms INTEGER NOT NULL,PRIMARY KEY(scope,key)) STRICT;
 CREATE TABLE console_audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,time_ms INTEGER NOT NULL,actor TEXT NOT NULL,action TEXT NOT NULL,target TEXT NOT NULL,revision INTEGER NOT NULL,previous_hash TEXT NOT NULL,hash TEXT NOT NULL) STRICT;
@@ -6753,7 +6804,7 @@ CREATE TRIGGER personal_change_hint AFTER INSERT ON viewer_revisions BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'personal.changed','library',NEW.library_id,CAST(NEW.revision AS TEXT),CASE WHEN NEW.title_path<>'' THEN json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT),'titles',NEW.title_path) ELSE json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT)) END) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=CASE WHEN json_extract(api_change_pending.data,'$.titles') IS NULL OR json_extract(excluded.data,'$.titles') IS NULL THEN json_remove(excluded.data,'$.titles') WHEN json_extract(excluded.data,'$.titles')=json_extract(api_change_pending.data,'$.titles') OR json_extract(excluded.data,'$.titles') LIKE '%/'||json_extract(api_change_pending.data,'$.titles') THEN excluded.data WHEN json_extract(api_change_pending.data,'$.titles') LIKE '%/'||json_extract(excluded.data,'$.titles') THEN json_set(excluded.data,'$.titles',json_extract(api_change_pending.data,'$.titles')) ELSE json_remove(excluded.data,'$.titles') END; END;
 CREATE TRIGGER personal_change_hint_update AFTER UPDATE ON viewer_revisions BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,CASE WHEN OLD.revision IS NOT NEW.revision THEN 'personal.changed' ELSE 'progress.changed' END,'library',NEW.library_id,CAST(NEW.revision AS TEXT),CASE WHEN NEW.title_path<>'' THEN json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT),'titles',NEW.title_path) ELSE json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT)) END) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=CASE WHEN json_extract(api_change_pending.data,'$.titles') IS NULL OR json_extract(excluded.data,'$.titles') IS NULL THEN json_remove(excluded.data,'$.titles') WHEN json_extract(excluded.data,'$.titles')=json_extract(api_change_pending.data,'$.titles') OR json_extract(excluded.data,'$.titles') LIKE '%/'||json_extract(api_change_pending.data,'$.titles') THEN excluded.data WHEN json_extract(api_change_pending.data,'$.titles') LIKE '%/'||json_extract(excluded.data,'$.titles') THEN json_set(excluded.data,'$.titles',json_extract(api_change_pending.data,'$.titles')) ELSE json_remove(excluded.data,'$.titles') END; END;
-CREATE TRIGGER server_settings_hint AFTER UPDATE ON console_documents WHEN NEW.scope='server' BEGIN
+CREATE TRIGGER server_settings_hint AFTER UPDATE OF revision ON console_settings_revision BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','settings.changed','settings','server',CAST(NEW.revision AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 
 CREATE TABLE catalog_retention_cursors(name TEXT PRIMARY KEY,after_id INTEGER NOT NULL,after_root TEXT NOT NULL DEFAULT '',after_key TEXT NOT NULL DEFAULT '') STRICT;
@@ -6762,8 +6813,7 @@ CREATE INDEX catalog_credits_department ON catalog_credits(department_id,entity_
 
 
 CREATE INDEX catalogue_failures_recent ON catalog_derivation_failures(failed_ms DESC,domain,entity_id);
-CREATE TRIGGER server_settings_insert_hint AFTER INSERT ON console_documents WHEN NEW.scope='server' BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','settings.changed','settings','server',CAST(NEW.revision AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+
 
 CREATE TRIGGER catalogue_generation_published AFTER UPDATE OF retaining ON catalog_generations WHEN OLD.retaining=1 AND NEW.retaining=0 BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1; END;
@@ -8399,3 +8449,7 @@ CREATE TRIGGER owner_change_account_insert BEFORE INSERT ON accounts WHEN EXISTS
 CREATE TRIGGER owner_change_account_rename BEFORE UPDATE OF username ON accounts WHEN NEW.username<>OLD.username COLLATE NOCASE AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND approved_username=NEW.username COLLATE NOCASE) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
 CREATE TRIGGER owner_change_link_insert BEFORE INSERT ON account_portico_links WHEN EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
 CREATE TRIGGER owner_change_link_update BEFORE UPDATE OF hosted_account_id ON account_portico_links WHEN NEW.hosted_account_id<>OLD.hosted_account_id AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
+
+CREATE TABLE server_setting_sources(field TEXT PRIMARY KEY,source TEXT NOT NULL CHECK(source IN('server','file'))) STRICT;
+CREATE TABLE server_configuration_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),pending_revision INTEGER NOT NULL DEFAULT 0) STRICT;
+INSERT INTO server_configuration_state(singleton) VALUES(1);

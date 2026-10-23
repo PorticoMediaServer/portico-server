@@ -58,7 +58,7 @@ func (c *connectionPolicyCache) setLocked(document operations.SettingsDocument) 
 		urls = append(urls, document.Effective.AdvertiseURL)
 	}
 	urls = append(urls, document.Effective.AccessURLs...)
-	c.setting.Store(&connectionSettingValue{revision: document.Revision, locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: document.Effective.CustomCertificateDomain, apiPerMinute: document.Effective.APIRequestsPerMinute, remoteSignIn: remoteSignInPolicy(document.Effective.RemoteSignInPolicy), dlna: document.Effective.DLNAEnabled})
+	c.setting.Store(&connectionSettingValue{revision: document.Revision, locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: ownAddressDomain(document.Effective), apiPerMinute: document.Effective.APIRequestsPerMinute, remoteSignIn: remoteSignInPolicy(document.Effective.RemoteSignInPolicy), dlna: document.Effective.DLNAEnabled})
 }
 
 // remoteSignInPolicy reads the stored choice. An empty value is the default,
@@ -101,4 +101,11 @@ func (d Dependencies) connectionSetting(ctx context.Context) (*connectionSetting
 // secureTransport shares the trusted scheme parser with origin admission.
 func (d Dependencies) secureTransport(r *http.Request) bool {
 	return r.TLS != nil || strings.HasPrefix(networkpolicy.Origin(r, d.trustedProxyPrefixes(r.Context())), "https://")
+}
+
+func ownAddressDomain(v operations.Settings) string {
+	if v.OwnAddressEnabled {
+		return v.CustomCertificateDomain
+	}
+	return ""
 }

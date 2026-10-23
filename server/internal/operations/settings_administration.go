@@ -102,7 +102,7 @@ func validateAdministration(v *Settings) []string {
 			set++
 		}
 	}
-	if set != 0 && set != len(custom) {
+	if v.OwnAddressEnabled && set != len(custom) {
 		fields = append(fields, "values.customCertificatePath")
 	}
 	for _, path := range custom[:2] {

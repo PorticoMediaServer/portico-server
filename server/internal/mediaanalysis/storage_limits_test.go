@@ -18,14 +18,14 @@ func TestOwnerAnalysisStorageLimitsApplyAtCheckpoints(t *testing.T) {
 	if service.cacheLimit(ctx) != 32<<30 {
 		t.Fatal("missing document changed default")
 	}
-	_, err = db.Exec(`INSERT INTO console_documents(scope,revision,body,updated_ms) VALUES('server',1,'{"analysisStorageGiB":64,"analysisStageStorageMiB":1024}',0)`)
+	_, err = db.Exec(`INSERT INTO server_settings(singleton,updated_ms,"analysisStorageGiB","analysisStageStorageMiB") VALUES(1,0,64,1024)`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if service.cacheLimit(ctx) != 64<<30 || service.stageLimit(ctx) != 1024<<20 {
 		t.Fatal("owner limits not consumed")
 	}
-	_, err = db.Exec(`UPDATE console_documents SET body='{"analysisStorageGiB":128,"analysisStageStorageMiB":2048}' WHERE scope='server'`)
+	_, err = db.Exec(`UPDATE server_settings SET "analysisStorageGiB"=128,"analysisStageStorageMiB"=2048 WHERE singleton=1`)
 	if err != nil {
 		t.Fatal(err)
 	}

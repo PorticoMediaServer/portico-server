@@ -749,6 +749,15 @@ func New(d Dependencies) http.Handler {
 	if d.Console == nil && d.DB != nil {
 		d.Console = operations.New(d.DB)
 	}
+	if d.Console != nil {
+		d.Console.ConfigChanged = func(ctx context.Context) {
+			if err := d.applyLiveSettings(ctx); err == nil {
+				if settings, err := d.settingsDocument(ctx); err == nil {
+					d.applyLogSettings(settings)
+				}
+			}
+		}
+	}
 	if d.Scheduler != nil && d.Catalog != nil {
 		found := false
 		for _, kind := range d.Scheduler.Kinds() {

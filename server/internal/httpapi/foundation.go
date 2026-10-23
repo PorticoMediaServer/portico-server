@@ -714,6 +714,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerUnitProjections(registry, d); err != nil {
 		return nil, err
 	}
+	if err := registerSettingsConfiguration(registry, d); err != nil {
+		return nil, err
+	}
 	if err := registerConversionSettings(registry, d); err != nil {
 		return nil, err
 	}

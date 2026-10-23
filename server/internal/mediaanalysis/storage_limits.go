@@ -13,7 +13,13 @@ func (s *Service) storageLimit(ctx context.Context, key string, unit, fallback i
 		return fallback
 	}
 	var value sql.NullInt64
-	if dbwork.QueryRow(ctx, s.db, `SELECT json_extract(body,?) FROM console_documents WHERE scope='server'`, "$."+key).Scan(&value) != nil || !value.Valid || value.Int64 < 1 {
+	column := "analysisStorageGiB"
+	if key == "analysisStageStorageMiB" {
+		column = key
+	} else if key != column {
+		return fallback
+	}
+	if dbwork.QueryRow(ctx, s.db, `SELECT "`+column+`" FROM server_settings WHERE singleton=1`).Scan(&value) != nil || !value.Valid || value.Int64 < 1 {
 		return fallback
 	}
 	return value.Int64 * unit

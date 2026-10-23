@@ -258,13 +258,6 @@ func run() (runErr error) {
 	if _, e = configuration.Reload(); e != nil {
 		return e
 	}
-	configCtx, stopConfig := context.WithCancel(ctx)
-	configDone := make(chan struct{})
-	supervise.Go("cmd.config-file", func() {
-		defer close(configDone)
-		configuration.Watch(configCtx, time.Second, nil, func(err error) { log.Printf("Config file could not be re-read: %v", err) })
-	})
-	defer func() { stopConfig(); <-configDone }()
 	startupLog := servicelog.New(servicelog.Options{Directory: storagepaths.Path(state, "logs")})
 	installMessageLogOutput(startupLog)
 	defer startupLog.Close()
@@ -400,6 +393,10 @@ func run() (runErr error) {
 	// Resolve one verified pair. Qualification overlaps independent startup work,
 	// but is joined below before constructing the first playback service.
 	doneQualification := reporter.step("toolchain", "Verify and qualify the media tools")
+	configSettings := operations.New(db)
+	if e = configSettings.InitializeConfiguration(ctx, layout.Config); e != nil {
+		return e
+	}
 	startupMedia, e := operations.StartupMediaSettings(context.Background(), db)
 	if e != nil {
 		return e
@@ -1013,6 +1010,7 @@ func run() (runErr error) {
 	doneConsole := reporter.step("console", "Open the operations console")
 	console, scheduler, e := initializeConsole(db, scanner, player, hls, cat, lyricFetch, state)
 	if console != nil {
+		console.ConfigFile, console.ConfigPath = configSettings.ConfigFile, layout.Config
 		console.FFmpegValidation = operations.FFmpegValidator(ffmpegTool)
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
 		console.AppliedFFmpegPath = &startupMedia.FFmpegPath
@@ -1105,7 +1103,10 @@ func run() (runErr error) {
 			document, err := console.Settings(ctx, operations.AllowServerScope)
 			customRead = time.Now()
 			if err == nil {
-				lastPath, lastKey, lastDomain = document.Effective.CustomCertificatePath, document.Effective.CustomCertificateKeyPath, document.Effective.CustomCertificateDomain
+				lastPath, lastKey, lastDomain = "", "", ""
+				if document.Effective.OwnAddressEnabled {
+					lastPath, lastKey, lastDomain = document.Effective.CustomCertificatePath, document.Effective.CustomCertificateKeyPath, document.Effective.CustomCertificateDomain
+				}
 			}
 			return lastPath, lastKey, lastDomain
 		})
@@ -1202,6 +1203,19 @@ func run() (runErr error) {
 	supervise.Go("cmd.catalogue-retention", func() { compactcatalog.RunRetention(ctx, db) })
 	server := &http.Server{Addr: bind, Handler: handlerSwitch, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10, HTTP2: serverHTTP2Policy()}
 	connectionLimit := connectionBudget(hostlimits.EffectiveMemoryBytes())
+	configCtx, stopConfig := context.WithCancel(ctx)
+	configDone := make(chan struct{})
+	supervise.Go("cmd.config-file", func() {
+		defer close(configDone)
+		console.ConfigFile.Watch(configCtx, time.Second, func() {
+			if err := console.ImportConfiguration(configCtx); err != nil {
+				log.Printf("Config file could not be applied: %v", err)
+			} else if console.ConfigChanged != nil {
+				console.ConfigChanged(configCtx)
+			}
+		}, func(err error) { log.Printf("Config file could not be re-read: %v", err) })
+	})
+	defer func() { stopConfig(); <-configDone }()
 	if console != nil {
 		appliedConnectionLimit := 0
 		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil {

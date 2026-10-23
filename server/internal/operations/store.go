@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/configfile"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -58,6 +60,10 @@ func auditAnchor(tx *sql.Tx) (AuditAnchor, error) {
 }
 
 type Store struct {
+	ConfigFile       *configfile.Loader
+	ConfigPath       string
+	ConfigChanged    func(context.Context)
+	configMu         sync.Mutex
 	FFmpegValidation func(context.Context, string) FFmpegStatus
 	// Set once at startup by the conversion consumer. Nil is a store without a running converter.
 	AppliedTemporaryDirectory *string

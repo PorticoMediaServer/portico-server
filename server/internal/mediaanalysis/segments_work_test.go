@@ -206,7 +206,7 @@ func TestSegmentWorkerFindsASeasonsIntroAndCreditsAndRespectsTheOwner(t *testing
 	}
 	// The owner turns detection off for the server: nothing new is queued
 	// and viewers keep only what the owner made or approved.
-	f.c.Exec(`INSERT INTO console_documents(scope,revision,body,updated_ms) VALUES('server',1,'{"library.segmentDetection":"off"}',1)`)
+	f.c.Exec(`INSERT INTO server_settings(singleton,updated_ms,"library.segmentDetection") VALUES(1,0,'off')`)
 	f.episode("s1e6", 1, 6, 20)
 	f.settle()
 	var queued int
@@ -289,7 +289,7 @@ func TestSegmentModesOfDocumentsSavedBeforeDetectionExisted(t *testing.T) {
 	c.Library("tv", "TV", "tv", "/tv")
 	c.Library("films", "Films", "movie", "/films")
 	c.Library("music", "Music", "music", "/music")
-	c.Exec(`INSERT INTO console_documents(scope,revision,body,updated_ms) VALUES('server',4,'{"name":"Den","analysisStorageGiB":64}',1)`)
+	c.Exec(`INSERT INTO server_settings(singleton,updated_ms,"analysisStorageGiB") VALUES(1,0,64)`)
 	c.Exec(`INSERT INTO admin_documents(scope,revision,body,updated_ms) VALUES('library:tv',2,'{"allowMediaDeletion":true}',1)`)
 	ctx := context.Background()
 	libraries, server, err := segmentLibrariesTx(ctx, c.DB)
