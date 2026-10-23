@@ -151,6 +151,8 @@
 .backupListTitle b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; }
 .backupListTitle small { display: block; margin-top: 4px; color: var(--color-text-tertiary); font-size: 14px; }
 .backupNewest { padding: 4px 8px; border-radius: 6px; color: var(--color-accent-strong); background: color-mix(in srgb, var(--color-accent) 14%, transparent); font-size: 12px; font-weight: 700; }
+.backupConfirmation { display: flex; flex-direction: column; gap: 14px; }
+.backupConfirmation > b { font-size: 15px; font-weight: 700; }
 @media (max-width: 599px) {
   .backupListRow { padding-inline: 14px; gap: 10px; }
   .backupRestore { display: none; }
