@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/catalog"
@@ -124,8 +125,8 @@ func TestLibrarySettingsSavePreservesEpisodeMode(t *testing.T) {
 			}
 			changed := current.Settings
 			changed.Navigation.TrickplayTileWidth = 480
-			if _, err := service.SaveLibrarySettings(ctx, allow, library, Change[LibrarySettings]{ExpectedRevision: current.Revision, Settings: changed, OperationID: "episode-rollback-save"}); err == nil {
-				t.Fatal("forced document persistence failure was accepted")
+			if _, err := service.SaveLibrarySettings(ctx, allow, library, Change[LibrarySettings]{ExpectedRevision: current.Revision, Settings: changed, OperationID: "episode-rollback-save"}); err == nil || !strings.Contains(err.Error(), "fixture refuses document") {
+				t.Fatalf("save did not reach the forced document persistence failure: %v", err)
 			}
 			if !reflect.DeepEqual(read(nextMode), policy) {
 				t.Fatal("failed full save left a domain policy write committed")
