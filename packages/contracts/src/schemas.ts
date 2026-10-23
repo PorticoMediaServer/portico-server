@@ -14318,6 +14318,16 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "DeleteReadingSessionsSessionIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteReadingSessionsSessionIdResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "DeleteSavedResourcesIdRequest": {
     "properties": {
       "accountId": {
@@ -92402,6 +92412,52 @@ export const schemas = {
     "format": "binary",
     "type": "string"
   },
+  "GetItemsItemIdReadingVersionsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetItemsItemIdReadingVersionsResponse": {
+    "properties": {
+      "versions": {
+        "items": {
+          "properties": {
+            "format": {
+              "enum": [
+                "epub",
+                "pdf",
+                "cbz"
+              ],
+              "type": "string"
+            },
+            "inventoryAvailable": {
+              "type": "boolean"
+            },
+            "size": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "sourceId",
+            "format",
+            "size",
+            "inventoryAvailable"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "versions"
+    ],
+    "type": "object"
+  },
   "GetItemsRequest": {
     "properties": {},
     "required": [],
@@ -112777,6 +112833,9 @@ export const schemas = {
                   "id": {
                     "type": "string"
                   },
+                  "interlaced": {
+                    "type": "boolean"
+                  },
                   "level": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -117515,6 +117574,165 @@ export const schemas = {
       "status"
     ],
     "type": "object"
+  },
+  "GetReadingItemsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingItemsResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "format": {
+              "enum": [
+                "epub",
+                "pdf",
+                "cbz"
+              ],
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inventoryAvailable": {
+              "type": "boolean"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "libraryId",
+            "title",
+            "format",
+            "sourceId",
+            "inventoryAvailable"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdAssetsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdAssetsResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetReadingSessionsSessionIdPagesPageIndexRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdPagesPageIndexResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetReadingSessionsSessionIdProgressRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdProgressResponse": {
+    "properties": {
+      "progress": {
+        "nullable": true,
+        "properties": {
+          "location": {
+            "properties": {
+              "cfi": {
+                "type": "string"
+              },
+              "format": {
+                "enum": [
+                  "epub",
+                  "pdf",
+                  "cbz"
+                ],
+                "type": "string"
+              },
+              "pageIndex": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "progression": {
+                "type": "number"
+              },
+              "section": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "format",
+              "progression"
+            ],
+            "type": "object"
+          },
+          "observedAt": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "sourceRevision": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sourceId",
+          "sourceRevision",
+          "location",
+          "revision",
+          "observedAt",
+          "stale"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "progress"
+    ],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdSourceRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdSourceResponse": {
+    "format": "binary",
+    "type": "string"
   },
   "GetRemotePlaybackControlsRequest": {
     "properties": {},
@@ -140730,6 +140948,15 @@ export const schemas = {
     "format": "binary",
     "type": "string"
   },
+  "HeadReadingSessionsSessionIdSourceRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "HeadReadingSessionsSessionIdSourceResponse": {
+    "format": "binary",
+    "type": "string"
+  },
   "HeadV1MediaSubtitlesGrantResourceRevisionFontsFontRequest": {
     "properties": {},
     "required": [],
@@ -141540,6 +141767,9 @@ export const schemas = {
                     },
                     "id": {
                       "type": "string"
+                    },
+                    "interlaced": {
+                      "type": "boolean"
                     },
                     "level": {
                       "maximum": 9007199254740991,
@@ -169097,6 +169327,119 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostReadingSessionsRequest": {
+    "properties": {
+      "itemId": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "itemId",
+      "sourceId"
+    ],
+    "type": "object"
+  },
+  "PostReadingSessionsResponse": {
+    "properties": {
+      "format": {
+        "enum": [
+          "epub",
+          "pdf",
+          "cbz"
+        ],
+        "type": "string"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "metadata": {
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "ltr",
+              "rtl",
+              "vertical"
+            ],
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "pageNames": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "resources": {
+        "items": {
+          "properties": {
+            "mime": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "size": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "path",
+            "mime",
+            "size"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "sessionId": {
+        "type": "string"
+      },
+      "size": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "spine": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "sessionId",
+      "itemId",
+      "sourceId",
+      "revision",
+      "format",
+      "size",
+      "metadata"
+    ],
+    "type": "object"
+  },
   "PostSavedResourcesRequest": {
     "properties": {
       "accountId": {
@@ -172534,6 +172877,9 @@ export const schemas = {
       "libraries": {
         "items": {
           "properties": {
+            "kind": {
+              "type": "string"
+            },
             "name": {
               "type": "string"
             }
@@ -180495,6 +180841,127 @@ export const schemas = {
       "playlistId",
       "revision",
       "deleted"
+    ],
+    "type": "object"
+  },
+  "PutReadingSessionsSessionIdProgressRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "location": {
+        "properties": {
+          "cfi": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "epub",
+              "pdf",
+              "cbz"
+            ],
+            "type": "string"
+          },
+          "pageIndex": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "progression": {
+            "type": "number"
+          },
+          "section": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "progression"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "location"
+    ],
+    "type": "object"
+  },
+  "PutReadingSessionsSessionIdProgressResponse": {
+    "properties": {
+      "progress": {
+        "nullable": true,
+        "properties": {
+          "location": {
+            "properties": {
+              "cfi": {
+                "type": "string"
+              },
+              "format": {
+                "enum": [
+                  "epub",
+                  "pdf",
+                  "cbz"
+                ],
+                "type": "string"
+              },
+              "pageIndex": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "progression": {
+                "type": "number"
+              },
+              "section": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "format",
+              "progression"
+            ],
+            "type": "object"
+          },
+          "observedAt": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "sourceRevision": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sourceId",
+          "sourceRevision",
+          "location",
+          "revision",
+          "observedAt",
+          "stale"
+        ],
+        "type": "object"
+      },
+      "saved": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "progress",
+      "saved"
     ],
     "type": "object"
   },

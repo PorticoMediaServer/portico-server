@@ -6,6 +6,7 @@ import {createShowBindings} from '../src/screens/detail/show-bindings.ts';
 import {createPersonBindings} from '../src/screens/detail/person-bindings.ts';
 import {createSearchBindings} from '../src/screens/search/bindings.ts';
 import {createEntryDetailsBindings} from '../src/screens/detail/entry-details.ts';
+import {createWatchBodyBindings} from '../src/screens/detail/watch-body.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import {browseCapabilitiesPath} from '@core/browse.ts';
@@ -39,6 +40,29 @@ const showPage = () => ({scope: {serverId: 'server', libraryId: 'library', viewe
     heading: {key: 'entity.title', fallback: 'show'}, navigation: [], query: {sort: 'episode', direction: 'asc', category: '', q: '', limit: 40, searchMode: 'none'},
     sorts: [{id: 'episode', labelKey: 'sort.episode', directions: ['asc']}], filters: [], sections: [{id: 'episodes', type: 'list', heading: {key: 'content.episodes', fallback: 'episodes'},
       entries: [{id: 'one', kind: 'episode', title: 'one', libraryId: 'library', available: true, navigation: {view: 'item', entityId: 'one'}, playback: {itemId: 'one', startMs: 10}}], totalCount: 1, nextCursor: ''}]}});
+
+test('Watch body retains real title state across repeated presentation loads and retires My List', async () => {
+  const owner = setup(async () => ({...detailPage('movie'), actions: [{id: 'watchlist', labelKey: 'action.watchlist', enabled: true}]}));
+  const binding = createWatchBodyBindings(owner.context, {libraryId: 'library', itemId: 'movie', kind: 'movie'});
+  assert.equal(owner.requests(), 0);
+  assert.deepEqual(binding.myList.getSnapshot(), {available: false, busy: false});
+  await binding.load();
+  assert.equal(binding.body.kind, 'title');
+  if (binding.body.kind !== 'title') throw new Error('Expected actual title body');
+  binding.body.binding.view.tab('details');
+  const reads = owner.requests();
+  await binding.load();
+  assert.equal(owner.requests(), reads);
+  assert.equal(binding.body.binding.view.getSnapshot().tab, 'details');
+  assert.deepEqual(binding.myList.getSnapshot(), {available: true, watchlisted: false, busy: false});
+  owner.retire();
+  await assert.rejects(binding.myList.set(true), {name: 'AbortError'});
+  assert.equal(owner.requests(), reads);
+  binding.dispose();
+  assert.equal(binding.body.binding.service.getSnapshot().data, null);
+  assert.deepEqual(binding.myList.getSnapshot(), {available: false, busy: false});
+  assert.throws(() => binding.load(), {name: 'AbortError'});
+});
 
 test('domain factory creation is inert and disposal erases all private snapshots', () => {
   const owner = setup(async () => { throw new Error('No constructor request is authorized'); });
