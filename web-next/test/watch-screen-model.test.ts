@@ -228,7 +228,7 @@ test('drawn skip actions carry the current policy marker identity, never a UI-ma
   let live = shown, called = 0;
   const binding = {getSnapshot: () => live, isCurrent: () => true, reportError: () => {}, policyAction: async (captured: QueuePlaybackFence, action: {kind: 'skip' | 'dismiss' | 'undo'; markerId: string}) => {
     called++; assert.deepEqual(action, {kind: 'skip', markerId: 'intro'}); assert.equal(captured, fence);
-    assert.equal(policy.skip(captured)?.positionSeconds, 119);
+    assert.equal(policy.skip(captured, action.markerId)?.positionSeconds, 119);
   }};
   assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'other'}), false);
   assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'intro'}), true);
@@ -286,7 +286,7 @@ test('the credits card sends only its current closing marker to skip and never r
   let live = shown, calls = 0;
   const binding = {getSnapshot: () => live, isCurrent: () => true, reportError: (error: unknown) => { throw error; }, policyAction: async (captured: QueuePlaybackFence, action: {kind: 'skip' | 'dismiss' | 'undo'; markerId: string}) => {
     calls++; assert.deepEqual(action, {kind: 'skip', markerId: 'credits'});
-    assert.equal(policy.skip(captured)?.positionSeconds, 550);
+    assert.equal(policy.skip(captured, action.markerId)?.positionSeconds, 550);
   }};
   assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'dismiss', markerId: 'credits'}), false);
   assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'foreign'}), false);
