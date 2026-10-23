@@ -25,7 +25,7 @@ export function RegisteredSignInPage({account, pending}: {account: ServicesAccou
   const back = <ServicesBackLink href={pending.handoff.registration.origin}>{t('services.return.back', {server: pending.serverName})}</ServicesBackLink>;
   const lead = t('services.return.lead', {server: pending.serverName});
   if (!session || authenticating) return <ServicesAuthForm account={account} heading={t('auth.welcomeHome')} lead={lead}
-    initialUsername={username} after={back} onSignedIn={() => setAuthenticating(false)} />;
+    initialUsername={username} before={<HostedError error={error} />} after={back} onSignedIn={() => setAuthenticating(false)} />;
   const act = (work: (signal: AbortSignal) => Promise<void>) => {
     if (busy) return;
     const controller = new AbortController(); active.current = controller; setBusy(true); setError(undefined);

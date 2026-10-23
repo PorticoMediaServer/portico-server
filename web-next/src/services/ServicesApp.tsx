@@ -16,7 +16,7 @@ import {AccountPage} from './AccountPage';
 import {JoinPage} from './JoinPage';
 import {ServicesHomePage} from './HomePage';
 import {RegisteredSignInPage} from './SignInPage';
-import type {SignInCapture} from './sign-in';
+import {captureHostedSignIn, type SignInCapture} from './sign-in';
 
 type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink};
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
@@ -40,9 +40,10 @@ function makeRouter(context: Context) {
 // This router's types stay local. The server app remains the only global TanStack Register.
 export function ServicesApp({capture, invalidContinuation, join, signIn}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; signIn?: SignInCapture} = {}) {
   const [value] = useState(() => {
+    const signedCapture = signIn ?? captureHostedSignIn(location, history, location.origin);
     const captured = capture ?? captureServicesLink(location, history);
     const invalid = invalidContinuation ?? scrubUnsupportedServicesFragment(location, history);
-    const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, captured, {origin: location.origin, capture: signIn});
+    const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, captured, {origin: location.origin, capture: signedCapture});
     return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalid, join})};
   });
   useEffect(() => { void value.bootstrap.start(); return () => value.bootstrap.dispose(); }, [value]);
