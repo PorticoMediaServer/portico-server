@@ -24,6 +24,7 @@ export const savedQualities: readonly SavedQuality[] = Object.freeze(canonicalQu
 /** The `quality` field of a start, a change and the options preview. */
 export type QualityRequest =
   | Readonly<{mode: 'original'}>
+  | Readonly<{mode: 'cd-quality'}>
   /** One ladder step, by id. */
   | Readonly<{mode: 'fixed'; id: QualityId}>
   /** Automatic. `id` names the step to be on (`'original'`: none); `step` moves one step from where the session is (a change only). */
@@ -32,10 +33,10 @@ export type QualityRequest =
   | Readonly<{mode: 'limit'; maxVideoBitrateKbps?: number; maxHeight?: number; maxAudioBitrateKbps?: number}>;
 
 /** The quality in force on a presentation: never a `step`; automatic's `id` is the step it is on (absent: the original). */
-export type QualityInForce = Readonly<{mode: 'original' | 'fixed' | 'automatic' | 'limit'; id?: string; maxVideoBitrateKbps?: number; maxHeight?: number; maxAudioBitrateKbps?: number}>;
+export type QualityInForce = Readonly<{mode: 'original' | 'cd-quality' | 'fixed' | 'automatic' | 'limit'; id?: string; maxVideoBitrateKbps?: number; maxHeight?: number; maxAudioBitrateKbps?: number}>;
 
 /** One quality menu entry: video uses fixed ladder IDs; music uses numeric audio limits. */
-export type QualityOption = Readonly<{mode: 'original' | 'automatic' | 'fixed' | 'limit'; id?: QualityId; maxHeight?: number; maxVideoBitrateKbps?: number; maxAudioBitrateKbps?: number; sameAsOriginal?: boolean; dataGBPerHour?: number; applicable?: boolean}>;
+export type QualityOption = Readonly<{mode: 'original' | 'cd-quality' | 'automatic' | 'fixed' | 'limit'; id?: QualityId; maxHeight?: number; maxVideoBitrateKbps?: number; maxAudioBitrateKbps?: number; sameAsOriginal?: boolean; dataGBPerHour?: number; applicable?: boolean}>;
 
 /** The server's ladder (`GET /v1/playback/delivery-policy` `ladder`), widest first: what each fixed quality allows. */
 export const qualityLadder = Object.freeze(canonicalQualityLadder.filter(r => r.height > 0).map(r => Object.freeze({...r, id: r.id as QualityId})));
@@ -51,6 +52,7 @@ export function savedQualityRequest(saved: string | undefined): QualityRequest {
 
 /** The request that asks again for the quality in force on a presentation (what the next title of a viewing starts with). */
 export function requestInForce(inForce: QualityInForce): QualityRequest {
+  if (inForce.mode === 'cd-quality') return Object.freeze({mode: 'cd-quality'});
   if (inForce.mode === 'fixed' && isQualityId(inForce.id)) return Object.freeze({mode: 'fixed', id: inForce.id});
   if (inForce.mode === 'automatic') return Object.freeze(isQualityId(inForce.id) ? {mode: 'automatic', id: inForce.id} : {mode: 'automatic'});
   if (inForce.mode === 'limit') return Object.freeze({mode: 'limit', ...(inForce.maxVideoBitrateKbps ? {maxVideoBitrateKbps: inForce.maxVideoBitrateKbps} : {}), ...(inForce.maxHeight ? {maxHeight: inForce.maxHeight} : {}), ...(inForce.maxAudioBitrateKbps ? {maxAudioBitrateKbps: inForce.maxAudioBitrateKbps} : {})});
@@ -59,6 +61,7 @@ export function requestInForce(inForce: QualityInForce): QualityRequest {
 
 /** The request a menu entry stands for. */
 export function qualityOptionRequest(option: QualityOption): QualityRequest {
+  if (option.mode === 'cd-quality') return Object.freeze({mode: 'cd-quality'});
   if (option.mode === 'limit') return Object.freeze({mode: 'limit', maxAudioBitrateKbps: option.maxAudioBitrateKbps});
   if (option.mode === 'fixed' && option.id) return Object.freeze({mode: 'fixed', id: option.id});
   return Object.freeze({mode: option.mode === 'automatic' ? 'automatic' : 'original'});
@@ -94,6 +97,7 @@ export type SavedMusicQuality = (typeof canonicalMusicQualityLadder)[number]['id
 export const savedMusicQualities: readonly SavedMusicQuality[] = Object.freeze(canonicalMusicQualityLadder.map(q => q.id));
 export const musicQualityLadder = canonicalMusicQualityLadder;
 export function savedMusicQualityRequest(saved: string | undefined): QualityRequest {
+  if (saved === 'cd-quality') return Object.freeze({mode: 'cd-quality'});
   const preset = canonicalMusicQualityLadder.find(q => q.id === saved);
   return Object.freeze(preset && preset.audioKbps > 0 ? {mode: 'limit', maxAudioBitrateKbps: preset.audioKbps} : {mode: 'original'});
 }

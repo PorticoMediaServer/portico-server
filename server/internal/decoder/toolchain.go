@@ -17,7 +17,7 @@ import (
 
 type ToolchainFacts struct {
 	inventoryCacheable       bool
-	DolbyVisionDualLayerJoin bool `json:"dolbyVisionDualLayerJoin"`
+	DolbyVisionDualLayerJoin bool `json:"-"`
 	// Only a bundle's qualified packet conversion may enable this fact. A BSF
 	// name, stock dovi_rpu options or a generic device probe is insufficient.
 	// It remains false until the libdovi-backed mode-2 fixture gate is wired.
