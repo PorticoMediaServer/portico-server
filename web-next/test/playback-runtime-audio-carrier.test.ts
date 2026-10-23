@@ -52,3 +52,17 @@ test('without a stream destination, or when the element refuses to play, the aud
   assert.deepEqual(refused.links, ['to stream', 'stream-off', 'output-off', 'to speakers']);
   assert.equal(refused.reported(), 0, 'falling back is not a pause');
 });
+
+test('only the current carrier refusal is reported; pause and disposal fence late play rejections', async () => {
+  for (const action of ['current', 'pause', 'dispose'] as const) {
+    const r = rig(); let reject!: (error: unknown) => void, refused: unknown;
+    r.element.play = () => new Promise<void>((_, no) => { reject = no; });
+    r.carrier.play(error => { refused = error; });
+    if (action === 'pause') r.carrier.pause();
+    if (action === 'dispose') r.carrier.dispose();
+    const error = new DOMException('controlled policy refusal', 'NotAllowedError'); reject(error); await settle();
+    assert.equal(refused, action === 'current' ? error : undefined);
+    if (action === 'pause') assert.equal(r.carrier.carrying, true, 'a stale refusal cannot replace the current output path');
+    r.carrier.dispose();
+  }
+});
