@@ -212,6 +212,26 @@ func TestReadingRemoteRegistered(t *testing.T) {
 				if w.Code != want {
 					t.Fatal("foreign request retired actual remote reader", w.Code, w.Body.String())
 				}
+				principal, err := f.id.Authenticate(token)
+				if err != nil {
+					t.Fatal(err)
+				}
+				childCtx, cancelChild := context.WithCancel(context.Background())
+				child, err := d.Reading.OpenSession(childCtx, principal, manifest.SessionID)
+				if err != nil {
+					cancelChild()
+					t.Fatal(err)
+				}
+				cancelChild()
+				var cancelledExtent [5]byte
+				if n, err := child.ReadAt(cancelledExtent[:], 0); n != 0 || err == nil {
+					t.Fatal("canceled Reading child returned bytes", n, err)
+				}
+				_ = child.Close()
+				w = read()
+				if w.Code != want {
+					t.Fatal("canceled Reading request retired parent", w.Code, w.Body.String())
+				}
 				if w = readingHTTP(t, h, "DELETE", base, token, "", nil); w.Code != 204 {
 					t.Fatal(w.Code, w.Body.String())
 				}
