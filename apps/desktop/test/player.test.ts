@@ -4,16 +4,18 @@ import assert from 'node:assert/strict';
 import {DesktopMediaPlayer} from '../src/player.ts';
 import {observation, type Bridge, type NativeCommand, type NativeObservation} from '../src/bridge.ts';
 import type {VideoLike} from '../../../web-next/src/platform/playback/index.ts';
+import type {DesktopLocalPlayback} from '../src/local-playback.ts';
+import type {LocalPlayerSource} from '../../../packages/client-core/src/playback-v1/local-port.ts';
 
 const source = {url:'/v1/media/opaque',generation:1,mode:'direct' as const,startPositionMs:0,autoplay:true,subtitles:[]};
-function harness() {
+function harness(local?:DesktopLocalPlayback) {
   const commands: NativeCommand[] = [], handlers = new Map<string,()=>void>();
   let reading: NativeObservation = {generation:0,state:'paused',positionMs:0,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false,eqApplied:false,levelingApplied:false};
   let answer: (()=>Promise<NativeObservation>) | undefined;
   let commandEffect:((command:NativeCommand)=>Promise<void>)|undefined;
   const bridge: Bridge = {async command(command) {commands.push(command); if (command.source) reading={...reading,generation:command.source.generation};await commandEffect?.(command);},observe:()=>answer?.() ?? Promise.resolve(reading)};
   const video = {volume:1,muted:false,pause(){},load(){},removeAttribute(){},addEventListener(k:string,fn:()=>void){handlers.set(k,fn);},removeEventListener(k:string){handlers.delete(k);}} as unknown as VideoLike;
-  const player = new DesktopMediaPlayer(video,{resolveUrl:path=>'https://server.test'+path},bridge,false);
+  const player = new DesktopMediaPlayer(video,{resolveUrl:path=>'https://server.test'+path},bridge,false,local);
   return {player,commands,handlers,setCommand:(effect:NonNullable<typeof commandEffect>)=>{commandEffect=effect;},setReading:(x:Partial<NativeObservation>)=>{reading={...reading,...x};},setAnswer:(x:()=>Promise<NativeObservation>)=>{answer=x;}};
 }
 function processingSnapshot(id:string,gainDb:number):Pick<PlaybackSnapshot,'phase'|'session'|'audioEffects'>{
@@ -27,6 +29,28 @@ test('real port forwards only projection and translates private native generatio
   assert.equal(h.player.observe().generation,1);
   h.player.play();h.player.setRate(1.5);await h.player.tick();
   assert.equal(h.commands.at(-1)?.rate,1.5);h.player.dispose();assert.equal(h.handlers.size,0);
+});
+
+const localSource:LocalPlayerSource={kind:'local',scope:{authority:'local',serverId:'server',accountId:'account',profileId:'profile',sessionFamilyId:'family'},preparationId:'1'.repeat(64),localSourceId:'2'.repeat(64),entryId:'3'.repeat(64),itemId:'item',generation:1,startPositionMs:0,autoplay:true};
+const localAck=(source:LocalPlayerSource)=>({...source,sessionId:`local:${source.entryId}:1`,playId:'4'.repeat(64),artifact:{sha256:'5'.repeat(64),bytes:8}});
+test('local capability is absent without a real injected native owner; acknowledged load never calls URL load',async()=>{
+ const plain=harness();assert.equal(plain.player.loadLocal,undefined);plain.player.dispose();
+ let native=0;const retired:number[]=[];
+ const h=harness({async load(source,generation){native=generation;const {startPositionMs:_,autoplay:__,...receipt}=localAck(source);return receipt},async retire(generation){retired.push(generation)}});
+ const receipt=await h.player.loadLocal!(localSource,{signal:new AbortController().signal,isCurrent:()=>true});
+ assert.equal(receipt.generation,1);assert.equal('eqApplied' in (h.player.audioProcessing??{}),false);assert.equal(h.player.nativeSurfaceActive,false);assert.equal(h.commands.some(command=>command.action==='load'),false);
+ h.setReading({generation:native,state:'paused',positionMs:125,nativeSurfaceActive:true,eqApplied:true});await h.player.tick();
+ assert.equal(h.player.observe().generation,1);assert.equal(h.player.observe().positionMs,125);assert.equal(h.player.audioProcessing?.eqApplied,true);
+ h.player.dispose();await new Promise(resolve=>setImmediate(resolve));assert.ok(retired.includes(native));
+});
+test('a late local ACK with repeated public generation cannot publish for its replacement',async()=>{
+ let finish!:()=>void,firstNative=0;const retired:number[]=[];
+ const h=harness({async load(source,generation){firstNative=generation;await new Promise<void>(resolve=>{finish=resolve});const {startPositionMs:_,autoplay:__,...receipt}=localAck(source);return receipt},async retire(generation){retired.push(generation)}});
+ const pending=h.player.loadLocal!(localSource,{signal:new AbortController().signal,isCurrent:()=>true});
+ await new Promise(resolve=>setImmediate(resolve));h.player.load({...source,generation:1});finish();
+ await assert.rejects(pending,{name:'AbortError'});h.setReading({state:'loading'});await h.player.tick();
+ assert.ok(retired.includes(firstNative));assert.equal(h.player.observe().generation,1);assert.equal(h.player.audioProcessing,undefined);
+ assert.notEqual(h.commands.find(command=>command.action==='load')?.source?.generation,firstNative);h.player.dispose();
 });
 test('late observation cannot report for new source with same protocol generation',async()=>{
   const h=harness();h.player.load(source);await h.player.tick();

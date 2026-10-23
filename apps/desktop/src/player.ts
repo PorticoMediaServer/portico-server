@@ -4,12 +4,16 @@ import type {Bridge, NativeCommand} from './bridge.ts';
 import {NativeHole} from './surface.ts';
 import type {PlaybackSnapshot} from '../../../packages/client-core/src/index.ts';
 import {audioGainLinear} from '../../../packages/client-core/src/playback-v1/audio-render.ts';
+import {localPlayerSource,localPlayerLoadReceipt,type LocalPlayerSource,type LocalPlayerLoadContext,type LocalPlayerLoadReceipt} from '../../../packages/client-core/src/playback-v1/local-port.ts';
+import type {DesktopLocalPlayback} from './local-playback.ts';
 
 let nextNativeGeneration = 0;
 
 /** The exact existing web MediaPlayer seam. Transport/session/queue/UI remain with their owners. */
 export class DesktopMediaPlayer implements PlaybackMediaPort {
-  private source?: PlayerSource;
+  private source?: PlayerSource|LocalPlayerSource;
+  readonly loadLocal?: (source:LocalPlayerSource,context:LocalPlayerLoadContext)=>Promise<LocalPlayerLoadReceipt>;
+  private localContext?:Readonly<{context:LocalPlayerLoadContext;abort:()=>void;generation:number}>;
   private reading: PlayerObservation = {generation: 0, state: 'idle', positionMs: 0, rate: 1};
   private listeners = new Set<(event: PlayerEvent) => void>();
   private notices = new Set<(event: WebPlayerNotice) => void>();
@@ -32,12 +36,13 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   private readonly options: WebMediaPlayerOptions;
   private readonly bridge: Bridge;
 
-  constructor(video: VideoLike, options: WebMediaPlayerOptions, bridge: Bridge, poll = true) {
+  constructor(video: VideoLike, options: WebMediaPlayerOptions, bridge: Bridge, poll = true,private readonly local?:DesktopLocalPlayback) {
     this.video = video; this.options = options; this.bridge = bridge;
     video.addEventListener('volumechange', this.volumeChanged);
     // The factory receives the shell's fresh geometry/volume element. Native playback never
     // starts HTML media resource selection or measures an idle/unmounted surface.
     if (poll) this.ticker = setInterval(() => { void this.tick(); }, 200);
+    if(local)this.loadLocal=(source,context)=>this.loadLocalSource(source,context,local);
   }
   get loaded() { return this.source?.generation ?? 0; }
   get nativeSurfaceActive() { return this.surfaceActive; }
@@ -78,6 +83,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   }
   load(source: PlayerSource) {
     if (this.disposed) return;
+    this.detachLocalContext();
     const epoch = ++this.epoch; this.source = source; this.seeking = false;this.frameStepping=false;
     this.surfaceActive = false;this.processing=undefined;
     this.nativeGeneration = ++nextNativeGeneration;
@@ -90,6 +96,33 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
     this.emit({type: 'state', observation: this.reading});
     this.enqueue({action: 'load', source: {url: this.options.resolveUrl?.(source.url) ?? source.url, generation: this.nativeGeneration, mode: source.mode, startPositionMs: source.startPositionMs, autoplay: source.autoplay}}, epoch);
     if(this.effectsBinding)this.applyCurrentEffects();
+  }
+  private async loadLocalSource(input:LocalPlayerSource,context:LocalPlayerLoadContext,local:DesktopLocalPlayback):Promise<LocalPlayerLoadReceipt>{
+    const source=localPlayerSource(input);
+    if(this.disposed||context.signal.aborted||!context.isCurrent())throw new DOMException('Aborted','AbortError');
+    this.detachLocalContext();
+    const epoch=++this.epoch,native=++nextNativeGeneration;this.nativeGeneration=native;this.source=source;
+    this.seeking=false;this.frameStepping=false;this.surfaceActive=false;this.processing=undefined;this.effects=undefined;this.effectsBinding=undefined;this.sentGain=undefined;
+    if(!this.hole&&typeof HTMLVideoElement!=='undefined'&&this.video instanceof HTMLVideoElement)this.hole=new NativeHole(this.video,bounds=>this.bridge.surface?.(bounds,this.nativeGeneration)??Promise.reject(new Error('unsupported')),()=>this.surfaceActive);
+    this.hole?.invalidate();
+    this.reading={generation:source.generation,state:'loading',positionMs:0,rate:this.reading.rate};
+    this.emit({type:'state',observation:this.reading});
+    const current=()=>!this.disposed&&this.epoch===epoch&&this.source===source&&this.nativeGeneration===native&&!context.signal.aborted&&context.isCurrent();
+    const abort=()=>{if(this.epoch===epoch)this.unload();void local.retire(native).catch(()=>{});};
+    this.localContext={context,abort,generation:native};context.signal.addEventListener('abort',abort,{once:true});
+    const task=this.serial.then(async()=>{
+      if(!current())throw new DOMException('Aborted','AbortError');
+      const receipt=await local.load(source,native,context);
+      if(!current()){await local.retire(native);throw new DOMException('Aborted','AbortError');}
+      return localPlayerLoadReceipt(receipt,source);
+    }).catch(async error=>{await local.retire(native).catch(()=>{});throw error;});
+    this.serial=task.then(()=>{},()=>{if(current())this.fail(epoch);});
+    return task;
+  }
+  private detachLocalContext(){
+    if(!this.localContext)return;
+    this.localContext.context.signal.removeEventListener('abort',this.localContext.abort);
+    this.localContext=undefined;
   }
   play() { this.send({action: 'play'}); }
   pause() { this.send({action: 'pause'}); }
@@ -120,6 +153,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   onNotice(listener: (event: WebPlayerNotice) => void) { this.notices.add(listener); return () => { this.notices.delete(listener); }; }
   async tick() {
     if (this.disposed || !this.source || this.polling) return;
+    if(this.localContext&&(!this.localContext.context.isCurrent()||this.localContext.context.signal.aborted)){this.unload();return;}
     this.polling = true; const epoch = this.epoch;
     try {
       await this.serial;
@@ -140,6 +174,8 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   }
   unload() {
     if (this.source) this.send({action: 'stop'});
+    const local=this.localContext;if(local)void this.local?.retire(local.generation).catch(()=>{});
+    this.detachLocalContext();
     ++this.epoch; this.source = undefined; this.seeking = false;this.frameStepping=false; this.surfaceActive = false;this.processing=undefined;
     this.effects=undefined;this.effectsBinding=undefined;this.sentGain=undefined;
     this.hole?.dispose();this.hole=undefined;
