@@ -23,6 +23,8 @@ export const colors = {
   raisedBright: "#1d3848",
   /** Subdued containers (sunken wells, segmented tracks). */
   raisedSoft: "#0c1a25",
+  /** Player notices; the approved Undo and Up next contexts apply their own alpha. */
+  playerNotice: "#0c1923",
   /**
    * Sheets, dialogs, menus, popovers and the expanded rail. Opaque by
    * decision V-1 / X-16: text behind an overlay must never show through.
