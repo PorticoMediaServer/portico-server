@@ -268,7 +268,10 @@ func (s *Store) DeleteOne(ctx context.Context) error {
 		return e
 	}
 	// IO is outside SQLite. A pending-delete item cannot acquire a new grant.
-	e = s.driver.Remove(ctx, o, key, mediaartifact.Object{Digest: digest, Size: bytes})
+	e = s.retireRecordingLayout(ctx, id, o, key, mediaartifact.Object{Digest: digest, Size: bytes})
+	if e == nil {
+		e = s.driver.Remove(ctx, o, key, mediaartifact.Object{Digest: digest, Size: bytes})
+	}
 	if e != nil {
 		// A delayed/killed helper, transferred descriptor or inherited decoder
 		// lock is physical evidence. Retry only after another full grace window.

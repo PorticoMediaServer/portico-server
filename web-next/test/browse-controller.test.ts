@@ -106,3 +106,24 @@ test('Home display pages, facet queries and batch counts keep the immutable sour
   const count = requests.find(r => r.path.includes('counts'))!.body as {queries: {query: unknown}[]};assert.deepEqual(count.queries[0].query, membership);
  } finally {controller.dispose();}
 });
+test('type counts are one server batch with exact lower bounds, never sums of library facets', async () => {
+ const membership = {field: 'homeRow', operator: 'equals' as const, value: 'continue'};
+ const type = {field: 'library', operator: 'in' as const, value: ['one', 'two']};
+ const scoped = {...caps, fields: [
+  {id: 'homeRow', labelKey: 'homeRow', type: 'identity-set', operators: ['equals'], controlHint: 'text', applicableKinds: ['movie']},
+  {id: 'library', labelKey: 'library', type: 'enum', operators: ['in'], controlHint: 'facet-multi-select', applicableKinds: ['movie']}],
+  sorts: [...caps.sorts, {id: 'groupOrder', labelKey: 'sort.groupOrder', directions: ['asc'], defaultDirection: 'asc', requiresGroup: true, applicableKinds: ['movie']}]};
+ const counts: unknown[] = [];
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  if (path.includes('capabilities')) return scoped as T;
+  if (path.includes('counts')) {counts.push(body);return {counts: [{id: 'all', total: 10_007, totalIsLowerBound: false, revision: 'actual'}, {id: 'movie', total: 10_000, totalIsLowerBound: true, revision: 'actual'}]} as T;}
+  return payload((body as {range: {start: number}}).range.start, 80) as T;
+ }}, {libraryId: '*', pivot: 'movies', base: [membership], sort: {field: 'groupOrder', direction: 'asc'}}, () => true);
+ try {
+  await controller.load();await settle();
+  const result = await controller.counts([{id: 'all', predicates: []}, {id: 'movie', predicates: [type]}], new AbortController().signal);
+  assert.equal(counts.length, 1);
+  assert.deepEqual((counts[0] as {queries: unknown}).queries, [{id: 'all', query: membership}, {id: 'movie', query: {all: [membership, type]}}]);
+  assert.deepEqual(result.map(count => [count.total, count.totalIsLowerBound]), [[10_007, false], [10_000, true]]);
+ } finally {controller.dispose();}
+});

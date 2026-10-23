@@ -240,6 +240,30 @@ pub struct PreparedLocalItem {
     pub duration_ms: u64,
     pub local_source_id: String,
 }
+#[derive(Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub struct LocalLoadRequest {
+    pub preparation_id:String,
+    pub local_source_id:String,
+    /// Native generation allocated by the app adapter, independent of public generation.
+    pub generation:u64,
+    pub start_position_ms:f64,
+    pub autoplay:bool,
+}
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct LocalLoadReceipt {
+    pub kind:&'static str,
+    pub scope:ViewerScope,
+    pub preparation_id:String,
+    pub local_source_id:String,
+    pub generation:u64,
+    pub session_id:String,
+    pub play_id:String,
+    pub item_id:String,
+    pub entry_id:String,
+    pub artifact:PlaybackArtifact,
+}
 struct ActiveLocal {
     viewer: DownloadViewer,
     entry_id: String,
@@ -569,26 +593,34 @@ impl DownloadsSession {
             items,
         })
     }
-    pub fn begin_local(&mut self, lease: &str, source_id: &str, generation: u64) -> Result<()> {
-        let viewer = self.viewer(lease)?;
-        let source = self
-            .local_sources
-            .get(source_id)
-            .ok_or(Error::DownloadsConflict)?;
-        let entry = self.store.entry(&viewer, &source.entry_id)?;
-        self.active_local = Some(ActiveLocal {
-            viewer,
-            entry_id: entry.id,
-            item_id: entry.item_id,
-            play_id: random_id()?,
-            generation,
-            last_write: std::time::Instant::now(),
-            last_position_ms: 0,
-        });
-        Ok(())
+    /// A receipt acknowledges one accepted native load, not FILE_LOADED or playing.
+    /// It is prepared before the effect, but is published and becomes the journal
+    /// owner only after the effect accepts. Failed replacement leaves the old owner.
+    pub fn load_local(&mut self,lease:&str,request:&LocalLoadRequest,previous:&crate::boundary::Observation,execute:impl FnOnce(&Path)->Result<()>)->Result<LocalLoadReceipt>{
+        let viewer=self.viewer(lease)?;
+        if request.generation==0||request.generation>crate::download_receipt::SAFE_INTEGER
+            ||!request.start_position_ms.is_finite()||!(0.0..=1e12).contains(&request.start_position_ms){return Err(Error::InvalidCommand)}
+        if self.local_preparation.as_deref()!=Some(&request.preparation_id){return Err(Error::DownloadsConflict)}
+        let source=self.local_sources.get(&request.local_source_id).ok_or(Error::DownloadsConflict)?;
+        let entry=self.store.entry(&viewer,&source.entry_id)?;
+        if entry.revision!=source.entry_revision{return Err(Error::DownloadsConflict)}
+        let verified=self.store.verified_playback(&viewer,&entry.id)?;
+        let scope=self.binding.as_ref().ok_or(Error::DownloadsConflict)?.scope.clone();
+        let receipt=LocalLoadReceipt{kind:"local",scope,preparation_id:request.preparation_id.clone(),local_source_id:request.local_source_id.clone(),generation:request.generation,
+            session_id:format!("local:{}:{}",entry.id,self.store.next_local_sequence()?),play_id:random_id()?,item_id:entry.item_id.clone(),entry_id:entry.id.clone(),artifact:verified.artifact};
+        execute(&verified.path)?;
+        let _=self.record_observation(previous,true);
+        self.active_local=Some(ActiveLocal{viewer,entry_id:entry.id,item_id:entry.item_id,play_id:receipt.play_id.clone(),generation:request.generation,last_write:std::time::Instant::now(),last_position_ms:0});
+        Ok(receipt)
     }
     pub fn active_generation(&self) -> Option<u64> {
         self.active_local.as_ref().map(|p| p.generation)
+    }
+    pub fn retire_local_load(&mut self,lease:&str,generation:u64,previous:&crate::boundary::Observation,execute:impl FnOnce()->Result<()>)->Result<()>{
+        if !self.lease_current(lease)||self.active_generation()!=Some(generation){return Ok(())}
+        execute()?;
+        let _=self.record_observation(previous,true);
+        self.retire_local();Ok(())
     }
     pub fn active_file_valid(&self) -> bool {
         self.active_local.as_ref().is_none_or(|p| self.store.playback_file(&p.viewer, &p.entry_id).is_ok())
@@ -777,6 +809,39 @@ mod tests {
             std::fs::read(session.local_file(&lease, source).unwrap()).unwrap(),
             b"media"
         );
+        let mut observation=crate::boundary::Observation{generation:0,state:"idle".into(),position_ms:0.0,rate:1.0,volume:1.0,muted:false,dropped_frames:0,native_surface_active:false,eq_applied:false,leveling_applied:false};
+        let mut load=LocalLoadRequest{preparation_id:prepared.preparation_id.clone(),local_source_id:source.clone(),generation:10,start_position_ms:0.0,autoplay:true};
+        let first=session.load_local(&lease,&load,&observation,|path|{assert_eq!(std::fs::read(path).unwrap(),b"media");Ok(())}).unwrap();
+        assert!(first.scope==scope());assert_eq!(first.generation,10);assert_eq!(first.entry_id,entry.id);
+        assert_eq!(first.artifact,PlaybackArtifact{sha256:sha.clone(),bytes:5});
+        assert!(first.session_id.starts_with(&format!("local:{}:",entry.id)));
+        assert!(!first.play_id.is_empty());
+        let facts=serde_json::to_string(&first).unwrap();assert!(!facts.contains(root.to_str().unwrap()));assert!(!facts.contains("path"));assert!(!facts.contains("url"));
+        // A command ACK allocates a real journal identity, not invented progress.
+        assert!(session.store.pending_plays(&viewer).unwrap().is_empty());
+        observation.generation=10;observation.state="paused".into();observation.position_ms=400.0;
+        session.record_observation(&observation,true).unwrap();
+        assert_eq!(session.store.pending_plays(&viewer).unwrap()[0].play_id,first.play_id);
+        load.generation=11;
+        assert!(matches!(session.load_local(&lease,&load,&observation,|_|Err(Error::StaleGeneration)),Err(Error::StaleGeneration)));
+        assert_eq!(session.active_generation(),Some(10));
+        let path=session.local_file(&lease,source).unwrap();
+        std::fs::write(&path,b"other").unwrap();
+        assert!(matches!(session.load_local(&lease,&load,&observation,|_|panic!("corrupt file reached decoder")),Err(Error::DownloadVerificationFailed)));
+        assert_eq!(session.active_generation(),Some(10));std::fs::write(&path,b"media").unwrap();
+        let wanted=load.preparation_id.clone();load.preparation_id="another_preparation".into();
+        assert!(matches!(session.load_local(&lease,&load,&observation,|_|panic!("wrong preparation reached decoder")),Err(Error::DownloadsConflict)));
+        load.preparation_id=wanted;
+        let second=session.load_local(&lease,&load,&observation,|_|Ok(())).unwrap();
+        assert_ne!(first.session_id,second.session_id);assert_ne!(first.play_id,second.play_id);
+        assert_eq!(session.active_generation(),Some(11));
+        // Late retirement of the first native load cannot stop its replacement.
+        session.retire_local_load(&lease,10,&observation,||panic!("late cancellation stopped replacement")).unwrap();
+        assert_eq!(session.active_generation(),Some(11));
+        observation.generation=11;observation.state="ended".into();observation.position_ms=1000.0;
+        session.retire_local_load(&lease,11,&observation,||Ok(())).unwrap();
+        assert_eq!(session.active_generation(),None);
+        assert!(session.store.pending_plays(&viewer).unwrap().iter().any(|play|play.play_id==second.play_id&&play.ended&&play.position_ms==1000));
         let json = serde_json::to_string(&prepared).unwrap();
         assert!(!json.contains(".media"));
         assert!(!json.contains(root.to_str().unwrap()));
@@ -794,11 +859,13 @@ mod tests {
         let next = session.bind(scope()).unwrap();
         assert!(session.local_file(&next, source).is_err());
         assert!(session.local_file(&lease, source).is_err());
-        drop(session);
+        let sequence=session.store.next_local_sequence().unwrap();drop(session);
+        let reopened=DownloadsSession::open(&root).unwrap();assert_eq!(reopened.store.next_local_sequence().unwrap(),sequence+1);drop(reopened);
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn closed_commands_bound_byte_allocation_and_reject_extra_paths() {
+        assert!(serde_json::from_str::<LocalLoadRequest>(r#"{"preparationId":"p","localSourceId":"s","generation":1,"startPositionMs":0,"autoplay":true,"url":"file:///private"}"#).is_err());
         assert!(
             serde_json::from_str::<DownloadOperation>(r#"{"action":"capacity","path":"/private"}"#)
                 .is_err()

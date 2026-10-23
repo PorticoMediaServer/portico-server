@@ -431,6 +431,7 @@ index metadata_tags_facet
 index metadata_tags_name
 index metadata_work_expiry
 index mount_operations_retention
+index music_sonic_embeddings_entity
 index music_sonic_embeddings_model
 index music_virtual_tracks_entity
 index networking_certificates_scope

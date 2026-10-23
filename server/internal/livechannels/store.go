@@ -683,6 +683,11 @@ func (s *Store) Guide(ctx context.Context, a Authority, q GuideQuery) (Guide, er
 	if more {
 		out.NextCursor = s.cursor(guideCursor{binding, offset + scanned})
 	}
+	if q.MarkChannels != nil {
+		if e = q.MarkChannels(ctx, tx, out.Channels); e != nil {
+			return out, e
+		}
+	}
 	for _, src := range sources {
 		out.Sources = append(out.Sources, src)
 	}
