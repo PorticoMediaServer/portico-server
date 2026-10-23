@@ -2,7 +2,8 @@ import {formatAudioSource, formatDeliveryTarget, formatSubtitleSource, formatVid
 import type {DashboardSession as AdminSession} from './bindings';
 import type {DashboardHistory} from '@core/admin/dashboard.ts';
 import type {ReportInterval} from '@core/report-context.ts';
-import type {TelemetryPoint} from '@core/telemetry.ts';
+import {DASHBOARD_LOAD_SERIES} from '@core/admin/dashboard.ts';
+import type {TelemetryReading, TelemetryPoint} from '@core/telemetry.ts';
 import {defaultI18n} from '@i18n';
 
 export const mediaKinds = ['movies', 'tv', 'music', 'audiobooks', 'live'] as const;
@@ -29,8 +30,9 @@ export function sessionTracks(s: AdminSession): readonly Track[] {
     const delivery = s.delivery?.streams.find(t => t.kind === kind || kind === 'subtitles' && t.kind === 'subtitle');
     const decision = s.decision[kind], reported = delivery?.action ?? decision?.action;
     const action = reported === 'original' ? 'direct' : reported === 'convert' ? 'transcode' : reported === 'burn_in' ? 'burn' : reported === 'drop' ? 'off' : reported;
-    if (!source && !action) continue;
-    tracks.push({reportedAction: reported, route: trackRoute(reported), kind, source: source || (delivery?.inputCodec ? formatCodec(delivery.inputCodec) : ''), action: action ?? 'unknown', output: formatDeliveryTarget(s, kind, delivery?.outputCodec || decision?.to), hardware: kind === 'video' && s.media?.videoHardware === true && (action === 'transcode' || action === 'burn')});
+    const selectedSource = source || (delivery?.inputCodec ? formatCodec(delivery.inputCodec) : '');
+    if (!selectedSource && !trackRoute(reported)) continue;
+    tracks.push({reportedAction: reported, route: trackRoute(reported), kind, source: selectedSource, action: action ?? 'unknown', output: formatDeliveryTarget(s, kind, delivery?.outputCodec || decision?.to), hardware: kind === 'video' && s.media?.videoHardware === true && (action === 'transcode' || action === 'burn')});
   }
   return tracks;
 }
@@ -64,15 +66,16 @@ export function plotLine(pts: readonly (readonly [number, number])[], step = fal
   return d;
 }
 /** No synthesized zeroes or line across an unavailable sample. Geometry matches the drawing. */
-export function chartPaths(points: readonly TelemetryPoint[], from: number, until: number, max: number, step = false, geometry: PlotGeometry = {left: 64, top: 8, width: 840, height: 216}): readonly string[] {
+export function chartPaths(points: readonly TelemetryPoint[], from: number, until: number, max: number, step = false, geometry: PlotGeometry = {left: 64, top: 8, width: 840, height: 216}, expected?: readonly number[]): readonly string[] {
   if (!points.length || until <= from || max <= 0) return [];
   const intervals = points.slice(1).map((p, i) => p.t - points[i].t).filter(n => n > 0).sort((a, b) => a - b);
   const cadence = intervals[Math.floor(intervals.length / 2)] ?? Infinity;
+  const ordinals = expected && new Map(expected.map((stamp, i) => [stamp, i]));
   const paths: string[] = []; let chunk: [number, number][] = [], last: TelemetryPoint | undefined;
   for (const p of points) {
     if (!Number.isFinite(p.v) || p.t < from || p.t > until) continue;
     const x = geometry.left + (p.t - from) / (until - from) * geometry.width, y = geometry.top + geometry.height - Math.max(0, p.v) / max * geometry.height;
-    const gap = last && p.t - last.t > cadence * 2.5;
+    const gap = last && (ordinals ? !ordinals.has(last.t) || !ordinals.has(p.t) || ordinals.get(p.t)! - ordinals.get(last.t)! > 1 : p.t - last.t > cadence * 2.5);
     if (gap && chunk.length) {paths.push(plotLine(chunk, step)); chunk = [];}
     chunk.push([x, y]);
     last = p;
@@ -81,6 +84,14 @@ export function chartPaths(points: readonly TelemetryPoint[], from: number, unti
 }
 export function bucketSeries(history: DashboardHistory, kind: string): readonly TelemetryPoint[] {
   return history.buckets.map(bucket => ({t: Date.parse(bucket.start), v: bucket.kinds.find(k => k.kind === kind)?.watchedMs ?? 0}));
+}
+/** A tile never promotes a whole-system value to Portico, or a partial pair to a total. */
+export function loadTileValue(reading: TelemetryReading, kind: keyof typeof DASHBOARD_LOAD_SERIES): number | undefined {
+  const metrics = DASHBOARD_LOAD_SERIES[kind].metrics;
+  const names = kind === 'processor' || kind === 'memory' ? metrics.slice(0, 1) : metrics;
+  const points = names.map(name => reading.status[name]?.status === 'unavailable' ? undefined : reading.series[name]?.at(-1));
+  if (points.some(point => !point) || points.some(point => point!.t !== points[0]!.t)) return undefined;
+  return points.reduce((sum, point) => sum + point!.v, 0);
 }
 export type AxisTick = Readonly<{f: number; text: string}>;
 /** The drawing's label thinning, with no changes to data or bucket identities. */

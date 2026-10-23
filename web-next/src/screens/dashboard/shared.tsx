@@ -1,8 +1,8 @@
-import type {ReactNode} from 'react';
+import {useEffect, useState, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {MessageId} from '@i18n';
 import {Select} from '../../kit/controls';
-import {StateView} from '../../kit/states';
+import {Skeleton, StateView} from '../../kit/states';
 import type {ReadState} from './use-read';
 import styles from './dashboard.module.css';
 export const t = defaultI18n.t;
@@ -13,6 +13,13 @@ export function Range({value, onChange, values, load = false}: {load?: boolean; 
 export function Section({title, extra, actions, children, id}: {title: string; extra?: ReactNode; actions?: ReactNode; children: ReactNode; id?: string}) {
   return <section className={styles.section} id={id}><div className={styles.heading}><h3>{title}</h3>{extra}<div className={styles.filters}>{actions}</div></div>{children}</section>;
 }
-export function ReadFeedback({state, openHome}: {openHome: () => void; state: ReadState<unknown> & {refresh: () => void}}) {
-  return state.failed ? <div role="alert"><StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} icon="i-alert" tone="warning" secondary={{id: 'home', label: t('next.states.goHome'), onPress: openHome}} primary={{id: 'retry', label: t('next.dashboard.retry'), icon: 'i-refresh', onPress: state.refresh}} /></div> : state.loading && !state.value ? <p className={styles.empty} role="status">{t('next.dashboard.loading')}</p> : null;
+export function ReadFeedback({state, openHome, height = 156}: {openHome: () => void; height?: number; state: ReadState<unknown> & {refresh: () => void}}) {
+  const pending = state.loading && !state.value;
+  const [shapes, showShapes] = useState(false);
+  useEffect(() => {
+    if (!pending) {showShapes(false); return;}
+    const timer = setTimeout(() => showShapes(true), 300);
+    return () => clearTimeout(timer);
+  }, [pending]);
+  return state.failed ? <div role="alert"><StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} icon="i-alert" tone="warning" secondary={{id: 'home', label: t('next.states.goHome'), onPress: openHome}} primary={{id: 'retry', label: t('next.dashboard.retry'), icon: 'i-refresh', onPress: state.refresh}} /></div> : pending && shapes ? <div aria-busy="true"><Skeleton height={height} sheen /></div> : null;
 }

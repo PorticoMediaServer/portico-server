@@ -1,4 +1,5 @@
 import {defaultI18n, type MessageId} from '@i18n';
+import type {ReportInterval} from '@core/report-context.ts';
 import type {DashboardSession} from './bindings';
 import type {Track} from './model';
 
@@ -57,13 +58,29 @@ export function formatLoadAxis(value: number, kind: DashboardLoadKind): string {
   if (value === 0 || kind === 'conversions') return String(value);
   return t(kind === 'bandwidth' ? 'next.dashboard.mbps' : 'next.dashboard.percent', {value: String(value)});
 }
+/** The drawing's tooltip sentences, applied to genuine returned timestamps/bounds only. */
+export function formatReportBucketTitle(interval: ReportInterval, stamp: number, history = false): string {
+  const format = (time: number, options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(defaultI18n.locale, {...options, timeZone: interval.timeZone}).format(time);
+  if (interval.period === 'live') {
+    const seconds = Math.round((Date.parse(interval.until) - stamp) / 1000);
+    return seconds <= 0 ? t('next.dashboard.axis.Now') : t('next.dashboard.secondsAgo', {seconds});
+  }
+  const day = format(stamp, {weekday: 'short'}), date = format(stamp, {month: 'short', day: 'numeric'});
+  if (interval.period === '1y' || interval.period === 'all') {
+    const bucket = interval.buckets.find(b => Date.parse(b.start) === stamp);
+    return bucket ? t('next.dashboard.quietWindow', {from: date, until: format(Math.max(stamp, Date.parse(bucket.end) - 1), {month: 'short', day: 'numeric'})}) : date;
+  }
+  if (history || interval.period === '90d' || interval.period === 'today') return t('next.dashboard.format.dayAndDate', {day, date});
+  if (interval.period === '12h' || interval.period === '24h') return t('next.dashboard.format.dayClock', {day, clock: format(stamp, {hour: 'numeric', minute: '2-digit'})});
+  return t('next.dashboard.format.dayDateHour', {day, date, hour: format(stamp, {hour: 'numeric'})});
+}
 /** Source strings in SESSIONS:284–305. Codec identity is not a delivery-quality ceiling. */
 const codecIds: Readonly<Record<string, MessageId>> = {
   h264: 'next.kit.codec.h264', avc: 'next.kit.codec.h264', hevc: 'next.kit.codec.hevc', h265: 'next.kit.codec.hevc',
   aac: 'next.kit.codec.aac', truehd: 'next.dashboard.format.truehd', eac3: 'next.dashboard.format.eac3',
   flac: 'next.kit.codec.flac', pgs: 'next.kit.codec.pgs', hdmv_pgs_subtitle: 'next.kit.codec.pgs', srt: 'next.kit.codec.srt', subrip: 'next.kit.codec.srt',
 };
-export const formatCodec = (codec: string): string => codecIds[codec.toLowerCase()] ? t(codecIds[codec.toLowerCase()]) : codec.toUpperCase();
+export const formatCodec = (codec: string): string => ['', 'unknown', 'und', 'none'].includes(codec.toLowerCase()) ? '' : codecIds[codec.toLowerCase()] ? t(codecIds[codec.toLowerCase()]) : codec.toUpperCase();
 export function formatLanguage(code?: string): string | undefined {
   if (!code || code === 'und') return undefined;
   try {return new Intl.DisplayNames([defaultI18n.locale], {type: 'language', fallback: 'none'}).of(code);} catch {return undefined;}
@@ -77,7 +94,7 @@ function sourceChannels(audio: NonNullable<NonNullable<DashboardSession['media']
   return undefined;
 }
 export function formatVideoSource(video: NonNullable<NonNullable<DashboardSession['media']>['video']>): string {
-  const hdr = video.hdr && video.hdr.toLowerCase() !== 'sdr' ? video.hdr.toUpperCase() : undefined;
+  const hdr = video.hdr && !['sdr', 'unknown', 'none'].includes(video.hdr.toLowerCase()) ? video.hdr.toUpperCase() : undefined;
   const profile = !hdr && video.profile?.toLowerCase() === 'main 10' ? t('next.dashboard.format.main10') : undefined;
   return [formatResolution(video.height), formatCodec(video.codec), hdr ?? profile].filter(Boolean).join(' ');
 }

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {chartPaths, orderedSessions, quietestHours, sessionTracks} from '../src/screens/dashboard/model.ts';
+import {chartPaths, loadTileValue, orderedSessions, quietestHours, sessionTracks} from '../src/screens/dashboard/model.ts';
 import type {DashboardSession} from '../src/screens/dashboard/bindings.ts';
 const base: DashboardSession = {id: 'session', user: 'account', profile: 'Kids', device: 'TV', title: 'Actual title', kind: 'vod', state: 'playing', positionMs: 1, location: 'local', startedAt: '2026-10-23T01:00:00Z', decision: {}};
 test('source/delivery actions use committed modes and unknown hardware remains absent', () => {
@@ -18,4 +18,17 @@ test('telemetry gaps do not become zeroes or connected history', () => {
 });
 test('quiet window uses actual Monday-first grid and empty has no suggestion', () => {
   const grid = Array.from({length: 7}, () => Array(24).fill(10)); for (const day of grid) day.splice(4, 3, 0, 0, 0); assert.equal(quietestHours(grid), 4); assert.equal(quietestHours(grid.map(day => day.map(() => 0))), undefined);
+});
+
+test('reported bucket identities keep sparse and unequal calendar points as gaps', () => {
+  const geom = {left: 64, top: 8, width: 840, height: 216};
+  assert.equal(chartPaths([{t: 0, v: 2}, {t: 30, v: 4}], 0, 30, 5, false, geom, [0, 10, 20, 30]).length, 2);
+  assert.equal(chartPaths([{t: 0, v: 2}, {t: 29, v: 4}, {t: 60, v: 3}], 0, 60, 5, false, geom, [0, 29, 60]).length, 1);
+});
+test('current tiles require their actual primary metric or a complete simultaneous pair', () => {
+  const reading = {series: {cpu: [{t: 1, v: 40}], processCPU: [], homeMbps: [{t: 1, v: 8}], awayMbps: [{t: 2, v: 3}]}, status: {cpu: {status: 'available'}, processCPU: {status: 'unavailable'}, homeMbps: {status: 'available'}, awayMbps: {status: 'available'}}} as never;
+  assert.equal(loadTileValue(reading, 'processor'), undefined);
+  assert.equal(loadTileValue(reading, 'bandwidth'), undefined);
+  const complete = {series: {homeMbps: [{t: 2, v: 8}], awayMbps: [{t: 2, v: 3}]}, status: {homeMbps: {status: 'available'}, awayMbps: {status: 'available'}}} as never;
+  assert.equal(loadTileValue(complete, 'bandwidth'), 11);
 });
