@@ -1,21 +1,25 @@
 const test=require('node:test'), assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),crypto=require('node:crypto');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../receiver.js'),'utf8');
 async function harness(fixture={}){
- const calls=[],loads=[],interceptors={},events={},timers=new Map(),storage=new Map(),sent=[],ctxEvents={},senders=[];let timer=0,at=0,state='PAUSED',listener;
- const manager={getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{loads.push(x);state=x.autoplay?'PLAYING':'PAUSED'},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>interceptors[k]=v,addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
+ const calls=[],loads=[],interceptors={},events={},timers=new Map(),storage=new Map(),sent=[],ctxEvents={},senders=[],queueItems=[];let timer=0,at=0,state='PAUSED',listener;
+ const manager={getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{loads.push(x);state=x.autoplay?'PLAYING':'PAUSED'},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>interceptors[k]=v,addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
  const castContext={getDeviceCapabilities:()=>fixture.caps||{},canDisplayType:(mime,codecs,width,height,fps)=>{assert(!mime.includes(';'));return !!fixture.supports?.(mime,codecs,width,height,fps)},getPlayerManager:()=>manager,addCustomMessageListener:(ns,fn)=>listener=fn,sendCustomMessage:(ns,id,body)=>sent.push({id,body}),addEventListener:(k,v)=>ctxEvents[k]=v,getSenders:()=>senders,start:()=>{}};
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
- const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP'].map(x=>[x,x]))},events:{EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_DISCONNECTED:'disconnect'},MessageType:{JSON:'json'}}}};
+ const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_DISCONNECTED:'disconnect'},MessageType:{JSON:'json'}}}};
  let failed=false,expired=false,preparing=!!fixture.preparing,generation=1;
  const presentation=(start)=>({generation,mode:fixture.direct?'direct':'stream',url:fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8',container:fixture.direct?'mp4':'fmp4_hls',startPositionMs:start||0,subtitles:[],decision:fixture.transcode?{video:{action:'transcode',reasons:[]}}:{video:{action:'copy',reasons:[]}}});
- const sessionFor=(body,start)=>({id:'ps_1',revision:String(generation),kind:'vod',role:'local',state:'playing',itemId:body?.itemId||'movie',lease:{reportEveryMs:10000},presentation:presentation(start)});
+ const sessionFor=(body,start)=>({id:'ps_1',revision:String(generation),kind:'vod',role:'local',state:'playing',itemId:body?.itemId||'movie',...(body?.queue?{queue:body.queue}:fixture.queue?{queue:{queueId:'q-1',entryId:'entry-1'}}:{}),lease:{reportEveryMs:10000},presentation:presentation(start)});
  const reply=(payload,status=200)=>new Response(status===204?null:JSON.stringify(payload),{status});
- const context={document,cast,URL,URLSearchParams,TextDecoder,AbortController,Uint8Array,console,Number,Promise,setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearTimeout:id=>timers.delete(id),setInterval:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearInterval:id=>timers.delete(id),fetch:async(url,options)=>{
+ const context={document,cast,navigator:fixture.mediaCapabilities?{mediaCapabilities:fixture.mediaCapabilities}:{},URL,URLSearchParams,TextDecoder,AbortController,Uint8Array,console,Number,Promise,setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearTimeout:id=>timers.delete(id),setInterval:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearInterval:id=>timers.delete(id),fetch:async(url,options)=>{
   const body=options.body?JSON.parse(options.body):undefined;calls.push({url,body,method:options.method,headers:options.headers});
   const path=url.replace(/^https?:\/\/[^/]+/,'');
   if(path.startsWith('/v2/'))throw new Error('removed v2 route '+path);
   if(path.endsWith('/reconnect')&&fixture.revoked)return reply({error:{code:'cast_device_revoked',message:'That receiver pairing was revoked.',retryable:false}},403);
   if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({device:{id:'cdv_'+(body?.code||'renewed'),generation:'1'},session:{accessToken:'bearer-'+(body?.code||'renewed')},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
+  if(fixture.queue&&path==='/v1/queues/q-1'&&options.method==='GET')return reply({id:'q-1',revision:'1',next:{available:!fixture.queueEnd,entryId:'entry-2',reason:'ready'}});
+  if(fixture.queue&&path==='/v1/queues/q-1:prepare-next')return reply({token:'private-next-token',itemId:'song-2',entryId:'entry-2',expiresAt:'2099-01-01T00:00:00Z',presentation:{...presentation(0),url:fixture.noPrivateURL?'':'/v1/media/private-next'}});
+  if(fixture.queue&&path==='/v1/queues/q-1:commit-next'){if(fixture.rejectCommit)return reply({error:{code:'prepared_canceled'}},409);return reply({queue:{id:'q-1',revision:'2'},session:{...sessionFor({},0),id:'ps_2',itemId:'song-2',queue:{queueId:'q-1',entryId:'entry-2'}}});}
+  if(fixture.queue&&path==='/v1/queues/q-1:advance')return reply({queue:{id:'q-1',revision:'2'},session:{...sessionFor({},0),id:'ps_2',itemId:'song-2',queue:{queueId:'q-1',entryId:'entry-2'}}});
   if(path==='/v1/me/devices/current/capabilities')return reply({},204);
   if(path==='/v1/playback/sessions'&&options.method==='POST'){
    if(fixture.ambiguous&&!failed){failed=true;throw new Error('lost response')}
@@ -33,12 +37,12 @@ async function harness(fixture={}){
  }};
  context.window={cast,crypto:crypto.webcrypto,location:{origin:'https://cast.getportico.tv'},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}};
  vm.runInNewContext(source,context);await new Promise(setImmediate);
- return {receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
+ return {receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,queueItems,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
 }
 for(const [name,fixture,want]of[
  ['Chromecast 3',{supports:()=>false},['h264','vp8']],
  ['Ultra',{caps:{is_hdr_supported:true},supports:(_,codec)=>codec.startsWith('hev1')||codec.startsWith('vp09')},['h264','vp8','hevc','vp9']],
- ['Google TV 4K',{caps:{is_hdr_supported:true,is_dv_supported:true},supports:()=>true},['h264','vp8','hevc','vp9','av1']]])test('probes '+name,async()=>{const h=await harness(fixture),p=h.receiver.buildProfile(h.castContext);assert.equal(p.version,2);assert.deepEqual(Array.from(p.engines.native.video,x=>x.codec),want);assert.deepEqual(Array.from(p.engines.native.audioPassthrough,x=>x.codec),name==='Google TV 4K'?['ac3','eac3']:[]);assert(!p.engines.native.audio.some(x=>x.codec==='ac3'));assert.equal(p.display.height,name==='Chromecast 3'?1080:2160);assert.equal(p.audioOutput.maxChannels,name==='Google TV 4K'?6:2);});
+ ['Google TV 4K',{caps:{is_hdr_supported:true,is_dv_supported:true},supports:()=>true},['h264','vp8','hevc','vp9','av1']]])test('probes '+name,async()=>{const h=await harness(fixture),p=h.receiver.buildProfile(h.castContext);assert.equal(p.version,2);assert.deepEqual(Array.from(p.engines.native.video,x=>x.codec),want);assert.deepEqual(Array.from(p.engines.native.audioPassthrough,x=>x.codec),name==='Google TV 4K'?['ac3','eac3']:[]);assert(!p.engines.native.audio.some(x=>x.codec==='ac3'));assert.equal(p.display.height,name==='Chromecast 3'?1080:2160);assert.equal(p.audioOutput.maxChannels,name==='Google TV 4K'?8:2);});
 const settle0=async()=>{for(let i=0;i<30;i++)await new Promise(setImmediate);};
 const fireAll=async(h,ms)=>{for(const [id,t] of [...h.timers])if(ms===undefined||t.ms===ms){h.fire(id);await settle0();}};
 test('a load starts a Playback v1 session and plays its presentation; a lost start is repeated exactly (SV-012)',async()=>{
@@ -235,4 +239,75 @@ test('refusing a takeover revokes the unused pairing and keeps the existing film
  await h.message('guest',{type:'pair',code:'OTHER1',origin:''});await h.message('phone',{type:'takeover',allow:false});
  assert(h.calls.some(x=>x.url.endsWith('/v1/cast/devices/cdv_OTHER1')&&x.method==='DELETE'&&x.headers.Authorization==='Bearer bearer-OTHER1'&&x.headers['If-Match']==='1'));
  assert.equal(h.receiver.state().playbackId,'ps_1');assert.equal(h.manager.getPlayerState(),'PLAYING');
+});
+
+// SDK flags and exact format probes are separate facts; no Atmos from EC-3 alone.
+test('HDR/DV/Atmos declarations require positive per-device answers',async()=>{
+ const h=await harness({caps:{is_hdr_supported:true,is_dv_supported:true,is_dolby_atmos_supported:true},supports:(_,codec)=>codec.startsWith('hev1')||codec==='ec-3'||codec==='dvhe.05.07'});
+ const p=h.receiver.buildProfile(h.castContext),v=p.engines.native.video.find(v=>v.codec==='hevc');
+ assert.deepEqual(j(v.dolbyVisionProfiles),[5]);assert.deepEqual(j(p.display.dynamicRanges),['sdr','hdr10','dolby_vision']);
+ assert.deepEqual(j(p.engines.native.audioPassthrough.find(a=>a.codec==='eac3').objectAudio),['atmos']);
+ assert(!p.engines.native.audio.some(a=>a.codec==='dts'||a.codec==='truehd'));
+ const no=await harness({caps:{is_dv_supported:true},supports:(_,codec)=>codec.startsWith('hev1')||codec==='ec-3'}),n=no.receiver.buildProfile(no.castContext);
+ assert.deepEqual(j(n.engines.native.video.find(v=>v.codec==='hevc').dolbyVisionProfiles),[]);
+ assert.deepEqual(j(n.engines.native.audioPassthrough.find(a=>a.codec==='eac3').objectAudio),[]);
+ assert.deepEqual(j(n.display.dynamicRanges),['sdr']);
+});
+test('music formats and fMP4 transport declarations follow device probes',async()=>{
+ const h=await harness({supports:(_,codec)=>codec==='fLaC'}),p=h.receiver.buildProfile(h.castContext);
+ assert(!p.engines.native.audio.some(a=>a.codec==='opus'));
+ assert(!p.engines.native.transports.find(t=>t.transport==='hls_fmp4').audio.includes('opus'));
+ const all=await harness({supports:()=>true}),a=all.receiver.buildProfile(all.castContext);
+ assert(a.engines.native.transports.find(t=>t.transport==='hls_fmp4').audio.includes('flac'));
+ const speaker=await harness({caps:{display_supported:false},supports:()=>true}),s=speaker.receiver.buildProfile(speaker.castContext);
+ assert.equal(s.audioOutput.route,'speaker');assert.deepEqual(j(s.engines.native.audioPassthrough),[]);
+});
+
+test('receiver queue preloads privately and only the CAF current-item boundary commits authority',async()=>{
+ const h=await harness({queue:true});await h.message('phone',{type:'pair',code:'ABCD',origin:''});
+ await h.message('phone',{type:'load',requestId:'load-1',itemId:'song-1',queue:{queueId:'q-1',entryId:'entry-1'},contentUrl:'https://evil.test/file'});
+ assert.equal(h.queueItems.length,1);assert.equal(h.queueItems[0].preloadTime,10);
+ assert.deepEqual(h.calls.find(c=>c.url==='/v1/playback/sessions').body.queue,{queueId:'q-1',entryId:'entry-1'});
+ assert(h.sent.some(s=>s.body.type==='loaded'&&s.body.requestId==='load-1'));
+ const request={media:h.queueItems[0].media};
+ assert.equal(await h.interceptors.PRELOAD({...request,senderId:'stranger'}),null);
+ const preloaded=await h.interceptors.PRELOAD(request);assert(preloaded);assert.equal(preloaded.media.contentUrl,'/v1/media/private-next');
+ assert.equal(h.receiver.state().playbackId,'ps_1');assert(!h.calls.some(c=>c.url.endsWith(':commit-next')));
+ assert.equal(h.calls.filter(c=>c.url==='/v1/playback/sessions').length,1,'preload creates no separate public session');
+ const committed=await h.interceptors.LOAD(preloaded);assert(committed);assert.equal(h.receiver.state().playbackId,'ps_2');
+ assert.equal(h.calls.find(c=>c.url.endsWith(':commit-next')).body.token,'private-next-token');
+ await fireAll(h,0);assert(h.calls.some(c=>c.url==='/v1/playback/sessions/ps_2/timeline'&&c.body.seq===1));
+ assert(!JSON.stringify(h.sent).includes('private-next-token'));assert(!JSON.stringify(h.sent).includes('/v1/media/'));
+});
+test('unavailable private preparation leaves current authority and ordinary advance works',async()=>{
+ const h=await harness({queue:true,noPrivateURL:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
+ assert.equal(await h.interceptors.PRELOAD({media:h.queueItems[0].media}),null);assert.equal(h.receiver.state().playbackId,'ps_1');
+ h.events.MEDIA_FINISHED();await settle();assert.equal(h.receiver.state().playbackId,'ps_2');
+ assert(h.calls.some(c=>c.url.endsWith(':advance')));assert(!h.calls.some(c=>c.url.endsWith(':commit-next')));
+});
+test('a stale next nonce and server-canceled preparation never adopt another session',async()=>{
+ const h=await harness({queue:true,rejectCommit:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
+ const preloaded=await h.interceptors.PRELOAD({media:h.queueItems[0].media});
+ assert.equal(await h.interceptors.LOAD(preloaded),null);assert.equal(h.receiver.state().playbackId,'ps_1');
+ await h.interceptors.STOP({});assert.equal(await h.interceptors.LOAD(preloaded),null);
+});
+
+test('decoded multichannel and rate declarations require exact positive output configurations',async()=>{
+ const h=await harness({supports:()=>true,mediaCapabilities:{decodingInfo:async q=>({supported:q.audio.channels==='6'&&q.audio.samplerate<=96000})}});
+ const p=await h.receiver.probeAudioOutput(h.receiver.buildProfile(h.castContext));
+ assert.equal(p.engines.native.audio.find(a=>a.codec==='flac').maxChannels,6);
+ assert.equal(p.engines.native.audio.find(a=>a.codec==='flac').maxSampleRate,96000);
+ const n=await harness({supports:()=>true,mediaCapabilities:{decodingInfo:async()=>{throw new Error('unavailable')}}});
+ const no=await n.receiver.probeAudioOutput(n.receiver.buildProfile(n.castContext));
+ assert.equal(no.engines.native.audio.find(a=>a.codec==='flac').maxChannels,2);
+ assert.equal(no.engines.native.audio.find(a=>a.codec==='flac').maxSampleRate,undefined);
+});
+
+test('standard CAF queue reads and mutations cannot bypass controller authority',async()=>{
+ const h=await harness();await h.message('phone',{type:'pair',code:'ABCD',origin:''});
+ for(const kind of ['GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']){
+  assert.equal(h.interceptors[kind]({senderId:'stranger'}),null);
+  assert.deepEqual(h.interceptors[kind]({senderId:'phone'}),{senderId:'phone'});
+ }
+ for(const kind of ['QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE'])assert.equal(h.interceptors[kind]({senderId:'phone'}),null);
 });

@@ -133,6 +133,10 @@
   var scope = null;   // {accountId, profileId, authority, capabilities}
   // The Playback v1 session playing here: {id, revision, itemId, generation, serverSeek}.
   var playback = null;
+  var queueBoundaryTimer = null;
+  var queueNext = null, queueNonce = token(16); // one private lookahead, owned by the current session
+  function queuePath(id) { return '/v1/queues/' + encodeURIComponent(id); }
+  function queueRef(value) { return value && typeof value.queueId === 'string' && typeof value.entryId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(value.queueId) && /^[A-Za-z0-9._:-]{1,128}$/.test(value.entryId) ? {queueId:value.queueId,entryId:value.entryId} : null; }
   var manager = null, castContext = null, profiled = false;
   var reportTimer = null, reportSeq = 0, reportFailures = 0, recoveries = 0, recovering = false, bufferingTimer = null;
   var commands = Promise.resolve();
@@ -220,31 +224,66 @@
     function supports(codec, width, height, fps) { try { var parts=codec.split('; codecs=');return !!context && context.canDisplayType(parts[0],parts[1]?parts[1].replace(/"/g,''):'',width,height,fps); } catch (_) { return false; } }
     var fourK = supports('video/mp4; codecs="hev1.2.4.L153.B0"', 3840, 2160, 60);
     var ranges = ['sdr'];
-    if (caps.is_hdr_supported) ranges.push('hdr10', 'hlg');
-    if (caps.is_dv_supported) ranges.push('dolby_vision');
+    if (caps.is_hdr_supported === true) ranges.push('hdr10');
     var width = fourK ? 3840 : 1920, height = fourK ? 2160 : 1080;
     // Every Chromecast since the 2nd generation decodes H.264 High@4.2 1080p60; probe it rather than assume 30 fps (CAST-08).
     var h264At60 = supports('video/mp4; codecs="avc1.64002A"', 1920, 1080, 60);
     var video = [{codec:'h264',bitDepths:[8],maxWidth:1920,maxHeight:1080,maxLevel:h264At60?42:41,maxFrameRate:h264At60?60:30,dynamicRanges:['sdr'],evidence:h264At60?'probed':'declared'},{codec:'vp8',bitDepths:[8],maxWidth:1920,maxHeight:1080,maxFrameRate:30,dynamicRanges:['sdr'],evidence:'declared'}];
     [['hevc','hev1.2.4.L153.B0'],['vp9','vp09.02.10.10'],['av1','av01.0.08M.10']].forEach(function (pair) {
-      if (supports('video/mp4; codecs="' + pair[1] + '"', width, height, 60)) video.push({codec:pair[0],bitDepths:[8,10],maxWidth:width,maxHeight:height,maxFrameRate:60,dynamicRanges:ranges.filter(function (x) {return x !== 'dolby_vision' || pair[0] === 'hevc';}),dolbyVisionProfiles:pair[0] === 'hevc' && caps.is_dv_supported ? [5,8] : [],evidence:'probed'});
+      if (supports('video/mp4; codecs="' + pair[1] + '"', width, height, 60)) video.push({codec:pair[0],bitDepths:[8,10],maxWidth:width,maxHeight:height,maxFrameRate:60,dynamicRanges:ranges.filter(function (x) {return x !== 'dolby_vision' || pair[0] === 'hevc';}),dolbyVisionProfiles:[],evidence:'probed'});
     });
-    var audio = ['aac','mp3','opus','vorbis','flac'].map(function(codec){return {codec:codec,maxChannels:2,evidence:'declared'};});
-    // Dolby audio is handed to the HDMI sink undecoded: it is passthrough, beside the decoders.
+    var hevc = video.filter(function(v) { return v.codec === 'hevc'; })[0];
+    if (hevc && caps.is_dv_supported === true) {
+      hevc.dolbyVisionProfiles = [5,8].filter(function(profile) { return supports('video/mp4; codecs="dvhe.0' + profile + '.07"', width, height, 30); });
+      if (hevc.dolbyVisionProfiles.length) { hevc.dynamicRanges.push('dolby_vision'); ranges.push('dolby_vision'); }
+    }
+    // Do not turn a MIME/codec answer into a fabricated decoded channel count. The SDK's
+    // passthrough flag is separate from ordinary E-AC-3 acceptance, notably on newer Streamers.
+    var audio = [];
+    [['aac','audio/mp4; codecs="mp4a.40.2"'],['mp3','audio/mpeg'],['opus','audio/ogg; codecs="opus"'],['vorbis','audio/ogg; codecs="vorbis"'],['flac','audio/flac'],['pcm','audio/wav; codecs="1"']].forEach(function(pair) {
+      var probed = supports(pair[1]);
+      if (probed || pair[0] === 'aac' || pair[0] === 'mp3') audio.push({codec:pair[0],maxChannels:2,evidence:probed?'probed':'declared'});
+    });
     var passthrough = [];
-    [['ac3','ac-3'],['eac3','ec-3']].forEach(function (pair) { if (supports('audio/mp4; codecs="' + pair[1] + '"')) passthrough.push({codec:pair[0],maxChannels:6,evidence:'probed'}); });
-    var surround=passthrough.length>0;
-    var hlsAudio=['aac','mp3'].concat(passthrough.map(function(a){return a.codec;}));
+    [['ac3','ac-3',6],['eac3','ec-3',8]].forEach(function (pair) {
+      if (supports('audio/mp4; codecs="' + pair[1] + '"')) {
+        var atmos = pair[0] === 'eac3' && caps.is_dolby_atmos_supported === true;
+        passthrough.push({codec:pair[0],variants:pair[0] === 'ac3' ? ['ac3'] : atmos ? ['eac3','eac3_joc'] : ['eac3'],maxChannels:pair[2],evidence:'probed',objectAudio:atmos ? ['atmos'] : []});
+      }
+    });
+    if (caps.display_supported === false) passthrough = [];
+    var surround=caps.display_supported!==false&&passthrough.length>0;
+    var fmp4Audio=audio.filter(function(a){return ({aac:'mp4a.40.2',mp3:'mp4a.69',flac:'fLaC',opus:'Opus'})[a.codec]&&supports('audio/mp4; codecs="'+({aac:'mp4a.40.2',mp3:'mp4a.69',flac:'fLaC',opus:'Opus'})[a.codec]+'"');}).map(function(a){return a.codec;}).concat(passthrough.map(function(a){return a.codec;}));
+    var hlsAudio=audio.filter(function(a){return ['aac','mp3'].indexOf(a.codec)>=0;}).map(function(a){return a.codec;}).concat(passthrough.map(function(a){return a.codec;}));
     var names=video.map(function (v) {return v.codec;});
-    var transports=[{transport:'direct',containers:['mp4','m4v'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:hlsAudio},{transport:'direct',containers:['webm'],video:names.filter(function(c){return c==='vp8'||c==='vp9'||c==='av1';}),audio:['opus','vorbis']},{transport:'direct',containers:['mp3','m4a','aac','flac','ogg','wav'],video:[],audio:['aac','mp3','opus','vorbis','flac']},{transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:hlsAudio},{transport:'hls_fmp4',containers:['fmp4'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:hlsAudio}];
+    var transports=[{transport:'direct',containers:['mp4','m4v'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:hlsAudio},{transport:'direct',containers:['webm'],video:names.filter(function(c){return c==='vp8'||c==='vp9'||c==='av1';}),audio:audio.filter(function(a){return ['opus','vorbis'].indexOf(a.codec)>=0;}).map(function(a){return a.codec;})},{transport:'direct',containers:audio.reduce(function(all,a){return all.concat(({aac:['m4a','aac'],mp3:['mp3'],flac:['flac'],opus:['ogg','opus'],vorbis:['ogg'],pcm:['wav']})[a.codec]||[]);},[]),video:[],audio:audio.map(function(a){return a.codec;})},{transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:hlsAudio},{transport:'hls_fmp4',containers:['fmp4'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:fmp4Audio}];
     // The capability document (version 2): the device, and what its one player engine can do.
-    return {version:2,client:{family:'cast',form:'cast',platform:'cast',app:'portico-cast',model:fourK?'uhd_probed':'hd_probed'},engineSetting:'automatic',display:{width:width,height:height,maxFrameRate:fourK||h264At60?60:30,dynamicRanges:ranges},audioOutput:{route:'hdmi',maxChannels:surround?6:2},engines:{native:{name:'caf-shaka',evidence:'mixed',video:video,audio:audio,audioPassthrough:passthrough,transports:transports,subtitleRendering:['text']}}};
+    return {version:2,client:{family:'cast',form:'cast',platform:'cast',app:'portico-cast',model:fourK?'uhd_probed':'cast'},engineSetting:'automatic',display:{width:width,height:height,maxFrameRate:fourK||h264At60?60:30,dynamicRanges:ranges},audioOutput:{route:caps.display_supported===false?'speaker':'hdmi',maxChannels:surround?Math.max.apply(null,passthrough.map(function(a){return a.maxChannels;})):2},engines:{native:{name:'caf-shaka',evidence:'mixed',video:video,audio:audio,audioPassthrough:passthrough,transports:transports,subtitleRendering:['text']}}};
+  }
+  /** CAF's type probe has no channel/rate arguments. Where the receiver also exposes the
+   * MediaCapabilities API, ask exact decoded configurations; silence/timeout stays stereo. */
+  async function probeAudioOutput(profile) {
+    var capabilities = typeof navigator !== 'undefined' && navigator.mediaCapabilities;
+    if (!capabilities || typeof capabilities.decodingInfo !== 'function') return profile;
+    await Promise.all(profile.engines.native.audio.map(async function(codec) {
+      var sample = {aac:'mp4a.40.2',flac:'fLaC',opus:'Opus',pcm:'lpcm'}[codec.codec];
+      if (!sample) return;
+      async function accepts(channels, rate) {
+        var timer;
+        try { return (await Promise.race([capabilities.decodingInfo({type:'media-source',audio:{contentType:'audio/mp4; codecs="'+sample+'"',channels:String(channels),samplerate:rate,bitrate:8000000}}),new Promise(function(resolve){timer=setTimeout(function(){resolve(null);},1500);})]))?.supported === true; }
+        catch (_) { return false; } finally { clearTimeout(timer); }
+      }
+      for (var channels of [8,6,2]) { if (await accepts(channels,48000)) { codec.maxChannels=channels;codec.evidence='probed';break; } }
+      for (var rate of [192000,96000,48000,44100]) { if (await accepts(codec.maxChannels,rate)) { codec.maxSampleRate=rate;break; } }
+    }));
+    profile.audioOutput.maxChannels=Math.max(profile.audioOutput.maxChannels,...profile.engines.native.audio.map(function(a){return a.maxChannels;}));
+    return profile;
   }
   /** What this TV decodes, published for the session's device before anything plays. */
   async function prepareProfile() {
     if (profiled) return;
     var context = window.cast && cast.framework.CastReceiverContext.getInstance();
-    await api('/v1/me/devices/current/capabilities', {method: 'PUT', body: buildProfile(context)});
+    await api('/v1/me/devices/current/capabilities', {method: 'PUT', body: await probeAudioOutput(buildProfile(context))});
     profiled = true;
   }
 
@@ -367,7 +406,7 @@
     return [d.video, d.audio, d.subtitles].some(function (x) { return !!x && (x.action === 'transcode' || x.action === 'burn'); });
   }
   function track(session) {
-    return {id: session.id, revision: session.revision, itemId: session.itemId || '', generation: session.presentation.generation, serverSeek: serverSeek(session)};
+    return {id: session.id, revision: session.revision, itemId: session.itemId || '', generation: session.presentation.generation, serverSeek: serverSeek(session), queue: queueRef(session.queue)};
   }
   /** CAF's load request for a session's presentation. */
   function loadRequest(session, image, autoplay) {
@@ -379,7 +418,8 @@
       media.contentType = 'application/x-mpegurl';
       media.hlsSegmentFormat = media.hlsVideoSegmentFormat = container === 'fmp4_hls' ? 'FMP4' : 'TS';
     } else {
-      media.contentType = directTypes[container] || 'video/mp4';
+      if (!directTypes[container]) throw new Error('unsupported_media_container');
+      media.contentType = directTypes[container];
     }
     // Title and artwork for CAF's standard player, the Google TV ambient UI and the Google Home app (CAST-01 §2).
     var metadata = castMetadata(meta, image);
@@ -388,10 +428,10 @@
   }
 
   async function stopPlayback(ended) {
-    clearTimeout(reportTimer); clearTimeout(bufferingTimer);
+    clearTimeout(reportTimer); clearTimeout(bufferingTimer); clearTimeout(queueBoundaryTimer);
     if (!playback) return;
     var id = playback.id, at = Math.round(position() * 1000);
-    playback = null; meta = null;
+    playback = null; meta = null; queueNext = null; queueNonce = token(16);
     if (manager) manager.stop();
     showIdle();
     // A session that has already ended (404, 410) is simply gone.
@@ -399,9 +439,9 @@
   }
   /** Starts a v1 session for the item and answers CAF's load request for it. A session already
    * playing here is replaced in the same request, so this TV holds one playback slot. */
-  async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId) {
+  async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue) {
     if (!session || !manager || !/^[A-Za-z0-9_-]{1,128}$/.test(itemId)) throw new Error('playback_unavailable');
-    clearTimeout(reportTimer); clearTimeout(bufferingTimer);
+    clearTimeout(reportTimer); clearTimeout(bufferingTimer); clearTimeout(queueBoundaryTimer);
     var replaces = playback && playback.id;
     playback = null;
     meta = identity || null;
@@ -411,18 +451,18 @@
     var body = {itemId: itemId, state: 'playing'};
     if (Number.isFinite(startSeconds)) body.startPositionMs = Math.round(Math.max(0, startSeconds) * 1000); else body.startFrom = 'resume';
     if (replaces) body.replacesSessionId = replaces;
+    if (queueRef(queue)) { body.queue = queueRef(queue); delete body.itemId; }
     // The sender's subtitle choice ("off", or a track id). This TV draws text only; the server
     // delivers a styled or image track burned into the picture.
     if (subtitleTrackId === 'off') body.subtitles = {trackId: null};
     else if (typeof subtitleTrackId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(subtitleTrackId)) body.subtitles = {trackId: subtitleTrackId};
-    var key = token(16), waited = 0, answer;
+    var key = token(16), deadline = Date.now() + 110000, answer;
     // 202: the server is still preparing; the identical request is repeated until it answers.
     for (;;) {
       answer = await api('/v1/playback/sessions', {body: body, headers: {'Idempotency-Key': key}});
       if (answer.status !== 202) break;
       var delay = Math.min(10000, Math.max(250, Number(answer.body.retryAfterMs) || 1000));
-      waited += delay;
-      if (waited > 120000) throw new Error('preparation_timeout');
+      if (Date.now() + delay > deadline) throw new Error('preparation_timeout');
       await wait(delay);
     }
     var started = answer.body;
@@ -433,7 +473,62 @@
     reportSeq = 0; reportFailures = 0;
     return load;
   }
-  function startPlayback(itemId,startSeconds,identity,subtitleTrackId) { recoveries=0; return serial(async function(){try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId);await manager.load(load);showPlaying();scheduleReport(0);return playback;}catch(e){showError(e&&(e.code||e.message));throw e;}}); }
+  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){try{queueNext=null;queueNonce=token(16);var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await manager.load(load);showPlaying();scheduleReport(0);await enqueueNext().catch(function(){});return playback;}catch(e){showError(e&&(e.code||e.message));throw e;}}); }
+
+  /** CAF owns the media queue/preload buffer; the server owns order, grants and session slots.
+   * A queue item is only a nonce until PRELOAD asks the server for its private next window. */
+  async function enqueueNext() {
+    if (!playback || !playback.queue || !manager.getQueueManager) return;
+    var owner = playback, head = (await api(queuePath(owner.queue.queueId), {method:'GET'})).body;
+    if (playback !== owner || !head.next || !head.next.available) return;
+    var queues = manager.getQueueManager();
+    // Bound lookahead to one even after a retry or repeated PLAYING event.
+    if (queueNext) return;
+    queueNext = {owner:owner,revision:head.revision,nonce:queueNonce,prepared:null};
+    queues.insertItems([{autoplay:true,preloadTime:10,media:{contentId:'portico-next',contentType:'application/x-mpegurl',customData:{porticoQueue:queueNonce}}}]);
+  }
+  function isPrivateNext(request) {
+    return !!queueNext && queueNext.owner === playback && request && !request.senderId && request.media && request.media.customData && request.media.customData.porticoQueue === queueNext.nonce;
+  }
+  async function preloadNext(request) {
+    if (!isPrivateNext(request)) return null;
+    var next = queueNext, owner = playback;
+    try {
+      var answer = await api(queuePath(owner.queue.queueId) + ':prepare-next', {body:{sessionId:owner.id,sessionGeneration:owner.generation},headers:{'If-Match':next.revision,'Idempotency-Key':next.key || (next.key=token(16))}});
+      if (queueNext !== next || playback !== owner) return null;
+      var prepared = answer.body;
+      if (!prepared || typeof prepared.token !== 'string' || !prepared.presentation || !prepared.presentation.url) return null;
+      var load = loadRequest({id:owner.id,itemId:prepared.itemId,presentation:prepared.presentation},'',true);
+      next.prepared = prepared;
+      load.media.customData = {porticoQueue:next.nonce};
+      return Object.assign({},request,{media:load.media});
+    } catch (e) { return null; }
+  }
+  async function commitNext(request) {
+    if (!isPrivateNext(request) || !queueNext.prepared) return null;
+    var next = queueNext, owner = playback;
+    var answer = await api(queuePath(owner.queue.queueId) + ':commit-next', {body:{token:next.prepared.token}});
+    if (queueNext !== next || playback !== owner) return null;
+    var current = answer.body.session;
+    if (!current || !current.presentation) throw new Error('playback_not_ready');
+    var load = loadRequest(current,'',true);
+    clearTimeout(queueBoundaryTimer);
+    playback = track(current); queueNext = null; queueNonce = token(16); meta = null;
+    reportSeq=0;reportFailures=0;recoveries=0;
+    scheduleReport(0); broadcast();
+    return Object.assign({},request,load);
+  }
+  async function advanceQueue() {
+    if (!playback || !playback.queue) return false;
+    var owner = playback;
+    var head = (await api(queuePath(owner.queue.queueId),{method:'GET'})).body;
+    if (playback !== owner) return false;
+    var answer = await api(queuePath(owner.queue.queueId) + ':advance',{body:{reason:'completion'},headers:{'If-Match':head.revision,'Idempotency-Key':token(16)}});
+    if (playback !== owner || !answer.body.session) return false;
+    var current=answer.body.session, load=loadRequest(current,'',true);
+    playback=track(current);queueNext=null;queueNonce=token(16);meta=null;reportSeq=0;
+    await manager.load(load);showPlaying();scheduleReport(0);await enqueueNext();broadcast();return true;
+  }
 
   // --- Timeline: progress, lease renewal and observation in one report -------
 
@@ -466,10 +561,12 @@
   async function adoptPresentation(updated, autoplay) {
     if (!playback || updated.id !== playback.id) return;
     var fresh = updated.presentation.generation !== playback.generation;
+    if (fresh) { queueNext=null; queueNonce=token(16); clearTimeout(queueBoundaryTimer); }
     playback = track(updated);
-    if (!fresh) return;
+    if (!fresh) { if(queueNext)queueNext.owner=playback; return; }
     await manager.load(loadRequest(updated, '', autoplay));
     showPlaying();
+    await enqueueNext().catch(function(){});
   }
   /** PATCH the session. A 412 carries the server's session: adopt it and apply the change to it. */
   async function change(body) {
@@ -605,12 +702,17 @@
     // itself with its own credential.
     manager.setMessageInterceptor(types.LOAD, function (request) {
       var custom = (request && request.media && request.media.customData) || {};
+      if (isPrivateNext(request)) return serial(function(){return commitNext(request);}).catch(function(){return null;});
       if (!custom.itemId || fromOther(request)) { return null; }
       var identity = displayMeta(custom) || (request.media.metadata ? displayMeta({title: request.media.metadata.title, subtitle: request.media.metadata.subtitle || request.media.metadata.seriesTitle}) : null);
       return serial(function(){recoveries=0;return resolvePlayback(custom.itemId,custom.startSeconds,identity);}).then(function(load){showPlaying();scheduleReport(0);return load;}).catch(function(e){showError(e&&(e.code||e.message));return null;});
     });
     // Play and pause are the player's own; the timeline reports them. A seek the server must
     // produce again is sent to it and the new presentation loaded here instead.
+    if (types.PRELOAD) manager.setMessageInterceptor(types.PRELOAD, function(request){return serial(function(){return preloadNext(request);});});
+    // Standard queue mutation commands must pass the same controller gate as LOAD.
+    ['GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].forEach(function(name){if(types[name])manager.setMessageInterceptor(types[name],function(request){return fromOther(request)?null:request;});});
+    ['QUEUE_INSERT','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_LOAD','QUEUE_NEXT','QUEUE_PREV'].forEach(function(name){if(types[name])manager.setMessageInterceptor(types[name],function(){return null;});});
     manager.setMessageInterceptor(types.PAUSE,function(request){return request;});
     manager.setMessageInterceptor(types.PLAY,function(request){return fromOther(request)?null:request;});
     manager.setMessageInterceptor(types.SEEK,function(request){
@@ -647,10 +749,11 @@
       controllerPresent=true;
       switch (message.type) {
         case 'load':
-          startPlayback(String(message.itemId || ''), typeof message.startSeconds === 'number' ? message.startSeconds : undefined, displayMeta(message), message.subtitleTrackId).then(function () {
+          startPlayback(String(message.itemId || ''), typeof message.startSeconds === 'number' ? message.startSeconds : undefined, displayMeta(message), message.subtitleTrackId, queueRef(message.queue)).then(function () {
+            if (typeof message.requestId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId)) reply({type:'loaded',requestId:message.requestId,itemId:playback ? playback.itemId : ''});
             broadcast();
           }).catch(function (error) {
-            reply({ type: 'load-failed', code: error.code || error.message || '' });
+            reply({ type: 'load-failed', requestId: typeof message.requestId==='string'?message.requestId.slice(0,128):undefined, code: error.code || error.message || '' });
           });
           break;
         case 'play': if (playback) manager.play(); break;
@@ -671,7 +774,18 @@
     manager.addEventListener(events.BUFFERING,function(e){clearTimeout(bufferingTimer);if(e.isBuffering)bufferingTimer=setTimeout(function(){recover('stalled_without_data');},20000);});
     // The title is over whether or not its last report gets through: the TV must not stay on a
     // finished title, still reporting, with nobody connected to stop it.
-    manager.addEventListener(events.MEDIA_FINISHED,function(){serial(async function(){try{await report('ended');}finally{notice('');await stopPlayback(true);}}).catch(function(){});});
+    manager.addEventListener(events.MEDIA_FINISHED,function(event){if(event&&event.endedReason&&event.endedReason!=='FINISHED')return;serial(async function(){
+      // A private next item changes authority only through commit-next when CAF loads it.
+      if (queueNext && queueNext.prepared) {
+        var owner=playback;
+        clearTimeout(queueBoundaryTimer);
+        queueBoundaryTimer=setTimeout(function(){serial(async function(){if(playback!==owner)return;queueNext=null;if(!await advanceQueue())await stopPlayback(true);}).catch(function(){});},5000);
+        return;
+      }
+      if (await advanceQueue()) return;
+      try{await report('ended');}finally{notice('');await stopPlayback(true);}
+    }).catch(function(){serial(function(){return stopPlayback(true);}).catch(function(){});});});
+    if(events.PLAYER_LOAD_COMPLETE)manager.addEventListener(events.PLAYER_LOAD_COMPLETE,function(){serial(enqueueNext).catch(function(){});});
     // A state change or a completed seek is reported at once.
     [events.PAUSE,events.PLAYING,events.SEEKED].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){scheduleReport(0);broadcast();});});
     context.addEventListener(cast.framework.system.EventType.SENDER_DISCONNECTED,function(e){
@@ -696,6 +810,7 @@
   // Exposed for the server's own smoke test page and for manual diagnosis.
   window.porticoCastReceiver = {
     buildProfile: buildProfile,
+    probeAudioOutput: probeAudioOutput,
     redeem: redeem,
     reconnect: reconnect,
     startPlayback: startPlayback,
