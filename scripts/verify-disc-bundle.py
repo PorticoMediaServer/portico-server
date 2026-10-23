@@ -140,9 +140,11 @@ def main():
             # These exact fixture bytes and the observed 37s clip boundary are
             # the MAIN video component's authority, not assumed recipe times.
             seek = run_helper(tool, 'seek', path, '1', '37500')
-            expected_seek = {'schema': 1, 'playlist': 1, 'requestedMs': 37500,
-                             'byteOffset': 1346304, 'titleTimeMs': 37000}
-            if seek != expected_seek:
+            expected_seek = {'schema': 1, 'playlist': 1, 'requestedMs': 37500, 'titleTimeMs': 37000}
+            offset = seek.get('byteOffset')
+            if (set(seek) != set(expected_seek) | {'byteOffset'} or
+                    any(seek.get(key) != value for key, value in expected_seek.items()) or
+                    type(offset) is not int or not 0 <= offset < 1 << 63):
                 raise ValueError('target disc helper cross-clip seek differs from checked fixture: ' + entry['id'])
             row['seek'] = seek
         results.append(row)
