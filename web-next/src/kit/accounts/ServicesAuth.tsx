@@ -8,7 +8,7 @@ import {AuthStage} from './AuthStage';
 import styles from './services-auth.module.css';
 
 const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
-export function ServicesAuthStage({children, variant = 'auth'}: {children: ReactNode; variant?: 'auth' | 'signup' | 'reset' | 'state'}) {
+export function ServicesAuthStage({children, variant = 'auth'}: {children: ReactNode; variant?: 'auth' | 'signup' | 'reset' | 'state' | 'device' | 'deviceReview' | 'deviceSignIn'}) {
   return <AuthStage service legal shape={variant === 'state' ? 'round' : 'side'} layout={variant === 'state' ? 'center' : 'column'}
     className={styles.stage} contentClassName={[styles.content, styles[variant]].join(' ')}>{children}</AuthStage>;
 }
@@ -61,3 +61,16 @@ export function ServicesCodeChip({label, code}: {label: ReactNode; code: string}
 }
 export function ServicesAccountLine({children}: {children: ReactNode}) { return <p className={styles.accountLine}>{children}</p>; }
 export function ServicesBackLink({children, href}: {children: ReactNode; href: string}) { return <div className={styles.backLink}><a href={href}>{children}</a></div>; }
+export function ServicesDeviceAccount({name, disabled, onSignOut}: {name: string; disabled?: boolean; onSignOut: () => void}) {
+  const message = t('services.device.approving', {name: '{name}'});
+  return <ServicesAccountLine>{parseMessage(message).map((part, index) => part.kind === 'text' ? <Fragment key={index}>{part.value}</Fragment> : part.kind === 'arg' && part.name === 'name' ? <b key={index}>{name}</b> : null)}<button type="button" disabled={disabled} onClick={onSignOut}><span className={styles.deviceDesktop}>{t('services.device.notYou')}</span><span className={styles.devicePhone}>{t('services.device.notYouPhone')}</span></button></ServicesAccountLine>;
+}
+export function ServicesDeviceName({name, television}: {name: string; television: boolean}) {
+  return <span className={styles.deviceName}>{television && <span className={styles.deviceIcon}><Icon name="i-tv" size={20} /></span>}{name}</span>;
+}
+export function ServicesDeviceCode({children}: {children: ReactNode}) { return <span className={styles.deviceCode}>{children}</span>; }
+export function ServicesDeviceCodeHelp({fromQR}: {fromQR: boolean}) {
+  return <><span className={styles.deviceDesktop}>{t('services.device.codeHelp')}</span><span className={styles.devicePhone}>{t(fromQR ? 'services.device.codeFromQR' : 'services.device.codeHelp')}</span></>;
+}
+export function ServicesDeviceWarning({children}: {children: ReactNode}) { return <p className={styles.deviceWarning}>{children}</p>; }
+export function ServicesDeviceAnother({disabled, onClick}: {disabled?: boolean; onClick: () => void}) { return <div className={styles.deviceAnother}><button type="button" disabled={disabled} onClick={onClick}>{t('web.device.anotherCode')}</button></div>; }

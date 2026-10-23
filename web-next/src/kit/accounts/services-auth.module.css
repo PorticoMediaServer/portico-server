@@ -6,6 +6,26 @@
 .content input { caret-color: var(--color-accent-strong); }
 .reset [data-variant="auth"] button > span { display: none; }
 .reset { width: 480px; align-self: stretch; justify-content: flex-start; padding-top: 88px; }
+.device, .deviceSignIn, .deviceReview { width: 460px; align-self: stretch; justify-content: flex-start; padding-top: 88px; }
+.deviceReview { width: 480px; }
+.device .lead, .deviceReview .lead { margin-bottom: 12px; }
+.deviceSignIn .lead { margin-bottom: 18px; }
+.device .accountLine b, .deviceReview .accountLine b { color: var(--color-text-secondary); font-weight: 700; }
+.device [data-variant="auth"]:has(input[name="code"]) > div { height: 64px; }
+.device input[name="code"] { font-size: 28px; font-weight: 800; letter-spacing: .1em; font-variant-numeric: tabular-nums; }
+.device input[name="code"]::placeholder { font-weight: 700; letter-spacing: .1em; }
+.device [data-variant="auth"]:has(input[name="code"][value]:not([value=""])) > div { background: rgba(64,159,212,.13); }
+.device form > .actions { margin-top: 4px; }
+.deviceReview .actions { flex-direction: row; }
+.deviceReview .actions > button { width: auto; }
+.deviceReview .facts > div:first-child { align-items: center; }
+.deviceName { display: inline-flex; align-items: center; gap: 12px; }
+.deviceIcon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--color-raised-bright); color: var(--color-text-secondary); flex: none; }
+.deviceCode { letter-spacing: .07em; font-variant-numeric: tabular-nums; }
+.deviceWarning { font-size: 13.5px; line-height: 1.5; color: var(--color-text-tertiary); margin: 0 0 24px; }
+.deviceAnother { margin-top: 22px; font-size: 15px; line-height: normal; font-weight: 700; }
+.deviceAnother button { border: 0; padding: 0; background: none; font: inherit; color: var(--color-text-secondary); cursor: pointer; }
+.devicePhone { display: none; }
 .signup { width: 480px; align-self: stretch; justify-content: flex-start; padding-top: 80px; padding-bottom: 80px; }
 .heading { font-size: 64px; line-height: .98; font-weight: 800; letter-spacing: -.045em; margin: 0 0 14px; text-wrap: balance; }
 .reset .heading, .signup .heading { font-size: 52px; }
@@ -87,6 +107,20 @@
   .reset .backLink { display: none; }
   .reset form > .actions { margin-top: 6px; }
   .reset .lead { margin-bottom: 16px; }
+  .device .lead, .deviceSignIn .lead, .deviceReview .lead { margin-bottom: 12px; }
+  .device [data-variant="auth"]:has(input[name="code"]) > div { height: 58px; }
+  .device input[name="code"] { font-size: 24px; }
+  .device form > .actions { margin-top: 6px; }
+  .device .quiet { margin-top: 14px; }
+  .deviceReview .facts { font-size: 14.5px; padding: 14px 16px; margin-bottom: 14px; }
+  .deviceReview .facts > div { grid-template-columns: 96px 1fr; gap: 10px 12px; }
+  .deviceReview .facts > div + div { margin-top: 10px; }
+  .deviceIcon, .deviceDesktop { display: none; }
+  .devicePhone { display: inline; }
+  .deviceWarning { margin-bottom: 20px; font-size: 12.5px; }
+  .deviceReview .actions { flex-direction: column; gap: 10px; }
+  .deviceReview .actions > button { width: 100%; }
+  .deviceAnother { margin-top: 12px; text-align: center; font-size: 14px; }
   .notice { font-size: 13.5px; padding: 12px 14px; margin-bottom: 14px; gap: 10px; }
   .provider { height: 48px; font-size: 16px; border-radius: 11px; margin-bottom: 10px; }
   .divider { margin: 4px 0 14px; font-size: 13px; }

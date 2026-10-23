@@ -39,6 +39,7 @@ const stop = async child => {
 let vite, chrome, driver, peakRSSKiB = 0;
 const timer = setInterval(() => { peakRSSKiB = Math.max(peakRSSKiB, rss(process.pid)); }, 200);
 const report = {qualification: 'Real reset controller with an unsubmitted synthetic token and canonical password strength. Completed views are the same stateless views used by the controllers. No real reset, verification, mail, account session, Server or physical-device acceptance.', checks: {}, states: []};
+if (process.env.PORTICO_SERVICES_SCENARIO === 'device') report.qualification = 'Controlled actual DeviceView/DeviceDecision presentation with exact account.html2/3/5/6 values. No API interception, session, device grant, approval, Server or physical-device acceptance.';
 try {
   const port = await freePort(), debugPort = await freePort();
   const config = path.join(temporary, 'vite.config.mjs');
@@ -63,6 +64,31 @@ export default {...base, root:${JSON.stringify(path.join(repository, 'web-next')
     const shot = await driver.send('Page.captureScreenshot', {format: 'jpeg', quality: 92, captureBeyondViewport: false});
     if (process.env.PORTICO_SERVICES_DIAGNOSTIC_ONLY !== 'true') writeFileSync(path.join(output, name + '-build.jpg'), Buffer.from(shot.data, 'base64'));
   };
+  if (process.env.PORTICO_SERVICES_SCENARIO === 'device') {
+    for (const [name, width, height, search] of [
+      ['account2', 1440, 734, ''], ['account3', 1440, 734, '?state=review'],
+      ['account5b', 390, 660, '?qr=1'], ['account5c', 390, 660, '?state=review'],
+      ['account6a', 390, 660, '?state=approved'],
+    ]) {
+      await driver.viewport(width, height);
+      await driver.navigate(`http://127.0.0.1:${port}/test/services-device.html${search}`);
+      await driver.waitFor("document.querySelector('h1')?.textContent===" + JSON.stringify(name === 'account6a' ? 'Approved' : 'Link a TV'), 45000);
+      await driver.evaluate('document.fonts.ready');
+      if (name === 'account2') {
+        await driver.waitFor("document.activeElement?.name==='code'");
+        assert(await driver.evaluate("document.querySelector('button[type=submit]').disabled"));
+        await driver.fill('input[name=code]', '7kqm-4txp');
+        await driver.waitFor("document.querySelector('input[name=code]').value==='7KQM-4TXP'");
+        assert(await driver.evaluate("!document.querySelector('button[type=submit]').disabled"));
+        await driver.fill('input[name=code]', '');
+      }
+      await driver.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: 0, y: 0});
+      await capture(name);
+      report.states.push({name, ...await driver.evaluate('({text:document.body.innerText,overflow:document.documentElement.scrollWidth>innerWidth,content:[...document.querySelector("[data-auth-content]").children].map(x=>({tag:x.tagName,rect:x.getBoundingClientRect().toJSON()}))})')});
+    }
+    assert(!report.states.some(state => state.overflow));
+    report.checks = {codeInitiallyDisabled: true, completeCodeEnabled: true, codeUppercased: true};
+  } else {
   await driver.viewport(1440, 874);
   await driver.navigate(`http://127.0.0.1:${port}/test/services-links.html`);
   await driver.waitFor("document.querySelector('h1')?.textContent==='Choose a new password'", 45000);
@@ -93,6 +119,7 @@ export default {...base, root:${JSON.stringify(path.join(repository, 'web-next')
     await capture(name);
     const value = await driver.evaluate('({text:document.body.innerText,overflow:document.documentElement.scrollWidth>innerWidth,headerVisible:document.querySelector("header").getClientRects().length>0,elements:[...document.querySelector("[data-auth-content]").children].map(x=>({tag:x.tagName,rect:x.getBoundingClientRect().toJSON(),font:getComputedStyle(x).font}))})');
     assert(!value.overflow && !value.headerVisible); report.states.push({name, ...value});
+  }
   }
   assert(![...driver.requests.values()].some(url => new URL(url).pathname.startsWith('/v1/')), 'These view proofs must not submit to an account API.');
   assert.equal(driver.events.length, 0, 'Browser diagnostics must be inspected before presentation proof.');

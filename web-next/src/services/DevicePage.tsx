@@ -1,17 +1,12 @@
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {ApiError} from '@core/index.ts';
-import {normalizeSetupCode} from '@core/setup-code.ts';
-import type {MessageId} from '@i18n';
-import {AuthLinks} from '../kit/accounts';
-import {HostedError, ServicesAccountLine, ServicesActions, ServicesAuthStage, ServicesCodeChip, ServicesFacts, ServicesHeading, ServicesLead, ServicesNotice, ServicesQuiet, ServicesStateIcon} from '../kit/accounts/ServicesAuth';
-import {Button, TextField} from '../kit/controls';
+import {ServicesAuthStage, ServicesCodeChip, ServicesQuiet} from '../kit/accounts/ServicesAuth';
 import {ServicesAuthForm} from './AuthForm';
 import {accountIdentity, sameAccount, type AccountIdentity, type ServicesAccount} from './session';
 import {decideHostedDevice, reviewHostedDevice, type DeviceReview} from './device-approval';
 import {servicesI18n} from './i18n';
-import styles from './services.module.css';
+import {DeviceDecision, DeviceView} from './DeviceView';
 
-const platforms: Partial<Record<string, MessageId>> = {ios: 'services.platform.ios', tvos: 'services.platform.tvos', android: 'services.platform.android', androidtv: 'services.platform.androidtv', web: 'services.platform.web', macos: 'services.platform.macos'};
 export function DevicePage({account, initialCode = ''}: {account: ServicesAccount; initialCode?: string}) {
   const {t} = useMemo(servicesI18n, []);
   const session = useSyncExternalStore(account.service.subscribe, account.service.getSnapshot).session;
@@ -48,22 +43,9 @@ export function DevicePage({account, initialCode = ''}: {account: ServicesAccoun
   const inspect = () => run(async signal => { const value = await reviewHostedDevice(account, code, signal); if (!signal.aborted) setReview(value); });
   const decide = (decision: 'approve' | 'deny') => run(async signal => { if (!review) return; await decideHostedDevice(account, review, decision, signal); if (!signal.aborted) { setDone({decision, identity: review.identity}); setReview(undefined); } });
   const another = () => { setReview(undefined); setDone(undefined); setError(undefined); };
-  const errorCode = (error as {code?: string} | undefined)?.code;
-  const notFound = [400, 404, 410, 422].includes((error as {status?: number} | undefined)?.status ?? 0);
-  let completeCode = false; try { normalizeSetupCode(code); completeCode = true; } catch { /* incomplete field */ }
-  if (!session || authenticating) return <ServicesAuthStage><ServicesAuthForm account={account} onSignedIn={() => setAuthenticating(false)} embedded heading={t('web.device.title')} lead={t('web.device.lede')}
+  if (!session || authenticating) return <ServicesAuthStage variant="deviceSignIn"><ServicesAuthForm account={account} onSignedIn={() => setAuthenticating(false)} embedded heading={t('web.device.title')} lead={t('web.device.lede')}
     before={<>{initialCode && <ServicesCodeChip label={t('services.device.codeFromTV')} code={initialCode} />}<ServicesQuiet>{t('services.device.signedOut')}</ServicesQuiet></>} /></ServicesAuthStage>;
-  if (done && !stale) return <ServicesAuthStage variant="state"><ServicesStateIcon tone={done.decision === 'approve' ? 'success' : 'warning'} icon={done.decision === 'approve' ? 'i-check' : 'i-close'} /><ServicesHeading>{t(done.decision === 'approve' ? 'services.device.approvedTitle' : 'services.device.deniedTitle')}</ServicesHeading><ServicesLead>{t(done.decision === 'approve' ? 'services.device.approved' : 'services.device.denied')}</ServicesLead><ServicesActions><Button onClick={another}>{t('web.device.anotherCode')}</Button></ServicesActions></ServicesAuthStage>;
-  return <ServicesAuthStage variant="reset"><ServicesHeading>{t('web.device.title')}</ServicesHeading><ServicesLead>{t(review ? 'services.device.reviewLead' : 'web.device.lede')}</ServicesLead>
-    <ServicesAccountLine>{t('services.device.approving', {name: session.account.displayName || session.account.username})}<button type="button" disabled={busy} onClick={() => void account.service.logout().catch(setError)}>{t('services.device.notYou')}</button></ServicesAccountLine>
-    {error && !notFound ? errorCode === 'account_changed' || errorCode === 'timeout' ? <ServicesNotice icon="i-clock">{t(errorCode === 'account_changed' ? 'services.device.accountChanged' : 'services.device.timeout')}</ServicesNotice> : <HostedError error={error} /> : null}
-    {review && !stale ? <>
-      <ServicesFacts items={[{id: 'device', label: t('services.device.device'), value: review.preview.deviceName}, {id: 'platform', label: t('services.device.platform'), value: platforms[review.preview.platform] ? t(platforms[review.preview.platform]!) : review.preview.platform}, {id: 'code', label: t('auth.code'), value: review.preview.userCode}]} />
-      <ServicesNotice tone="info">{t('web.device.approveWarn')}</ServicesNotice>
-      <ServicesActions><Button variant="primary" loading={busy} onClick={() => void decide('approve')}>{t('web.device.approveDevice')}</Button><Button disabled={busy} onClick={() => void decide('deny')}>{t('services.device.deny')}</Button></ServicesActions><AuthLinks><button type="button" disabled={busy} onClick={another}>{t('web.device.anotherCode')}</button></AuthLinks>
-    </> : <><form className={styles.form} onSubmit={event => { event.preventDefault(); void inspect(); }}>
-      <TextField variant="auth" label={t('auth.code')} name="code" autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false} placeholder={t('services.device.codePlaceholder')} value={code} maxLength={12} onChange={event => setCode(event.currentTarget.value.toUpperCase())} description={t('services.device.codeHelp')} error={notFound ? t('services.device.notFound') : undefined} disabled={busy} required />
-      <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={!completeCode}>{t('web.device.review')}</Button></ServicesActions>
-    </form><ServicesQuiet>{t('services.device.expiry')}</ServicesQuiet></>}
-  </ServicesAuthStage>;
+  if (done && !stale) return <DeviceDecision decision={done.decision} onAnother={another} />;
+  return <DeviceView name={session.account.displayName || session.account.username} code={code} fromQR={Boolean(initialCode)} preview={review && !stale ? review.preview : undefined}
+    busy={busy} error={error} onCodeChange={setCode} onInspect={() => void inspect()} onDecision={decision => void decide(decision)} onAnother={another} onSignOut={() => void account.service.logout().catch(setError)} />;
 }
