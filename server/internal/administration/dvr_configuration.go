@@ -15,9 +15,9 @@ type DVRConfiguration struct{}
 
 func (DVRConfiguration) Bindings() []operations.ConfigurationBinding {
 	return []operations.ConfigurationBinding{
-		{"live.rec.early", "recording.start_early_minutes", "prePaddingMs", 60000, false},
-		{"live.rec.late", "recording.finish_late_minutes", "postPaddingMs", 60000, false},
-		{"live.rec.ruleKeep", "recording.default_keep", "keepPolicy", 1, false},
+		{ID: "live.rec.early", Key: "recording.start_early_minutes", Field: "prePaddingMs", Scale: 60000, ConfigOnly: false},
+		{ID: "live.rec.late", Key: "recording.finish_late_minutes", Field: "postPaddingMs", Scale: 60000, ConfigOnly: false},
+		{ID: "live.rec.ruleKeep", Key: "recording.default_keep", Field: "keepPolicy", Scale: 1, ConfigOnly: false},
 	}
 }
 
@@ -104,7 +104,7 @@ func (DVRConfiguration) Read(ctx context.Context, tx *sql.Tx, sources map[string
 		if source == "" {
 			source = "default"
 		}
-		out = append(out, operations.ConfigurationValue{b.ID, b.Key, maintenanceAtom(values[b.Field]), maintenanceAtom(values[b.Field]), maintenanceAtom(defaults[b.Field]), source, b.ConfigOnly, "next-operation"})
+		out = append(out, operations.ConfigurationValue{ID: b.ID, Key: b.Key, Current: maintenanceAtom(values[b.Field]), Effective: maintenanceAtom(values[b.Field]), Default: maintenanceAtom(defaults[b.Field]), Source: source, ConfigOnly: b.ConfigOnly, ApplicationMode: "next-operation"})
 	}
 	return out, nil
 }

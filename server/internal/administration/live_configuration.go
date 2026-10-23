@@ -16,16 +16,16 @@ type LiveConfiguration struct{}
 
 func (LiveConfiguration) Bindings() []operations.ConfigurationBinding {
 	return []operations.ConfigurationBinding{
-		{"live.buffer", "live.stream_buffer_seconds", "streamBufferMs", 1000, false},
-		{"live.retry", "live.retry_seconds", "retryWindowMs", 1000, false},
-		{"live.userAgent", "live.user_agent", "userAgent", 1, false},
-		{"live.guideDays", "live.guide_days", "guideDays", 1, false},
-		{"live.rewind", "live.timeshift_minutes", "timeshiftMinutes", 1, false},
-		{"live.logos", "live.logo_import", "logoImport", 1, false},
-		{"live.discovery", "live.discover_tuners", "discoveryEnabled", 1, false},
-		{"live.limit.file", "live.import_limits.file_mb", "importBytes", 1 << 20, false},
-		{"live.limit.channels", "live.import_limits.channels", "importChannels", 1, false},
-		{"live.limit.programs", "live.import_limits.programs", "importProgrammes", 1, false},
+		{ID: "live.buffer", Key: "live.stream_buffer_seconds", Field: "streamBufferMs", Scale: 1000, ConfigOnly: false},
+		{ID: "live.retry", Key: "live.retry_seconds", Field: "retryWindowMs", Scale: 1000, ConfigOnly: false},
+		{ID: "live.userAgent", Key: "live.user_agent", Field: "userAgent", Scale: 1, ConfigOnly: false},
+		{ID: "live.guideDays", Key: "live.guide_days", Field: "guideDays", Scale: 1, ConfigOnly: false},
+		{ID: "live.rewind", Key: "live.timeshift_minutes", Field: "timeshiftMinutes", Scale: 1, ConfigOnly: false},
+		{ID: "live.logos", Key: "live.logo_import", Field: "logoImport", Scale: 1, ConfigOnly: false},
+		{ID: "live.discovery", Key: "live.discover_tuners", Field: "discoveryEnabled", Scale: 1, ConfigOnly: false},
+		{ID: "live.limit.file", Key: "live.import_limits.file_mb", Field: "importBytes", Scale: 1 << 20, ConfigOnly: false},
+		{ID: "live.limit.channels", Key: "live.import_limits.channels", Field: "importChannels", Scale: 1, ConfigOnly: false},
+		{ID: "live.limit.programs", Key: "live.import_limits.programs", Field: "importProgrammes", Scale: 1, ConfigOnly: false},
 	}
 }
 func (LiveConfiguration) SourceField(field string) string { return "live:" + field }
@@ -109,7 +109,7 @@ func (LiveConfiguration) Read(ctx context.Context, tx *sql.Tx, sources map[strin
 		if source == "" {
 			source = "default"
 		}
-		out = append(out, operations.ConfigurationValue{b.ID, b.Key, maintenanceAtom(current[b.Field]), maintenanceAtom(current[b.Field]), maintenanceAtom(defaults[b.Field]), source, b.ConfigOnly, "hot"})
+		out = append(out, operations.ConfigurationValue{ID: b.ID, Key: b.Key, Current: maintenanceAtom(current[b.Field]), Effective: maintenanceAtom(current[b.Field]), Default: maintenanceAtom(defaults[b.Field]), Source: source, ConfigOnly: b.ConfigOnly, ApplicationMode: "hot"})
 	}
 	return out, nil
 }

@@ -16,10 +16,10 @@ type DVRStorageConfiguration struct{}
 
 func (DVRStorageConfiguration) Bindings() []operations.ConfigurationBinding {
 	return []operations.ConfigurationBinding{
-		{"live.rec.days", "recording.retention_days", "retentionDays", 1, false},
-		{"live.rec.episodes", "recording.episode_limit", "episodeLimit", 1, false},
-		{"live.rec.floor", "recording.free_space_gb", "floorBytes", 1000000000, false},
-		{"live.rec.cap", "recording.cap_gb", "capBytes", 1000000000, false},
+		{ID: "live.rec.days", Key: "recording.retention_days", Field: "retentionDays", Scale: 1, ConfigOnly: false},
+		{ID: "live.rec.episodes", Key: "recording.episode_limit", Field: "episodeLimit", Scale: 1, ConfigOnly: false},
+		{ID: "live.rec.floor", Key: "recording.free_space_gb", Field: "floorBytes", Scale: 1000000000, ConfigOnly: false},
+		{ID: "live.rec.cap", Key: "recording.cap_gb", Field: "capBytes", Scale: 1000000000, ConfigOnly: false},
 	}
 }
 
@@ -78,7 +78,7 @@ func (DVRStorageConfiguration) Read(ctx context.Context, tx *sql.Tx, sources map
 		if b.Field == "floorBytes" || b.Field == "capBytes" {
 			mode = "hot"
 		}
-		out = append(out, operations.ConfigurationValue{b.ID, b.Key, maintenanceAtom(values[b.Field]), maintenanceAtom(values[b.Field]), maintenanceAtom(defaults[b.Field]), source, b.ConfigOnly, mode})
+		out = append(out, operations.ConfigurationValue{ID: b.ID, Key: b.Key, Current: maintenanceAtom(values[b.Field]), Effective: maintenanceAtom(values[b.Field]), Default: maintenanceAtom(defaults[b.Field]), Source: source, ConfigOnly: b.ConfigOnly, ApplicationMode: mode})
 	}
 	return out, nil
 }

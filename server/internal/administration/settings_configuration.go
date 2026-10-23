@@ -11,21 +11,21 @@ import (
 
 func (MaintenanceConfiguration) Bindings() []operations.ConfigurationBinding {
 	return []operations.ConfigurationBinding{
-		{"general.heavyWork", "general.heavy_work", "heavy.mode", 1, false},
-		{"general.heavyStart", "general.heavy_work_start", "heavy.start", 1, false},
-		{"general.heavyLength", "general.heavy_work_hours", "heavy.hours", 1, false},
-		{"general.heavyDays", "general.heavy_work_days", "heavy.days", 1, false},
-		{"general.backgroundSpeed", "general.background_speed", "backgroundSpeed", 1, false},
-		{"storage.backupKeepExact", "storage.backups_to_keep_exact", "backupKeepCount", 1, false},
-		{"storage.backupSchedule", "backup.schedule", "backup.mode", 1, false},
-		{"storage.backupTime", "backup.start_time", "backup.start", 1, false},
-		{"storage.backupWindowLength", "backup.window_hours", "backup.hours", 1, false},
-		{"storage.backupDays", "backup.chosen_days", "backup.days", 1, false},
-		{"storage.keepConversions", "storage.keep_conversions_days", "retention.conversions", 1, false},
-		{"storage.keepPrepared", "storage.keep_prepared_days", "retention.prepared", 1, false},
-		{"storage.keepDownloads", "storage.keep_downloads_days", "retention.downloads", 1, false},
-		{"storage.keepSubtitles", "storage.keep_subtitles_days", "retention.subtitles", 1, false},
-		{"storage.keepTrickplay", "storage.keep_trickplay_days", "retention.trickplay", 1, false},
+		{ID: "general.heavyWork", Key: "general.heavy_work", Field: "heavy.mode", Scale: 1, ConfigOnly: false},
+		{ID: "general.heavyStart", Key: "general.heavy_work_start", Field: "heavy.start", Scale: 1, ConfigOnly: false},
+		{ID: "general.heavyLength", Key: "general.heavy_work_hours", Field: "heavy.hours", Scale: 1, ConfigOnly: false},
+		{ID: "general.heavyDays", Key: "general.heavy_work_days", Field: "heavy.days", Scale: 1, ConfigOnly: false},
+		{ID: "general.backgroundSpeed", Key: "general.background_speed", Field: "backgroundSpeed", Scale: 1, ConfigOnly: false},
+		{ID: "storage.backupKeepExact", Key: "storage.backups_to_keep_exact", Field: "backupKeepCount", Scale: 1, ConfigOnly: false},
+		{ID: "storage.backupSchedule", Key: "backup.schedule", Field: "backup.mode", Scale: 1, ConfigOnly: false},
+		{ID: "storage.backupTime", Key: "backup.start_time", Field: "backup.start", Scale: 1, ConfigOnly: false},
+		{ID: "storage.backupWindowLength", Key: "backup.window_hours", Field: "backup.hours", Scale: 1, ConfigOnly: false},
+		{ID: "storage.backupDays", Key: "backup.chosen_days", Field: "backup.days", Scale: 1, ConfigOnly: false},
+		{ID: "storage.keepConversions", Key: "storage.keep_conversions_days", Field: "retention.conversions", Scale: 1, ConfigOnly: false},
+		{ID: "storage.keepPrepared", Key: "storage.keep_prepared_days", Field: "retention.prepared", Scale: 1, ConfigOnly: false},
+		{ID: "storage.keepDownloads", Key: "storage.keep_downloads_days", Field: "retention.downloads", Scale: 1, ConfigOnly: false},
+		{ID: "storage.keepSubtitles", Key: "storage.keep_subtitles_days", Field: "retention.subtitles", Scale: 1, ConfigOnly: false},
+		{ID: "storage.keepTrickplay", Key: "storage.keep_trickplay_days", Field: "retention.trickplay", Scale: 1, ConfigOnly: false},
 	}
 }
 func maintenanceConfigurationValues(v MaintenanceSettingsDocument) map[string]any {
@@ -205,7 +205,7 @@ func (MaintenanceConfiguration) Read(ctx context.Context, tx *sql.Tx, sources ma
 		if source == "" {
 			source = "default"
 		}
-		out = append(out, operations.ConfigurationValue{b.ID, b.Key, maintenanceAtom(current[b.Field]), maintenanceAtom(current[b.Field]), maintenanceAtom(defaults[b.Field]), source, b.ConfigOnly, "hot"})
+		out = append(out, operations.ConfigurationValue{ID: b.ID, Key: b.Key, Current: maintenanceAtom(current[b.Field]), Effective: maintenanceAtom(current[b.Field]), Default: maintenanceAtom(defaults[b.Field]), Source: source, ConfigOnly: b.ConfigOnly, ApplicationMode: "hot"})
 	}
 	return out, nil
 }
