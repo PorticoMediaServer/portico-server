@@ -599,13 +599,21 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/groups":                          static("/v1/groups"),
 
 		// Catalogue: one title.
-		"GET /v1/items/{id}":                                  perItem(""),
-		"GET /v1/items/{id}/detail":                           perItem("/detail"),
-		"GET /v1/items/{id}/credits":                          perItem("/credits?group=cast"),
-		"GET /v1/items/{id}/art/{kind}":                       perItem("/art/poster"),
-		"GET /v1/items/{id}/chapters/{chapter}/image":         perItem("/chapters/0/image"),
-		"GET /v1/items/{itemId}/download-options":             perItem("/download-options"),
-		"GET /v1/items/{id}/listening":                        perItem("/listening"),
+		"GET /v1/items/{id}":                          perItem(""),
+		"GET /v1/items/{id}/detail":                   perItem("/detail"),
+		"GET /v1/items/{id}/credits":                  perItem("/credits?group=cast"),
+		"GET /v1/items/{id}/art/{kind}":               perItem("/art/poster"),
+		"GET /v1/items/{id}/chapters/{chapter}/image": perItem("/chapters/0/image"),
+		"GET /v1/items/{itemId}/download-options":     perItem("/download-options"),
+		"GET /v1/items/{id}/listening":                perItem("/listening"),
+		"GET /v1/books/{id}/timeline":                 perEntity("/v1/books/", "book", "/timeline?limit=10&positionMs=0"),
+		"GET /v1/items/{id}/similar": probe(func(m *restrictionEnv) []string {
+			var out []string
+			for _, kind := range []string{"album", "book", "artist"} {
+				out = append(out, perEntity("/v1/items/", kind, "/similar?limit=12").probe(m)...)
+			}
+			return out
+		}),
 		"GET /v1/items/{id}/playback-offers":                  perItem("/playback-offers"),
 		"GET /v1/items/{id}/recommendations":                  perItem("/recommendations"),
 		"GET /v1/items/{id}/file-info":                        perItem("/file-info"),
