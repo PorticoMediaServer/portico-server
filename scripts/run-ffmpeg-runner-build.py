@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Build one pinned Linux bundle in the temporary exact-commit remote runner."""
 import argparse
+import ctypes
 import datetime
 import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 
 
@@ -19,6 +21,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-commit', required=True)
     args = parser.parse_args()
+    def stop_owned_job(signum, _frame):
+        # A dropped SSH/runner parent must not orphan a Docker compiler. Only
+        # this existing lane's labelled containers are in our custody.
+        for received in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            signal.signal(received, signal.SIG_IGN)
+        found = subprocess.run(['docker', 'ps', '-q', '--filter', 'label=portico.lane=hardware-r29'],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=10)
+        ids = found.stdout.split()
+        if ids:
+            subprocess.run(['docker', 'stop', '--timeout', '15', *ids], timeout=35)
+        raise SystemExit(128 + signum)
+
+    for received in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(received, stop_owned_job)
+    parent = os.getppid()
+    if ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGTERM, 0, 0, 0) != 0:
+        raise OSError(ctypes.get_errno(), 'Cannot bind compiler custody to the remote runner parent')
+    if os.getppid() != parent:
+        stop_owned_job(signal.SIGTERM, None)
     root = Path(__file__).resolve().parents[1]
     os.environ['PORTICO_RUNNER_SOURCE_COMMIT'] = args.source_commit
     if root.name != 'source' or root.parent.parent.parent.name != 'jobs':
@@ -56,6 +77,10 @@ def main():
     # Verify capability before a lengthy source dependency intake. No sudo,
     # daemon configuration, host package installation or private auth is used.
     subprocess.run(['docker', 'version', '--format', '{{.Server.Version}}'], check=True)
+    active = subprocess.check_output(['docker', 'ps', '-q', '--filter', 'label=portico.lane=hardware-r29'], text=True)
+    if active.strip():
+        print('REFUSED: an owned hardware compiler is already active; no duplicate job', flush=True)
+        return 75
     subprocess.run(['bash', str(root / 'scripts/build-ffmpeg.sh'), 'linux-x64'],
                    cwd=root, env=env, check=True)
     work = scratch / 'ffmpeg-build/linux-x64'
