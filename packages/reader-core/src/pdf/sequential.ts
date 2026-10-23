@@ -33,8 +33,8 @@ export async function pdfSequential(source:ReaderSource,open:PdfSequentialOpen,s
       async start(sink:{chunk(bytes:Uint8Array):void;done():void;error(error:unknown):void}){
         if(closed||started)throw fail('pdf_invalid');started=true;
         try{
-          if(remainder){for(let at=0;at<remainder.length;at+=65536){combined.throwIfAborted();sink.chunk(new Uint8Array(remainder.subarray(at,at+65536)));}remainder=undefined;}
-          for(;;){const bytes=await read();if(!bytes)break;for(let at=0;at<bytes.length;at+=65536){combined.throwIfAborted();sink.chunk(new Uint8Array(bytes.subarray(at,at+65536)));}}
+          if(remainder){for(let at=0;at<remainder.length;at+=65536){combined.throwIfAborted();unchanged();sink.chunk(new Uint8Array(remainder.subarray(at,at+65536)));}remainder=undefined;}
+          for(;;){const bytes=await read();if(!bytes)break;for(let at=0;at<bytes.length;at+=65536){combined.throwIfAborted();unchanged();sink.chunk(new Uint8Array(bytes.subarray(at,at+65536)));}}
           sink.done();await close();
         }catch(error){const expectedClose=closed;await close(error);if(!expectedClose&&!signal.aborted)sink.error(error);}
       },dispose:close
