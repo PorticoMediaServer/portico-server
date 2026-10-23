@@ -315,8 +315,8 @@
   }
 
   /** Redeem a code with a server without touching the current pairing (kept until the new one is adopted). */
-  function redeemAt(origin, code, name) {
-    return post('/v1/cast/redeem', {protocolVersion:PROTOCOL,code:code,deviceId:deviceId(),displayName:name||'Portico on this TV'}, undefined, origin);
+  function redeemAt(origin, code) {
+    return post('/v1/cast/redeem', {protocolVersion:PROTOCOL,code:code,deviceId:deviceId()}, undefined, origin);
   }
   /** Make a redeemed pairing current: stop what's playing, forget the old credential, adopt the new one. */
   async function switchTo(result, origin) {

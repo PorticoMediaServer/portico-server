@@ -22,15 +22,16 @@ function reportedStatus(raw: string): CastReceiverStatus | undefined {
 /** Only a selected SDK session supplies a receiver's name and id. */
 export function confirmedCastDevice(session: CastSession): ConfirmedCastDevice | undefined {
   const device = session.getCastDevice();
-  if (typeof device.friendlyName !== 'string' || !device.friendlyName.trim()) return undefined;
-  return Object.freeze({name: device.friendlyName, ...(typeof device.label === 'string' && device.label ? {id: device.label} : {})});
+  const name = typeof device.friendlyName === 'string' ? device.friendlyName.trim().slice(0, 64) : '';
+  if (!name) return undefined;
+  return Object.freeze({name, ...(typeof device.label === 'string' && device.label ? {id: device.label} : {})});
 }
 
 /** Portico's custom channel only. No CAF media load or media/grant URL is accepted here. */
 export function castTransportFor(session: CastSession, context: CastContext, framework: CastFramework, observeStatus?: (status: CastReceiverStatus) => void): CastTransport {
   const device = session.getCastDevice();
   return {
-    deviceName: typeof device.friendlyName === 'string' ? device.friendlyName : '',
+    deviceName: typeof device.friendlyName === 'string' ? device.friendlyName.trim().slice(0, 64) : '',
     ...(typeof device.label === 'string' && device.label ? {deviceId: device.label} : {}),
     send: command => session.sendMessage(CAST_NAMESPACE, command).then(() => undefined),
     onMessage: receive => {
