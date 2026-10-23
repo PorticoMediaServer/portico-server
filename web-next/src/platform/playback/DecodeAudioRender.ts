@@ -5,7 +5,11 @@ import {Deck, linkDecks, type PcmSource} from './audio/engine';
 import {ConvertedSource} from './audio/converted';
 import {TrackStream} from './audio/track';
 import {Stretch} from './audio/stretch';
+import {BrowserEqualizer, parseEqualizer, type EqualizerSettings} from './audio/equalizer';
+import {loadDeviceEqualizer} from './audio/equalizer-store';
+import {configureDestination, outputClockLag, type BrowserAudioFacts} from './audio/output';
 import {MediaCarrier} from './audio/carrier';
+import {listeningDiagnostic, type ListeningEffectsPort} from './listening-effects';
 
 /**
  * Music decoded on the device (spec §18.1 version 2; Plan §9.6), Plexamp's model: the original file
@@ -39,6 +43,11 @@ export class DecodeAudioRender {
   private context: AudioContext;
   private master: GainNode;
   private carrier: MediaCarrier;
+  private readonly equalizer: BrowserEqualizer;
+  private equalizerRevision = 0;
+  private equalizerFailed = false;
+  private outputCount = 2;
+  private clockBasis: BrowserAudioFacts['clock'] = 'latency';
   /** Seconds between the context's clock and what is heard (the output path's latency), smoothed. */
   private lag = 0;
   private primary?: Playing;
@@ -61,20 +70,33 @@ export class DecodeAudioRender {
   private factIntent = -1;
   private factPosition = -1;
   private starting = false;
+  private processingReport = '';
+  private resumeAttempt = 0;
+  private readonly listening: ListeningEffectsPort;
 
   constructor(service: PlaybackService, url: (path: string) => string, element: HTMLVideoElement, sameAlbum: SameAlbum = () => false, byteCache: ByteCache = audioByteCache) {
     this.service = service; this.url = url; this.element = element; this.sameAlbum = sameAlbum; this.byteCache = byteCache;
+    this.listening = service as unknown as ListeningEffectsPort;
     this.snapshot = service.getSnapshot();
-    const rate = playableAudio(this.snapshot.session?.audio) ? this.snapshot.session!.audio!.sampleRate! : undefined;
     // On iPhone and iPad, audio from a bare AudioContext follows the silent switch and stops when
     // the page goes to the background unless the page says it is playing media.
     try { const session = (navigator as Navigator & {audioSession?: {type: string}}).audioSession; if (session && session.type !== 'playback') session.type = 'playback'; } catch { /* not offered here */ }
-    this.context = createContext(rate);
+    this.context = createContext();
+    this.outputCount = configureDestination(this.context.destination);
     this.context.addEventListener('statechange', this.contextChanged);
     document.addEventListener('visibilitychange', this.interrupted);
     this.master = this.context.createGain();
+    this.equalizer = new BrowserEqualizer(this.context);
+    this.equalizer.output.connect(this.master);
     // Through a media element where the browser allows it, so media keys and the lock screen reach music too.
     this.carrier = new MediaCarrier(this.context, this.master, () => { if (!this.disposed && this.service.getSnapshot().intent === 'playing') this.service.pause(); });
+    this.outputChanged();
+    const equalizerRevision = this.equalizerRevision;
+    void loadDeviceEqualizer().then(settings => {
+      if (!this.disposed && equalizerRevision === this.equalizerRevision) this.applyEqualizer(settings);
+    }).catch(() => { /* Storage/graph failure grants no processing facts. The caller can retry. */ });
+    this.context.addEventListener('sinkchange', this.outputChanged);
+    navigator.mediaDevices?.addEventListener?.('devicechange', this.outputChanged);
     this.volume();
     element.addEventListener('volumechange', this.volume);
     document.addEventListener('click', this.gesture);
@@ -88,7 +110,7 @@ export class DecodeAudioRender {
   private interrupted = () => {
     if (this.disposed || this.starting || this.context.state === 'running' || this.context.state === 'closed') return;
     if (document.visibilityState !== 'visible' || this.service.getSnapshot().intent !== 'playing' || this.service.getSnapshot().seekError) return;
-    void this.context.resume().catch(() => {});
+    this.resumeContext();
   };
   /** While the context is not running nothing is heard, so the position stops; once it runs
    * again the schedule is brought up to date. An interruption is also answered as above. */
@@ -103,11 +125,27 @@ export class DecodeAudioRender {
     queueMicrotask(() => {
       if (!this.disposed && this.service.getSnapshot().intent === 'playing') {
         this.askedForGesture = false;
-        this.carrier.play();
-        void this.context.resume().catch(() => this.service.audioEffectsNotice('Press play to allow audio in this browser.'));
+        this.resumeContext();
       }
     });
   };
+
+  private resumeContext(): void {
+    const attempt = ++this.resumeAttempt, revision = this.revision;
+    const before = this.service.getSnapshot(), key = sessionKey(before.session);
+    const refused = () => {
+      const current = this.service.getSnapshot();
+      if (this.disposed || attempt !== this.resumeAttempt || revision !== this.revision || current.intentId !== before.intentId || sessionKey(current.session) !== key || current.intent !== 'playing') return;
+      this.service.pause();
+      this.listening.listeningNotice?.('audio_autoplay_blocked');
+    };
+    void this.context.resume().then(() => { if (this.context.state !== 'running') refused(); }, refused);
+    // AudioContext.resume may remain pending under autoplay policy. An actual media-element
+    // NotAllowedError supplies refusal evidence; a running direct path needs no notice.
+    this.carrier.play(error => {
+      if (error && typeof error === 'object' && 'name' in error && error.name === 'NotAllowedError' && this.context.state !== 'running') refused();
+    });
+  }
 
   private reader(plan: PlayableAudioRender, prepared: boolean): Feed {
     if (plan.mode === 'converted') {
@@ -143,17 +181,19 @@ export class DecodeAudioRender {
     if (!stream) return undefined;
     const frames = plan.durationFrames - fromFrame;
     const source = speed === 1 ? stream : new Stretch(stream, speed, frames);
-    return new Deck(this.context, this.master, source, {frames: speed === 1 ? frames : (source as Stretch).outputFrames, gain: this.gainFor(plan), label, holdTail: this.snapshot.audioEffects.settings.gapless || this.snapshot.audioEffects.settings.crossfadeSeconds === 0});
+    return new Deck(this.context, this.equalizer.input, source, {frames: speed === 1 ? frames : (source as Stretch).outputFrames, gain: this.gainFor(plan), label, holdTail: this.snapshot.audioEffects.settings.gapless || this.snapshot.audioEffects.settings.crossfadeSeconds === 0});
   }
 
   /** A candidate cancelled before its deck opened has no deck yet; its reader still closes. */
   private closePlaying(p?: Playing | Candidate) { if (!p) return; (p.deck as Deck | undefined)?.close(); p.reader.close(); }
   private reset() {
     ++this.revision;
+    this.askedForGesture = false;
     for (const p of [this.primary, this.candidate, this.incoming, this.retiring]) this.closePlaying(p);
     this.primary = this.candidate = this.incoming = this.retiring = undefined;
     this.committing = undefined;
     this.starting = false;
+    this.reportProcessing();
   }
 
   apply(s: PlaybackSnapshot) {
@@ -161,7 +201,7 @@ export class DecodeAudioRender {
     this.snapshot = s;
     if (!s.session || !s.audioEffects.rendering || s.phase === 'error' || s.phase === 'ended' || s.failedSeek) { this.reset(); return; }
     const plan = s.session.audio;
-    if (!playableAudio(plan)) { this.service.audioRenderFailed(plan?.reason ?? 'This audio can’t be decoded on this device.'); return; }
+    if (!playableAudio(plan)) { this.service.audioRenderFailed('audio_render_failed'); return; }
     const seek = s.pendingSeek, seekKey = seek ? `${s.intentId}:${seek.revision}` : '';
     const rateChanged = this.lastRate !== s.audioEffects.rate;
     const key = sessionKey(s.session);
@@ -174,6 +214,7 @@ export class DecodeAudioRender {
       return;
     }
     for (const p of [this.primary, this.incoming, this.retiring]) if (p) p.deck.setGain(this.gainFor(p.plan));
+    this.reportProcessing();
     this.transport(s);
     this.prepared(s);
     this.committed(s);
@@ -181,14 +222,11 @@ export class DecodeAudioRender {
 
   private transport(s: PlaybackSnapshot) {
     if (s.intent === 'paused' || s.seekError) { this.carrier.pause(); void this.context.suspend(); return; }
-    this.carrier.play();
     if ((this.context.state as string === 'suspended' || this.context.state as string === 'interrupted') && !this.starting && !this.askedForGesture) {
       // An autoplay denial needs a gesture: say so rather than failing.
       this.askedForGesture = true;
-      void this.context.resume().then(() => {
-        if (this.context.state !== 'running' && !this.disposed) { this.service.audioEffectsNotice('Press play to allow audio in this browser.'); this.service.pause(); }
-      }).catch(() => { if (!this.disposed) { this.service.audioEffectsNotice('Press play to allow audio in this browser.'); this.service.pause(); } });
-    }
+      this.resumeContext();
+    } else this.carrier.play();
   }
 
   private async start(plan: PlayableAudioRender, key: string, fromFrame: number, intent: number, seekRevision?: number) {
@@ -199,19 +237,20 @@ export class DecodeAudioRender {
       const speed = this.snapshot.audioEffects.rate;
       const deck = await this.openDeck(plan, reader, fromFrame, 'primary', speed);
       if (revision !== this.revision || this.disposed) { deck?.close(); reader.close(); return; }
-      if (!deck) { reader.close(); this.service.audioRenderFailed('This browser can’t decode this audio.'); return; }
+      if (!deck) { reader.close(); this.service.audioRenderFailed('audio_render_failed'); return; }
       this.primary = {deck, plan, key, fromFrame, reader, speed};
       await deck.pump(START_SECONDS);
       if (revision !== this.revision || this.disposed) return;
       if (deck.failure) throw deck.failure;
       deck.start(Math.ceil((this.context.currentTime + LEAD) * this.context.sampleRate));
       this.starting = false;
+      this.reportProcessing();
       this.service.ready(intent);
       if (seekRevision !== undefined) this.service.seekApplied(intent, seekRevision, fromFrame / plan.sampleRate, 'paused');
       this.transport(this.service.getSnapshot());
       void deck.pump(AHEAD_SECONDS);
     } catch {
-      if (revision === this.revision && !this.disposed) this.service.audioRenderFailed('Audio decoding or delivery failed. Retry playback to reconnect.');
+      if (revision === this.revision && !this.disposed) this.service.audioRenderFailed('audio_render_failed');
     }
   }
 
@@ -246,7 +285,7 @@ export class DecodeAudioRender {
         pending.ready = true;
         this.service.audioPrepared(token);
       } catch {
-        if (this.candidate === pending) { this.closePlaying(pending); this.candidate = undefined; this.service.audioPreparationFailed('The next track could not be buffered. This edge will use ordinary playback.'); }
+        if (this.candidate === pending) { this.closePlaying(pending); this.candidate = undefined; listeningDiagnostic('audio_transition_unavailable'); this.listening.audioPreparationFailed(); }
       }
     })();
   }
@@ -254,14 +293,14 @@ export class DecodeAudioRender {
   private committed(s: PlaybackSnapshot) {
     const committed = s.audioEffects.committed, c = this.candidate, p = this.primary;
     if (!committed || !c || committed.token !== c.token || !c.ready || this.incoming || !p || p.deck.endFrame === undefined) return;
-    if (committed.session.audio?.id !== c.plan.id) { this.service.audioRenderFailed('The prepared audio changed.'); return; }
+    if (committed.session.audio?.id !== c.plan.id) { this.service.audioRenderFailed('audio_render_failed'); return; }
     // The whole next file may now be fetched; bring it into the cache before its edge.
     c.reader.unlock();
     void c.reader.prefetchAll();
     const sameAlbum = this.sameAlbum(s.itemId, committed.itemId);
     const nowFrame = Math.ceil((this.context.currentTime + LEAD) * this.context.sampleRate);
     const edge = linkDecks(this.context, p.deck, c.deck, {crossfadeSeconds: s.audioEffects.settings.crossfadeSeconds, sameAlbum, earliest: nowFrame});
-    if (edge.late) this.service.audioEffectsNotice('The next track arrived after its edge. Playback is continuing.');
+    if (edge.late) listeningDiagnostic('audio_edge_late');
     this.incoming = {...c, edge: edge.start, fade: edge.fade};
     this.candidate = undefined;
   }
@@ -285,26 +324,16 @@ export class DecodeAudioRender {
    * half a second, and smoothed so the position never jumps.
    */
   private measureLag() {
-    const c = this.context as AudioContext & {outputLatency?: number; getOutputTimestamp?: () => AudioTimestamp};
-    if (c.state !== 'running') return;
-    let lag: number | undefined;
-    try {
-      const stamp = c.getOutputTimestamp?.();
-      if (stamp && Number.isFinite(stamp.contextTime) && Number.isFinite(stamp.performanceTime) && stamp.performanceTime! > 0 && typeof performance !== 'undefined')
-        lag = c.currentTime - (stamp.contextTime! + (performance.now() - stamp.performanceTime!) / 1000);
-    } catch { lag = undefined; }
-    if (lag === undefined || !(lag > 0)) {
-      const stated = (Number.isFinite(c.outputLatency) ? c.outputLatency! : 0) + (Number.isFinite(c.baseLatency) ? c.baseLatency : 0);
-      if (lag === undefined || stated > 0) lag = stated;
-    }
-    if (!Number.isFinite(lag)) return;
-    const bounded = Math.max(0, Math.min(0.5, lag));
-    this.lag = this.lag === 0 ? bounded : this.lag + (bounded - this.lag) * 0.1;
+    const sample = outputClockLag(this.context, performance.now(), this.carrier.carrying);
+    if (!sample) return;
+    this.clockBasis = sample.basis;
+    this.lag = this.lag === 0 ? sample.seconds : this.lag + (sample.seconds - this.lag) * 0.1;
   }
 
   private tick() {
     if (this.disposed) return;
     const s = this.service.getSnapshot(), p = this.primary;
+    this.reportProcessing();
     if (!p || s.phase === 'error' || s.phase === 'ended') return;
     this.measureLag();
     const frame = Math.floor(this.context.currentTime * this.context.sampleRate);
@@ -320,7 +349,7 @@ export class DecodeAudioRender {
       return;
     }
     if (this.retiring && (this.retiring.deck.ended || frame >= (this.retiring.deck.endFrame ?? 0) + this.context.sampleRate)) { this.closePlaying(this.retiring); this.retiring = undefined; }
-    if (p.deck.failure) { this.service.audioRenderFailed('Audio decoding or delivery failed. Retry playback to reconnect.'); this.reset(); return; }
+    if (p.deck.failure) { this.service.audioRenderFailed('audio_render_failed'); this.reset(); return; }
     // Decode ahead (bounded), for the current deck and a linked successor.
     void p.deck.pump(AHEAD_SECONDS);
     if (this.incoming && this.incoming.deck.startFrame !== undefined && frame >= this.incoming.edge - AHEAD_SECONDS * this.context.sampleRate) void this.incoming.deck.pump(AHEAD_SECONDS);
@@ -342,6 +371,47 @@ export class DecodeAudioRender {
     }
   }
 
+  private outputChanged = () => {
+    // A route change may alter channel limits, never the app's EQ choice or filter state.
+    if (!this.disposed) this.outputCount = this.carrier.refreshOutput();
+  };
+
+  /** Apply committed device settings; only a successfully configured graph reports EQ on. */
+  applyEqualizer(settings: EqualizerSettings): void {
+    const value = parseEqualizer(settings);
+    if (this.disposed) throw new Error('equalizer_unavailable');
+    ++this.equalizerRevision;
+    try { this.equalizer.apply(value); this.equalizerFailed = false; }
+    catch (error) {
+      this.equalizerFailed = true;
+      try { this.equalizer.bypass(); }
+      catch { this.service.fallbackAudioRender(); }
+      // This song continues through the dry path. Saved intent remains on, actual EQ is false.
+      listeningDiagnostic('equalizer_filter_unavailable', error);
+    }
+    this.reportProcessing();
+  }
+  getEqualizer(): EqualizerSettings { return this.equalizer.settings; }
+  audioFacts(): BrowserAudioFacts | undefined {
+    const plan = this.primary?.plan;
+    const snapshot = this.service.getSnapshot();
+    if (!plan || this.starting || this.primary?.deck.startFrame === undefined || this.primary.deck.failure || this.primary.key !== sessionKey(snapshot.session) || !snapshot.audioEffects.rendering || snapshot.phase === 'error' || snapshot.phase === 'ended') return undefined;
+    const levelingGain = this.primary.deck.norm.gain.value;
+    return {engine:'web-audio',bitPerfect:false,sourceRate:plan.sampleRate,contextRate:this.context.sampleRate,
+      resampledToContext:plan.sampleRate!==this.context.sampleRate,deviceRate:null,browserMayResample:true,
+      sourceChannels:plan.channels,outputChannels:Math.min(plan.channels,this.outputCount),eqApplied:!this.equalizerFailed && this.equalizer.settings.enabled,levelingApplied:Number.isFinite(levelingGain) && levelingGain !== 1,clock:this.carrier.carrying?'unmeasured-carrier':this.clockBasis};
+  }
+
+  private reportProcessing(): void {
+    const snapshot = this.service.getSnapshot(), session = snapshot.session;
+    if (!session) { this.processingReport = ''; return; }
+    const facts = this.audioFacts(), value = {eqApplied: facts?.eqApplied ?? false, levelingApplied: facts?.levelingApplied ?? false};
+    const key = `${snapshot.intentId}:${session.id}:${session.generation}:${value.eqApplied}:${value.levelingApplied}`;
+    if (key === this.processingReport) return;
+    this.processingReport = key;
+    this.listening.audioProcessingApplied?.({intentId: snapshot.intentId, sessionId: session.id, generation: session.generation}, value);
+  }
+
   transportPosition() { return this.primary ? this.position() : this.snapshot.positionSeconds; }
 
   dispose() {
@@ -354,14 +424,15 @@ export class DecodeAudioRender {
     this.element.removeEventListener('volumechange', this.volume);
     this.context.removeEventListener('statechange', this.contextChanged);
     document.removeEventListener('visibilitychange', this.interrupted);
+    this.context.removeEventListener('sinkchange', this.outputChanged);
+    navigator.mediaDevices?.removeEventListener?.('devicechange', this.outputChanged);
     this.carrier.dispose();
+    this.equalizer.dispose();
     void this.context.close();
   }
 }
 
-/** An AudioContext at the music's own rate when the browser allows it: the browser's output path
- * then does the one resampling to the device (§9.6 rule 3), continuously across tracks. */
-function createContext(rate?: number): AudioContext {
-  if (rate) { try { return new AudioContext({sampleRate: rate, latencyHint: 'playback'}); } catch { /* unsupported rate */ } }
+/** Let the browser choose its real context output rate; it may still resample in the OS path. */
+function createContext(): AudioContext {
   return new AudioContext({latencyHint: 'playback'});
 }

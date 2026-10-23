@@ -90,8 +90,10 @@ func DefaultDeliveryConfiguration() DeliveryConfiguration {
 // default for that field alone.
 func (c DeliveryConfiguration) Normalized() DeliveryConfiguration {
 	d := DefaultDeliveryConfiguration()
+	// Until the canonical registry supplies a validated mode, the real owner
+	// TranscodingEnabled input remains authoritative. Absence is not an "all" write.
 	if c.ConversionMode != "all" && c.ConversionMode != "sound" && c.ConversionMode != "never" {
-		c.ConversionMode = d.ConversionMode
+		c.ConversionMode = ""
 	}
 	if c.OutputFormat != "auto" && c.OutputFormat != "h264" {
 		c.OutputFormat = d.OutputFormat
