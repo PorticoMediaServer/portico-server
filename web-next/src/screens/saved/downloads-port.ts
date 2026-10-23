@@ -44,6 +44,7 @@ export type SavedLocalDownloadGroup = Readonly<{
   qualityLabel?: string;
   state?: SavedLocalDownload['state'];
   held?: boolean;
+  offlineAccess?: SavedLocalDownload['offlineAccess'];
   /** An actual member with persisted raster, resolved opaquely by getArtwork. */
   artworkId?: string;
   /** Native fingerprint of the complete ordered member IDs and row revisions. */

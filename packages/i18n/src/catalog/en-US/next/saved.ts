@@ -29,4 +29,6 @@ export const savedMessages = {
   'next.saved.otherProfiles': "Other profiles' downloads use {size} on this computer.",
   'next.saved.openServerSettings': 'Open server settings',
   'next.saved.loadFailed': 'Couldn’t load Downloads',
+  'next.saved.qualitySize': '{quality}, about {size}',
+  'next.saved.expiredHelp': 'The server stopped keeping this ready because it wasn’t fetched in time.',
 } as const satisfies Record<`next.${string}`, string>;

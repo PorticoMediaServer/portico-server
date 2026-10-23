@@ -22,6 +22,9 @@ import type {SavedRuntime, SavedScreenRoute} from './runtime.ts';
 import {savedSectionWindow} from './window.ts';
 import {savedText as s} from './text.ts';
 import {SavedHistory, SavedResourceScreen} from './Resource';
+import type {SavedOperations} from './operations.ts';
+import {sameSavedRoute, savedRouteKey} from './route.ts';
+import {useSavedViewOperations} from './use-view-operations.ts';
 import styles from './saved.module.css';
 
 const t = defaultI18n.t;
@@ -60,18 +63,20 @@ export type SavedBindings = Readonly<{
   selection: SavedSelection;
   effects: SavedEffects;
 }>;
+export type SavedViewBindings = SavedBindings & Readonly<{operations: SavedOperations}>;
 const tabLabels = {watchlist: 'saved.tab.watchlist', favorites: 'saved.tab.favorites', playlists: 'saved.tab.playlists', collections: 'saved.tab.collections', views: 'saved.tab.savedViews', history: 'saved.tab.history', downloads: 'downloads.title'} as const;
 
 export function SavedScreen(bindings: SavedBindings) {
   const {runtime, route, presentation, effects} = bindings;
-  const routeKey = JSON.stringify(route);
-  const [creating, setCreating] = useState<'playlist' | 'collection'>();
+  const routeKey = savedRouteKey(route), operations = useSavedViewOperations(runtime.operations, routeKey);
+  const viewBindings: SavedViewBindings = {...bindings, operations};
+  const [creating, setCreating] = useState<Readonly<{routeKey: string; kind: 'playlist' | 'collection'}>>();
   useEffect(() => {
     if (route.view === 'downloads') return;
     const current = ['collections', 'views', 'history', 'resource'].includes(route.view) ? runtime.personal.getSnapshot().route : runtime.saved.getSnapshot().route;
     const same = route.view === 'watchlist' || route.view === 'favorites'
-      ? JSON.stringify(runtime.posters.getSnapshot().route) === JSON.stringify({...route, shape: 'posters'}) && JSON.stringify(runtime.squares.getSnapshot().route) === JSON.stringify({...route, shape: 'squares'})
-      : JSON.stringify(current) === JSON.stringify(route);
+      ? sameSavedRoute(runtime.posters.getSnapshot().route, {...route, shape: 'posters'}) && sameSavedRoute(runtime.squares.getSnapshot().route, {...route, shape: 'squares'})
+      : sameSavedRoute(current, route);
     if (!same) void runtime.select(route).catch(effects.reportError);
   }, [runtime, route, effects.reportError]);
   const refresh = useCallback(async (context?: {signal?: AbortSignal; settle?: () => Promise<void>}) => {
@@ -84,30 +89,33 @@ export function SavedScreen(bindings: SavedBindings) {
   const localSnapshot = useSyncExternalStore(bindings.localDownloads?.subscribe ?? noSubscribe, bindings.localDownloads?.getSnapshot ?? noLocalSnapshot, noLocalSnapshot);
   const localUsable = !!bindings.localDownloads && sameSavedDownloadsScope(bindings.localDownloads.scope, runtime.scope) && !!localSnapshot?.available;
   if (!runtime.operations.current) return null;
-  if (route.view === 'playlist' || route.view === 'resource') return <SavedResourceScreen key={routeKey} bindings={bindings} />;
+  if (route.view === 'playlist' || route.view === 'resource') return <SavedResourceScreen key={routeKey} bindings={viewBindings} />;
   const active = route.view;
   const tabs = (Object.keys(tabLabels) as (keyof typeof tabLabels)[]).filter(tab => tab !== 'downloads' || bindings.downloadsOffered || localUsable);
-  const server = <ServerDownloads service={runtime.downloads} operations={runtime.operations} effects={effects} artwork={bindings.preparationArtwork} online={bindings.online} />;
+  const server = <ServerDownloads service={runtime.downloads} operations={operations} effects={effects} artwork={bindings.preparationArtwork} online={bindings.online} />;
   return <main className={styles.page}>
     {presentation.backdrop && <div className={styles.wash} aria-hidden="true"><AmbientArt source={presentation.backdrop} treatment="hero" /></div>}
     <header className={styles.header}><h1>{t('saved.title')}</h1></header>
     <Tabs className={styles.tabs} listClassName={styles.tabsList} value={active} aria-label={t('web.saved.sections')} onValueChange={value => { if (value in tabLabels) effects.selectRoute({view: value as keyof typeof tabLabels}); }}
       items={tabs.map(tab => ({value: tab, label: t(tabLabels[tab])}))} />
     {route.view === 'downloads' ? localUsable && bindings.localDownloads
-      ? <LocalDownloads port={bindings.localDownloads} operations={runtime.operations} effects={effects} /> : server
-      : route.view === 'history' ? <SavedHistory bindings={bindings} />
-        : route.view === 'collections' || route.view === 'views' ? <PersonalResources {...bindings} onCreate={() => setCreating('collection')} />
-          : <SavedLists {...bindings} onCreate={() => setCreating('playlist')} />}
-    <CreateResourceDialog kind={creating} bindings={bindings} close={() => setCreating(undefined)} />
+      ? <LocalDownloads key={routeKey} port={bindings.localDownloads} operations={operations} effects={effects} /> : server
+      : route.view === 'history' ? <SavedHistory key={routeKey} bindings={viewBindings} />
+        : route.view === 'collections' || route.view === 'views' ? <PersonalResources key={routeKey} {...viewBindings} onCreate={() => setCreating({routeKey, kind: 'collection'})} />
+          : <SavedLists key={routeKey} {...viewBindings} onCreate={() => setCreating({routeKey, kind: 'playlist'})} />}
+    <CreateResourceDialog key={routeKey} kind={creating?.routeKey === routeKey ? creating.kind : undefined} bindings={viewBindings} close={() => setCreating(undefined)} />
   </main>;
 }
 const noSubscribe = () => () => {};
 const noLocalSnapshot = () => undefined;
 
-function SavedLists(bindings: SavedBindings & {onCreate: () => void}) {
+function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
   const {runtime, route, presentation, effects} = bindings;
   const first = route.view === 'watchlist' || route.view === 'favorites' ? runtime.posters : runtime.saved;
   const primary = useSyncExternalStore(first.subscribe, first.getSnapshot, first.getSnapshot), squares = useSyncExternalStore(runtime.squares.subscribe, runtime.squares.getSnapshot, runtime.squares.getSnapshot);
+  const routeMatches = route.view === 'watchlist' || route.view === 'favorites'
+    ? sameSavedRoute(primary.route, {...route, shape: 'posters'}) && sameSavedRoute(squares.route, {...route, shape: 'squares'}) : sameSavedRoute(primary.route, route);
+  if (!routeMatches) return null;
   const split = route.view === 'watchlist' || route.view === 'favorites', projection = primary.projection ?? (split ? squares.projection : null);
   const label = serverTextLabel(defaultI18n, projection?.heading), list = route.view === 'favorites' ? 'favorites' : route.view === 'playlists' ? 'playlists' : 'watchlist';
   const total = split ? primary.phase === 'ready' && squares.phase === 'ready' ? [...(primary.projection?.sections ?? []), ...(squares.projection?.sections ?? [])].reduce((sum, section) => sum + section.totalCount, 0) : undefined : projection?.sections.reduce((sum, section) => sum + section.totalCount, 0);
@@ -135,7 +143,7 @@ function SavedLists(bindings: SavedBindings & {onCreate: () => void}) {
   </>;
 }
 
-export function SavedSection(bindings: SavedBindings & {service: SavedService; section: SavedProjection['sections'][number]; heading: boolean}) {
+export function SavedSection(bindings: SavedViewBindings & {service: SavedService; section: SavedProjection['sections'][number]; heading: boolean}) {
   const {service, section, artwork, effects, presentation, selection} = bindings;
   const collection = useMemo(() => savedSectionWindow(service, section.id), [service, section.id]);
   const cleanup = useRef<(() => void) | undefined>(undefined);
@@ -165,7 +173,7 @@ export function SavedSection(bindings: SavedBindings & {service: SavedService; s
         if (!media) return <StateView title={t('card.unavailable')} />;
         const common = {model: homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), artwork: artwork.foreground(media.posterUrl, presentation.cardWidth * devicePixelRatio, ratio),
           selection: cardSelection, context: 'grid' as const, watched: media.watched, onNavigate: () => effects.openEntry(media),
-          onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.runtime.operations.run(() => effects.playEntry(media)).catch(effects.reportError); } : undefined,
+          onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(() => effects.playEntry(media)).catch(effects.reportError); } : undefined,
           onMore: (anchor: HTMLButtonElement) => effects.openMore(service, section.id, entry, anchor)};
         if (presentation.view === 'list') return <div className={styles.mediaListRow}><PosterCard {...common} /></div>;
         return square ? <SquareCard {...common} /> : <PosterCard {...common} />;
@@ -176,8 +184,9 @@ function mediaEntry(entry: SavedEntry): ContentEntry | undefined {
   return entry.kind === 'playlist' ? undefined : entry.kind === 'playlist_entry' ? entry.hidden ? undefined : entry.media : entry;
 }
 
-function PersonalResources(bindings: SavedBindings & {onCreate: () => void}) {
+function PersonalResources(bindings: SavedViewBindings & {onCreate: () => void}) {
   const service = bindings.runtime.personal, snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), kind = bindings.route.view === 'views' ? 'views' : 'collections';
+  if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
   return <>
     <div className={styles.toolbar}><div className={styles.toolbarEnd}>{kind === 'collections' && <Button size="small" icon="i-plus" onClick={bindings.onCreate}>{t('web.saved.newCollection')}</Button>}</div></div>
     {snapshot.error && !snapshot.resources.length && <StateView title={t('saved.loadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.retryRead(); }}} />}
@@ -186,20 +195,20 @@ function PersonalResources(bindings: SavedBindings & {onCreate: () => void}) {
     {snapshot.nextCursor && <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button>}
   </>;
 }
-function PersonalResourceTile({resource, bindings}: {resource: PersonalResource; bindings: SavedBindings}) {
+function PersonalResourceTile({resource, bindings}: {resource: PersonalResource; bindings: SavedViewBindings}) {
   const covers = (resource.artworkPaths ?? []).map(path => bindings.artwork.foreground(path, bindings.presentation.cardWidth, 1)).filter((source): source is ArtworkSource => !!source);
   return <PlaylistMosaic covers={covers} model={{title: resource.name, caption: [{id: 'count', role: 'value', text: t('web.saved.items', {count: resource.entryCount})}]}}
     context="grid" onNavigate={() => bindings.effects.selectRoute({view: 'resource', resourceId: resource.id})} />;
 }
 
-function CreateResourceDialog({kind, bindings, close}: {kind: 'playlist' | 'collection' | undefined; bindings: SavedBindings; close: () => void}) {
+function CreateResourceDialog({kind, bindings, close}: {kind: 'playlist' | 'collection' | undefined; bindings: SavedViewBindings; close: () => void}) {
   const [name, setName] = useState(''), [shared, setShared] = useState(false), [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { setName(''); setShared(false); }, [kind]);
   const create = () => {
-    if (!kind || busy || !name.trim() || !bindings.runtime.operations.current) return;
+    if (!kind || busy || !name.trim() || !bindings.operations.current) return;
     setBusy(true);
-    void bindings.runtime.operations.run(async () => {
+    void bindings.operations.run(async () => {
       if (kind === 'playlist') await bindings.runtime.saved.mutate({action: 'create', name: name.trim()});
       else if (!await bindings.runtime.personal.mutate({action: 'create', kind: 'collection', name: name.trim(), visibility: shared ? 'server' : 'private'})) throw bindings.runtime.personal.getSnapshot().mutationError;
     }, () => { setBusy(false); close(); }).catch(error => { setBusy(false); bindings.effects.reportError(error); });

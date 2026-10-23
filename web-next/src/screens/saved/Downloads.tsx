@@ -27,9 +27,10 @@ function DownloadFacts({title, quality, bytes, browser = false}: {title: Downloa
   const episode = title.kind === 'episode' && title.number !== null ? title.groupNumber === null
     ? t('title.episodeOnly', {episode: title.number}) : t('next.kit.episodeCode', {season: title.groupNumber, episode: title.number}) : undefined;
   const kind = browser && title.kind === 'movie' ? t('search.kind.movie') : undefined;
+  const qualitySize = browser && quality && bytes !== undefined && bytes > 0 ? s('next.saved.qualitySize', {quality, size: defaultI18n.bytes(bytes)}) : undefined;
   const facts = [browser && title.kind === 'episode' ? title.parentTitle : kind, episode,
     title.kind === 'song' || title.kind === 'album' ? title.artist : title.kind !== 'episode' && title.year ? defaultI18n.number(title.year, {useGrouping: false}) : undefined,
-    quality, bytes !== undefined && bytes > 0 ? defaultI18n.bytes(bytes) : undefined].filter((fact): fact is string => !!fact);
+    qualitySize ?? quality, !qualitySize && bytes !== undefined && bytes > 0 ? defaultI18n.bytes(bytes) : undefined].filter((fact): fact is string => !!fact);
   return <small className={styles.facts}>{facts.map((fact, index) => <span key={index}>{fact}</span>)}</small>;
 }
 function Progress({percent}: {percent: number | undefined}) {
@@ -59,7 +60,7 @@ function NativeArtwork({id, revision, title, port}: {id: string; revision: numbe
 
 function LocalStatus({item, items}: {item: SavedLocalDownload; items: readonly SavedLocalDownload[]}) {
   const percent = measuredPercent(item.percent), waitingFor = items.find(row => row.id === item.waitsForId);
-  const checkIn = item.offlineAccess === 'needsCheckIn';
+  const checkIn = item.state === 'ready' && item.offlineAccess === 'needsCheckIn';
   const label = checkIn ? s('next.saved.checkIn') : !item.onServer ? s('next.saved.gone') : item.state === 'ready' ? s('next.saved.downloaded')
     : item.state === 'downloading' ? percent === undefined ? s('next.saved.downloadingUnknown') : s('next.saved.downloading', {percent: Math.floor(percent)})
       : item.state === 'failed' ? s('next.saved.stopped') : item.state === 'paused' ? t('downloads.paused') : t('web.downloads.state.waiting');
@@ -77,13 +78,14 @@ function LocalStatus({item, items}: {item: SavedLocalDownload; items: readonly S
 type LocalConfirmation = Readonly<{kind: 'item'; item: SavedLocalDownload}> | Readonly<{kind: 'others'; value: SavedOtherDownloadsConfirmation}> | Readonly<{kind: 'group'; group: SavedLocalDownloadGroup; title: string}>;
 export function LocalDownloads({port, operations, effects, server}: {port: SavedDownloadsPort; operations: SavedOperations; effects: SavedDownloadEffects; server?: ReactNode}) {
   const snapshot = useSyncExternalStore(port.subscribe, port.getSnapshot, port.getSnapshot);
+  const reportError = effects.reportError;
   const [busy, setBusy] = useState<string>(), [confirmation, setConfirmation] = useState<LocalConfirmation>(), [error, setError] = useState(false);
   const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const controller = new AbortController();
-    void port.refresh(controller.signal).catch(error => { if (!controller.signal.aborted && operations.current) effects.reportError(error); });
+    void port.refresh(controller.signal).catch(error => { if (!controller.signal.aborted && operations.current) reportError(error); });
     return () => controller.abort();
-  }, [port, operations, effects]);
+  }, [port, operations, reportError]);
   const perform = <T,>(key: string, action: (signal: AbortSignal) => Promise<T>, settled?: (value: T) => void) => {
     if (busy || !operations.current) return;
     setBusy(key); setError(false);
@@ -100,9 +102,9 @@ export function LocalDownloads({port, operations, effects, server}: {port: Saved
       {groups.map(group => {
         const count = group.kind === 'show' ? snapshot.groups?.filter(total => total.kind === 'episodes' && total.parentId === group.id.slice(5)).reduce((sum, total) => sum + total.count, 0) : undefined;
         return <section key={group.id}>
-          <div className={styles.downloadHeading}><h2>{group.title ?? (group.kind === 'server' ? t('downloads.onServer') : s(`next.saved.${group.kind === 'show' ? 'movies' : group.kind}`))}</h2>
+          {group.kind !== 'other' && <div className={styles.downloadHeading}><h2>{group.title ?? (group.kind === 'server' ? t('downloads.onServer') : s(`next.saved.${group.kind === 'show' ? 'movies' : group.kind}`))}</h2>
             {count !== undefined && count > 0 && <span>{t('card.episodesAired', {count})}</span>}
-          </div>
+          </div>}
           <div className={styles.downloadList} role="list">
             {group.items.map(item => {
               const allAlbumGroups = group.kind === 'music' && item.title.kind === 'song' ? snapshot.groups?.filter(value => value.kind === 'songs' && value.parentId === item.title.parentId) : undefined;
@@ -113,9 +115,9 @@ export function LocalDownloads({port, operations, effects, server}: {port: Saved
                 return <div key={`album:${album.parentId}:${album.groupId}`} className={styles.downloadRow} role="listitem">
                   <NativeArtwork id={album.artworkId ?? item.id} revision={album.revision} title={item.title} port={port} />
                   <div className={styles.title}><b>{item.title.parentTitle}</b><small className={styles.facts}>{item.title.artist && <span>{item.title.artist}</span>}<span>{t('next.kit.songs', {count: album.count})}</span>{album.qualityLabel && <span>{album.qualityLabel}</span>}{album.bytes > 0 && <span>{defaultI18n.bytes(album.bytes)}</span>}</small></div>
-                  <span className={styles.status}><b data-tone={album.state === 'ready' ? 'healthy' : undefined}>{album.state === 'ready' ? <><Icon name="i-check" size={16} />{s('next.saved.downloaded')}</> : album.state === 'failed' ? s('next.saved.stopped') : album.state === 'paused' ? t('downloads.paused') : album.state === 'queued' ? t('web.downloads.state.waiting') : s('next.saved.downloadingUnknown')}</b></span>
+                  <span className={styles.status}><b data-tone={album.state === 'ready' ? album.offlineAccess === 'needsCheckIn' ? 'warning' : 'healthy' : undefined}>{album.state === 'ready' ? album.offlineAccess === 'needsCheckIn' ? s('next.saved.checkIn') : <><Icon name="i-check" size={16} />{s('next.saved.downloaded')}</> : album.state === 'failed' ? s('next.saved.stopped') : album.state === 'paused' ? t('downloads.paused') : album.state === 'queued' ? t('web.downloads.state.waiting') : s('next.saved.downloadingUnknown')}</b></span>
                   <span className={styles.actions}>
-                    {album.state === 'ready' && album.held === false && port.playGroup && <Button className={styles.rowButton} variant="primary" size="small" icon="i-play" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.playGroup!(selector, album.revision, signal))}>{t('action.play')}</Button>}
+                    {album.state === 'ready' && album.held === false && album.offlineAccess === 'valid' && port.playGroup && <Button className={styles.rowButton} variant="primary" size="small" icon="i-play" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.playGroup!(selector, album.revision, signal))}>{t('action.play')}</Button>}
                     {album.state === 'downloading' && <Button className={styles.rowButton} size="small" icon="i-pause" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.actionGroup(selector, album.revision, 'pause', signal))}>{t('action.pause')}</Button>}
                     <DownloadMenu><MenuRow onClick={() => effects.openItem(album.parentId)}>{t('web.downloads.goToTitle')}</MenuRow><MenuRow destructive onClick={() => setConfirmation({kind: 'group', group: album, title: item.title.parentTitle})}>{t('downloads.removeFromDevice')}</MenuRow></DownloadMenu>
                   </span>
@@ -225,7 +227,7 @@ export function ServerDownloads({service, operations, effects, artwork, online, 
     {snapshot.phase === 'error' && !snapshot.items.length && !embedded && <StateView title={t('downloads.serverListFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.refresh(); }}} />}
     <div className={styles.downloadList} role="list">{snapshot.items.map(item => <div key={item.id} className={styles.downloadRow} role="listitem">
       <span className={styles.art} data-shape={downloadShape(item.title)}><Artwork source={artwork(item)} alt="" /></span>
-      <div className={styles.title}><b>{item.title.title}</b><DownloadFacts title={item.title} quality={qualities.get(item.quality)} bytes={item.artifact.bytes} browser /></div>
+      <div className={styles.title}><b>{item.title.title}</b><DownloadFacts title={item.title} quality={item.quality === 'original' ? t('web.downloads.original') : qualities.get(item.quality)} bytes={item.artifact.bytes} browser /></div>
       <ServerStatus item={item} service={service} />
       <span className={styles.actions}>
         {item.state === 'ready' && <Button variant="primary" className={styles.rowButton} size="small" icon="i-download" disabled={!online} onClick={() => { void operations.run(signal => effects.saveFile(item, signal)).catch(effects.reportError); }}>{t('web.downloads.save')}</Button>}
@@ -249,7 +251,7 @@ function ServerStatus({item, service}: {item: DownloadPreparation; service: Down
     {item.state === 'running' && item.progress.etaSeconds !== null && <small>{t('web.downloads.minutesLeft', {count: Math.max(1, Math.ceil(item.progress.etaSeconds / 60))})}</small>}
     {item.state === 'queued' && <small>{s('next.saved.waitingPreparation')}</small>}
     {item.state === 'paused' && percent !== undefined && <small>{s('next.saved.atPercent', {percent: Math.floor(percent)})}</small>}
-    {item.state === 'expired' && <small>{service.reason(item)}</small>}
+    {item.state === 'expired' && <small>{s('next.saved.expiredHelp')}</small>}
     {item.state === 'running' && <Progress percent={percent} />}
   </span>;
 }

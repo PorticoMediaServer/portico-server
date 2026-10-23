@@ -10,31 +10,33 @@ import {Dialog, MenuRow, Popover} from '../../kit/overlays';
 import {StateView} from '../../kit/states';
 import {PosterCard, SquareCard} from '../../kit/cards';
 import {homeCardModel} from '../home/model';
-import type {SavedBindings} from './Saved';
+import type {SavedViewBindings} from './Saved';
 import {SavedSection} from './Saved';
+import {sameSavedRoute} from './route.ts';
 import styles from './saved.module.css';
 
 const t = defaultI18n.t;
-export function SavedResourceScreen({bindings}: {bindings: SavedBindings}) {
+export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
   const {runtime, route, effects} = bindings;
   const playlist = useSyncExternalStore(runtime.saved.subscribe, runtime.saved.getSnapshot, runtime.saved.getSnapshot), personal = useSyncExternalStore(runtime.personal.subscribe, runtime.personal.getSnapshot, runtime.personal.getSnapshot);
   const [menu, setMenu] = useState(false), [dialog, setDialog] = useState<'rename' | 'delete'>(), [name, setName] = useState(''), [summary, setSummary] = useState(''), [busy, setBusy] = useState(false);
   const cancel = useRef<HTMLButtonElement>(null), nameInput = useRef<HTMLInputElement>(null);
   const isPlaylist = route.view === 'playlist', resource = isPlaylist ? playlist.playlist : personal.resource;
-  const routeMatches = route.view === 'playlist' ? playlist.route?.view === 'playlist' && playlist.route.playlistId === route.playlistId : route.view === 'resource' && personal.route?.view === 'resource' && personal.route.resourceId === route.resourceId;
+  const routeMatches = sameSavedRoute(isPlaylist ? playlist.route : personal.route, route);
   const nameShown = isPlaylist ? playlist.playlist?.name : personal.resource?.name;
   const kind = isPlaylist ? 'playlist' : personal.resource?.kind === 'view' ? 'view' : 'collection';
   const actions = resource?.actions ?? [], pinned = resource?.pinned ?? false;
   const perform = (playlistIntent: SavedIntent, personalIntent: PersonalSavedIntent, done?: () => void) => {
-    if (busy || !runtime.operations.current) return;
+    if (busy || !bindings.operations.current) return;
     setBusy(true);
-    void runtime.operations.run(async () => {
+    void bindings.operations.run(async () => {
       if (isPlaylist) await runtime.saved.mutate(playlistIntent);
       else if (!await runtime.personal.mutate(personalIntent)) throw runtime.personal.getSnapshot().mutationError;
     }, () => { setBusy(false); done?.(); }).catch(error => { setBusy(false); effects.reportError(error); });
   };
   const failure = isPlaylist ? playlist.error : personal.error;
-  if (!routeMatches || !resource) return failure ? <StateView title={t('saved.listLoadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void runtime.select(route); }}} /> : null;
+  if (!routeMatches) return null;
+  if (!resource) return failure ? <StateView title={t('saved.listLoadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void runtime.select(route); }}} /> : null;
   const paths = isPlaylist ? playlist.projection?.sections.flatMap(section => section.entries).flatMap(entry => entry.kind === 'playlist_entry' && !entry.hidden ? entry.media.posterUrl ? [entry.media.posterUrl] : [] : []).slice(0, 4) ?? [] : personal.resource?.artworkPaths ?? [];
   const covers = paths.map(path => bindings.artwork.foreground(path, 120, 1)).filter((source): source is ArtworkSource => !!source);
   const renameTitle = t(kind === 'playlist' ? 'web.saved.renamePlaylist' : kind === 'view' ? 'web.saved.renameView' : 'web.saved.renameCollection');
@@ -44,8 +46,8 @@ export function SavedResourceScreen({bindings}: {bindings: SavedBindings}) {
       <span className={styles.resourceKind}>{t(kind === 'playlist' ? 'web.saved.playlist' : kind === 'view' ? 'web.saved.savedView' : 'web.saved.collection')}</span>
       <h1>{nameShown}</h1>{resource.summary && <p>{resource.summary}</p>}<p>{t('web.saved.items', {count: resource.entryCount})}</p>
       <div className={styles.resourceActions}>
-        {effects.playResource && <><Button variant="primary" icon="i-play" size="compact" onClick={() => { void runtime.operations.run(() => effects.playResource!({kind, id: resource.id, shuffle: false})).catch(effects.reportError); }}>{t('action.play')}</Button>
-          <Button icon="i-shuffle" size="compact" onClick={() => { void runtime.operations.run(() => effects.playResource!({kind, id: resource.id, shuffle: true})).catch(effects.reportError); }}>{t('title.shuffle')}</Button></>}
+        {effects.playResource && <><Button variant="primary" icon="i-play" size="compact" onClick={() => { void bindings.operations.run(() => effects.playResource!({kind, id: resource.id, shuffle: false})).catch(effects.reportError); }}>{t('action.play')}</Button>
+          <Button icon="i-shuffle" size="compact" onClick={() => { void bindings.operations.run(() => effects.playResource!({kind, id: resource.id, shuffle: true})).catch(effects.reportError); }}>{t('title.shuffle')}</Button></>}
         {actions.includes('pin') && <Button icon="i-bookmark" size="compact" disabled={busy} onClick={() => perform({action: 'pin', pinned: !pinned}, {action: 'pin', pinned: !pinned})}>{t(pinned ? 'pins.unpin' : 'pins.pin')}</Button>}
         <Popover open={menu} onOpenChange={setMenu} title={t('player.more')} role="menu" width={260} trigger={<Button variant="icon" icon="i-more" iconOnly aria-label={t('player.more')} />}>
           {(actions.includes('rename') || actions.includes('update')) && <MenuRow onClick={() => { setName(nameShown ?? ''); setSummary(resource.summary); setDialog('rename'); setMenu(false); }}>{t('web.saved.rename')}</MenuRow>}
@@ -68,19 +70,20 @@ export function SavedResourceScreen({bindings}: {bindings: SavedBindings}) {
   </main>;
 }
 
-function PersonalRows({bindings, entries}: {bindings: SavedBindings; entries: readonly PersonalResourceEntry[]}) {
+function PersonalRows({bindings, entries}: {bindings: SavedViewBindings; entries: readonly PersonalResourceEntry[]}) {
   return <div className={styles.personalRows}>{entries.map(entry => {
     const media = entry.media;
     if (!media || entry.hidden) return <div key={entry.id} className={styles.hiddenRow}>{t('card.unavailable')}</div>;
     const model = homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), square = ['album', 'song', 'book', 'book_part', 'artist'].includes(media.kind);
     const Card = square ? SquareCard : PosterCard;
     return <div key={entry.id} className={styles.mediaListRow}><Card model={model} artwork={bindings.artwork.foreground(media.posterUrl, 128, square ? 1 : 2 / 3)} context="detail" selection={bindings.selection.personalCard(bindings.runtime.personal, entry)}
-      onNavigate={() => bindings.effects.openEntry(media)} onPlay={media.playback && media.available !== false && !media.missing ? () => { void bindings.runtime.operations.run(() => bindings.effects.playEntry(media)).catch(bindings.effects.reportError); } : undefined} /></div>;
+      onNavigate={() => bindings.effects.openEntry(media)} onPlay={media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(() => bindings.effects.playEntry(media)).catch(bindings.effects.reportError); } : undefined} /></div>;
   })}</div>;
 }
 
-export function SavedHistory({bindings}: {bindings: SavedBindings}) {
+export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
   const service = bindings.runtime.personal, snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), cancel = useRef<HTMLButtonElement>(null);
+  if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
   const groups = new Map<string, PersonalResourceEntry[]>();
   for (const entry of snapshot.entries) {
     if (!entry.updatedAt) continue;
@@ -98,12 +101,12 @@ export function SavedHistory({bindings}: {bindings: SavedBindings}) {
     {snapshot.nextCursor && <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button>}
     <Dialog open={confirm} onOpenChange={open => { if (!busy) setConfirm(open); }} title={t('web.saved.clearHistoryTitle')} description={t('web.saved.clearHistoryBody')} initialFocusRef={cancel}
       footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setConfirm(false)}>{t('action.cancel')}</Button><Button size="small" className={styles.destructive} loading={busy} onClick={() => {
-        if (busy || !bindings.runtime.operations.current) return;
-        setBusy(true); void bindings.runtime.operations.run(async () => { if (!await service.mutate({action: 'clear-history'})) throw service.getSnapshot().mutationError; }, () => { setBusy(false); setConfirm(false); }).catch(error => { setBusy(false); bindings.effects.reportError(error); });
+        if (busy || !bindings.operations.current) return;
+        setBusy(true); void bindings.operations.run(async () => { if (!await service.mutate({action: 'clear-history'})) throw service.getSnapshot().mutationError; }, () => { setBusy(false); setConfirm(false); }).catch(error => { setBusy(false); bindings.effects.reportError(error); });
       }}>{t('web.saved.clearHistoryAction')}</Button></>}><span /></Dialog>
   </>;
 }
-function HistoryRow({bindings, entry, media}: {bindings: SavedBindings; entry: PersonalResourceEntry; media: ContentEntry}) {
+function HistoryRow({bindings, entry, media}: {bindings: SavedViewBindings; entry: PersonalResourceEntry; media: ContentEntry}) {
   const position = entry.positionSeconds ?? 0, duration = media.duration, progress = duration && duration > 0 ? Math.min(1, position / duration) : undefined;
   return <div className={styles.historyRow}>
     <button className={styles.historyArt} onClick={() => bindings.effects.openEntry(media)} aria-label={media.title}><Artwork source={bindings.artwork.foreground(media.backdropUrl ?? media.posterUrl, 320, 16 / 9)} alt="" /></button>

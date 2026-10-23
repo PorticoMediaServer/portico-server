@@ -4,6 +4,7 @@ import {SavedOperations} from '../src/screens/saved/operations.ts';
 import {sameSavedDownloadsScope, type SavedDownloadsScope, type SavedLocalDownload} from '../src/screens/saved/downloads-port.ts';
 import {diskFractions, localDownloadGroups, measuredPercent} from '../src/screens/saved/downloads-model.ts';
 import {createSavedRuntime} from '../src/screens/saved/runtime.ts';
+import {sameSavedRoute} from '../src/screens/saved/route.ts';
 
 const scope: SavedDownloadsScope = {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', sessionFamilyId: 'family'};
 test('every captured identity boundary distinguishes the binding', () => {
@@ -31,6 +32,24 @@ test('current native failures stay actionable; late failures are silent', async 
   const operations = new SavedOperations(() => true), failure = new Error('native write refused');
   await assert.rejects(operations.run(async () => { throw failure; }), error => error === failure);
   operations.dispose(); await operations.run(async () => { throw failure; });
+});
+test('route effect cleanup aborts the old callback even when the current view opens again', async () => {
+  let active = true, complete!: () => void, callbacks = 0, signal: AbortSignal | undefined;
+  const operations = new SavedOperations(() => active);
+  const pending = operations.run(value => { signal = value; return new Promise<void>(resolve => { complete = resolve; }); }, () => callbacks++);
+  active = false; operations.abortPending(); active = true; complete(); await pending;
+  assert.equal(signal?.aborted, true); assert.equal(callbacks, 0);
+  await operations.run(async () => {}, () => callbacks++);
+  assert.equal(callbacks, 1); operations.dispose();
+});
+test('Saved route guards compare the complete query independently of property order', () => {
+  const route = {view: 'watchlist', filter: 'unwatched', sort: 'title', direction: 'asc', shape: 'posters'} as const;
+  assert.equal(sameSavedRoute({view: 'watchlist', shape: 'posters', sort: 'title', direction: 'asc', filter: 'unwatched'}, route), true);
+  for (const other of [{...route, filter: 'all'} as const, {...route, direction: 'desc'} as const, {...route, shape: 'squares'} as const, {...route, sort: 'added'} as const]) assert.equal(sameSavedRoute(other, route), false);
+  assert.equal(sameSavedRoute({view: 'playlist', playlistId: 'old'}, {view: 'playlist', playlistId: 'new'}), false);
+  assert.equal(sameSavedRoute({view: 'history', period: '30d'}, {view: 'history', period: 'all'}), false);
+  assert.equal(sameSavedRoute({view: 'resource', resourceId: 'a'}, {view: 'resource', resourceId: 'b'}), false);
+  assert.equal(sameSavedRoute(null, route), false);
 });
 test('storage bar uses actual OS total/free and all native Portico bytes', () => {
   assert.deepEqual(diskFractions({totalBytes: 1000, freeBytes: 400, usedBytes: 70}), {portico: 0.07, other: 0.53});
