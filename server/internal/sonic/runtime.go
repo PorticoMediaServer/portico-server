@@ -22,7 +22,7 @@ import (
 const (
 	ModelID      = "musicnn-mtt"
 	ModelVersion = "516acb2a0ff5ef73f64547898e018e793152c506-onnx1"
-	ModelSHA256  = "e539f3b4e8937c3a19134908e517d11d7791dfeedfc142ff7069c47f32693ba2"
+	ModelSHA256  = "59876d9801156711a7051b4496f45ccfeeac598cf79df02968238d6318627f8a"
 	TagCount     = 50
 )
 
@@ -95,7 +95,7 @@ func OpenRuntime(options RuntimeOptions) (*Runtime, error) {
 		model.SourceCommit != "516acb2a0ff5ef73f64547898e018e793152c506" || model.Preprocessing != "musicnn-logmel-1" ||
 		model.Input != "log_mel" || model.Embedding != "embedding" || model.Tags != "tags" ||
 		model.Frames != PatchFrames || model.Mels != MelBands || model.Dimensions != Dimensions || model.TagCount != TagCount ||
-		model.Bytes != 3182950 || model.SHA256 != ModelSHA256 {
+		model.Bytes != 3193128 || model.SHA256 != ModelSHA256 {
 		return nil, ErrUnavailable
 	}
 	if digest, err := hex.DecodeString(model.SHA256); err != nil || len(digest) != sha256.Size {
