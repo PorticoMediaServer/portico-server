@@ -217,7 +217,8 @@ func TestResetFileRefusesUnsafeFilesAndParents(t *testing.T) {
 func TestResetFilePorticoSessionIsExplicitAndCannotMintDescendants(t *testing.T) {
 	s, db, old := directFixture(t)
 	ctx := context.Background()
-	if _, e := db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('account','hosted-owner');UPDATE accounts SET password_hash=X'' WHERE id='account'`); e != nil {
+	selectPorticoFixture(t, s)
+	if _, e := db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('account','hosted-owner')`); e != nil {
 		t.Fatal(e)
 	}
 	out, e := s.VerifyOwnerReset(ctx, OwnerResetVerify{Code: requestResetFileCode(t, s)})
@@ -243,7 +244,7 @@ func TestResetFilePorticoSessionIsExplicitAndCannotMintDescendants(t *testing.T)
 	if _, e = s.RefreshSession(ctx, old.Session.RefreshToken, old.Session.InstallationID, Token()); !errors.Is(e, ErrUnauthorized) {
 		t.Fatal("old refresh survived", e)
 	}
-	if _, e = s.DirectLogin(ctx, "owner", "Testing1!"); !errors.Is(e, ErrUnauthorized) {
+	if _, e = s.DirectLogin(ctx, "owner", "Testing1!"); !errors.Is(e, ErrSignInKindPortico) {
 		t.Fatal("Portico owner local fallback", e)
 	}
 	if e = dbwork.WithWriteTx(ctx, db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error { return refuseResetDescendantTx(ctx, tx, out.Session.SessionFamilyID) }); !errors.Is(e, ErrForbidden) {
@@ -390,11 +391,12 @@ func TestResetFileWorksRemotelyWithOrdinaryRemoteSignInOff(t *testing.T) {
 func TestResetFilePorticoOwnerCannotMintPersistentAPICredential(t *testing.T) {
 	s, db, _ := directFixture(t)
 	ctx := context.Background()
-	// Even a retained old hash on a linked account is never a local fallback.
+	selectPorticoFixture(t, s)
+	// The old Local password is no longer a fallback on a Portico server.
 	if _, e := db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('account','portico-owner')`); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.DirectLogin(ctx, "owner", "Testing1!"); !errors.Is(e, ErrUnauthorized) {
+	if _, e := s.DirectLogin(ctx, "owner", "Testing1!"); !errors.Is(e, ErrSignInKindPortico) {
 		t.Fatal("linked owner accepted retained old password", e)
 	}
 	out, e := s.VerifyOwnerReset(ctx, OwnerResetVerify{Code: requestResetFileCode(t, s)})

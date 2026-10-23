@@ -83,20 +83,17 @@ func DirectAllowed(q PolicyReader, p Principal, library string) error {
 }
 func (s *Service) checkDirectPrincipalTx(q PolicyReader, p Principal) error {
 	var waiting bool
-	if e := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM identity_move_waiting WHERE account_id=? AND state='waiting')`, p.AccountID).Scan(&waiting); e != nil {
-		return e
-	}
-	if waiting {
-		return ErrMoveWaiting
-	}
 	var epoch, primary, deleted, disabled int
 	var role, accountPrimary string
-	e := q.QueryRow(`SELECT a.epoch,p.is_primary,p.deleted,m.disabled,m.role,a.profile_id FROM accounts a JOIN direct_memberships m ON m.account_id=a.id JOIN direct_profiles p ON p.account_id=a.id WHERE a.id=? AND p.id=?`, p.AccountID, p.ProfileID).Scan(&epoch, &primary, &deleted, &disabled, &role, &accountPrimary)
+	e := q.QueryRow(`SELECT a.epoch,p.is_primary,p.deleted,m.disabled,m.role,a.profile_id,EXISTS(SELECT 1 FROM identity_move_waiting w WHERE w.account_id=a.id AND w.state='waiting') FROM accounts a JOIN direct_memberships m ON m.account_id=a.id JOIN direct_profiles p ON p.account_id=a.id WHERE a.id=? AND p.id=?`, p.AccountID, p.ProfileID).Scan(&epoch, &primary, &deleted, &disabled, &role, &accountPrimary, &waiting)
 	if errors.Is(e, sql.ErrNoRows) {
 		return ErrUnauthorized
 	}
 	if e != nil {
 		return e
+	}
+	if waiting {
+		return ErrMoveWaiting
 	}
 	if primary == 0 {
 		role = "member"

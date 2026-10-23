@@ -44,6 +44,19 @@ func fixture(t *testing.T) (*Store, *sql.DB, catalogueIDs) {
 	return New(db), db, seedCatalogue(t, db)
 }
 
+// localFixture explicitly selects Local and supplies the same canonical key
+// publication the code issuer reads. The shared fixture otherwise tests Portico.
+func localFixture(t *testing.T) (*Store, *sql.DB, catalogueIDs) {
+	t.Helper()
+	store, db, ids := fixture(t)
+	if _, err := db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local');
+ INSERT INTO networking_server_identities(server_id,public_key,key_incarnation,created_at) VALUES('srv_Wl4E3ID18LNZFgw_Gjc3R0liIOV67Gd2vD54Ubw6OAY',X'000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f','local-invitation-test','2026-10-23T00:00:00Z');
+ INSERT INTO networking_claim_identity(singleton,server_id,public_key,reset_generation) VALUES(1,'srv_Wl4E3ID18LNZFgw_Gjc3R0liIOV67Gd2vD54Ubw6OAY',X'000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',0)`); err != nil {
+		t.Fatal(err)
+	}
+	return store, db, ids
+}
+
 // seedCatalogue creates the two movies the admission tests decide on, with
 // the write API: an above-ceiling title and a family title carrying a denied
 // label, plus the asset playback sessions point at.
@@ -329,7 +342,8 @@ func TestAdmissionAppliesStreamsAndTheRemoteClamp(t *testing.T) {
 	if decision, err = run(ids.family, false); err != nil || decision.MaxVideoBitrateBPS != 0 {
 		t.Fatalf("a LAN request must not carry the remote clamp: %v %+v", err, decision)
 	}
-	// One live lease already exists, so the second is refused.
+	// One live authenticated lease already exists, so the second is refused.
+	testauth.InsertSession(t, db, "h", "member", "member-profile", "local", "member", "2099-01-01T00:00:00Z")
 	if _, err = db.Exec(`INSERT INTO playback_sessions(id,session_hash,account_id,profile_id,item_id,asset_id,generation,state,grant_hash,grant_token,expires_at,request_id,duration)
  VALUES('s','h','member','member-profile',?, ?,1,'playing','g','t','2099-01-01T00:00:00Z','r',1)`, ids.familyID, ids.asset); err != nil {
 		t.Fatal(err)
@@ -365,7 +379,7 @@ func TestScheduleWindowsWrapMidnightAndDenyOutsideHours(t *testing.T) {
 }
 
 func TestInvitationLifecycleCreatesTheAccountItDescribes(t *testing.T) {
-	store, db, _ := fixture(t)
+	store, db, _ := localFixture(t)
 	ctx := context.Background()
 	invitation, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-1", Notes: note("Guest fixture"), Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
 	if err != nil || invitation.Code == "" || (invitation.Notes == nil || *invitation.Notes != "Guest fixture") {
@@ -525,49 +539,63 @@ func TestListsPageByCursorRatherThanOffset(t *testing.T) {
 	}
 }
 
-// Invitations are shared as a link and code; an address is optional. Any number
-// of addressless invitations may be pending, the preview shows no address, and
-// either can be accepted as a direct account or as a Portico Account.
-func TestAddresslessInvitationsArePendingSideBySideAndAcceptEitherWay(t *testing.T) {
-	store, db, _ := fixture(t)
-	ctx := context.Background()
-	first, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "blank-invite-1", Notes: note("  "), Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
-	if err != nil || first.Code == "" || first.Notes != nil {
-		t.Fatalf("first: %v %+v", err, first)
-	}
-	second, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "blank-invite-2", Role: identity.TierMember})
-	if err != nil || second.Code == "" {
-		t.Fatalf("a second addressless invitation: %v", err)
-	}
-	if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "bad-address-invite", Notes: note(strings.Repeat("x", 501))}); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("an invalid address was accepted: %v", err)
-	}
-	page, err := store.Invitations(ctx, nil, InvitationQuery{State: "pending"})
-	if err != nil || len(page.Items) != 2 {
-		t.Fatalf("both pending: %v %+v", err, page)
-	}
-	preview, err := store.Preview(ctx, first.Code)
-	if err != nil || preview.InviterUsername != "owner" || preview.LibraryCount != 1 {
-		t.Fatalf("preview: %v %+v", err, preview)
-	}
-	hash, err := HashPassword("Correct-Horse-9")
-	if err != nil {
-		t.Fatal(err)
-	}
-	direct, err := store.Accept(ctx, Acceptance{Code: first.Code, Username: "guest", Password: "Correct-Horse-9"}, hash)
-	if err != nil || direct.Username != "guest" {
-		t.Fatalf("direct accept: %v %+v", err, direct)
-	}
-	var linked string
-	_, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: second.Code, AccountID: "acc_portico", Username: "portico", DisplayName: "Portico"}, func(ctx context.Context, tx *sql.Tx) (identity.DirectSignIn, error) {
-		return identity.DirectSignIn{}, tx.QueryRowContext(ctx, `SELECT account_id FROM account_portico_links WHERE hosted_account_id='acc_portico'`).Scan(&linked)
-	})
-	if err != nil || linked == "" {
-		t.Fatalf("Portico accept: %v %q", err, linked)
-	}
-	var accepted int
-	if err = db.QueryRow(`SELECT count(*) FROM access_invitations WHERE state='accepted'`).Scan(&accepted); err != nil || accepted != 2 {
-		t.Fatalf("accepted %d %v", accepted, err)
+// Addressless invitations coexist and redeem only through the selected
+// identity authority, each in its own database rather than a mixed-kind server.
+func TestAddresslessInvitationsArePendingSideBySideForSelectedKind(t *testing.T) {
+	for _, kind := range []string{"local", "portico"} {
+		t.Run(kind, func(t *testing.T) {
+			create := fixture
+			if kind == "local" {
+				create = localFixture
+			}
+			store, db, _ := create(t)
+			ctx := context.Background()
+			first, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "blank-invite-1", Notes: note("  "), Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+			if err != nil || first.Code == "" || first.Notes != nil {
+				t.Fatalf("first: %v %+v", err, first)
+			}
+			second, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "blank-invite-2", Role: identity.TierMember})
+			if err != nil || second.Code == "" {
+				t.Fatalf("a second addressless invitation: %v", err)
+			}
+			if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "bad-address-invite", Notes: note(strings.Repeat("x", 501))}); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("an invalid address was accepted: %v", err)
+			}
+			page, err := store.Invitations(ctx, nil, InvitationQuery{State: "pending"})
+			if err != nil || len(page.Items) != 2 {
+				t.Fatalf("both pending: %v %+v", err, page)
+			}
+			preview, err := store.Preview(ctx, first.Code)
+			if err != nil || preview.InviterUsername != "owner" || preview.LibraryCount != 1 {
+				t.Fatalf("preview: %v %+v", err, preview)
+			}
+			for i, invite := range []Invitation{first, second} {
+				username := []string{"guest", "other_guest"}[i]
+				if kind == "local" {
+					hash, e := HashPassword("Correct-Horse-9")
+					if e != nil {
+						t.Fatal(e)
+					}
+					joined, e := store.Accept(ctx, Acceptance{Code: invite.Code, Username: username, Password: "Correct-Horse-9"}, hash)
+					if e != nil || joined.Username != username {
+						t.Fatalf("Local accept: %+v %v", joined, e)
+					}
+				} else {
+					var linked string
+					hostedID := "acc_" + username
+					_, e := store.AcceptPortico(ctx, PorticoAcceptance{Code: invite.Code, AccountID: hostedID, Username: username, DisplayName: username}, func(ctx context.Context, tx *sql.Tx) (identity.DirectSignIn, error) {
+						return identity.DirectSignIn{}, tx.QueryRowContext(ctx, `SELECT account_id FROM account_portico_links WHERE hosted_account_id=?`, hostedID).Scan(&linked)
+					})
+					if e != nil || linked == "" {
+						t.Fatalf("Portico accept: %q %v", linked, e)
+					}
+				}
+			}
+			var accepted int
+			if err = db.QueryRow(`SELECT count(*) FROM access_invitations WHERE state='accepted'`).Scan(&accepted); err != nil || accepted != 2 {
+				t.Fatalf("accepted %d %v", accepted, err)
+			}
+		})
 	}
 }
 
@@ -979,7 +1007,7 @@ func TestAnInvitationMadeForOnePorticoAccountIsOnlyThatAccounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = store.Accept(ctx, Acceptance{Code: invite.Code, Username: "ada", Password: "Testing1!", Name: "Ada"}, hash); !errors.Is(err, ErrInvitationRecipient) {
+	if _, err = store.Accept(ctx, Acceptance{Code: invite.Code, Username: "ada", Password: "Testing1!", Name: "Ada"}, hash); !errors.Is(err, identity.ErrSignInKindPortico) {
 		t.Fatalf("it became a password account: %v", err)
 	}
 	if got := accounts(); got != before {
@@ -1093,7 +1121,7 @@ func TestLiveProgrammeMemberRatingAppliesToKnownAndAbsentGuide(t *testing.T) {
 
 func note(v string) *string { return &v }
 func TestInvitationEditsLinksNotesAndTierBoundaries(t *testing.T) {
-	store, db, _ := fixture(t)
+	store, db, _ := localFixture(t)
 	ctx := context.Background()
 	if _, e := db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('admin','admin',x'00','admin-profile',1);UPDATE direct_memberships SET role='admin' WHERE account_id='admin'`); e != nil {
 		t.Fatal(e)
@@ -1131,7 +1159,11 @@ func TestInvitationEditsLinksNotesAndTierBoundaries(t *testing.T) {
 			t.Fatalf("preview leaked %s: %s", s, raw)
 		}
 	}
-	accepted, e := store.Accept(ctx, Acceptance{Code: v.Code, Username: "fixture_guest"}, []byte("hash"))
+	hash, e := HashPassword("Correct-Horse-9")
+	if e != nil {
+		t.Fatal(e)
+	}
+	accepted, e := store.Accept(ctx, Acceptance{Code: v.Code, Username: "fixture_guest", Password: "Correct-Horse-9"}, hash)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -1169,7 +1201,7 @@ func TestInvitationEditsLinksNotesAndTierBoundaries(t *testing.T) {
 	}
 }
 func TestInvitationFileKeySurvivesRestartAndRotationInvalidates(t *testing.T) {
-	store, db, _ := fixture(t)
+	store, db, _ := localFixture(t)
 	ctx := context.Background()
 	state := t.TempDir()
 	if e := store.LoadInvitationKey(state); e != nil {
