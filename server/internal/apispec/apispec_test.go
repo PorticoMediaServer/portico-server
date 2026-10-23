@@ -3,7 +3,6 @@ package apispec
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -11,9 +10,10 @@ import (
 
 // The generated API document must parse before any contract checks run.
 func TestEveryDocumentParses(t *testing.T) {
-	_, here, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(here), "..", "..", "api")
-	files := []string{filepath.Join(dir, "portico.openapi.json")}
+	files, err := documentFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, file := range files {
 		raw, err := os.ReadFile(file)
 		if err != nil {
@@ -36,7 +36,7 @@ func TestArrayMaximum(t *testing.T) {
 	for i := range roots {
 		roots[i] = root
 	}
-	page := map[string]any{"path": "", "parent": "", "separator": "/", "platform": "linux", "writable": false, "truncated": true, "roots": roots[:64], "entries": []any{}, "nextCursor": ""}
+	page := map[string]any{"path": "", "parent": "", "separator": "/", "platform": "linux", "writable": false, "writableChecked": false, "suggestions": []any{}, "truncated": true, "roots": roots[:64], "entries": []any{}, "nextCursor": ""}
 	if problems := doc.Validate(schema, page); len(problems) != 0 {
 		t.Fatal(problems)
 	}
