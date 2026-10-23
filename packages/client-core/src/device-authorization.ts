@@ -4,6 +4,7 @@ import {routePath} from "../../contracts/src/routes.ts";
 import {randomId} from './random-id.ts';
 import { ApiError, HttpLocalApi, type HostedSession } from "./index.ts";
 import {hostedGate, type HostedGate, type HostedRequestKind} from './hosted-gate.ts';
+import {parseAccountSession} from './hosted-security.ts';
 export type DeviceAuthorization = {
   deviceCode: string;
   userCode: string;
@@ -52,12 +53,12 @@ export class HttpDeviceAuthorizationApi implements DeviceAuthorizationApi {
     ));
   }
   poll(deviceCode: string, signal?: AbortSignal) {
-    return this.gate.run('automatic', () => this.http.request<HostedSession>(
+    return this.gate.run('automatic', () => this.http.request<unknown>(
       hostedRoutePath("device_authorization_token"),
       "POST",
-      hostedRouteBody("device_authorization_token", { deviceCode }),
+      hostedRouteBody("device_authorization_token", { deviceCode,sessionMode:'native' }),
       signal
-    ), undefined, ['authorization_pending', 'slow_down']);
+    ).then(value=>parseAccountSession(value,'native')), undefined, ['authorization_pending', 'slow_down']);
   }
   cancel(deviceCode: string, kind: HostedRequestKind = 'interactive') {
     return this.gate.run(kind, () => this.http.request<void>(hostedRoutePath("device_authorization_cancel"), "POST", hostedRouteBody("device_authorization_cancel", {

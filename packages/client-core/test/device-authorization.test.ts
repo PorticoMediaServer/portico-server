@@ -19,9 +19,11 @@ const authorization = {
 };
 const session = {
   accessToken: "private-token",
-  expiresAt: "later",
+  expiresAt: "2099-01-01T00:00:00Z",
+  familyId: 'family_A',
+  refreshToken: 'refresh_A',
+  refreshExpiresAt: '2099-01-02T00:00:00Z',
   account: { id: "a", username: "a", displayName: "A" },
-  profiles: [],
 };
 const options = { minimumPollMs: 1, requestTimeoutMs: 100 };
 test("device secret never enters snapshot and approval is delivered", async (t) => {

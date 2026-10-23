@@ -118,7 +118,7 @@ func liveHTTPFixture(t *testing.T) (Dependencies, identity.Envelope, identity.En
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec(`INSERT INTO accounts VALUES('live-owner','owner',x'00','owner-profile',1);INSERT INTO accounts VALUES('live-member','member',x'00','member-profile',1)`); e != nil {
+	if _, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('live-owner','owner',x'00','owner-profile',1);INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('live-member','member',x'00','member-profile',1)`); e != nil {
 		t.Fatal(e)
 	}
 	owner, e := ident.Issue("live-owner", "owner-profile", "local", "owner", 1)

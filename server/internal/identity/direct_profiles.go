@@ -165,7 +165,11 @@ func (s *Service) CreateDirectProfile(ctx context.Context, bearer, name, art str
 	if e = tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(max(position),-1)+1 FROM direct_profiles WHERE account_id=? AND deleted=0`, c.account.ID).Scan(&count, &position); e != nil {
 		return DirectSnapshot{}, e
 	}
-	if count >= 8 {
+	var maximum int
+	if e = tx.QueryRowContext(ctx, `SELECT max_profiles FROM direct_memberships WHERE account_id=?`, c.account.ID).Scan(&maximum); e != nil {
+		return DirectSnapshot{}, e
+	}
+	if count >= maximum {
 		return DirectSnapshot{}, ErrProfileCapacity
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO direct_profiles(id,account_id,name,position,art) VALUES(?,?,?,?,?)`, Token(), c.account.ID, name, position, art); e != nil {

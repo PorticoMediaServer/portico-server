@@ -35,8 +35,23 @@ test('catalogue: recovery actions use one verb, "Try again" (CON-17)', () => {
 });
 
 test('catalogue: no engineering words reach people (CON-21)', () => {
-  const us = Object.values(enUS).join('\n');
-  assert.doesNotMatch(us, /\b(lane|slower|Prepared copy|in this build|operation key|Retry shortly)\b/i);
+  // The approved Settings copy (38b51b9, retained in 14a9a19) uses "slower"
+  // for these concrete effects. An exception requires both this ID and exact text.
+  const approvedSettingsCopy: Readonly<Record<string, string>> = {
+    'next.settingsSpec.server.libraries.panels.library.tabs.3.groups.0.rows.2.control.options.2.hint': 'Reads every file in full. Slower.',
+    'next.settingsSpec.server.libraries.panels.library.tabs.3.groups.1.rows.1.control.options.1.hint': 'Slower scans',
+    'next.settingsSpec.server.segments.advanced.groups.1.rows.1.control.options.1.hint': 'Slower, finds late intros',
+    'next.settingsSpec.server.segments.advanced.groups.1.rows.2.control.options.1.hint': 'Slower, finds long credits',
+    'next.settingsSpec.server.segments.advanced.groups.1.rows.3.control.options.1.hint': 'Slower, finds scenes after the credits',
+    'next.settingsSpec.server.integrations.advanced.groups.0.rows.1.help': 'Slower answers count as not arrived.',
+    'next.settingsSpec.server.streaming.advanced.groups.2.rows.0.help': 'Slower is smaller and cleaner, but heavier.',
+    'next.settingsSpec.server.storage.groups.0.rows.3.help': 'Pages and videos start slower for a while.',
+    'next.settingsSpec.server.storage.groups.0.rows.3.control.confirm': 'Empty the cache? Some pages and videos start slower while Portico rebuilds it. Nothing you added is lost.',
+  };
+  for (const [id, text] of Object.entries(enUS)) {
+    const checked = approvedSettingsCopy[id] === text ? text.replace(/\bslower\b/gi, '') : text;
+    assert.doesNotMatch(checked, /\b(lane|slower|Prepared copy|in this build|operation key|Retry shortly)\b/i, id);
+  }
 });
 
 test('presentError messageIds exist in the catalogue', () => {
