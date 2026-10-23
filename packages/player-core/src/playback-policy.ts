@@ -90,10 +90,10 @@ export class PlaybackPolicy {
     if (this.offerId) this.watchedCredits=this.offerId;
     return !!marker || !!this.offerId;
   }
-  skip(fence: QueuePlaybackFence): PolicyCommand | null {
+  skip(fence: QueuePlaybackFence, expectedMarkerId?: string): PolicyCommand | null {
     if (!sameFence(this.fence,fence) || !this.frame?.expanded || this.frame.attention || this.frame.ended) return null;
     const marker=activeSegment(this.markers,this.frame.positionSeconds,this.frame.modes,this.dismissed);
-    if (!marker) return null;
+    if (!marker || expectedMarkerId !== undefined && marker.id !== expectedMarkerId) return null;
     this.dismissed.add(marker.id);
     return Object.freeze({kind:'seek',fence:this.fence!,positionSeconds:skipTarget(marker,this.frame.durationSeconds),reason:'manual-skip',markerId:marker.id});
   }
