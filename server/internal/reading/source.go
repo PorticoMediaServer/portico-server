@@ -44,24 +44,28 @@ type Selection struct {
 	generation                                                                                           int64
 }
 
-const selectPublication = `SELECT e.id,p.asset_id,p.format,e.title,e.metadata_language,cl.library_id,a.token,a.path,a.size,a.modified_ns,s.id,s.root,s.generation,s.incarnation,s.root_identity,o.relative_path,o.object_identity,o.revision,o.evidence_json
- FROM catalog_entities e CROSS JOIN reading_publications p ON p.item_id=e.id
+const publicationFields = `e.id,p.asset_id,p.format,e.title,e.metadata_language,cl.library_id,a.token,a.path,a.size,a.modified_ns,s.id,s.root,s.generation,s.incarnation,s.root_identity,o.relative_path,o.object_identity,o.revision,o.evidence_json`
+
+const publicationJoins = ` CROSS JOIN reading_publications p ON p.item_id=e.id
  CROSS JOIN catalog_libraries cl ON cl.id=e.library_id CROSS JOIN libraries lib ON lib.id=cl.library_id
  CROSS JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
  CROSS JOIN catalog_assets a ON a.id=link.asset_id
  CROSS JOIN inventory_objects o INDEXED BY inventory_objects_asset ON o.asset_id=a.token
  CROSS JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
- CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token
- WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
+ CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token`
+
+const publicationEligible = `e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
  AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf'))) AND link.available=1 AND a.available=1 AND available.available=1
  AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
- AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')
- ORDER BY a.id,o.id LIMIT 1`
+ AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')`
+
+const selectPublication = `SELECT ` + publicationFields + ` FROM catalog_entities e` + publicationJoins + `
+ WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND ` + publicationEligible + ` ORDER BY a.id,o.id LIMIT 1`
 
 func (s *Service) selectTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, sourceID string) (Selection, error) {
 	var v Selection
 	v.ItemID = item
-	err := tx.QueryRowContext(ctx, selectPublication, item, sourceID, sourceID).Scan(&v.Entity, &v.Asset, &v.Format, &v.Title, &v.Language, &v.library, &v.token, &v.path, &v.Size, &v.ModifiedNS, &v.rootID, &v.root, &v.generation, &v.incarnation, &v.rootIdentity, &v.relative, &v.object, &v.inventory, &v.evidence)
+	err := tx.QueryRowContext(ctx, selectPublication, item, sourceID, sourceID).Scan(selectionColumns(&v)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, ErrUnavailable
 	}
@@ -87,6 +91,10 @@ func (s *Service) selectTx(ctx context.Context, tx *sql.Tx, p identity.Principal
 	v.Revision = v.fence()
 	return v, nil
 }
+func selectionColumns(v *Selection) []any {
+	return []any{&v.Entity, &v.Asset, &v.Format, &v.Title, &v.Language, &v.library, &v.token, &v.path, &v.Size, &v.ModifiedNS, &v.rootID, &v.root, &v.generation, &v.incarnation, &v.rootIdentity, &v.relative, &v.object, &v.inventory, &v.evidence}
+}
+
 func (v Selection) fence() string {
 	b, _ := json.Marshal([]any{v.Entity, v.Asset, v.Format, v.token, v.Size, v.ModifiedNS, v.rootID, v.generation, v.incarnation, v.rootIdentity, v.relative, v.object, v.inventory, v.evidence})
 	h := sha256.Sum256(append([]byte("portico.reading.observation.v1\x00"), b...))

@@ -1,12 +1,15 @@
 import {dispatchNativeAccountReturn} from '../platform/native-account-return';
 import {parseJoinLink} from '@core/join-link.ts';
 import {captureServicesLink, scrubUnsupportedServicesFragment} from './intake';
+import {captureHostedSignIn} from './sign-in';
 
 /** No rendering, storage or account work can precede the Apps-owned native scrub/dispatch. */
 export function captureServicesEntry(page: Pick<Location, 'href' | 'replace' | 'pathname' | 'search' | 'hash'>,
   history: Pick<History, 'state' | 'replaceState'>, expectedHostedOrigin: string) {
   const native = dispatchNativeAccountReturn(page, history, expectedHostedOrigin);
   if (native) return {native};
+  const signIn = captureHostedSignIn(page, history, expectedHostedOrigin);
+  if (signIn) return {signIn};
   if (page.pathname === '/join' || page.pathname === '/join/') {
     const href = page.href;
     if (page.hash) history.replaceState(history.state, '', page.pathname + page.search);

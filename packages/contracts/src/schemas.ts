@@ -15831,13 +15831,25 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "matchedCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "nextCursor": {
         "type": "string"
+      },
+      "totalCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
       "limit",
-      "items"
+      "items",
+      "totalCount",
+      "matchedCount"
     ],
     "type": "object"
   },
@@ -118430,6 +118442,133 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetReadingContinueRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingContinueResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "item": {
+              "properties": {
+                "format": {
+                  "enum": [
+                    "epub",
+                    "pdf",
+                    "cbz"
+                  ],
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "inventoryAvailable": {
+                  "type": "boolean"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "libraryId",
+                "title",
+                "format",
+                "sourceId",
+                "inventoryAvailable"
+              ],
+              "type": "object"
+            },
+            "progress": {
+              "properties": {
+                "location": {
+                  "properties": {
+                    "cfi": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "enum": [
+                        "epub",
+                        "pdf",
+                        "cbz"
+                      ],
+                      "type": "string"
+                    },
+                    "pageIndex": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "progression": {
+                      "type": "number"
+                    },
+                    "section": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "format",
+                    "progression"
+                  ],
+                  "type": "object"
+                },
+                "observedAt": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "sourceRevision": {
+                  "type": "string"
+                },
+                "stale": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "sourceId",
+                "sourceRevision",
+                "location",
+                "revision",
+                "observedAt",
+                "stale"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "item",
+            "progress"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "type": "object"
+  },
   "GetReadingItemsRequest": {
     "properties": {},
     "required": [],
@@ -156681,6 +156820,21 @@ export const schemas = {
       "claimOperationId": {
         "type": "string"
       },
+      "context": {
+        "properties": {
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
       "expiresAt": {
         "type": "string"
       },
@@ -156728,7 +156882,8 @@ export const schemas = {
       "registration",
       "challenge",
       "expiresAt",
-      "proof"
+      "proof",
+      "context"
     ],
     "type": "object"
   },
