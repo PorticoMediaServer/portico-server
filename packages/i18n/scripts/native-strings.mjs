@@ -74,6 +74,26 @@ function stringCatalog(tables, codes, sourceTable, keyFor = key => key, valueFor
   return JSON.stringify({sourceLanguage: 'en', version: '1.0', strings: ordered(entries)}, null, 2)
     .replace(/^(\s*"(?:\\.|[^"\\])*"):/gm, '$1 :') + '\n';
 }
+/** AppShortcuts.xcstrings requires iOS 17 even though the app supports 15.1.
+ * The dedicated .strings table supports the existing App Intents availability
+ * guard and keeps Apple's parameter notation in both keys and translations. */
+export function shortcutStrings(source, table) {
+  const quote = value => '"' + value.replace(/[\\"\n\r\t\u0000-\u001f\u2028\u2029]/g, char => {
+    if (char === '\\' || char === '"') return '\\' + char;
+    if (char === '\n') return '\\n';
+    if (char === '\r') return '\\r';
+    if (char === '\t') return '\\t';
+    return '\\U' + char.charCodeAt(0).toString(16).padStart(4, '0');
+  }) + '"';
+  const used = new Set();
+  const entries = Object.keys(source).filter(phraseKey).map(code => {
+    const key = shortcut(source[code]);
+    if (used.has(key)) throw new Error(`Duplicate Apple source text: ${key}`);
+    used.add(key);
+    return [key, shortcut(table[code])];
+  }).sort(([a], [b]) => compare(a, b));
+  return '/* Generated from packages/i18n; do not edit. */\n' + entries.map(([key, value]) => `${quote(key)} = ${quote(value)};`).join('\n') + '\n';
+}
 export function androidText(value) {
   return value.replaceAll('\\', '\\\\').replaceAll("'", "\\'").replaceAll('"', '\\"')
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('\n', '\\n').replaceAll('\r', '\\r').replaceAll('\t', '\\t')
@@ -94,7 +114,7 @@ export function nativeOutputs(tables) {
   const outputs = new Map();
   const add = (platform, file, value) => outputs.set(file, {platform, value});
   add('apple', 'ios/Portico/Strings/Localizable.xcstrings', stringCatalog(tables, codes.filter(key => key.startsWith('system.siri.') && !phraseKey(key)), source, (_key, value) => value));
-  add('apple', 'ios/Portico/Strings/AppShortcuts.xcstrings', stringCatalog(tables, codes.filter(phraseKey), source, (_key, value) => shortcut(value), shortcut));
+  for (const [locale, table] of tables) add('apple', `ios/Portico/Strings/${appleLocale(locale)}.lproj/AppShortcuts.strings`, shortcutStrings(source, table));
   for (const platform of ['ios', 'tvos']) {
     add('apple', `${platform}/Portico/Strings/InfoPlist.xcstrings`, stringCatalog(tables, [`system.apple.localNetwork.${platform}`], source, () => 'NSLocalNetworkUsageDescription'));
   }

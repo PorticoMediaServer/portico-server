@@ -143,7 +143,9 @@ func TestQCFamilyDirectSignInRenews(t *testing.T) {
 // identity and gets the same device-bound, renewable session.
 func TestQCFamilyPorticoSignInRenews(t *testing.T) {
 	f, _, _, _ := tl6SubtitleFixture(t)
-	if _, err := f.db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES(?,?)`, f.owner.Viewer.AccountID, "hosted-renewal-1"); err != nil {
+	// Portico admission starts from a completed password-free Portico server.
+	// Linking an account on a Local server must remain a constraint failure.
+	if _, err := f.db.Exec(`UPDATE accounts SET password_hash=X'';UPDATE identity_state SET sign_in_kind='portico';INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES(?,?)`, f.owner.Viewer.AccountID, "hosted-renewal-1"); err != nil {
 		t.Fatal(err)
 	}
 	installation := identity.Token()
@@ -153,7 +155,7 @@ func TestQCFamilyPorticoSignInRenews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signed, err := f.id.PorticoSignIn(ctx, identity.PorticoIdentity{AccountID: "hosted-renewal-1"})
+	signed, err := f.id.PorticoSignIn(ctx, identity.PorticoIdentity{AccountID: "hosted-renewal-1", Username: "owner"})
 	if err != nil {
 		t.Fatal(err)
 	}

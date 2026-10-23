@@ -12,8 +12,18 @@ import (
 	"time"
 )
 
+// ConfigureIdentityDepartures supplies the protected key used only by the
+// fixed signed leave protocol. Services has no server-data erasure protocol.
+func (s *Service) ConfigureIdentityDepartures(keys *networking.ProtectedKeys) error {
+	if s.current == nil || keys == nil {
+		return networking.ErrInvalid
+	}
+	s.current.departureKeys = keys
+	return nil
+}
+
 func (s *Service) PrepareIdentityDeparture(ctx context.Context, reason string) (out *identity.DepartureNotice, err error) {
-	if s.current == nil || s.current.cleanup == nil {
+	if s.current == nil || s.current.departureKeys == nil {
 		return nil, networking.ErrUnavailable
 	}
 	err = s.current.runner.Do(ctx, func(ctx context.Context) error {
@@ -34,7 +44,7 @@ func (s *Service) PrepareIdentityDeparture(ctx context.Context, reason string) (
 		if e != nil {
 			return e
 		}
-		sig, e := s.current.cleanup.keys.Sign(ctx, v.Binding, raw)
+		sig, e := s.current.departureKeys.Sign(ctx, v.Binding, raw)
 		if e != nil {
 			return e
 		}
