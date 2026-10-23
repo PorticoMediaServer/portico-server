@@ -167,10 +167,6 @@ pub enum DownloadOperation {
     RemoveOtherProfiles {
         snapshot_token: String,
     },
-    NotePlay {
-        id: String,
-        play: PendingPlay,
-    },
     PendingPlays {},
     AcknowledgePlay {
         play_id: String,
@@ -200,12 +196,14 @@ pub enum DownloadReply {
 struct Binding {
     scope: ViewerScope,
     lease: String,
+    references: u32,
 }
 pub struct DownloadsSession {
     store: DownloadStore,
     binding: Option<Binding>,
     local_sources: HashMap<String, LocalSource>,
     local_preparation: Option<String>,
+    active_local: Option<ActiveLocal>,
 }
 #[derive(Deserialize)]
 #[serde(
@@ -242,6 +240,15 @@ pub struct PreparedLocalItem {
     pub duration_ms: u64,
     pub local_source_id: String,
 }
+struct ActiveLocal {
+    viewer: DownloadViewer,
+    entry_id: String,
+    item_id: String,
+    play_id: String,
+    generation: u64,
+    last_write: std::time::Instant,
+    last_position_ms: u64,
+}
 struct LocalSource {
     entry_id: String,
     entry_revision: u64,
@@ -268,10 +275,21 @@ impl DownloadsSession {
             binding: None,
             local_sources: HashMap::new(),
             local_preparation: None,
+            active_local: None,
         })
     }
     pub fn bind(&mut self, scope: ViewerScope) -> Result<String> {
         scope.viewer()?;
+        if let Some(binding) = self.binding.as_mut() {
+            if binding.scope == scope {
+                binding.references = binding
+                    .references
+                    .checked_add(1)
+                    .filter(|n| *n <= 1024)
+                    .ok_or(Error::DownloadsUnavailable)?;
+                return Ok(binding.lease.clone());
+            }
+        }
         let mut bytes = [0u8; 32];
         SystemRandom::new()
             .fill(&mut bytes)
@@ -280,16 +298,43 @@ impl DownloadsSession {
         self.binding = Some(Binding {
             scope,
             lease: lease.clone(),
+            references: 1,
         });
         self.local_sources.clear();
         self.local_preparation = None;
+        self.active_local = None;
         Ok(lease)
     }
+    pub fn binding_changes(&self, scope: &ViewerScope) -> Result<bool> {
+        scope.viewer()?;
+        Ok(self.binding.as_ref().is_some_and(|b| b.scope != *scope))
+    }
+    pub fn lease_current(&self, lease: &str) -> bool {
+        self.binding.as_ref().is_some_and(|b| b.lease == lease)
+    }
     pub fn release(&mut self, lease: &str) {
-        if self.binding.as_ref().is_some_and(|b| b.lease == lease) {
+        if let Some(binding) = self.binding.as_mut() {
+            if binding.lease == lease {
+                binding.references = binding.references.saturating_sub(1);
+            }
+        }
+        self.release_if_unowned();
+    }
+    fn release_if_unowned(&mut self) {
+        if self.binding.as_ref().is_some_and(|b| b.references == 0)
+            && self.local_preparation.is_none()
+            && self.active_local.is_none()
+        {
+            self.binding = None;
+            self.local_sources.clear();
+        }
+    }
+    pub fn force_release(&mut self, lease: &str) {
+        if self.lease_current(lease) {
             self.binding = None;
             self.local_sources.clear();
             self.local_preparation = None;
+            self.active_local = None;
         }
     }
     fn viewer(&self, lease: &str) -> Result<DownloadViewer> {
@@ -421,10 +466,6 @@ impl DownloadsSession {
                 self.store.remove_other_profiles(&viewer, &snapshot_token)?;
                 R::Done
             }
-            O::NotePlay { id, play } => {
-                self.store.note_play(&viewer, &id, play)?;
-                R::Done
-            }
             O::PendingPlays {} => R::PendingPlays(self.store.pending_plays(&viewer)?),
             O::AcknowledgePlay {
                 play_id,
@@ -512,6 +553,81 @@ impl DownloadsSession {
             selection_revision,
             items,
         })
+    }
+    pub fn begin_local(&mut self, lease: &str, source_id: &str, generation: u64) -> Result<()> {
+        let viewer = self.viewer(lease)?;
+        let source = self
+            .local_sources
+            .get(source_id)
+            .ok_or(Error::DownloadsConflict)?;
+        let entry = self.store.entry(&viewer, &source.entry_id)?;
+        self.active_local = Some(ActiveLocal {
+            viewer,
+            entry_id: entry.id,
+            item_id: entry.item_id,
+            play_id: random_id()?,
+            generation,
+            last_write: std::time::Instant::now(),
+            last_position_ms: 0,
+        });
+        Ok(())
+    }
+    pub fn active_generation(&self) -> Option<u64> {
+        self.active_local.as_ref().map(|p| p.generation)
+    }
+    pub fn retire_local(&mut self) {
+        self.active_local = None;
+        self.release_if_unowned();
+    }
+    /// Progress is produced by actual native observations, never by a settings/queue intent.
+    pub fn record_observation(
+        &mut self,
+        observation: &crate::boundary::Observation,
+        flush: bool,
+    ) -> Result<()> {
+        let Some(active) = self.active_local.as_mut() else {
+            return Ok(());
+        };
+        if observation.generation != active.generation
+            || !observation.position_ms.is_finite()
+            || observation.position_ms <= 0.0
+            || !matches!(
+                observation.state.as_str(),
+                "playing" | "paused" | "buffering" | "ended"
+            )
+        {
+            return Ok(());
+        }
+        let position_ms = observation
+            .position_ms
+            .round()
+            .min(crate::download_receipt::SAFE_INTEGER as f64) as u64;
+        if !flush
+            && observation.state != "ended"
+            && (active.last_write.elapsed() < std::time::Duration::from_secs(5)
+                || position_ms == active.last_position_ms)
+        {
+            return Ok(());
+        }
+        let observed_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| Error::DownloadsUnavailable)?
+            .as_millis()
+            .min(i64::MAX as u128) as i64;
+        self.store.note_play(
+            &active.viewer,
+            &active.entry_id,
+            PendingPlay {
+                play_id: active.play_id.clone(),
+                item_id: active.item_id.clone(),
+                position_ms,
+                ended: observation.state == "ended",
+                observed_ms,
+            },
+        )?;
+        active.last_write = std::time::Instant::now();
+        active.last_position_ms = position_ms;
+        Ok(())
     }
     /// Private native lookup only. The path never enters a serialized reply or web source.
     pub fn local_file(&self, lease: &str, local_source_id: &str) -> Result<PathBuf> {

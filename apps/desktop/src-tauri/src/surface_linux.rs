@@ -4,16 +4,19 @@ use gtk::{prelude::*,glib};
 use std::{cell::RefCell,ffi::{c_char,c_int,c_void},ptr,rc::Rc,sync::Arc,time::Duration};
 use webkit2gtk::WebViewExt;
 use std::sync::{atomic::{AtomicU64,Ordering},OnceLock};
+static RENDER_CALLS:AtomicU64=AtomicU64::new(0);
 static FRAMES:AtomicU64=AtomicU64::new(0);
 static COLORED:AtomicU64=AtomicU64::new(0);
 static RENDERER:OnceLock<String>=OnceLock::new();
-pub fn proof()->serde_json::Value{serde_json::json!({"renderedFrames":FRAMES.load(Ordering::Relaxed),"nonBlackFrames":COLORED.load(Ordering::Relaxed),"renderer":RENDERER.get(),"output":"SDR OpenGL","hdrVerified":false})}
+pub fn proof()->serde_json::Value{serde_json::json!({"renderCalls":RENDER_CALLS.load(Ordering::Relaxed),"renderedFrames":FRAMES.load(Ordering::Relaxed),"nonBlackFrames":COLORED.load(Ordering::Relaxed),"renderer":RENDERER.get(),"output":"SDR OpenGL","hdrVerified":false})}
 
 #[repr(C)]struct Param{kind:c_int,data:*mut c_void}
 #[repr(C)]struct Init{get:unsafe extern "C" fn(*mut c_void,*const c_char)->*mut c_void,context:*mut c_void}
 #[repr(C)]struct Fbo{id:c_int,width:c_int,height:c_int,format:c_int}
 type Create=unsafe extern "C" fn(*mut *mut c_void,*mut c_void,*mut Param)->c_int;
 type Render=unsafe extern "C" fn(*mut c_void,*mut Param)->c_int;
+#[repr(C)]struct FrameInfo{flags:u64,target_time:i64}
+type GetInfo=unsafe extern "C" fn(*mut c_void,Param)->c_int;
 type Free=unsafe extern "C" fn(*mut c_void);
 type GetProc=unsafe extern "C" fn(*const c_char)->*mut c_void;
 type GetInt=unsafe extern "C" fn(u32,*mut i32);
@@ -64,14 +67,17 @@ pub fn attach(webview:&tauri::webview::PlatformWebview,api:Arc<Api>,output:&Audi
             if !p.is_null(){let get:unsafe extern "C" fn(u32)->*const c_char=std::mem::transmute(p);let name=get(0x1F01);if !name.is_null(){let _=RENDERER.set(std::ffi::CStr::from_ptr(name).to_string_lossy().into_owned());}}
             let scale=area.scale_factor();let mut target=Fbo{id,width:area.allocated_width()*scale,height:area.allocated_height()*scale,format:0};let mut flip=1;
             let mut params=[Param{kind:3,data:(&mut target as *mut Fbo).cast()},Param{kind:4,data:(&mut flip as *mut i32).cast()},Param{kind:0,data:ptr::null_mut()}];
+            let generation=ctx.engine.render_generation();
+            let mut info=FrameInfo{flags:0,target_time:0};
+            let actual_frame=ctx.engine.api.symbol::<GetInfo>(b"mpv_render_context_get_info\0").map(|get| get(ctx.raw,Param{kind:11,data:(&mut info as *mut FrameInfo).cast()})>=0 && info.flags&1!=0 && info.flags&2==0).unwrap_or(false);
             if let Ok(render)=ctx.engine.api.symbol::<Render>(b"mpv_render_context_render\0"){
                 if render(ctx.raw,params.as_mut_ptr())>=0 {
-                    FRAMES.fetch_add(1,Ordering::Relaxed);
-                    ctx.engine.frame_drawn();
+                    RENDER_CALLS.fetch_add(1,Ordering::Relaxed);
+                    if actual_frame{FRAMES.fetch_add(1,Ordering::Relaxed);ctx.engine.frame_drawn(generation);}
                     #[cfg(debug_assertions)]
                     {let p=get_proc((&*ctx.gl as *const libloading::Library).cast_mut().cast(),c"glReadPixels".as_ptr());
                      if !p.is_null(){let read:unsafe extern "C" fn(i32,i32,i32,i32,u32,u32,*mut c_void)=std::mem::transmute(p);let mut pixel=[0u8;4];
-                       read(target.width/2,target.height/2,1,1,0x1908,0x1401,pixel.as_mut_ptr().cast());if pixel[..3].iter().any(|x|*x>12){COLORED.fetch_add(1,Ordering::Relaxed);}}}
+                       read(target.width/2,target.height/2,1,1,0x1908,0x1401,pixel.as_mut_ptr().cast());if actual_frame&&pixel[..3].iter().any(|x|*x>12){COLORED.fetch_add(1,Ordering::Relaxed);}}}
                 }
             }
         }}

@@ -17,10 +17,15 @@ fn caller(window:&WebviewWindow)->Result<()> {
     boundary::local_origin(window.label(),window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str(),cfg!(debug_assertions))
 }
 #[tauri::command]
-async fn desktop_downloads_bind(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,scope:crate::download_commands::ViewerScope)->Result<String>{
+async fn desktop_downloads_bind(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,engine:tauri::State<'_,EngineState>,scope:crate::download_commands::ViewerScope)->Result<String>{
     caller(&window)?;
     let state=state.0.clone();
-    tauri::async_runtime::spawn_blocking(move||state.lock().map_err(|_|Error::DownloadsUnavailable)?.as_mut().map_err(|e|*e)?.bind(scope)).await.map_err(|_|Error::DownloadsUnavailable)?
+    let native=engine.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().ok().cloned();
+    tauri::async_runtime::spawn_blocking(move||{
+        let mut guard=state.lock().map_err(|_|Error::DownloadsUnavailable)?;let session=guard.as_mut().map_err(|e|*e)?;
+        if session.binding_changes(&scope)?{retire_offline(session,native.as_ref())?;}
+        session.bind(scope)
+    }).await.map_err(|_|Error::DownloadsUnavailable)?
 }
 #[tauri::command]
 async fn desktop_downloads_release(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,lease:String)->Result<()>{
@@ -46,19 +51,42 @@ async fn desktop_load_local(window:WebviewWindow,state:tauri::State<'_,Downloads
         let mut guard=downloads.lock().map_err(|_|Error::DownloadsUnavailable)?;
         let session=guard.as_mut().map_err(|e|*e)?;
         let path=session.local_file(&lease,&source.local_source_id)?;
-        native.load_local(&path,source.generation,source.start_position_ms,source.autoplay)
+        let _=session.record_observation(&native.observation(),true);session.retire_local();
+        native.load_local(&path,source.generation,source.start_position_ms,source.autoplay)?;
+        if let Err(error)=session.begin_local(&lease,&source.local_source_id,source.generation){let _=native.execute(Command::Stop{generation:source.generation});return Err(error)}
+        Ok(())
     }).await.map_err(|_|Error::DownloadsUnavailable)?
 }
-#[tauri::command]
-fn desktop_command(window:WebviewWindow,state:tauri::State<EngineState>,command:Command)->Result<()> {
-    caller(&window)?;
-    let engine=state.0.lock().map_err(|_|Error::EngineFailure)?.clone()?;
-    engine.execute(command)
+fn retire_offline(session:&mut crate::download_commands::DownloadsSession,native:Option<&Arc<Mpv>>)->Result<()>{
+    if let (Some(generation),Some(native))=(session.active_generation(),native){
+        if native.matches_generation(generation){let _=session.record_observation(&native.observation(),true);native.execute(Command::Stop{generation})?;}
+    }
+    session.retire_local();Ok(())
 }
 #[tauri::command]
-fn desktop_observe(window:WebviewWindow,state:tauri::State<EngineState>)->Result<Observation> {
+async fn desktop_downloads_retire(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,engine:tauri::State<'_,EngineState>,lease:String)->Result<()>{
+    caller(&window)?;let downloads=state.0.clone();let native=engine.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().ok().cloned();
+    tauri::async_runtime::spawn_blocking(move||{let mut guard=downloads.lock().map_err(|_|Error::DownloadsUnavailable)?;let session=guard.as_mut().map_err(|e|*e)?;if session.lease_current(&lease){retire_offline(session,native.as_ref())?;session.force_release(&lease);}Ok(())}).await.map_err(|_|Error::DownloadsUnavailable)?
+}
+#[tauri::command]
+async fn desktop_command(window:WebviewWindow,state:tauri::State<'_,EngineState>,downloads:tauri::State<'_,DownloadsState>,command:Command)->Result<()> {
     caller(&window)?;
-    Ok(state.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().map_err(|e|*e)?.observation())
+    let engine=state.0.lock().map_err(|_|Error::EngineFailure)?.clone()?;let downloads=downloads.0.clone();
+    tauri::async_runtime::spawn_blocking(move||{
+        let mut guard=downloads.lock().map_err(|_|Error::DownloadsUnavailable)?;
+        if matches!(&command,Command::Load{..}|Command::Stop{..}){if let Ok(session)=guard.as_mut(){let _=session.record_observation(&engine.observation(),true);session.retire_local();}}
+        engine.execute(command)
+    }).await.map_err(|_|Error::EngineFailure)?
+}
+#[tauri::command]
+async fn desktop_observe(window:WebviewWindow,state:tauri::State<'_,EngineState>,downloads:tauri::State<'_,DownloadsState>)->Result<Observation> {
+    caller(&window)?;
+    let engine=state.0.lock().map_err(|_|Error::EngineFailure)?.clone()?;let downloads=downloads.0.clone();
+    tauri::async_runtime::spawn_blocking(move||{
+        let observation=engine.observation();
+        if let Ok(mut guard)=downloads.lock(){if let Ok(session)=guard.as_mut(){let _=session.record_observation(&observation,false);}}
+        Ok(observation)
+    }).await.map_err(|_|Error::EngineFailure)?
 }
 #[tauri::command]
 fn desktop_audio_facts(window:WebviewWindow,state:tauri::State<EngineState>)->Result<crate::audio::AudioFacts> {
@@ -139,7 +167,7 @@ pub fn run() {
         .manage(EqualizerState(Mutex::new(Err(Error::PreferencesUnavailable))))
         .manage(DownloadsState(Arc::new(Mutex::new(Err(Error::DownloadsUnavailable)))))
         .manage(Arc::new(crate::window::ChromeState::default()))
-        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local])
+        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_downloads_retire])
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");

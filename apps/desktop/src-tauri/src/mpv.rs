@@ -66,7 +66,7 @@ pub struct Mpv {
     exclusive: bool,
     loaded:AtomicBool,
     surface_ready:AtomicBool,
-    frame_drawn:AtomicBool,
+    frame_drawn:AtomicU64,
     geometry_ready:AtomicBool,
     expected_url:Mutex<String>,
     failed:AtomicBool,
@@ -91,7 +91,7 @@ impl Mpv {
     pub fn new(api: Arc<Api>, output: &AudioOutput, target: VideoTarget) -> Result<Arc<Self>> {
         let handle = unsafe { (api.create)() };
         if handle.is_null() { return Err(Error::EngineUnavailable); }
-        let engine=Arc::new(Self {api,handle,generation:Mutex::new(0),exclusive:output.exclusive,loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicBool::new(false),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:output.passthrough.join(",")});
+        let engine=Arc::new(Self {api,handle,generation:Mutex::new(0),exclusive:output.exclusive,loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:output.passthrough.join(",")});
         for (key,value) in [("config","no"),("load-scripts","no"),("ytdl","no"),("osc","no"),
             ("input-default-bindings","no"),("input-vo-keyboard","no"),("terminal","no"),("msg-level","all=no"),
             ("idle","yes"),("keep-open","yes"),("access-references","no"),("load-unsafe-playlists","no"),
@@ -216,8 +216,9 @@ impl Mpv {
                 if !self.equalizer_chain_known.load(Ordering::Acquire){return Err(Error::EngineFailure);}
                 source.validate()?;
                 if source.generation<=self.newest_generation.load(Ordering::Acquire){return Err(Error::StaleGeneration);}
+                self.loaded.store(false,Ordering::Release);
                 self.newest_generation.store(source.generation,Ordering::Release);
-                self.drain();self.loaded.store(false,Ordering::Release);self.frame_drawn.store(false,Ordering::Release);self.failed.store(false,Ordering::Release);
+                self.drain();self.loaded.store(false,Ordering::Release);self.frame_drawn.store(0,Ordering::Release);self.failed.store(false,Ordering::Release);
                 // Negotiate every new track without the previous track's EQ. This preserves
                 // passthrough; only an observed PCM route receives the app's EQ afterwards.
                 self.clear_equalizer()?;self.equalizer_route_pending.store(false,Ordering::Release);
@@ -236,7 +237,7 @@ impl Mpv {
                     Command::Seek{milliseconds,..} if milliseconds.is_finite()&&(0.0..=1e12).contains(&milliseconds)=>self.command(&["seek",&(milliseconds/1000.0).to_string(),"absolute+exact"]),
                     Command::Rate{rate,..} if rate.is_finite()&&(0.25..=4.0).contains(&rate)=>self.set("speed",&rate.to_string()),
                     Command::Volume{volume,muted,..} if volume.is_finite()&&(0.0..=1.0).contains(&volume)=>{self.set("volume",&(volume*100.0).to_string())?;self.set("mute",if muted{"yes"}else{"no"})},
-                    Command::Stop{..}=>{self.command(&["stop"])?;*generation=0;self.loaded.store(false,Ordering::Release);self.frame_drawn.store(false,Ordering::Release);self.starting.store(false,Ordering::Release);self.equalizer_applied.store(false,Ordering::Release);self.equalizer_route_pending.store(false,Ordering::Release);Ok(())},
+                    Command::Stop{..}=>{self.command(&["stop"])?;*generation=0;self.loaded.store(false,Ordering::Release);self.frame_drawn.store(0,Ordering::Release);self.starting.store(false,Ordering::Release);self.equalizer_applied.store(false,Ordering::Release);self.equalizer_route_pending.store(false,Ordering::Release);Ok(())},
                     _=>Err(Error::InvalidCommand)
                 }
             }
@@ -266,8 +267,9 @@ impl Mpv {
         args.push(Node{value:NodeValue{integer:-1},format:4});args.push(Node{value:NodeValue{list:&mut options},format:8});
         let mut list=NodeList{length:args.len() as c_int,values:args.as_mut_ptr(),keys:ptr::null_mut()};
         let mut command=Node{value:NodeValue{list:&mut list},format:7};
+        self.loaded.store(false,Ordering::Release);
         self.newest_generation.store(next_generation,Ordering::Release);
-        self.drain();self.loaded.store(false,Ordering::Release);self.frame_drawn.store(false,Ordering::Release);self.failed.store(false,Ordering::Release);
+        self.drain();self.loaded.store(false,Ordering::Release);self.frame_drawn.store(0,Ordering::Release);self.failed.store(false,Ordering::Release);
         self.clear_equalizer()?;self.equalizer_route_pending.store(false,Ordering::Release);
         *self.expected_url.lock().map_err(|_|Error::EngineFailure)?=path.to_str().ok_or(Error::InvalidSource)?.into();
         self.pending_autoplay.store(autoplay,Ordering::Release);self.starting.store(true,Ordering::Release);self.set("pause","yes")?;
@@ -277,6 +279,7 @@ impl Mpv {
     #[cfg(debug_assertions)]
     pub fn load_spike_fixture(&self,path:&Path)->Result<()> {
         if !path.is_absolute() || !path.is_file(){return Err(Error::InvalidSource);}
+        self.newest_generation.store(1,Ordering::Release);
         *self.expected_url.lock().map_err(|_|Error::EngineFailure)?=path.to_str().ok_or(Error::InvalidSource)?.into();
         self.command(&["loadfile",path.to_str().ok_or(Error::InvalidSource)?,"replace"])?;
         self.set("loop-file","inf")?;
@@ -291,7 +294,7 @@ impl Mpv {
         Observation{generation,state:state.into(),position_ms:self.number("time-pos").unwrap_or(0.0).max(0.0)*1000.0,
             rate:self.number("speed").unwrap_or(1.0),volume:self.number("volume").unwrap_or(100.0)/100.0,
             muted:self.flag("mute"),dropped_frames:self.number("frame-drop-count").unwrap_or(0.0) as u64,
-            native_surface_active:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.surface_ready.load(Ordering::Acquire)&&self.geometry_ready.load(Ordering::Acquire)&&self.frame_drawn.load(Ordering::Acquire)&&self.loaded.load(Ordering::Acquire)&&self.number("width").unwrap_or(0.0)>0.0,
+            native_surface_active:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.surface_ready.load(Ordering::Acquire)&&self.geometry_ready.load(Ordering::Acquire)&&self.frame_drawn.load(Ordering::Acquire)==generation&&self.loaded.load(Ordering::Acquire)&&self.number("width").unwrap_or(0.0)>0.0,
             eq_applied:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.actual_equalizer_applied(),leveling_applied:false}
     }
     fn drain(&self){
@@ -302,10 +305,11 @@ impl Mpv {
             if (*event).id==7&&!(*event).data.is_null(){let fields=(*event).data as *const c_int;if *fields==4{self.failed.store(true,Ordering::Release);}}
         }}
     }
-    pub fn set_surface_ready(&self,value:bool){self.surface_ready.store(value,Ordering::Release);if !value{self.frame_drawn.store(false,Ordering::Release);}}
+    pub fn set_surface_ready(&self,value:bool){self.surface_ready.store(value,Ordering::Release);if !value{self.frame_drawn.store(0,Ordering::Release);}}
     pub fn set_geometry_ready(&self,value:bool){self.geometry_ready.store(value,Ordering::Release);}
     pub fn matches_generation(&self,generation:u64)->bool{generation>0&&self.generation.lock().map(|g|*g==generation).unwrap_or(false)}
-    pub fn frame_drawn(&self){self.frame_drawn.store(true,Ordering::Release);}
+    pub fn render_generation(&self)->u64{let generation=self.newest_generation.load(Ordering::Acquire);if self.loaded.load(Ordering::Acquire){generation}else{0}}
+    pub fn frame_drawn(&self,generation:u64){if generation>0{self.frame_drawn.store(generation,Ordering::Release);}}
     pub fn audio_facts(&self)->AudioFacts {
         let transport=self.generation.lock().unwrap_or_else(|x|x.into_inner());
         let (equalizer_enabled,eq_applied)=self.equalizer.lock().map(|settings|(settings.enabled,self.actual_equalizer_applied())).unwrap_or((false,false));
@@ -322,7 +326,7 @@ impl Mpv {
     pub fn capture_playlist(api:Arc<Api>,inputs:&[&Path],output:&Path,rate:u32,channels:u8)->Result<()> {
         if inputs.is_empty() || inputs.len()>32{return Err(Error::InvalidCommand);}
         let handle=unsafe{(api.create)()};if handle.is_null(){return Err(Error::EngineUnavailable);}
-        let e=Self{api,handle,generation:Mutex::new(1),exclusive:false,loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicBool::new(false),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:String::new()};
+        let e=Self{api,handle,generation:Mutex::new(1),exclusive:false,loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:String::new()};
         for (k,v) in [("config","no"),("load-scripts","no"),("ytdl","no"),("terminal","no"),("msg-level","all=no"),
             ("vo","null"),("ao","pcm"),("audio-format","s32"),("audio-display","no"),("gapless-audio","yes"),("replaygain","no"),("volume","100"),("pause","yes")] {e.option(k,v)?;}
         e.option("ao-pcm-file",output.to_str().ok_or(Error::InvalidCommand)?)?;e.option("ao-pcm-waveheader","no")?;
@@ -340,3 +344,37 @@ impl Mpv {
     }
 }
 impl Drop for Mpv {fn drop(&mut self){unsafe{(self.api.destroy)(self.handle)}}}
+
+#[cfg(test)]
+mod local_source_tests {
+    use super::*;
+    #[test]
+    #[ignore="requires an explicit native libmpv library and owned PCM fixture"]
+    fn constrained_local_source_plays_pcm_and_never_follows_network_playlist(){
+        let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native library path required");
+        let fixture=std::env::var_os("PORTICO_TEST_PCM_FIXTURE").expect("owned fixture path required");
+        let engine=Mpv::new(Api::open(Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
+        engine.load_local(Path::new(&fixture),1,0.0,true).unwrap();
+        let until=std::time::Instant::now()+std::time::Duration::from_secs(5);
+        let mut advanced=false;
+        while std::time::Instant::now()<until {
+            let observation=engine.observation();
+            if observation.position_ms>10.0 {advanced=true;break}
+            assert_ne!(observation.state,"error");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(advanced,"native PCM did not advance");
+        let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();listener.set_nonblocking(true).unwrap();
+        let playlist=std::env::temp_dir().join(format!("desktop-denied-playlist-{}.media",std::process::id()));
+        std::fs::write(&playlist,format!("#EXTM3U\n#EXTINF:1,fixture\nhttp://127.0.0.1:{}/forbidden.wav\n",listener.local_addr().unwrap().port())).unwrap();
+        engine.load_local(&playlist,2,0.0,true).unwrap();
+        let until=std::time::Instant::now()+std::time::Duration::from_secs(2);
+        while std::time::Instant::now()<until {
+            assert!(matches!(listener.accept(),Err(e) if e.kind()==std::io::ErrorKind::WouldBlock),"native local input opened a network reference");
+            let _=engine.observation();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(!matches!(engine.observation().state.as_str(),"playing"|"buffering"));
+        std::fs::remove_file(playlist).unwrap();
+    }
+}

@@ -21,6 +21,9 @@ const CHUNK_BYTES: usize = 256 * 1024;
 const SQL: &str = "
 PRAGMA foreign_keys=ON;
 PRAGMA trusted_schema=OFF;
+-- One native store owns the filesystem journal. Retain its SQLite write lock so
+-- a second app process cannot race a file append/rename outside a SQL transaction.
+PRAGMA locking_mode=EXCLUSIVE;
 CREATE TABLE IF NOT EXISTS download_scopes (
  id TEXT PRIMARY KEY, authority TEXT NOT NULL CHECK(authority IN ('local','hosted')),
  account_id TEXT NOT NULL, profile_id TEXT NOT NULL, server_id TEXT NOT NULL,
@@ -1901,6 +1904,73 @@ mod tests {
         let image = store.artwork(&viewer(), &ids[0]).unwrap().unwrap();
         assert_eq!(image.mime, "image/png");
         assert_eq!(image.bytes, payload);
+        drop(store);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn group_retry_and_remove_are_complete_revision_fenced_transactions() {
+        let root = root();
+        let mut store = DownloadStore::open(&root, &rules()).unwrap();
+        let mut ids = Vec::new();
+        for i in 0..2 {
+            let mut input = enrollment(b"hello");
+            input.preparation_id = format!("prep{i}");
+            input.item_id = format!("track{i}");
+            input.title.kind = "song".into();
+            input.title.parent_id = "album".into();
+            input.title.group_number = Some(1);
+            input.title.number = Some(2 - i);
+            let row = store.enroll(input).unwrap();
+            let row = store
+                .append(&viewer(), &row.id, row.revision, 0, b"wrong")
+                .unwrap();
+            assert_eq!(
+                store.seal(&viewer(), &row.id, row.revision).unwrap_err(),
+                Error::DownloadVerificationFailed
+            );
+            ids.push(row.id);
+        }
+        let selector = GroupSelector {
+            kind: "songs".into(),
+            parent_id: "album".into(),
+            group_id: None,
+        };
+        let before = store.group_revision(&viewer(), &selector).unwrap();
+        let members = store.group_members(&viewer(), &selector).unwrap();
+        assert_eq!(members[0].id, ids[1]);
+        store.connection.execute_batch("CREATE TRIGGER fail_retry BEFORE UPDATE ON download_entries WHEN NEW.bytes_done=0 BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
+        assert!(
+            store
+                .act_group(&viewer(), &selector, &before, GroupAction::Retry)
+                .is_err()
+        );
+        for id in &ids {
+            assert_eq!(
+                std::fs::read(store.path(id, false).unwrap()).unwrap(),
+                b"wrong"
+            );
+            assert_eq!(store.entry(&viewer(), id).unwrap().state, "failed");
+        }
+        store
+            .connection
+            .execute_batch("DROP TRIGGER fail_retry;")
+            .unwrap();
+        store
+            .act_group(&viewer(), &selector, &before, GroupAction::Retry)
+            .unwrap();
+        for id in &ids {
+            let row = store.entry(&viewer(), id).unwrap();
+            assert_eq!((row.bytes_done, row.state.as_str()), (0, "queued"));
+        }
+        assert_eq!(
+            store.act_group(&viewer(), &selector, &before, GroupAction::Remove),
+            Err(Error::DownloadsConflict)
+        );
+        let current = store.group_revision(&viewer(), &selector).unwrap();
+        store
+            .act_group(&viewer(), &selector, &current, GroupAction::Remove)
+            .unwrap();
+        assert!(store.list(&viewer(), None, 100).unwrap().items.is_empty());
         drop(store);
         std::fs::remove_dir_all(root).unwrap();
     }
