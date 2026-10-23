@@ -36,7 +36,7 @@ func TestGuideImageServing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','profile',1);INSERT INTO libraries(id,name,kind,root) VALUES('lib','Films','movie','/media/films')`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','profile',1);INSERT INTO libraries(id,name,kind,root) VALUES('lib','Films','movie','/media/films')`); err != nil {
 		t.Fatal(err)
 	}
 	owner, err := ident.Issue("owner", "profile", "local", "owner", 1)
@@ -127,7 +127,7 @@ func TestGuideImageServing(t *testing.T) {
 	if w := request("GET", "/v1/guide/images/"+digest, owner.AccessToken); w.Code != 404 {
 		t.Fatalf("retired digest route: %d", w.Code)
 	}
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('member','member',x'00','member-profile',1)`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('member','member',x'00','member-profile',1)`); err != nil {
 		t.Fatal(err)
 	}
 	member, err := ident.Issue("member", "member-profile", "local", "member", 1)

@@ -115,6 +115,9 @@ func (d Dependencies) ownerResetFileRoutes(mux *http.ServeMux) {
 	})
 }
 func registerResetFileHTTPContracts(registry *apikit.Registry) error {
+	if e := registerAccountMoveContracts(registry); e != nil {
+		return e
+	}
 	if e := registerServerReturnHTTPContracts(registry); e != nil {
 		return e
 	}
@@ -151,7 +154,6 @@ func resetSignInSchema(owner bool) map[string]any {
 	}
 	props := shape["properties"].(map[string]any)
 	delete(props, "challenge")
-	delete(props, "deviceApprovalPending")
 	required := shape["required"].([]string)
 	required = append(required, "session")
 	shape["required"] = required

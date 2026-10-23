@@ -256,7 +256,7 @@ func (s *Service) sessionFamilyRecordTx(ctx context.Context, tx *sql.Tx, p Princ
 	}
 	// The existing approval lookup also provides accounting metadata. It does
 	// not add a statement or change the approval/authority predicates.
-	if err := tx.QueryRowContext(ctx, `SELECT d.id FROM identity_device_families b JOIN identity_devices d ON d.id=b.device_id WHERE b.family_id=? AND d.approval_state='approved'`, r.ID).Scan(&r.DeviceID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT d.id FROM identity_device_families b JOIN identity_devices d ON d.id=b.device_id WHERE b.family_id=?`, r.ID).Scan(&r.DeviceID); err != nil {
 		return FamilyState{}, ErrUnauthorized
 	}
 	return r.FamilyState, nil

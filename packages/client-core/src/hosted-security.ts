@@ -21,7 +21,7 @@ export function securityPurposeNeedsProof(purpose:SecurityPurpose):boolean{retur
 export type AccountScope = {accountId:string;familyId:string};
 export type RecentProof = AccountScope & {proof:string;expiresAt:string};
 export type SecurityState = AccountScope & {contactAddress:string;privateEmail:boolean;hasPassword:boolean;mfaEnabled:boolean;recoveryCodesRemaining:number;providers:{id:string;provider:IdentityProvider}[]};
-export type DeletionPreview = {deletionToken:string;expiresAt:string;ownedServers:{id:string;name:string}[];affectedServers:{id:string;name:string}[];profileCount:number;requiredDisposition?:string;canDelete:boolean};
+export type DeletionPreview = {deletionToken:string;expiresAt:string;ownedServers:{id:string;name:string}[];affectedServers:{id:string;name:string}[];canDelete:boolean};
 export type SecurityResult = AccountScope & {status:string;signOut?:boolean;challengeId?:string;expiresAt?:string;secret?:string;otpAuthUri?:string;recoveryCodes?:string[];deletionPreview?:DeletionPreview};
 export type OIDCStart = {transactionId:string;expiresAt:string;mode:'login'|'reauthenticate'|'link';authorizationUrl?:string;nativeNonce?:string};
 export type SecurityCompletion = {recentProof?:RecentProof;securityResult?:SecurityResult};
@@ -60,13 +60,11 @@ export class MFARequiredError extends Error {readonly challenge:MFAChallenge;con
 /** Runtime responses keep the access token; browser persistence separately strips it. */
 export function parseAccountSession(v:unknown,mode:AccountMode):HostedSession {
  if(object(v)&&v.mfaRequired===true)throw new MFARequiredError(parseMFAChallenge(v));
- if(!object(v)||!object(v.account)||!Array.isArray(v.profiles)||v.profiles.length>100)return invalid();
+ if(!object(v)||!object(v.account)||Object.keys(v).some(key=>!['account','accessToken','expiresAt','familyId','refreshExpiresAt','refreshToken'].includes(key)))return invalid();
  if(mode==='browser'&&Object.hasOwn(v,'refreshToken'))return invalid();
- const profiles=v.profiles.map(p=>{if(!object(p))return invalid();return{id:identifier(p.id),name:text(p.name,2048)};});
- if(new Set(profiles.map(p=>p.id)).size!==profiles.length)return invalid();
  const expiresAt=timestamp(v.expiresAt),refreshExpiresAt=timestamp(v.refreshExpiresAt);
  if(Date.parse(expiresAt)>Date.parse(refreshExpiresAt))return invalid();
- return{account:{id:identifier(v.account.id),username:text(v.account.username,32),displayName:text(v.account.displayName,2048)},profiles,accessToken:text(v.accessToken,16384),familyId:identifier(v.familyId),expiresAt,refreshExpiresAt,...(mode==='native'?{refreshToken:text(v.refreshToken,16384)}:{})};
+ return{account:{id:identifier(v.account.id),username:text(v.account.username,32),displayName:text(v.account.displayName,2048)},accessToken:text(v.accessToken,16384),familyId:identifier(v.familyId),expiresAt,refreshExpiresAt,...(mode==='native'?{refreshToken:text(v.refreshToken,16384)}:{})};
 }
 export function parseRecentProof(v:unknown,expected?:AccountScope):RecentProof {if(!object(v))return invalid();const scope=scoped(v);if(expected&&!sameAccountScope(scope,expected))return invalid();return{...scope,proof:text(v.proof,256),expiresAt:timestamp(v.expiresAt)};}
 export function parseSecurityState(v:unknown,expected:AccountScope):SecurityState {
@@ -94,7 +92,8 @@ export function parseDeletionReceipt(v:unknown):DeletionReceipt {
 export function parseDeletionPreview(v:unknown):DeletionPreview {
  if(!object(v))return invalid();
  const servers=(raw:unknown)=>{if(!Array.isArray(raw)||raw.length>10000)return invalid();return raw.map(s=>{if(!object(s))return invalid();return{id:identifier(s.id),name:text(s.name,2048)};});};
- return{deletionToken:text(v.deletionToken,256),expiresAt:timestamp(v.expiresAt),ownedServers:servers(v.ownedServers),affectedServers:servers(v.affectedServers),profileCount:typeof v.profileCount==='number'&&Number.isSafeInteger(v.profileCount)&&v.profileCount>=0?v.profileCount:invalid(),canDelete:boolean(v.canDelete),...(v.requiredDisposition?{requiredDisposition:text(v.requiredDisposition,80)}:{})};
+ if(Object.hasOwn(v,'profileCount')||Object.hasOwn(v,'requiredDisposition'))return invalid();
+ return{deletionToken:text(v.deletionToken,256),expiresAt:timestamp(v.expiresAt),ownedServers:servers(v.ownedServers),affectedServers:servers(v.affectedServers),canDelete:boolean(v.canDelete)};
 }
 export function providerRedirect(v:unknown,p:IdentityProvider):string {
  if(!object(v))return invalid();identifier(v.transactionId);timestamp(v.expiresAt);const url=new URL(text(v.authorizationUrl,8192));
@@ -196,7 +195,7 @@ export class HostedAccountClient {
  /** A80: the deletion preview needs the signed-in session only (no password proof). */
  async deletionPreview(operationId:string,token:string,signal?:AbortSignal):Promise<DeletionPreview>{return parseDeletionPreview(await this.request(hostedRoutePath("account_deletion_preview"),'POST',hostedRouteBody("account_deletion_preview", {purpose:'account_deletion_preview',target:'',operationId}),signal,token));}
  /** A80: the final deletion is confirmed by the account's email (its username without one), typed by the person. */
- async acceptDeletion(preview:DeletionPreview,confirmation:string,token:string,signal?:AbortSignal):Promise<DeletionReceipt>{const confirm=confirmation.trim();if(!confirm||confirm.length>320)throw new Error('Type your account email to confirm.');return parseDeletionReceipt(await this.request(hostedRoutePath("account_deletion_accept"),'POST',hostedRouteBody("account_deletion_accept", {deletionToken:preview.deletionToken,disposition:preview.requiredDisposition??'',confirmation:confirm}),signal,token));}
+ async acceptDeletion(preview:DeletionPreview,confirmation:string,token:string,signal?:AbortSignal):Promise<DeletionReceipt>{const confirm=confirmation.trim();if(!confirm||confirm.length>320)throw new Error('Type your account email to confirm.');return parseDeletionReceipt(await this.request(hostedRoutePath("account_deletion_accept"),'POST',hostedRouteBody("account_deletion_accept", {deletionToken:preview.deletionToken,disposition:'',confirmation:confirm}),signal,token));}
  async confirm(kind:'mfa'|'email',challengeId:string,code:string,operationId:string,scope:AccountScope,token:string,signal?:AbortSignal){return parseSecurityResult(await this.request(hostedRoutePrefix("account_security_action", 3)+kind+'/confirm','POST',{challengeId,code,operationId},signal,token),scope);}
 }
 

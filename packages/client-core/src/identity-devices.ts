@@ -10,8 +10,7 @@ import {unreadableServerResponse} from './server-messages.ts';
  *
  * The tokens themselves stay in the client. The server keeps only the account
  * descriptors and which one was used last. */
-export type ApprovalState='approved'|'pending'|'denied';
-export type Device=Readonly<{id:string;installationId:string;name:string;platform:string;app:string;appVersion:string;ip:string;firstSeen:string;lastSeen:string;trusted:boolean;approvalState:ApprovalState;lastProfileId:string;rememberAccount:boolean;current:boolean;sessions:number}>;
+export type Device=Readonly<{id:string;installationId:string;name:string;platform:string;app:string;appVersion:string;ip:string;firstSeen:string;lastSeen:string;lastProfileId:string;rememberAccount:boolean;current:boolean;sessions:number}>;
 export type RememberedAccount=Readonly<{accountId:string;username:string;displayName:string;avatarVersion:number;automaticSignIn:boolean;lastUsed:string}>;
 export type TopShelfEntry=Readonly<{id:string;title:string;subtitle:string;imageUrl:string;displayUrl:string;playUrl:string;progressPercent:number}>;
 export type TopShelfSection=Readonly<{id:string;title:string;shape:'poster'|'landscape'|'square';entries:readonly TopShelfEntry[]}>;
@@ -31,8 +30,7 @@ function fail(reason:string):never{throw Object.assign(new Error(unreadableServe
 export const validInstallationId=(v:unknown):v is string=>typeof v==='string'&&v.length>=32&&v.length<=128&&/^[A-Za-z0-9_-]+$/.test(v);
 
 /** newInstallationId generates one. Callers persist it for the life of the
- * install; regenerating it makes the device look new to the owner's approval
- * policy and orphans the remembered-account list. */
+ * install; regenerating it orphans the remembered-account list. */
 export function newInstallationId():string{
  const raw=new Uint8Array(32);
  crypto.getRandomValues(raw);
@@ -41,8 +39,7 @@ export function newInstallationId():string{
  return text;
 }
 
-const approvalStates=['approved','pending','denied'] as const;
-const deviceKeys=['id','authority','installationId','name','platform','app','appVersion','ip','firstSeen','lastSeen','trusted','approvalState','lastProfileId','rememberAccount','current','sessions'] as const;
+const deviceKeys=['id','authority','installationId','name','platform','app','appVersion','ip','firstSeen','lastSeen','lastProfileId','rememberAccount','current','sessions'] as const;
 
 export function parseDevice(raw:unknown):Device{
  if(!obj(raw))fail('device');only(raw,deviceKeys);
@@ -57,11 +54,10 @@ export function parseDevice(raw:unknown):Device{
  // caller supplied, so anything that is not an address is a defect.
  if(typeof raw.ip!=='string'||raw.ip.length>45||/[^0-9a-fA-F.:]/.test(raw.ip))fail('ip');
  if(!instant(raw.firstSeen)||!instant(raw.lastSeen))fail('timestamps');
- if(!bool(raw.trusted)||!bool(raw.rememberAccount)||!bool(raw.current))fail('device flags');
- if(typeof raw.approvalState!=='string'||!approvalStates.includes(raw.approvalState as ApprovalState))fail('approvalState');
+ if(!bool(raw.rememberAccount)||!bool(raw.current))fail('device flags');
  if(raw.lastProfileId!==undefined&&raw.lastProfileId!==''&&!id(raw.lastProfileId))fail('lastProfileId');
  if(!count(raw.sessions,0,1000))fail('sessions');
- return Object.freeze({id:raw.id as string,installationId:raw.installationId as string,name:raw.name as string,platform:raw.platform as string,app:raw.app as string,appVersion:raw.appVersion as string,ip:raw.ip,firstSeen:raw.firstSeen as string,lastSeen:raw.lastSeen as string,trusted:raw.trusted as boolean,approvalState:raw.approvalState as ApprovalState,lastProfileId:(raw.lastProfileId as string|undefined)??'',rememberAccount:raw.rememberAccount as boolean,current:raw.current as boolean,sessions:raw.sessions as number});
+ return Object.freeze({id:raw.id as string,installationId:raw.installationId as string,name:raw.name as string,platform:raw.platform as string,app:raw.app as string,appVersion:raw.appVersion as string,ip:raw.ip,firstSeen:raw.firstSeen as string,lastSeen:raw.lastSeen as string,lastProfileId:(raw.lastProfileId as string|undefined)??'',rememberAccount:raw.rememberAccount as boolean,current:raw.current as boolean,sessions:raw.sessions as number});
 }
 
 /** Devices arrive most recently active first. At most one may be `current`: two
@@ -74,10 +70,6 @@ export function parseDevices(raw:unknown):readonly Device[]{
  if(devices.filter(d=>d.current).length>1)fail('more than one current device');
  return Object.freeze(devices);
 }
-
-/** A device waiting on the owner cannot obtain a session, so a client must show
- * the wait rather than retrying sign-in. */
-export const deviceAwaitingApproval=(device:Device):boolean=>device.approvalState==='pending';
 
 export function parseRememberedAccounts(raw:unknown):readonly RememberedAccount[]{
  if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>10)fail('remembered accounts');

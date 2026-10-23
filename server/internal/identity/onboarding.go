@@ -423,7 +423,7 @@ func (s *Service) CompleteAccountSetup(ctx context.Context, requestID, secret st
 			return e
 		}
 		if out.Session == nil {
-			return ErrDevicePending
+			return ErrUnauthorized
 		}
 		receipt, e := s.sealSetup(*out.Session, "initialize:"+requestID)
 		if e != nil {
