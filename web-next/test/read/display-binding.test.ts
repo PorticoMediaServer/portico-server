@@ -43,6 +43,7 @@ test('Display uses the actual core snapshot and changes only its current book ov
   model().twoPages!.onChange(false); await tick();
   assert.equal(model().themes.value, 'sepia'); assert.equal(model().fonts.value, 'literata');
   assert.equal(model().size.valueText, '5 of 7'); assert.equal(model().size.summary, '5 of 7');
+  assert.deepEqual(model().size.ticks, scale.ticks); assert.equal(desktop().size.ticks, undefined);
   assert.equal(model().rows.find(row => row.id === 'layout')!.value, 'scroll');
   assert.equal(controller.getSnapshot().preferences.layout, 'scroll');
   assert.equal(model().twoPages!.checked, false);

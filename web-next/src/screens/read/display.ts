@@ -44,7 +44,7 @@ export function readingDisplayControls({controller, authority, copy, scale, phon
   return {
     themes: {...theme, options: themes.map(value => ({value, label: copy.themes.options[value], tone: value}))},
     fonts: {...font, options: fonts.map(value => ({value, ...copy.fonts.options[value], face: value}))},
-    size: {...copy.size, ...scale, value: preferences.textSize, valueText, summary: phone ? valueText : undefined,
+    size: {...copy.size, ...scale, ticks: phone ? scale.ticks : undefined, value: preferences.textSize, valueText, summary: phone ? valueText : undefined,
       onChange: value => {if (Number.isFinite(value) && value >= scale.min && value <= scale.max && Number.isInteger((value - scale.min) / scale.step)) change({textSize: value});}},
     rows: [
       {id: 'lineSpacing', ...choice(copy.lineSpacing, ['tight', 'normal', 'loose'], preferences.lineSpacing, lineSpacing => change({lineSpacing}))},
