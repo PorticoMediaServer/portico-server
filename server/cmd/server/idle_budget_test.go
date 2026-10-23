@@ -52,6 +52,11 @@ func TestServerIdleStatementBudget(t *testing.T) {
 	full := os.Getenv("PORTICO_FULL_IDLE")
 	reportPath := filepath.Join(root, "idle.json")
 	cmd.Env = append(cmd.Env, "PORTICO_IDLE_HELPER=1", "PORTICO_IDLE_REPORT="+reportPath, "PORTICO_FULL_IDLE="+full, "PORTICO_DATA_DIR="+filepath.Join(root, "state"), "HOME="+root, "PORTICO_BIND=127.0.0.1:0", "PORTICO_DISCOVERY=0")
+	// Only this diagnostic opt-in crosses the isolation boundary. It attributes
+	// changing commits without inheriting real-server configuration or credentials.
+	if os.Getenv("PORTICO_DBWORK_TRACE") == "1" {
+		cmd.Env = append(cmd.Env, "PORTICO_DBWORK_TRACE=1")
+	}
 	output, e := cmd.CombinedOutput()
 	if e != nil {
 		t.Fatalf("isolated idle server: %v\n%s", e, output)
@@ -65,12 +70,17 @@ func TestServerIdleStatementBudget(t *testing.T) {
 		t.Fatal(string(raw), e)
 	}
 	t.Logf("isolated full-server idle: %s", raw)
+	loggedDiagnostics := false
 	for i, count := range report.Statements {
 		// Each observation is a complete minute. Comparing a fractional
 		// two-second window rounded down to zero classified one late startup
 		// statement as a broken idle budget.
 		ceiling := uint64(10)
 		if count > ceiling {
+			if !loggedDiagnostics {
+				t.Logf("isolated server diagnostics:\n%s", output)
+				loggedDiagnostics = true
+			}
 			t.Errorf("idle window %d: %d SQL statements in %.0fs; budget %d", i+1, count, report.WindowSeconds, ceiling)
 		}
 	}

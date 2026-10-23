@@ -626,7 +626,14 @@ func TestChannelsSurfingReplacesThePlaybackInOneSlot(t *testing.T) {
 // this host (a confirmed LAN root, as an owner confirms it), with the owner's
 // tuner limit, and returns its reference.
 func (s *channelSuite) liveChannel(t *testing.T, tuners int, captionSource ...bool) playback.LinearReference {
+	return s.liveChannels(t, tuners, 1, captionSource...)[0]
+}
+
+func (s *channelSuite) liveChannels(t *testing.T, tuners, count int, captionSource ...bool) []playback.LinearReference {
 	t.Helper()
+	if count < 1 || count > 2 {
+		t.Fatal("live fixture supports one or two distinct channels")
+	}
 	ffmpeg, _ := requireChannelTools(t)
 	dir := filepath.Join(s.state, "stream")
 	if err := os.MkdirAll(filepath.Join(dir, "live"), 0o700); err != nil {
@@ -642,8 +649,13 @@ func (s *channelSuite) liveChannel(t *testing.T, tuners int, captionSource ...bo
 		t.Fatalf("stream: %v %s", err, out)
 	}
 	now := time.Now().UTC()
-	guide := fmt.Sprintf(`<?xml version="1.0"?><tv><channel id="news"/><programme channel="news" start="%s +0000" stop="%s +0000"><title>Morning news</title></programme></tv>`, now.Add(-time.Hour).Format("20060102150405"), now.Add(time.Hour).Format("20060102150405"))
-	if err := os.WriteFile(filepath.Join(dir, "guide.xml"), []byte(guide), 0o600); err != nil {
+	var guide strings.Builder
+	guide.WriteString(`<?xml version="1.0"?><tv>`)
+	for _, id := range []string{"news", "weather"}[:count] {
+		fmt.Fprintf(&guide, `<channel id="%s"/><programme channel="%s" start="%s +0000" stop="%s +0000"><title>Morning %s</title></programme>`, id, id, now.Add(-time.Hour).Format("20060102150405"), now.Add(time.Hour).Format("20060102150405"), id)
+	}
+	guide.WriteString(`</tv>`)
+	if err := os.WriteFile(filepath.Join(dir, "guide.xml"), []byte(guide.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	began := time.Now()
@@ -676,7 +688,12 @@ func (s *channelSuite) liveChannel(t *testing.T, tuners int, captionSource ...bo
 	if withCaptions {
 		sourcePlaylist = "/live/master.m3u8"
 	}
-	if err := os.WriteFile(filepath.Join(dir, "list.m3u"), []byte("#EXTM3U\n#EXTINF:-1 tvg-id=\"news\" tvg-chno=\"1\",Northwind News\n"+server.URL+sourcePlaylist+"\n"), 0o600); err != nil {
+	var channels strings.Builder
+	channels.WriteString("#EXTM3U\n")
+	for n, id := range []string{"news", "weather"}[:count] {
+		fmt.Fprintf(&channels, "#EXTINF:-1 tvg-id=\"%s\" tvg-chno=\"%d\",Northwind %s\n%s%s?channel=%s\n", id, n+1, id, server.URL, sourcePlaylist, id)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "list.m3u"), []byte(channels.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	owner := func(context.Context, *sql.Tx, bool) (string, func(string, string) bool, error) {
@@ -691,11 +708,23 @@ func (s *channelSuite) liveChannel(t *testing.T, tuners int, captionSource ...bo
 	if err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	var generation, channel string
-	if err = s.f.d.DB.QueryRow(`SELECT s.active_generation,c.channel_id FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation WHERE s.id=?`, source.ID).Scan(&generation, &channel); err != nil {
+	rows, err := s.f.d.DB.Query(`SELECT s.active_generation,c.channel_id FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation WHERE s.id=? ORDER BY c.channel_id`, source.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return playback.LinearReference{Kind: "live-source", SourceID: source.ID, ChannelID: channel, Generation: generation}
+	defer rows.Close()
+	var refs []playback.LinearReference
+	for rows.Next() {
+		ref := playback.LinearReference{Kind: "live-source", SourceID: source.ID}
+		if err = rows.Scan(&ref.Generation, &ref.ChannelID); err != nil {
+			t.Fatal(err)
+		}
+		refs = append(refs, ref)
+	}
+	if err = rows.Err(); err != nil || len(refs) != count {
+		t.Fatalf("published live channels: got %d, want %d: %v", len(refs), count, err)
+	}
+	return refs
 }
 
 // A live channel plays: its stream comes through the gateway and the decoder,
@@ -716,12 +745,30 @@ func TestChannelsALiveTunePlays(t *testing.T) {
 // says so; the viewer holding the tuner keeps playing.
 func TestChannelsAnExhaustedTunerRefusesTheNextViewer(t *testing.T) {
 	eachChannelDriver(t, 60*time.Second, func(t *testing.T, s *channelSuite, d channelDriver) {
+		refs := s.liveChannels(t, 1, 2)
+		if refs[0].ChannelID == refs[1].ChannelID {
+			t.Fatal("exhaustion requires two distinct channels on the same one-tuner source")
+		}
+		first := d.tune(t, refs[0])
+		waitChannel(t, d, first, 45*time.Second, "the first viewer plays", active)
+		d.noTuner(t, refs[1])
+		if v := d.read(t, first); !active(v) {
+			t.Fatalf("the first viewer after the refusal: %+v", v)
+		}
+		d.stop(t, first)
+	})
+}
+
+func TestChannelsTheSameLiveChannelSharesOneTuner(t *testing.T) {
+	eachChannelDriver(t, 60*time.Second, func(t *testing.T, s *channelSuite, d channelDriver) {
 		ref := s.liveChannel(t, 1)
 		first := d.tune(t, ref)
 		waitChannel(t, d, first, 45*time.Second, "the first viewer plays", active)
-		d.noTuner(t, ref)
+		second := d.tune(t, ref)
+		waitChannel(t, d, second, 45*time.Second, "the second viewer shares the channel", active)
+		d.stop(t, second)
 		if v := d.read(t, first); !active(v) {
-			t.Fatalf("the first viewer after the refusal: %+v", v)
+			t.Fatalf("stopping the shared viewer interrupted the first: %+v", v)
 		}
 		d.stop(t, first)
 	})

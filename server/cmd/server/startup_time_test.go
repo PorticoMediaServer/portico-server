@@ -145,6 +145,10 @@ func timeToFirstAnswer(t *testing.T, state string) time.Duration {
 				// The single-instance lock means the next launch cannot start until
 				// this one has let go, which is exactly what it is for.
 				stop()
+				if elapsed > startupBudget {
+					contents, _ := os.ReadFile(log.Name())
+					t.Logf("startup exceeded the budget; server diagnostics:\n%s", contents)
+				}
 				return elapsed
 			}
 		}
