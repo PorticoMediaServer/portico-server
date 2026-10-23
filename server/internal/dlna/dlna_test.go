@@ -168,6 +168,9 @@ type didlObject struct {
 	Artist     string `xml:"artist"`
 	Art        string `xml:"albumArtURI"`
 	Res        []struct {
+		SampleRate string `xml:"sampleFrequency,attr"`
+		BitDepth   string `xml:"bitsPerSample,attr"`
+		Channels   string `xml:"nrAudioChannels,attr"`
 		Protocol   string `xml:"protocolInfo,attr"`
 		Duration   string `xml:"duration,attr"`
 		Resolution string `xml:"resolution,attr"`

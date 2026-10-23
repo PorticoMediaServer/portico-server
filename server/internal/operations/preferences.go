@@ -15,7 +15,7 @@ import (
 // PreferenceRegistryRevision changes whenever a field is added, removed, or its
 // domain moves. Clients render settings from the published registry, so the
 // revision is the only thing they have to compare between releases.
-const PreferenceRegistryRevision = "settings.14a.preferences.1"
+const PreferenceRegistryRevision = "settings.14a.preferences.music.2"
 
 const (
 	HomeLayoutMaxRows        = 64
@@ -180,6 +180,13 @@ var preferenceRegistry = func() []PreferenceField {
 	}
 	out = append(out, qualityFields()...)
 	out = append(out,
+		prefEnum("music.qualityHome", "original", qualityladder.MusicIDs(), ScopeDeviceClass),
+		prefEnum("music.qualityDownloads", "320", qualityladder.MusicIDs(), ScopeDeviceClass),
+		prefBool("music.neverBoost", false, ScopeProfileServer),
+		prefBool("music.smoothTransitions", true, ScopeProfileServer),
+		prefIntEnum("music.dsdGainDb", -6, []int{0, -3, -6, -9, -12}, ScopeProfileServer),
+		prefEnum("music.qualityAway", "320", qualityladder.MusicIDs(), ScopeDeviceClass),
+		prefEnum("music.qualityMobile", "320", qualityladder.MusicIDs(), ScopeDeviceClass),
 		prefEnum("music.audioNormalization", "off", []string{"off", "track", "album"}, ScopeProfileServer),
 		prefInt("music.crossfadeMs", 0, 0, 12000, ScopeProfileServer),
 		prefBool("music.gapless", true, ScopeProfileServer),

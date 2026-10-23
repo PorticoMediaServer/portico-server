@@ -16,7 +16,7 @@
  * `choices.ts`; this file is the server's vocabulary.
  */
 
-import {canonicalQualityLadder} from './quality-ladder.ts';
+import {canonicalMusicQualityLadder, canonicalQualityLadder} from './quality-ladder.ts';
 export type SavedQuality = (typeof canonicalQualityLadder)[number]['id'];
 export type QualityId = Exclude<SavedQuality, 'original' | 'automatic'>;
 export const savedQualities: readonly SavedQuality[] = Object.freeze(canonicalQualityLadder.map(r => r.id));
@@ -34,8 +34,8 @@ export type QualityRequest =
 /** The quality in force on a presentation: never a `step`; automatic's `id` is the step it is on (absent: the original). */
 export type QualityInForce = Readonly<{mode: 'original' | 'fixed' | 'automatic' | 'limit'; id?: string; maxVideoBitrateKbps?: number; maxHeight?: number; maxAudioBitrateKbps?: number}>;
 
-/** One entry of a title's quality menu (playback options `qualities`): the original, automatic, then all seven fixed ceilings, including source-equivalent steps. */
-export type QualityOption = Readonly<{mode: 'original' | 'automatic' | 'fixed'; id?: QualityId; maxHeight?: number; maxVideoBitrateKbps?: number; maxAudioBitrateKbps?: number; sameAsOriginal?: boolean; dataGBPerHour?: number; applicable?: boolean}>;
+/** One quality menu entry: video uses fixed ladder IDs; music uses numeric audio limits. */
+export type QualityOption = Readonly<{mode: 'original' | 'automatic' | 'fixed' | 'limit'; id?: QualityId; maxHeight?: number; maxVideoBitrateKbps?: number; maxAudioBitrateKbps?: number; sameAsOriginal?: boolean; dataGBPerHour?: number; applicable?: boolean}>;
 
 /** The server's ladder (`GET /v1/playback/delivery-policy` `ladder`), widest first: what each fixed quality allows. */
 export const qualityLadder = Object.freeze(canonicalQualityLadder.filter(r => r.height > 0).map(r => Object.freeze({...r, id: r.id as QualityId})));
@@ -59,6 +59,7 @@ export function requestInForce(inForce: QualityInForce): QualityRequest {
 
 /** The request a menu entry stands for. */
 export function qualityOptionRequest(option: QualityOption): QualityRequest {
+  if (option.mode === 'limit') return Object.freeze({mode: 'limit', maxAudioBitrateKbps: option.maxAudioBitrateKbps});
   if (option.mode === 'fixed' && option.id) return Object.freeze({mode: 'fixed', id: option.id});
   return Object.freeze({mode: option.mode === 'automatic' ? 'automatic' : 'original'});
 }
@@ -67,6 +68,7 @@ export function qualityOptionRequest(option: QualityOption): QualityRequest {
 export function qualityOptionSelected(option: QualityOption, inForce: QualityInForce | undefined): boolean {
   const mode = inForce?.mode ?? 'original';
   if (option.mode !== mode) return false;
+  if (option.mode === 'limit') return option.maxAudioBitrateKbps === inForce?.maxAudioBitrateKbps && !inForce?.maxVideoBitrateKbps && !inForce?.maxHeight;
   return option.mode !== 'fixed' || option.id === inForce?.id;
 }
 
@@ -85,4 +87,13 @@ export function connectionTooSlow(error: unknown): Readonly<{fits?: (typeof qual
   if (!e || typeof e !== 'object' || e.code !== 'connection_too_slow') return null;
   const fits = typeof e.reason === 'string' ? qualityLadder.find(q => q.id === e.reason) : undefined;
   return Object.freeze(fits ? {fits} : {});
+}
+
+/** Saved music qualities have their own canonical domain and use audio-only limits. */
+export type SavedMusicQuality = (typeof canonicalMusicQualityLadder)[number]['id'];
+export const savedMusicQualities: readonly SavedMusicQuality[] = Object.freeze(canonicalMusicQualityLadder.map(q => q.id));
+export const musicQualityLadder = canonicalMusicQualityLadder;
+export function savedMusicQualityRequest(saved: string | undefined): QualityRequest {
+  const preset = canonicalMusicQualityLadder.find(q => q.id === saved);
+  return Object.freeze(preset && preset.audioKbps > 0 ? {mode: 'limit', maxAudioBitrateKbps: preset.audioKbps} : {mode: 'original'});
 }

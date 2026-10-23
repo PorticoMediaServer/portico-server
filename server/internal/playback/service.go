@@ -50,12 +50,14 @@ type Session struct {
 }
 type Service struct {
 	// prefetched counts bytes served to private presentations (audio_plan_v2.go).
-	prefetchMu   sync.Mutex
-	prefetched   map[string]int64
-	db           *sql.DB
-	hls          *HLS
-	remote       *Remote
-	StorageGuard func(string) error
+	prefetchMu      sync.Mutex
+	prefetched      map[string]int64
+	prefetchReaders map[string]int
+	prefetchRetired map[string]bool
+	db              *sql.DB
+	hls             *HLS
+	remote          *Remote
+	StorageGuard    func(string) error
 	// AuthorityTx is wired by HTTP composition, never a remote policy lookup.
 	AuthorityTx         ControlAuthorityTx
 	ContinueAuthorityTx ControlAuthorityTx
@@ -546,7 +548,13 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	}
 	if itemKind == "song" || itemKind == "audiobook_file" {
 		if v1.AudioPlanV2 {
-			if result.AudioPlan, e = s.pinAudioPlan(ctx, tx, result, item, aid, grant, v1, ownerTranscoding); e != nil {
+			// The audio renderer must obey the same narrowed ceiling as the
+			// delivery planner, including when measured render facts know a
+			// bitrate that the catalogue stream facts do not yet carry.
+			audioChoice := *v1
+			audioChoice.MaxAudioBitrateBPS = inputs.input.Target.MaxAudioBitrateBPS
+			audioChoice.Limit = audioChoice.Limit || audioChoice.MaxAudioBitrateBPS > 0
+			if result.AudioPlan, e = s.pinAudioPlan(ctx, tx, p, result, item, aid, grant, &audioChoice, ownerTranscoding); e != nil {
 				return Session{}, e
 			}
 		}
@@ -737,6 +745,7 @@ func (s *Service) Stop(p identity.Principal, id string) error {
 // worker. Internal queue cleanup already proved ownership in its transaction;
 // reauthenticating an old request token after family renewal would leak a worker.
 func (s *Service) stopHLS(id string) {
+	s.ForgetPrefetch(id)
 	if s.hls == nil {
 		return
 	}

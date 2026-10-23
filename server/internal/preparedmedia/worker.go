@@ -22,6 +22,7 @@ import (
 
 	"log"
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/audiotags"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/diskspace"
 	"portico.local/server/internal/identity"
@@ -425,9 +426,23 @@ func (s *Service) encodeAndPublish(ctx context.Context, w work, custody *attempt
 		return e
 	}
 	progress := &progressWriter{s: s, w: w, out: output, ctx: ctx}
+	var retainedTags audiotags.Tags
 	recipe := recipeFor(p)
 	recipe.Source = original.recipeSource()
-	e = s.encode(ctx, w, custody, source, recipe, progress)
+	if recipe.MusicQuality != "" {
+		if w.Source.Cue {
+			recipe.MusicStart = w.Source.Start
+			recipe.MusicEnd = *w.Source.End
+		}
+		tags, err := s.musicTags(ctx, w, input, source)
+		if err != nil {
+			return err
+		}
+		retainedTags = tags
+		e = s.encodeMusic(ctx, w, custody, source, recipe, progress, tags)
+	} else {
+		e = s.encode(ctx, w, custody, source, recipe, progress)
+	}
 	if e != nil {
 		return e
 	}
@@ -444,11 +459,28 @@ func (s *Service) encodeAndPublish(ctx context.Context, w work, custody *attempt
 		if err != nil {
 			return err
 		}
-		if err = acceptOutput(original, observed, p); err != nil {
+		expected := original
+		if w.Source.Cue {
+			expected.Duration = *w.Source.End - w.Source.Start
+		}
+		if err = acceptOutput(expected, observed, p); err != nil {
 			return err
+		}
+		if recipe.MusicQuality != "" {
+			if err = verifyMusicMetadata(reader, size, retainedTags); err != nil {
+				return err
+			}
 		}
 		facts = observed.Facts
 		facts.Container = "mp4"
+		if r, ok := musicRecipe(p); ok {
+			r.Source = original.recipeSource()
+			o, err := decoder.PreparedMusicFormat(r)
+			if err != nil {
+				return err
+			}
+			facts.Container = o.Container
+		}
 		// Probe success alone is not validation: decode every retained output packet
 		// with fatal decoder errors before a byte can be published to viewers.
 		return s.validateOutput(ctx, w, custody, closed)
@@ -583,6 +615,7 @@ type probed struct {
 	VideoLevel                 int
 	FrameRate                  float64
 	AudioChannels              []int
+	AudioBitrateBPS            int
 	// The first picture's range as a recipe reads it (sdr, hdr10, hlg; a
 	// Dolby Vision picture's base layer), its depth, and HDR10's metadata.
 	// Range is "" for a Dolby Vision picture with no base layer to show.
@@ -595,10 +628,14 @@ type probed struct {
 
 // recipeSource is what an encode is told about the source it reads.
 func (f probed) recipeSource() decoder.PreparedSource {
-	return decoder.PreparedSource{DynamicRange: f.Range, BitDepth: f.BitDepth, DolbyVision: f.DolbyVision, MasterDisplay: f.MasterDisplay, MaxCLL: f.MaxCLL, AudioChannels: append([]int(nil), f.AudioChannels...)}
+	return decoder.PreparedSource{DynamicRange: f.Range, BitDepth: f.BitDepth, DolbyVision: f.DolbyVision, MasterDisplay: f.MasterDisplay, MaxCLL: f.MaxCLL, AudioChannels: append([]int(nil), f.AudioChannels...), AudioSampleRate: f.AudioSampleRate, AudioBitDepth: f.AudioBitDepth, AudioCodec: f.AudioCodec, AudioBitrateBPS: f.AudioBitrateBPS}
 }
 
 func parseProbe(raw []byte) (probed, error) {
+	return parseProbeMode(raw, false)
+}
+
+func parseProbeMode(raw []byte, measuredAudio bool) (probed, error) {
 	var doc struct {
 		Format struct {
 			FormatName string `json:"format_name"`
@@ -615,6 +652,9 @@ func parseProbe(raw []byte) (probed, error) {
 			ColorTransfer           string `json:"color_transfer"`
 			ColorPrimaries          string `json:"color_primaries"`
 			BitsRaw                 string `json:"bits_per_raw_sample"`
+			BitsPerSample           int    `json:"bits_per_sample"`
+			SampleRate              string `json:"sample_rate"`
+			Bitrate                 string `json:"bit_rate"`
 			Disposition             struct {
 				AttachedPic int `json:"attached_pic"`
 			}
@@ -626,7 +666,7 @@ func parseProbe(raw []byte) (probed, error) {
 		return p, ErrOutput
 	}
 	p.Duration, _ = strconv.ParseFloat(doc.Format.Duration, 64)
-	if math.IsNaN(p.Duration) || math.IsInf(p.Duration, 0) || p.Duration <= 0 {
+	if math.IsNaN(p.Duration) || math.IsInf(p.Duration, 0) || p.Duration < 0 || p.Duration == 0 && !measuredAudio {
 		return p, ErrOutput
 	}
 	p.Container = doc.Format.FormatName
@@ -671,7 +711,22 @@ func parseProbe(raw []byte) (probed, error) {
 				p.Range = assets.DynamicRangeOf(s.ColorTransfer, 0)
 			}
 		case "audio":
+			switch s.CodecName {
+			case "musepack7":
+				s.CodecName = "mpc7"
+			case "musepack8":
+				s.CodecName = "mpc8"
+			}
 			p.AudioTracks++
+			if p.AudioTracks == 1 {
+				p.AudioSampleRate, _ = strconv.Atoi(s.SampleRate)
+				p.AudioBitDepth, _ = strconv.Atoi(s.BitsRaw)
+				if p.AudioBitDepth == 0 {
+					p.AudioBitDepth = s.BitsPerSample
+				}
+				p.AudioBitrateBPS, _ = strconv.Atoi(s.Bitrate)
+				p.AudioChannelCount = s.Channels
+			}
 			p.AudioChannels = append(p.AudioChannels, s.Channels)
 			if p.AudioCodec == "" {
 				p.AudioCodec = s.CodecName
@@ -681,6 +736,10 @@ func parseProbe(raw []byte) (probed, error) {
 		default:
 			p.OtherStreams++
 		}
+	}
+	measurable := p.Container == "flac" && p.AudioCodec == "flac" || p.Container == "mpc" && p.AudioCodec == "mpc7" || p.Container == "mpc8" && p.AudioCodec == "mpc8"
+	if p.Duration == 0 && (!measurable || p.AudioTracks != 1 || p.VideoStreams != 0 || p.OtherStreams != 0) {
+		return p, ErrOutput
 	}
 	return p, nil
 }
@@ -744,6 +803,9 @@ func probeRate(raw string) float64 {
 }
 
 func acceptOutput(original, output probed, p Profile) error {
+	if _, _, ok := MusicProfile(p.ID); ok {
+		return acceptMusicOutput(original, output, p)
+	}
 	if math.IsNaN(output.Duration) || math.IsInf(output.Duration, 0) || output.Duration <= 0 || output.OtherStreams != 0 {
 		return ErrOutput
 	}

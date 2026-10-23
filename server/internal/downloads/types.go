@@ -211,7 +211,13 @@ func (q *RequestQuality) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 func (RequestQuality) JSONSchema() map[string]any {
-	return map[string]any{"type": "string", "enum": qualityladder.IDs(), "default": QualityOriginal}
+	ids := append([]string{}, qualityladder.IDs()...)
+	for _, id := range qualityladder.MusicIDs() {
+		if id != "original" {
+			ids = append(ids, id)
+		}
+	}
+	return map[string]any{"type": "string", "enum": ids}
 }
 func (q RequestQuality) withDefault() RequestQuality {
 	if q == "" {
