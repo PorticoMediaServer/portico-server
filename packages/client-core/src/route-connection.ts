@@ -1,6 +1,6 @@
-import {RouteError,probeRoute,routeOrigin,privateRouteHost,sameServerPin,webRouteCrypto,type RouteCrypto,type RouteCandidate,type ServerPin,type VerifiedRoutes} from './route-identity.ts';
+import {RouteError,probeRoute,routeOrigin,routeBytes,observedRouteTLSLeaf,privateRouteHost,sameServerPin,webRouteCrypto,type RouteCrypto,type RouteCandidate,type RouteProof,type ServerPin,type VerifiedRoutes} from './route-identity.ts';
 export type DiscoveryRoute = Readonly<{baseUrl:string;serverId:string;fingerprint:string;port:number;path:string;expiresAt:number}>;
-export type RouteSnapshot = Readonly<{phase:'idle'|'probing'|'ready'|'offline'|'identity_mismatch';origin:string|null;revision:number;network:string;message:string;discovery:'unknown'|'available'|'unsupported'|'denied'|'empty'}>;
+export type RouteSnapshot = Readonly<{phase:'idle'|'probing'|'ready'|'offline'|'identity_mismatch'|'unconfirmed';errorCode?:string;origin:string|null;revision:number;network:string;message:string;discovery:'unknown'|'available'|'unsupported'|'denied'|'empty'}>;
 export type RouteMemory = Readonly<{current?:VerifiedRoutes;previous?:VerifiedRoutes;paired:readonly string[];lastGood?:string}>;
 export interface RouteConnectionOptions {
  pin:ServerPin;
@@ -24,6 +24,27 @@ export function discoveredRoutes(records:readonly DiscoveryRoute[],pin:ServerPin
  const out:RouteCandidate[]=[];for(const r of group){if(!Number.isFinite(r.expiresAt)||r.expiresAt<=now||r.expiresAt>now+120000)continue;try{const origin=routeOrigin(r.baseUrl),u=new URL(origin);if(!privateRouteHost(u.hostname)||Number(u.port||(u.protocol==='https:'?443:80))!==r.port)continue;if(!out.some(c=>c.baseUrl===origin))out.push({baseUrl:origin,class:'lan',quality:'probe_required',generation:'1'});}catch{}}
  return out.slice(0,8);
 }
+/** Final identity ruling (design 69f2d45): Bonjour's fp remains SHA256(identity public key),
+ * not a TLS fingerprint. Current-network discovery alone never authorizes a certificate.
+ * probeRoute has already derived serverId/fingerprint from the key and verified the signed
+ * nonce for this origin. The SAME native proof exchange must supply its actual observed leaf.
+ * This function sends nothing and pins nothing; any absent/invalid fact takes the away path. */
+export function bonjourProvesHome(origin:string,proof:RouteProof,observedTLSLeaf:string,records:readonly DiscoveryRoute[],now=Date.now()):boolean {
+ try{
+  const url=new URL(routeOrigin(origin)),ipv4=url.hostname.split('.').map(Number);
+  // The binding ruling keeps carrier-grade NAT/Tailscale 100.64/10 away.
+  if(ipv4.length===4&&ipv4[0]===100&&ipv4[1]>=64&&ipv4[1]<=127)return false;
+  if(url.protocol!=='https:'||observedRouteTLSLeaf(origin,proof,now)!==observedTLSLeaf)return false;
+  routeBytes(observedTLSLeaf,32);
+  if(!proof.tlsCertificateFingerprints?.includes(observedTLSLeaf))return false;
+  // Existing discovery grouping rejects conflicting id/fp or service records and accepts
+  // only current private routes. It compares both TXT values with the cryptographically
+  // derived proof values; it never treats the identity-key fp as the observed TLS leaf.
+  return discoveredRoutes(records,proof,now).length>0;
+ }catch{return false;}
+}
+const routeFailureCode=(error:unknown):string|undefined=>{const code=(error as {code?:unknown}|null)?.code;return typeof code==='string'?code:undefined;};
+const certificateFailure=(code:string|undefined)=>code==='certificate_unverified'||code==='certificate_untrusted';
 function newer(a:VerifiedRoutes,b:VerifiedRoutes):boolean {
  if(a.document.policyRevision<b.document.policyRevision||Date.parse(a.document.issuedAt)<Date.parse(b.document.issuedAt))return false;
  for(const key of ['claimGeneration','credentialGeneration','generation'] as const){const x=BigInt(a.document[key]),y=BigInt(b.document[key]);if(x!==y)return x>y;}
@@ -127,26 +148,27 @@ export class RouteConnection {
   this.retry=setTimeout(()=>{this.retry=undefined;void this.resolve().catch(()=>{});},delay);
  }
  networkChanged(network:string){if(this.disposed||network===this.state.network)return;this.rejected.clear();this.invalidate(network);void this.resolve().catch(()=>{});}
- private invalidate(network=this.state.network){this.promotion?.abort();this.promotion=undefined;this.serial++;this.run?.controller.abort();this.run=undefined;if(this.retry)clearTimeout(this.retry);this.retry=undefined;this.publish({phase:'probing',origin:null,network,message:'The network changed. Verifying the same server before reconnecting.'});}
+ private invalidate(network=this.state.network){this.promotion?.abort();this.promotion=undefined;this.serial++;this.run?.controller.abort();this.run=undefined;if(this.retry)clearTimeout(this.retry);this.retry=undefined;this.publish({phase:'probing',errorCode:undefined,origin:null,network,message:'The network changed. Verifying the same server before reconnecting.'});}
  recover():Promise<string>{if(this.run)return this.run.promise;this.invalidate();return this.resolve();}
  async resolve(signal?:AbortSignal):Promise<string>{
   if(this.disposed)throw new RouteError('cancelled','This server connection is closed.');if(signal?.aborted)throw new RouteError('cancelled','Connection request cancelled.');
   if(this.state.phase==='ready'&&this.state.origin)return this.state.origin;
-  if(!this.run){const generation=++this.serial,controller=new AbortController();this.publish({phase:'probing',origin:null,message:'Finding a verified connection to your server.'});
-   const promise=this.race(controller.signal).then(async origin=>{if(this.disposed||generation!==this.serial)throw new RouteError('cancelled','A newer connection check replaced this one.');this.recent.add(origin);while(this.recent.size>8)this.recent.delete(this.recent.values().next().value!);this.memory={...this.memory,lastGood:origin};this.save();this.attempts=0;this.publish({phase:'ready',origin,message:''});return origin;}).catch(error=>{if(!this.disposed&&generation===this.serial){const mismatch=error instanceof RouteError&&error.code==='identity_mismatch';this.publish({phase:mismatch?'identity_mismatch':'offline',origin:null,message:mismatch?'An address answered with a different server identity. No credentials were sent.':failureMessage});this.scheduleRecovery();}throw error;}).finally(()=>{controller.abort();if(this.run?.controller===controller)this.run=undefined;});this.run={controller,promise};
+  if(!this.run){const generation=++this.serial,controller=new AbortController();this.publish({phase:'probing',errorCode:undefined,origin:null,message:'Finding a verified connection to your server.'});
+   const promise=this.race(controller.signal).then(async origin=>{if(this.disposed||generation!==this.serial)throw new RouteError('cancelled','A newer connection check replaced this one.');this.recent.add(origin);while(this.recent.size>8)this.recent.delete(this.recent.values().next().value!);this.memory={...this.memory,lastGood:origin};this.save();this.attempts=0;this.publish({phase:'ready',errorCode:undefined,origin,message:''});return origin;}).catch(error=>{if(!this.disposed&&generation===this.serial){const code=routeFailureCode(error),mismatch=code==='identity_mismatch',unconfirmed=certificateFailure(code);this.publish({phase:mismatch?'identity_mismatch':unconfirmed?'unconfirmed':'offline',errorCode:code,origin:null,message:mismatch?'An address answered with a different server identity. No credentials were sent.':failureMessage});this.scheduleRecovery();}throw error;}).finally(()=>{controller.abort();if(this.run?.controller===controller)this.run=undefined;});this.run={controller,promise};
   }
   if(!signal)return this.run.promise;
   return new Promise<string>((resolve,reject)=>{const abort=()=>reject(new RouteError('cancelled','Connection request cancelled.'));signal.addEventListener('abort',abort,{once:true});void this.run!.promise.then(resolve,reject).finally(()=>signal.removeEventListener('abort',abort));if(signal.aborted)abort();});
  }
  private race(signal:AbortSignal):Promise<string>{
-  const now=Date.now(),queue:RouteCandidate[]=[],seen=new Set<string>(),controllers=new Set<AbortController>();let active=0,activeLAN=0,finished=false,freshStarted=false,freshDone=!this.options.fresh||Date.now()<this.freshNotBefore,discoveryDone=!this.options.discover,mismatch=false;
+  const now=Date.now(),queue:RouteCandidate[]=[],seen=new Set<string>(),controllers=new Set<AbortController>();let active=0,activeLAN=0,finished=false,freshStarted=false,freshDone=!this.options.fresh||Date.now()<this.freshNotBefore,discoveryDone=!this.options.discover,mismatch=false,certificateFailures=0,otherFailures=0;
   let freshAllowed:Set<string>|undefined;const independent=new Set(this.memory.paired),inflight=new Map<AbortController,string>();
   const eligible=(baseUrl:string)=>!freshAllowed||freshAllowed.has(baseUrl)||independent.has(baseUrl);
   const current=this.memory.current,eligiblePrevious=this.memory.previous?.document.candidates.filter(c=>!current||current.document.candidates.some(n=>n.baseUrl===c.baseUrl))??[];
   const initial=[...(current?.document.candidates??[]),...eligiblePrevious,...this.memory.paired.map(baseUrl=>({baseUrl,class:'lan' as const,quality:'probe_required' as const,generation:'1'}))];
   initial.sort((a,b)=>Number(b.baseUrl===this.memory.lastGood)-Number(a.baseUrl===this.memory.lastGood)||Number(a.class!=='lan')-Number(b.class!=='lan')||Number(a.quality!=='reachable')-Number(b.quality!=='reachable'));
   return new Promise<string>((resolve,reject)=>{
-   let boundary:ReturnType<typeof setTimeout>|undefined,publicTimer:ReturnType<typeof setTimeout>|undefined;const deadline=setTimeout(()=>finish(undefined,new RouteError(mismatch?'identity_mismatch':'route_unavailable',failureMessage)),8500);
+   const failure=()=>new RouteError(mismatch?'identity_mismatch':certificateFailures>0&&otherFailures===0&&active===0&&queue.length===0?'certificate_unverified':'route_unavailable',failureMessage);
+   let boundary:ReturnType<typeof setTimeout>|undefined,publicTimer:ReturnType<typeof setTimeout>|undefined;const deadline=setTimeout(()=>finish(undefined,failure()),8500);
    const abort=()=>finish(undefined,new RouteError('cancelled','Connection check cancelled.'));
    const finish=(origin?:string,error?:Error)=>{if(finished)return;finished=true;clearTimeout(deadline);if(boundary)clearTimeout(boundary);if(publicTimer)clearTimeout(publicTimer);signal.removeEventListener('abort',abort);for(const c of controllers)c.abort();origin?resolve(origin):reject(error??new RouteError('route_unavailable',failureMessage));};
    const add=(values:readonly RouteCandidate[])=>{for(const c of values){if(seen.size>=32)break;const key=c.baseUrl+'|'+c.generation;if(seen.has(c.baseUrl))continue;const rejected=this.rejected.get(key);if(rejected&&rejected.retryAt>Date.now()){mismatch=true;continue;}try{routeOrigin(c.baseUrl);}catch{continue;}seen.add(c.baseUrl);queue.push(c);}pump();};
@@ -157,9 +179,9 @@ export class RouteConnection {
      const index=queue.findIndex(c=>c.class==='lan'?activeLAN<2:Date.now()-now>=120||!initial.some(v=>v.class==='lan'));
      if(index<0){if(!publicTimer&&queue.some(c=>c.class!=='lan')&&Date.now()-now<120)publicTimer=setTimeout(()=>{publicTimer=undefined;pump();},Math.max(1,120-(Date.now()-now)));break;}
      const candidate=queue.splice(index,1)[0],controller=new AbortController();controllers.add(controller);inflight.set(controller,candidate.baseUrl);active++;if(candidate.class==='lan')activeLAN++;
-     void (this.options.probe??probeRoute)(candidate.baseUrl,this.pin,{fetcher:this.options.fetcher,crypto:this.options.crypto??webRouteCrypto,signal:controller.signal}).then(()=>{if(!signal.aborted&&!controller.signal.aborted&&eligible(candidate.baseUrl)){this.rejected.delete(candidate.baseUrl+'|'+candidate.generation);finish(candidate.baseUrl);}}).catch(error=>{if(!finished&&!signal.aborted&&!controller.signal.aborted&&error instanceof RouteError&&error.code==='identity_mismatch'){mismatch=true;const key=candidate.baseUrl+'|'+candidate.generation,attempts=Math.min(7,(this.rejected.get(key)?.attempts??0)+1);this.rejected.set(key,{attempts,retryAt:Date.now()+Math.min(300000,5000*2**(attempts-1))});while(this.rejected.size>64)this.rejected.delete(this.rejected.keys().next().value!);}}).finally(()=>{active--;if(candidate.class==='lan')activeLAN--;controllers.delete(controller);inflight.delete(controller);pump();});
+     void (this.options.probe??probeRoute)(candidate.baseUrl,this.pin,{fetcher:this.options.fetcher,crypto:this.options.crypto??webRouteCrypto,signal:controller.signal}).then(()=>{if(!signal.aborted&&!controller.signal.aborted&&eligible(candidate.baseUrl)){this.rejected.delete(candidate.baseUrl+'|'+candidate.generation);finish(candidate.baseUrl);}}).catch(error=>{if(finished||signal.aborted||controller.signal.aborted)return;const code=routeFailureCode(error);if(certificateFailure(code))certificateFailures++;else otherFailures++;if(code==='identity_mismatch'){mismatch=true;const key=candidate.baseUrl+'|'+candidate.generation,attempts=Math.min(7,(this.rejected.get(key)?.attempts??0)+1);this.rejected.set(key,{attempts,retryAt:Date.now()+Math.min(300000,5000*2**(attempts-1))});while(this.rejected.size>64)this.rejected.delete(this.rejected.keys().next().value!);}}).finally(()=>{active--;if(candidate.class==='lan')activeLAN--;controllers.delete(controller);inflight.delete(controller);pump();});
     }
-    if(!queue.length&&!active){if(!freshStarted)fresh();if(freshDone&&discoveryDone)finish(undefined,new RouteError(mismatch?'identity_mismatch':'route_unavailable',failureMessage));}
+    if(!queue.length&&!active){if(!freshStarted)fresh();if(freshDone&&discoveryDone)finish(undefined,failure());}
    };
    signal.addEventListener('abort',abort,{once:true});if(signal.aborted){abort();return;}
    if(this.options.discover){const c=new AbortController();controllers.add(c);void this.options.discover(c.signal).then(records=>{if(finished)return;const candidates=discoveredRoutes(records,this.pin);for(const candidate of candidates)independent.add(candidate.baseUrl);this.publish({discovery:candidates.length?'available':'empty'});add(candidates);}).catch(e=>{if(!finished)this.publish({discovery:(e as {code?:string})?.code==='permission_denied'?'denied':'empty'});}).finally(()=>{controllers.delete(c);discoveryDone=true;pump();});}

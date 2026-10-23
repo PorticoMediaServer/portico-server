@@ -54,10 +54,10 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
   const lastSearch = useRef('');
   if (pathname === '/search' && typeof query.q === 'string') lastSearch.current = query.q;
   const navigate = useNavigate();
-  const [profileChoice,setProfileChoice]=useState<ProfileIdentity>(),[profilePin,setProfilePin]=useState(''),[profileError,setProfileError]=useState(false),[profileBusy,setProfileBusy]=useState(false);
+  const [profileChoice,setProfileChoice]=useState<ProfileIdentity>(),[profilePin,setProfilePin]=useState(''),[profileError,setProfileError]=useState<unknown>(),[profileBusy,setProfileBusy]=useState(false);
   const profileRequest=useRef<AbortController|undefined>(undefined);
   useEffect(()=>()=>profileRequest.current?.abort(),[]);
-  const chooseProfile=async(profile:ProfileIdentity,pin='')=>{if(!onSwitchProfile)return;profileRequest.current?.abort();const controller=profileRequest.current=new AbortController();setProfileBusy(true);setProfileError(false);try{await onSwitchProfile(profile.id,pin,controller.signal);if(!controller.signal.aborted)setProfileChoice(undefined);}catch{if(!controller.signal.aborted)setProfileError(true);}finally{if(profileRequest.current===controller)setProfileBusy(false);}};
+  const chooseProfile=async(profile:ProfileIdentity,pin='')=>{if(!onSwitchProfile)return;profileRequest.current?.abort();const controller=profileRequest.current=new AbortController();setProfileBusy(true);setProfileError(undefined);try{await onSwitchProfile(profile.id,pin,controller.signal);if(!controller.signal.aborted)setProfileChoice(undefined);}catch(error){if(!controller.signal.aborted)setProfileError(error);}finally{if(profileRequest.current===controller)setProfileBusy(false);}};
   const home = pathname === '/', [accountOpen, setAccountOpen] = useState(false), [moreOpen, setMoreOpen] = useState(false);
   const {viewer} = identity;
   useEffect(() => {
@@ -82,10 +82,10 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
     </MenuItem> : undefined;
   const account = <AccountMenu open={accountOpen} onOpenChange={setAccountOpen} current={current} primary={identity.primaryProfile === true}
     notificationCount={desktop ? undefined : identity.unread} notificationDot={!desktop && identity.showNotificationDot && identity.unread > 0}
-    serverChoices={onSwitchServer?savedServers?.map(server=>({...server,onSelect:()=>{void onSwitchServer(server.id);}})):undefined} signOutLabel={identity.serverName?t('accounts.signOut.server',{server:identity.serverName}):undefined} profiles={identity.profiles} accountFacts={identity.accountFacts} serverAction={serverAction} actions={{
+    serverChoices={onSwitchServer?savedServers?.map(server=>({...server,onSelect:()=>{void onSwitchServer(server.id);}})):undefined} signOutLabel={t('accounts.signOut.server')} profiles={identity.profiles} accountFacts={identity.accountFacts} serverAction={serverAction} actions={{
       ...(identity.canManageProfiles ? {manageProfiles: () => { void navigate({to: '/settings'}); }} : {}),
       ...(identity.canManageProfiles ? {addProfile: () => { void navigate({to: '/settings'}); }} : {}),
-      switchProfile: profile => {if(onSwitchProfile){setProfilePin('');setProfileError(false);setProfileChoice(profile);if(!profile.pinRequired)void chooseProfile(profile);}else{void navigate({to: '/profiles', search: {profileId: profile.id}});}},
+      switchProfile: profile => {if(onSwitchProfile){setProfilePin('');setProfileError(undefined);setProfileChoice(profile);if(!profile.pinRequired)void chooseProfile(profile);}else{void navigate({to: '/profiles', search: {profileId: profile.id}});}},
       switchServer: () => { void navigate({to: '/servers'}); }, settings: () => { void navigate({to: '/settings'}); },
       ...(!desktop ? {notifications: () => { void navigate({to: '/notifications'}); }} : {}),
       watchTogether: () => { void navigate({to: '/watch-together'}); }, feedback: () => { void navigate({to: '/feedback'}); },
@@ -144,8 +144,8 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
       </>}
     </div>
     {children}
-    <Dialog open={!!profileChoice&&(profileChoice.pinRequired===true||profileError)} onOpenChange={open=>{if(!open){profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');setProfileError(false);}}} title={profileChoice?.name??t('accounts.profiles.pin')} footer={<><Button variant="glass" onClick={()=>{profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');}}>{t('accounts.profiles.cancel')}</Button><Button disabled={profileBusy||!!profileChoice?.pinRequired&&!/^\d{4}$/.test(profilePin)} onClick={()=>{if(profileChoice)void chooseProfile(profileChoice,profilePin);}}>{t('accounts.profiles.continue')}</Button></>}>
-      <TextField type="password" inputMode="numeric" maxLength={4} autoComplete="off" label={t('accounts.profiles.pin')} value={profilePin} onChange={event=>setProfilePin(event.currentTarget.value)} error={profileError?t('accounts.profiles.pinFailed'):undefined} />
+    <Dialog open={!!profileChoice&&(profileChoice.pinRequired===true||!!profileError)} onOpenChange={open=>{if(!open){profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');setProfileError(undefined);}}} title={profileChoice?.name??identity.profileName} footer={<><Button variant="glass" onClick={()=>{profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');}}>{t('accounts.profiles.cancel')}</Button><Button disabled={profileBusy||!!profileChoice?.pinRequired&&!/^\d{4}$/.test(profilePin)} onClick={()=>{if(profileChoice)void chooseProfile(profileChoice,profilePin);}}>{t('accounts.profiles.continue')}</Button></>}>
+      {profileChoice?.pinRequired&&<TextField type="password" inputMode="numeric" maxLength={4} autoComplete="off" label={t('accounts.profiles.pinForProfile',{profile:profileChoice.name})} value={profilePin} onChange={event=>setProfilePin(event.currentTarget.value)} error={(profileError as {code?:unknown}|undefined)?.code==='profile_pin_invalid'?t('accounts.profiles.pinFailed'):undefined} />}
     </Dialog>
     {overlays}
   </div>;
