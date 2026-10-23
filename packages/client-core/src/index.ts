@@ -2005,6 +2005,7 @@ export type {PlayerChapter,PlayerChaptersData,PlayerChaptersTarget,PlayerChapter
 export {PlayerSessionChoices,playerSessionChoices} from './player-session-choices.ts';
 export * from './listening.ts';
 export * from './preferences.ts';
+export * from './preference-effects.ts';
 export {parseSegmentMarkers,parseSegmentMarkerSet,canSkipAutomatically,type SegmentMarker,type SegmentMarkerKind,type SegmentMarkerSet} from './segment-markers.ts';
 export {activeSegment,skipsAutomatically,skipTarget,followedByScene,closingKind,SKIP_LEAD_SECONDS,UNDO_SECONDS,type SkipMode} from './segment-skip.ts';
 export {parseQueuePostPlay,passoutCheckRequired,type QueuePostPlay,type QueueAdvanceMode} from './post-play.ts';
