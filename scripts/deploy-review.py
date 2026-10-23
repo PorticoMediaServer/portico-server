@@ -119,6 +119,28 @@ systemctl stop portico-review-stage
 exit 1
 '''
 
+BACKUP_ENVIRONMENTS = r'''python3 - "$backup" <<'ENV_PY'
+from pathlib import Path
+import re,shlex,shutil,subprocess,sys
+backup=Path(sys.argv[1])
+value=subprocess.check_output(['systemctl','show','portico-demo-current','--property=EnvironmentFiles','--value'],text=True)
+tokens=shlex.split(value)
+if not tokens or len(tokens)%2:
+ raise ValueError('cannot identify outgoing service environment files')
+for filename,status in zip(tokens[::2],tokens[1::2]):
+ if not re.fullmatch(r'\(ignore_errors=(?:yes|no)\)',status):
+  raise ValueError('unsupported service environment description')
+ source=Path(filename)
+ if not source.is_absolute() or '..' in source.parts:
+  raise ValueError('absolute outgoing environment path required')
+ if status=='(ignore_errors=yes)' and not source.exists():continue
+ target=backup/'environments'/source.relative_to('/')
+ target.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+ shutil.copy2(source,target)
+ENV_PY
+'''
+
+
 ACTIVATE = r'''set -euo pipefail
 directory=$1; state=$2; environment=$3; commit=$4; cycle=$5
 test -x "$directory/portico-server"; test -f "$state/Database/server.sqlite"
@@ -127,8 +149,7 @@ backup=/var/backups/portico/$cycle
 test ! -e "$backup"
 install -d -m700 "$backup"
 cp -a /etc/systemd/system/portico-demo-current.service "$backup/service"
-cp -a /etc/portico-demo-20261017.env "$backup/old-environment"
-committed=0
+''' + BACKUP_ENVIRONMENTS + r'''committed=0
 rollback() {
  result=$?; trap - EXIT
  if [ "$committed" = 0 ]; then
