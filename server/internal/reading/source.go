@@ -54,10 +54,12 @@ const publicationJoins = ` CROSS JOIN reading_publications p ON p.item_id=e.id
  CROSS JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
  CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token`
 
+const publicationObjectEligible = `o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
+ AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')`
+
 const publicationEligible = `e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
  AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf'))) AND link.available=1 AND a.available=1 AND available.available=1
- AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
- AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')`
+ AND ` + publicationObjectEligible
 
 const selectPublication = `SELECT ` + publicationFields + ` FROM catalog_entities e` + publicationJoins + `
  WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND ` + publicationEligible + ` ORDER BY a.id,o.id LIMIT 1`
