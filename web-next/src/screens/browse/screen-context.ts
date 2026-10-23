@@ -32,7 +32,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
     const value: ScreenContext = {
       api: context.api, events: context.events, artwork: context.artwork, identity: context.facts.identity,
       scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}, isCurrent: current,
-      preferences: {getSnapshot: () => context.preferences?.getSnapshot().snapshot ?? context.facts.preferences,
+      preferences: {getSnapshot: () => context.preferences?.getSnapshot() ?? context.facts.preferences,
         subscribe: listener => context.preferences?.subscribe(listener) ?? (() => {})},
       effects: {
         reportError,

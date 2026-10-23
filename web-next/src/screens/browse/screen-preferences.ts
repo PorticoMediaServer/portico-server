@@ -13,7 +13,7 @@ const motionSubscribe = (listener: () => void) => {
 /** This is the captured shell's confirmed reader, never a second preference store. */
 export function useScreenPreferences(context: ShellAssemblyContext | undefined) {
   const subscribe = useCallback((listener: () => void) => context?.preferences?.subscribe(listener) ?? (() => {}), [context]);
-  const read = useCallback(() => context?.preferences?.getSnapshot().snapshot ?? context?.facts.preferences, [context]);
+  const read = useCallback(() => context?.preferences?.getSnapshot() ?? context?.facts.preferences, [context]);
   return useSyncExternalStore(subscribe, read, read);
 }
 
