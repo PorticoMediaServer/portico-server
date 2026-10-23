@@ -42,7 +42,10 @@ func OpenRangeSession(ctx context.Context, endpoint *remotemedia.ServeEndpoint, 
 		return nil, storage.ErrRemoteConfig
 	}
 	life, cancel := context.WithCancel(context.Background())
-	s := &RangeSession{admission: admission, readRange: endpoint.ReadRange, life: life, cancel: cancel}
+	s := &RangeSession{admission: admission, life: life, cancel: cancel}
+	s.readRange = func(ctx context.Context, relative, tag string, size, offset, length int64) ([]byte, error) {
+		return endpoint.ReadRange(ctx, relative, tag, size, offset, length, s.checkObservation)
+	}
 	if err := s.Check(ctx); err != nil {
 		cancel()
 		return nil, err
@@ -70,8 +73,26 @@ func (s *RangeSession) check(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return s.fail(err)
 	}
-	if err := s.admission.Check(ctx); err != nil {
+	if err := s.checkObservation(ctx); err != nil {
 		return s.fail(err)
+	}
+	return nil
+}
+
+// This callback does not mutate session state: a Transport may invoke it on a
+// dialing goroutine, including an automatic stale-connection reconnect.
+func (s *RangeSession) checkObservation(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.life != nil && s.life.Err() != nil {
+		return storage.ErrRemoteOffline
+	}
+	if err := s.admission.Check(ctx); err != nil {
+		if errors.Is(err, storage.ErrRemoteChanged) {
+			return remotemedia.ErrObservationChanged
+		}
+		return err
 	}
 	next, err := s.admission.Observe(ctx)
 	if err == nil {
@@ -84,7 +105,10 @@ func (s *RangeSession) check(ctx context.Context) error {
 		err = ctx.Err()
 	}
 	if err != nil {
-		return s.fail(err)
+		if errors.Is(err, storage.ErrRemoteChanged) {
+			return remotemedia.ErrObservationChanged
+		}
+		return err
 	}
 	return nil
 }
@@ -111,7 +135,8 @@ func (s *RangeSession) changeCallback() func() {
 }
 
 // ReadAt buffers one finite range before exposing bytes. Every request opens a
-// fresh loopback connection and is fenced on both sides; no short-body retry,
+// loopback connection and is fenced on both sides and on every dial/reconnect;
+// no short-body retry,
 // sequential prefix materialization, or current-object fallback is permitted.
 func (s *RangeSession) ReadAt(parent context.Context, p []byte, offset int64) (int, error) {
 	s.mu.Lock()

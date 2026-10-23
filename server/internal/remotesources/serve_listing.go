@@ -3,6 +3,7 @@ package remotesources
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 
 	"portico.local/server/internal/dbwork"
@@ -21,7 +22,13 @@ func (s *Service) buildServeSnapshot(ctx context.Context, endpoint *remotemedia.
 	if err := s.check(ctx, b, generation); err != nil {
 		return err
 	}
-	page, err := endpoint.ListSnapshot(ctx, relative)
+	page, err := endpoint.ListSnapshot(ctx, relative, func(ctx context.Context) error {
+		err := s.check(ctx, b, generation)
+		if errors.Is(err, storage.ErrRemoteChanged) {
+			return remotemedia.ErrObservationChanged
+		}
+		return err
+	})
 	if err != nil {
 		return mapError(err)
 	}

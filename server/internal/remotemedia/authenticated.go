@@ -59,33 +59,31 @@ func (c *Client) Request(ctx context.Context, method string, body []byte, header
 	if len(body) > 16<<10 {
 		return nil, ErrPolicy
 	}
-	{
-		req, err := http.NewRequestWithContext(ctx, method, c.url, bytes.NewReader(body))
-		if err != nil {
+	req, err := http.NewRequestWithContext(ctx, method, c.url, bytes.NewReader(body))
+	if err != nil {
+		return nil, ErrPolicy
+	}
+	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set("User-Agent", "Portico/1")
+	if c.authorization != "" {
+		req.Header.Set("Authorization", c.authorization)
+	}
+	for key, values := range headers {
+		switch http.CanonicalHeaderKey(key) {
+		case "Depth", "Content-Type", "Range", "If-Match", "If-None-Match":
+		default:
 			return nil, ErrPolicy
 		}
-		req.Header.Set("Accept-Encoding", "identity")
-		req.Header.Set("User-Agent", "Portico/1")
-		if c.authorization != "" {
-			req.Header.Set("Authorization", c.authorization)
+		if len(values) != 1 || len(values[0]) > 8192 {
+			return nil, ErrPolicy
 		}
-		for key, values := range headers {
-			switch http.CanonicalHeaderKey(key) {
-			case "Depth", "Content-Type", "Range", "If-Match", "If-None-Match":
-			default:
-				return nil, ErrPolicy
-			}
-			if len(values) != 1 || len(values[0]) > 8192 {
-				return nil, ErrPolicy
-			}
-			req.Header.Set(key, values[0])
-		}
-		resp, err := c.client.Do(req)
-		if err != nil {
-			return nil, boundRequestError(ctx, err)
-		}
-		return resp, nil
+		req.Header.Set(key, values[0])
 	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, boundRequestError(ctx, err)
+	}
+	return resp, nil
 }
 
 // Credentialed version discovery shares all range/ETag checks with STRM. The

@@ -39,7 +39,7 @@ func TestServeListingSnapshotNeverReturnsPartialChildren(t *testing.T) {
 				}
 				return &http.Response{StatusCode: 207, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(wire))}, nil
 			})
-			page, err := s.ListSnapshot(context.Background(), "disc")
+			page, err := s.ListSnapshot(context.Background(), "disc", func(context.Context) error { return nil })
 			if bad == "" && (err != nil || len(page.Entries) != 1) {
 				t.Fatalf("%+v %v", page, err)
 			}

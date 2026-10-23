@@ -52,7 +52,7 @@ func TestServeEndpointRangeContract(t *testing.T) {
 				}
 				return resp, nil
 			})
-			got, err := s.ReadRange(context.Background(), "disc/large.iso", `"old"`, 5000000000, 4294967300, 4)
+			got, err := s.ReadRange(context.Background(), "disc/large.iso", `"old"`, 5000000000, 4294967300, 4, func(context.Context) error { return nil })
 			if failure == "" && (err != nil || string(got) != "old!") {
 				t.Fatalf("range: %q %v", got, err)
 			}
@@ -80,11 +80,11 @@ func TestServeEndpointRejectsMembersBeforeDispatch(t *testing.T) {
 		return nil, ErrPolicy
 	})
 	for _, member := range []string{"", "/absolute", "../escape", "disc/../escape", "https://host/file", "disc/%2e%2e/file", "disc\\file"} {
-		if _, err := s.ReadRange(context.Background(), member, `"old"`, 10, 0, 1); err == nil {
+		if _, err := s.ReadRange(context.Background(), member, `"old"`, 10, 0, 1, func(context.Context) error { return nil }); err == nil {
 			t.Fatal(member)
 		}
 	}
-	if _, err := s.ReadRange(context.Background(), "file", `"old"`, 1<<40, 1<<39, 1<<20+1); err == nil {
+	if _, err := s.ReadRange(context.Background(), "file", `"old"`, 1<<40, 1<<39, 1<<20+1, func(context.Context) error { return nil }); err == nil {
 		t.Fatal("unbounded read")
 	}
 }
@@ -122,5 +122,27 @@ func TestAuthenticatedRequestDoesNotHideRetryOrWait(t *testing.T) {
 	defer resp.Body.Close()
 	if calls != 1 || resp.Header.Get("Retry-After") != "50400" {
 		t.Fatalf("calls=%d headers=%v", calls, resp.Header)
+	}
+}
+
+func TestServeDialChecksExactOriginAndReconnectBeforeNetwork(t *testing.T) {
+	s, err := NewServeEndpoint(12345, "private", "secret", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	transport := s.client.Transport.(*http.Transport)
+	calls := 0
+	ctx := context.WithValue(context.Background(), serveReconnectKey{}, func() error { calls++; return ErrObservationChanged })
+	for _, target := range []string{"127.0.0.1:12346", "[::1]:12345", "169.254.169.254:12345", "metadata.google.internal:12345"} {
+		if conn, err := transport.DialContext(ctx, "tcp", target); conn != nil || !errors.Is(err, ErrPolicy) {
+			t.Fatal(target, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatal("unapproved target reached source callback")
+	}
+	if conn, err := transport.DialContext(ctx, "tcp", "127.0.0.1:12345"); conn != nil || !errors.Is(err, ErrObservationChanged) || calls != 1 {
+		t.Fatal("reconnect bypassed observation", err, calls)
 	}
 }

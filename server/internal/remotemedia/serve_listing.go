@@ -2,6 +2,7 @@ package remotemedia
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 )
@@ -12,7 +13,12 @@ const serveListingProperties = `<d:propfind xmlns:d="DAV:"><d:prop><d:resourcety
 // parser. It neither requests allprop nor pretends rclone supports sync tokens.
 // Nothing is returned after a truncated, over-bound or invalid response. The
 // source owner stages this result privately before keyset pages become visible.
-func (s *ServeEndpoint) ListSnapshot(ctx context.Context, relative string) (DAVPage, error) {
+func (s *ServeEndpoint) ListSnapshot(ctx context.Context, relative string, reconnect func(context.Context) error) (DAVPage, error) {
+	if reconnect == nil {
+		return DAVPage{}, ErrPolicy
+	}
+	requestContext := ctx
+	ctx = context.WithValue(ctx, serveReconnectKey{}, func() error { return reconnect(requestContext) })
 	if !cleanDAVRelative(relative) || strings.Contains(relative, ":") {
 		return DAVPage{}, ErrPolicy
 	}
@@ -29,6 +35,9 @@ func (s *ServeEndpoint) ListSnapshot(ctx context.Context, relative string) (DAVP
 	req.Header.Set("Accept-Encoding", "identity")
 	resp, err := s.client.Do(req)
 	if err != nil {
+		if errors.Is(err, ErrObservationChanged) {
+			return DAVPage{}, ErrObservationChanged
+		}
 		return DAVPage{}, boundRequestError(ctx, err)
 	}
 	defer resp.Body.Close()

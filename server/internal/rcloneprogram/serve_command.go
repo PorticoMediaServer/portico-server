@@ -31,6 +31,9 @@ type ServeCommandSpec struct {
 	Connections       int
 	RequestsPerSecond int
 	BytesPerSecond    int64
+	CacheDirectory    string
+	CacheBytes        int64
+	CacheFloor        int64
 	Enforce           func(*exec.Cmd) error
 }
 
@@ -52,6 +55,9 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if spec.CacheBytes < 0 || spec.CacheFloor < 0 || spec.CacheBytes > 0 && (!filepath.IsAbs(spec.CacheDirectory) || spec.CacheFloor == 0) {
+		return nil, ErrServeConfiguration
 	}
 	if !program.Included {
 		if _, err := program.Check(ctx); err != nil {
@@ -77,7 +83,14 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	if err = os.WriteFile(file, spec.Configuration, 0600); err != nil {
 		return nil, err
 	}
-	args := []string{"serve", "webdav", spec.Remote, "--read-only", "--addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(spec.Port)), "--config", file, "--ask-password=false", "--dir-cache-time=0s", "--vfs-cache-mode=off", "--vfs-read-ahead=0", "--buffer-size=0", "--retries=1", "--low-level-retries=1", "--contimeout=10s", "--timeout=30s", "--log-level=ERROR", "--max-connections", strconv.Itoa(spec.Connections), "--tpslimit", strconv.Itoa(spec.RequestsPerSecond), "--tpslimit-burst=1"}
+	args := []string{"serve", "webdav", spec.Remote, "--read-only", "--addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(spec.Port)), "--config", file, "--ask-password=false", "--dir-cache-time=0s", "--vfs-read-ahead=0", "--buffer-size=0", "--retries=1", "--low-level-retries=1", "--contimeout=10s", "--timeout=30s", "--log-level=ERROR", "--max-connections", strconv.Itoa(spec.Connections), "--tpslimit", strconv.Itoa(spec.RequestsPerSecond), "--tpslimit-burst=1"}
+	if spec.CacheBytes > 0 {
+		// The source owner supplies its incarnation-scoped cache directory and
+		// invalidates it on changed observations; a cache is never byte identity.
+		args = append(args, "--vfs-cache-mode=full", "--cache-dir", spec.CacheDirectory, "--vfs-cache-max-size", strconv.FormatInt(spec.CacheBytes, 10)+"B", "--vfs-cache-min-free-space", strconv.FormatInt(spec.CacheFloor, 10)+"B")
+	} else {
+		args = append(args, "--vfs-cache-mode=off")
+	}
 	if spec.BytesPerSecond > 0 {
 		args = append(args, "--bwlimit", strconv.FormatInt(spec.BytesPerSecond, 10)+"B")
 	}
