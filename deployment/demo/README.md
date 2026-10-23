@@ -95,10 +95,12 @@ Before personal progress or clock comparisons, require positive agreement betwee
 
 ### Embedded arm64 APK
 
-Use a clean exact native MAIN checkout and a dependency seed with its identical native lockfile:
+Use a clean exact native MAIN checkout. Omit `--seed` for the normal exact-lockfile npm install; an optional dependency seed must have its identical native lockfile:
 
 ```sh
 python3 scripts/build-review-apk.py --repo /path/to/clean-native-main --seed /path/to/matching/apps/native/node_modules --engine /path/to/retained/media-engine/out/android --scratch /home/justin/projects/Portico/.scratch/release-r40 --artifacts /home/justin/projects/Portico/.artifacts/release-r40/native-COMMIT
 ```
 
 The helper uses the Android slot, two workers/CPU affinity, current-source JNI, arm64 engine verification, notices and embedded-JS/ABI checks. It requires an unused owned dependency path; remove only that checkout's finished disposable dependency/build output after retaining the APK. Signatures are verified before review publication. The retained baseline engine is8.1.2; a source-only8.1.3 or different native MAIN is never an interchangeable payload. Publish the artifact's actual native cohort and retain the previous artifact until the next one is ready.
+
+For a client-only update, `build-review.py --web-only` builds the exact MAIN web payload without duplicating the server build. First compare the installed server's exact baseline and canonical contracts against the web source; preserve separate server and web commits in the build stamp. Keep the current executable and database unchanged, preserve the outgoing web directory/APKs, atomically replace built web assets and restart the same server only if needed to refresh its static handler. Recheck readiness and both source pins, and restore the old assets on failure. Never label a client-only update as a newer server producer.

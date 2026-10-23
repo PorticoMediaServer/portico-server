@@ -52,7 +52,7 @@ def prepare_dependencies(project, donor):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--repo', type=Path, required=True)
-    p.add_argument('--seed', type=Path, required=True)
+    p.add_argument('--seed', type=Path, help='optional dependency seed with the exact native lockfile')
     p.add_argument('--engine', type=Path, required=True)
     p.add_argument('--scratch', type=Path, required=True)
     p.add_argument('--artifacts', type=Path, required=True)
@@ -74,7 +74,13 @@ def main():
     # Bound Metro as well as Gradle: Node observes this affinity when sizing workers.
     os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[:2])
     project = repo / 'apps/native'
-    prepare_dependencies(project, a.seed.resolve())
+    if a.seed:
+        prepare_dependencies(project, a.seed.resolve())
+    else:
+        target = project / 'node_modules'
+        if target.exists() or target.is_symlink():
+            raise FileExistsError('preserve existing dependencies; use a fresh owned release checkout')
+        subprocess.run(['npm', 'ci', '--no-audit', '--no-fund', '--legacy-peer-deps'], cwd=project, check=True)
     for patch in ['patch-apple-blur.mjs', 'patch-android-blur.mjs']:
         subprocess.run(['node', 'scripts/' + patch], cwd=project, check=True)
     subprocess.run(['python3', 'third_party/media-engine/verify.py', 'android', '--out', str(a.engine.parent),

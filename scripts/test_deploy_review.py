@@ -23,13 +23,13 @@ spec.loader.exec_module(apk)
 
 
 class ReviewDeployment(unittest.TestCase):
-    def run_stage(self, member):
+    def run_stage(self, member, extra=()):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / 'portico-server').write_bytes(b'fixture executable')
             with tarfile.open(root / 'web.tar', 'w') as archive:
                 archive.addfile(member)
-            args = ['deploy-review.py', 'a' * 40, str(root), '--cycle', 'review-check', '--stage-only']
+            args = ['deploy-review.py', 'a' * 40, str(root), '--cycle', 'review-check', '--stage-only', *extra]
             with patch('sys.argv', args), patch.object(deploy, 'remote') as remote, patch.object(deploy.subprocess, 'run') as run:
                 with contextlib.redirect_stderr(io.StringIO()):
                     deploy.main()
@@ -37,6 +37,11 @@ class ReviewDeployment(unittest.TestCase):
 
     def test_valid_built_web_stages_only_to_fresh_review(self):
         self.assertEqual(self.run_stage(tarfile.TarInfo('./index.html')), (2, 2))
+
+    def test_installed_runtime_root_is_explicit_and_confined(self):
+        self.assertEqual(self.run_stage(tarfile.TarInfo('./index.html'), ['--runtime-root', '/opt/portico/media-runtimes/f3ef43fa/bundle']), (2, 2))
+        with self.assertRaises(SystemExit):
+            self.run_stage(tarfile.TarInfo('./index.html'), ['--runtime-root', '/tmp/unqualified'])
 
     def test_path_escape_is_refused_before_any_remote_call(self):
         with self.assertRaises(SystemExit):
@@ -80,6 +85,19 @@ class ReviewDeployment(unittest.TestCase):
                 self.assertEqual(saved.read_bytes(), source.read_bytes())
                 self.assertEqual(saved.stat().st_mode & 0o777, source.stat().st_mode & 0o777)
 
+    def test_feature_or_stale_cutoff_is_refused_before_build(self):
+        cutoff, current = 'a' * 40, 'b' * 40
+        with patch.object(build.subprocess, 'check_output', return_value=current + '\trefs/heads/main\n'), patch.object(build.subprocess, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'actual published origin/main'):
+                build.require_current_main(Path('/checkout'), cutoff)
+            run.assert_not_called()
+
+    def test_current_remote_main_still_requires_checked_local_ancestry(self):
+        cutoff = 'a' * 40
+        with patch.object(build.subprocess, 'check_output', return_value=cutoff + '\trefs/heads/main\n'), patch.object(build.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, 'git')):
+            with self.assertRaises(subprocess.CalledProcessError):
+                build.require_current_main(Path('/checkout'), cutoff)
+
     def test_official_ed25519_public_root_is_accepted(self):
         pem = Path(__file__).resolve().parents[1] / 'deployment/hosted/root-public-key.pem'
         value = build.public_root(pem)
@@ -91,6 +109,18 @@ class ReviewDeployment(unittest.TestCase):
             pem.write_text('-----BEGIN PUBLIC KEY-----\n' + base64.b64encode(b'wrong format').decode() + '\n-----END PUBLIC KEY-----\n')
             with self.assertRaises(ValueError):
                 build.public_root(pem)
+
+    def test_dependency_seed_with_other_lock_is_refused_before_copy(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project, donor = root / 'project', root / 'donor'
+            project.mkdir(); donor.mkdir()
+            (project / 'package-lock.json').write_text('current lock')
+            (donor / 'package-lock.json').write_text('older lock')
+            with patch.object(apk.subprocess, 'run') as run:
+                with self.assertRaises(ValueError):
+                    apk.prepare_dependencies(project, donor / 'node_modules')
+                run.assert_not_called()
 
     def make_apk(self, path, extra=(), omit=()):
         files = {'assets/index.android.bundle': b'x' * 2048,
