@@ -185,4 +185,17 @@ func TestListeningSharedBrowsePreservesFavoriteDateAndLocalGenres(t *testing.T) 
 	if err != nil || len(albums.Entries) != 1 || albums.Entries[0].ReleaseDate != "2020-03-20" || len(albums.Entries[0].Genres) != 1 || albums.Entries[0].Genres[0] != "Local genre" || albums.Entries[0].AlbumType != "" {
 		t.Fatalf("album facts absent or invented: %+v %v", albums, err)
 	}
+	// The shared across-library consumer keeps the same returned identity and
+	// real page facts after 03b's final decorations and duration projection.
+	favorites := &BrowseNode{Field: "favorite", Operator: "equals", Value: true}
+	acrossSongs, err := s.BrowseAcross(viewer, AcrossRequest{Pivot: "items", Query: favorites, Limit: 10})
+	if err != nil || len(acrossSongs.Entries) != 1 || acrossSongs.Entries[0].ID != n["song-001"].Public || acrossSongs.Entries[0].LibraryID != "music" || acrossSongs.Entries[0].Favorite == nil || !*acrossSongs.Entries[0].Favorite {
+		t.Fatalf("favorite or identity lost across libraries: %+v %v", acrossSongs, err)
+	}
+	c.Exec(`INSERT INTO personal_items(profile_id,item_id,favorite,revision) VALUES(?,?,1,1)`, viewer.Profile, n["album"].ID)
+	c.Drain()
+	acrossAlbums, err := s.BrowseAcross(viewer, AcrossRequest{Pivot: "titles", Query: favorites, Limit: 10})
+	if err != nil || len(acrossAlbums.Entries) != 1 || acrossAlbums.Entries[0].ID != n["album"].Public || acrossAlbums.Entries[0].LibraryID != "music" || acrossAlbums.Entries[0].ReleaseDate != "2020-03-20" || len(acrossAlbums.Entries[0].Genres) != 1 || acrossAlbums.Entries[0].Genres[0] != "Local genre" || acrossAlbums.Entries[0].AlbumType != "" {
+		t.Fatalf("album facts or identity lost across libraries: %+v %v", acrossAlbums, err)
+	}
 }
