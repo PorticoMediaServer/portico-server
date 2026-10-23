@@ -5,3 +5,5 @@ pub mod equalizer_store;
 pub mod mpv;
 #[cfg(feature = "shell")]
 pub mod shell;
+#[cfg(feature = "shell")]
+pub mod window;

@@ -49,6 +49,22 @@ fn desktop_equalizer_change(window:WebviewWindow,equalizer:tauri::State<Equalize
     Ok(EqualizerSnapshot{revision:saved.revision,settings:saved.settings,applied})
 }
 #[tauri::command]
+fn desktop_window_state(window:WebviewWindow,state:tauri::State<Arc<crate::window::ChromeState>>)->Result<crate::window::WindowSnapshot>{
+    caller(&window)?;crate::window::snapshot(&window,&state)
+}
+#[tauri::command]
+fn desktop_window_action(window:WebviewWindow,action:crate::window::WindowAction)->Result<()>{
+    caller(&window)?;crate::window::action(&window,action)
+}
+#[tauri::command]
+async fn desktop_window_chrome(window:WebviewWindow,state:tauri::State<'_,Arc<crate::window::ChromeState>>,chrome:crate::window::ChromeUpdate)->Result<()>{
+    caller(&window)?;
+    let native=window.clone();let state=state.inner().clone();
+    let (send,receive)=std::sync::mpsc::sync_channel(1);
+    window.run_on_main_thread(move||{let result=crate::window::update(&native,state,chrome);let _=send.send(result);}).map_err(|_|Error::WindowUnavailable)?;
+    tauri::async_runtime::spawn_blocking(move||receive.recv().unwrap_or(Err(Error::WindowUnavailable))).await.map_err(|_|Error::WindowUnavailable)?
+}
+#[tauri::command]
 fn desktop_surface(window:WebviewWindow,state:tauri::State<EngineState>,bounds:crate::boundary::SurfaceBounds,generation:u64)->Result<()> {
     caller(&window)?;bounds.validate()?;
     let engine=state.0.lock().map_err(|_|Error::EngineFailure)?.clone()?;
@@ -87,7 +103,8 @@ pub fn run() {
     let builder=tauri::Builder::default()
         .manage(EngineState(Mutex::new(Err(Error::EngineUnavailable))))
         .manage(EqualizerState(Mutex::new(Err(Error::PreferencesUnavailable))))
-        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change])
+        .manage(Arc::new(crate::window::ChromeState::default()))
+        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome])
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");
@@ -95,15 +112,18 @@ pub fn run() {
             let store=EqualizerStore::open(&path).map_err(|_|preference_error())?;
             *app.state::<EqualizerState>().0.lock().map_err(|_|preference_error())?=Ok(store);
             let main=tauri::WebviewWindowBuilder::new(app,"main",tauri::WebviewUrl::App("index.html".into()))
-                .title("Portico").inner_size(1440.0,900.0).min_inner_size(360.0,480.0)
+                .title("Portico").inner_size(1440.0,900.0).min_inner_size(600.0,600.0)
+                // Linux uses the desktop's title bar. Windows keeps OS controls until the
+                // installed web caption host supplies its actual control rectangles.
+                .decorations(true)
                 .transparent(true)
                 .on_navigation(|url|boundary::local_origin("main",url.as_str(),cfg!(debug_assertions)).is_ok())
                 .on_page_load(|window,payload| {
                     if cfg!(debug_assertions)&&std::env::var_os("PORTICO_SPIKE_REPORT").is_some()&&payload.event()==tauri::webview::PageLoadEvent::Finished {
                         let _=window.eval(r#"setTimeout(()=>{let frames=0,start=performance.now(),last=start,longest=0;function measure(now){longest=Math.max(longest,now-last);last=now;frames++;if(now-start<5000)requestAnimationFrame(measure);else window.__TAURI_INTERNALS__.invoke('desktop_spike_report',{report:{frames,elapsedMs:now-start,longestFrameMs:longest,width:innerWidth,height:innerHeight}})}requestAnimationFrame(measure)},3000)"#);
                     }
-                })
-                .build()?;
+                });
+            let main=main.build()?;
             let handle=app.handle().clone();
             let lib=library(app.handle()).and_then(|p|Api::open(&p));
             main.with_webview(move |webview| {

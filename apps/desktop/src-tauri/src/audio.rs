@@ -33,6 +33,7 @@ impl AudioOutput {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioFacts {
+    pub generation:u64,
     pub requested_exclusive: bool,
     pub source_rate: Option<u64>,
     pub output_rate: Option<u64>,
@@ -41,7 +42,9 @@ pub struct AudioFacts {
     /// No inferred bit-perfect flag: only an output capture can prove it.
     pub bit_exact_capture_verified: bool,
     pub equalizer_enabled: bool,
-    pub equalizer_applied: bool,
+    pub eq_applied: bool,
+    /// Native leveling is not integrated; never promote a requested profile setting.
+    pub leveling_applied: bool,
     /// The signal-path UI must use the approved i18n text "EQ on, not bit-perfect".
     /// This fact cannot be promoted to a physical output/capture claim.
     pub bit_perfect_excluded_by_equalizer: bool,

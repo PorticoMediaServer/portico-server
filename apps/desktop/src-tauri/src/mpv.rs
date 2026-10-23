@@ -69,6 +69,10 @@ pub struct Mpv {
     newest_generation:AtomicU64,
     equalizer:Mutex<EqualizerSettings>,
     equalizer_applied:AtomicBool,
+    equalizer_chain_known:AtomicBool,
+    equalizer_route_pending:AtomicBool,
+    starting:AtomicBool,
+    pending_autoplay:AtomicBool,
     configured_spdif:String,
 }
 // libmpv explicitly permits client-API calls from any thread; the render context is separately
@@ -82,7 +86,7 @@ impl Mpv {
     pub fn new(api: Arc<Api>, output: &AudioOutput, target: VideoTarget) -> Result<Arc<Self>> {
         let handle = unsafe { (api.create)() };
         if handle.is_null() { return Err(Error::EngineUnavailable); }
-        let engine=Arc::new(Self {api,handle,generation:Mutex::new(0),exclusive:output.exclusive,loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicBool::new(false),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(true),configured_spdif:output.passthrough.join(",")});
+        let engine=Arc::new(Self {api,handle,generation:Mutex::new(0),exclusive:output.exclusive,loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicBool::new(false),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:output.passthrough.join(",")});
         for (key,value) in [("config","no"),("load-scripts","no"),("ytdl","no"),("osc","no"),
             ("input-default-bindings","no"),("input-vo-keyboard","no"),("terminal","no"),("msg-level","all=no"),
             ("idle","yes"),("keep-open","yes"),("access-references","no"),("load-unsafe-playlists","no"),
@@ -122,50 +126,96 @@ impl Mpv {
     fn flag(&self,name:&str)->bool {self.property(name).as_deref()==Some("yes")}
     pub fn handle(&self)->Handle {self.handle}
     /// App-wide DSP. No output identity participates in lookup or persistence. The labelled
-    /// filter survives source changes and is shared by music/video and every physical route.
+    /// setting is shared by music/video and every physical route. Passthrough stays untouched.
     pub fn apply_equalizer(&self,next:&EqualizerSettings)->Result<()> {
         next.validate()?;
         let _transport=self.generation.lock().map_err(|_|Error::EngineFailure)?;
         let mut previous=self.equalizer.lock().map_err(|_|Error::EngineFailure)?;
+        let was_paused=self.flag("pause");let was_failed=self.failed.load(Ordering::Acquire);
         // A failed rollback leaves an unknown DSP chain. Keep playback fenced until the
         // engine is recreated from the persisted setting rather than guessing its state.
-        if !self.equalizer_applied.load(Ordering::Acquire){return Err(Error::EngineFailure);}
-        if *previous==*next{return Ok(());}
-        self.equalizer_applied.store(false,Ordering::Release);
-        if self.write_equalizer(&previous,next).is_err(){
-            let restored=self.write_equalizer(next,&previous).is_ok();
-            self.equalizer_applied.store(restored,Ordering::Release);
-            if !restored{let _=self.set("pause","yes");}
+        if !self.equalizer_chain_known.load(Ordering::Acquire){return Err(Error::EngineFailure);}
+        if self.configure_equalizer(next).is_err(){
+            let restored=self.configure_equalizer(&previous).is_ok();
+            self.equalizer_chain_known.store(restored,Ordering::Release);
+            if restored{
+                self.failed.store(was_failed,Ordering::Release);
+                let _=self.set("pause",if was_paused{"yes"}else{"no"});
+            }else{self.failed.store(true,Ordering::Release);let _=self.set("pause","yes");}
             return Err(Error::EngineFailure);
         }
-        *previous=next.clone();self.equalizer_applied.store(true,Ordering::Release);Ok(())
+        *previous=next.clone();Ok(())
     }
-    fn write_equalizer(&self,previous:&EqualizerSettings,next:&EqualizerSettings)->Result<()> {
-        if let Some(filter)=next.filter()? {
-            // Bitstream cannot pass through an equalizer. Enabling EQ requires decoded PCM.
-            self.set("audio-spdif","")?;
-            self.command(&["af","add",&filter])?;
-        } else {
-            if previous.enabled{
+    fn clear_equalizer(&self)->Result<()> {
+        self.equalizer_applied.store(false,Ordering::Release);
+        let result=(||{
+            let marker=format!("@{FILTER_LABEL}:");
+            // mpv0.41's fixed af string representation prints each label as @name:.
+            // Only native-owned filters enter this chain; never parse a web filter string.
+            if self.property("af").ok_or(Error::EngineFailure)?.contains(&marker){
                 self.command(&["af","remove",&format!("@{FILTER_LABEL}")])?;
-                self.set("audio-spdif",&self.configured_spdif)?;
             }
+            if self.property("af").ok_or(Error::EngineFailure)?.contains(&marker){return Err(Error::EngineFailure);}
+            Ok(())
+        })();
+        self.equalizer_chain_known.store(result.is_ok(),Ordering::Release);
+        if result.is_err(){let _=self.set("pause","yes");}
+        result
+    }
+    /// Called under the transport lock. true means route negotiation is ready. A filter
+    /// failure is silent clean bypass for this song; only failure to clear an unknown chain
+    /// is a real playback error. The persistent setting is never silently switched off.
+    fn configure_equalizer(&self,next:&EqualizerSettings)->Result<bool> {
+        self.equalizer_route_pending.store(false,Ordering::Release);
+        if !next.enabled||!self.loaded.load(Ordering::Acquire){self.clear_equalizer()?;return Ok(true);}
+        let format=self.property("audio-out-params/format");
+        if format.as_deref().is_some_and(|format|format.starts_with("spdif")){
+            self.clear_equalizer()?;return Ok(true);
+        }
+        if !self.configured_spdif.is_empty()&&format.is_none()&&self.property("aid").as_deref()!=Some("no"){
+            self.clear_equalizer()?;self.equalizer_route_pending.store(true,Ordering::Release);return Ok(false);
+        }
+        let filter=next.filter()?.ok_or(Error::InvalidCommand)?;
+        self.equalizer_applied.store(false,Ordering::Release);
+        if self.command(&["af","add",&filter]).is_err(){
+            self.clear_equalizer()?;
+            eprintln!("equalizer_filter_unavailable");
+            return Ok(true);
+        }
+        self.equalizer_applied.store(true,Ordering::Release);Ok(true)
+    }
+    fn actual_equalizer_applied(&self)->bool {
+        self.equalizer_applied.load(Ordering::Acquire)&&self.loaded.load(Ordering::Acquire)
+            &&!self.starting.load(Ordering::Acquire)&&!self.failed.load(Ordering::Acquire)
+            &&!self.flag("eof-reached")&&!self.flag("idle-active")
+            &&self.number("audio-out-params/samplerate").is_some_and(|rate|rate>0.0)
+            &&self.property("audio-out-params/format").is_some_and(|format|!format.starts_with("spdif"))
+    }
+    fn finish_start(&self)->Result<()> {
+        if !self.loaded.load(Ordering::Acquire)||!(self.starting.load(Ordering::Acquire)||self.equalizer_route_pending.load(Ordering::Acquire)){return Ok(());}
+        let settings=self.equalizer.lock().map_err(|_|Error::EngineFailure)?;
+        if self.configure_equalizer(&settings)?&&self.starting.swap(false,Ordering::AcqRel){
+            self.set("pause",if self.pending_autoplay.load(Ordering::Acquire){"no"}else{"yes"})?;
         }
         Ok(())
     }
     pub fn equalizer_matches(&self,settings:&EqualizerSettings)->bool {
-        self.equalizer.lock().map(|current|self.equalizer_applied.load(Ordering::Acquire)&&*current==*settings).unwrap_or(false)
+        let Ok(_transport)=self.generation.lock()else{return false;};
+        self.equalizer.lock().map(|current|self.actual_equalizer_applied()&&*current==*settings).unwrap_or(false)
     }
     pub fn execute(&self,command:Command)->Result<()> {
         // Hold generation through the native command; stale async work can never affect the next source.
         let mut generation=self.generation.lock().map_err(|_|Error::EngineFailure)?;
         match command {
             Command::Load{source} => {
-                if !self.equalizer_applied.load(Ordering::Acquire){return Err(Error::EngineFailure);}
+                if !self.equalizer_chain_known.load(Ordering::Acquire){return Err(Error::EngineFailure);}
                 source.validate()?;
                 if source.generation<=self.newest_generation.load(Ordering::Acquire){return Err(Error::StaleGeneration);}
                 self.newest_generation.store(source.generation,Ordering::Release);
                 self.drain();self.loaded.store(false,Ordering::Release);self.frame_drawn.store(false,Ordering::Release);self.failed.store(false,Ordering::Release);
+                // Negotiate every new track without the previous track's EQ. This preserves
+                // passthrough; only an observed PCM route receives the app's EQ afterwards.
+                self.clear_equalizer()?;self.equalizer_route_pending.store(false,Ordering::Release);
                 *self.expected_url.lock().map_err(|_|Error::EngineFailure)?=source.url.clone();
                 self.load(&source)?;*generation=source.generation;Ok(())
             }
@@ -173,19 +223,23 @@ impl Mpv {
                 let g=match &other {Command::Play{generation}|Command::Pause{generation}|Command::Seek{generation,..}|Command::Rate{generation,..}|Command::Volume{generation,..}|Command::Stop{generation}=>*generation,_=>unreachable!()};
                 if *generation==0 || *generation!=g {return Err(Error::StaleGeneration);}
                 match other {
-                    Command::Play{..} if self.equalizer_applied.load(Ordering::Acquire)=>self.set("pause","no"),
-                    Command::Play{..}=>Err(Error::EngineFailure),Command::Pause{..}=>self.set("pause","yes"),
+                    Command::Play{..} if self.equalizer_chain_known.load(Ordering::Acquire)=>{
+                        self.pending_autoplay.store(true,Ordering::Release);
+                        if self.starting.load(Ordering::Acquire){Ok(())}else{self.set("pause","no")}
+                    },
+                    Command::Play{..}=>Err(Error::EngineFailure),Command::Pause{..}=>{self.pending_autoplay.store(false,Ordering::Release);self.set("pause","yes")},
                     Command::Seek{milliseconds,..} if milliseconds.is_finite()&&(0.0..=1e12).contains(&milliseconds)=>self.command(&["seek",&(milliseconds/1000.0).to_string(),"absolute+exact"]),
                     Command::Rate{rate,..} if rate.is_finite()&&(0.25..=4.0).contains(&rate)=>self.set("speed",&rate.to_string()),
                     Command::Volume{volume,muted,..} if volume.is_finite()&&(0.0..=1.0).contains(&volume)=>{self.set("volume",&(volume*100.0).to_string())?;self.set("mute",if muted{"yes"}else{"no"})},
-                    Command::Stop{..}=>{self.command(&["stop"])?;*generation=0;self.loaded.store(false,Ordering::Release);self.frame_drawn.store(false,Ordering::Release);Ok(())},
+                    Command::Stop{..}=>{self.command(&["stop"])?;*generation=0;self.loaded.store(false,Ordering::Release);self.frame_drawn.store(false,Ordering::Release);self.starting.store(false,Ordering::Release);self.equalizer_applied.store(false,Ordering::Release);self.equalizer_route_pending.store(false,Ordering::Release);Ok(())},
                     _=>Err(Error::InvalidCommand)
                 }
             }
         }
     }
     fn load(&self,source:&Source)->Result<()> {
-        self.set("pause",if source.autoplay{"no"}else{"yes"})?;
+        self.pending_autoplay.store(source.autoplay,Ordering::Release);self.starting.store(true,Ordering::Release);
+        self.set("pause","yes")?;
         // loadfile argv is a null-terminated vector, never parsed as a command string.
         self.command(&["loadfile",&source.url,"replace","-1",&format!("start={}",source.start_position_ms/1000.0)])
     }
@@ -198,14 +252,16 @@ impl Mpv {
         *self.generation.lock().map_err(|_|Error::EngineFailure)?=1;Ok(())
     }
     pub fn observation(&self)->Observation {
-        let generation=*self.generation.lock().unwrap_or_else(|x|x.into_inner());
+        let transport=self.generation.lock().unwrap_or_else(|x|x.into_inner());let generation=*transport;
         self.drain();
-        let state=if generation==0{"idle"}else if self.failed.load(Ordering::Acquire){"error"}else if self.flag("eof-reached"){"ended"}else if !self.loaded.load(Ordering::Acquire)||self.flag("idle-active"){"loading"}
+        if self.finish_start().is_err(){self.equalizer_chain_known.store(false,Ordering::Release);self.failed.store(true,Ordering::Release);let _=self.set("pause","yes");}
+        let state=if generation==0{"idle"}else if self.failed.load(Ordering::Acquire){"error"}else if self.flag("eof-reached"){"ended"}else if self.starting.load(Ordering::Acquire)||!self.loaded.load(Ordering::Acquire)||self.flag("idle-active"){"loading"}
             else if self.flag("paused-for-cache"){"buffering"}else if self.flag("pause"){"paused"}else{"playing"};
         Observation{generation,state:state.into(),position_ms:self.number("time-pos").unwrap_or(0.0).max(0.0)*1000.0,
             rate:self.number("speed").unwrap_or(1.0),volume:self.number("volume").unwrap_or(100.0)/100.0,
             muted:self.flag("mute"),dropped_frames:self.number("frame-drop-count").unwrap_or(0.0) as u64,
-            native_surface_active:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.surface_ready.load(Ordering::Acquire)&&self.geometry_ready.load(Ordering::Acquire)&&self.frame_drawn.load(Ordering::Acquire)&&self.loaded.load(Ordering::Acquire)&&self.number("width").unwrap_or(0.0)>0.0}
+            native_surface_active:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.surface_ready.load(Ordering::Acquire)&&self.geometry_ready.load(Ordering::Acquire)&&self.frame_drawn.load(Ordering::Acquire)&&self.loaded.load(Ordering::Acquire)&&self.number("width").unwrap_or(0.0)>0.0,
+            eq_applied:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.actual_equalizer_applied(),leveling_applied:false}
     }
     fn drain(&self){
         let _lock=self.events.lock().unwrap_or_else(|e|e.into_inner());
@@ -220,12 +276,13 @@ impl Mpv {
     pub fn matches_generation(&self,generation:u64)->bool{generation>0&&self.generation.lock().map(|g|*g==generation).unwrap_or(false)}
     pub fn frame_drawn(&self){self.frame_drawn.store(true,Ordering::Release);}
     pub fn audio_facts(&self)->AudioFacts {
-        let (equalizer_enabled,equalizer_applied)=self.equalizer.lock().map(|settings|(settings.enabled,self.equalizer_applied.load(Ordering::Acquire))).unwrap_or((false,false));
-        AudioFacts{requested_exclusive:self.exclusive,source_rate:self.number("audio-params/samplerate").map(|x|x as u64),
+        let transport=self.generation.lock().unwrap_or_else(|x|x.into_inner());
+        let (equalizer_enabled,eq_applied)=self.equalizer.lock().map(|settings|(settings.enabled,self.actual_equalizer_applied())).unwrap_or((false,false));
+        AudioFacts{generation:*transport,requested_exclusive:self.exclusive,source_rate:self.number("audio-params/samplerate").map(|x|x as u64),
             output_rate:self.number("audio-out-params/samplerate").map(|x|x as u64),output_channels:self.number("audio-out-params/channel-count").map(|x|x as u64),
             output_format:self.property("audio-out-params/format"),bit_exact_capture_verified:false,
-            equalizer_enabled,equalizer_applied,
-            bit_perfect_excluded_by_equalizer:equalizer_enabled||!equalizer_applied}
+            equalizer_enabled,eq_applied,leveling_applied:false,
+            bit_perfect_excluded_by_equalizer:equalizer_enabled||!self.equalizer_chain_known.load(Ordering::Acquire)}
     }
     /// Native proof runner only: output is an owned CLI-selected scratch file. Not registered IPC.
     pub fn capture_pcm(api:Arc<Api>,input:&Path,output:&Path,rate:u32,channels:u8)->Result<()> {
@@ -234,7 +291,7 @@ impl Mpv {
     pub fn capture_playlist(api:Arc<Api>,inputs:&[&Path],output:&Path,rate:u32,channels:u8)->Result<()> {
         if inputs.is_empty() || inputs.len()>32{return Err(Error::InvalidCommand);}
         let handle=unsafe{(api.create)()};if handle.is_null(){return Err(Error::EngineUnavailable);}
-        let e=Self{api,handle,generation:Mutex::new(1),exclusive:false,loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicBool::new(false),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(true),configured_spdif:String::new()};
+        let e=Self{api,handle,generation:Mutex::new(1),exclusive:false,loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicBool::new(false),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:String::new()};
         for (k,v) in [("config","no"),("load-scripts","no"),("ytdl","no"),("terminal","no"),("msg-level","all=no"),
             ("vo","null"),("ao","pcm"),("audio-format","s32"),("audio-display","no"),("gapless-audio","yes"),("replaygain","no"),("volume","100"),("pause","yes")] {e.option(k,v)?;}
         e.option("ao-pcm-file",output.to_str().ok_or(Error::InvalidCommand)?)?;e.option("ao-pcm-waveheader","no")?;

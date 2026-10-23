@@ -13,6 +13,7 @@ pub enum Error {
     EngineFailure,
     PreferencesUnavailable,
     PreferencesConflict,
+    WindowUnavailable,
     Unsupported,
 }
 pub type Result<T> = std::result::Result<T, Error>;
@@ -86,6 +87,8 @@ pub struct Observation {
     pub muted: bool,
     pub dropped_frames: u64,
     pub native_surface_active: bool,
+    pub eq_applied:bool,
+    pub leveling_applied:bool,
 }
 
 #[derive(Clone,Copy,Deserialize)]

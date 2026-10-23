@@ -7,7 +7,7 @@ import type {VideoLike} from '../../../web-next/src/platform/playback/index.ts';
 const source = {url:'/v1/media/opaque',generation:1,mode:'direct' as const,startPositionMs:0,autoplay:true,subtitles:[]};
 function harness() {
   const commands: NativeCommand[] = [], handlers = new Map<string,()=>void>();
-  let reading: NativeObservation = {generation:0,state:'paused',positionMs:0,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false};
+  let reading: NativeObservation = {generation:0,state:'paused',positionMs:0,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false,eqApplied:false,levelingApplied:false};
   let answer: (()=>Promise<NativeObservation>) | undefined;
   const bridge: Bridge = {async command(command) {commands.push(command); if (command.source) reading={...reading,generation:command.source.generation};},observe:()=>answer?.() ?? Promise.resolve(reading)};
   const video = {volume:1,muted:false,pause(){},load(){},removeAttribute(){},addEventListener(k:string,fn:()=>void){handlers.set(k,fn);},removeEventListener(k:string){handlers.delete(k);}} as unknown as VideoLike;
@@ -28,7 +28,7 @@ test('late observation cannot report for new source with same protocol generatio
   const pending=h.player.tick();await Promise.resolve();await Promise.resolve();
   const old=h.commands[0].source!.generation;
   h.player.load({...source,url:'/v1/media/new'});
-  release({generation:old,state:'playing',positionMs:999,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false});await pending;
+  release({generation:old,state:'playing',positionMs:999,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false,eqApplied:false,levelingApplied:false});await pending;
   assert.equal(h.player.observe().positionMs,0);assert.equal(h.player.observe().state,'loading');h.player.dispose();
 });
 test('native failures report fixed code without exception/session/path strings',async()=>{
@@ -38,7 +38,7 @@ test('native failures report fixed code without exception/session/path strings',
 });
 test('native observation validator rejects malformed bytes and projects extra fields away',()=>{
   assert.throws(()=>observation({generation:1,state:'playing',positionMs:NaN}));
-  const value=observation({generation:1,state:'playing',positionMs:1,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false,url:'SECRET',path:'/private'});
+  const value=observation({generation:1,state:'playing',positionMs:1,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false,eqApplied:false,levelingApplied:false,url:'SECRET',path:'/private'});
   assert.doesNotMatch(JSON.stringify(value),/SECRET|private|url|path/);
 });
 
@@ -46,4 +46,18 @@ test('native paint flag requires an actual current-generation confirmation and c
  const h=harness();assert.equal(h.player.nativeSurfaceActive,false);h.player.load(source);await h.player.tick();
  assert.equal(h.player.nativeSurfaceActive,false);h.setReading({nativeSurfaceActive:true,state:'playing'});await h.player.tick();
  assert.equal(h.player.nativeSurfaceActive,true);h.setReading({state:'ended'});await h.player.tick();assert.equal(h.player.nativeSurfaceActive,false);h.player.dispose();
+});
+
+test('processing uses current native facts and clears across tracks and ended',async()=>{
+ const h=harness();assert.equal(h.player.audioProcessing,undefined);h.player.load(source);
+ assert.equal(h.player.audioProcessing,undefined);await h.player.tick();
+ assert.deepEqual(h.player.audioProcessing,{generation:1,eqApplied:false,levelingApplied:false});
+ h.setReading({state:'playing',eqApplied:true});await h.player.tick();
+ assert.deepEqual(h.player.audioProcessing,{generation:1,eqApplied:true,levelingApplied:false});
+ assert.equal('eqApplied' in h.player.observe(),false);
+ h.player.load({...source,url:'/v1/media/next',generation:2});assert.equal(h.player.audioProcessing,undefined);
+ h.setReading({state:'playing',eqApplied:false});await h.player.tick();
+ assert.deepEqual(h.player.audioProcessing,{generation:2,eqApplied:false,levelingApplied:false});
+ h.setReading({state:'ended',eqApplied:true});await h.player.tick();assert.equal(h.player.audioProcessing,undefined);
+ h.player.dispose();assert.equal(h.player.audioProcessing,undefined);
 });

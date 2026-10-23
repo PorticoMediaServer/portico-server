@@ -17,6 +17,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   private nativeGeneration = 0;
   private polling = false;
   private surfaceActive = false;
+  private processing?:Readonly<{generation:number;eqApplied:boolean;levelingApplied:boolean}>;
   private readonly hole?: NativeHole;
   private seeking = false;
   private ticker?: ReturnType<typeof setInterval>;
@@ -35,12 +36,16 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   }
   get loaded() { return this.source?.generation ?? 0; }
   get nativeSurfaceActive() { return this.surfaceActive; }
+  /** Extra structural port until the canonical checked factory hook lands. Facts belong to
+   * this presentation generation, never to a stored preference or the previous song. */
+  get audioProcessing() { return this.processing; }
   get settling() { return this.seeking || this.reading.state === 'loading'; }
   private emit(event: PlayerEvent) { for (const listener of [...this.listeners]) listener(event); }
   private fail(epoch: number) {
     if (this.disposed || epoch !== this.epoch || !this.source) return;
     this.reading = {...this.reading, state: 'error'};
     this.surfaceActive = false;
+    this.processing=undefined;
     this.emit({type: 'error', observation: this.reading, code: 'engine_unavailable'});
   }
   private enqueue(command: NativeCommand, epoch: number) {
@@ -53,7 +58,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   load(source: PlayerSource) {
     if (this.disposed) return;
     const epoch = ++this.epoch; this.source = source; this.seeking = false;
-    this.surfaceActive = false;
+    this.surfaceActive = false;this.processing=undefined;
     this.nativeGeneration = ++nextNativeGeneration;
     this.reading = {generation: source.generation, state: 'loading', positionMs: source.startPositionMs, rate: this.reading.rate};
     this.emit({type: 'state', observation: this.reading});
@@ -79,9 +84,12 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
       const next = await this.bridge.observe();
       if (this.disposed || epoch !== this.epoch || next.generation !== this.nativeGeneration || !this.source) return;
       const active = next.nativeSurfaceActive && !['idle','loading','ended','error'].includes(next.state);
-      const changed = this.reading.state !== next.state || this.surfaceActive !== active;
+      const confirmed=!['idle','loading','ended','error'].includes(next.state);
+      const processing=confirmed?Object.freeze({generation:this.source.generation,eqApplied:next.eqApplied,levelingApplied:next.levelingApplied}):undefined;
+      const changed = this.reading.state !== next.state || this.surfaceActive !== active||this.processing?.eqApplied!==processing?.eqApplied||this.processing?.levelingApplied!==processing?.levelingApplied;
       this.surfaceActive = active;
-      const {nativeSurfaceActive: _, ...projected} = next;
+      this.processing=processing;
+      const {nativeSurfaceActive: _,eqApplied: _eq,levelingApplied: _leveling,...projected} = next;
       this.reading = {...projected, generation: this.source.generation, subtitleTrackId: this.reading.subtitleTrackId, subtitlesCarried: this.reading.subtitlesCarried};
       if (changed) this.emit({type: 'state', observation: this.reading});
       if (this.seeking && !['loading','buffering'].includes(next.state)) { this.seeking = false; this.emit({type: 'seeked', observation: this.reading}); }
@@ -90,7 +98,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   }
   unload() {
     if (this.source) this.send({action: 'stop'});
-    ++this.epoch; this.source = undefined; this.seeking = false; this.surfaceActive = false;
+    ++this.epoch; this.source = undefined; this.seeking = false; this.surfaceActive = false;this.processing=undefined;
     this.reading = {generation: 0, state: 'idle', positionMs: 0, rate: this.reading.rate};
   }
   suspend() { this.pause(); }
