@@ -212,6 +212,16 @@
   function queuePath(id) { return '/v1/queues/' + encodeURIComponent(id); }
   function queueRef(value) { return value && typeof value.queueId === 'string' && typeof value.entryId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(value.queueId) && /^[A-Za-z0-9._:-]{1,128}$/.test(value.entryId) ? {queueId:value.queueId,entryId:value.entryId} : null; }
   var manager = null, castContext = null, profiled = false;
+  // CAF routes PlayerManager's own calls through the same interceptors as the
+  // media channel. Only these exact engine-created objects may bypass sender
+  // gates; an external JSON request cannot reproduce their private identity.
+  var localRequests = new WeakSet(), localRequestId = 0;
+  function loadMedia(request) { localRequests.add(request); return manager.load(request); }
+  function mediaCommand(type, fields) {
+    var request=Object.assign({type:type,requestId:++localRequestId},fields);
+    localRequests.add(request);manager.sendLocalMediaRequest(request);
+  }
+
   var reportTimer = null, reportSeq = 0, reportFailures = 0, recoveries = 0, recovering = false, bufferingTimer = null;
   var commands = Promise.resolve();
   function serial(work) { var result = commands.then(work); commands = result.catch(function () {}); return result; }
@@ -487,7 +497,12 @@
     function publish() {
       if(!current())return;
       if(pictureReady)playingView();
-      else if(meta&&meta.title){viewLoading=true;viewCall('loading',[Object.assign({},meta)]);}
+      else if(meta&&meta.title){
+        viewLoading=true;viewCall('loading',[Object.assign({},meta)]);
+        // A catalogue enrichment is still this occurrence: loading clears the
+        // view, so restore its genuine current cover even if no new URL arrived.
+        if(currentArtwork)showArtwork(currentArtwork,meta.kind==='song'||meta.kind==='album');
+      }
       try {
         var media=typeof manager.getMediaInformation==='function'?manager.getMediaInformation():null;
         if(media&&media.contentId===contentId&&typeof manager.setMediaInformation==='function')manager.setMediaInformation(Object.assign({},media,{metadata:castMetadata(meta,currentArtwork)}),false);
@@ -496,7 +511,8 @@
     try {
       var item=(await api('/v1/items/'+encodeURIComponent(owner.itemId),{method:'GET'})).body;
       if(!current()||!item||item.id!==owner.itemId||item.missing)return;
-      var identity=displayMeta({title:item.title,kind:item.kind,artworkPath:item.posterUrl});
+      var year=item.kind==='movie'&&Number.isSafeInteger(item.year)&&item.year>0&&item.year<=9999?String(item.year):undefined;
+      var identity=displayMeta({title:item.title,kind:item.kind,subtitle:year,artworkPath:item.posterUrl});
       if(!identity)return;
       if(item.song&&typeof item.song==='object'){
         var artist=cleanText(item.song.artist),album=cleanText(item.song.albumTitle);
@@ -510,7 +526,12 @@
       meta=identity;publish();
       if(identity.artworkPath){
         var image=await artworkUrl(identity.artworkPath);
-        if(current()&&image){showArtwork(image,identity.kind==='song'||identity.kind==='album');publish();}
+        if(current()&&image){
+          currentArtwork=image;
+          // loading(meta) resets the view's art. Publish that identity before
+          // its artwork, while CAF metadata receives the same genuine image.
+          publish();
+        }
       }
     } catch(e) { /* Missing/refused metadata remains absent; no notice or old-title fallback. */ }
   }
@@ -568,7 +589,7 @@
     if (!playback) return;
     var id = playback.id, at = Math.round(position() * 1000);
     playback = null; meta = null;
-    if (manager) manager.stop();
+    if (manager) mediaCommand('STOP');
     mediaAddresses.clear();
     showIdle();
     // A session that has already ended (404, 410) is simply gone.
@@ -617,7 +638,7 @@
     reportSeq = 0; reportFailures = 0;
     return load;
   }
-  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await manager.load(load);showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId);return playback;}catch(e){if(playback)await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e;}}); }
+  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await loadMedia(load);showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId);return playback;}catch(e){if(playback)await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e;}}); }
 
   // V1 music is progressive: the next server occurrence starts only after the
   // actual current media finishes. CAF preloadTime is a hint, not a buffer or
@@ -633,7 +654,7 @@
     playback=track(current);meta=null;reportSeq=0;reportFailures=0;recoveries=0;
     showLoading(null); // Never label the new occurrence with the old title or artwork.
     var load;
-    try { load=loadRequest(current,'',true);await manager.load(load); }
+    try { load=loadRequest(current,'',true);await loadMedia(load); }
     catch(e) { await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e; }
     showPlaying();scheduleReport(0);refreshCatalogueDisplay(current,load.media.contentId);broadcast();return true;
   }
@@ -653,7 +674,7 @@
     } catch (e) {
       // The server no longer has this session (stopped elsewhere, moved, ended by an administrator),
       // or no longer accepts this TV's pairing: with no sender connected, nothing else would stop it.
-      if (e.status === 404 || e.status === 410 || e.code === 'session_ended' || e.pairingEnded) { if (playback && playback.id === id) { playback = null; meta = null; if (manager) manager.stop(); showIdle(); broadcast(); } return; }
+      if (e.status === 404 || e.status === 410 || e.code === 'session_ended' || e.pairingEnded) { if (playback && playback.id === id) { playback = null; meta = null; if (manager) mediaCommand('STOP'); showIdle(); broadcast(); } return; }
       reportFailures++; // b4: transient engine events are silent.
       throw e;
     }
@@ -671,7 +692,7 @@
     var fresh = updated.presentation.generation !== playback.generation;
     playback = track(updated);
     if (!fresh) return;
-    await manager.load(loadRequest(updated, '', autoplay));
+    await loadMedia(loadRequest(updated, '', autoplay));
     showPlaying();
   }
   /** PATCH the session. A 412 carries the server's session: adopt it and apply the change to it. */
@@ -691,7 +712,7 @@
     return serial(async function () {
       if (!playback) return;
       var at = Math.max(0, seconds);
-      if (!playback.serverSeek) { manager.seek(at); return; }
+      if (!playback.serverSeek) { mediaCommand('SEEK',{currentTime:at}); return; }
       await change({seek: {positionMs: Math.round(at * 1000), id: token(16)}});
     });
   }
@@ -704,7 +725,7 @@
       try { await change({failure:{code:code,detail:''},positionMs:Math.round(Math.max(0,at)*1000)}); return; }
       catch (e) { if (e.code!=='unsupported_media'||code!=='stalled_without_data') throw (e.code==='unsupported_media'?new Error('playback_failed'):e); }
       // Nothing else to try and the stream only stalled: load the same title again.
-      var load=await resolvePlayback(item,at,identity);load.autoplay=!wasPaused;await manager.load(load);showPlaying();scheduleReport(0);
+      var load=await resolvePlayback(item,at,identity);load.autoplay=!wasPaused;await loadMedia(load);showPlaying();scheduleReport(0);
     }).then(function(){notice('');}).catch(function(e){notice('');showError(code==='decode_error'?'decode':e&&(e.code||e.message));}).finally(function(){recovering=false;broadcast();});
   }
 
@@ -823,6 +844,7 @@
     // media URL, a bearer or a media grant: the receiver resolves everything
     // itself with its own credential.
     manager.setMessageInterceptor(types.LOAD, function (request) {
+      if(request&&localRequests.has(request))return request;
       var custom = (request && request.media && request.media.customData) || {};
       if (!custom.itemId || fromOther(request)) { return null; }
       var identity = displayMeta(custom) || (request.media.metadata ? displayMeta({title: request.media.metadata.title, subtitle: request.media.metadata.subtitle || request.media.metadata.seriesTitle}) : null);
@@ -839,14 +861,15 @@
     // are not accepted by setMessageInterceptor, even though the SDK exposes them.
     ['QUEUE_INSERT','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_LOAD'].forEach(function(name){if(types[name])manager.setMessageInterceptor(types[name],function(){return null;});});
     manager.setMessageInterceptor(types.PAUSE,function(request){return request;});
-    manager.setMessageInterceptor(types.PLAY,function(request){return fromOther(request)?null:request;});
+    manager.setMessageInterceptor(types.PLAY,function(request){return request&&localRequests.has(request)||!fromOther(request)?request:null;});
     manager.setMessageInterceptor(types.SEEK,function(request){
+      if(request&&localRequests.has(request))return request;
       if (fromOther(request) || !playback || !Number.isFinite(request.currentTime)) return null;
       if (!playback.serverSeek) return request;
       seekTo(request.currentTime).catch(function(){notice(copy('notice.seekFailed', 'That seek couldn’t be made.'), 5000);});
       return null;
     });
-    manager.setMessageInterceptor(types.STOP,function(request){return serial(stopPlayback).then(function(){return request;}).catch(function(){return null;});});
+    manager.setMessageInterceptor(types.STOP,function(request){if(request&&localRequests.has(request))return request;return serial(stopPlayback).then(function(){return request;}).catch(function(){return null;});});
     // A Cast device has no keyboard, so the sender delivers the pairing code it was issued
     // and then drives playback over this channel. What plays is always the library of the
     // person who paired, and only they drive it.
@@ -866,7 +889,7 @@
       }
       if (!isController(senderId)) {
         // Nothing about what's playing, and no control, for a sender that didn't pair.
-        if (message.type === 'pause' && playback) { manager.pause(); return; }
+        if (message.type === 'pause' && playback) { mediaCommand('PAUSE'); return; }
         if (message.type === 'stop' && playback) { serial(stopPlayback).catch(function(){}); return; }
         reply(controllerSender ? {type: 'busy'} : {type: 'pair-required'});
         return;
@@ -881,8 +904,8 @@
             reply({ type: 'load-failed', requestId: typeof message.requestId==='string'?message.requestId.slice(0,128):undefined, code: error.code || error.message || '' });
           });
           break;
-        case 'play': if (playback) manager.play(); break;
-        case 'pause': if (playback) manager.pause(); break;
+        case 'play': if (playback) mediaCommand('PLAY'); break;
+        case 'pause': if (playback) mediaCommand('PAUSE'); break;
         case 'seek': if(Number.isFinite(message.positionSeconds)) seekTo(message.positionSeconds).catch(function(){notice(copy('notice.seekFailed', 'That seek couldn’t be made.'), 5000);}); break;
         case 'audio': if(Number.isSafeInteger(message.trackId)) manager.getAudioTracksManager().setActiveById(message.trackId); break;
         case 'subtitles': if(Array.isArray(message.trackIds)&&message.trackIds.length<=1&&message.trackIds.every(Number.isSafeInteger)) manager.getTextTracksManager().setActiveByIds(message.trackIds); break;
@@ -900,7 +923,7 @@
     // The title is over whether or not its last report gets through: the TV must not stay on a
     // finished title, still reporting, with nobody connected to stop it.
     manager.addEventListener(events.MEDIA_FINISHED,function(event){
-      if(event&&event.endedReason&&event.endedReason!=='FINISHED')return;
+      if(!event||event.endedReason!==cast.framework.events.EndedReason.END_OF_STREAM)return;
       var owner=playback;
       if(!owner)return;
       serial(async function(){
