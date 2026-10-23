@@ -1,7 +1,7 @@
-import {canonicalQualityLadder} from '../../../contracts/src/types.ts';
+import {canonicalMusicQualityLadder, canonicalQualityLadder} from '../../../contracts/src/types.ts';
 import type {MessageId} from '../../../i18n/src/index.ts';
 import {serviceI18n} from '../presentation/service-text.ts';
-import type {SavedQuality} from './quality.ts';
+import type {SavedMusicQuality, SavedQuality} from './quality.ts';
 
 const labels: Readonly<Record<SavedQuality,MessageId>> = {
  original:'quality.original',automatic:'quality.automatic','2160p':'quality.4k',
@@ -23,3 +23,11 @@ export function qualityPresentation(id:SavedQuality, sameAsOriginal=false, i18n=
 export function qualityLimitKbps(id:SavedQuality):number{return canonicalQualityLadder.find(r=>r.id===id)!.videoKbps;}
 
 export function qualityLimit(id:SavedQuality){const q=canonicalQualityLadder.find(q=>q.id===id)!;return Object.freeze({maxVideoBitrateKbps:q.videoKbps,maxHeight:q.height});}
+
+/** Music's saved ladder, with exact budgets and localized display rounding. */
+export function musicQualityPresentation(id:SavedMusicQuality,sameAsOriginal=false,i18n=serviceI18n()) {
+ const step=canonicalMusicQualityLadder.find(q=>q.id===id)!;
+ const label=id==='cd-quality'?i18n.t('quality.cdQuality'):step.audioKbps?i18n.t('pref.unit.kbps',{value:step.audioKbps}):i18n.t('quality.original');
+ const hint=sameAsOriginal?i18n.t('quality.sameAsOriginal'):step.audioKbps?i18n.t('quality.musicDataPerHour',{amount:new Intl.NumberFormat(i18n.locale,{maximumFractionDigits:0}).format(step.dataMBPerHour)}):'';
+ return Object.freeze({...step,label,hint,sameAsOriginal});
+}

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/audiofacts"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/playback"
@@ -19,17 +20,20 @@ import (
 // item: where it is, how big it is, what it contains and whether the library
 // can currently see it.
 type source struct {
-	Item, Library, Kind string
-	Asset, Path         string
-	Size, ModifiedNS    int64
-	Container           string
-	VideoCodec          string
-	AudioCodec          string
-	Height              int
-	VideoBitrateBPS     int64
-	Duration            float64
-	Available           bool
-	Parts               int
+	AudioLossless                                         *bool
+	Item, Library, Kind                                   string
+	Asset, Path                                           string
+	Size, ModifiedNS                                      int64
+	Container                                             string
+	VideoCodec                                            string
+	AudioCodec                                            string
+	Height                                                int
+	VideoBitrateBPS                                       int64
+	Duration                                              float64
+	Available                                             bool
+	Parts                                                 int
+	AudioRate, AudioDepth, AudioChannels, AudioBitrateBPS int
+	Cue                                                   bool
 }
 
 func audioKind(kind string) bool { return kind == "song" || kind == "audiobook_file" }
@@ -50,24 +54,65 @@ func resolveVersionSource(ctx context.Context, tx *sql.Tx, item, version string)
 	var s source
 	var available int
 	var kindInt int
-	e := tx.QueryRowContext(ctx, `SELECT cl.library_id,e.kind,a.token,a.path,a.size,a.modified_ns,a.container,a.video_codec,a.audio_codec,a.height,a.duration,link.available,
+	var start float64
+	var end *float64
+	e := tx.QueryRowContext(ctx, `SELECT cl.library_id,e.kind,a.token,a.path,a.size,a.modified_ns,a.container,a.video_codec,a.audio_codec,a.height,a.duration,link.available,link.start_seconds,link.end_seconds,
  (SELECT count(DISTINCT p.part_index) FROM catalog_asset_links p WHERE p.entity_id=e.id)
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_asset_links link ON link.entity_id=e.id JOIN catalog_assets a ON a.id=link.asset_id
- WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) ORDER BY `+compactcatalog.BestVersionOrder("link", "a")+` LIMIT 1`, item, version, version).Scan(&s.Library, &kindInt, &s.Asset, &s.Path, &s.Size, &s.ModifiedNS, &s.Container, &s.VideoCodec, &s.AudioCodec, &s.Height, &s.Duration, &available, &s.Parts)
+ WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) ORDER BY `+compactcatalog.BestVersionOrder("link", "a")+` LIMIT 1`, item, version, version).Scan(&s.Library, &kindInt, &s.Asset, &s.Path, &s.Size, &s.ModifiedNS, &s.Container, &s.VideoCodec, &s.AudioCodec, &s.Height, &s.Duration, &available, &start, &end, &s.Parts)
 	if e != nil {
 		return s, e
 	}
 	s.Kind, _ = compactcatalog.Kind(kindInt).Name()
 	s.Item, s.Available = item, available != 0
+	if s.Kind == "song" {
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM music_virtual_tracks v JOIN catalog_entities e ON e.id=v.entity_id WHERE v.asset_id=? AND e.public_id=pid_blob(?) AND v.start_seconds=? AND v.end_seconds=?)`, s.Asset, item, start, end).Scan(&s.Cue); err != nil {
+			return s, err
+		}
+		if s.Cue && end != nil {
+			s.Duration = *end - start
+		}
+	}
 	if s.Duration > 0 {
 		s.VideoBitrateBPS = int64(float64(s.Size) * 8 / s.Duration)
 	}
-	if facts, err := playback.DeliverySourceTx(ctx, tx, s.Asset); err == nil && facts.Video != nil {
-		if facts.Video.Height > 0 {
-			s.Height = facts.Video.Height
+	if facts, err := playback.DeliverySourceTx(ctx, tx, s.Asset); err == nil {
+		if len(facts.Audio) > 0 {
+			a := facts.Audio[0]
+			s.AudioRate = a.SampleRate
+			s.AudioDepth = a.BitDepth
+			s.AudioChannels = a.Channels
+			s.AudioCodec = a.Codec
+			s.AudioBitrateBPS = int(a.BitRate)
 		}
-		if facts.Video.BitRate > 0 {
-			s.VideoBitrateBPS = facts.Video.BitRate
+		if facts.Video != nil {
+			if facts.Video.Height > 0 {
+				s.Height = facts.Video.Height
+			}
+			if facts.Video.BitRate > 0 {
+				s.VideoBitrateBPS = facts.Video.BitRate
+			}
+		}
+	}
+	if s.Kind == "song" {
+		s.AudioLossless = assets.KnownLosslessAudio(s.AudioCodec)
+		var known *bool
+		err := tx.QueryRowContext(ctx, `SELECT lossless FROM music_technical_facts WHERE asset_id=? AND size=? AND modified_ns=?`, s.Asset, s.Size, s.ModifiedNS).Scan(&known)
+		if err == nil {
+			s.AudioLossless = known
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return s, err
+		}
+		if f, ok, err := audiofacts.Read(ctx, tx, s.Asset); err != nil {
+			return s, err
+		} else if ok {
+			s.AudioRate, s.AudioDepth, s.AudioChannels = f.SampleRate, f.BitDepth, f.Channels
+			if f.BitRate > 0 {
+				s.AudioBitrateBPS = int(f.BitRate)
+			}
+			if s.AudioBitrateBPS == 0 && f.DurationFrames > 0 {
+				s.AudioBitrateBPS = int(float64(s.Size) * 8 * float64(f.SampleRate) / float64(f.DurationFrames))
+			}
 		}
 	}
 	return s, nil
@@ -93,8 +138,17 @@ func sourceReason(s source, e error) string {
 // or when the conversion code reports it can make one; a rung that is only a
 // name in the ladder is refused before a claim that could only fail is made.
 func qualityReason(ctx context.Context, tx *sql.Tx, quality, recipe string, found source) string {
-	if quality == QualityOriginal || sameAsSource(quality, found) {
+	if quality == QualityOriginal && !found.Cue || sameAsSource(quality, found) {
 		return ""
+	}
+	if found.Kind == "song" && canonicalMusicQuality(quality) {
+		if recipe != "" && preparedmedia.Producible(recipe) {
+			return ""
+		}
+		if versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item); e == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
+			return ""
+		}
+		return ReasonNotOptimized
 	}
 	if quality == "automatic" && recipe != "" {
 		if preparedmedia.Producible(recipe) {
@@ -142,7 +196,7 @@ func preparedProfile(kind string, rung playback.QualityPreset) string {
 // estimateBytes is bitrate times duration, and the caller publishes it as an
 // estimate. Only the original's size is exact before the artifact exists.
 func estimateBytes(quality, id string, s source) (int64, bool) {
-	if quality == QualityOriginal || sameAsSource(quality, s) {
+	if quality == QualityOriginal && !s.Cue || sameAsSource(quality, s) {
 		return s.Size, false
 	}
 	rung, ok := playback.LadderPreset(quality)
@@ -157,6 +211,9 @@ func estimateBytes(quality, id string, s source) (int64, bool) {
 		return 0, true
 	}
 	bits := float64((recipe.VideoKbps + recipe.AudioKbps) * 1000)
+	if _, c, ok := preparedmedia.MusicProfile(id); ok && c == "flac" {
+		bits = float64(s.AudioRate*s.AudioDepth*s.AudioChannels) * 0.7
+	}
 	// Container overhead is real and small; 3% keeps the estimate honest about
 	// erring high rather than promising a client less than it will receive.
 	estimate := int64(bits / 8 * s.Duration * 1.03)
@@ -306,6 +363,12 @@ func qualityLabel(quality string) string {
 	if quality == QualityOriginal {
 		return "Original"
 	}
+	if quality == "cd-quality" {
+		return "CD quality"
+	}
+	if quality == "320" || quality == "96" {
+		return quality + " kbps"
+	}
 	if quality == "automatic" {
 		return "Automatic"
 	}
@@ -321,6 +384,9 @@ func qualityLabel(quality string) string {
 // and the device plays its result; otherwise the H.264 recipe, which is quicker
 // to make and plays everywhere. "" for the original.
 func chooseRecipe(ctx context.Context, tx *sql.Tx, device playback.CapabilityDocument, quality string, found source, configuration ...playback.DeliveryConfiguration) string {
+	if found.Kind == "song" && canonicalMusicQuality(quality) {
+		return musicRecipeFor(device, quality, found)
+	}
 	if quality == "automatic" {
 		if audioKind(found.Kind) {
 			if recipePlayable(ctx, tx, device, "audio-aac-v3", found) {
@@ -425,6 +491,9 @@ func richTarget(f playback.DeliverySource, recipe preparedmedia.Profile) playbac
 
 // sameAsSource is an evidenced partial ordering, never a resolution guess.
 func sameAsSource(quality string, s source) bool {
+	if s.Kind == "song" {
+		return musicSourceEquivalent(quality, s)
+	}
 	r, ok := playback.LadderPreset(quality)
 	return ok && !audioKind(s.Kind) && r.SameAsSource(s.Height, s.VideoBitrateBPS)
 }
@@ -462,6 +531,10 @@ func resolvedQuality(ctx context.Context, tx *sql.Tx, device playback.Capability
 // option projection and admission. Device codec limits cannot be bypassed by
 // posting a row that was disabled in the menu.
 func recipePlayable(ctx context.Context, tx *sql.Tx, device playback.CapabilityDocument, id string, s source) bool {
+	if _, _, ok := preparedmedia.MusicProfile(id); ok {
+		target, valid := musicTarget(id, s)
+		return valid && playback.DownloadPlayable(target, device)
+	}
 	r, err := preparedmedia.ProfileByID(id)
 	if err != nil {
 		return false

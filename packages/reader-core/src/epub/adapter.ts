@@ -5,7 +5,8 @@ import {fromRange, joinIndir} from 'foliate-js/epubcfi.js';
 import {ReaderError, throwIfAborted} from '../errors.ts';
 import type {ReaderAdapter, ReaderDocument, ReaderLocation, ReaderMetadata, ReaderMount,
   ReaderNavigation, ReaderSearchOptions, ReaderSearchResult, ReaderTocItem, ReaderView, ReaderViewport} from '../ports.ts';
-import {openEpubArchive, safeArchivePath, type EpubAssets} from './archive.ts';
+import {openEpubArchive, safeArchivePath} from './archive.ts';
+import {resourceAssets} from './resources.ts';
 import {rejectXmlEntities, secureMarkup, secureCss} from './security.ts';
 import {epubDisplay, type EpubDisplayPreferences} from './display.ts';
 import {validateEpubRaster} from './media.ts';
@@ -64,36 +65,22 @@ async function cancellable<T>(promise: Promise<T>, signal: AbortSignal): Promise
   try {return await Promise.race([promise,stopped]);}
   finally {clearTimeout(timer!);signal.removeEventListener('abort',abort);}
 }
-function resourceAssets(source: import('../ports.ts').ReaderSource): EpubAssets {
-  const resources=source.resources!; let total=0;
-  if(resources.entries.length>4096) throw new ReaderError('limit_exceeded');
-  const entries=new Map<string, import('../ports.ts').ReaderResource>();
-  for(const entry of resources.entries) {
-    const path=safeArchivePath(entry.path);
-    if(entries.has(path)||!Number.isSafeInteger(entry.size)||entry.size<0||entry.size>16*1024*1024||(total+=entry.size)>256*1024*1024)
-      throw new ReaderError('limit_exceeded');
-    entries.set(path,entry);
-  }
-  return {entries:resources.entries,
-    async read(path,signal) {
-      throwIfAborted(signal);const entry=entries.get(safeArchivePath(path));if(!entry)return new Uint8Array();
-      const bytes=await resources.read(path,signal);throwIfAborted(signal);
-      if(!(bytes instanceof Uint8Array)||bytes.length!==entry.size)throw new ReaderError('invalid_book');return bytes;
-    },dispose(){entries.clear();}};
-}
 /** Direct engine modules only: no stock reader, URL opener, media overlay or
  * ambient network client is imported. Online assets and local ZIPs share this. */
 export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(options: EpubAdapterOptions): ReaderAdapter<P> {
   return {format:'epub',async open({source,signal:parent}) {
+    const id=source.id,revision=source.revision,size=source.size,resources=source.resources;
+    const currentSource=()=>source.id===id&&source.revision===revision&&source.size===size&&source.resources===resources;
+    const unchanged=()=>{if(!currentSource())throw new ReaderError('invalid_source');};
     const lifetime=new AbortController(),signal=AbortSignal.any([parent,lifetime.signal]);throwIfAborted(signal);
     const assets=source.resources?resourceAssets(source):await openEpubArchive(source,signal);
     let book: Book | undefined, mounted=false, disposed=false, view: ReaderView<P>|undefined;
     const byPath=new Map(assets.entries.map(e=>[e.path,e]));
     const decoder=new TextDecoder('utf-8',{fatal:true});
     async function loadText(path:string,callerSignal:AbortSignal=signal):Promise<string|null> {
-      const active=AbortSignal.any([signal,callerSignal]);throwIfAborted(active);
+      const active=AbortSignal.any([signal,callerSignal]);throwIfAborted(active);unchanged();
       const entry=byPath.get(safeArchivePath(path));if(!entry)return null;
-      let text=decoder.decode(await assets.read(path,active));throwIfAborted(active);
+      let text=decoder.decode(await assets.read(path,active));throwIfAborted(active);unchanged();
       const mime='mime' in entry ? entry.mime : '';
       if(mime==='text/html'||mime==='application/xhtml+xml'||/\.x?html?$/i.test(path)||/<(?:\w+:)?html[\s>]/i.test(text))
         text=secureMarkup(text,'application/xhtml+xml');
@@ -103,14 +90,15 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
       return text;
     }
     async function loadBlob(path:string):Promise<Blob|null> {
-      throwIfAborted(signal);const entry=byPath.get(safeArchivePath(path));if(!entry)return null;
-      let bytes=await assets.read(path,signal);throwIfAborted(signal);
+      throwIfAborted(signal);unchanged();const entry=byPath.get(safeArchivePath(path));if(!entry)return null;
+      let bytes=await assets.read(path,signal);throwIfAborted(signal);unchanged();
       const mime='mime' in entry && typeof entry.mime==='string'?entry.mime:'';
       if(mime==='image/svg+xml'||/\.svg$/i.test(path))bytes=new TextEncoder().encode(secureMarkup(decoder.decode(bytes),'image/svg+xml'));
       return new Blob([bytes as Uint8Array<ArrayBuffer>],{type:mime});
     }
     const close=async()=>{if(disposed)return;disposed=true;lifetime.abort();try{await view?.dispose();}finally{book?.destroy();await assets.dispose();}};
     try {
+      unchanged();
       const encryption=await loadText('META-INF/encryption.xml');
       if(encryption) {
         const xml=new DOMParser().parseFromString(encryption,'application/xml');
@@ -170,16 +158,17 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
         }return Object.freeze(result);
       }
       const toc=await mapToc(b.toc??[]);
-      const document:ReaderDocument<P>={id:source.id,revision:source.revision,format:'epub',metadata,toc,
+      const document:ReaderDocument<P>={id,revision,format:'epub',metadata,toc,
         async mount(mount) {
-          throwIfAborted(signal);throwIfAborted(mount.signal);if(mounted)throw new ReaderError('invalid_book');mounted=true;
-          view=await mountEpub(b,mount,options,tocBySection,signal);return view;
+          throwIfAborted(signal);throwIfAborted(mount.signal);unchanged();if(mounted)throw new ReaderError('invalid_book');mounted=true;
+          view=await mountEpub(b,{...mount,onLocation(value){if(currentSource())mount.onLocation(value);},
+            onSelection(value){if(currentSource())mount.onSelection(value);},onSurfaceInput(value){if(currentSource())mount.onSurfaceInput?.(value);}},options,tocBySection,signal,unchanged);return view;
         },
         async *search(query:string,search:ReaderSearchOptions):AsyncIterable<ReaderSearchResult> {
           if(!query.trim()||query.length>1024||search.limit<1||search.limit>500)throw new ReaderError('limit_exceeded');
           const searchSignal=AbortSignal.any([signal,search.signal]);let count=0;
           for(let index=0;index<b.sections.length;index++) {
-            throwIfAborted(searchSignal);
+            throwIfAborted(searchSignal);unchanged();
             // Search has its own read signal, so cancelling a query cancels its
             // asset request without closing the mounted publication.
             const textSource=await loadText(b.sections[index].id,searchSignal);throwIfAborted(searchSignal);
@@ -196,7 +185,7 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
             const folded=text.toLowerCase(),useFolded=folded.length===text.length;
             const haystack=useFolded?folded:text,needle=useFolded?query.toLowerCase():query;
             for(let at=haystack.indexOf(needle);at>=0;at=haystack.indexOf(needle,at+Math.max(1,query.length))) {
-              throwIfAborted(searchSignal);
+              throwIfAborted(searchSignal);unchanged();
               let start=offsets.length-1,end=start;
               while(start>0&&offsets[start]>at)start--;end=start;
               while(end+1<offsets.length&&offsets[end+1]<at+query.length)end++;
@@ -208,11 +197,11 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
             }
           }
         },dispose:close};
-      return document;
+      unchanged();return document;
     } catch(error){await close();throw error;}
   }};
 }
-async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:ReaderMount<P>,options:EpubAdapterOptions,tocBySection:Map<number,{label:string;cfi:string}[]>,parent:AbortSignal):Promise<ReaderView<P>> {
+async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:ReaderMount<P>,options:EpubAdapterOptions,tocBySection:Map<number,{label:string;cfi:string}[]>,parent:AbortSignal,unchanged:()=>void):Promise<ReaderView<P>> {
   const abort=new AbortController(),signal=AbortSignal.any([parent,mount.signal,abort.signal]);
   const renderer=document.createElement('foliate-paginator') as Paginator;
   const surface=document.createElement('div');surface.style.cssText='position:relative;width:100%;height:100%;overflow:hidden;';
@@ -220,7 +209,7 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
   const urls={literata:URL.createObjectURL(options.fonts.literata),manrope:URL.createObjectURL(options.fonts.manrope)};
   let location:ReaderLocation|null=null,preferences=mount.preferences,viewport=mount.viewport,dead=false;
   let cleanupDoc:()=>void=()=>{};
-  function current(){throwIfAborted(signal);if(dead)throw new ReaderError('closed');}
+  function current(){throwIfAborted(signal);if(dead)throw new ReaderError('closed');unchanged();}
   function apply() {
     const display=epubDisplay(preferences,viewport,urls);surface.style.background=display.background;
     renderer.style.top=`${display.top}px`;renderer.style.height=`${Math.max(1,viewport.height-display.top-display.bottom)}px`;

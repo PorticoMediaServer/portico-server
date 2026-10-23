@@ -26,6 +26,7 @@ test('verification tuple accepts the two current kinds and refuses retired provi
 function accountPort() {
   let session = {account: {id: 'account_a', username: 'account', displayName: 'Account'}, familyId: 'family_a', accessToken: 'access'};
   const calls: unknown[] = [];
+  const retired: unknown[] = [];
   let adopted = false;
   const account = {
     client: {
@@ -38,9 +39,10 @@ function accountPort() {
       accessSession: async () => session,
       getSnapshot: () => ({session}),
       authenticateIfSignedOut: async (work: (signal: AbortSignal) => Promise<unknown>) => { adopted = true; return work(new AbortController().signal); },
+      logoutIfCurrent: async (expected: unknown) => { retired.push(expected); return true; },
     },
   } as unknown as ServicesAccount;
-  return {account, calls, adopted: () => adopted, change: () => { session = {...session, familyId: 'family_b'}; }};
+  return {account, calls, retired, adopted: () => adopted, change: () => { session = {...session, familyId: 'family_b'}; }};
 }
 
 test('account work rejects a changed family even when the account id is unchanged', async () => {
@@ -70,4 +72,19 @@ test('only a matching registration can finish its browser session', async () => 
   assert.equal(await verifyEmail(port.account, token(), new AbortController().signal), 'confirmed');
   assert.equal(port.adopted(), true);
   assert.equal(port.calls.length, 0);
+});
+
+test('an email change retires only the reviewed family through the canonical coordinator', async () => {
+  const port = accountPort();
+  assert.equal(await verifyEmail(port.account, token('email_change'), new AbortController().signal), 'changed');
+  assert.equal(port.calls[0][0], '/v1/account/security/email/confirm');
+  assert.deepEqual(port.retired, [{accountId: 'account_a', familyId: 'family_a'}]);
+  assert.equal(port.adopted(), false);
+});
+
+test('an email confirmation cannot sign out a family that replaced the initiating account', async () => {
+  const port = accountPort();
+  port.account.client.request = async () => { port.change(); return {} as never; };
+  await assert.rejects(verifyEmail(port.account, token('email_change'), new AbortController().signal), {code: 'account_changed'});
+  assert.deepEqual(port.retired, []);
 });

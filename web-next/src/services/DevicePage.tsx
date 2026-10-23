@@ -1,0 +1,51 @@
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {ApiError} from '@core/index.ts';
+import {ServicesAuthStage, ServicesCodeChip, ServicesQuiet} from '../kit/accounts/ServicesAuth';
+import {ServicesAuthForm} from './AuthForm';
+import {accountIdentity, sameAccount, type AccountIdentity, type ServicesAccount} from './session';
+import {decideHostedDevice, reviewHostedDevice, type DeviceReview} from './device-approval';
+import {servicesI18n} from './i18n';
+import {DeviceDecision, DeviceView} from './DeviceView';
+
+export function DevicePage({account, initialCode = ''}: {account: ServicesAccount; initialCode?: string}) {
+  const {t} = useMemo(servicesI18n, []);
+  const session = useSyncExternalStore(account.service.subscribe, account.service.getSnapshot).session;
+  const [authenticating, setAuthenticating] = useState(() => !session);
+  useEffect(() => { if (!session) setAuthenticating(true); }, [session]);
+  const [code, setCode] = useState(initialCode), [review, setReview] = useState<DeviceReview>();
+  const [busy, setBusy] = useState(false), [error, setError] = useState<unknown>();
+  const [done, setDone] = useState<{decision: 'approve' | 'deny'; identity: AccountIdentity}>();
+  const binding = review?.identity ?? done?.identity;
+  const stale = Boolean(binding && (!session?.familyId || !sameAccount(binding, accountIdentity(session))));
+  const operation = useRef<AbortController | null>(null);
+  useEffect(() => () => operation.current?.abort(), []);
+  useEffect(() => {
+    if (stale) {
+      operation.current?.abort(); operation.current = null; setBusy(false); setReview(undefined); setDone(undefined);
+      setError(new ApiError(409, 'account_changed', 'account_changed', false));
+    }
+  }, [stale]);
+  const run = async (work: (signal: AbortSignal) => Promise<void>) => {
+    if (operation.current) return;
+    const controller = new AbortController(); operation.current = controller; setBusy(true); setError(undefined);
+    const timeout = setTimeout(() => controller.abort(new DOMException('timeout', 'TimeoutError')), 15000);
+    try { await work(controller.signal); }
+    catch (value) {
+      if (!controller.signal.aborted) {
+        setError(value);
+        if ([400, 404, 410, 422].includes((value as {status?: number})?.status ?? 0)) setReview(undefined);
+      } else if (controller.signal.reason?.name === 'TimeoutError') {
+        setReview(undefined); setError(new ApiError(408, 'timeout', 'timeout', true));
+      }
+    }
+    finally { clearTimeout(timeout); if (operation.current === controller) operation.current = null; if (!controller.signal.aborted || controller.signal.reason?.name === 'TimeoutError') setBusy(false); }
+  };
+  const inspect = () => run(async signal => { const value = await reviewHostedDevice(account, code, signal); if (!signal.aborted) setReview(value); });
+  const decide = (decision: 'approve' | 'deny') => run(async signal => { if (!review) return; await decideHostedDevice(account, review, decision, signal); if (!signal.aborted) { setDone({decision, identity: review.identity}); setReview(undefined); } });
+  const another = () => { setReview(undefined); setDone(undefined); setError(undefined); };
+  if (!session || authenticating) return <ServicesAuthStage variant="deviceSignIn"><ServicesAuthForm account={account} onSignedIn={() => setAuthenticating(false)} embedded heading={t('web.device.title')} lead={t('web.device.lede')}
+    before={<>{initialCode && <ServicesCodeChip label={t('services.device.codeFromTV')} code={initialCode} />}<ServicesQuiet>{t('services.device.signedOut')}</ServicesQuiet></>} /></ServicesAuthStage>;
+  if (done && !stale) return <DeviceDecision decision={done.decision} onAnother={another} />;
+  return <DeviceView name={session.account.displayName || session.account.username} code={code} fromQR={Boolean(initialCode)} preview={review && !stale ? review.preview : undefined}
+    busy={busy} error={error} onCodeChange={setCode} onInspect={() => void inspect()} onDecision={decision => void decide(decision)} onAnother={another} onSignOut={() => void account.service.logout().catch(setError)} />;
+}

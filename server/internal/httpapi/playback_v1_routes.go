@@ -285,6 +285,8 @@ func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Ca
 		return ceilings.MaxVideoBitrateBPS, err
 	}, SavedQuality: func(ctx context.Context) (string, error) {
 		return d.savedQuality(q.WithContext(ctx), c.Principal)
+	}, SavedMusicQuality: func(ctx context.Context) (string, error) {
+		return d.savedMusicQuality(q.WithContext(ctx), c.Principal)
 	}}
 }
 
@@ -306,6 +308,23 @@ func (d Dependencies) savedQuality(q *http.Request, p identity.Principal) (strin
 	}
 	class, _ := playback.NetworkClassOf(d.requestIsRemote(q))
 	return playback.SavedQualityPreference(playback.WithPreferenceSources(values, sources), class), nil
+}
+
+func (d Dependencies) savedMusicQuality(q *http.Request, p identity.Principal) (string, error) {
+	if d.DB == nil {
+		return playback.QualityOriginal, nil
+	}
+	tx, done, err := dbwork.BeginRead(q.Context(), d.DB)
+	if err != nil {
+		return "", err
+	}
+	defer done()
+	values, sources, _, err := operations.EffectivePreferences(tx, p.Viewer, deviceClassHeader(q))
+	if err != nil {
+		return "", err
+	}
+	class, _ := playback.NetworkClassOf(d.requestIsRemote(q))
+	return playback.SavedMusicQualityPreference(playback.WithPreferenceSources(values, sources), class, d.deliveryContext(q).TransportClass), nil
 }
 
 // replanCeilingsAt is what admission would allow this caller's connection right
@@ -354,6 +373,11 @@ func (d Dependencies) v1Reach(q *http.Request, p identity.Principal) playbackv1.
 	reach := playbackv1.Reach{SavedQuality: playback.QualityOriginal, TransportClass: d.deliveryContext(q).TransportClass, Remote: d.v1Remote(q), DeviceID: callerFrom(q.Context()).DeviceID}
 	if saved, err := d.savedQuality(q, p); err == nil {
 		reach.SavedQuality = saved
+	}
+	if saved, err := d.savedMusicQuality(q, p); err == nil {
+		reach.SavedMusicQuality = saved
+	} else {
+		reach.SavedMusicQuality = playback.QualityOriginal
 	}
 	if !reach.Remote || d.Access.Access == nil || d.DB == nil {
 		return reach

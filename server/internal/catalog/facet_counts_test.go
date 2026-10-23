@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sort"
 	"testing"
@@ -24,6 +25,14 @@ func TestFacetCountsFollowEveryChange(t *testing.T) {
 		c.Attributes(it.ID, "tag", "Tag "+fmt.Sprint(i%4), "Shared")
 		items = append(items, it)
 	}
+	credits := []compactcatalog.Credit{
+		{CreditedName: "Actor", Role: "Actor", Department: "Acting"},
+		{CreditedName: "Director", Role: "Director", Department: "Directing"},
+		{CreditedName: "Writer", Role: "Writer", Department: "Writing"},
+	}
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.SetCreditsTx(ctx, tx, items[0].ID, "fixture", credits)
+	})
 	c.Drain()
 	s := New(c.DB)
 	check := func(stage string) {
@@ -32,7 +41,20 @@ func TestFacetCountsFollowEveryChange(t *testing.T) {
 			t.Fatal(stage, err)
 		}
 		for field, source := range facetSources {
-			got, err := s.facetsFromCounts(FacetRequest{Library: "m", Field: field})
+			request := FacetRequest{Library: "m", Field: field}
+			var got []FacetValue
+			var err error
+			switch field {
+			case "library", "actor", "director", "writer":
+				// These fields belong to the contextual facet producer rather
+				// than catalog_facet_counts. Compare its public result to the
+				// same live facts, without dropping any field from the check.
+				var page FacetPage
+				page, err = s.Facets(Viewer{Libraries: []string{"m"}}, request)
+				got = page.Values
+			default:
+				got, err = s.facetsFromCounts(request)
+			}
 			if err != nil {
 				t.Fatal(stage, field, err)
 			}
@@ -73,6 +95,12 @@ func TestFacetCountsFollowEveryChange(t *testing.T) {
 	c.Delete(items[2].ID)
 	c.Fields(items[3].ID, map[string]any{"year": 2021})
 	c.Collection(films, "Saga", items[4], items[5])
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		if err := compactcatalog.SetCreditsTx(ctx, tx, items[0].ID, "fixture", nil); err != nil {
+			return err
+		}
+		return compactcatalog.SetCreditsTx(ctx, tx, items[3].ID, "fixture", credits[:2])
+	})
 	c.Drain()
 	check("after edits")
 	c.Exec(`UPDATE catalog_terms SET label='Dramatic' WHERE label='Drama'`)

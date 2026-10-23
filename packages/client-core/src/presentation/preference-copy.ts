@@ -6,8 +6,8 @@
  * so an Apple TV never says "browser" or "hover". Unknown keys fall back to the key in sentence case.
  */
 import type {MessageId, MessageValues} from '../../../i18n/src/index.ts';
-import {savedQualities,type SavedQuality} from '../playback-v1/quality.ts';
-import {qualityPresentation} from '../playback-v1/quality-presentation.ts';
+import {savedMusicQualities, type SavedMusicQuality, savedQualities,type SavedQuality} from '../playback-v1/quality.ts';
+import {musicQualityPresentation, qualityPresentation} from '../playback-v1/quality-presentation.ts';
 import {serviceI18n} from './service-text.ts';
 
 export type CopyPlatform = 'web' | 'phone' | 'tv';
@@ -58,6 +58,7 @@ export function preferenceValueLabel(key: string, value: string | number): strin
     if (value === 'original' || value === 'automatic') return text(`settings.quality.limit.${value}`)!;
     return (savedQualities as readonly string[]).includes(value)?qualityPresentation(value as SavedQuality).label:value;
   }
+  if ((key === 'music.qualityAway' || key === 'music.qualityMobile') && typeof value === 'string' && (savedMusicQualities as readonly string[]).includes(value)) return musicQualityPresentation(value as SavedMusicQuality).label;
   if (typeof value === 'number') {
     if (key.endsWith('Seconds')) return text('pref.unit.seconds', {count: value})!;
     if (key.endsWith('Episodes')) return text('pref.unit.episodes', {count: value})!;

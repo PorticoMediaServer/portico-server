@@ -38,6 +38,7 @@ func TestChapterPageContinuesBeyondFourThousand(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"}}
+	insertFixtureAccount(t, db, p.AccountID, p.ProfileID)
 	s := New(db)
 	session, err := s.Create(p, item, "automatic", "chapter-limit")
 	if err != nil {
