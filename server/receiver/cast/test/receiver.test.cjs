@@ -4,7 +4,7 @@ async function harness(fixture={}){
  const calls=[],loads=[],interceptors={},events={},timers=new Map(),storage=new Map(),sent=[],ctxEvents={},senders=[],queueItems=[];let timer=0,at=0,state='PAUSED',listener,urlResolver;
  // The real SDK exposes QUEUE_NEXT/PREV enum values but rejects them as interceptors.
  const supportedInterceptors=new Set(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']);
- const manager={setMediaUrlResolver:fn=>urlResolver=fn,getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{if(fixture.loadFails)throw new Error('decode_error');loads.push(x);if(x.queueData){queueItems.length=0;for(const item of x.queueData.items)queueItems.push({...item,itemId:queueItems.length+1});}state=x.autoplay?'PLAYING':'PAUSED'},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>{assert(supportedInterceptors.has(k),'unsupported CAF interceptor '+k);interceptors[k]=v;},addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
+ const manager={setMediaUrlResolver:fn=>urlResolver=fn,getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{if(fixture.loadFails||(fixture.nextLoadFails&&loads.length))throw new Error('decode_error');loads.push(x);if(x.queueData){queueItems.length=0;for(const item of x.queueData.items)queueItems.push({...item,itemId:queueItems.length+1});}state=x.autoplay?'PLAYING':'PAUSED'},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>{assert(supportedInterceptors.has(k),'unsupported CAF interceptor '+k);interceptors[k]=v;},addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
  const castContext={getDeviceCapabilities:()=>fixture.caps||{},getDeviceInformation:()=>fixture.info||{},canDisplayType:(mime,codecs,width,height,fps)=>{assert(!mime.includes(';'));return !!fixture.supports?.(mime,codecs,width,height,fps)},getPlayerManager:()=>manager,addCustomMessageListener:(ns,fn)=>listener=fn,sendCustomMessage:(ns,id,body)=>sent.push({id,body}),addEventListener:(k,v)=>ctxEvents[k]=v,getSenders:()=>senders,start:()=>{}};
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
  const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_NEXT','QUEUE_PREV','GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PLAYER_LOADING','LOADED_DATA','TIME_UPDATE','DURATION_CHANGE','MEDIA_STATUS','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_DISCONNECTED:'disconnect',SHUTDOWN:'shutdown'},MessageType:{JSON:'json'}}}};
@@ -22,9 +22,10 @@ async function harness(fixture={}){
   if(path.endsWith('/reconnect')&&fixture.revoked)return reply({error:{code:'cast_device_revoked',message:'That receiver pairing was revoked.',retryable:false}},403);
   if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({device:{id:'cdv_'+(body?.code||'renewed'),generation:'1'},session:{accessToken:'bearer-'+(body?.code||'renewed')},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
   if(fixture.queue&&path==='/v1/queues/q-1'&&options.method==='GET')return reply({id:'q-1',revision:'1',next:{available:!fixture.queueEnd,entryId:'entry-2',reason:'ready'}});
-  if(fixture.queue&&path==='/v1/queues/q-1:prepare-next')return reply({token:'private-next-token',itemId:'song-2',entryId:'entry-2',expiresAt:'2099-01-01T00:00:00Z',presentation:presentation(0,fixture.noPrivateURL?'':'/v1/media/private-next')});
-  if(fixture.queue&&path==='/v1/queues/q-1:commit-next'){if(fixture.rejectCommit)return reply({error:{code:'prepared_canceled'}},409);return reply({queue:{id:'q-1',revision:'2'},session:{...sessionFor({},0),...(fixture.commitPrivateURL?{presentation:presentation(0,'/v1/media/private-next')} : {}),id:'ps_2',itemId:'song-2',queue:{queueId:'q-1',entryId:'entry-2'}}});}
-  if(fixture.queue&&path==='/v1/queues/q-1:advance')return reply({queue:{id:'q-1',revision:'2'},session:{...sessionFor({},0),id:'ps_2',itemId:'song-2',queue:{queueId:'q-1',entryId:'entry-2'}}});
+  if(fixture.queue&&path==='/v1/queues/q-1:advance'){
+   if(fixture.rejectAdvance)return reply({error:{code:'queue_changed'}},409);
+   return reply({queue:{id:'q-1',revision:'2'},session:{...sessionFor({},0),id:'ps_2',itemId:'song-2',queue:{queueId:'q-1',entryId:'entry-2'}}});
+  }
   if(path==='/v1/me/devices/current/capabilities')return reply({},204);
   if(path==='/v1/playback/sessions'&&options.method==='POST'){
    if(fixture.ambiguous&&!failed){failed=true;throw new Error('lost response')}
@@ -269,49 +270,50 @@ test('music formats and fMP4 transport declarations follow device probes',async(
  assert.equal(s.audioOutput.route,undefined);assert.deepEqual(j(s.engines.native.audioPassthrough),[]);
 });
 
-test('receiver queue preloads privately and only the CAF current-item boundary commits authority',async()=>{
- const h=await harness({queue:true});await h.message('phone',{type:'pair',code:'ABCD',origin:''});
+test('progressive receiver queues only actual current media and never prepares on PRELOAD',async()=>{
+ const h=await harness({queue:true,direct:true,audioOnly:true,container:'mp3'});await h.message('phone',{type:'pair',code:'ABCD',origin:''});
  await h.message('phone',{type:'load',requestId:'load-1',itemId:'song-1',queue:{queueId:'q-1',entryId:'entry-1'},contentUrl:'https://evil.test/file'});
- assert.equal(h.queueItems.length,2);assert.equal(h.queueItems[1].preloadTime,10);assert.equal(h.loads[0].queueData.startIndex,0);
+ assert.equal(h.queueItems.length,1);assert.equal(h.queueItems[0].media.contentType,'audio/mpeg');assert.equal(h.queueItems[0].preloadTime,10);
  assert.deepEqual(h.calls.find(c=>c.url==='/v1/playback/sessions').body.queue,{queueId:'q-1',entryId:'entry-1'});
  assert(h.sent.some(s=>s.body.type==='loaded'&&s.body.requestId==='load-1'));
- const request={media:h.queueItems[1].media};
- assert.equal(await h.interceptors.PRELOAD({...request,senderId:'stranger'}),null);
- const preloaded=await h.interceptors.PRELOAD(request);assert(preloaded);assert.equal(h.resolved(preloaded),'/v1/media/private-next');
- assert.equal(h.receiver.state().playbackId,'ps_1');assert(!h.calls.some(c=>c.url.endsWith(':commit-next')));
- assert.equal(h.calls.filter(c=>c.url==='/v1/playback/sessions').length,1,'preload creates no separate public session');
- const committed=await h.interceptors.LOAD(preloaded);assert(committed);assert.equal(h.receiver.state().playbackId,'ps_2');
- assert.equal(h.calls.find(c=>c.url.endsWith(':commit-next')).body.token,'private-next-token');
- await fireAll(h,0);assert(h.calls.some(c=>c.url==='/v1/playback/sessions/ps_2/timeline'&&c.body.seq===1));
- assert(!JSON.stringify(h.sent).includes('private-next-token'));assert(!JSON.stringify(h.sent).includes('/v1/media/'));
+ const before=h.calls.length;
+ for(const request of [{media:h.queueItems[0].media},{senderId:'phone',media:h.queueItems[0].media},{senderId:'stranger'}])assert.equal(h.interceptors.PRELOAD(request),null);
+ assert.equal(h.calls.length,before);assert.equal(h.receiver.state().playbackId,'ps_1');
+ assert(!source.includes(':prepare-next'));assert(!source.includes(':commit-next'));
 });
-test('unavailable private preparation leaves current authority and ordinary advance works',async()=>{
- const h=await harness({queue:true,noPrivateURL:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
- assert.equal(await h.interceptors.PRELOAD({media:h.queueItems[1].media}),null);assert.equal(h.receiver.state().playbackId,'ps_1');
- h.events.MEDIA_FINISHED();await settle();assert.equal(h.receiver.state().playbackId,'ps_2');
- assert(h.calls.some(c=>c.url.endsWith(':advance')));assert(!h.calls.some(c=>c.url.endsWith(':commit-next')));
-});
-test('progressive queue completion advances normally when CAF never preloads',async()=>{
- const h=await harness({queue:true,direct:true,audioOnly:true,container:'mp3'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
- h.events.MEDIA_FINISHED();await settle();
- assert.equal(h.receiver.state().playbackId,'ps_2');assert(h.calls.some(c=>c.url.endsWith(':advance')));
+test('real progressive completion adopts only the server ordinary advance result',async()=>{
+ const h=await harness({queue:true,direct:true,audioOnly:true,container:'flac'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,{title:'Old song',kind:'song'},null,{queueId:'q-1',entryId:'entry-1'});
+ h.events.MEDIA_FINISHED({endedReason:'FINISHED'});await settle();
+ assert.equal(h.receiver.state().playbackId,'ps_2');assert.equal(h.loads.length,2);assert.equal(h.loads[1].media.contentType,'audio/flac');assert.equal(h.loads[1].media.metadata,undefined,'the next item never inherits the old identity');
+ const advance=h.calls.find(c=>c.url.endsWith(':advance'));assert(advance);assert.equal(advance.headers['If-Match'],'1');assert.deepEqual(advance.body,{reason:'completion'});assert(advance.headers['Idempotency-Key']);
  assert(!h.calls.some(c=>c.url.endsWith(':prepare-next')||c.url.endsWith(':commit-next')));
  assert(!h.calls.some(c=>c.url.endsWith('/timeline')&&c.body.state==='ended'),'the transition transaction owns the end of the old occurrence');
+ await fireAll(h,0);assert(h.calls.some(c=>c.url==='/v1/playback/sessions/ps_2/timeline'&&c.body.seq===1));
+ assert(!JSON.stringify(h.sent).includes('/v1/media/'));
 });
-test('a committed private URL retains exactly the prepared CAF media identity',async()=>{
- const h=await harness({queue:true,direct:true,audioOnly:true,container:'flac',commitPrivateURL:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
- const preloaded=await h.interceptors.PRELOAD({media:h.queueItems[1].media});
- assert.equal(h.receiver.state().playbackId,'ps_1');
- const committed=await h.interceptors.LOAD(preloaded);
- assert.equal(committed.media,preloaded.media);assert.equal(h.resolved(committed),'/v1/media/private-next');
- assert.equal(h.receiver.state().playbackId,'ps_2');assert(!h.calls.some(c=>c.method==='DELETE'));
- assert(!h.calls.some(c=>c.url.endsWith('/timeline')&&c.body.state==='ended'));
+test('progressive completion has no boundary wait and duplicate events cannot advance twice',async()=>{
+ const h=await harness({queue:true,direct:true,audioOnly:true,container:'mp3'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
+ h.events.MEDIA_FINISHED();h.events.MEDIA_FINISHED();await settle();
+ assert.equal(h.calls.filter(c=>c.url.endsWith(':advance')).length,1);assert.equal(h.loads.length,2);assert.equal(h.receiver.state().playbackId,'ps_2');
+ assert(![...h.timers.values()].some(t=>t.ms===5000),'no progressive boundary timeout');
 });
-test('a stale next nonce and server-canceled preparation never adopt another session',async()=>{
- const h=await harness({queue:true,rejectCommit:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
- const preloaded=await h.interceptors.PRELOAD({media:h.queueItems[1].media});
- assert.equal(await h.interceptors.LOAD(preloaded),null);assert.equal(h.receiver.state().playbackId,'ps_1');
- await h.interceptors.STOP({});assert.equal(await h.interceptors.LOAD(preloaded),null);
+test('end of the actual server queue ends the occurrence without preparing another slot',async()=>{
+ const h=await harness({queue:true,queueEnd:true,direct:true,audioOnly:true,container:'mp3'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
+ h.events.MEDIA_FINISHED();await settle();
+ assert.equal(h.receiver.state().playbackId,null);assert(h.calls.some(c=>c.url.endsWith('/timeline')&&c.body.state==='ended'));
+ assert(h.calls.some(c=>c.url==='/v1/playback/sessions/ps_1'&&c.method==='DELETE'));assert(!h.calls.some(c=>c.url.endsWith(':advance')));
+});
+test('non-finished events and a rejected ordinary advance cannot fabricate a next session',async()=>{
+ const h=await harness({queue:true,rejectAdvance:true,direct:true,audioOnly:true,container:'mp3'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
+ h.events.MEDIA_FINISHED({endedReason:'INTERRUPTED'});await settle();assert.equal(h.receiver.state().playbackId,'ps_1');assert(!h.calls.some(c=>c.url.endsWith(':advance')));
+ h.events.MEDIA_FINISHED({endedReason:'FINISHED'});await settle();assert.equal(h.receiver.state().playbackId,null);assert.equal(h.loads.length,1);
+});
+
+test('a failed next media load ends the newly adopted server occurrence',async()=>{
+ const h=await harness({queue:true,nextLoadFails:true,direct:true,audioOnly:true,container:'mp3'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
+ h.events.MEDIA_FINISHED();await settle();
+ assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'error');
+ assert(h.calls.some(c=>c.url==='/v1/playback/sessions/ps_2'&&c.method==='DELETE'),'cleanup follows the adopted server authority');
 });
 
 test('decoded multichannel and rate declarations require exact positive output configurations',async()=>{
@@ -370,13 +372,12 @@ test('only the matching playable audio render plan describes the delivered audio
  await assert.rejects(()=>bad.receiver.startPlayback('song',0),/unsupported_media_container/);
 });
 
-test('private prepare uses the matching render container without granting current-session authority',async()=>{
- const h=await harness({queue:true,direct:true,audioOnly:true,container:'mov',audioRender:{mode:'converted',container:'flac',codec:'flac'}});
+test('ordinary advance keeps the matching delivered audio render MIME without applying client gain',async()=>{
+ const h=await harness({queue:true,direct:true,audioOnly:true,container:'mov',audioRender:{mode:'converted',container:'flac',codec:'flac',loudnessAppliedDb:-12,gain:-12}});
  await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
- const preloaded=await h.interceptors.PRELOAD({media:h.queueItems[1].media});
- assert.equal(preloaded.media.contentType,'audio/flac');assert.equal(h.resolved(preloaded),'/v1/media/private-next');
- assert.equal(h.receiver.state().playbackId,'ps_1');assert(!h.calls.some(c=>c.url.endsWith(':commit-next')));
- assert(!JSON.stringify(h.sent).includes('/v1/media/'));
+ h.events.MEDIA_FINISHED();await settle();
+ assert.equal(h.receiver.state().playbackId,'ps_2');assert.equal(h.loads[1].media.contentType,'audio/flac');assert.equal(h.resolved(h.loads[1]),'/v1/media/grant');
+ assert(!('gain' in h.loads[1].media));assert(!('volume' in h.loads[1].media));assert(!JSON.stringify(h.sent).includes('/v1/media/'));
 });
 
 test('a CAF load rejection ends its owned server session and leaves an honest error card',async()=>{

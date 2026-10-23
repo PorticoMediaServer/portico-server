@@ -139,7 +139,7 @@
     status.textContent = message || '';
     if (tone) { status.setAttribute('data-tone', tone); } else { status.removeAttribute('data-tone'); }
   }
-  /** A short notice over whatever is on screen ("Reconnecting…"). */
+  /** An approved notice over whatever is on screen. Transient recovery is silent. */
   function notice(message, ms) {
     clearTimeout(noticeTimer);
     if (viewCall('notice', [message || ''])) {
@@ -208,8 +208,6 @@
   var playback = null;
   var mediaAddresses = new Map(); // bounded receiver-private addresses; never placed in CAF status
   function mediaAddress(request) { return request && request.media ? mediaAddresses.get(request.media.contentId) || '' : ''; }
-  var queueBoundaryTimer = null;
-  var queueNext = null, queueNonce = token(16); // one private lookahead, owned by the current session
   function queuePath(id) { return '/v1/queues/' + encodeURIComponent(id); }
   function queueRef(value) { return value && typeof value.queueId === 'string' && typeof value.entryId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(value.queueId) && /^[A-Za-z0-9._:-]{1,128}$/.test(value.entryId) ? {queueId:value.queueId,entryId:value.entryId} : null; }
   var manager = null, castContext = null, profiled = false;
@@ -521,17 +519,17 @@
     var metadata = castMetadata(meta, image);
     if (metadata) media.metadata = metadata;
     var load = {media: media, currentTime: Math.max(0, (p.startPositionMs || 0) / 1000), autoplay: autoplay !== false};
-    // A local CAF load must initialize its default queue before QueueManager inserts lookahead.
-    // QueueData is read before a LOAD interceptor, so only local loads initialize it here.
-    if (queueRef(session.queue)) load.queueData = {items:[{media:media,autoplay:load.autoplay,startTime:load.currentTime}],startIndex:0};
+    // Only the actual current media enters CAF. The server owns the next item;
+    // preloadTime remains a hint and never establishes that bytes were prefetched.
+    if (queueRef(session.queue)) load.queueData = {items:[{media:media,autoplay:load.autoplay,startTime:load.currentTime,preloadTime:10}],startIndex:0};
     return load;
   }
 
   async function stopPlayback(ended) {
-    clearTimeout(reportTimer); clearTimeout(bufferingTimer); clearTimeout(queueBoundaryTimer);
+    clearTimeout(reportTimer); clearTimeout(bufferingTimer);
     if (!playback) return;
     var id = playback.id, at = Math.round(position() * 1000);
-    playback = null; meta = null; queueNext = null; queueNonce = token(16);
+    playback = null; meta = null;
     if (manager) manager.stop();
     mediaAddresses.clear();
     showIdle();
@@ -542,7 +540,7 @@
    * playing here is replaced in the same request, so this TV holds one playback slot. */
   async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue) {
     if (!session || !manager || !/^[A-Za-z0-9_-]{1,128}$/.test(itemId)) throw new Error('playback_unavailable');
-    clearTimeout(reportTimer); clearTimeout(bufferingTimer); clearTimeout(queueBoundaryTimer);
+    clearTimeout(reportTimer); clearTimeout(bufferingTimer);
     var replaces = playback && playback.id;
     playback = null;
     meta = identity || null;
@@ -581,65 +579,24 @@
     reportSeq = 0; reportFailures = 0;
     return load;
   }
-  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){try{queueNext=null;queueNonce=token(16);var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await manager.load(load);showPlaying();scheduleReport(0);await enqueueNext().catch(function(){});return playback;}catch(e){if(playback)await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e;}}); }
+  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await manager.load(load);showPlaying();scheduleReport(0);return playback;}catch(e){if(playback)await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e;}}); }
 
-  /** CAF owns the media queue/preload buffer; the server owns order, grants and session slots.
-   * A queue item is only a nonce until PRELOAD asks the server for its private next window. */
-  async function enqueueNext() {
-    if (!playback || !playback.queue || !manager.getQueueManager) return;
-    var owner = playback, head = (await api(queuePath(owner.queue.queueId), {method:'GET'})).body;
-    if (playback !== owner || !head.next || !head.next.available) return;
-    var queues = manager.getQueueManager();
-    // Bound lookahead to one even after a retry or repeated PLAYING event.
-    if (queueNext) return;
-    queueNext = {owner:owner,revision:head.revision,nonce:queueNonce,prepared:null};
-    queues.insertItems([{autoplay:true,preloadTime:10,media:{contentId:'portico-next',contentType:'application/x-mpegurl',customData:{porticoQueue:queueNonce}}}]);
-  }
-  function isPrivateNext(request) {
-    return !!queueNext && queueNext.owner === playback && request && !request.senderId && request.media && request.media.customData && request.media.customData.porticoQueue === queueNext.nonce;
-  }
-  async function preloadNext(request) {
-    if (!isPrivateNext(request)) return null;
-    var next = queueNext, owner = playback;
-    try {
-      var answer = await api(queuePath(owner.queue.queueId) + ':prepare-next', {body:{sessionId:owner.id,sessionGeneration:owner.generation},headers:{'If-Match':next.revision,'Idempotency-Key':next.key || (next.key=token(16))}});
-      if (queueNext !== next || playback !== owner) return null;
-      var prepared = answer.body;
-      if (!prepared || typeof prepared.token !== 'string' || !prepared.presentation || !prepared.presentation.url) return null;
-      var load = loadRequest({id:owner.id,itemId:prepared.itemId,presentation:prepared.presentation},'',true);
-      next.prepared = prepared; next.media = load.media; next.url = prepared.presentation.url;
-      load.media.customData = {porticoQueue:next.nonce};
-      return Object.assign({},request,{media:load.media});
-    } catch (e) { return null; }
-  }
-  async function commitNext(request) {
-    if (!isPrivateNext(request) || !queueNext.prepared) return null;
-    var next = queueNext, owner = playback;
-    var answer = await api(queuePath(owner.queue.queueId) + ':commit-next', {body:{token:next.prepared.token}});
-    if (queueNext !== next || playback !== owner) return null;
-    var current = answer.body.session;
-    if (!current || !current.presentation) throw new Error('playback_not_ready');
-    var load = loadRequest(current,'',true);
-    if (current.presentation.url === next.url) load.media = next.media;
-    delete load.queueData; // CAF is already moving through its existing queue at this boundary.
-    clearTimeout(queueBoundaryTimer);
-    playback = track(current); queueNext = null; queueNonce = token(16); meta = null;
-    resetViewPlayback();
-    reportSeq=0;reportFailures=0;recoveries=0;
-    scheduleReport(0); broadcast();
-    return Object.assign({},request,load);
-  }
+  // V1 music is progressive: the next server occurrence starts only after the
+  // actual current media finishes. CAF preloadTime is a hint, not a buffer or
+  // gapless promise; there is no private progressive PRELOAD or held response.
   async function advanceQueue() {
     if (!playback || !playback.queue) return false;
     var owner = playback;
     var head = (await api(queuePath(owner.queue.queueId),{method:'GET'})).body;
-    if (playback !== owner) return false;
+    if (playback !== owner || !head.next || !head.next.available) return false;
     var answer = await api(queuePath(owner.queue.queueId) + ':advance',{body:{reason:'completion'},headers:{'If-Match':head.revision,'Idempotency-Key':token(16)}});
     if (playback !== owner || !answer.body.session) return false;
-    var current=answer.body.session, load=loadRequest(current,'',true);
-    playback=track(current);queueNext=null;queueNonce=token(16);meta=null;reportSeq=0;
-    resetViewPlayback();
-    await manager.load(load);showPlaying();scheduleReport(0);await enqueueNext();broadcast();return true;
+    var current=answer.body.session;
+    playback=track(current);meta=null;reportSeq=0;reportFailures=0;recoveries=0;
+    showLoading(null); // Never label the new occurrence with the old title or artwork.
+    try { await manager.load(loadRequest(current,'',true)); }
+    catch(e) { await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e; }
+    showPlaying();scheduleReport(0);broadcast();return true;
   }
 
   // --- Timeline: progress, lease renewal and observation in one report -------
@@ -673,12 +630,10 @@
   async function adoptPresentation(updated, autoplay) {
     if (!playback || updated.id !== playback.id) return;
     var fresh = updated.presentation.generation !== playback.generation;
-    if (fresh) { queueNext=null; queueNonce=token(16); clearTimeout(queueBoundaryTimer); }
     playback = track(updated);
-    if (!fresh) { if(queueNext)queueNext.owner=playback; return; }
+    if (!fresh) return;
     await manager.load(loadRequest(updated, '', autoplay));
     showPlaying();
-    await enqueueNext().catch(function(){});
   }
   /** PATCH the session. A 412 carries the server's session: adopt it and apply the change to it. */
   async function change(body) {
@@ -830,14 +785,15 @@
     // itself with its own credential.
     manager.setMessageInterceptor(types.LOAD, function (request) {
       var custom = (request && request.media && request.media.customData) || {};
-      if (isPrivateNext(request)) return serial(function(){return commitNext(request);}).catch(function(){return null;});
       if (!custom.itemId || fromOther(request)) { return null; }
       var identity = displayMeta(custom) || (request.media.metadata ? displayMeta({title: request.media.metadata.title, subtitle: request.media.metadata.subtitle || request.media.metadata.seriesTitle}) : null);
       return serial(function(){recoveries=0;return resolvePlayback(custom.itemId,custom.startSeconds,identity);}).then(function(load){showPlaying();scheduleReport(0);return load;}).catch(function(e){showError(e&&(e.code||e.message));return null;});
     });
     // Play and pause are the player's own; the timeline reports them. A seek the server must
     // produce again is sent to it and the new presentation loaded here instead.
-    if (types.PRELOAD) manager.setMessageInterceptor(types.PRELOAD, function(request){return serial(function(){return preloadNext(request);});});
+    // Progressive audio cannot use CAF's adaptive preload. No speculative URL
+    // or server preparation is produced; ordinary completion owns the transition.
+    if (types.PRELOAD) manager.setMessageInterceptor(types.PRELOAD, function(){return null;});
     // Standard queue mutation commands must pass the same controller gate as LOAD.
     ['GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].forEach(function(name){if(types[name])manager.setMessageInterceptor(types[name],function(request){return fromOther(request)?null:request;});});
     // CAF maps QUEUE_NEXT/PREV to QUEUE_UPDATE (jump +/-1); those enum values
@@ -904,18 +860,17 @@
     manager.addEventListener(events.BUFFERING,function(e){viewBuffering=e.isBuffering===true;playingView();clearTimeout(bufferingTimer);if(e.isBuffering)bufferingTimer=setTimeout(function(){recover('stalled_without_data');},20000);});
     // The title is over whether or not its last report gets through: the TV must not stay on a
     // finished title, still reporting, with nobody connected to stop it.
-    manager.addEventListener(events.MEDIA_FINISHED,function(event){if(event&&event.endedReason&&event.endedReason!=='FINISHED')return;serial(async function(){
-      // A private next item changes authority only through commit-next when CAF loads it.
-      if (queueNext && queueNext.prepared) {
-        var owner=playback;
-        clearTimeout(queueBoundaryTimer);
-        queueBoundaryTimer=setTimeout(function(){serial(async function(){if(playback!==owner)return;queueNext=null;if(!await advanceQueue())await stopPlayback(true);}).catch(function(){});},5000);
-        return;
-      }
-      if (await advanceQueue()) return;
-      try{await report('ended');}finally{notice('');await stopPlayback(true);}
-    }).catch(function(){serial(function(){return stopPlayback(true);}).catch(function(){});});});
-    if(events.PLAYER_LOAD_COMPLETE)manager.addEventListener(events.PLAYER_LOAD_COMPLETE,function(){serial(enqueueNext).catch(function(){});});
+    manager.addEventListener(events.MEDIA_FINISHED,function(event){
+      if(event&&event.endedReason&&event.endedReason!=='FINISHED')return;
+      var owner=playback;
+      if(!owner)return;
+      serial(async function(){
+        // Duplicate/stale completion queued before a new occurrence cannot end it.
+        if(playback!==owner)return;
+        if(await advanceQueue())return;
+        try{await report('ended');}finally{notice('');await stopPlayback(true);}
+      }).catch(function(){serial(function(){if(playback===owner)return stopPlayback(true);}).catch(function(){});});
+    });
     if(events.PLAYER_LOADING)manager.addEventListener(events.PLAYER_LOADING,function(){
       pictureReady=false;viewBuffering=false;activeTrackKey=null;
       if(!viewLoading){if(meta&&meta.title)showLoading(meta);else viewCall('splash');}
@@ -938,7 +893,7 @@
     });
     var statusInterval=setInterval(function(){if(playback){broadcast();playingView();}},2000);
     if(cast.framework.system.EventType.SHUTDOWN)context.addEventListener(cast.framework.system.EventType.SHUTDOWN,function(){
-      resetViewPlayback();clearInterval(statusInterval);clearTimeout(reportTimer);clearTimeout(bufferingTimer);clearTimeout(queueBoundaryTimer);clearTimeout(errorTimer);clearTimeout(noticeTimer);if(pendingPair)clearTimeout(pendingPair.timer);
+      resetViewPlayback();clearInterval(statusInterval);clearTimeout(reportTimer);clearTimeout(bufferingTimer);clearTimeout(errorTimer);clearTimeout(noticeTimer);if(pendingPair)clearTimeout(pendingPair.timer);
     });
     // The standard idle timeout closes the app when nothing is playing and nobody is connected (CAST-01 §5).
     context.start({ customNamespaces: (function () { var n = {}; n[NAMESPACE] = cast.framework.system.MessageType.JSON; return n; })() });
