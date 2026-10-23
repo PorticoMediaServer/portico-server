@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"database/sql"
+	"errors"
 	"net/url"
 	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/internal/identity"
@@ -43,6 +44,9 @@ func (s *Store) ServerReturnRegistration(ctx context.Context, a directory.Server
 		return out, e
 	}
 	out = serverreturn.Registration{ID: id, Origin: t.origin}
+	if e = bindOwnerRegistrationTx(ctx, tx, a, out, t); e != nil {
+		return serverreturn.Registration{}, e
+	}
 	return out, tx.Commit()
 }
 
@@ -183,6 +187,13 @@ func (s *Store) CompleteServerReturn(ctx context.Context, a identity.CurrentFami
 	defer tx.Rollback()
 	facts, e := AuthorizeCurrentFamilyTx(ctx, tx, a)
 	if e != nil {
+		return out, e
+	}
+	owner, e := readOwnerStart(ctx, tx, id, false, false)
+	if e == nil {
+		return completeOwnerReturnTx(ctx, tx, a, owner, facts)
+	}
+	if !errors.Is(e, sql.ErrNoRows) {
 		return out, e
 	}
 	pre, e := readReturn(ctx, tx, id, false)

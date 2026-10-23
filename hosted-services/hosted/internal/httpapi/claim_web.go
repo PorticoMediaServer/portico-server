@@ -96,7 +96,26 @@ func (h *ClaimHandler) web(w http.ResponseWriter, r *http.Request) bool {
 		claimFailure(w, claimweb.ErrInvalid)
 		return true
 	}
-	if path == "/v1/server-claims/pending" || path == "/v1/server-claims/events" {
+	if path == "/v1/server-claims/pending" {
+		var body claimweb.PendingRequest
+		if !decode(w, r, &body) {
+			return true
+		}
+		if body.OwnerStart != nil {
+			p, e := h.Web.Store.RegisterOwnerStart(r.Context(), body.Original(), *body.OwnerStart, h.Web.Audience, h.Web.Keys.SealKey)
+			claimRespond(w, p, e)
+			return true
+		}
+		q, e := claimweb.Verify(body.Original(), h.Web.Audience, time.Now())
+		if e != nil {
+			claimFailure(w, e)
+			return true
+		}
+		p, e := h.Web.Store.RegisterWebClaim(r.Context(), q, h.Web.Keys.SealKey)
+		claimRespond(w, p, e)
+		return true
+	}
+	if path == "/v1/server-claims/events" {
 		var signed claimweb.Signed
 		if !decode(w, r, &signed) {
 			return true
@@ -104,11 +123,6 @@ func (h *ClaimHandler) web(w http.ResponseWriter, r *http.Request) bool {
 		q, e := claimweb.Verify(signed, h.Web.Audience, time.Now())
 		if e != nil {
 			claimFailure(w, e)
-			return true
-		}
-		if path == "/v1/server-claims/pending" {
-			p, e := h.Web.Store.RegisterWebClaim(r.Context(), q, h.Web.Keys.SealKey)
-			claimRespond(w, p, e)
 			return true
 		}
 		ctx, cancel := context.WithDeadline(r.Context(), q.ExpiresAt)

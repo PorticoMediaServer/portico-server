@@ -44,6 +44,18 @@ func (s *Store) ApproveClaim(ctx context.Context, expected identity.CurrentFamil
 		return empty, e
 	}
 	defer tx.Rollback()
+	// Serialize with pending registration: an owner operation is approved only
+	// by its code consumer, which binds the actual family and frozen start.
+	if _, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('claim-web:'||$1,0))`, in.ServerID); e != nil {
+		return empty, e
+	}
+	var ownerStart bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM owner_claim_starts WHERE operation_id=$1)`, in.OperationID).Scan(&ownerStart); e != nil {
+		return empty, e
+	}
+	if ownerStart {
+		return empty, claims.ErrStale
+	}
 	out, e := s.approveClaimTx(ctx, tx, expected, in, audience)
 	if e != nil {
 		return empty, e
