@@ -94,6 +94,11 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	if err = validateConfig(string(raw), c.Remote); err != nil {
 		return zero, ErrConfigInvalid
 	}
+	publication, err := s.sourceCandidate(ctx, raw, c.Remote, authorize)
+	if err != nil {
+		clear(raw)
+		return zero, err
+	}
 	executable, digest, version, err := s.approveExecutable(ctx, c.Executable)
 	if err != nil {
 		return zero, err
@@ -106,6 +111,11 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	defer os.Remove(candidate)
 	if err = s.validateCandidate(ctx, executable, digest, c.Remote, candidate); err != nil {
 		return zero, err
+	}
+	if publication != nil {
+		if err = publication.CheckAfterTest(ctx); err != nil {
+			return zero, err
+		}
 	}
 	_, _, cache, floor, err := s.BackendInfo(ctx, id)
 	if err != nil {
@@ -170,6 +180,11 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	m.BackendRevision++
 	m.CacheBytes, m.CacheFloor = cache, floor
 	m.Error = ""
+	if publication != nil {
+		if err = publication.CommitTx(ctx, tx, m); err != nil {
+			return zero, err
+		}
+	}
 	receipt := Receipt{c.OperationID, id, m.ControlRevision, true, false, &m}
 	if err = s.record(tx, actor, hash, receipt); err != nil {
 		return zero, err

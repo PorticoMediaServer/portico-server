@@ -20,6 +20,7 @@ type Cmd = unsafe extern "C" fn(Handle, *const *const c_char) -> c_int;
 type CmdNode = unsafe extern "C" fn(Handle,*mut Node,*mut Node)->c_int;
 type FreeNode = unsafe extern "C" fn(*mut Node);
 type Get = unsafe extern "C" fn(Handle, *const c_char) -> *mut c_char;
+type GetProperty = unsafe extern "C" fn(Handle,*const c_char,c_int,*mut c_void)->c_int;
 type Free = unsafe extern "C" fn(*mut c_void);
 type ApiVersion = unsafe extern "C" fn() -> u64;
 #[repr(C)]struct Event{id:c_int,error:c_int,reply:u64,data:*mut c_void}
@@ -39,6 +40,7 @@ pub struct Api {
     command_node:CmdNode,
     free_node:FreeNode,
     get: Get,
+    get_property:GetProperty,
     free: Free,
     wait: Wait,
     pub version: u64,
@@ -54,7 +56,7 @@ impl Api {
             Ok(Arc::new(Self { create:symbol!("mpv_create",Create), initialize:symbol!("mpv_initialize",Initialize),
                 destroy:symbol!("mpv_terminate_destroy",Destroy), option:symbol!("mpv_set_option_string",Set),
                 property:symbol!("mpv_set_property_string",Set), command:symbol!("mpv_command",Cmd),command_node:symbol!("mpv_command_node",CmdNode),free_node:symbol!("mpv_free_node_contents",FreeNode),
-                get:symbol!("mpv_get_property_string",Get), free:symbol!("mpv_free",Free),wait:symbol!("mpv_wait_event",Wait), _library:lib,version }))
+                get:symbol!("mpv_get_property_string",Get),get_property:symbol!("mpv_get_property",GetProperty), free:symbol!("mpv_free",Free),wait:symbol!("mpv_wait_event",Wait), _library:lib,version }))
         }
     }
     pub unsafe fn symbol<T: Copy>(&self, name: &[u8]) -> Result<T> {
@@ -194,6 +196,36 @@ impl Mpv {
             let value=CStr::from_ptr(p).to_string_lossy().into_owned();(self.api.free)(p.cast());Some(value)}
     }
     fn number(&self,name:&str)->Option<f64> {self.property(name)?.parse().ok().filter(|x:&f64|x.is_finite())}
+    /// Actual decoder inventory, not a hardware/output or per-resource decode test.
+    /// mpv.io/manual/stable/#property-list: decoder-list's MPV_FORMAT_NODE maps.
+    pub fn decoder_inventory(&self)->Result<Vec<String>>{
+        let _transport=self.generation.lock().map_err(|_|Error::EngineFailure)?;
+        if self.retired.load(Ordering::Acquire){return Err(Error::EngineUnavailable)}
+        let mut node=Node{value:NodeValue{integer:0},format:0};
+        status(unsafe{(self.api.get_property)(self.handle,c"decoder-list".as_ptr(),6,(&mut node as *mut Node).cast())})?;
+        let result=(||unsafe{
+            if node.format!=7||node.value.list.is_null(){return Err(Error::EngineFailure)}
+            let list=&*node.value.list;
+            if !(1..=4096).contains(&list.length)||list.values.is_null(){return Err(Error::EngineFailure)}
+            let mut codecs=std::collections::BTreeSet::new();
+            for index in 0..list.length as usize{
+                let entry=&*list.values.add(index);
+                if entry.format!=8||entry.value.list.is_null(){return Err(Error::EngineFailure)}
+                let map=&*entry.value.list;
+                if !(1..=16).contains(&map.length)||map.values.is_null()||map.keys.is_null(){return Err(Error::EngineFailure)}
+                for field in 0..map.length as usize{
+                    let key=*map.keys.add(field);let value=&*map.values.add(field);
+                    if key.is_null()||CStr::from_ptr(key)!=c"codec"{continue}
+                    if value.format!=1||value.value.string.is_null(){return Err(Error::EngineFailure)}
+                    let codec=CStr::from_ptr(value.value.string).to_str().map_err(|_|Error::EngineFailure)?;
+                    if codec.is_empty()||codec.len()>64||!codec.bytes().all(|c|c.is_ascii_lowercase()||c.is_ascii_digit()||matches!(c,b'_'|b'-'|b'.'|b'+')){return Err(Error::EngineFailure)}
+                    codecs.insert(codec.to_owned());
+                }
+            }
+            Ok(codecs.into_iter().collect())
+        })();
+        unsafe{(self.api.free_node)(&mut node)};result
+    }
     fn flag(&self,name:&str)->bool {self.property(name).as_deref()==Some("yes")}
     pub fn handle(&self)->Handle {self.handle}
     /// App-wide DSP. No output identity participates in lookup or persistence. The labelled
@@ -447,10 +479,14 @@ impl Mpv {
     pub(crate) fn cached_native_window(&self)->usize{self.native_window.load(Ordering::Acquire)}
     pub fn audio_facts(&self)->AudioFacts {
         let transport=self.generation.lock().unwrap_or_else(|x|x.into_inner());
+        let current=self.matches_generation(*transport)&&self.loaded.load(Ordering::Acquire)
+            &&!self.starting.load(Ordering::Acquire)&&!self.failed.load(Ordering::Acquire)
+            &&!self.flag("eof-reached")&&!self.flag("idle-active");
+        let positive=|name:&str|if current{self.number(name).filter(|n|*n>0.0&&*n<=9_007_199_254_740_991.0).map(|n|n as u64)}else{None};
         let (equalizer_enabled,eq_applied)=self.equalizer.lock().map(|settings|(settings.enabled,self.actual_equalizer_applied())).unwrap_or((false,false));
-        AudioFacts{generation:*transport,requested_exclusive:self.exclusive,source_rate:self.number("audio-params/samplerate").map(|x|x as u64),
-            output_rate:self.number("audio-out-params/samplerate").map(|x|x as u64),output_channels:self.number("audio-out-params/channel-count").map(|x|x as u64),
-            output_format:self.property("audio-out-params/format"),bit_exact_capture_verified:false,
+        AudioFacts{generation:*transport,requested_exclusive:self.exclusive,source_rate:positive("audio-params/samplerate"),
+            output_rate:positive("audio-out-params/samplerate"),output_channels:positive("audio-out-params/channel-count"),
+            output_format:if current{self.property("audio-out-params/format").filter(|format|!format.is_empty())}else{None},bit_exact_capture_verified:false,
             equalizer_enabled,eq_applied,leveling_applied:self.actual_leveling_applied(),
             bit_perfect_excluded_by_equalizer:equalizer_enabled||!self.equalizer_chain_known.load(Ordering::Acquire)}
     }
@@ -490,6 +526,7 @@ mod local_source_tests {
         let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native library path required");
         let fixture=std::env::var_os("PORTICO_TEST_PCM_FIXTURE").expect("owned fixture path required");
         let engine=Mpv::new(Api::open(Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
+        let inventory=engine.decoder_inventory().unwrap();assert!(inventory.iter().any(|codec|codec=="pcm_s32le"));assert!(inventory.iter().any(|codec|codec=="ffv1"));
         engine.load_local(Path::new(&fixture),1,0.0,true).unwrap();
         let until=std::time::Instant::now()+std::time::Duration::from_secs(5);
         let mut advanced=false;
@@ -500,6 +537,7 @@ mod local_source_tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(advanced,"native PCM did not advance");
+        assert_eq!(engine.audio_facts().source_rate,Some(48000));assert_eq!(engine.audio_facts().output_rate,Some(48000));
         for gain in [f64::NAN,0.0,33.0]{assert_eq!(engine.execute(Command::Processing{generation:1,gain}),Err(Error::InvalidCommand));}
         engine.execute(Command::Processing{generation:1,gain:0.5}).unwrap();
         assert!(engine.property("af").unwrap().contains("@portico-leveling:"));
@@ -511,6 +549,7 @@ mod local_source_tests {
         assert_eq!(engine.started_entry.load(Ordering::Acquire),first_entry);
         engine.frame_drawn(1);
         engine.load_local(Path::new(&fixture),2,0.0,true).unwrap();
+        let loading=engine.audio_facts();assert_eq!(loading.generation,2);assert_eq!(loading.source_rate,None);assert_eq!(loading.output_rate,None);assert_eq!(loading.output_channels,None);assert_eq!(loading.output_format,None);
         assert_eq!(engine.execute(Command::Processing{generation:1,gain:0.25}),Err(Error::StaleGeneration));
         let second_entry=engine.expected_entry.load(Ordering::Acquire);assert!(second_entry>first_entry);
         assert_eq!(engine.frame_drawn.load(Ordering::Acquire),0);

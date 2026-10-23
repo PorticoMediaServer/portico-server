@@ -50,6 +50,7 @@ export const selectionMessages = {
   'next.selection.oneLibrary': 'Delete works on one library at a time',
   'next.selection.owner': 'Owner',
   'next.selection.ownerOnly': 'Owner only',
+  'next.selection.onlyYou': 'Only you',
   'next.selection.editNeedsType': 'Edit needs one type',
   'next.selection.editOneType': 'Edit works on one type at a time',
   'next.selection.mixedExplanation': 'You’ve picked {types}. Their fields are different, so there is no single form for them. Keep one type to edit it, or use Add to playlist, Add to queue and My List on all of them.',

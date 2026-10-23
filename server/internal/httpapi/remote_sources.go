@@ -9,13 +9,21 @@ import (
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/remotesources"
+	"portico.local/server/internal/storage"
 	"time"
 )
 
 // Never return transport errors: even url.Error may contain a private target.
 func remoteSourceFailure(w http.ResponseWriter, err error) {
 	if revisionFailure(w, err) {
+		return
+	}
+	if errors.Is(err, storage.ErrBusy) || errors.Is(err, remotemedia.ErrBusy) {
+		// Local source capacity is not an asynchronous provider throttle report.
+		// Use the existing busy response without a provider Retry-After time.
+		failure(w, remotemedia.ErrBusy)
 		return
 	}
 	if errors.Is(err, catalog.ErrVisibilityBuilding) {
