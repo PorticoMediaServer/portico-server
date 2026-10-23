@@ -4446,7 +4446,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -4653,7 +4662,16 @@ export const schemas = {
                 "category": {
                   "type": "string"
                 },
+                "channelId": {
+                  "type": "string"
+                },
                 "entityId": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "sourceId": {
                   "type": "string"
                 },
                 "view": {
@@ -6077,7 +6095,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -6284,7 +6311,16 @@ export const schemas = {
                 "category": {
                   "type": "string"
                 },
+                "channelId": {
+                  "type": "string"
+                },
                 "entityId": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "sourceId": {
                   "type": "string"
                 },
                 "view": {
@@ -42080,7 +42116,16 @@ export const schemas = {
                                     "category": {
                                       "type": "string"
                                     },
+                                    "channelId": {
+                                      "type": "string"
+                                    },
                                     "entityId": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
                                       "type": "string"
                                     },
                                     "view": {
@@ -42287,7 +42332,16 @@ export const schemas = {
                                 "category": {
                                   "type": "string"
                                 },
+                                "channelId": {
+                                  "type": "string"
+                                },
                                 "entityId": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
                                   "type": "string"
                                 },
                                 "view": {
@@ -43378,7 +43432,16 @@ export const schemas = {
                                 "category": {
                                   "type": "string"
                                 },
+                                "channelId": {
+                                  "type": "string"
+                                },
                                 "entityId": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
                                   "type": "string"
                                 },
                                 "view": {
@@ -43585,7 +43648,16 @@ export const schemas = {
                             "category": {
                               "type": "string"
                             },
+                            "channelId": {
+                              "type": "string"
+                            },
                             "entityId": {
+                              "type": "string"
+                            },
+                            "provenance": {
+                              "type": "string"
+                            },
+                            "sourceId": {
                               "type": "string"
                             },
                             "view": {
@@ -45134,7 +45206,16 @@ export const schemas = {
                                     "category": {
                                       "type": "string"
                                     },
+                                    "channelId": {
+                                      "type": "string"
+                                    },
                                     "entityId": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
                                       "type": "string"
                                     },
                                     "view": {
@@ -45341,7 +45422,16 @@ export const schemas = {
                                 "category": {
                                   "type": "string"
                                 },
+                                "channelId": {
+                                  "type": "string"
+                                },
                                 "entityId": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
                                   "type": "string"
                                 },
                                 "view": {
@@ -46985,7 +47075,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -47192,7 +47291,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -48280,7 +48388,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -48487,7 +48604,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -50036,7 +50162,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -50243,7 +50378,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -51686,7 +51830,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -51893,7 +52046,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -52989,7 +53151,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -53196,7 +53367,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -54505,7 +54685,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -54712,7 +54901,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -55803,7 +56001,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -56010,7 +56217,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -57559,7 +57775,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -57766,7 +57991,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -59410,7 +59644,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -59617,7 +59860,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -60705,7 +60957,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -60912,7 +61173,16 @@ export const schemas = {
                 "category": {
                   "type": "string"
                 },
+                "channelId": {
+                  "type": "string"
+                },
                 "entityId": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "sourceId": {
                   "type": "string"
                 },
                 "view": {
@@ -62461,7 +62731,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -62668,7 +62947,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -64848,7 +65136,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -65055,7 +65352,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -66874,7 +67180,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -67081,7 +67396,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -71951,7 +72275,16 @@ export const schemas = {
                                     "category": {
                                       "type": "string"
                                     },
+                                    "channelId": {
+                                      "type": "string"
+                                    },
                                     "entityId": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
                                       "type": "string"
                                     },
                                     "view": {
@@ -72158,7 +72491,16 @@ export const schemas = {
                                 "category": {
                                   "type": "string"
                                 },
+                                "channelId": {
+                                  "type": "string"
+                                },
                                 "entityId": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
                                   "type": "string"
                                 },
                                 "view": {
@@ -73249,7 +73591,16 @@ export const schemas = {
                                 "category": {
                                   "type": "string"
                                 },
+                                "channelId": {
+                                  "type": "string"
+                                },
                                 "entityId": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
                                   "type": "string"
                                 },
                                 "view": {
@@ -73456,7 +73807,16 @@ export const schemas = {
                             "category": {
                               "type": "string"
                             },
+                            "channelId": {
+                              "type": "string"
+                            },
                             "entityId": {
+                              "type": "string"
+                            },
+                            "provenance": {
+                              "type": "string"
+                            },
+                            "sourceId": {
                               "type": "string"
                             },
                             "view": {
@@ -75005,7 +75365,16 @@ export const schemas = {
                                     "category": {
                                       "type": "string"
                                     },
+                                    "channelId": {
+                                      "type": "string"
+                                    },
                                     "entityId": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
                                       "type": "string"
                                     },
                                     "view": {
@@ -75212,7 +75581,16 @@ export const schemas = {
                                 "category": {
                                   "type": "string"
                                 },
+                                "channelId": {
+                                  "type": "string"
+                                },
                                 "entityId": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
                                   "type": "string"
                                 },
                                 "view": {
@@ -76856,7 +77234,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -77063,7 +77450,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -78151,7 +78547,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -78358,7 +78763,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -79907,7 +80321,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -80114,7 +80537,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -81797,7 +82229,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -82004,7 +82445,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -83095,7 +83545,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -83302,7 +83761,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -84851,7 +85319,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -85058,7 +85535,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -86702,7 +87188,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -86909,7 +87404,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -87997,7 +88501,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -88204,7 +88717,16 @@ export const schemas = {
                 "category": {
                   "type": "string"
                 },
+                "channelId": {
+                  "type": "string"
+                },
                 "entityId": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "sourceId": {
                   "type": "string"
                 },
                 "view": {
@@ -89753,7 +90275,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -89960,7 +90491,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -91801,7 +92341,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -92008,7 +92557,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -95770,7 +96328,16 @@ export const schemas = {
                   "category": {
                     "type": "string"
                   },
+                  "channelId": {
+                    "type": "string"
+                  },
                   "entityId": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
                     "type": "string"
                   },
                   "view": {
@@ -95977,7 +96544,16 @@ export const schemas = {
               "category": {
                 "type": "string"
               },
+              "channelId": {
+                "type": "string"
+              },
               "entityId": {
+                "type": "string"
+              },
+              "provenance": {
+                "type": "string"
+              },
+              "sourceId": {
                 "type": "string"
               },
               "view": {
@@ -97255,7 +97831,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -97462,7 +98047,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -98757,7 +99351,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -98964,7 +99567,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -100640,7 +101252,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -100847,7 +101468,16 @@ export const schemas = {
                   "category": {
                     "type": "string"
                   },
+                  "channelId": {
+                    "type": "string"
+                  },
                   "entityId": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
                     "type": "string"
                   },
                   "view": {
@@ -102125,7 +102755,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -102332,7 +102971,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -103558,7 +104206,16 @@ export const schemas = {
                   "category": {
                     "type": "string"
                   },
+                  "channelId": {
+                    "type": "string"
+                  },
                   "entityId": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
                     "type": "string"
                   },
                   "view": {
@@ -103765,7 +104422,16 @@ export const schemas = {
               "category": {
                 "type": "string"
               },
+              "channelId": {
+                "type": "string"
+              },
               "entityId": {
+                "type": "string"
+              },
+              "provenance": {
+                "type": "string"
+              },
+              "sourceId": {
                 "type": "string"
               },
               "view": {
@@ -108914,7 +109580,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -109121,7 +109796,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -110264,7 +110948,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -110471,7 +111164,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -111696,7 +112398,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -111903,7 +112614,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -114713,7 +115433,16 @@ export const schemas = {
                   "category": {
                     "type": "string"
                   },
+                  "channelId": {
+                    "type": "string"
+                  },
                   "entityId": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
                     "type": "string"
                   },
                   "view": {
@@ -114920,7 +115649,16 @@ export const schemas = {
               "category": {
                 "type": "string"
               },
+              "channelId": {
+                "type": "string"
+              },
               "entityId": {
+                "type": "string"
+              },
+              "provenance": {
+                "type": "string"
+              },
+              "sourceId": {
                 "type": "string"
               },
               "view": {
@@ -116198,7 +116936,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -116405,7 +117152,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -118912,7 +119668,16 @@ export const schemas = {
                   "category": {
                     "type": "string"
                   },
+                  "channelId": {
+                    "type": "string"
+                  },
                   "entityId": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
                     "type": "string"
                   },
                   "view": {
@@ -119119,7 +119884,16 @@ export const schemas = {
               "category": {
                 "type": "string"
               },
+              "channelId": {
+                "type": "string"
+              },
               "entityId": {
+                "type": "string"
+              },
+              "provenance": {
+                "type": "string"
+              },
+              "sourceId": {
                 "type": "string"
               },
               "view": {
@@ -120397,7 +121171,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -120604,7 +121387,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -121973,7 +122765,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -122180,7 +122981,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -123314,7 +124124,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -123521,7 +124340,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -125203,7 +126031,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -125410,7 +126247,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -128141,7 +128987,16 @@ export const schemas = {
                                     "category": {
                                       "type": "string"
                                     },
+                                    "channelId": {
+                                      "type": "string"
+                                    },
                                     "entityId": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
                                       "type": "string"
                                     },
                                     "view": {
@@ -128348,7 +129203,16 @@ export const schemas = {
                                 "category": {
                                   "type": "string"
                                 },
+                                "channelId": {
+                                  "type": "string"
+                                },
                                 "entityId": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
                                   "type": "string"
                                 },
                                 "view": {
@@ -129439,7 +130303,16 @@ export const schemas = {
                                 "category": {
                                   "type": "string"
                                 },
+                                "channelId": {
+                                  "type": "string"
+                                },
                                 "entityId": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
                                   "type": "string"
                                 },
                                 "view": {
@@ -129646,7 +130519,16 @@ export const schemas = {
                             "category": {
                               "type": "string"
                             },
+                            "channelId": {
+                              "type": "string"
+                            },
                             "entityId": {
+                              "type": "string"
+                            },
+                            "provenance": {
+                              "type": "string"
+                            },
+                            "sourceId": {
                               "type": "string"
                             },
                             "view": {
@@ -131195,7 +132077,16 @@ export const schemas = {
                                     "category": {
                                       "type": "string"
                                     },
+                                    "channelId": {
+                                      "type": "string"
+                                    },
                                     "entityId": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
                                       "type": "string"
                                     },
                                     "view": {
@@ -131402,7 +132293,16 @@ export const schemas = {
                                 "category": {
                                   "type": "string"
                                 },
+                                "channelId": {
+                                  "type": "string"
+                                },
                                 "entityId": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
                                   "type": "string"
                                 },
                                 "view": {
@@ -133046,7 +133946,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -133253,7 +134162,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -134341,7 +135259,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -134548,7 +135475,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -136097,7 +137033,16 @@ export const schemas = {
                               "category": {
                                 "type": "string"
                               },
+                              "channelId": {
+                                "type": "string"
+                              },
                               "entityId": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
                                 "type": "string"
                               },
                               "view": {
@@ -136304,7 +137249,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -139431,7 +140385,16 @@ export const schemas = {
                         "category": {
                           "type": "string"
                         },
+                        "channelId": {
+                          "type": "string"
+                        },
                         "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
                           "type": "string"
                         },
                         "view": {
@@ -139638,7 +140601,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -161093,7 +162065,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -161300,7 +162281,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
@@ -162447,7 +163437,16 @@ export const schemas = {
                     "category": {
                       "type": "string"
                     },
+                    "channelId": {
+                      "type": "string"
+                    },
                     "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
                       "type": "string"
                     },
                     "view": {
@@ -162654,7 +163653,16 @@ export const schemas = {
                 "category": {
                   "type": "string"
                 },
+                "channelId": {
+                  "type": "string"
+                },
                 "entityId": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "sourceId": {
                   "type": "string"
                 },
                 "view": {
@@ -184278,6 +185286,100 @@ export const schemas = {
       "muted": {
         "type": "boolean"
       },
+      "observedPlayback": {
+        "properties": {
+          "audio": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "codec": {
+                "type": "string"
+              },
+              "handling": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "objectAudio": {
+                "type": "string"
+              },
+              "sampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "deliveredBitrateKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "screen": {
+            "properties": {
+              "dynamicRange": {
+                "type": "string"
+              },
+              "refreshRateHz": {
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "subtitles": {
+            "properties": {
+              "rendering": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "rendering"
+            ],
+            "type": "object"
+          },
+          "video": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "dynamicRange": {
+                "type": "string"
+              },
+              "frameRateHz": {
+                "type": "number"
+              },
+              "height": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "width": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
       "partIndex": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -186152,7 +187254,16 @@ export const schemas = {
                           "category": {
                             "type": "string"
                           },
+                          "channelId": {
+                            "type": "string"
+                          },
                           "entityId": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
                             "type": "string"
                           },
                           "view": {
@@ -186359,7 +187470,16 @@ export const schemas = {
                       "category": {
                         "type": "string"
                       },
+                      "channelId": {
+                        "type": "string"
+                      },
                       "entityId": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
                         "type": "string"
                       },
                       "view": {
