@@ -474,6 +474,7 @@ var routeLanes = map[string]string{
 	"POST /v1/auth/owner-reset/request":                                          "auth",
 	"POST /v1/auth/owner-reset/verify":                                           "auth",
 	"POST /v1/auth/portico-return/exchange":                                      "auth",
+	"POST /v1/auth/portico-return/prepare":                                       "auth",
 	"POST /v1/auth/refresh":                                                      "auth",
 	"POST /v1/auth/register":                                                     "auth",
 	"POST /v1/auth/remembered-accounts":                                          "auth",
