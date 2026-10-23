@@ -4,7 +4,7 @@ import type {DownloadAction, DownloadPreparation, DownloadTitle} from '@core/dow
 import type {DownloadsService, DownloadsSnapshot} from '@core/downloads-service.ts';
 import {Artwork, type ArtworkSource} from '../../kit/artwork';
 import {Button, Select, Switch} from '../../kit/controls';
-import {Dialog, MenuRow, Popover} from '../../kit/overlays';
+import {Dialog, Menu, type MenuEntry} from '../../kit/overlays';
 import {Icon} from '../../kit/Icon';
 import {StateView} from '../../kit/states';
 import {sameSavedDownloadsScope, type SavedDownloadsPort, type SavedDownloadRules, type SavedDownloadsSnapshot, type SavedLocalDownload, type SavedLocalDownloadGroup, type SavedOtherDownloadsConfirmation} from './downloads-port.ts';
@@ -40,12 +40,10 @@ function DownloadFacts({title, quality, bytes, browser = false}: {title: Downloa
 function Progress({percent}: {percent: number | undefined}) {
   return percent === undefined ? null : <span className={styles.progress} aria-hidden="true"><span style={{width: `${percent}%`}} /></span>;
 }
-function DownloadMenu({children}: {children: ReactNode}) {
+function DownloadMenu({items}: {items: readonly MenuEntry[]}) {
   const [open, setOpen] = useState(false);
-  return <Popover open={open} onOpenChange={setOpen} title={t('player.more')} accessibilityLabel={t('player.more')} role="menu" width={240}
-    trigger={<Button className={styles.more} variant="icon" size="small" icon="i-more" iconOnly aria-label={t('player.more')} />}>
-    <div onClick={event => { if ((event.target as HTMLElement).closest('[role="menuitem"]')) setOpen(false); }}>{children}</div>
-  </Popover>;
+  return <Menu open={open} onOpenChange={setOpen} title={t('player.more')} accessibilityLabel={t('player.more')} width={240} items={items}
+    trigger={<Button className={styles.more} variant="icon" size="small" icon="i-more" iconOnly aria-label={t('player.more')} />} />;
 }
 
 function NativeArtwork({id, revision, title, port}: {id: string; revision: number | string; title: DownloadTitle; port: SavedDownloadsPort}) {
@@ -141,7 +139,7 @@ export function LocalDownloads({port, operations, effects, server}: {port: Saved
                     {album.state === 'downloading' && <Button className={styles.rowButton} size="small" icon="i-pause" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.actionGroup(selector, album.revision, 'pause', signal))}>{t('action.pause')}</Button>}
                     {album.state === 'paused' && album.held === false && <Button className={styles.rowButton} size="small" icon="i-play" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.actionGroup(selector, album.revision, 'resume', signal))}>{t('entry.resume')}</Button>}
                     {album.state === 'failed' && album.held === false && <Button className={styles.rowButton} size="small" icon="i-retry" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.actionGroup(selector, album.revision, 'retry', signal))}>{t('action.tryAgain')}</Button>}
-                    <DownloadMenu><MenuRow onClick={() => effects.openItem(album.parentId)}>{t('web.downloads.goToTitle')}</MenuRow><MenuRow destructive onClick={() => setConfirmation({kind: 'group', group: album, title: albumTitle})}>{t('downloads.removeFromDevice')}</MenuRow></DownloadMenu>
+                    <DownloadMenu items={[{id: 'go', label: t('web.downloads.goToTitle'), onSelect: () => { if (operations.current) effects.openItem(album.parentId); }}, {id: 'remove', label: t('downloads.removeFromDevice'), destructive: true, disabled: !!busy, onSelect: () => setConfirmation({kind: 'group', group: album, title: albumTitle})}]} />
                   </span>
                 </div>;
               }
@@ -154,10 +152,8 @@ export function LocalDownloads({port, operations, effects, server}: {port: Saved
                 {item.state === 'downloading' && <Button className={styles.rowButton} size="small" icon="i-pause" loading={busy === item.id} onClick={() => perform(item.id, signal => port.action(item.id, item.revision, 'pause', signal))}>{t('action.pause')}</Button>}
                 {item.state === 'paused' && !item.held && <Button className={styles.rowButton} size="small" icon="i-play" loading={busy === item.id} onClick={() => perform(item.id, signal => port.action(item.id, item.revision, 'resume', signal))}>{t('entry.resume')}</Button>}
                 {item.state === 'failed' && !item.held && <Button className={styles.rowButton} size="small" icon="i-retry" loading={busy === item.id} onClick={() => perform(item.id, signal => port.action(item.id, item.revision, 'retry', signal))}>{t('action.tryAgain')}</Button>}
-                <DownloadMenu>
-                  {item.onServer && <MenuRow onClick={() => { if (operations.current) effects.openItem(item.itemId); }}>{t('web.downloads.goToTitle')}</MenuRow>}
-                  <MenuRow destructive onClick={() => setConfirmation({kind: 'item', item})}>{t('downloads.removeFromDevice')}</MenuRow>
-                </DownloadMenu>
+                <DownloadMenu items={[...(item.onServer ? [{id: 'go', label: t('web.downloads.goToTitle'), onSelect: () => { if (operations.current) effects.openItem(item.itemId); }}] : []),
+                  {id: 'remove', label: t('downloads.removeFromDevice'), destructive: true, disabled: !!busy, onSelect: () => setConfirmation({kind: 'item', item})}]} />
               </span>
             </div>;})}
           </div>
@@ -267,7 +263,8 @@ export function ServerDownloads({service, operations, effects, artwork, online, 
       <span className={styles.actions}>
         {!embedded && item.state === 'ready' && <Button variant="primary" className={styles.rowButton} size="small" icon="i-download" disabled={!online} loading={saving.includes(item.id)} onClick={() => saveFile(item)}>{t('web.downloads.save')}</Button>}
         {item.actions.filter(action => action !== 'remove').map(action => <Button key={action} className={styles.rowButton} size="small" disabled={!online} loading={snapshot.busy.includes(item.id)} onClick={() => { if (action === 'cancel') setConfirmation({item, action}); else act(item, action); }}>{t(action === 'pause' ? 'action.pause' : action === 'resume' ? 'web.downloads.resume' : action === 'cancel' ? 'web.downloads.stop' : 'action.tryAgain')}</Button>)}
-        <DownloadMenu><MenuRow onClick={() => effects.openItem(item.itemId)}>{t('web.downloads.goToTitle')}</MenuRow>{item.actions.includes('remove') && <MenuRow destructive onClick={() => setConfirmation({item, action: 'remove'})}>{t('action.removeShort')}</MenuRow>}</DownloadMenu>
+        <DownloadMenu items={[{id: 'go', label: t('web.downloads.goToTitle'), onSelect: () => { if (operations.current) effects.openItem(item.itemId); }},
+          ...(item.actions.includes('remove') ? [{id: 'remove', label: t('action.removeShort'), destructive: true, disabled: snapshot.busy.includes(item.id), onSelect: () => setConfirmation({item, action: 'remove'})}] : [])]} />
       </span>
     </div>)}</div>
     {!!snapshot.requests.length && <><div className={styles.downloadHeading}><h2>{t('web.downloads.requestsTitle')}</h2></div><div className={styles.downloadList} role="list">{snapshot.requests.map(({request, title}) => <div className={styles.request} key={request.requestId} role="listitem"><b>{title}</b><span>{request.totalKnown ? t('web.downloads.requestProgress', {ready: request.ready, total: request.total}) : t('web.downloads.requestPreparing')}{request.failed > 0 && <small>{t('web.downloads.requestFailed', {failed: request.failed})}</small>}<Progress percent={request.totalKnown && request.total > 0 ? request.ready / request.total * 100 : undefined} /></span></div>)}</div></>}
