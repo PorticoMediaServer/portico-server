@@ -7,7 +7,8 @@
     "web-next",
     "packages/client-core",
     "packages/design",
-    "packages/player-core"
+    "packages/player-core",
+    "packages/reader-core"
   ],
   "scripts": {
     "dev:web": "npm run dev --workspace portico-web",
@@ -15,6 +16,8 @@
     "test:core": "npm run test --workspace @portico/client-core",
     "test:cast": "node --test server/receiver/cast/test/*.test.cjs",
     "test:player": "npm run test --workspace @portico/player-core",
-    "check:player": "npm run check --workspace @portico/player-core"
+    "check:player": "npm run check --workspace @portico/player-core",
+    "test:reader": "npm run test --workspace @portico/reader-core",
+    "check:reader": "npm run check --workspace @portico/reader-core"
   }
 }
