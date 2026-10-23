@@ -842,6 +842,27 @@ func run() (runErr error) {
 	} else {
 		log.Print("Media conversion unavailable; compatible direct playback remains available")
 	}
+	meta := metadata.New(db, os.Getenv("PORTICO_TMDB_READ_ACCESS_TOKEN"))
+	meta.Admission = workAdmission.Admit
+	meta.SubtitleCredentials = subtitleProvider.SetCredentials
+	meta.SubtitleStatus = func() metadata.OpenSubtitlesStatus {
+		return metadata.OpenSubtitlesStatus(subtitleProvider.OwnerStatus())
+	}
+	meta.SubtitleCheck = func(ctx context.Context) metadata.OpenSubtitlesStatus {
+		return metadata.OpenSubtitlesStatus(subtitleProvider.Check(ctx))
+	}
+	if e = meta.ConfigureAcoustID(os.Getenv("PORTICO_ACOUSTID_CLIENT_KEY")); e != nil {
+		return e
+	}
+	cat.OwnerMetadataRevision = meta.OwnerTextRevision
+	meta.LocalArtwork = localMeta.Open
+	meta.LocalArtworkUsage = localMeta.MeasuredArtworkUsage
+	if e = meta.SetArtworkDirectory(storagepaths.Path(state, "artwork")); e != nil {
+		return e
+	}
+	// Bind the same configured metadata service before the scanner can call it.
+	// Generation remains closed until its retained source runtime is composed.
+	scanner.EpisodeThumbnails = meta.ScanEpisodeThumbnails
 	supervise.Supervise(ctx, "cmd.remote-sources", sources.Run)
 	supervise.Supervise(ctx, "cmd.library-channels", generatedChannels.Run)
 	supervise.Supervise(ctx, "cmd.live-refresh", func(life context.Context) { liveSources.RunRefresh(life, livechannels.SourceFetcher{}) })
@@ -866,19 +887,6 @@ func run() (runErr error) {
 	drain.add("scanner", cancel, scanDone)
 	drain.add("analysis-retention", nil, retentionDone)
 	drain.add("segment-detection", nil, segmentsDone)
-	meta := metadata.New(db, os.Getenv("PORTICO_TMDB_READ_ACCESS_TOKEN"))
-	meta.Admission = workAdmission.Admit
-	meta.SubtitleCredentials = subtitleProvider.SetCredentials
-	meta.SubtitleStatus = func() metadata.OpenSubtitlesStatus {
-		return metadata.OpenSubtitlesStatus(subtitleProvider.OwnerStatus())
-	}
-	meta.SubtitleCheck = func(ctx context.Context) metadata.OpenSubtitlesStatus {
-		return metadata.OpenSubtitlesStatus(subtitleProvider.Check(ctx))
-	}
-	if e = meta.ConfigureAcoustID(os.Getenv("PORTICO_ACOUSTID_CLIENT_KEY")); e != nil {
-		return e
-	}
-	cat.OwnerMetadataRevision = meta.OwnerTextRevision
 	// The Portico title dataset: a daily manifest check and download for the
 	// domains this server has libraries for, and works matched as they gain
 	// provider ids. Off until a release is published (enrichment.Published*).
@@ -963,11 +971,6 @@ func run() (runErr error) {
 		defer unregisterChanged()
 		worker.Run(life, "cmd.listening-groups", wake, cat.ListeningGroupStep(changed))
 	})
-	meta.LocalArtwork = localMeta.Open
-	meta.LocalArtworkUsage = localMeta.MeasuredArtworkUsage
-	if e = meta.SetArtworkDirectory(storagepaths.Path(state, "artwork")); e != nil {
-		return e
-	}
 	supervise.Supervise(ctx, "cmd.metadata", meta.Run)
 	supervise.Supervise(ctx, "cmd.artwork", meta.RunArtwork)
 	supervise.Supervise(ctx, "cmd.hosted-control", control.Run)

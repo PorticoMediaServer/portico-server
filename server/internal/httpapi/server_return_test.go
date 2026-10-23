@@ -54,6 +54,49 @@ func TestRegisteredReturnPreparationRejectsUnboundOriginsAndLocal(t *testing.T) 
 	}
 }
 
+func TestRegisteredReturnPreparationUsesDeviceInstallationGrammar(t *testing.T) {
+	f := administrationFixtureNew(t)
+	if _, e := f.deps.DB.Exec(`UPDATE accounts SET password_hash=X'';UPDATE identity_state SET sign_in_kind='portico'`); e != nil {
+		t.Fatal(e)
+	}
+	const uuid = "33333333-3333-4333-8333-333333333333"
+	for _, q := range []struct {
+		name, origin, nonce, installation string
+		status                            int
+	}{
+		{"existing-uuid", "https://server.example:32500", identity.Token(), uuid, 401},
+		{"existing-random-token", "https://server.example:32500", identity.Token(), identity.Token(), 401},
+		{"short-installation", "https://server.example:32500", identity.Token(), strings.Repeat("a", 31), 400},
+		{"long-installation", "https://server.example:32500", identity.Token(), strings.Repeat("a", 129), 400},
+		{"installation-path", "https://server.example:32500", identity.Token(), uuid + "/", 400},
+		{"installation-padding", "https://server.example:32500", identity.Token(), uuid + "=", 400},
+		{"nonce-uuid", "https://server.example:32500", uuid, uuid, 400},
+		{"nonce-padding", "https://server.example:32500", identity.Token() + "=", uuid, 400},
+		{"nonce-noncanonical", "https://server.example:32500", strings.Repeat("a", 43), uuid, 400},
+		{"different-host", "https://evil.example", identity.Token(), uuid, 400},
+		{"insecure-origin", "http://server.example:32500", identity.Token(), uuid, 400},
+	} {
+		t.Run(q.name, func(t *testing.T) {
+			raw, _ := json.Marshal(porticoReturnPrepareRequest{Origin: q.origin, Nonce: q.nonce})
+			r := httptest.NewRequest("POST", "https://server.example:32500/v1/auth/portico-return/prepare", strings.NewReader(string(raw)))
+			r.Header.Set("Content-Type", "application/json")
+			r.Header.Set("X-Portico-Installation-Id", q.installation)
+			w := httptest.NewRecorder()
+			f.handler.ServeHTTP(w, r)
+			// Valid input reaches the existing unavailable-signer refusal. This fixture
+			// deliberately has no registered return authority and must not mint a proof.
+			if w.Code != q.status {
+				t.Fatalf("prepare status %d, want %d: %s", w.Code, q.status, w.Body.String())
+			}
+			assertSpecResponse(t, "POST", "/v1/auth/portico-return/prepare", w)
+		})
+	}
+	var challenges int
+	if e := f.deps.DB.QueryRow(`SELECT count(*) FROM hosted_identity_challenges`).Scan(&challenges); e != nil || challenges != 0 {
+		t.Fatal("unavailable preparation created challenges", e)
+	}
+}
+
 func TestRegisteredReturnHTTPAuthorityAndPrivateFailures(t *testing.T) {
 	f := administrationFixtureNew(t)
 	const code = "src_private-disposable-fixture-code-01234567890123456789"
