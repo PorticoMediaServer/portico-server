@@ -39,7 +39,7 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			}
 		}
 		selected, err := r.f.id.SelectDirectProfile(ctx, owner.AccountToken, child.ID, identity.DirectSelection{})
-		if err != nil || selected.Session == nil {
+		if err != nil || selected.Session.AccessToken == "" {
 			t.Fatal("select actual non-primary reader", err)
 		}
 		token := selected.Session.AccessToken
@@ -78,6 +78,7 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			}
 		}
 		method, template, _ := strings.Cut(pattern, " ")
+		expectedRevision := int64(0)
 		request := func(bearer string, m ReadingSessionResponse) *httptest.ResponseRecorder {
 			path := strings.NewReplacer("{itemId}", r.item, "{sessionId}", m.SessionID, "{pageIndex}", "0").Replace(template)
 			var body any
@@ -95,7 +96,7 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 				body = ReadingSessionRequest{r.item, r.source}
 			case method == "PUT":
 				page := int64(0)
-				body = ReadingProgressRequest{Location: ReadingLocation{Format: "pdf", PageIndex: &page, Progression: .25}}
+				body = ReadingProgressRequest{ExpectedRevision: expectedRevision, Location: ReadingLocation{Format: "pdf", PageIndex: &page, Progression: .25}}
 			}
 			var raw []byte
 			if body != nil {
@@ -148,6 +149,10 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			if after := readingRestrictionProgress(t, r); after != before {
 				t.Fatal("foreign session write changed progress")
 			}
+			w := readingHTTP(t, h, "GET", "/v1/reading/sessions/"+manifest.SessionID+"/progress", token, manifest.Revision, nil)
+			if w.Code != 200 {
+				t.Fatal("foreign request retired the owning reader", w.Code, w.Body.String())
+			}
 		}
 		if w := request("", manifest); w.Code != 401 {
 			t.Fatalf("anonymous Reading request: %d %s", w.Code, w.Body.String())
@@ -173,6 +178,9 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 				}
 			}
 		}
+		if method == "PUT" {
+			expectedRevision = 1
+		}
 		before := readingRestrictionProgress(t, r)
 		if _, err = r.f.id.SetProfileRestrictions(ctx, owner.AccountToken, child.ID, identity.ProfileRestrictionEdit{ExpectedRevision: 1, AllowUnrated: false}); err != nil {
 			t.Fatal(err)
@@ -185,7 +193,7 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &list) != nil || len(list.Items) != 0 || list.NextCursor != "" {
 					t.Fatal("restricted bounded list", w.Code, w.Body.String())
 				}
-			} else if w.Code < 400 {
+			} else if w.Code != 404 || bodyErrorCode(w.Body.String()) != "not_found" {
 				t.Fatal("new title restriction did not fence route", w.Code, w.Body.String())
 			}
 		}
