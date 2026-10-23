@@ -168,6 +168,7 @@ cp "$ROOT/scripts/build-ffmpeg.sh" "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$
 cp "$ROOT/scripts/build-portico-disc.py" "$ROOT/scripts/build-macos-ffmpeg-extras.sh" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/verify-ffmpeg-bundle.sh" "$ROOT/scripts/verify-ffmpeg-manifest.py" "$ROOT/scripts/verify-ffmpeg-features.py" "$ROOT/scripts/verify-disc-bundle.py" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/verify-ffmpeg-recipes.py" "$WORK/provenance/scripts/"
+cp "$ROOT/scripts/verify-ffmpeg-abi.py" "$WORK/provenance/scripts/"
 cp "$ARCHIVE" "$SOURCE" "$WORK/provenance/"
 if [[ "$TARGET" == linux-x64 ]]; then
   mkdir -p "$WORK/provenance/linux-dependencies"

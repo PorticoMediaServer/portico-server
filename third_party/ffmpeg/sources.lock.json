@@ -531,6 +531,21 @@
           "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
         }
       }
+    },
+    "abi": {
+      "maximumGLIBCVersion": "2.28",
+      "allowedELFDependencies": [
+        "libm.so.6",
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libgcc_s.so.1",
+        "librt.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2",
+        "ld-linux-aarch64.so.1",
+        "libmvec.so.1"
+      ],
+      "policy": "Linked media libraries are source-built into the executable. Only the recorded compiler/system C runtimes may be ELF NEEDED entries; GPU driver loaders remain separately runtime-qualified."
     }
   },
   "nativeABI": {
