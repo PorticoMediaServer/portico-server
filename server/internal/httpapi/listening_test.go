@@ -74,7 +74,7 @@ func TestListeningSelectionCountsExactlyOnTheWire(t *testing.T) {
 	for i := 1; i <= 3; i++ {
 		c.Song(smallAlbum, i, filepath.Join("/small", fmt.Sprintf("small-%d.m4a", i)), fmt.Sprintf("small-%d", i))
 	}
-	c.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1)`)
+	c.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1)`)
 	owner, err := ident.Issue("owner", "owner-profile", "local", "owner", 1)
 	if err != nil {
 		t.Fatal(err)

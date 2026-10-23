@@ -27,7 +27,7 @@ func TestActivityHTTPAuthorityAndSafeProjection(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','profile',1);INSERT INTO libraries(id,name,kind,root) VALUES('lib','Movie library','movie','/secret-path');INSERT INTO jobs(id,library_id,status,error,created_at) VALUES('job','lib','failed','secret-token','2026-09-05')`)
+	db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','profile',1);INSERT INTO libraries(id,name,kind,root) VALUES('lib','Movie library','movie','/secret-path');INSERT INTO jobs(id,library_id,status,error,created_at) VALUES('job','lib','failed','secret-token','2026-09-05')`)
 	settleCompactCatalogue(t, db)
 	owner, _ := ident.Issue("owner", "profile", "local", "owner", 1)
 	member, _ := ident.Issue("member", "member", "hosted", "member", 1)
