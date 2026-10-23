@@ -15,7 +15,7 @@ import {settingsServerHeader} from './server-header';
 import {configurationFieldEligible, settingsRowEligible, type SettingsEligibility} from './eligibility';
 import {settingsRowVisible, settingsSectionVisible, type SettingsEnvironment} from '@core/presentation/settings-visibility.ts';
 import type {SettingsDevicePort} from '../../platform/settings-platform';
-import {readDeviceSettingsBinding, writeDeviceSettingsBinding} from './device-bindings';
+import {canWriteDeviceSettings, readDeviceSettingsBinding, writeDeviceSettingsBinding} from './device-bindings';
 import {settingsPresetOptions} from './preset-options';
 import {SettingsSectionReads} from './section-loading';
 
@@ -153,7 +153,7 @@ export class SettingsController {
       changed: value.default !== undefined && changedFromDefault(value.effective, value.default),
       displayValue: option ? defaultI18n.t(option.label) : typeof current === 'boolean' ? defaultI18n.t(current ? 'next.settings.on' : 'next.settings.off') : typeof current === 'object' ? JSON.stringify(current) : String(current),
       disabled: this.writing || !this.current(), saving: this.writing,
-      readOnly: settingsBinding(row.id)?.readOnly === true || row.id === 'device.appVersion' || row.id === 'device.name' && (!settingsBinding(row.id) || this.options.device?.getSnapshot().facts.name?.readOnly === true),
+      readOnly: settingsBinding(row.id)?.readOnly === true || settingsBinding(row.id)?.form === 'device' && !canWriteDeviceSettings(this.options.device) || row.id === 'device.appVersion' || row.id === 'device.name' && (!settingsBinding(row.id) || !canWriteDeviceSettings(this.options.device) || this.options.device?.getSnapshot().facts.name?.readOnly === true),
       error: this.rowErrors.has(row.id) ? defaultI18n.t('next.states.pageFailedBody') : undefined};
   };
   configurationMatches = (query: string) => this.configuration && this.options.role === 'owner' && this.options.mainProfile ? searchConfiguration(this.configuration, query).filter(field => configurationFieldEligible(field, this.eligible) && (settingsRowIndex.has(field.id) || settingsSpec.some(section => section.configOnly.some(item => item.key === field.key)))).map(field => ({...field, label: settingsRowIndex.has(field.id) ? defaultI18n.t(settingsRowIndex.get(field.id)!.row.label) : defaultI18n.t(settingsSpec.flatMap(section => section.configOnly).find(item => item.key === field.key)!.label), path: this.configuration!.path})) : [];

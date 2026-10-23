@@ -212,3 +212,11 @@ test('a picture height is a name, not an amount: 1080p, never 1,080p', () => {
   assert.equal(createI18n({locale: 'en-US'}).t('quality.height', {height: 1080}), '1080p');
   assert.equal(createI18n({locale: 'en-US'}).t('quality.height', {height: 2160}), '2160p');
 });
+
+
+test('credits cards preserve the published after-scene and automatic-countdown text', () => {
+  const {t} = createI18n('en-US');
+  assert.equal(t('player.upNext.startsAfterScene', {time: '1:28'}), 'Starts in 1:28, after the scene');
+  assert.equal(t('player.upNext.sceneAfterCredits'), "There's a scene after the credits. Skip credits takes you straight to it.");
+  assert.equal(t('player.upNext.playingIn', {seconds: 7}), 'Playing in 7s');
+});

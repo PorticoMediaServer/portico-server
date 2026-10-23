@@ -213,3 +213,26 @@ test('preserves count accuracy while keeping unknown totals pageable',async()=>{
  assert.equal(shows.totalCount,20);
  s.dispose();
 });
+
+test('channel anchors preserve the complete actual source mapping without guessing older rows',async()=>{
+ const read=async(navigation:Record<string,unknown>)=>{
+  const s=service(async path=>{
+   const raw=result(path);
+   raw.groups=[{...group('live-tv'),items:[{id:'news',kind:'channel',title:'News',navigation}]}];
+   return raw;
+  });
+  await s.select('harbor',{group:'live-tv'});
+  assert.equal(s.getSnapshot().phase,'ready');
+  const items=s.getSnapshot().groups[0].items;
+  s.dispose();return items;
+ };
+ const base={view:'channel',entityId:'news'};
+ const tuple={sourceId:'actual-source',channelId:'news',provenance:'live-source'};
+ assert.deepEqual((await read({...base,...tuple}))[0].navigation,{...base,...tuple});
+ assert.deepEqual((await read(base))[0].navigation,base);
+ for(const invalid of [{sourceId:'actual-source'},{...tuple,sourceId:''},{...tuple,channelId:'other'},{...tuple,provenance:'library-channel'}]){
+  assert.deepEqual(await read({...base,...invalid}),[]);
+ }
+ const entries=await read({...base,...tuple,token:'private',url:'https://private.invalid'});
+ assert.deepEqual(entries[0].navigation,{...base,...tuple});
+});

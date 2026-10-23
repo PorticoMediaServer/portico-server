@@ -4,6 +4,8 @@ export {ReaderController, createEpubAdapter, createPdfAdapter, createComicAdapte
   loadLiterataFont, rasterInfo, createReadingController} from '@portico/reader-core';
 export type {ReaderSource, ReaderLocation, PdfAdapterOptions, ComicAdapterOptions,
   ComicPageProvider, RasterInfo, ReadingController, ReadingControllerOptions} from '@portico/reader-core';
+export {createReadingPublication,readerLocationFromReading,readingLocationFromReader} from '@portico/reader-core';
+export type {ReaderSessionInput,ReadingPublication} from '@portico/reader-core';
 
 import {rasterInfo} from '@portico/reader-core';
 import type {ComicPage, RasterInfo} from '@portico/reader-core';

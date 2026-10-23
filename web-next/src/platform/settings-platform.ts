@@ -19,7 +19,8 @@ export type SettingsDeviceFacts = Readonly<{
 export type SettingsDevicePort = Readonly<{
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => Readonly<{facts: SettingsDeviceFacts; document?: SettingsDeviceDocument}>;
-  apply: (expectedRevision: string, patch: Readonly<Record<string, SettingsValue>>, signal: AbortSignal) => Promise<void>;
+  /** Absent for a facts-only adapter. A document without a setter is read-only. */
+  apply?: (expectedRevision: string, patch: Readonly<Record<string, SettingsValue>>, signal: AbortSignal) => Promise<void>;
   restartToUpdate?: () => Promise<void>;
 }>;
 export type SettingsDownloadsSnapshot = Readonly<{available: boolean; freeBytes?: number}>;

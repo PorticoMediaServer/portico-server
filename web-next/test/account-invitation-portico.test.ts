@@ -17,6 +17,7 @@ async function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
   const pin = {serverId, publicKey: routeBase64(publicBytes), fingerprint: routeBase64(new Uint8Array(await crypto.subtle.digest('SHA-256', publicBytes)))};
   const origin = 'https://inviting.example', hostedOrigin = 'https://account.example', accountId = 'current-hosted-account', code = 'c'.repeat(43);
   const system = {id: serverId, name: 'Proven inviting server', version: '1', signIn: 'portico', move: null, setupRequired: false, hostedConfigured: true, hostedAttached: true};
+  let selected: unknown;
   const calls: string[] = [], retired: string[] = [], admitted: string[] = [], tokens: string[] = [];
   let current = true, grantAccount = accountId, invalidProof = false;
   let identityGate: Promise<void> | undefined, grantGate: Promise<void> | undefined, releaseIdentity: (() => void) | undefined, releaseGrant: (() => void) | undefined;
@@ -47,10 +48,10 @@ async function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
     return {payload: 'actual-controlled-envelope', signature: 'controlled-signature', keyId: 'controlled-key'};
   }) as HostedRequestApi['request']};
   const storage = {read: async () => undefined, change: async () => {}};
-  const entry = new BrowserAccountEntry({store: {read: async () => ({version: 1, revision: 9, servers: []}), connectionStorage: (_id: string, value: {expectedRevision: number}) => {assert.equal(value.expectedRevision, 9); return storage;}} as never,
+  const entry = new BrowserAccountEntry({store: {selected: async () => selected, read: async () => ({version: 1, revision: 9, servers: []}), connectionStorage: (_id: string, value: {expectedRevision: number}) => {assert.equal(value.expectedRevision, 9); return storage;}} as never,
     actions: {} as never, environment: () => ({storage}), restore: async () => undefined, inspect: async () => pin, connect: (async () => ({api, connection})) as never,
     connectPortico: (async () => ({api, connection, hosted: {origin: hostedOrigin, accountId, key: {}}})) as never,
-    remember: async (_api, session, _environment, _hosted, guard) => {assert.equal(guard?.(), true); admitted.push(session.sessionFamilyId);},
+    remember: async (_api, session, _environment, _hosted, guard) => {assert.equal(guard?.(), true); admitted.push(session.sessionFamilyId);selected = {signIn: 'portico', connection: {pin, session}};},
     retire: async (_api, session) => {retired.push(session.sessionFamilyId);}, invitationDestination: destination,
   }, {inspect: async () => system, getSnapshot: () => ({origin}), cancel: () => {}, dispose: () => {}} as unknown as ServerSignInProbe);
   await entry.inspectInvitation({server: origin, id: serverId, code});
