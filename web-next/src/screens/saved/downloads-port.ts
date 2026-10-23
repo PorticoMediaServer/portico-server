@@ -31,12 +31,30 @@ export type SavedLocalDownload = Readonly<{
   waitsForId?: string;
 }>;
 export type SavedDownloadsError = 'unavailable' | 'read' | 'write' | 'conflict' | 'folder' | 'play';
+export type SavedLocalGroupSelector = Readonly<{kind: 'songs' | 'episodes'; parentId: string; groupId?: string}>;
+export type SavedLocalDownloadGroup = Readonly<{
+  kind: 'episodes' | 'songs';
+  parentId: string;
+  groupId: string;
+  count: number;
+  bytes: number;
+  bytesDone: number;
+  /** Summary facts appear only when uniform across every native member. */
+  quality?: string;
+  qualityLabel?: string;
+  state?: SavedLocalDownload['state'];
+  held?: boolean;
+  /** An actual member with persisted raster, resolved opaquely by getArtwork. */
+  artworkId?: string;
+  /** Native fingerprint of the complete ordered member IDs and row revisions. */
+  revision: string;
+}>;
 export type SavedDownloadsSnapshot = Readonly<{
   available: boolean;
   phase: 'loading' | 'ready' | 'error';
   items: readonly SavedLocalDownload[];
   /** Native aggregates across the entire captured viewer, before pagination. */
-  groups?: readonly Readonly<{kind: 'episodes' | 'songs'; parentId: string; groupId: string; count: number}>[];
+  groups?: readonly SavedLocalDownloadGroup[];
   nextCursor?: string;
   storage?: Readonly<{
     totalBytes: number;
@@ -69,6 +87,9 @@ export type SavedDownloadsPort = Readonly<{
   play(id: string, signal: AbortSignal): Promise<void>;
   /** Actual persisted bounded bundle artwork. No path, token or network fallback. */
   getArtwork(id: string, signal: AbortSignal): Promise<Blob | null>;
+  actionGroup(selector: SavedLocalGroupSelector, expectedRevision: string, action: 'remove' | 'pause' | 'resume' | 'retry', signal: AbortSignal): Promise<void>;
+  /** Absent until the playback owner installs a real complete verified local queue. */
+  playGroup?: (selector: SavedLocalGroupSelector, expectedRevision: string, signal: AbortSignal) => Promise<void>;
   /** Publishes only after committed native CAS acknowledgement; no optimistic row. */
   setRules(expectedRevision: number, value: SavedDownloadRules, signal: AbortSignal): Promise<Readonly<{revision: number}>>;
   chooseFolder(signal: AbortSignal): Promise<void>;

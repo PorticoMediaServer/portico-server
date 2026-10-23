@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {SavedOperations} from '../src/screens/saved/operations.ts';
 import {sameSavedDownloadsScope, type SavedDownloadsScope, type SavedLocalDownload} from '../src/screens/saved/downloads-port.ts';
 import {diskFractions, localDownloadGroups, measuredPercent} from '../src/screens/saved/downloads-model.ts';
+import {createSavedRuntime} from '../src/screens/saved/runtime.ts';
 
 const scope: SavedDownloadsScope = {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', sessionFamilyId: 'family'};
 test('every captured identity boundary distinguishes the binding', () => {
@@ -41,4 +42,26 @@ test('local group identity survives duplicate show names; missing-server bytes r
   const groups = localDownloadGroups([item('a', 'show-a'), item('b', 'show-b'), item('c', 'show-a'), item('d', 'show-a', false)]);
   assert.deepEqual(groups.map(group => [group.id, group.items.map(row => row.id)]), [['show:show-a', ['a', 'c']], ['show:show-b', ['b']], ['server', ['d']]]);
   assert.equal('count' in groups[0], false);
+});
+test('the actual Saved runtime refuses incomplete authority captures before requesting data', () => {
+  for (const key of ['serverId', 'accountId', 'profileId', 'sessionFamilyId'] as const) {
+    assert.throws(() => createSavedRuntime({scope: {...scope, [key]: ''}, api: {request: async () => { throw new Error('unexpected API call'); }}, isCurrent: () => true}), /complete captured/);
+  }
+});
+test('no server service begins a read after the parent authority closes', async () => {
+  let calls = 0;
+  const runtime = createSavedRuntime({scope, api: {request: async () => { calls++; throw new Error('unexpected API call'); }}, isCurrent: () => false});
+  await runtime.select({view: 'watchlist'});
+  assert.equal(calls, 0); runtime.dispose();
+});
+test('parent disposal aborts both real shape-service transports and drops delayed responses', async () => {
+  const signals: AbortSignal[] = [];
+  const runtime = createSavedRuntime({scope, isCurrent: () => true, api: {request: (_path, _method, _body, signal) => {
+    assert.ok(signal); signals.push(signal);
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), {once: true}));
+  }}});
+  const pending = runtime.select({view: 'watchlist'});
+  assert.equal(signals.length, 2); runtime.dispose(); await pending;
+  assert.ok(signals.every(signal => signal.aborted));
+  assert.equal(runtime.posters.getSnapshot().projection, null); assert.equal(runtime.squares.getSnapshot().projection, null);
 });
