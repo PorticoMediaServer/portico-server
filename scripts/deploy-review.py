@@ -23,6 +23,10 @@ def main():
     parser.add_argument("--stage-only", action="store_true")
     parser.add_argument("--activate-only", action="store_true")
     parser.add_argument("--runtime-root", help="installed qualified full Linux bundle for this fresh stage")
+    parser.add_argument('--browser-repo', type=Path)
+    parser.add_argument('--runner', type=Path)
+    parser.add_argument('--private-review', type=Path)
+    parser.add_argument('--smoke-output', type=Path)
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
         parser.error("a full published MAIN commit is required")
@@ -32,6 +36,8 @@ def main():
         parser.error("choose --stage-only, then --activate-only after public setup")
     if args.runtime_root and (not args.stage_only or not re.fullmatch(r"/opt/portico/media-runtimes/[a-z0-9-]{1,64}/bundle", args.runtime_root)):
         parser.error("runtime root must be a safe installed bundle used only with --stage-only")
+    if args.activate_only and not all((args.browser_repo, args.runner, args.private_review, args.smoke_output)):
+        parser.error('activation requires the real browser smoke repo, runner, private review file and output')
     directory = "/opt/portico/demo-releases/" + args.cycle
     state = "/var/lib/portico-" + args.cycle
     environment = "/etc/portico-" + args.cycle + ".env"
@@ -62,6 +68,13 @@ install -d -o portico -g portico -m700 "$2" "$2/cache-home"
         remote(STAGE, directory, state, environment, args.commit, digest, args.runtime_root or "")
     else:
         remote(ACTIVATE, directory, state, environment, args.commit, args.cycle)
+        try:
+            subprocess.run(['python3', str(Path(__file__).with_name('smoke-review.py')), args.commit,
+                            '--repo', str(args.browser_repo), '--runner', str(args.runner),
+                            '--credentials', str(args.private_review), '--output', str(args.smoke_output)], check=True)
+        except BaseException:
+            remote(ROLLBACK, args.cycle)
+            raise
 
 
 STAGE = r'''set -euo pipefail
@@ -128,6 +141,16 @@ for attempt in $(seq 1 60); do
 done
 systemctl stop portico-review-stage
 exit 1
+'''
+
+ROLLBACK = r'''set -euo pipefail
+backup=/var/backups/portico/$1
+test -f "$backup/service"
+systemctl stop portico-demo-current
+cp -a "$backup/service" /etc/systemd/system/portico-demo-current.service
+systemctl daemon-reload
+systemctl start portico-demo-current
+printf 'Browser smoke incomplete; previous review service and database restored.\n'
 '''
 
 BACKUP_ENVIRONMENTS = r'''python3 - "$backup" <<'ENV_PY'
