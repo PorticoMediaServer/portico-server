@@ -23,6 +23,9 @@ export function LocalInvitationForm({serverName, inviter, libraries, busy, error
   const strength = passwordStrength(password), trimmed = username.trim();
   const valid = trimmed.length >= 3 && trimmed.length <= 64 && !/[\s@]/.test(trimmed) && strength.acceptable && password === confirmation;
   const mismatch = confirmed && confirmation && password !== confirmation ? t('web.directJoin.mismatch') : undefined;
+  // Auth12's enumeration has no serial comma. Keep its conjunction in the
+  // catalogue; library names remain the server's actual data.
+  const sharedLibraries = libraries.length < 2 ? libraries[0] ?? '' : t('accounts.invitation.libraryList', {head: libraries.slice(0, -1).join(', '), last: libraries[libraries.length - 1]});
   // These three labels are drawn. The remaining computed levels await exact copy;
   // never relabel a weak password as Good or Strong, and never gate on advice.
   const strengthLabel = strength.label === 'Good' ? t('accounts.password.good') : strength.label === 'Strong' ? t('services.password.strong') : strength.label === 'Too short' ? t('services.password.tooShort') : undefined;
@@ -31,7 +34,7 @@ export function LocalInvitationForm({serverName, inviter, libraries, busy, error
     <p className={styles.lede}><span className={styles.desktopInvitationBody}>{t('accounts.invitation.localBody')}</span><span className={styles.phoneInvitationBody}>{t('accounts.invitation.localPhoneBody', {server: serverName})}</span></p>
     <div className={styles.phoneInvitationLibraries}><InvitationLibraries libraries={libraries.map(name => ({name}))} /></div>
     {inviter && <div className={styles.invitedBy}><span className={styles.inviterAvatar} aria-hidden="true">{Array.from(inviter)[0]}</span>
-      <span><b>{inviter}</b>{' '}{t('accounts.invitation.invitedYou')}{libraries.length > 0 && <><i className={styles.invitationGap} aria-hidden="true" />{defaultI18n.list(libraries)}</>}</span>
+      <span><b>{inviter}</b>{' '}{t('accounts.invitation.invitedYou')}{libraries.length > 0 && <><i className={styles.invitationGap} aria-hidden="true" />{sharedLibraries}</>}</span>
     </div>}
     <AuthError error={usernameTaken ? undefined : error} />
     <form className={[styles.form, styles.invitationForm].join(' ')} onSubmit={event => {event.preventDefault(); setConfirmed(true); setChangedUsername(false); if (valid && !busy) onJoin(trimmed, password, name.trim());}}>

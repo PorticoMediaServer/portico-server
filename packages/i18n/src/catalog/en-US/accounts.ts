@@ -59,6 +59,7 @@ export const accountMessages = {
   'accounts.invitation.localBody': 'Choose a username and password to create your account.',
   'accounts.invitation.localPhoneBody': '{server} invited you. Choose a username and password to create your account on it.',
   'accounts.invitation.invitedYou': 'invited you',
+  'accounts.invitation.libraryList': '{head} and {last}',
   // Connect 19 and 20: exact member invitation and terminal states.
   'accounts.invitation.porticoBody': '{server} invited you. Join with your Portico Account and it’s on all your devices.',
   'accounts.invitation.libraries': 'What you’ll see',
