@@ -3,6 +3,21 @@ import {routePath} from "../../contracts/src/routes.ts";
 export type ServerPin = Readonly<{serverId:string;publicKey:string;fingerprint:string}>;
 /** Verified route identity plus optional authorization of exact TLS leaf certificates. */
 export type RouteProof = Readonly<ServerPin & {tlsCertificateFingerprints?:readonly string[]}>;
+// A plain/cached pin or a deserialized proof must never stand for this connection's nonce
+// exchange. Only probeRoute can register a result, after all cryptographic checks pass.
+const proofObservations=new WeakMap<RouteProof,Readonly<{origin:string;receivedAt:number;tlsLeaf?:string}>>();
+/** This exact object was proved fresh for this origin recently. Native additionally supplies
+ * the TLS leaf observed by that SAME proof-only exchange, never a TXT or response-header claim. */
+export function isCurrentRouteProof(origin:string,proof:RouteProof,now=Date.now()):boolean {
+ const observation=proofObservations.get(proof);
+ if(!observation||!Number.isFinite(now))return false;
+ try{return observation.origin===routeOrigin(origin)&&now>=observation.receivedAt&&now-observation.receivedAt<30000;}catch{return false;}
+}
+/** Native transport metadata for the exact Response probeRoute consumed. Never populated
+ * from HTTP headers, Bonjour TXT, a remembered pin, or a separate certificate observation. */
+export function observedRouteTLSLeaf(origin:string,proof:RouteProof,now=Date.now()):string|undefined {
+ return isCurrentRouteProof(origin,proof,now)?proofObservations.get(proof)?.tlsLeaf:undefined;
+}
 export type SignedRoutes = Readonly<{payload:string;signature:string}>;
 export type RouteKey = Readonly<{keyId:string;publicKey:string}>;
 export type RouteCandidate = Readonly<{baseUrl:string;class:'lan'|'public'|'manual';quality:'reachable'|'probe_required';generation:string}>;
@@ -26,6 +41,43 @@ export function routeBytes(value:unknown,length?:number,max=65536):Uint8Array {
  const out=new Uint8Array(Math.floor(value.length*6/8));let bits=0,buffer=0,index=0;
  for(const c of value){buffer=(buffer<<6)|alphabet.indexOf(c);bits+=6;if(bits>=8){bits-=8;out[index++]=(buffer>>>bits)&255;}}
  if((length!==undefined&&out.length!==length)||out.length>max||routeBase64(out)!==value)throw new RouteError('invalid_identity','Invalid identity encoding.');return out;
+}
+const identityAlphabet='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+/** A readable comparison of a server identity, never an authentication credential.
+ * Callers must not display, log or transmit the expected value in a code challenge. */
+export function identityCode(serverId:string):string {
+ if(typeof serverId!=='string'||!/^srv_[A-Za-z0-9_-]{43}$/.test(serverId))throw new RouteError('invalid_identity','Invalid server identity.');
+ const digest=routeBytes(serverId.slice(4),32);
+ let n=0n;for(const byte of digest.subarray(0,8))n=(n<<8n)|BigInt(byte);
+ n%=31n**12n;
+ let code='';for(let i=0;i<12;i++){code=identityAlphabet[Number(n%31n)]+code;n/=31n;}
+ return code.slice(0,4)+'-'+code.slice(4,8)+'-'+code.slice(8);
+}
+/** Only a complete code is comparable; invalid symbols are never silently removed. */
+export function normaliseIdentityCode(input:string):string|undefined {
+ if(typeof input!=='string'||input.length>128||/[^A-Za-z2-9\s-]/.test(input))return;
+ const code=input.toUpperCase().replace(/[\s-]/g,'');
+ if(code.length!==12||[...code].some(c=>!identityAlphabet.includes(c)))return;
+ return code.slice(0,4)+'-'+code.slice(4,8)+'-'+code.slice(8);
+}
+/** Public identity and route ownership captured from the device's protected session record. */
+export type KnownServerRoute=Readonly<{signIn:'local'|'portico';pin:ServerPin;origins:readonly string[]}>;
+/** An address remains owned by every saved Local identity that remembers it. A link or a
+ * freshly typed address cannot replace that ownership; only an explicit Forget removes it. */
+export function knownRouteOwners(origin:string,known:readonly KnownServerRoute[]):readonly KnownServerRoute[] {
+ const checked=routeOrigin(origin);
+ return known.filter(value=>value.signIn==='local'&&value.origins.some(raw=>routeOrigin(raw)===checked));
+}
+export class FirstContactIdentityError extends RouteError {
+ readonly savedServerId?:string;
+ constructor(savedServerId?:string){super('identity_mismatch','The address did not prove the expected server identity. No credentials were sent.');this.savedServerId=savedServerId;}
+}
+/** Link expectation is checked first. A matching link still cannot take over a saved Local
+ * server's address. The proof must already have passed probeRoute's cryptographic checks. */
+export function assertFirstContactIdentity(origin:string,proof:ServerPin,context:Readonly<{linkId?:string;knownRoutes?:readonly KnownServerRoute[]}>={}):void {
+ if(context.linkId!==undefined&&(!/^srv_[A-Za-z0-9_-]{43}$/.test(context.linkId)||proof.serverId!==context.linkId))throw new FirstContactIdentityError();
+ const changed=knownRouteOwners(origin,context.knownRoutes??[]).find(value=>!sameServerPin(value.pin,proof));
+ if(changed)throw new FirstContactIdentityError(changed.pin.serverId);
 }
 /** Route crypto for a page without `crypto.subtle` (plain HTTP on the LAN is not a secure
  * context). The web app registers an audited JavaScript SHA-256 and Ed25519 here at startup;
@@ -116,12 +168,17 @@ export async function routeJSON(response:Response,signal:AbortSignal,max=32768):
  const reader=response.body.getReader(),chunks:Uint8Array[]=[];let length=0;const abort=()=>{void reader.cancel().catch(()=>{});};signal.addEventListener('abort',abort,{once:true});
  try{for(;;){if(signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');const next=await reader.read();if(next.done)break;length+=next.value.byteLength;if(length>max)throw new RouteError('invalid_response','Connection response exceeded its limit.');chunks.push(next.value);}if(signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');const bytes=new Uint8Array(length);let n=0;for(const b of chunks){bytes.set(b,n);n+=b.length;}return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}finally{signal.removeEventListener('abort',abort);void reader.cancel().catch(()=>{});try{reader.releaseLock();}catch{}}
 }
-export async function probeRoute(origin:string,pin:ServerPin|undefined,options:{fetcher?:typeof fetch;crypto?:RouteCrypto;signal?:AbortSignal;now?:()=>number}={}):Promise<RouteProof> {
+export async function probeRoute(origin:string,pin:ServerPin|undefined,options:{fetcher?:typeof fetch;crypto?:RouteCrypto;signal?:AbortSignal;now?:()=>number;
+ /** A trusted native bridge reads its actual TLS observation keyed by this exact proof
+  * Response. Not an HTTP header. Absence cannot establish Bonjour-based home trust. */
+ observedTLSLeaf?:(response:Response)=>string|undefined;
+}={}):Promise<RouteProof> {
  const baseUrl=routeOrigin(origin),crypto=options.crypto??webRouteCrypto,nonce=routeBase64(crypto.random(32));
  const controller=new AbortController(),cancel=()=>controller.abort();options.signal?.addEventListener('abort',cancel,{once:true});const timer=setTimeout(cancel,3000);
  try{
   if(options.signal?.aborted)cancel();if(controller.signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');
   const response=await (options.fetcher??globalThis.fetch)((baseUrl) + routePath("prove_network_identity"),{method:'POST',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Accept:'application/json; portico-route-proof=2','Content-Type':'application/json'},body:JSON.stringify({baseUrl,nonce})});
+  const tlsLeaf=options.observedTLSLeaf?.(response);if(tlsLeaf!==undefined)routeBytes(tlsLeaf,32);
   const signed=envelope(await routeJSON(response,controller.signal,8192)),v=parseSignedJSON(signed);
   if(Object.keys(v).some(k=>!['kind','version','baseUrl','nonce','serverId','publicKey','fingerprint','issuedAt','expiresAt',...(v.version==='2'?['tlsCertificateFingerprints']:[])].includes(k))||v.kind!=='portico.route-proof'||(v.version!=='1'&&v.version!=='2')||v.baseUrl!==baseUrl||v.nonce!==nonce||typeof v.serverId!=='string'||typeof v.publicKey!=='string'||typeof v.fingerprint!=='string')throw new RouteError('identity_mismatch','The server did not prove this connection.');
   let fingerprints:readonly string[]|undefined;
@@ -134,7 +191,9 @@ export async function probeRoute(origin:string,pin:ServerPin|undefined,options:{
   const actual=await serverPin(v.serverId,v.publicKey,v.fingerprint,crypto);if(pin&&!sameServerPin(actual,pin))throw new RouteError('identity_mismatch','This address belongs to a different server. No credentials were sent.');
   if(!await crypto.verify(routeBytes(actual.publicKey,32),routeBytes(signed.signature,64),routeBytes(signed.payload)))throw new RouteError('identity_mismatch','The server could not prove its identity. No credentials were sent.');
   // After the signature: only a proof this server really signed over our nonce can blame the clocks.
-  proofTimes(v,30000,options.now?.()??Date.now());
-  if(controller.signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');return fingerprints?Object.freeze({...actual,tlsCertificateFingerprints:fingerprints}):actual;
+  const receivedAt=options.now?.()??Date.now();proofTimes(v,30000,receivedAt);
+  if(controller.signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');
+  const proof:RouteProof=fingerprints?Object.freeze({...actual,tlsCertificateFingerprints:fingerprints}):actual;
+  proofObservations.set(proof,Object.freeze({origin:baseUrl,receivedAt,...(tlsLeaf===undefined?{}:{tlsLeaf})}));return proof;
  }finally{clearTimeout(timer);options.signal?.removeEventListener('abort',cancel);controller.abort();}
 }

@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {IdentityClient, deviceAwaitingApproval, type Device, type ProfileRestrictions, type RatingSystem, type TwoFactorEnrolment, type TwoFactorState} from '../../../../packages/client-core/src/index';
+import {IdentityClient, type Device, type ProfileRestrictions, type RatingSystem, type TwoFactorEnrolment, type TwoFactorState} from '../../../../packages/client-core/src/index';
 import {useSession} from '../../app/session';
 import {browserInstallation} from '../../bridge/profile-trust';
 import {Badge, Button, ConfirmDialog, Dialog, Input, Loading, Notice, PasswordInput, QR, Select, SettingsGroup, SettingsRow, Switch, Text, relative, type IconName} from '../../ui';
@@ -146,7 +146,7 @@ export function DevicesSection() {
       {devices.error ? <div style={{padding: 12}}><Notice tone={list ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: devices.reload}}>{devices.error}</Notice></div> : null}
       {!list && !devices.error ? <div style={{padding: 16}}><Loading label={t('status.loadingThing', {thing: t('devices.title').toLowerCase()})} /></div> : null}
       {list?.map(d => (
-        <SettingsRow key={d.id} icon={deviceGlyph(d.platform, d.name)} label={<>{d.name || platformName(t, d.platform) || t('web.devices.device')} {d.current ? <Badge tone="accent">{t('device.thisDevice')}</Badge> : null} {deviceAwaitingApproval(d) ? <Badge tone="warning" dot>{t('web.devices.waitingApproval')}</Badge> : null}</>}
+        <SettingsRow key={d.id} icon={deviceGlyph(d.platform, d.name)} label={<>{d.name || platformName(t, d.platform) || t('web.devices.device')} {d.current ? <Badge tone="accent">{t('device.thisDevice')}</Badge> : null}</>}
           help={[platformName(t, d.platform), d.appVersion ? `${d.app} ${d.appVersion}` : '', t('web.devices.lastSeen', {when: ago(d.lastSeen)}), d.ip ?? ''].filter(Boolean).join(' · ')}
           meta={d.sessions ? t('web.devices.sessions', {count: d.sessions}) : t('device.signedOut')} onClick={() => { setChosen(d); setName(d.name); setFailure(''); }} />
       ))}
@@ -159,14 +159,7 @@ export function DevicesSection() {
           <div style={{display: 'flex', flexDirection: 'column', gap: 16}}>
             {failure ? <Notice tone="error" compact>{failure}</Notice> : null}
             <Input label={t('profile.name')} value={name} maxLength={80} onChange={e => setName(e.target.value)} />
-            {deviceAwaitingApproval(chosen) ? (
-              <Notice tone="warning" title={t('web.devices.approvalTitle')}>{t('web.devices.approvalBody')}
-                <div style={{display: 'flex', gap: 8, marginTop: 12}}><Button size="sm" variant="primary" label={t('web.devices.approve')} onClick={() => void act(() => identity.approveDevice(chosen.id, true))} /><Button size="sm" variant="outline" label={t('device.deny')} onClick={() => void act(() => identity.approveDevice(chosen.id, false))} /></div>
-              </Notice>
-            ) : null}
-            <SettingsGroup>
-              <SettingsRow label={t('web.devices.trusted')} help={t('web.devices.trustedHelp')} control={<Switch checked={chosen.trusted} onCheckedChange={v => void act(() => identity.editDevice(chosen.id, {trusted: v}))} label={t('web.devices.trusted')} />} />
-            </SettingsGroup>
+
             <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
               <Button variant="outline" size="sm" icon="signOut" label={chosen.current ? t('device.signOutThis') : t('device.signOutOther').replace('…', '')} disabled={!chosen.sessions} onClick={() => void act(async () => { await identity.signOutDevice(chosen.id); if (chosen.current) session.signOut(); })} />
               {!chosen.current ? <Button variant="danger" size="sm" icon="trash" label={t('web.devices.removeAction')} onClick={() => setRemoving(chosen)} /> : null}

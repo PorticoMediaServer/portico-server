@@ -197,7 +197,7 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
           </SettingsGroup> : null}
           {tab === 'scanning' ? byCost.map(g => (
             <SettingsGroup key={g.cost.id} title={g.cost.name} description={g.cost.description}>
-              {g.operations.map(o => <SettingsRow key={o.id} label={o.name} help={`${o.description}${o.requires.length ? ` Needs: ${o.requires.map(r => doc.analysisMatrix.operations.find(x => x.id === r)?.name ?? r).join(', ')}.` : ''}`} control={<Switch checked={draft.analysis.includes(o.id)} onCheckedChange={v => toggle(o.id, v)} label={o.name} />} />)}
+              {g.operations.map(o => <SettingsRow key={o.id} label={o.name} help={`${o.description}${o.requires.length ? ' ' + t('legacy.librarySettings.needs', {requirements: o.requires.map(r => doc.analysisMatrix.operations.find(x => x.id === r)?.name ?? r).join(', ')}) : ''}`} control={<Switch checked={draft.analysis.includes(o.id)} onCheckedChange={v => toggle(o.id, v)} label={o.name} />} />)}
             </SettingsGroup>
           )) : null}
           {tab === 'scanning' ? <SettingsGroup title={t('web.librarySettings.trickplay')} description={t('web.librarySettings.trickplayLede')}>

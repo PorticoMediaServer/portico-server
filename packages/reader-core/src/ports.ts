@@ -71,6 +71,8 @@ export interface ReaderView<Preferences extends object> {
 }
 export type ReaderMount<Preferences extends object> = Readonly<{
   container: HTMLElement; preferences: Readonly<Preferences>; viewport: ReaderViewport;
+  /** Resolved catalogue identity, including authoritative omitted fields. */
+  metadata?: ReaderMetadata;
   signal: AbortSignal; onLocation(location: ReaderLocation): void;
   onSelection(selection: ReaderSelection | null): void;
   onSurfaceInput?(input: ReaderSurfaceInput): void;
