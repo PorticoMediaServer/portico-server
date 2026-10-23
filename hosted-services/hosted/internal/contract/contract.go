@@ -146,6 +146,7 @@ func Definitions() []apikit.Definition {
 		route[appauth.Decision, appauth.Return]("POST", "/v1/app-authorizations/{id}/decision", "app_authorization_decide", "Approve or deny the reviewed app sign-in.", Public, apikit.ScopeSession, 200).lane(security),
 		route[appauth.Exchange, appauth.Grant]("POST", "/v1/app-authorizations/token", "app_authorization_exchange", "Exchange a one-time PKCE code for one server identity assertion.", Public, apikit.ScopeOpen, 200).lane(security),
 
+		route[serverreturn.RegistrationRequest, serverreturn.Registration]("POST", "/v1/servers/{id}/return-registration", "server_return_registration", "Resolve an installed server's exact verified return origin.", ServerCredential, apikit.ScopeAdmin, 200).lane(security),
 		route[serverreturn.Start, serverreturn.Started]("POST", "/v1/server-returns/start", "server_return_start", "Begin a registered first-party server return.", AccountSession, apikit.ScopeSession, 201).lane(security),
 		route[serverreturn.Complete, serverreturn.Return]("POST", "/v1/server-returns/{id}/complete", "server_return_complete", "Complete a registered first-party server return.", AccountSession, apikit.ScopeSession, 200).lane(security),
 		route[serverreturn.Exchange, serverreturn.Grant]("POST", "/v1/server-returns/exchange", "server_return_exchange", "Spend a registered server return code.", Public, apikit.ScopeOpen, 200).lane(security),

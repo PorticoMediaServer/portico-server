@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"net/url"
+	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/security"
 	"portico.local/hosted/internal/serverreturn"
@@ -15,6 +16,34 @@ import (
 type returnTuple struct {
 	operation, origin, purpose, current, previous string
 	claim, credential, route                      int64
+}
+
+// ServerReturnRegistration resolves existing verified location evidence. It
+// cannot register an origin, admit an account or authorize an ownership claim.
+func (s *Store) ServerReturnRegistration(ctx context.Context, a directory.ServerAuthority, q serverreturn.RegistrationRequest) (serverreturn.Registration, error) {
+	var out serverreturn.Registration
+	if !serverreturn.Origin(q.Origin) {
+		return out, serverreturn.ErrInvalid
+	}
+	tx, e := s.beginServerOperation(ctx, a)
+	if e != nil {
+		return out, e
+	}
+	defer tx.Rollback()
+	var generation int64
+	if e = tx.QueryRowContext(ctx, `SELECT generation FROM networking_route_state WHERE server_id=$1 AND operation_id=$2 AND claim_generation=$3 AND credential_generation=$4 FOR SHARE`, a.ServerID, a.OperationID, a.ClaimGeneration, a.CredentialGeneration).Scan(&generation); e != nil {
+		return out, serverreturn.ErrInvalid
+	}
+	id := serverreturn.RegistrationID(a.ServerID, a.OperationID, a.ClaimGeneration, a.CredentialGeneration, generation, q.Origin)
+	t, e := returnTupleTx(ctx, tx, a.AccountID, a.ServerID, a.OperationID, "sign-in", id)
+	if e != nil || t.origin != q.Origin {
+		return out, serverreturn.ErrInvalid
+	}
+	if e = checkServerAuthorityTx(ctx, tx, a); e != nil {
+		return out, e
+	}
+	out = serverreturn.Registration{ID: id, Origin: t.origin}
+	return out, tx.Commit()
 }
 
 // Caller holds the account/family locks first. The same server lock used by

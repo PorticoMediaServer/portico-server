@@ -1116,6 +1116,19 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "server_return_registration",
+    "method": "POST",
+    "path": "/v1/servers/{id}/return-registration",
+    "summary": "Resolve an installed server's exact verified return origin.",
+    "access": "server_credential",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [],
+    "status": 200
+  },
+  {
     "id": "server_return_start",
     "method": "POST",
     "path": "/v1/server-returns/start",
@@ -1361,6 +1374,7 @@ export const routePaths = {
   "server_remove": "/v1/servers/{server}",
   "server_return_complete": "/v1/server-returns/{id}/complete",
   "server_return_exchange": "/v1/server-returns/exchange",
+  "server_return_registration": "/v1/servers/{id}/return-registration",
   "server_return_start": "/v1/server-returns/start",
   "server_routes_get": "/v1/servers/{id}/routes",
   "server_routes_observe": "/v1/servers/{id}/routes",

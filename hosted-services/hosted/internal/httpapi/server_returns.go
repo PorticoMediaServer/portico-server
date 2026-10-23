@@ -23,6 +23,24 @@ func (h *Handler) serverReturnRoutes(mux *http.ServeMux) {
 	if h.ServerReturns == nil {
 		return
 	}
+	mux.HandleFunc("POST /v1/servers/{id}/return-registration", h.server(func(w http.ResponseWriter, r *http.Request, a directory.ServerAuthority) {
+		if r.URL.RawQuery != "" {
+			returnFailure(w)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+		defer cancel()
+		var q serverreturn.RegistrationRequest
+		if !decode(w, r, &q) {
+			return
+		}
+		out, e := h.ServerReturns.Store.ServerReturnRegistration(ctx, a, q)
+		if e != nil {
+			returnFailure(w)
+			return
+		}
+		write(w, 200, out)
+	}))
 	prepare := func(w http.ResponseWriter, r *http.Request) (*http.Request, bool) {
 		if !h.allowAuth(r) {
 			w.Header().Set("Retry-After", "60")

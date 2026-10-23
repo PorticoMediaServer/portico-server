@@ -178,3 +178,60 @@ func TestRegisteredReturnSignInRechecksInstalledAuthority(t *testing.T) {
 		})
 	}
 }
+
+func TestReturnRegistrationOnlyResolvesExistingVerifiedOrigin(t *testing.T) {
+	f := registeredReturnFixture(t)
+	path := "/v1/servers/" + f.input.ServerID + "/return-registration"
+	for _, origin := range []string{"http://server.example:32500", "https://arbitrary.example", "https://server.example:32500/path", "https://SERVER.example:32500", "https://server.example:32500#fragment"} {
+		returnCall(t, f.handler, path, f.serverToken, serverreturn.RegistrationRequest{Origin: origin}, 401)
+	}
+	q := serverreturn.RegistrationRequest{Origin: "https://server.example:32500"}
+	returnCall(t, f.handler, path, "", q, 403)
+	returnCall(t, f.handler, path, "claim-owner-access-token-fixture", q, 403)
+	returnCall(t, f.handler, "/v1/servers/srv_other/return-registration", f.serverToken, q, 403)
+	var candidates, returns, members int
+	if e := f.store.DB.QueryRow(`SELECT (SELECT count(*) FROM networking_route_candidates),(SELECT count(*) FROM server_returns),(SELECT count(*) FROM server_members)`).Scan(&candidates, &returns, &members); e != nil || candidates != 1 || returns != 0 || members != 1 {
+		t.Fatal("lookup created authority/publication", candidates, returns, members, e)
+	}
+	if _, e := f.store.DB.Exec(`UPDATE networking_route_candidates SET state='reported'`); e != nil {
+		t.Fatal(e)
+	}
+	returnCall(t, f.handler, path, f.serverToken, q, 401)
+	if _, e := f.store.DB.Exec(`UPDATE networking_route_candidates SET state='verified'; UPDATE networking_route_state SET remote_enabled=false`); e != nil {
+		t.Fatal(e)
+	}
+	returnCall(t, f.handler, path, f.serverToken, q, 401)
+	// Remote-off preserves a genuinely verified LAN origin, not a fallback to
+	// an arbitrary caller address. Exact spelling/port still binds the ID.
+	if _, e := f.store.DB.Exec(`UPDATE networking_route_candidates SET class='lan'`); e != nil {
+		t.Fatal(e)
+	}
+	raw := returnCall(t, f.handler, path, f.serverToken, q, 200)
+	var registration serverreturn.Registration
+	if e := json.Unmarshal(raw, &registration); e != nil || registration.ID != f.start.RegistrationID || registration.Origin != q.Origin {
+		t.Fatal("verified LAN binding", string(raw), e)
+	}
+}
+
+func TestReturnRegistrationRefusesCapturedStaleAuthority(t *testing.T) {
+	for name, mutation := range map[string]string{
+		"key":        `UPDATE servers SET public_key=translate(rtrim(encode(decode(repeat('01',32),'hex'),'base64'),'='),'+/','-_')`,
+		"claim":      `UPDATE servers SET claim_generation=claim_generation+1`,
+		"credential": `UPDATE servers SET credential_generation=credential_generation+1`,
+		"withdrawal": `DELETE FROM networking_route_state`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := registeredReturnFixture(t)
+			a, e := f.store.CaptureServerAuthority(context.Background(), security.Hash(f.serverToken))
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = f.store.DB.Exec(mutation); e != nil {
+				t.Fatal(e)
+			}
+			if _, e = f.store.ServerReturnRegistration(context.Background(), a, serverreturn.RegistrationRequest{Origin: "https://server.example:32500"}); e == nil {
+				t.Fatal("captured stale authority resolved registration")
+			}
+		})
+	}
+}

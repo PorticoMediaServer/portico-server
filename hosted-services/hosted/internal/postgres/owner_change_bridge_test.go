@@ -36,7 +36,8 @@ func TestOwnerChangeRepairBridge(t *testing.T) {
 		t.Fatal(e)
 	}
 	emit := func(v any) { raw, _ := json.Marshal(v); fmt.Println("PORTICO_REPAIR_JSON:" + string(raw)) }
-	emit(map[string]any{"root": base64.RawURLEncoding.EncodeToString(f.keys.RootPublicKey), "targetToken": targetToken})
+	// Disposable fixture credential travels only over this private in-memory stdin bridge.
+	emit(map[string]any{"root": base64.RawURLEncoding.EncodeToString(f.keys.RootPublicKey), "targetToken": targetToken, "serverToken": f.serverToken})
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 4096), 128<<10)
 	finalizes := 0
@@ -96,7 +97,7 @@ func TestOwnerChangeRepairBridge(t *testing.T) {
 			if !json.Valid(body) {
 				body = json.RawMessage(`{}`)
 			}
-			emit(map[string]any{"status": out.Code, "body": body})
+			emit(map[string]any{"status": out.Code, "body": body, "headers": out.Header(), "bodyEmpty": out.Body.Len() == 0})
 		default:
 			t.Fatal("unknown private command")
 		}

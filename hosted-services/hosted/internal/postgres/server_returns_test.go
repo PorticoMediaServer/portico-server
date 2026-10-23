@@ -85,7 +85,12 @@ func registeredReturnFixture(t *testing.T) returnFixture {
 	}
 	dir := directory.New(f.store, keys)
 	handler := (&httpapi.Handler{Directory: dir, ServerReturns: &httpapi.ServerReturns{Store: f.store, Directory: dir}}).Routes()
-	q := serverreturn.Start{ServerID: f.input.ServerID, Purpose: "setup", ClaimOperationID: f.input.OperationID, RegistrationID: serverreturn.RegistrationID(f.input.ServerID, f.input.OperationID, 1, 1, 1, origin), State: strings.Repeat("s", 43), CodeChallenge: serverreturn.Challenge(strings.Repeat("v", 43)), ServerChallenge: strings.Repeat("c", 32), InstallationID: strings.Repeat("i", 43)}
+	var registration serverreturn.Registration
+	registrationRaw := returnCall(t, handler, "/v1/servers/"+f.input.ServerID+"/return-registration", result.ServerCredential, serverreturn.RegistrationRequest{Origin: origin}, 200)
+	if e = json.Unmarshal(registrationRaw, &registration); e != nil || registration.Origin != origin {
+		t.Fatal("actual registration", string(registrationRaw), e)
+	}
+	q := serverreturn.Start{ServerID: f.input.ServerID, Purpose: "setup", ClaimOperationID: f.input.OperationID, RegistrationID: registration.ID, State: strings.Repeat("s", 43), CodeChallenge: serverreturn.Challenge(strings.Repeat("v", 43)), ServerChallenge: strings.Repeat("c", 32), InstallationID: strings.Repeat("i", 43)}
 	if path := os.Getenv("PORTICO_RETURN_CONSUMER_INPUT"); path != "" {
 		raw, _ := os.ReadFile(path)
 		var input struct{ Challenge, InstallationID string }

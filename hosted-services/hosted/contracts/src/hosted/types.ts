@@ -169,6 +169,8 @@ export type ServerReturnCompleteRequest = {  };
 export type ServerReturnCompleteResponse = { "location": string };
 export type ServerReturnExchangeRequest = { "code": string; "installationId": string; "purpose": string; "registrationId": string; "serverChallenge": string; "transactionId": string; "verifier": string };
 export type ServerReturnExchangeResponse = { "assertion": { "certificate"?: { "keyId": string; "notAfter": string; "notBefore": string; "publicKey": string; "purpose": string; "revision": number; "revoked": Array<string>; "signature": string }; "keyId": string; "payload": string; "signature": string } };
+export type ServerReturnRegistrationRequest = { "origin": string };
+export type ServerReturnRegistrationResponse = { "id": string; "origin": string };
 export type ServerReturnStartRequest = { "claimOperationId"?: string; "codeChallenge": string; "installationId": string; "purpose": string; "registrationId": string; "serverChallenge": string; "serverId": string; "state": string } | { "claimOperationId"?: string; "codeChallenge": string; "installationId": string; "purpose": string; "registrationId": string; "serverChallenge": string; "serverId": string; "state": string } | { "claimOperationId"?: string; "codeChallenge": string; "installationId": string; "purpose": string; "registrationId": string; "serverChallenge": string; "serverId": string; "state": string } | { "claimOperationId"?: string; "codeChallenge": string; "installationId": string; "purpose": string; "registrationId": string; "serverChallenge": string; "serverId": string; "state": string };
 export type ServerReturnStartResponse = { "transactionId": string };
 export type ServerRoutesGetRequest = {  };
@@ -279,6 +281,7 @@ export type RouteContracts = {
 "server_remove": { request: ServerRemoveRequest; response: ServerRemoveResponse };
 "server_return_complete": { request: ServerReturnCompleteRequest; response: ServerReturnCompleteResponse };
 "server_return_exchange": { request: ServerReturnExchangeRequest; response: ServerReturnExchangeResponse };
+"server_return_registration": { request: ServerReturnRegistrationRequest; response: ServerReturnRegistrationResponse };
 "server_return_start": { request: ServerReturnStartRequest; response: ServerReturnStartResponse };
 "server_routes_get": { request: ServerRoutesGetRequest; response: ServerRoutesGetResponse };
 "server_routes_observe": { request: ServerRoutesObserveRequest; response: ServerRoutesObserveResponse };

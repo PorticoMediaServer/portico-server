@@ -4382,6 +4382,32 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ServerReturnRegistrationRequest": {
+    "properties": {
+      "origin": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "origin"
+    ],
+    "type": "object"
+  },
+  "ServerReturnRegistrationResponse": {
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "origin": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "origin"
+    ],
+    "type": "object"
+  },
   "ServerReturnStartRequest": {
     "oneOf": [
       {

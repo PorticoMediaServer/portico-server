@@ -4389,6 +4389,32 @@
         ],
         "type": "object"
       },
+      "ServerReturnRegistrationRequest": {
+        "properties": {
+          "origin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin"
+        ],
+        "type": "object"
+      },
+      "ServerReturnRegistrationResponse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "origin"
+        ],
+        "type": "object"
+      },
       "ServerReturnStartRequest": {
         "oneOf": [
           {
@@ -14994,6 +15020,101 @@
         "x-error-codes": [],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/servers/{id}/return-registration": {
+      "post": {
+        "operationId": "server_return_registration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "origin": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "origin"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "origin": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "origin"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Resolve an installed server's exact verified return origin.",
+        "x-access": "server_credential",
+        "x-admission": "",
+        "x-cost": "constant",
+        "x-error-codes": [],
+        "x-lane": "security",
+        "x-max-body-bytes": 65536,
         "x-scope": "admin"
       }
     },
