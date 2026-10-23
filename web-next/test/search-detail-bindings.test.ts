@@ -42,7 +42,7 @@ const showPage = () => ({scope: {serverId: 'server', libraryId: 'library', viewe
       entries: [{id: 'one', kind: 'episode', title: 'one', libraryId: 'library', available: true, navigation: {view: 'item', entityId: 'one'}, playback: {itemId: 'one', startMs: 10}}], totalCount: 1, nextCursor: ''}]}});
 
 test('Watch body retains real title state across repeated presentation loads and retires My List', async () => {
-  const owner = setup(async () => ({...detailPage('movie'), actions: [{id: 'watchlist', enabled: true}]}));
+  const owner = setup(async () => ({...detailPage('movie'), actions: [{id: 'watchlist', labelKey: 'action.watchlist', enabled: true}]}));
   const binding = createWatchBodyBindings(owner.context, {libraryId: 'library', itemId: 'movie', kind: 'movie'});
   assert.equal(owner.requests(), 0);
   assert.deepEqual(binding.myList.getSnapshot(), {available: false, busy: false});
