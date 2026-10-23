@@ -11,6 +11,7 @@ func (d Dependencies) httpHandle(mux *http.ServeMux, pattern string, handler htt
 	d.httpHandler(mux, pattern, handler)
 }
 func (d Dependencies) httpHandler(mux *http.ServeMux, pattern string, handler http.Handler) {
+	handler = d.meteredMedia(pattern, handler)
 	if d.httpContractsPrivate {
 		mux.Handle(pattern, handler)
 		return

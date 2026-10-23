@@ -84,6 +84,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "challenge": {
         "properties": {
           "expiresAt": {
@@ -262,7 +285,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   }

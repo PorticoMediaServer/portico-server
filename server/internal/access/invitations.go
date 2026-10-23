@@ -445,6 +445,10 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Acce
 		return out, invalid("name")
 	}
 	err = s.transaction(ctx, nil, func(tx *sql.Tx) error {
+		if err := identity.RequireSignInKindTx(ctx, tx, identity.SignInLocal); err != nil {
+			return err
+		}
+
 		var id, role, libraries, bound string
 		var notes *string
 		var expires int64
@@ -537,6 +541,10 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 		name = username
 	}
 	err = s.transaction(ctx, nil, func(tx *sql.Tx) error {
+		if err := identity.RequireSignInKindTx(ctx, tx, identity.SignInPortico); err != nil {
+			return err
+		}
+
 		var id, role, libraries, bound string
 		var notes *string
 		var expires, invited int64

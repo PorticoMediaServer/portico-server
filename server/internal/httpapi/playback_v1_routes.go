@@ -249,7 +249,8 @@ func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 // v1Caller turns the admitted caller into the service's caller, with media
 // admission for new presentations and channel admission for channel starts.
 func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Caller {
-	return playbackv1.Caller{Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), TransportClass: d.deliveryContext(q).TransportClass, AuthorizeItem: func(ctx context.Context, item string) error {
+	uploadLimited := false
+	return playbackv1.Caller{UploadLimited: &uploadLimited, Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), TransportClass: d.deliveryContext(q).TransportClass, AuthorizeItem: func(ctx context.Context, item string) error {
 		return itemAdmission(d.itemAccess(ctx, c.Principal, item))
 	}, Admit: func(ctx context.Context, item string) (int, error) {
 		// A channel start admits with no item: there is no title to fence,
@@ -271,6 +272,7 @@ func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Ca
 			}
 			decision.MaxVideoBitrateBPS = narrowBitrate(decision.MaxVideoBitrateBPS, ceilings.MaxVideoBitrateBPS)
 		}
+		uploadLimited = decision.UploadLimited
 		return decision.MaxVideoBitrateBPS, nil
 	}, AdmitChannel: func(ctx context.Context, channel string) error {
 		if err := d.admitChannel(q.WithContext(ctx), c.Principal, channel); err != nil {
