@@ -1,6 +1,7 @@
 import {RouterProvider} from '@tanstack/react-router';
 import {useEffect, useSyncExternalStore} from 'react';
 import {IconSprite} from './kit/Icon';
+import {bindWebAccountEntry} from './route-registry-lifecycle';
 import {WebScreenProvider, webScreens} from './route-registry-view';
 import type {ShellAssemblyContext} from './shell/bootstrap';
 import {router} from './router';
@@ -14,7 +15,7 @@ export function App({binding, bootstrap}: {binding?: ShellBindings; bootstrap?: 
 }
 function RestoredApp({bootstrap}: {bootstrap: ShellBootstrap}) {
   const snapshot = useSyncExternalStore(bootstrap.subscribe, bootstrap.getSnapshot, bootstrap.getSnapshot);
-  useEffect(() => { void bootstrap.start(); return () => bootstrap.dispose(); }, [bootstrap]);
+  useEffect(() => bindWebAccountEntry(router, bootstrap), [bootstrap]);
   return <ShellBootstrapState value={{snapshot, retry: bootstrap.start}}><BoundApp binding={snapshot.binding} context={snapshot.context} bootstrap={bootstrap} /></ShellBootstrapState>;
 }
 function BoundApp({binding, context, bootstrap}: {binding?: ShellBindings; context?: ShellAssemblyContext; bootstrap?: ShellBootstrap}) {

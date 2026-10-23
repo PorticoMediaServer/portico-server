@@ -4,6 +4,13 @@ import {catalogue, createI18n, enUS, formatMessage, messageArguments, parseMessa
 import {presentError} from '../src/presentation/index.ts';
 import {ApiError} from '../src/index.ts';
 
+test('player panels retain the exact temporary-change and uninterrupted-listening frame copy', () => {
+  const {t} = createI18n('en-US');
+  assert.equal(t('player.opt.temporaryChanges'), 'Changes here last until you stop watching.');
+  assert.equal(t('player.opt.defaultsUnchanged'), 'Your defaults stay as they are in Settings.');
+  assert.equal(t('player.opt.hearingContinues'), "What you're hearing keeps playing.");
+});
+
 test('catalogue: every en-US message parses, and the regional catalogues keep its arguments', () => {
   for (const [id, source] of Object.entries(enUS)) assert.doesNotThrow(() => parseMessage(source), id);
   for (const locale of ['en-CA', 'en-GB'] as const) {

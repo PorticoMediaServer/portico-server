@@ -138,7 +138,7 @@ def main():
         stop_owned_job(signal.SIGTERM, None)
     os.environ['PORTICO_RUNNER_SOURCE_COMMIT'] = args.source_commit
     scratch = job_root / '.scratch/hardware-r29'
-    scratch.mkdir(parents=True)
+    scratch.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, PORTICO_LANE_SCRATCH=str(scratch), PORTICO_BUILD_JOBS='2',
         PORTICO_FFMPEG_PHASE=args.phase,
         PORTICO_DISC_SOURCE_COMMIT=lock['discHelper']['sourceCommit'],

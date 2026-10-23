@@ -4,7 +4,7 @@ import {registerHooks} from 'node:module';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformTsx} from './transform-tsx.mjs';
-import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds} from '../src/screens/watch/model.ts';
+import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds, watchStepIntent} from '../src/screens/watch/model.ts';
 import {readWatchFileInfo, readWatchFiles, watchFileGroups} from '../src/screens/watch/file-info.ts';
 import {parseSession} from '@core/playback-v1/types.ts';
 import type {FileInfoProjection} from '@core/detail.ts';
@@ -15,7 +15,7 @@ import {PlaybackDock, PlaybackPolicy} from '../../packages/player-core/src/index
 import {parseTrickplay, trickplayFrameAt} from '@core/trickplay.ts';
 import {createArtworkRuntime} from '../src/kit/artwork/source.ts';
 import {scrubImageStyle, watchPreviewFrame} from '../src/screens/watch/preview.ts';
-import {dispatchWatchMarker} from '../src/screens/watch/policy.ts';
+import {dispatchWatchMarker, watchUndoOffer} from '../src/screens/watch/policy.ts';
 import {dispatchWatchVersion, watchVersionRows} from '../src/screens/watch/versions.ts';
 import {WatchPictureInput} from '../src/screens/watch/picture.ts';
 
@@ -35,6 +35,31 @@ function snapshot(change: Partial<WebPlaybackRuntimeSnapshot> = {}): WebPlayback
     presentation: {fence, subject: {kind: 'video', item: {id: 'item', kind: 'movie', title: 'Title'}}, kind: 'video', durationSeconds: 7200, positionSeconds: 30, playing: true, expanded: true, finished: false, controls: ['pause', 'seek'], volume: .7, muted: false, rate: 1, policy: null},
     playback: {} as WebPlaybackRuntimeSnapshot['playback'], dock: {} as WebPlaybackRuntimeSnapshot['dock'], presentations: [], queueView: null, options: null, offers: null, ...change};
 }
+
+test('speed and frame shortcuts use offered current engine commands and never synthesize a seek', async () => {
+  const shown = snapshot(); let live = shown, frames = false, speeds: readonly number[] = [.5, 1, 1.5];
+  const calls: WebPlaybackAction[] = [];
+  const runtime = {getSnapshot: () => live, speedChoices: () => speeds, canStepFrame: () => frames,
+    onAction: async (action: WebPlaybackAction) => {calls.push(action);}};
+  for (const [key, direction] of [['<', -1], ['>', 1]] as const) {
+    const intent = watchStepIntent(runtime, shown, key)!;
+    await dispatchWatch(runtime, shown, intent);
+    assert.deepEqual(calls.at(-1), {kind: 'step-speed', direction, fence});
+  }
+  assert.equal(watchStepIntent(runtime, shown, '.'), null);
+  const paused = snapshot({presentation: {...shown.presentation!, playing: false}}); live = paused;
+  assert.equal(watchStepIntent(runtime, paused, '.'), null); // Ordinary browser has no frame primitive.
+  frames = true;
+  for (const [key, direction] of [[',', -1], ['.', 1]] as const) {
+    await dispatchWatch(runtime, paused, watchStepIntent(runtime, paused, key)!);
+    assert.deepEqual(calls.at(-1), {kind: 'step-frame', direction, fence});
+  }
+  speeds = []; assert.equal(watchStepIntent(runtime, paused, '>'), null);
+  live = snapshot({fence: {...fence, sessionId: 'new-session'}});
+  assert.equal(watchStepIntent(runtime, paused, '.'), null);
+  assert.equal(watchStepIntent(runtime, paused, '>'), null);
+  assert.ok(calls.every(action => action.kind !== 'seek'));
+});
 
 test('a picture double-click enters fullscreen without a transient pause; assistive activation is immediate', async context => {
   context.mock.timers.enable({apis: ['setTimeout']});
@@ -228,7 +253,7 @@ test('drawn skip actions carry the current policy marker identity, never a UI-ma
   let live = shown, called = 0;
   const binding = {getSnapshot: () => live, isCurrent: () => true, reportError: () => {}, policyAction: async (captured: QueuePlaybackFence, action: {kind: 'skip' | 'dismiss' | 'undo'; markerId: string}) => {
     called++; assert.deepEqual(action, {kind: 'skip', markerId: 'intro'}); assert.equal(captured, fence);
-    assert.equal(policy.skip(captured)?.positionSeconds, 119);
+    assert.equal(policy.skip(captured, action.markerId)?.positionSeconds, 119);
   }};
   assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'other'}), false);
   assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'intro'}), true);
@@ -252,6 +277,48 @@ test('a retained Undo action cannot outlive the real current policy offer', asyn
   live = snapshot({presentation: {...shown.presentation!, policy: policy.update({...frame, nowMs: 6000, positionSeconds: 120})!.view}});
   assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'undo', markerId: 'intro'}), false);
   assert.equal(called, 1);
+});
+
+test('Undo progress comes from the live policy, expires while paused and stays out of a collapsed or retired source', () => {
+  const policy = new PlaybackPolicy();
+  policy.begin(fence, [{id: 'intro', kind: 'intro', startSeconds: 60, endSeconds: 120, automaticSafe: true}], 600);
+  const frame = {fence, nowMs: 0, positionSeconds: 80, durationSeconds: 600, rate: 1, playing: true, expanded: true, ended: false, kind: 'episode', modes: {intro: 'auto' as const}, postPlay: null};
+  const view = policy.update(frame)!.view;
+  const shown = snapshot({presentation: {...snapshot().presentation!, policy: view}});
+  let live = shown;
+  const binding = {getSnapshot: () => live, isCurrent: () => true, policyAction: async () => {}, reportError: (error: unknown) => { throw error; }};
+  assert.equal(watchUndoOffer(binding, shown)?.fraction, 1);
+  const elapsed = policy.update({...frame, nowMs: 4000, positionSeconds: 119, playing: false})!.view;
+  live = {...shown, presentation: {...shown.presentation!, policy: elapsed}};
+  assert.equal(watchUndoOffer(binding, shown)?.remainingSeconds, 2);
+  assert.equal(watchUndoOffer(binding, shown)?.fraction, 1 / 3);
+  const expired = policy.update({...frame, nowMs: 6001, positionSeconds: 119, playing: false})!.view;
+  live = {...shown, presentation: {...shown.presentation!, policy: expired}};
+  assert.equal(watchUndoOffer(binding, shown), null);
+  live = {...shown, presentation: {...shown.presentation!, expanded: false}};
+  assert.equal(watchUndoOffer(binding, shown), null);
+  live = {...shown, fence: {...fence, generation: 2}};
+  assert.equal(watchUndoOffer(binding, shown), null);
+});
+
+test('the credits card sends only its current closing marker to skip and never reuses dismiss for Watch credits', async () => {
+  const policy = new PlaybackPolicy();
+  policy.begin(fence, [{id: 'credits', kind: 'credits', startSeconds: 500, endSeconds: 550, automaticSafe: true}], 600);
+  const postPlay = {nextEntryId: 'next', available: true, reason: 'ready' as const, countdownSeconds: 10, autoplay: true, passoutCheckDue: false, automaticAdvances: 0, startDuringCredits: false};
+  const view = policy.update({fence, nowMs: 0, positionSeconds: 520, durationSeconds: 600, rate: 1, playing: true, expanded: true, ended: false, kind: 'episode', modes: {credits: 'ask'}, postPlay})!.view;
+  assert.equal(view.prompt?.kind, 'up-next');
+  const shown = snapshot({presentation: {...snapshot().presentation!, policy: view}});
+  let live = shown, calls = 0;
+  const binding = {getSnapshot: () => live, isCurrent: () => true, reportError: (error: unknown) => { throw error; }, policyAction: async (captured: QueuePlaybackFence, action: {kind: 'skip' | 'dismiss' | 'undo'; markerId: string}) => {
+    calls++; assert.deepEqual(action, {kind: 'skip', markerId: 'credits'});
+    assert.equal(policy.skip(captured, action.markerId)?.positionSeconds, 550);
+  }};
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'dismiss', markerId: 'credits'}), false);
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'foreign'}), false);
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'credits'}), true);
+  live = {...shown, fence: {...fence, generation: 2}};
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'credits'}), false);
+  assert.equal(calls, 1);
 });
 
 test('the version chooser follows actual grouped options order and permits one remaining failure choice', async () => {

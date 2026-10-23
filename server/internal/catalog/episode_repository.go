@@ -220,6 +220,18 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 				return err
 			}
 		}
+		// An owner can return to an earlier interpretation whose identity and
+		// personal history were retained when its last source moved away.
+		res, err := tx.Exec(`UPDATE catalog_entities SET retired=0 WHERE id=? AND retired<>0`, item)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			if err = compactcatalog.TouchEntityTx(ctx, tx, item); err != nil {
+				return err
+			}
+			restore = true
+		}
 		if err = compactcatalog.LinkAssetTx(ctx, tx, item, assetID, compactcatalog.Link{Part: plan.Part, Edition: plan.Edition}); err != nil {
 			return err
 		}
@@ -235,6 +247,20 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 		}
 		if _, err = tx.Exec(`INSERT INTO episode_asset_boundaries(item_id,asset_id,status) VALUES(?,?,?) ON CONFLICT(item_id,asset_id) DO UPDATE SET status=excluded.status`, item, asset, boundary); err != nil {
 			return err
+		}
+	}
+	// Reassignment replaces a logical interpretation, rather than losing a
+	// physical file. Keep an old episode live if another source still backs
+	// it; otherwise retain its identity/history outside browse and search.
+	for _, item := range linked {
+		var linkedNow bool
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_asset_links WHERE entity_id=?)`, item).Scan(&linkedNow); err != nil {
+			return err
+		}
+		if !linkedNow {
+			if err = compactcatalog.RetireEntityTx(ctx, tx, item); err != nil {
+				return err
+			}
 		}
 	}
 	_, err = tx.Exec(`UPDATE playback_sessions SET state='stopped' WHERE asset_id=?1 AND NOT EXISTS(SELECT 1 FROM catalog_asset_links l WHERE l.asset_id=?2 AND l.entity_id=playback_sessions.item_id)`, asset, assetID)
