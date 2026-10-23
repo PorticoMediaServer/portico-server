@@ -1,11 +1,11 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {PlayHistoryEntry, PlayHistoryPeriod} from '@core/play-history.ts';
-import {SettingsTable, type SettingsTableRow, type TableQuery} from '../../kit/settings';
+import {SettingsGroup, SettingsTable, type SettingsTableRow, type TableQuery} from '../../kit/settings';
 import type {DashboardBindings, DashboardFilters} from './bindings';
 import {useDashboardAccounts, useDashboardAuthority, useDashboardRead} from './use-read';
 import {mediaKinds} from './model';
 import {formatHistoryDuration, formatHistoryStarted} from './format';
-import {mediaLabel, ReadFeedback, Section, t} from './shared';
+import {mediaLabel, ReadFeedback, t} from './shared';
 import styles from './dashboard.module.css';
 export function HistoryScreen({bindings: b, embedded = false}: {bindings: DashboardBindings; embedded?: boolean}) {
   const current = useDashboardAuthority(b);
@@ -48,7 +48,7 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
       ...(entry.location === 'local' || entry.location === 'remote' ? {where: {title: t(entry.location === 'local' ? 'next.dashboard.home' : 'next.dashboard.away'), tone: 'quiet' as const}} : {}),
     }};
   }), [rows, b]);
-  return <Section title={t('next.dashboard.playsHeading')}><ReadFeedback openHome={b.effects.openHome} state={failed ? {loading: false, failed: true, refresh: () => {state.refresh(); people.refresh();}} : state} />{!failed && <SettingsTable label={t('next.dashboard.history')} searchLabel={t('next.dashboard.search')} rows={tableRows}
+  return <SettingsGroup title={t('next.dashboard.playsHeading')} plain><ReadFeedback openHome={b.effects.openHome} state={failed ? {loading: false, failed: true, refresh: () => {state.refresh(); people.refresh();}} : state} />{!failed && <SettingsTable label={t('next.dashboard.history')} searchLabel={t('next.dashboard.search')} rows={tableRows}
     columns={[
       {id: 'title', label: t('next.dashboard.titleColumn'), kind: 'main', sortable: true, width: '27%'},
       {id: 'person', label: t('next.dashboard.person'), kind: 'main', sortable: true, width: '15%'},
@@ -62,5 +62,5 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
       {id: 'range', label: t('next.dashboard.range'), options: ['today', '7d', '30d', 'all'].map(value => ({value, label: t(`next.dashboard.${value}` as 'next.dashboard.all')}))},
     ]} height={640} countLabel={t('next.dashboard.plays', {count: total ?? rows.length})} matchedCount={total ?? rows.length}
     emptyLabel={t('next.dashboard.noMatch')} loading={state.loading} hasMore={rows.length > 0 && !!state.value?.nextCursor} onLoadMore={() => setCursor(state.value!.nextCursor)} />}
-  </Section>;
+  </SettingsGroup>;
 }
