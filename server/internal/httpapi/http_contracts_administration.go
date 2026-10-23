@@ -42,7 +42,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/admin_access.go:89
-	if err := apikit.RegisterHTTP[struct{}, access.InvitationPage](registry, apikit.Metadata{ID: "get_admin_access_invitations", Method: "GET", Path: "/v1/admin/access/invitations", Summary: "Read server access invitations", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "state"}, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, access.InvitationTablePage](registry, apikit.Metadata{ID: "get_admin_access_invitations", Method: "GET", Path: "/v1/admin/access/invitations", Summary: "Read server access invitations", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "state", "q", "sort", "direction"}, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin_access.go:103
