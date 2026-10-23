@@ -47,14 +47,14 @@ try {
   assert.ok(port, `Chromium started; exit=${child.exitCode}; error=${chromeError}; stderr=${chromeLog}`);
   const version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();browser = await connect(version.webSocketDebuggerUrl);
   const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, {method: 'PUT'})).json();page = await connect(target.webSocketDebuggerUrl);
-  await page.send('Page.enable');await page.send('Runtime.enable');await page.send('Emulation.setDeviceMetricsOverride', {width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false});
+  await page.send('Page.enable');await page.send('Runtime.enable');await page.send('Page.bringToFront');await page.send('Emulation.setDeviceMetricsOverride', {width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false});
   const navigate = async query => {const url = `${origin}/test/backup-picker.html${query}`;await page.send('Page.navigate', {url});await waitFor(`location.href===${JSON.stringify(url)} && !!window.backupPickerProof`);};
   if (process.env.BACKUP_CAPTURE_ONLY === '1') {
     const output = process.env.PORTICO_RUNNER_OUTPUT;assert.ok(output, 'Runner output directory is required');const captures = [];
     const capture = async (name, selector) => {
-      await evaluate('document.fonts.ready.then(()=>true)');await pause(250);
-      const state = await evaluate(`(() => {const element=document.querySelector(${JSON.stringify(selector)});if(!element)throw Error('Capture target absent');const r=element.getBoundingClientRect(),s=getComputedStyle(element);return {rect:{x:r.x,y:r.y,width:r.width,height:r.height},text:element.textContent,font:s.fontFamily,background:s.background,fonts:[...document.fonts].map(f=>({family:f.family,status:f.status})),viewport:[innerWidth,innerHeight],clientWidth:document.documentElement.clientWidth};})()`);
-      const {x,y,width,height} = state.rect, clip = {x: Math.floor(x),y: Math.floor(y),width: Math.ceil(x+width)-Math.floor(x),height: Math.ceil(y+height)-Math.floor(y),scale: 1};
+      await evaluate('document.fonts.ready.then(()=>true)');await waitFor(`!!document.querySelector(${JSON.stringify(selector)}) && getComputedStyle(document.querySelector(${JSON.stringify(selector)})).opacity==='1' && document.getAnimations().every(a=>a.playState!=='running')`);
+      const state = await evaluate(`(() => {const element=document.querySelector(${JSON.stringify(selector)});if(!element)throw Error('Capture target absent');const r=element.getBoundingClientRect(),s=getComputedStyle(element);return {rect:{x:r.x,y:r.y,width:r.width,height:r.height},text:element.textContent,font:s.fontFamily,background:s.background,opacity:s.opacity,transform:s.transform,fonts:[...document.fonts].map(f=>({family:f.family,status:f.status})),viewport:[innerWidth,innerHeight],clientWidth:document.documentElement.clientWidth};})()`);
+      const {x,y,width,height} = state.rect, clip = {x,y,width,height,scale: 1};
       const screenshot = await page.send('Page.captureScreenshot', {format: 'jpeg',quality: 95,captureBeyondViewport: true,clip});await writeFile(path.join(output, name), Buffer.from(screenshot.data, 'base64'));captures.push({name,...state,clip});
     };
     await navigate('?frame=13');await waitFor("document.querySelectorAll('[aria-pressed]').length===2");
