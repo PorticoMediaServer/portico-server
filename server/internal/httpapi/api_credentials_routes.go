@@ -62,7 +62,7 @@ func credentialRouteError(err error) error {
 	case errors.Is(err, sql.ErrNoRows):
 		return &apierror.Error{Code: "not_found"}
 	case errors.Is(err, identity.ErrUnauthorized), errors.Is(err, identity.ErrForbidden), errors.Is(err, identity.ErrNotVisible),
-		errors.Is(err, identity.ErrDevicePending), errors.Is(err, identity.ErrDeviceDenied), errors.Is(err, identity.ErrPasswordChangeRequired):
+		errors.Is(err, identity.ErrPasswordChangeRequired):
 		return foundationAuthError(err)
 	default:
 		return &apierror.Error{Code: "internal", Cause: err}

@@ -110,7 +110,6 @@ var settingConsumers = map[string]settingConsumer{
 	"operations.Settings.customCertificateDomain":                            {"cmd/server/main.go", "CustomCertificateDomain", "Configure the running listener or media process"},
 	"operations.Settings.customCertificateKeyPath":                           {"cmd/server/main.go", "CustomCertificateKeyPath", "Configure the running listener or media process"},
 	"operations.Settings.customCertificatePath":                              {"cmd/server/main.go", "CustomCertificatePath", "Configure the running listener or media process"},
-	"operations.Settings.deviceApprovalRequired":                             {"internal/identity/devices.go", "function:deviceApprovalPolicyTx", "Hold new devices under the owner approval rule"},
 	"operations.Settings.diagnosticDays":                                     {"internal/operations/evidence.go", "DiagnosticDays", "Prune the corresponding history by its retention rule"},
 	"operations.Settings.directStreamRemux":                                  {"internal/httpapi/delivery_settings_adapter.go", "DirectStreamRemux", "Project conversion policy to runtime delivery settings"},
 	"operations.Settings.ffmpegPath":                                         {"cmd/server/main.go", "FFmpegPath", "Configure the running listener or media process"},
