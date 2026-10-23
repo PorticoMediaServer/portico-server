@@ -12,6 +12,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"portico.local/dns/directdns"
 	"portico.local/hosted/internal/claims"
@@ -306,6 +307,110 @@ func TestOfflineLeavePurgesRegistrationAndFeedsLateDNSReaders(t *testing.T) {
 	var live int
 	if e = f.store.DB.QueryRow(`SELECT count(*) FROM servers WHERE claim_generation=$1::bigint`, successor.ClaimGeneration).Scan(&live); e != nil || live != 1 {
 		t.Fatal("successor lost", live, e)
+	}
+}
+
+func TestLeaveHTTPWaitsForNamespaceProducerAndReturnsEmpty204(t *testing.T) {
+	f := currentClaimJourney(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	a := journeyApproval(t, f)
+	raw, sig := journeyProof(t, f, a, claims.Finalize)
+	c, e := f.service.Finalize(ctx, raw, sig)
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, sig = journeyProof(t, f, a, claims.Result)
+	result, e := f.service.Result(ctx, raw, sig)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.service.Acknowledge(ctx, result.ServerCredential, c); e != nil {
+		t.Fatal(e)
+	}
+	authority, e := f.store.CaptureServerAuthority(ctx, security.Hash(result.ServerCredential))
+	if e != nil {
+		t.Fatal(e)
+	}
+	w := claims.LeaveWire{Kind: "portico.server.leave", Version: "1", Audience: "https://hosted.example", OperationID: c.OperationID, ServerID: c.ServerID, PublicKey: f.input.PublicKey, ClaimGeneration: c.ClaimGeneration, CredentialGeneration: c.CredentialGeneration, NoticeID: "concurrent_notice", Reason: "start_over_local"}
+	raw, _ = json.Marshal(w)
+	envelope := httpapi.ClaimSignedRequest{Payload: base64.RawURLEncoding.EncodeToString(raw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(f.key, raw))}
+	request := func(q httpapi.ClaimSignedRequest) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(q)
+		r := httptest.NewRequest("POST", "/v1/servers/leave", bytes.NewReader(body)).WithContext(ctx)
+		r.Header.Set("Content-Type", "application/json")
+		out := httptest.NewRecorder()
+		f.handler.ServeHTTP(out, r)
+		return out
+	}
+	for _, q := range []httpapi.ClaimSignedRequest{
+		{Payload: envelope.Payload + "=", Signature: envelope.Signature},
+		{Payload: envelope.Payload, Signature: envelope.Signature + "=="},
+		{Payload: envelope.Payload + "\n", Signature: envelope.Signature},
+	} {
+		if out := request(q); out.Code != 400 {
+			t.Fatal("noncanonical envelope accepted", out.Code)
+		}
+	}
+	ready, release := make(chan string, 1), make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	producer := make(chan error, 1)
+	go func() {
+		producer <- f.store.WithDirectNamespace(ctx, authority, func(ns string) error {
+			ready <- ns
+			select {
+			case <-release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	}()
+	var ns string
+	select {
+	case ns = <-ready:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	left := make(chan *httptest.ResponseRecorder, 1)
+	go func() { left <- request(envelope) }()
+	// Observe the real account lock held by the namespace producer. The leave
+	// must see its committed public name before deleting the registration.
+	waiting := false
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		if e = f.store.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'SELECT id FROM accounts%')`).Scan(&waiting); e != nil {
+			t.Fatal(e)
+		}
+		if waiting {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !waiting {
+		t.Fatal("leave did not serialize with namespace registration")
+	}
+	releaseOnce.Do(func() { close(release) })
+	if e = <-producer; e != nil {
+		t.Fatal(e)
+	}
+	select {
+	case out := <-left:
+		if out.Code != 204 || out.Body.Len() != 0 {
+			t.Fatal("leave response", out.Code, out.Body.String())
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if out := request(envelope); out.Code != 204 || out.Body.Len() != 0 {
+		t.Fatal("replay response", out.Code, out.Body.String())
+	}
+	var live, withdrawal int
+	if e = f.store.DB.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM certificate_namespaces),(SELECT count(*) FROM direct_address_withdrawals WHERE namespace=$1)`, ns).Scan(&live, &withdrawal); e != nil || live != 0 || withdrawal != 1 {
+		t.Fatal("late producer survived leave", live, withdrawal, e)
+	}
+	if e = f.store.WithDirectNamespace(ctx, authority, func(string) error { t.Error("old authority reached namespace producer"); return nil }); e == nil {
+		t.Fatal("old authority resurrected registration")
 	}
 }
 
