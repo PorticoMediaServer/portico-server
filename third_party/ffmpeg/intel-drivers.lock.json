@@ -39,6 +39,7 @@
     },
     {
       "name": "intel-igc-opencl_1.0.17537.24_amd64.deb",
+      "licensePackage": "intel-igc-core",
       "url": "https://github.com/intel/intel-graphics-compiler/releases/download/igc-1.0.17537.24/intel-igc-opencl_1.0.17537.24_amd64.deb",
       "sha256": "dd016400f87fa2b6a9fa9fbcca7eb4a2629174a29de679709f9bec5cede88b0e",
       "release": "https://github.com/intel/intel-graphics-compiler/releases/tag/igc-1.0.17537.24",
@@ -53,6 +54,7 @@
     },
     {
       "name": "intel-igc-opencl-2_2.41.5+22716_amd64.deb",
+      "licensePackage": "intel-igc-core-2",
       "url": "https://github.com/intel/intel-graphics-compiler/releases/download/v2.41.5/intel-igc-opencl-2_2.41.5%2B22716_amd64.deb",
       "sha256": "779e1b9e88098eb25711e9a8f67c2752665bad22f134aa40ed5649f6e1b87058",
       "release": "https://github.com/intel/intel-graphics-compiler/releases/tag/v2.41.5",
