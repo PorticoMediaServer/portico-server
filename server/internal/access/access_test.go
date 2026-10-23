@@ -35,8 +35,8 @@ func fixture(t *testing.T) (*Store, *sql.DB, catalogueIDs) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1);
- INSERT INTO accounts VALUES('member','member',x'00','member-profile',1);
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1);
+ INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('member','member',x'00','member-profile',1);
  INSERT INTO libraries(id,name,kind,root) VALUES('lib','Library','movie','/library');
  INSERT INTO libraries(id,name,kind,root) VALUES('other','Other library','movie','/other');`); err != nil {
 		t.Fatal(err)
@@ -1080,7 +1080,7 @@ func note(v string) *string { return &v }
 func TestInvitationEditsLinksNotesAndTierBoundaries(t *testing.T) {
 	store, db, _ := fixture(t)
 	ctx := context.Background()
-	if _, e := db.Exec(`INSERT INTO accounts VALUES('admin','admin',x'00','admin-profile',1);UPDATE direct_memberships SET role='admin' WHERE account_id='admin'`); e != nil {
+	if _, e := db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('admin','admin',x'00','admin-profile',1);UPDATE direct_memberships SET role='admin' WHERE account_id='admin'`); e != nil {
 		t.Fatal(e)
 	}
 	admin := identity.Principal{Viewer: identity.Viewer{AccountID: "admin", Role: identity.TierAdmin}}
@@ -1196,7 +1196,7 @@ func TestInvitationFileKeySurvivesRestartAndRotationInvalidates(t *testing.T) {
 func TestPeopleDevicesPageSortNetworkAndPrivacy(t *testing.T) {
 	store, db, _ := fixture(t)
 	ctx := context.Background()
-	if _, e := db.Exec(`INSERT INTO accounts VALUES('admin','admin',x'00','admin-profile',1);UPDATE direct_memberships SET role='admin' WHERE account_id='admin';
+	if _, e := db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('admin','admin',x'00','admin-profile',1);UPDATE direct_memberships SET role='admin' WHERE account_id='admin';
  INSERT INTO identity_devices(id,account_id,installation_id,name,platform,app,app_version,first_seen,last_seen,last_profile_id,ip) VALUES
  ('d-a','member','i-a','Alpha','android','portico','test','2026-10-01T00:00:00Z','2026-10-03T00:00:00Z','member-profile','10.0.0.2'),
  ('d-b','member','i-b','Beta','web','portico','test','2026-10-02T00:00:00Z','2026-10-02T00:00:00Z','member-profile','192.0.2.5'),

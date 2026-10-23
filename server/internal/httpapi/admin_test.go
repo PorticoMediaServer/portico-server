@@ -28,7 +28,7 @@ func TestAdminOwnerScopePathsRenameAndReloadedCancel(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','profile',1);INSERT INTO libraries(id,name,kind,root) VALUES('lib','Library','movie','/private-owner-only-path');INSERT INTO jobs(id,library_id,status,error,created_at) VALUES('bad','lib','failed','secret signedURL token credential','2026-09-03');`)
+	_, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','profile',1);INSERT INTO libraries(id,name,kind,root) VALUES('lib','Library','movie','/private-owner-only-path');INSERT INTO jobs(id,library_id,status,error,created_at) VALUES('bad','lib','failed','secret signedURL token credential','2026-09-03');`)
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -137,6 +137,7 @@ func initializeCurrentClaimControl(db *sql.DB, state string, id *identity.Servic
 	if e = control.ConfigureClaimCleanup(keys); e != nil {
 		return nil, e
 	}
+	id.PrepareIdentityDeparture = control.PrepareIdentityDeparture
 	handler, e := networking.NewClaimHandler(store, runner, transport, keys, httpapi.NetworkingClaimAuthorizer(id, origins), id.Name)
 	if e != nil {
 		return nil, e
