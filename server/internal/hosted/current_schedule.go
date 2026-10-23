@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"math/rand/v2"
+	"portico.local/server/internal/identity"
 	"strconv"
 	"time"
 
@@ -185,6 +186,24 @@ func nextControlDeadline(q controlSchedule, now time.Time) time.Time {
 // loop can sleep until then rather than ask the database every ten seconds
 // whether anything has changed.
 func (s *Service) currentControlStep(ctx context.Context) (time.Time, error) {
+	kind, kindErr := s.identity.SignInKind(ctx)
+	if kindErr != nil {
+		return time.Time{}, kindErr
+	}
+	if kind == identity.SignInLocal {
+		if err := s.DeliverIdentityDepartures(ctx); err != nil {
+			return time.Now().Add(time.Hour), err
+		}
+		var next sql.NullInt64
+		if err := s.db.QueryRowContext(ctx, `SELECT min(next_ms) FROM identity_service_outbox WHERE delivered_ms=0`).Scan(&next); err != nil {
+			return time.Time{}, err
+		}
+		if next.Valid {
+			return time.UnixMilli(next.Int64), nil
+		}
+		return time.Time{}, nil
+	}
+
 	eventDue, eventErr := s.sendServerEvents(ctx)
 	due, err := s.ordinaryControlStep(ctx)
 	if v, e := s.current.store.InstalledIntent(ctx); e == nil {

@@ -74,8 +74,8 @@ test('requests go to the documented routes with the documented bodies', async ()
   const calls: [string, string | undefined, unknown][] = [];
   const replies: Record<string, unknown> = {
     'GET /v1/account/notifications?cursor=cur_2': {items: [], unread: 0},
-    'GET /v1/account/notification-preferences': {serverOffline: true, storageNearlyFull: true, invitationAccepted: true},
-    'PUT /v1/account/notification-preferences': {serverOffline: false, storageNearlyFull: true, invitationAccepted: true},
+    'GET /v1/account/notification-preferences': {serverOffline: true},
+    'PUT /v1/account/notification-preferences': {serverOffline: false},
   };
   const client = new AccountNotificationsClient(async <T,>(path: string, method?: string, body?: unknown) => { calls.push([path, method, body]); return replies[`${method} ${path}`] as T; });
   await client.page('cur_2');
@@ -83,10 +83,10 @@ test('requests go to the documented routes with the documented bodies', async ()
   await client.markRead('all');
   await client.markRead([]);
   assert.deepEqual((await client.preferences()).serverOffline, true);
-  assert.deepEqual((await client.savePreferences({serverOffline: false, storageNearlyFull: true, invitationAccepted: true})).serverOffline, false);
+  assert.deepEqual((await client.savePreferences({serverOffline: false})).serverOffline, false);
   assert.deepEqual(calls.slice(1, 3), [['/v1/account/notifications/read', 'POST', {ids: ['a', 'b']}], ['/v1/account/notifications/read', 'POST', {all: true}]]);
   assert.equal(calls.length, 5);
-  assert.throws(() => parseNotificationPreferences({serverOffline: true}));
+  assert.throws(() => parseNotificationPreferences({serverOffline: true,storageNearlyFull:true}));
 });
 
 test('the data export: request, wait until ready, download (no email, no token link)', async () => {

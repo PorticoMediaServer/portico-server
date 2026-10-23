@@ -15,7 +15,7 @@ func TestRecordingGrantExplicitInheritanceRevocationAndMembership(t *testing.T) 
 	}
 	defer db.Close()
 	ctx := context.Background()
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','primary',1); INSERT INTO direct_profiles(id,account_id,name,is_primary) VALUES('child','owner','Child',0); INSERT INTO live_source_identities VALUES('source');`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','primary',1); INSERT INTO direct_profiles(id,account_id,name,is_primary) VALUES('child','owner','Child',0); INSERT INTO live_source_identities VALUES('source');`); err != nil {
 		t.Fatal(err)
 	}
 	tx, err := db.Begin()
