@@ -46,3 +46,28 @@ func TestEveryDownloadRungHasMatchingRecipeAndEstimate(t *testing.T) {
 		}
 	}
 }
+
+// Shared-count tests explicitly opt in. The actual default stays private.
+func shareOfflineFixture(t *testing.T, h *harness) {
+	t.Helper()
+	if _, err := operations.New(h.db).ApplyPreferences(context.Background(), h.viewer, func(context.Context, *sql.Tx, string) error { return nil }, operations.PreferenceChange{Scope: operations.ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 1, IdempotencyKey: "share-offline-fixture", Values: operations.PreferencePatch{"privacy.showActivityToMembers": true}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOfflinePrivacyDefaultRemainsUnshared(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.service.SyncProgress(context.Background(), h.viewer, "private-offline", []ProgressEntry{{PlayID: "private-play", ItemID: h.item, PositionSeconds: 60, Ended: true, ObservedAt: h.now.Add(-time.Minute).Format(time.RFC3339)}}); err != nil {
+		t.Fatal(err)
+	}
+	var shared, personal int
+	if err := h.db.QueryRow(`SELECT count(*) FROM play_counts`).Scan(&shared); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.db.QueryRow(`SELECT count(*) FROM personal_play_counts`).Scan(&personal); err != nil {
+		t.Fatal(err)
+	}
+	if shared != 0 || personal != 1 {
+		t.Fatalf("shared=%d personal=%d", shared, personal)
+	}
+}

@@ -69,7 +69,7 @@ export type PlaybackOptions = Readonly<{
   plan?: PlaybackPlan;
 }>;
 
-const qualityModes = ['original', 'fixed', 'automatic', 'limit'] as const;
+const qualityModes = ['original', 'cd-quality', 'fixed', 'automatic', 'limit'] as const;
 /** A quality in force, tolerant: anything unreadable is the original. */
 export function parseQuality(v: unknown): QualityInForce {
   if (!obj(v)) return Object.freeze({mode: 'original'});
@@ -106,7 +106,7 @@ export function parseOptions(v: unknown): PlaybackOptions {
     chapters: Object.freeze(arr(v.chapters).filter(obj).map(c => Object.freeze({startMs: num(c.startMs), title: str(c.title), thumbnail: typeof c.thumbnail === 'string' ? c.thumbnail : undefined}))),
     markers: Object.freeze(arr(v.markers).filter(obj).map(m => Object.freeze({id: str(m.id), type: oneOf(m.type, ['intro', 'recap', 'credits', 'preview', 'commercial'] as const, 'other' as never), startMs: num(m.startMs), endMs: num(m.endMs), confidence: oneOf(m.confidence, ['detected', 'manual', 'embedded'] as const, 'other' as never), automaticSafe: bool(m.automaticSafe)}))),
     trickplay: t ? Object.freeze({url: url(t.url, 'trickplay url'), intervalMs: num(t.intervalMs), tileWidth: num(t.tileWidth), tileHeight: num(t.tileHeight), columns: num(t.columns), rows: num(t.rows)}) : undefined,
-    qualities: Object.freeze(arr(v.qualities).filter(obj).filter(q => q.mode === 'original' || q.mode === 'automatic' || q.mode === 'fixed' && typeof q.id === 'string').map(q => Object.freeze({mode: q.mode as 'original' | 'automatic' | 'fixed', ...(typeof q.id === 'string' && q.id ? {id: q.id as QualityOption['id']} : {}), sameAsOriginal: q.sameAsOriginal === true, applicable: q.applicable !== false, dataGBPerHour: optNum(q.dataGBPerHour), maxHeight: optNum(q.maxHeight), maxVideoBitrateKbps: optNum(q.maxVideoBitrateKbps), maxAudioBitrateKbps: optNum(q.maxAudioBitrateKbps)}))),
+    qualities: Object.freeze(arr(v.qualities).filter(obj).filter(q => q.mode === 'original' || q.mode === 'cd-quality' || q.mode === 'automatic' || q.mode === 'limit' && typeof q.maxAudioBitrateKbps === 'number' && Number.isFinite(q.maxAudioBitrateKbps) && q.maxAudioBitrateKbps > 0 || q.mode === 'fixed' && typeof q.id === 'string').map(q => Object.freeze({mode: q.mode as 'original' | 'cd-quality' | 'automatic' | 'fixed' | 'limit', ...(typeof q.id === 'string' && q.id ? {id: q.id as QualityOption['id']} : {}), sameAsOriginal: q.sameAsOriginal === true, applicable: q.applicable !== false, dataGBPerHour: optNum(q.dataGBPerHour), maxHeight: optNum(q.maxHeight), maxVideoBitrateKbps: optNum(q.maxVideoBitrateKbps), maxAudioBitrateKbps: optNum(q.maxAudioBitrateKbps)}))),
     preferred: obj(v.preferred) ? Object.freeze({versionId: id(v.preferred.versionId, 'preferred version'), audioId: optId(v.preferred.audioId, 'preferred audio'), reason: str(v.preferred.reason), quality: parseQuality(v.preferred.quality)}) : undefined,
     plan,
   });

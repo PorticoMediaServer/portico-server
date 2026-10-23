@@ -20,6 +20,9 @@ func persistAudioEvidence(tx *sql.Tx, library, asset string, f assets.Facts) err
 	if f.InventoryOnly {
 		return nil
 	}
+	if e := persistMusicFacts(tx, asset, f); e != nil {
+		return e
+	}
 	evidence := append([]assets.AudioTagEvidence{}, f.AudioEvidence...)
 	if len(evidence) == 0 {
 		for k, v := range f.Tags {

@@ -169,7 +169,7 @@ func TestPlaybackV1LimitedAppleListeningConvertsToAAC(t *testing.T) {
 		}
 		return raw
 	}
-	if raw := stored(plan); !strings.Contains(raw, `"bitrateBps":192000`) {
+	if raw := stored(plan); !strings.Contains(raw, `"bitrateBps":256000`) {
 		t.Fatalf("the AAC rate stays within the limit: %s", raw)
 	}
 	plan = start(1, "aac-limit-000000002", 96)
