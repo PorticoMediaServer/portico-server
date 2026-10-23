@@ -112,7 +112,7 @@ func (s *Service) MissingRule(ctx context.Context) MissingRule {
 	rule := DefaultMissingRule
 	var mode sql.NullString
 	var days sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, `SELECT json_extract(body,'$."library.missingTitles"'),json_extract(body,'$."library.missingTitlesDays"') FROM console_documents WHERE scope='server'`).Scan(&mode, &days); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT "library.missingTitles","library.missingTitlesDays" FROM server_settings WHERE singleton=1`).Scan(&mode, &days); err != nil {
 		return rule
 	}
 	switch mode.String {

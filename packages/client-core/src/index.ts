@@ -2049,3 +2049,5 @@ export {readLibrarySettings,saveLibrarySettings,reorderLibraries,saveLibraryFold
 export {readLibraryInventoryConfig} from './library-inventory.ts';
 export {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from './server-admin/library-policy.ts';
 export type {LibraryAdminDocument,LibrarySettings} from './administration.ts';
+export * from './settings-configuration.ts';
+export * from './presentation/settings-bindings.ts';

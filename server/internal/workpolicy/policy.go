@@ -1,5 +1,6 @@
 // Package workpolicy retains owner maintenance windows as scheduling hints.
-// Windows schedule backups; an explicit owner pause stops new background batches.
+// Backups have their own window. Heavy analysis waits for its window; scans,
+// matching and playback keep running. An owner pause stops new heavy batches.
 package workpolicy
 
 import (
@@ -67,7 +68,7 @@ func SaveTx(ctx context.Context, tx *sql.Tx, p Policy) error {
 			}
 		}
 		for _, task := range w.Tasks {
-			if task != "backup" {
+			if task != "backup" && task != "analysis" && task != "trickplay" {
 				return errors.New("unsupported scheduled maintenance task")
 			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO maintenance_window_tasks VALUES(?,?)`, w.ID, task); err != nil {
@@ -140,11 +141,24 @@ func zone(z string) string {
 	return z
 }
 
-// Allowed treats each window as local wall-clock calendar time. Windows are
-// advisory: the lower-priority process pool and writer gate keep background
-// progress continuous under foreground load, so a window never pauses work.
+// Allowed keeps light work outside the heavy-work window. With no enabled
+// heavy window, analysis may run at any time. Backups use Open separately.
 func Allowed(p Policy, task string, now time.Time) bool {
-	return !Supported(task) || now.UnixMilli() >= p.PausedUntil
+	if !Supported(task) {
+		return true
+	}
+	if now.UnixMilli() < p.PausedUntil {
+		return false
+	}
+	if task != "analysis" && task != "trickplay" {
+		return true
+	}
+	for _, w := range p.Windows {
+		if w.Enabled && contains(w.Tasks, task) {
+			return Open(p, task, now)
+		}
+	}
+	return true
 }
 
 // Open reports whether task may start now under policy p: some enabled window
@@ -159,7 +173,7 @@ func Open(p Policy, task string, now time.Time) bool {
 // OccurrenceStart is Open with the open occurrence's start: the moment after
 // which a scheduled backup counts as covering this occurrence.
 func OccurrenceStart(p Policy, task string, now time.Time) (time.Time, bool) {
-	if !Allowed(p, task, now) {
+	if Supported(task) && now.UnixMilli() < p.PausedUntil {
 		return time.Time{}, false
 	}
 	for _, w := range p.Windows {

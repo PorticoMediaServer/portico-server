@@ -53,7 +53,8 @@ export type TunerAllocation=Readonly<{sourceId:string;sourceName:string;tunerCou
 export type TunerView=Readonly<{observedAt:string;upcomingWindowHours:number;sources:readonly TunerAllocation[]}>;
 export type StorageCategory=Readonly<{id:string;name:string;description:string;directories:readonly string[];cleanable:boolean;regenerable:boolean;retentionKey:string}>;
 export type StorageUsage=StorageCategory&Readonly<{bytes:number;bytesText:string;fileCount:number;paths:readonly string[];present:boolean;oldestDays:number}>;
-export type StorageReport=Readonly<{stateDirectory:string;categories:readonly StorageUsage[];totalBytes:number;totalBytesText:string;observedAt:string;truncated:boolean}>;
+export type StorageFolderUsage=Readonly<{id:string;path:string;bytes:number;files:number;present:boolean;truncated:boolean}>;
+export type StorageReport=Readonly<{folders:readonly StorageFolderUsage[];stateDirectory:string;categories:readonly StorageUsage[];totalBytes:number;totalBytesText:string;observedAt:string;truncated:boolean}>;
 export type UpdateBuild=Readonly<{version:string;buildId:string;sourceDigest:string;builtAt:string;channel:string;notes:string;url:string}>;
 export type UpdateStatus='current'|'update-available'|'no-feed'|'no-release'|'unavailable';
 export type UpdateReport=Readonly<{current:UpdateBuild;channel:string;feedConfigured:boolean;latest:UpdateBuild|null;updateAvailable:boolean;checkedAt:string;status:UpdateStatus;message:string;autoInstall:false}>;
@@ -333,7 +334,8 @@ export function parseStorageReport(v:unknown):StorageReport{
   if(!object(entry)||!filled(entry.id,64)||!filled(entry.name,128)||!text(entry.description,1024)||!flag(entry.cleanable)||!flag(entry.regenerable)||!text(entry.retentionKey,64)||!count(entry.bytes)||!text(entry.bytesText,64)||!count(entry.fileCount)||!flag(entry.present)||!count(entry.oldestDays))invalid('storage category');
   return Object.freeze({id:entry.id,name:entry.name,description:entry.description,directories:strings(entry.directories,16,'storage directories'),cleanable:entry.cleanable,regenerable:entry.regenerable,retentionKey:entry.retentionKey,bytes:entry.bytes,bytesText:entry.bytesText,fileCount:entry.fileCount,paths:strings(entry.paths,16,'storage paths'),present:entry.present,oldestDays:entry.oldestDays,entries:count(entry.entries)?entry.entries:0});
  },[['directories',16],['paths',16]]),entry=>entry.id);
- return Object.freeze({stateDirectory:v.stateDirectory,categories:Object.freeze(categories),totalBytes:v.totalBytes,totalBytesText:v.totalBytesText,observedAt:v.observedAt,truncated:v.truncated});
+ const folders=v.folders===undefined?[]:readable(v.folders,7,'storage folders',entry=>{if(!object(entry)||!['Database','Metadata','Cache','Logs','Keys','Backups','Temp'].includes(String(entry.id))||!text(entry.path,8192)||!count(entry.bytes)||!count(entry.files)||!flag(entry.present)||!flag(entry.truncated))invalid('storage folder');return Object.freeze({id:entry.id as string,path:entry.path,bytes:entry.bytes,files:entry.files,present:entry.present,truncated:entry.truncated});});
+ return Object.freeze({folders:Object.freeze(folders),stateDirectory:v.stateDirectory,categories:Object.freeze(categories),totalBytes:v.totalBytes,totalBytesText:v.totalBytesText,observedAt:v.observedAt,truncated:v.truncated});
 }
 
 function parseBuild(v:unknown):UpdateBuild{

@@ -40,7 +40,7 @@ func (d Dependencies) gridTag(r *http.Request, p identity.Principal, bucket time
 		if err := d.DB.QueryRowContext(r.Context(), `SELECT COALESCE(sum(r.revision),0),COALESCE(sum(v.revision),0) FROM library_revisions r LEFT JOIN viewer_revisions v ON v.library_id=r.library_id AND v.profile_id=? WHERE r.library_id=? OR NOT EXISTS(SELECT 1 FROM library_revisions WHERE library_id=?)`, identity.PersonalKey(p.Viewer), library, library).Scan(&content, &personal); err != nil {
 			return ""
 		}
-		if err := d.DB.QueryRowContext(r.Context(), `SELECT COALESCE((SELECT revision FROM console_documents WHERE scope='server'),0)`).Scan(&settings); err != nil {
+		if err := d.DB.QueryRowContext(r.Context(), `SELECT revision FROM console_settings_revision WHERE singleton=1`).Scan(&settings); err != nil {
 			return ""
 		}
 		if d.Identity != nil {

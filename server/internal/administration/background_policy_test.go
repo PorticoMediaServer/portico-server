@@ -38,13 +38,13 @@ func TestBackgroundPauseDurableAndIdempotent(t *testing.T) {
 	}
 }
 
-func TestMaintenanceWindowsOnlyOfferScheduledBackups(t *testing.T) {
+func TestMaintenanceKeepsBackupAndHeavyWindowsSeparate(t *testing.T) {
 	service, _, _ := newService(t)
 	current, err := service.MaintenanceSettings(context.Background(), allow)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Tasks) != 1 || current.Tasks[0] != "backup" {
+	if len(current.Tasks) != 3 || len(current.Settings.Windows) != 2 {
 		t.Fatal("inert scheduled jobs offered", current.Tasks)
 	}
 	settings := current.Settings

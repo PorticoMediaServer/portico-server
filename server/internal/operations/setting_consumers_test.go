@@ -120,6 +120,7 @@ var settingConsumers = map[string]settingConsumer{
 	"operations.Settings.home.communityActivityEnabled":                      {"internal/httpapi/home_routes.go", "CommunityActivityEnabled", "Include community activity in home content"},
 	"operations.Settings.jobDays":                                            {"internal/operations/evidence.go", "JobDays", "Prune the corresponding history by its retention rule"},
 	"operations.Settings.lanDiscoveryEnabled":                                {"cmd/server/administration.go", "LANDiscoveryEnabled", "Start or stop LAN advertisement"},
+	"operations.Settings.ownAddressEnabled":                                  {"cmd/server/main.go", "OwnAddressEnabled", "Enable only the independently configured custom TLS route"},
 	"operations.Settings.dlnaEnabled":                                        {"internal/httpapi/connection_settings.go", "DLNAEnabled", "Start or stop the DLNA server and its SSDP advertisement"},
 	"operations.Settings.lanNetworks":                                        {"internal/httpapi/request_locality.go", "LANNetworks", "Classify home connections and forwarded client addresses"},
 	"operations.Settings.library.missingTitles":                              {"internal/catalog/missing.go", "literal:library.missingTitles", "Keep or remove missing titles by the owner rule"},

@@ -51,7 +51,7 @@ const (
 func (s *Service) RunSegments(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	wake := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(wake, "inventory_changes", "console_documents", "admin_documents", "segment_*")
+	unregister := dbwork.WakeOnTables(wake, "inventory_changes", "console_documents", "server_settings", "admin_documents", "segment_*")
 	defer unregister()
 	worker.Run(ctx, "mediaanalysis.segments", wake, func(ctx context.Context) time.Duration {
 		if !dbwork.Yield(ctx) || !dbwork.WaitBackground(ctx) {

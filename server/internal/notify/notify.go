@@ -260,7 +260,7 @@ func (d Draft) validate() error {
 // settings package.
 func RetentionDays(tx *sql.Tx) int {
 	var value sql.NullInt64
-	if e := tx.QueryRow(`SELECT json_extract(body,'$.notificationDays') FROM console_documents WHERE scope='server'`).Scan(&value); e != nil || !value.Valid {
+	if e := tx.QueryRow(`SELECT "notificationDays" FROM server_settings WHERE singleton=1`).Scan(&value); e != nil || !value.Valid {
 		return DefaultRetentionDays
 	}
 	if value.Int64 < 1 || value.Int64 > 180 {

@@ -66,17 +66,30 @@ type StorageReport struct {
 	TotalBytesText string         `json:"totalBytesText"`
 	ObservedAt     string         `json:"observedAt"`
 	// Truncated says at least one category held more files than one sweep read.
-	Truncated bool `json:"truncated"`
+	Truncated bool                 `json:"truncated"`
+	Folders   []StorageFolderUsage `json:"folders"`
+}
+
+type StorageFolderUsage struct {
+	ID        string `json:"id"`
+	Path      string `json:"path"`
+	Bytes     int64  `json:"bytes"`
+	Files     int64  `json:"files"`
+	Present   bool   `json:"present"`
+	Truncated bool   `json:"truncated"`
 }
 
 // maxMeasuredFiles bounds one sweep so a huge artwork tree cannot hold a
 // request open.
 const maxMeasuredFiles = 200000
 
-func measure(root string, now time.Time) (int64, int64, int, bool, error) {
+func measure(ctx context.Context, root string, now time.Time) (int64, int64, int, bool, error) {
 	var bytes, count int64
 	oldest, truncated := 0, false
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
 			// An unreadable subtree is skipped rather than failing the report.
 			if entry != nil && entry.IsDir() {
@@ -85,6 +98,9 @@ func measure(root string, now time.Time) (int64, int64, int, bool, error) {
 			return nil
 		}
 		if entry.IsDir() {
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
 		if count >= maxMeasuredFiles {
@@ -108,7 +124,7 @@ func measure(root string, now time.Time) (int64, int64, int, bool, error) {
 // Storage measures every category. It reads the filesystem only; nothing is
 // removed and nothing is written.
 func (s *Service) Storage(ctx context.Context, auth Authorize) (StorageReport, error) {
-	out := StorageReport{StateDirectory: s.StateDirectory(), Categories: []StorageUsage{}, ObservedAt: timeFromMilliseconds(s.milliseconds())}
+	out := StorageReport{StateDirectory: s.StateDirectory(), Categories: []StorageUsage{}, Folders: []StorageFolderUsage{}, ObservedAt: timeFromMilliseconds(s.milliseconds())}
 	if s.StateDirectory() == "" {
 		return out, ErrUnavailable
 	}
@@ -117,17 +133,31 @@ func (s *Service) Storage(ctx context.Context, auth Authorize) (StorageReport, e
 		return out, err
 	}
 	now := s.now()
+	for _, name := range []string{"Database", "Metadata", "Cache", "Logs", "Keys", "Backups", "Temp"} {
+		folder := StorageFolderUsage{ID: name, Path: filepath.Join(s.StateDirectory(), name)}
+		if info, err := os.Lstat(folder.Path); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			folder.Present = true
+			folder.Bytes, folder.Files, _, folder.Truncated, err = measure(ctx, folder.Path, now)
+			if err != nil {
+				return out, err
+			}
+		}
+		out.Folders = append(out.Folders, folder)
+	}
 	for _, category := range StorageCategories() {
 		usage := StorageUsage{StorageCategory: category, Paths: []string{}}
 		for _, name := range category.Directories {
 			path := storagepaths.Path(s.StateDirectory(), name)
-			info, err := os.Stat(path)
-			if err != nil || !info.IsDir() {
+			info, err := os.Lstat(path)
+			if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 				continue
 			}
 			usage.Present = true
 			usage.Paths = append(usage.Paths, path)
-			bytes, count, oldest, truncated, _ := measure(path, now)
+			bytes, count, oldest, truncated, err := measure(ctx, path, now)
+			if err != nil {
+				return out, err
+			}
 			usage.Bytes += bytes
 			usage.FileCount += count
 			if oldest > usage.OldestDays {
@@ -284,7 +314,7 @@ func MaintenanceCadences() []MaintenanceCadence {
 }
 
 // MaintenanceTasks are the jobs a window may admit.
-var MaintenanceTasks = []string{"backup"}
+var MaintenanceTasks = []string{"backup", "analysis", "trickplay"}
 
 // RetentionCategories bounds legacy cache settings. Artwork has no age policy;
 // its owner retains referenced objects indefinitely.
@@ -307,7 +337,10 @@ type MaintenanceSettingsDocument struct {
 func DefaultMaintenanceSettings() MaintenanceSettingsDocument {
 	retention := map[string]int{"trickplay": 365, "prepared": 90, "conversions": 7, "subtitles": 365, "downloads": 30, "logs": 30}
 	return MaintenanceSettingsDocument{
-		Windows:         []MaintenanceWindow{{ID: "nightly", Name: "Overnight", Enabled: true, Cadence: "nightly", Days: append([]string{}, Days...), StartMinute: 180, DurationMinutes: 240, Timezone: "", Tasks: []string{"backup"}}},
+		Windows: []MaintenanceWindow{
+			{ID: "backup", Name: "Backups", Enabled: true, Cadence: "nightly", Days: append([]string{}, Days...), StartMinute: 180, DurationMinutes: 240, Timezone: "", Tasks: []string{"backup"}},
+			{ID: "heavy", Name: "Heavy background work", Enabled: false, Cadence: "nightly", Days: append([]string{}, Days...), StartMinute: 60, DurationMinutes: 300, Timezone: "", Tasks: []string{"analysis", "trickplay"}},
+		},
 		Retention:       retention,
 		BackupKeepCount: 7,
 		BackgroundSpeed: "normal",
@@ -346,7 +379,7 @@ func validateMaintenance(v *MaintenanceSettingsDocument) error {
 	if v.BackgroundSpeed != "gentle" && v.BackgroundSpeed != "normal" && v.BackgroundSpeed != "fast" {
 		fields = append(fields, "settings.backgroundSpeed")
 	}
-	if len(v.Windows) > 12 {
+	if len(v.Windows) != 2 {
 		fields = append(fields, "settings.windows")
 	}
 	cadences := map[string]bool{}
@@ -361,6 +394,25 @@ func validateMaintenance(v *MaintenanceSettingsDocument) error {
 			break
 		}
 		seen[window.ID] = true
+		if window.ID != "backup" && window.ID != "heavy" {
+			fields = append(fields, "settings.windows.id")
+			break
+		}
+		expected := []string{"backup"}
+		if window.ID == "heavy" {
+			expected = []string{"analysis", "trickplay"}
+		}
+		if len(window.Tasks) != len(expected) {
+			fields = append(fields, "settings.windows.tasks")
+			break
+		}
+		for _, task := range expected {
+			if !oneOf(task, window.Tasks...) {
+				fields = append(fields, "settings.windows.tasks")
+				break
+			}
+		}
+
 		if !cadences[window.Cadence] {
 			fields = append(fields, "settings.windows.cadence")
 			break

@@ -6458,6 +6458,9 @@ export const schemas = {
       "operationId": {
         "type": "string"
       },
+      "ownAddressEnabled": {
+        "type": "boolean"
+      },
       "pausedSessionTimeoutMinutes": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -6529,6 +6532,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "ownAddressEnabled": {
+        "type": "boolean"
+      },
       "pausedSessionTimeoutMinutes": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -6573,6 +6579,7 @@ export const schemas = {
       "uploadCapacityKbps",
       "pausedSessionTimeoutMinutes",
       "advertisedInterface",
+      "ownAddressEnabled",
       "customCertificatePath",
       "customCertificateKeyPath",
       "customCertificateDomain"
@@ -6737,6 +6744,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "ownAddressEnabled": {
+            "type": "boolean"
+          },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -6870,6 +6880,7 @@ export const schemas = {
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
           "advertisedInterface",
+          "ownAddressEnabled",
           "customCertificatePath",
           "customCertificateKeyPath",
           "customCertificateDomain",
@@ -7046,6 +7057,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "ownAddressEnabled": {
+                "type": "boolean"
+              },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -7179,6 +7193,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -7371,6 +7386,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "ownAddressEnabled": {
+                "type": "boolean"
+              },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -7504,6 +7522,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -25008,6 +25027,44 @@ export const schemas = {
             },
             "type": "array"
           },
+          "folders": {
+            "items": {
+              "properties": {
+                "bytes": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "files": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "present": {
+                  "type": "boolean"
+                },
+                "truncated": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "path",
+                "bytes",
+                "files",
+                "present",
+                "truncated"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "observedAt": {
             "type": "string"
           },
@@ -25032,7 +25089,8 @@ export const schemas = {
           "totalBytes",
           "totalBytesText",
           "observedAt",
-          "truncated"
+          "truncated",
+          "folders"
         ],
         "type": "object"
       },
@@ -29397,6 +29455,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "ownAddressEnabled": {
+        "type": "boolean"
+      },
       "pausedSessionTimeoutMinutes": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -29441,6 +29502,7 @@ export const schemas = {
       "uploadCapacityKbps",
       "pausedSessionTimeoutMinutes",
       "advertisedInterface",
+      "ownAddressEnabled",
       "customCertificatePath",
       "customCertificateKeyPath",
       "customCertificateDomain"
@@ -29611,6 +29673,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "ownAddressEnabled": {
+            "type": "boolean"
+          },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -29655,6 +29720,7 @@ export const schemas = {
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
           "advertisedInterface",
+          "ownAddressEnabled",
           "customCertificatePath",
           "customCertificateKeyPath",
           "customCertificateDomain"
@@ -30054,6 +30120,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "ownAddressEnabled": {
+                "type": "boolean"
+              },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -30187,6 +30256,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -30379,6 +30449,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "ownAddressEnabled": {
+                "type": "boolean"
+              },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -30512,6 +30585,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -124144,6 +124218,102 @@ export const schemas = {
       "name",
       "api",
       "setupRequired"
+    ],
+    "type": "object"
+  },
+  "GetSettingsConfigurationRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSettingsConfigurationResponse": {
+    "properties": {
+      "data": {
+        "properties": {
+          "fields": {
+            "items": {
+              "properties": {
+                "applicationMode": {
+                  "type": "string"
+                },
+                "configOnly": {
+                  "type": "boolean"
+                },
+                "current": {
+                  "nullable": true,
+                  "type": "any"
+                },
+                "default": {
+                  "nullable": true,
+                  "type": "any"
+                },
+                "effective": {
+                  "nullable": true,
+                  "type": "any"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "key",
+                "current",
+                "effective",
+                "default",
+                "source",
+                "configOnly",
+                "applicationMode"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          },
+          "registryRevision": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "registryRevision",
+          "path",
+          "fields"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "data"
     ],
     "type": "object"
   },

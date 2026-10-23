@@ -6722,6 +6722,9 @@
           "operationId": {
             "type": "string"
           },
+          "ownAddressEnabled": {
+            "type": "boolean"
+          },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -6793,6 +6796,9 @@
             },
             "type": "array"
           },
+          "ownAddressEnabled": {
+            "type": "boolean"
+          },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -6837,6 +6843,7 @@
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
           "advertisedInterface",
+          "ownAddressEnabled",
           "customCertificatePath",
           "customCertificateKeyPath",
           "customCertificateDomain"
@@ -7001,6 +7008,9 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "ownAddressEnabled": {
+                "type": "boolean"
+              },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -7146,6 +7156,7 @@
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -7322,6 +7333,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "ownAddressEnabled": {
+                    "type": "boolean"
+                  },
                   "pausedSessionTimeoutMinutes": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -7467,6 +7481,7 @@
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
                   "advertisedInterface",
+                  "ownAddressEnabled",
                   "customCertificatePath",
                   "customCertificateKeyPath",
                   "customCertificateDomain",
@@ -7659,6 +7674,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "ownAddressEnabled": {
+                    "type": "boolean"
+                  },
                   "pausedSessionTimeoutMinutes": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -7804,6 +7822,7 @@
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
                   "advertisedInterface",
+                  "ownAddressEnabled",
                   "customCertificatePath",
                   "customCertificateKeyPath",
                   "customCertificateDomain",
@@ -27118,6 +27137,44 @@
                 },
                 "type": "array"
               },
+              "folders": {
+                "items": {
+                  "properties": {
+                    "bytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "files": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "present": {
+                      "type": "boolean"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "path",
+                    "bytes",
+                    "files",
+                    "present",
+                    "truncated"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
               "observedAt": {
                 "type": "string"
               },
@@ -27142,7 +27199,8 @@
               "totalBytes",
               "totalBytesText",
               "observedAt",
-              "truncated"
+              "truncated",
+              "folders"
             ],
             "type": "object"
           },
@@ -31629,6 +31687,9 @@
             },
             "type": "array"
           },
+          "ownAddressEnabled": {
+            "type": "boolean"
+          },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -31673,6 +31734,7 @@
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
           "advertisedInterface",
+          "ownAddressEnabled",
           "customCertificatePath",
           "customCertificateKeyPath",
           "customCertificateDomain"
@@ -31843,6 +31905,9 @@
                 },
                 "type": "array"
               },
+              "ownAddressEnabled": {
+                "type": "boolean"
+              },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -31887,6 +31952,7 @@
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain"
@@ -32288,6 +32354,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "ownAddressEnabled": {
+                    "type": "boolean"
+                  },
                   "pausedSessionTimeoutMinutes": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -32433,6 +32502,7 @@
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
                   "advertisedInterface",
+                  "ownAddressEnabled",
                   "customCertificatePath",
                   "customCertificateKeyPath",
                   "customCertificateDomain",
@@ -32625,6 +32695,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "ownAddressEnabled": {
+                    "type": "boolean"
+                  },
                   "pausedSessionTimeoutMinutes": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -32770,6 +32843,7 @@
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
                   "advertisedInterface",
+                  "ownAddressEnabled",
                   "customCertificatePath",
                   "customCertificateKeyPath",
                   "customCertificateDomain",
@@ -128639,6 +128713,126 @@
         ],
         "type": "object"
       },
+      "GetSettingsConfigurationRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetSettingsConfigurationResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "fields": {
+                "items": {
+                  "properties": {
+                    "applicationMode": {
+                      "type": "string"
+                    },
+                    "configOnly": {
+                      "type": "boolean"
+                    },
+                    "current": {
+                      "anyOf": [
+                        {
+                          "not": {
+                            "type": "null"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "default": {
+                      "anyOf": [
+                        {
+                          "not": {
+                            "type": "null"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effective": {
+                      "anyOf": [
+                        {
+                          "not": {
+                            "type": "null"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "key",
+                    "current",
+                    "effective",
+                    "default",
+                    "source",
+                    "configOnly",
+                    "applicationMode"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "path": {
+                "type": "string"
+              },
+              "registryRevision": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "registryRevision",
+              "path",
+              "fields"
+            ],
+            "type": "object"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "data"
+        ],
+        "type": "object"
+      },
       "GetSetupStateRequest": {
         "properties": {},
         "required": [],
@@ -217536,6 +217730,9 @@
                       },
                       "type": "array"
                     },
+                    "ownAddressEnabled": {
+                      "type": "boolean"
+                    },
                     "pausedSessionTimeoutMinutes": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -217580,6 +217777,7 @@
                     "uploadCapacityKbps",
                     "pausedSessionTimeoutMinutes",
                     "advertisedInterface",
+                    "ownAddressEnabled",
                     "customCertificatePath",
                     "customCertificateKeyPath",
                     "customCertificateDomain"
@@ -217686,6 +217884,9 @@
                   "operationId": {
                     "type": "string"
                   },
+                  "ownAddressEnabled": {
+                    "type": "boolean"
+                  },
                   "pausedSessionTimeoutMinutes": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -217765,6 +217966,9 @@
                       },
                       "type": "array"
                     },
+                    "ownAddressEnabled": {
+                      "type": "boolean"
+                    },
                     "pausedSessionTimeoutMinutes": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -217809,6 +218013,7 @@
                     "uploadCapacityKbps",
                     "pausedSessionTimeoutMinutes",
                     "advertisedInterface",
+                    "ownAddressEnabled",
                     "customCertificatePath",
                     "customCertificateKeyPath",
                     "customCertificateDomain"
@@ -218034,6 +218239,9 @@
                           },
                           "type": "array"
                         },
+                        "ownAddressEnabled": {
+                          "type": "boolean"
+                        },
                         "pausedSessionTimeoutMinutes": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -218078,6 +218286,7 @@
                         "uploadCapacityKbps",
                         "pausedSessionTimeoutMinutes",
                         "advertisedInterface",
+                        "ownAddressEnabled",
                         "customCertificatePath",
                         "customCertificateKeyPath",
                         "customCertificateDomain"
@@ -221592,6 +221801,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "ownAddressEnabled": {
+                              "type": "boolean"
+                            },
                             "pausedSessionTimeoutMinutes": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -221737,6 +221949,7 @@
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
                             "advertisedInterface",
+                            "ownAddressEnabled",
                             "customCertificatePath",
                             "customCertificateKeyPath",
                             "customCertificateDomain",
@@ -221929,6 +222142,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "ownAddressEnabled": {
+                              "type": "boolean"
+                            },
                             "pausedSessionTimeoutMinutes": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -222074,6 +222290,7 @@
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
                             "advertisedInterface",
+                            "ownAddressEnabled",
                             "customCertificatePath",
                             "customCertificateKeyPath",
                             "customCertificateDomain",
@@ -222341,6 +222558,9 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "ownAddressEnabled": {
+                        "type": "boolean"
+                      },
                       "pausedSessionTimeoutMinutes": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -222486,6 +222706,7 @@
                       "uploadCapacityKbps",
                       "pausedSessionTimeoutMinutes",
                       "advertisedInterface",
+                      "ownAddressEnabled",
                       "customCertificatePath",
                       "customCertificateKeyPath",
                       "customCertificateDomain",
@@ -222670,6 +222891,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "ownAddressEnabled": {
+                              "type": "boolean"
+                            },
                             "pausedSessionTimeoutMinutes": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -222815,6 +223039,7 @@
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
                             "advertisedInterface",
+                            "ownAddressEnabled",
                             "customCertificatePath",
                             "customCertificateKeyPath",
                             "customCertificateDomain",
@@ -223007,6 +223232,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "ownAddressEnabled": {
+                              "type": "boolean"
+                            },
                             "pausedSessionTimeoutMinutes": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -223152,6 +223380,7 @@
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
                             "advertisedInterface",
+                            "ownAddressEnabled",
                             "customCertificatePath",
                             "customCertificateKeyPath",
                             "customCertificateDomain",
@@ -252367,6 +252596,180 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/settings/configuration": {
+      "get": {
+        "operationId": "get_settings_configuration",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "fields": {
+                          "items": {
+                            "properties": {
+                              "applicationMode": {
+                                "type": "string"
+                              },
+                              "configOnly": {
+                                "type": "boolean"
+                              },
+                              "current": {
+                                "anyOf": [
+                                  {
+                                    "not": {
+                                      "type": "null"
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "default": {
+                                "anyOf": [
+                                  {
+                                    "not": {
+                                      "type": "null"
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "effective": {
+                                "anyOf": [
+                                  {
+                                    "not": {
+                                      "type": "null"
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "key": {
+                                "type": "string"
+                              },
+                              "source": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "key",
+                              "current",
+                              "effective",
+                              "default",
+                              "source",
+                              "configOnly",
+                              "applicationMode"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "registryRevision": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "registryRevision",
+                        "path",
+                        "fields"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read settings values, defaults and configuration sources",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "revision_mismatch",
+          "idempotency_key_reused",
+          "rate_limited",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
     "/v1/admin/sign-in/move": {
       "get": {
         "operationId": "get_sign_in_move",
@@ -253608,6 +254011,44 @@
                           },
                           "type": "array"
                         },
+                        "folders": {
+                          "items": {
+                            "properties": {
+                              "bytes": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "files": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "present": {
+                                "type": "boolean"
+                              },
+                              "truncated": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "path",
+                              "bytes",
+                              "files",
+                              "present",
+                              "truncated"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "observedAt": {
                           "type": "string"
                         },
@@ -253632,7 +254073,8 @@
                         "totalBytes",
                         "totalBytesText",
                         "observedAt",
-                        "truncated"
+                        "truncated",
+                        "folders"
                       ],
                       "type": "object"
                     },

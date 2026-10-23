@@ -140,6 +140,9 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	}
 	if s.Admission != nil {
 		task := "analysis"
+		if stage == "checksum" {
+			task = "light-analysis"
+		}
 		if stage == "trickplay" {
 			task = "trickplay"
 		}
