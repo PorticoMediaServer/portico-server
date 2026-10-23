@@ -1,5 +1,6 @@
 import type {ReaderSource} from '../ports.ts';
 import type {PDFDocumentProxy,PDFPageProxy,PDFWorker} from 'pdfjs-dist/types/src/display/api.d.ts';
+import {pdfRanges} from './ranges.ts';
 
 export class PdfInputError extends Error {
   readonly code:'pdf_invalid'|'pdf_limit'|'page_invalid'|'worker_required'|'closed';
@@ -29,49 +30,28 @@ function abortRace<T>(promise:Promise<T>,signal:AbortSignal):Promise<T>{
 }
 export async function openPdf(source:ReaderSource,signal:AbortSignal,options:PdfOptions={}):Promise<PdfEngine>{
   signal.throwIfAborted();
-  if(!source.id||!Number.isSafeInteger(source.size)||source.size<8||source.size>(options.maxBytes??512*1024*1024))throw new PdfInputError('pdf_limit');
+  if(typeof source.read!=='function'||!source.id||!source.revision||!Number.isSafeInteger(source.size)||source.size<8||source.size>(options.maxBytes??512*1024*1024))throw new PdfInputError('pdf_limit');
+  const id=source.id,revision=source.revision,size=source.size;
+  const unchanged=()=>{if(source.id!==id||source.revision!==revision||source.size!==size)throw new PdfInputError('pdf_invalid');};
   const life=new AbortController(),combined=AbortSignal.any([signal,life.signal]);
-  const firstEnd=Math.min(source.size,rangeBytes),initial=await source.read({start:0,endExclusive:firstEnd},combined);combined.throwIfAborted();
+  const firstEnd=Math.min(source.size,rangeBytes),initial=await source.read({start:0,endExclusive:firstEnd},combined);combined.throwIfAborted();unchanged();
   if(initial.byteLength!==firstEnd||!new TextDecoder('latin1').decode(initial.subarray(0,1024)).includes('%PDF-'))throw new PdfInputError('pdf_invalid');
   const library=await import('pdfjs-dist/legacy/build/pdf.mjs');combined.throwIfAborted();
   let nativeWorker:Worker|undefined,worker:PDFWorker|undefined;
   if(options.workerUrl){nativeWorker=(options.createWorker??((url)=>new Worker(url,{type:'module'})))(options.workerUrl);worker=library.PDFWorker.create({port:nativeWorker});}
   else if(typeof window!=='undefined')throw new PdfInputError('worker_required');
   const transport=new library.PDFDataRangeTransport(source.size,new Uint8Array(initial),true);
-  let failed:unknown,closed=false,active=0,totalRequested=firstEnd,requests=0;
-  const queue:{start:number;end:number}[]=[];
+  let failed:unknown,closed=false;
   let rejectFatal!:(error:unknown)=>void;const fatal=new Promise<never>((_resolve,reject)=>{rejectFatal=reject;});void fatal.catch(()=>{});
   let loading:ReturnType<typeof library.getDocument>|undefined;
-  const fail=(error:unknown)=>{if(failed||closed)return;failed=error;rejectFatal(error);life.abort(error);queue.length=0;void loading?.destroy().catch(()=>{});};
-  const pump=()=>{
-    while(!closed&&!combined.aborted&&!failed&&active<2&&queue.length){
-      const range=queue.shift()!;active++;
-      void (async()=>{
-        const result=new Uint8Array(range.end-range.start);
-        for(let start=range.start;start<range.end;start+=rangeBytes){
-          combined.throwIfAborted();const end=Math.min(start+rangeBytes,range.end);
-          const bytes=await source.read({start,endExclusive:end},combined);combined.throwIfAborted();
-          if(bytes.byteLength!==end-start)throw new PdfInputError('pdf_invalid');
-          result.set(bytes,start-range.start);
-        }
-        // pdf.js matches a range reader by its original begin offset.
-        transport.onDataRange(range.start,result);
-      })().catch(fail).finally(()=>{active--;pump();});
-    }
-  };
-  transport.requestDataRange=(start,end)=>{
-    if(closed||combined.aborted)return;
-    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<=start||end>source.size){fail(new PdfInputError('pdf_invalid'));return;}
-    if(end-start>16*1024*1024){fail(new PdfInputError('pdf_limit'));return;}
-    totalRequested+=end-start;requests++;
-    if(queue.length>=128||requests>32768||totalRequested>Math.max(source.size*4,16*1024*1024)){fail(new PdfInputError('pdf_limit'));return;}
-    queue.push({start,end});pump();
-  };
-  transport.abort=()=>{life.abort();queue.length=0;};
-  const abort=()=>{rejectFatal(combined.reason);void loading?.destroy().catch(()=>{});};combined.addEventListener('abort',abort,{once:true});
+  const fail=(error:unknown)=>{if(failed||closed)return;failed=error;rejectFatal(error);life.abort(error);void loading?.destroy().catch(()=>{});};
+  const ranges=pdfRanges(source,{signal:combined,onRange:(start,bytes)=>transport.onDataRange(start,bytes),onError:fail});
+  transport.requestDataRange=(start,end)=>ranges.request(start,end);
+  transport.abort=()=>ranges.dispose();
+  const abort=()=>{rejectFatal(combined.reason);void dispose().catch(()=>{});};combined.addEventListener('abort',abort,{once:true});
   let disposed:Promise<void>|undefined;
   const dispose=():Promise<void>=>{
-    if(disposed)return disposed;closed=true;queue.length=0;combined.removeEventListener('abort',abort);life.abort();
+    if(disposed)return disposed;closed=true;ranges.dispose();combined.removeEventListener('abort',abort);life.abort();
     disposed=(async()=>{try{await loading?.destroy();}finally{worker?.destroy();nativeWorker?.terminate();}})();return disposed;
   };
   try{
@@ -83,8 +63,8 @@ export async function openPdf(source:ReaderSource,signal:AbortSignal,options:Pdf
     const document=await abortRace(Promise.race([loading.promise,fatal]),combined);
     if(!Number.isSafeInteger(document.numPages)||document.numPages<1||document.numPages>(options.maxPages??10000))throw new PdfInputError('pdf_limit');
     return Object.freeze({document,library,signal:life.signal,
-      run<T>(promise:Promise<T>,taskSignal:AbortSignal){if(closed)return Promise.reject(new PdfInputError('closed'));return abortRace(Promise.race([promise,fatal]),AbortSignal.any([taskSignal,life.signal]));},
-      page(index:number,taskSignal:AbortSignal){if(closed)return Promise.reject(new PdfInputError('closed'));if(!Number.isInteger(index)||index<0||index>=document.numPages)return Promise.reject(new PdfInputError('page_invalid'));return abortRace(Promise.race([document.getPage(index+1),fatal]),AbortSignal.any([taskSignal,life.signal]));},dispose});
+      async run<T>(promise:Promise<T>,taskSignal:AbortSignal){if(closed)throw new PdfInputError('closed');unchanged();const result=await abortRace(Promise.race([promise,fatal]),AbortSignal.any([taskSignal,life.signal]));unchanged();return result;},
+      async page(index:number,taskSignal:AbortSignal){if(closed)throw new PdfInputError('closed');unchanged();if(!Number.isInteger(index)||index<0||index>=document.numPages)throw new PdfInputError('page_invalid');const result=await abortRace(Promise.race([document.getPage(index+1),fatal]),AbortSignal.any([taskSignal,life.signal]));unchanged();return result;},dispose});
   }catch(error){await dispose();throw error;}
 }
 

@@ -22,12 +22,13 @@ function nameOf(b:Uint8Array,flags:number):string {
 }
 export async function readRange(source:ReaderSource,start:number,endExclusive:number,signal:AbortSignal,chunkBytes=archiveLimits.rangeBytes):Promise<Uint8Array> {
   checkAbort(signal);
-  if(!Number.isSafeInteger(source.size)||source.size<1||!Number.isSafeInteger(start)||!Number.isSafeInteger(endExclusive)||start<0||endExclusive<start||endExclusive>source.size)return fail();
+  if(typeof source.read!=='function'||!Number.isSafeInteger(source.size)||source.size<1||!Number.isSafeInteger(start)||!Number.isSafeInteger(endExclusive)||start<0||endExclusive<start||endExclusive>source.size||!Number.isSafeInteger(chunkBytes)||chunkBytes<1||chunkBytes>1024*1024)return fail();
+  const id=source.id,revision=source.revision,size=source.size;
   const result=new Uint8Array(endExclusive-start);
   for(let at=start;at<endExclusive;at+=chunkBytes){
     checkAbort(signal);const end=Math.min(at+chunkBytes,endExclusive);
     const bytes=await source.read({start:at,endExclusive:end},signal);checkAbort(signal);
-    if(!(bytes instanceof Uint8Array)||bytes.byteLength!==end-at)return fail();
+    if(source.id!==id||source.revision!==revision||source.size!==size||!(bytes instanceof Uint8Array)||bytes.byteLength!==end-at)return fail();
     result.set(bytes,at-start);
   }
   return result;
@@ -68,9 +69,8 @@ export async function readDirectory(source:ReaderSource,signal:AbortSignal,limit
   }
   return Object.freeze(entries.map(e=>Object.freeze({...e,end:ends.get(e.offset)!})));
 }
-export function crc32(bytes:Uint8Array):number {
-  let crc=0xffffffff;for(const b of bytes){crc^=b;for(let i=0;i<8;i++)crc=crc>>>1^(-(crc&1)&0xedb88320);}return (crc^0xffffffff)>>>0;
-}
+const crcTable=Uint32Array.from({length:256},(_,n)=>{let crc=n;for(let i=0;i<8;i++)crc=crc>>>1^(-(crc&1)&0xedb88320);return crc>>>0;});
+export function crc32(bytes:Uint8Array):number {let crc=0xffffffff;for(const b of bytes)crc=crc>>>8^crcTable[(crc^b)&255];return (crc^0xffffffff)>>>0;}
 export async function readEntry(source:ReaderSource,entry:ZipEntry,signal:AbortSignal,limits:ArchiveLimits=archiveLimits):Promise<Uint8Array> {
   const header=await readRange(source,entry.offset,entry.offset+30,signal,limits.rangeBytes);
   if(u32(header,0)!==0x04034b50||u16(header,6)!==entry.flags||u16(header,8)!==entry.method)return fail();

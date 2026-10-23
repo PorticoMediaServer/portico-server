@@ -19,7 +19,7 @@ function zip(files:{name:string;bytes:Uint8Array;deflate?:boolean}[]){
   const dir=Buffer.concat(central),end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50);end.writeUInt16LE(files.length,8);end.writeUInt16LE(files.length,10);end.writeUInt32LE(dir.length,12);end.writeUInt32LE(offset,16);
   return Buffer.concat([...local,dir,end]);
 }
-function source(bytes:Uint8Array){const reads:{start:number;endExclusive:number}[]=[];return {id:'lawful-test',size:bytes.length,reads,async read(range:{start:number;endExclusive:number},sig:AbortSignal){sig.throwIfAborted();reads.push(range);return bytes.slice(range.start,range.endExclusive);}};}
+function source(bytes:Uint8Array){const reads:{start:number;endExclusive:number}[]=[];return {id:'lawful-test',revision:'revision-1',size:bytes.length,reads,async read(range:{start:number;endExclusive:number},sig:AbortSignal){sig.throwIfAborted();reads.push(range);return bytes.slice(range.start,range.endExclusive);}};}
 test('stored and deflated CBZ read actual images in natural page order, never hidden macOS artifacts',async()=>{
   const bytes=zip([{name:'page10.png',bytes:png,deflate:true},{name:'page2.png',bytes:png},{name:'__MACOSX/._page.png',bytes:png},{name:'ComicInfo.xml',bytes:Buffer.from('<ComicInfo><Title>A &amp; B</Title><Writer>McCay</Writer><Manga>YesAndRightToLeft</Manga></ComicInfo>')}]);
   const input=source(bytes),archive=await openComicArchive(input,signal());assert.equal(archive.pageCount,2);assert.deepEqual(archive.metadata,{title:'A & B',author:'McCay',direction:'rtl'});
@@ -58,4 +58,8 @@ test('image sniffing and XML metadata reject active markup, bad signatures and h
   assert.throws(()=>rasterInfo(Buffer.from('<svg onload="alert(1)"/>')),{code:'image_invalid'});
   const huge=Buffer.from(png);huge.writeUInt32BE(100000,16);assert.throws(()=>rasterInfo(huge),{code:'image_limit'});
   assert.throws(()=>comicInfo(Buffer.from('<!DOCTYPE ComicInfo [<!ENTITY x SYSTEM "file:///secret">]><ComicInfo/>')),{code:'archive_invalid'});
+});
+test('changed source revision and an absent binary reader cannot splice CBZ pages',async()=>{
+  const input=source(zip([{name:'a.png',bytes:png}])),archive=await openComicArchive(input,signal());input.revision='changed';await assert.rejects(archive.page(0,{width:300,signal:signal()}),{code:'archive_invalid'});archive.dispose();
+  await assert.rejects(openComicArchive({...input,read:undefined},signal()),{code:'archive_invalid'});
 });
