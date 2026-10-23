@@ -41,6 +41,7 @@ export type WebPlaybackNotice = 'autoplayBlocked' | 'qualityLowered' | 'qualityR
 
 /** Structural native/web media port. A platform adapter owns one generation at a time. */
 export type PlaybackMediaPort = MediaPlayer & {
+  readonly nativeSurfaceActive?: boolean;
   readonly loaded: number;
   readonly settling: boolean;
   onNotice(listener: (notice: WebPlayerNotice) => void): () => void;
@@ -135,6 +136,7 @@ export class PlayerSlot implements MediaPlayer {
   dispose(): void { this.unmount(); this.listeners.clear(); this.notices.clear(); }
 
   get settling(): boolean { return !!this.real && !this.held && this.real.settling; }
+  get nativeSurfaceActive(): boolean { return !this.held && !!this.real?.loaded && this.real.nativeSurfaceActive === true; }
   get mounted(): boolean { return !!this.real; }
   /** The generation the element has loaded (0: nothing). */
   get loaded(): number { return this.real && !this.held ? this.real.loaded : 0; }
