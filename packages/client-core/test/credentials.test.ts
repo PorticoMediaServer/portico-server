@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {ApiError,CredentialSessionService,type CredentialRecord,type HostedSession} from '../src/index.ts';
 const uuid=async()=>crypto.randomUUID();const delay=()=>new Promise(r=>setTimeout(r,10));
-const session=(token='one'):HostedSession=>({accessToken:'access-'+token,refreshToken:'refresh-'+token,familyId:'family',expiresAt:new Date(Date.now()+3600000).toISOString(),refreshExpiresAt:new Date(Date.now()+86400000).toISOString(),account:{id:'a',username:'a',displayName:'A'},profiles:[{id:'p',name:'P'}]});
+const session=(token='one'):HostedSession=>({accessToken:'access-'+token,refreshToken:'refresh-'+token,familyId:'family',expiresAt:new Date(Date.now()+3600000).toISOString(),refreshExpiresAt:new Date(Date.now()+86400000).toISOString(),account:{id:'a',username:'a',displayName:'A'}});
 function store(){let value:CredentialRecord|undefined;return{load:async()=>structuredClone(value),save:async(v:CredentialRecord)=>{value=structuredClone(v)},value:()=>value}}
 const api=(refresh:any,revoke=async(_token:string)=>{})=>({authorityFromSession:(s:HostedSession)=>s.refreshToken!,refresh,revoke});
 test('refresh is single flight, stores receipt before request, hides refresh secret',async()=>{const storage=store();let calls=0;const service=new CredentialSessionService(api(async()=>{calls++;assert.ok(storage.value()?.active?.pendingRequestId);await delay();return session('two')}),storage,uuid);await service.adopt(session(),{profileId:'p'});assert.equal('refreshToken' in service.getSnapshot().session!,false);const [a,b]=await Promise.all([service.accessSession(true),service.accessSession(true)]);assert.equal(calls,1);assert.equal(a.accessToken,b.accessToken);assert.equal(storage.value()?.active?.pendingRequestId,undefined);assert.equal(service.getSnapshot().context?.profileId,'p')});
@@ -36,16 +36,12 @@ test('directory receipt fields do not corrupt persisted credential selection',as
  assert.equal('endpointVerified' in restored.active!.context.server!,false);
 });
 
-test('CD-37: 100-profile wire cap retained; eight active cap retained',async()=>{
+test('Hosted credentials contain no profiles; the server account keeps its eight-profile cap',async()=>{
  const {parseNativeCredentialRecord}=await import('../src/credential-format.ts');
  const {parseManagedProfiles}=await import('../src/profile-management.ts');
- const profiles100=Array.from({length:100},(_,i)=>({id:`p${i}`,name:`P${i}`}));
- const sess=(profiles:any)=>({accessToken:'a'.repeat(43),refreshToken:'r'.repeat(43),familyId:'family',expiresAt:new Date(Date.now()+3600000).toISOString(),refreshExpiresAt:new Date(Date.now()+86400000).toISOString(),account:{id:'a',username:'a',displayName:'A'},profiles});
- const record=(profiles:any)=>({version:1,revocations:[],active:{session:sess(profiles),authority:'r'.repeat(43),context:{}}});
- // 100 decodes (wire safety bound); 101 fails closed.
- assert.equal(parseNativeCredentialRecord(record(profiles100)).active?.session.profiles.length,100);
- assert.throws(()=>parseNativeCredentialRecord(record([...profiles100,{id:'extra',name:'Extra'}])));
- // Creation stays capped at eight active.
+ const current={version:1,revocations:[],active:{session:session(),authority:'refresh-one',context:{}}};
+ assert.equal(Object.hasOwn(parseNativeCredentialRecord(current).active!.session,'profiles'),false);
+ for(const profiles of [[],[{id:'p',name:'P'}]])assert.throws(()=>parseNativeCredentialRecord({...current,active:{...current.active,session:{...current.active.session,profiles}}}));
  const eight=Array.from({length:8},(_,i)=>({id:`profile-${i}`,name:`Profile ${i}`,primary:i===0,position:i,art:'blue',revision:1,pinRevision:1,pinRequired:false}));
  assert.equal(parseManagedProfiles(eight).length,8);
  assert.throws(()=>parseManagedProfiles([...eight,{id:'profile-8',name:'P8',primary:false,position:8,art:'blue',revision:1,pinRevision:1,pinRequired:false}]));

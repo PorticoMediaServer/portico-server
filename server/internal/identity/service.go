@@ -96,6 +96,7 @@ type Envelope struct {
 	AuthorizationHorizon string                `json:"authorizationHorizon"`
 }
 type Service struct {
+	PrepareIdentityDeparture         func(context.Context, string) (*DepartureNotice, error)
 	resetData, resetDir, resetSystem string
 	resetIO                          *resetFileOperations
 	db                               *sql.DB

@@ -46,7 +46,7 @@ func seekFixture(t *testing.T, settings DeliverySettings) (context.Context, *sql
 		cancel()
 		t.Fatal(err)
 	}
-	mustAudioExec(t, db, `INSERT INTO accounts VALUES('owner','owner',X'00','profile',1)`)
+	mustAudioExec(t, db, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',X'00','profile',1)`)
 	insertFixtureSession(t, db, "login", "owner", "profile", "owner", "2099-01-01T00:00:00Z")
 	_, item, _ := catalogFixture(t, db, "lib", root, compactcatalog.Movie, "item", "Movie", compactcatalog.Asset{Path: input, Size: info.Size(), ModifiedNS: info.ModTime().UnixNano(), Container: facts.Container, VideoCodec: facts.VideoCodec, AudioCodec: facts.AudioCodec, Width: facts.Width, Height: facts.Height, Duration: facts.Duration})
 	h, err := NewHLS(ctx, db, filepath.Join(root, "hls"), binary)

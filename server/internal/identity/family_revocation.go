@@ -15,7 +15,6 @@ const (
 	RevokedExplicitSignout   RevocationReason = "explicit_signout"
 	RevokedAdminRevoke       RevocationReason = "admin_revoke"
 	RevokedMembershipRemoved RevocationReason = "membership_removed"
-	RevokedDeviceDisapproved RevocationReason = "device_disapproved"
 	RevokedPasswordChange    RevocationReason = "password_change"
 	// RevokedSigningKeyRevoked: the Hosted signing key whose assertion admitted
 	// the session was revoked.
@@ -27,7 +26,7 @@ const (
 
 func validRevocationReason(reason RevocationReason) bool {
 	switch reason {
-	case RevokedRefreshReuse, RevokedExplicitSignout, RevokedAdminRevoke, RevokedMembershipRemoved, RevokedDeviceDisapproved, RevokedPasswordChange, RevokedSigningKeyRevoked, RevokedRestored:
+	case RevokedRefreshReuse, RevokedExplicitSignout, RevokedAdminRevoke, RevokedMembershipRemoved, RevokedPasswordChange, RevokedSigningKeyRevoked, RevokedRestored:
 		return true
 	}
 	return false

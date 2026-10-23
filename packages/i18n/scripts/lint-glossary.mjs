@@ -64,6 +64,9 @@ const AVOIDS = [
 
 // Legitimate uses: key substring → reason. Kept narrow; everything else fails.
 const ALLOW = [
+  // Canonical Accounts model, 22 Oct 2026: local account is the explicit sign-in label.
+  ['accounts.session.local', 'AC-C2 binding Local account sign-in label'],
+  ['accounts.consent.local', 'AC-C3 same Local account TV sign-in consent'],
   // First-run fallback server names (glossary: "except first-run").
   ['servers.fallbackName', '"Portico server" first-run fallback name'],
   ['web.servers.fallbackName', '"Portico server" first-run fallback name'],

@@ -106,7 +106,7 @@ func verifyApprovalAt(ctx context.Context, audience, keyID string, pin ed25519.P
 	}
 	b := Binding{OperationID: wire.OperationID, ServerID: wire.ServerID, AccountID: wire.AccountID, PublicKey: public, LocalGeneration: wire.LocalGeneration}
 	purpose := ClaimPurpose{wire.Purpose, wire.CurrentOwnerAccountID, wire.PreviousOwnerRole, wire.ReturnRegistrationID}
-	if !purpose.Valid() || !validBinding(b) || (wire.Purpose == "change-owner" && !claimUsername.MatchString(wire.TargetUsername)) || (wire.Purpose != "change-owner" && wire.TargetUsername != "") {
+	if !purpose.Valid() || !validBinding(b) || ((wire.Purpose == "change-owner" || wire.Purpose == "switch") && !claimUsername.MatchString(wire.TargetUsername)) || (wire.Purpose != "change-owner" && wire.Purpose != "switch" && wire.TargetUsername != "") {
 		return ApprovalFacts{}, ErrInvalid
 	}
 	issued, e := time.Parse(time.RFC3339Nano, wire.IssuedAt)
