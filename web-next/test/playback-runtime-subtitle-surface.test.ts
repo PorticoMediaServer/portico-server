@@ -70,3 +70,19 @@ test('where the cue box cannot be lifted with CSS, cues sit above the controls; 
   assert.equal(h.listeners.size, 0);
   assert.equal(h.cues.length, 0);
 });
+
+test('drawn caption preferences apply to the native cues and system opt-in removes app styling', () => {
+  const h=host(), attrs=new Map<string,string>(), styles:{textContent:string;removed:boolean;remove():void}[]=[];
+  const styled={...h,setAttribute:(key:string,value:string)=>attrs.set(key,value),removeAttribute:(key:string)=>attrs.delete(key),ownerDocument:{
+    createElement:()=>{const style={textContent:'',removed:false,remove(){this.removed=true;}};styles.push(style);return style;},head:{append(){}}
+  }};
+  const surface=new SubtitleSurface(styled as any,{cue,lift:false});
+  const preferences={size:'large',color:'yellow',background:'outline',position:'raised',font:'mono',keepStyling:false,useSystemCaptionStyle:false} as const;
+  surface.applyPreferences(preferences);surface.show(lines,0);
+  assert.match(styles[0]!.textContent,/font-size:125%/);assert.match(styles[0]!.textContent,/color:#ff0/);assert.match(styles[0]!.textContent,/font-family:monospace/);
+  assert.ok(attrs.has('data-portico-caption-style'));assert.equal(h.cues[1]!.text,'Sign');assert.equal(h.cues[1]!.line,-6);
+  surface.applyPreferences({...preferences,useSystemCaptionStyle:true,keepStyling:true});
+  assert.equal(styles[0]!.removed,true);assert.equal(attrs.has('data-portico-caption-style'),false,'browser native cue defaults are left to the actual user agent');
+  assert.equal(h.cues[1]!.text,'<i>Sign</i>');assert.equal(h.cues[1]!.line,0,'authored top cue is preserved');
+  surface.dispose();assert.equal(h.cues.length,0);
+});
