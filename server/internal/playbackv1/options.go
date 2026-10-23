@@ -68,6 +68,7 @@ type Part struct {
 	SizeBytes  int64  `json:"sizeBytes"`
 }
 type VideoStream struct {
+	Interlaced                 *bool   `json:"interlaced,omitempty"`
 	ChromaSubsampling          string  `json:"chromaSubsampling,omitempty"`
 	FrameRateNumerator         int     `json:"frameRateNumerator,omitempty"`
 	FrameRateDenominator       int     `json:"frameRateDenominator,omitempty"`
@@ -316,12 +317,14 @@ func resolutionLabel(height int) string {
 }
 
 func hdrName(transfer, detail string) string {
-	if strings.Contains(detail, "dolby_vision") || strings.Contains(detail, "\"dovi") {
+	var stored assets.Stream
+	stored.DecodeDetail(detail)
+	if stored.Detail.DynamicRange == assets.RangeDolbyVision {
 		return "dolbyvision"
 	}
 	switch transfer {
 	case "smpte2084":
-		if strings.Contains(detail, "hdr10Plus") || strings.Contains(detail, "hdr10plus") || strings.Contains(detail, "hdr10_plus") {
+		if stored.Detail.HDR10Plus {
 			return "hdr10plus"
 		}
 		return "hdr10"
@@ -458,7 +461,7 @@ func (s *Service) streams(ctx context.Context, tx *sql.Tx, asset string, v *Vers
 		lower := strings.ToLower(title)
 		switch kind {
 		case "video":
-			v.Video = append(v.Video, VideoStream{ChromaSubsampling: facts.ChromaSubsampling, FrameRateNumerator: facts.FrameRateNumerator, FrameRateDenominator: facts.FrameRateDenominator, FrameRateMode: facts.FrameRateMode, DolbyVisionProfile: facts.DolbyVisionProfile, DolbyVisionCompatibility: facts.DolbyVisionCompatibility, DolbyVisionRPU: facts.DolbyVisionRPU, DolbyVisionBaseLayer: facts.DolbyVisionBaseLayer, DolbyVisionEnhancementType: facts.DolbyVisionEnhancementType, DolbyVisionCMVersion: facts.DolbyVisionCMVersion, HDR10Plus: facts.HDR10Plus, MasterDisplay: facts.MasterDisplay, MaxCLL: facts.MaxCLL, ID: streamID("v", index), Codec: codec, Profile: strings.ToLower(facts.Profile), Level: facts.Level, BitDepth: facts.BitDepth, Width: facts.Width, Height: facts.Height, Fps: facts.FrameRate, HDR: hdrName(transfer, detail), BitrateKbps: int(facts.BitRate / 1000)})
+			v.Video = append(v.Video, VideoStream{Interlaced: facts.ObservedInterlaced(), ChromaSubsampling: facts.ChromaSubsampling, FrameRateNumerator: facts.FrameRateNumerator, FrameRateDenominator: facts.FrameRateDenominator, FrameRateMode: facts.FrameRateMode, DolbyVisionProfile: facts.DolbyVisionProfile, DolbyVisionCompatibility: facts.DolbyVisionCompatibility, DolbyVisionRPU: facts.DolbyVisionRPU, DolbyVisionBaseLayer: facts.DolbyVisionBaseLayer, DolbyVisionEnhancementType: facts.DolbyVisionEnhancementType, DolbyVisionCMVersion: facts.DolbyVisionCMVersion, HDR10Plus: facts.HDR10Plus, MasterDisplay: facts.MasterDisplay, MaxCLL: facts.MaxCLL, ID: streamID("v", index), Codec: codec, Profile: strings.ToLower(facts.Profile), Level: facts.Level, BitDepth: facts.BitDepth, Width: facts.Width, Height: facts.Height, Fps: facts.FrameRate, HDR: hdrName(transfer, detail), BitrateKbps: int(facts.BitRate / 1000)})
 		case "audio":
 			v.Audio = append(v.Audio, AudioStream{Variant: facts.AudioVariant, ObjectAudio: facts.ObjectAudio, SampleRate: facts.SampleRate, BitDepth: facts.BitsPerSample, DTSX: facts.ObjectAudio == "dtsx", ID: streamID("a", index), Codec: codec, Channels: channels, Layout: layout, Atmos: facts.ObjectAudio == "atmos", Language: language, Title: title, Default: isDefault, Commentary: strings.Contains(lower, "commentary"), VisualImpaired: facts.AudioDescription})
 		case "subtitle":
