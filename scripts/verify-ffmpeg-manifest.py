@@ -10,7 +10,7 @@ def digest_file(path):
 for required in ['corresponding-source.tar.xz','NOTICE.md','sources.lock.json','requirements.v1.json','portico-disc-build.json','LICENSES/portico-disc.txt']:
  if required not in files:raise SystemExit('Missing provenance: '+required)
 if m['target']=='linux-x64':
- for required in ['dependency-inputs.json','compiler.txt','compiler-linked-inputs.json','license-inventory.json','linux-build-inputs.json','repeat-build.json']:
+ for required in ['dependency-inputs.json','compiler.txt','compiler-linked-inputs.json','license-inventory.json','linux-build-inputs.json','repeat-build.json','libdovi-build.json','dovi-profile-build.json']:
   if required not in files:raise SystemExit('Missing Linux build provenance: '+required)
 if not any(x.startswith('LICENSES/') for x in files):raise SystemExit('Missing licenses')
 for name,digest in files.items():
@@ -30,4 +30,14 @@ if m['target']=='linux-x64':
   raise SystemExit('Missing sealed Linux source/dependency identity')
  if not re.fullmatch(r'[0-9a-f]{64}',str(inputs.get('nativeBuildTools',{}).get('glslc',''))):
   raise SystemExit('Missing source-built native shader compiler identity')
+ profile=json.loads((root/'dovi-profile-build.json').read_text())
+ contract=json.loads((root/'portico-dovi-profile.v1.json').read_text())
+ expected_packet={'passed':True,'convertedPackets':96,'wrongRpuProfilesRejected':3,'invalidConfigurationsRejected':4,'corruptRpuRejected':1,'noRpuRejected':True,'modeIntrospection':True}
+ if (profile.get('qualified') is not True or profile.get('ffmpegSHA256')!=files['bin/ffmpeg'] or
+     profile.get('sourceArchiveSHA256')!=inputs['sourceArchiveSHA256'] or
+     profile.get('patchSHA256')!=contract['ffmpeg']['patchSha256'] or
+     not all(profile.get('packetTests',{}).get(k)==v for k,v in expected_packet.items()) or
+     not all(all(r.get('packetTests',{}).get(k)==v for k,v in expected_packet.items()) for r in rounds)):
+  raise SystemExit('Canonical Dolby Vision packet proof does not match this bundle')
+
 print('Verified bundle hashes for '+m['target'])

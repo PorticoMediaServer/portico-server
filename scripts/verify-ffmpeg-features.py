@@ -80,6 +80,9 @@ def main():
     stock_options = set(re.findall(r'^\s+-(\w+)\s', stock_dovi, re.M))
     if not {'strip', 'compression'} <= stock_options or 'mode' in stock_options:
         missing.append('metadata.stock-dovi-rpu:strip/compression-only')
+    profile_dovi = run('-h', 'bsf=dovi_profile')
+    if not re.search(r'(?m)^\s+-mode\s+<int>.*\(from 2 to 2\).*\(default 2\)', profile_dovi):
+        missing.append('metadata.dovi-profile:mode-exactly-2')
     report = {'target': target, 'contractId': contract['contractId'], 'version': run('-version').splitlines()[0],
               'sourceCommit': lock['ffmpeg']['commit'], 'missing': missing,
               'stockDoviRpuOptions': sorted(stock_options),

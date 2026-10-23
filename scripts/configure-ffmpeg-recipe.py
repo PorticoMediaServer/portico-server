@@ -7,7 +7,7 @@ import sys
 
 recipe, source, target = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
 root = Path(__file__).resolve().parent.parent
-common = '--enable-gpl --enable-version3 --enable-libdav1d --enable-libsvtav1 --enable-libx264 --enable-libx265 --enable-libzimg --enable-libass --enable-fontconfig --enable-libsoxr --enable-libbluray --enable-libdvdnav --enable-libdvdread --enable-libplacebo --enable-vulkan --disable-nonfree --disable-libfdk-aac'
+common = '--enable-gpl --enable-version3 --enable-libdav1d --enable-libsvtav1 --enable-libx264 --enable-libx265 --enable-libzimg --enable-libdovi --enable-libass --enable-fontconfig --enable-libsoxr --enable-libbluray --enable-libdvdnav --enable-libdvdread --enable-libplacebo --enable-vulkan --disable-nonfree --disable-libfdk-aac'
 flags = common
 if target.startswith('linux'):
     flags += ' --enable-vaapi --enable-libdrm --enable-opencl'

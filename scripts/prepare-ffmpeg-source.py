@@ -32,7 +32,8 @@ def prepare(archive, output, lock):
     if output.exists():
         receipt = json.loads((output / 'portico-source-receipt.json').read_text())
         if (receipt['sourceCommit'] != source['commit'] or receipt['sourceSha256'] != source['sha256'] or
-                receipt['patches'] != source['patches'] or receipt['sourceDateEpoch'] != lock['sourceDateEpoch'] or
+                receipt['patches'] != source['patches'] or
+                receipt.get('postSeriesPatches', []) != source.get('postSeriesPatches', []) or receipt['sourceDateEpoch'] != lock['sourceDateEpoch'] or
                 receipt['files'] != tree_files(output)):
             raise ValueError('existing patched source differs from the locked receipt')
         return
@@ -57,6 +58,15 @@ def prepare(archive, output, lock):
                 raise ValueError('patch checksum mismatch: ' + patch['path'])
             subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-i', str(path.resolve())],
                            cwd=tree, check=True, stdout=subprocess.DEVNULL)
+        # Portico patches follow the untouched, exactly ordered 100 upstream
+        # patches. Their source and receipt are separate from that series.
+        for patch in source.get('postSeriesPatches', []):
+            path = ROOT / patch['path']
+            if (not path.resolve().is_relative_to(ROOT) or path.is_symlink() or
+                    digest(path) != patch['sha256']):
+                raise ValueError('post-series patch checksum/path mismatch: ' + patch['path'])
+            subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-i', str(path.resolve())],
+                           cwd=tree, check=True, stdout=subprocess.DEVNULL)
         # These boundaries predate this release and must survive all patches.
         assertions = {
             'RELEASE': ['8.1.3'],
@@ -76,7 +86,8 @@ def prepare(archive, output, lock):
     # A portable patch receipt, useful for Android/desktop consumers, without
     # treating source inspection as target compilation or runtime acceptance.
     receipt = {'sourceCommit': source['commit'], 'sourceSha256': source['sha256'],
-               'patches': source['patches'], 'sourceDateEpoch': lock['sourceDateEpoch'],
+               'patches': source['patches'], 'postSeriesPatches': source.get('postSeriesPatches', []),
+               'sourceDateEpoch': lock['sourceDateEpoch'],
                'files': tree_files(output)}
     (output / 'portico-source-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
 
@@ -95,7 +106,8 @@ def main():
             archive = Path(tmp) / 'source.tar.gz'
             urllib.request.urlretrieve(lock['ffmpeg']['source'], archive)
             prepare(archive, args.output, lock)
-    print('Verified source and applied %d patches: %s' % (len(lock['ffmpeg']['patches']), args.output))
+    print('Verified source and applied %d upstream plus %d post-series patches: %s' %
+          (len(lock['ffmpeg']['patches']), len(lock['ffmpeg'].get('postSeriesPatches', [])), args.output))
 
 
 if __name__ == '__main__':

@@ -748,6 +748,22 @@
       "acceptable": [
         "dst"
       ]
+    },
+    {
+      "id": "metadata.dovi-profile",
+      "kind": "bsf",
+      "required": true,
+      "acceptable": [
+        "dovi_profile"
+      ]
+    },
+    {
+      "id": "library.libdovi",
+      "kind": "library",
+      "required": true,
+      "acceptable": [
+        "libdovi"
+      ]
     }
   ],
   "matching": "All acceptable entries are required unless match is any; platforms use Go OS-architecture names."

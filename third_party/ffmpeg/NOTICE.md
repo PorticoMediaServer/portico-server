@@ -28,3 +28,10 @@ are separate user-space driver packages, downloaded only from official Intel
 releases with SHA256 checks, retaining their installed copyright notices. Both
 modern and legacy ICDs are installed because their supported GPU generations
 differ. These driver packages do not substitute for Portico's FFmpeg source build.
+
+The post-series dovi_profile patch follows all 100 unchanged Jellyfin patches.
+Its optional libdovi 3.4.0 dependency is MIT licensed. Canonical Linux builds
+retain the locked Cargo source/vendor inventory, module notices and Rust runtime
+notices. The official source-built dovi_tool CLI serves only as a test oracle;
+it is not a server runtime dependency. Profile conversion and separate-PID
+joining require distinct actual bundle fixture proofs.

@@ -414,6 +414,12 @@
         "path": "debian/patches/0100-backport-trim-bitstream-filter.patch",
         "sha256": "257a2be286b134a668700f8dc07f10e6aeb5f003682629d6be2e11dece773e59"
       }
+    ],
+    "postSeriesPatches": [
+      {
+        "path": "third_party/ffmpeg/portico-dovi-profile.patch",
+        "sha256": "4f7907150fcbd6eb21e1847c0bf2f90d0cddc4999c92f9a0102c5d00aca6b180"
+      }
     ]
   },
   "toolchainRevision": 3,
@@ -529,5 +535,17 @@
     "swscale": 9,
     "swresample": 6,
     "authority": "Exact pinned patched source version headers; target runtime linkage must be verified separately."
+  },
+  "libdovi": {
+    "contract": "third_party/ffmpeg/portico-dovi-profile.v1.json",
+    "contractSHA256": "6914e999a28857ae96a40b9bbf0523f6bb6230149e39b955e6cb8cdabe639733",
+    "source": "https://codeload.github.com/quietvoid/dovi_tool/tar.gz/26ed61ff36f946313889a09c0d2da202e9ceb97a",
+    "sha256": "1438f8aaede8c3ccecfdc873f659cac320bb4ff483b906109b177f21c86a19b0",
+    "commit": "26ed61ff36f946313889a09c0d2da202e9ceb97a",
+    "version": "3.4.0",
+    "cargoLocks": {
+      "Cargo.lock": "fea5d041ff24b753a293f107fc0abcc32208f76d15e860c63c83cd60a2d7eea8",
+      "dolby_vision/Cargo.lock": "b5c27d3199fcf7a49aea1f5ec864f9fea65613e9473ad1e86cb1ffb2d47c7033"
+    }
   }
 }

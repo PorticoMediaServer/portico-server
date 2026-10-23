@@ -40,8 +40,12 @@ if [[ ! -f "$ARCHIVE" ]]; then
   curl --fail --location --retry 3 "$(readlock ffmpeg source)" -o "$ARCHIVE.new"
   mv "$ARCHIVE.new" "$ARCHIVE"
 fi
-python3 "$ROOT/scripts/prepare-ffmpeg-source.py" "$WORK/patched-source" --archive "$ARCHIVE"
-python3 "$ROOT/scripts/archive-ffmpeg-source.py" "$WORK/patched-source" "$SOURCE" "$SOURCE_DATE_EPOCH"
+# Keep an earlier checked source receipt intact when a new post-series contract
+# is introduced. Each source tree is extracted directly from the locked archive.
+POST_SERIES_KEY="$(python3 -c 'import hashlib,json,sys;p=json.load(open(sys.argv[1]))["ffmpeg"].get("postSeriesPatches",[]);print("-"+hashlib.sha256(json.dumps(p,sort_keys=True).encode()).hexdigest()[:12] if p else "")' "$ROOT/third_party/ffmpeg/sources.lock.json")"
+PREPARED_SOURCE="$WORK/patched-source$POST_SERIES_KEY"
+python3 "$ROOT/scripts/prepare-ffmpeg-source.py" "$PREPARED_SOURCE" --archive "$ARCHIVE"
+python3 "$ROOT/scripts/archive-ffmpeg-source.py" "$PREPARED_SOURCE" "$SOURCE" "$SOURCE_DATE_EPOCH"
 if [[ "${PORTICO_FFMPEG_SOURCE_ONLY:-0}" == 1 ]]; then echo "$SOURCE"; exit 0; fi
 case "$TARGET" in
  macos-arm64|macos-x64)
@@ -58,9 +62,9 @@ case "$TARGET" in
   python3 -m venv "$WORK/python"
   "$WORK/python/bin/pip" install --disable-pip-version-check 'meson==1.7.0' 'ninja==1.11.1.4' 'setuptools==75.8.0'
   export PATH="$WORK/python/bin:$PATH"
-  python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$WORK/patched-source" "$TARGET"
+  python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$PREPARED_SOURCE" "$TARGET"
   # Seed the exact verified source consumed by the pinned recipe.
-  mkdir -p "$WORK/recipe/packages";python3 "$ROOT/scripts/archive-ffmpeg-source.py" "$WORK/patched-source" "$WORK/recipe/packages/FFmpeg-release-$VERSION.tar.gz" "$SOURCE_DATE_EPOCH"
+  mkdir -p "$WORK/recipe/packages";python3 "$ROOT/scripts/archive-ffmpeg-source.py" "$PREPARED_SOURCE" "$WORK/recipe/packages/FFmpeg-release-$VERSION.tar.gz" "$SOURCE_DATE_EPOCH"
   (cd "$WORK/recipe" && FFMPEG_VERSION="$VERSION" SKIPINSTALL=yes SKIPRAV1E=yes ./build-ffmpeg --build --enable-gpl)
   INPUT="$WORK/recipe/workspace"
   python3 "$ROOT/scripts/build-portico-disc.py" --source "$WORK/checked-portico-disc.c" --source-commit "$PORTICO_DISC_SOURCE_COMMIT" --prefix "$INPUT" --output "$INPUT/bin/portico-disc" --metadata "$INPUT/portico-disc-build.json" --target "$TARGET"
@@ -90,7 +94,7 @@ PYLICENSE
     cp "$WORK/checked-portico-disc.LICENSE" "$WORK/recipe/portico-disc/LICENSE"
     cp "$ROOT/scripts/build-portico-disc.py" "$WORK/recipe/portico-disc/build-portico-disc.py"
   fi
-  python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$WORK/patched-source" "$TARGET"
+  python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$PREPARED_SOURCE" "$TARGET"
   if [[ "$TARGET" == linux-x64 ]]; then
     python3 "$ROOT/scripts/build-linux-ffmpeg-deps.py" --recipe "$WORK/recipe" --work "$WORK/linux-deps"
     docker run --rm --name portico-hardware-r29-licenses --label portico.lane=hardware-r29 \
@@ -101,6 +105,9 @@ PYLICENSE
       echo "Dependency source build completed: $WORK/linux-deps"
       exit 0
     fi
+    # Build libdovi from its MAIN-qualified source/Cargo locks after the base
+    # dependency job exits; never overlap two compiler pools.
+    python3 "$ROOT/scripts/build-linux-libdovi.py" --work "$WORK"
     # The source-built binaries use the exact immutable dependency prefix.
     python3 "$ROOT/scripts/build-linux-ffmpeg.py" --work "$WORK" --source "$SOURCE"
     INPUT="$WORK/linux-output"
@@ -144,6 +151,12 @@ if [[ "$TARGET" == linux-x64 ]]; then
   cp "$ROOT/scripts/build-linux-ffmpeg-deps.py" "$ROOT/scripts/build-linux-ffmpeg.py" "$WORK/provenance/scripts/"
   cp "$ROOT/scripts/capture-ffmpeg-compiler.py" "$WORK/provenance/scripts/"
   cp "$ROOT/scripts/collect-ffmpeg-licenses.py" "$WORK/provenance/scripts/"
+  cp "$ROOT/scripts/build-linux-libdovi.py" "$WORK/provenance/scripts/"
+  mkdir -p "$WORK/provenance/libdovi"
+  cp -a "$LANE_SCRATCH/libdovi/sources" "$WORK/provenance/libdovi/sources"
+  cp "$WORK/libdovi/"{vendor-source.tar.xz,fetch.sh,build.sh,contract.json,expected.json,compiler-and-licenses.json} "$WORK/provenance/libdovi/"
+  cp "$INPUT/libdovi-build.json" "$INPUT/dovi-profile-build.json" "$WORK/provenance/libdovi/"
+  cp -a "$ROOT/third_party/ffmpeg/tests" "$WORK/provenance/contract/"
 fi
 # Include dependency sources and exact recipe, excluding only output binaries and git metadata.
 tar -C "$WORK" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner --exclude=recipe/.git --exclude=recipe/workspace --exclude=recipe/artifacts --exclude=recipe/.cache/images -I 'xz -T1' -cf "$WORK/corresponding-source.tar.xz" recipe provenance
