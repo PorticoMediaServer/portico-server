@@ -47,9 +47,9 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
       {id: 'played', label: t('next.dashboard.played'), kind: 'text', sortable: true, width: '17%'},
       {id: 'for', label: t('next.dashboard.playedFor'), kind: 'text', sortable: true, width: '12%'},
       {id: 'where', label: t('next.dashboard.where'), kind: 'badge', sortable: true, width: '11%'},
-    ]} query={query} onQueryChange={next => {if (next.filters.person === '__more') people.loadMore(); else setQuery(next);}} filters={[
+    ]} query={query} onQueryChange={setQuery} filters={[
       {id: 'media', label: t('next.dashboard.media'), options: ['all', ...mediaKinds].map(kind => ({value: kind, label: mediaLabel(kind)}))},
-      {id: 'person', label: t('next.dashboard.person'), options: [{value: 'all', label: t('next.dashboard.everyone')}, ...people.items.map(p => ({value: p.accountId, label: p.username})), ...(people.nextCursor ? [{value: '__more', label: t('next.dashboard.more')}] : [])]},
+      {id: 'person', label: t('next.dashboard.person'), options: [{value: 'all', label: t('next.dashboard.everyone')}, ...people.items.map(p => ({value: p.accountId, label: p.username}))]},
       {id: 'range', label: t('next.dashboard.range'), options: ['today', '7d', '30d', 'all'].map(value => ({value, label: t(`next.dashboard.${value}` as 'next.dashboard.all')}))},
     ]} height={640} countLabel={t('next.dashboard.plays', {count: total ?? rows.length})} matchedCount={total ?? rows.length}
     emptyLabel={t('next.dashboard.noMatch')} loading={state.loading} hasMore={rows.length > 0 && !!state.value?.nextCursor} onLoadMore={() => setCursor(state.value!.nextCursor)} />}

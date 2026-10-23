@@ -5,9 +5,9 @@ import {DASHBOARD_LOAD_RANGES, DASHBOARD_LOAD_SERIES, type DashboardStatus} from
 import type {TelemetryReading} from '@core/telemetry.ts';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
-import {Dialog} from '../../kit/overlays';
+import {Dialog, ToastHost, type ToastData} from '../../kit/overlays';
 import {Icon} from '../../kit/Icon';
-import type {DashboardAlert, DashboardBindings} from './bindings';
+import type {DashboardAlert, DashboardBindings, DashboardSessions} from './bindings';
 import {fmtMbps, fmtPct} from './format';
 import {loadTileValue, orderedSessions} from './model';
 import {useDashboardAuthority, useDashboardRead, type ReadState} from './use-read';
@@ -16,6 +16,7 @@ import {Chart, type ChartSeries} from './Chart';
 import {SessionCard} from './SessionCard';
 import {Analytics} from './Analytics';
 import {useDashboardReport, type DashboardReportController} from './use-report';
+import {readNowPlaying} from './pages';
 import styles from './dashboard.module.css';
 
 export type DashboardScreenProps = Readonly<{bindings: DashboardBindings; embedded?: boolean; initialSection?: 'streams' | 'activity' | 'updates'}>;
@@ -24,23 +25,29 @@ export function DashboardScreen({bindings: b, embedded = false, initialSection}:
   const ref = useRef<HTMLDivElement>(null), allowed = current && b.isMainProfile() && (b.role === 'owner' || b.role === 'admin');
   const statusLoad = useCallback((signal: AbortSignal) => b.read.status(signal), [b]);
   const status = useDashboardRead(b, statusLoad, allowed && b.role === 'owner', 10000);
+  const sessionsLoad = useCallback((signal: AbortSignal) => readNowPlaying(b, signal), [b]);
+  const sessions = useDashboardRead(b, sessionsLoad, allowed, 10000);
+  const liveLoad = useCallback((signal: AbortSignal) => b.read.telemetry('live', signal), [b]);
+  const live = useDashboardRead(b, liveLoad, allowed && b.role === 'owner', 2000);
+  const report = useDashboardReport(b, allowed && b.role === 'owner');
   useEffect(() => {if (initialSection) ref.current?.querySelector(`[data-dashboard-section="${initialSection}"]`)?.scrollIntoView({block: 'start'});}, [initialSection]);
   if (!allowed) return null;
+  const failed = sessions.failed || b.role === 'owner' && (status.failed || live.failed || report.state.failed);
+  const retry = () => {sessions.refresh(); if (b.role === 'owner') {status.refresh(); live.refresh(); report.state.refresh();}};
   return <div className={styles.dashboard} ref={ref}>{!embedded && <h2 className={styles.pageTitle}>{t('next.dashboard.title')}</h2>}
-    {b.role === 'owner' && <Status bindings={b} status={status} />}
-    <div data-dashboard-section="streams"><NowPlaying bindings={b} /></div>
-    {b.role === 'owner' && <><OwnerReport bindings={b} /><Tasks status={status} /></>}
+    {failed ? <ReadFeedback openHome={b.effects.openHome} state={{failed: true, loading: false, refresh: retry}} /> : <>
+      {b.role === 'owner' && <Status bindings={b} status={status} />}
+      <div data-dashboard-section="streams"><NowPlaying bindings={b} state={sessions} /></div>
+      {b.role === 'owner' && <><Load bindings={b} report={report} live={live} /><div data-dashboard-section="activity"><Analytics bindings={b} report={report} /></div><Tasks status={status} /></>}
+    </>}
   </div>;
 }
-function OwnerReport({bindings}: {bindings: DashboardBindings}) {
-  const report = useDashboardReport(bindings);
-  return <><Load bindings={bindings} report={report} /><div data-dashboard-section="activity"><Analytics bindings={bindings} report={report} /></div></>;
-}
-function NowPlaying({bindings: b}: {bindings: DashboardBindings}) {
-  const [cursor, setCursor] = useState(''), [expanded, setExpanded] = useState(false);
+type SessionsState = ReadState<DashboardSessions> & {refresh: () => void};
+type LiveState = ReadState<TelemetryReading> & {refresh: () => void};
+function NowPlaying({bindings: b, state}: {bindings: DashboardBindings; state: SessionsState}) {
+  const [toast, showToast] = useState<ToastData | null>(null);
   const stack = useRef<HTMLDivElement>(null), removed = useRef<{id: string; index: number} | undefined>(undefined);
-  const load = useCallback((signal: AbortSignal) => b.read.sessions(cursor, signal), [b, cursor]);
-  const state = useDashboardRead(b, load, true, 10000), sessions = orderedSessions(state.value?.items ?? []), totals = state.value?.totals;
+  const sessions = orderedSessions(state.value?.items ?? []), totals = state.value?.totals;
   useEffect(() => {
     const target = removed.current;
     if (!target || state.loading || state.failed || !state.value || state.value.items.some(s => s.id === target.id)) return;
@@ -48,12 +55,10 @@ function NowPlaying({bindings: b}: {bindings: DashboardBindings}) {
     (buttons?.[Math.min(target.index, buttons.length - 1)] ?? stack.current)?.focus({preventScroll: true}); removed.current = undefined;
   }, [state.value, state.loading, state.failed]);
   return <Section title={t('next.dashboard.now')} extra={totals && totals.streams > 0 && <><span>{t('next.dashboard.streams', {count: totals.streams})}</span><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>}>
-    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <div className={styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}>{(expanded ? sessions : sessions.slice(0, 8)).map((s, index) => <SessionCard key={s.id} session={s} bindings={b} refresh={id => {if (id) removed.current = {id, index}; state.refresh();}} />)}
+    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <div className={styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}>{sessions.map((s, index) => <SessionCard key={s.id} session={s} bindings={b} refresh={id => {if (id) {removed.current = {id, index}; showToast({id, message: t('next.dashboard.stopped', {title: s.title}), icon: 'i-check'});} state.refresh();}} />)}
       {!sessions.length && <p className={styles.empty}>{t('next.dashboard.nobody')}</p>}
-      {sessions.length > 8 && <Button size="xs" variant="text" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>{expanded ? t('next.dashboard.fewer') : t('next.dashboard.showAll', {count: totals?.streams ?? sessions.length})}</Button>}
-      {expanded && state.value.nextCursor && <Button size="xs" onClick={() => setCursor(state.value!.nextCursor!)}>{t('next.dashboard.more')}</Button>}
-      {cursor && <Button size="xs" onClick={() => setCursor('')}>{t('next.dashboard.now')}</Button>}
     </div>}
+    <ToastHost toast={toast} onDismiss={() => showToast(null)} />
   </Section>;
 }
 const seriesNames: Record<string, MessageId> = {awayMbps: 'next.dashboard.away', homeMbps: 'next.dashboard.home', processCPU: 'next.dashboard.portico', cpu: 'next.dashboard.system', processMemory: 'next.dashboard.portico', memory: 'next.dashboard.system', hardwareConversions: 'next.dashboard.hardware', softwareConversions: 'next.dashboard.software'};
@@ -63,10 +68,9 @@ function loadSeries(reading: TelemetryReading | undefined, kind: LoadKind): Char
   if (!reading) return [];
   return DASHBOARD_LOAD_SERIES[kind].metrics.filter(metric => reading.status[metric]?.status !== 'unavailable' && reading.series[metric]?.length).map(metric => ({key: metric, label: t(seriesNames[metric]), points: reading.series[metric]}));
 }
-function Load({bindings: b, report}: {bindings: DashboardBindings; report: DashboardReportController}) {
+function Load({bindings: b, report, live}: {bindings: DashboardBindings; report: DashboardReportController; live: LiveState}) {
   const [kind, setKind] = useState<LoadKind>('bandwidth'), id = useId(), range = report.query.window;
-  const liveLoad = useCallback((signal: AbortSignal) => b.read.telemetry('live', signal), [b]);
-  const live = useDashboardRead(b, liveLoad, true, 2000), historical = {...report.state, value: report.state.value?.load};
+  const historical = {...report.state, value: report.state.value?.load};
   useEffect(() => {if (live.value && !loadSeries(live.value, kind).length) {const available = loadKinds.find(k => loadSeries(live.value, k).length); if (available) setKind(available);}}, [live.value, kind]);
   const detail = range === 'live' ? live : historical, series = loadSeries(detail.value, kind);
   const format = (value: number, selected = kind) => selected === 'bandwidth' ? fmtMbps(value) : selected === 'conversions' ? t(range === 'live' ? 'next.dashboard.running' : 'next.dashboard.averageCount', {value: range === 'live' ? String(Math.round(value)) : value.toFixed(1)}) : fmtPct(value);

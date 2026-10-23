@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useState, useSyncExternalStore} from 'react';
 import type {DashboardBindings} from './bindings';
+import {readDashboardAccounts} from './pages';
 export type ReadState<T> = Readonly<{value?: T; loading: boolean; failed: boolean}>;
 const defaultChanges = ['admin.sessions', 'session.updated', 'playback.history', 'library.scan', 'job.updated', 'stream.resync'];
 const accountChanges = ['playback.history', 'stream.resync'];
@@ -31,11 +32,9 @@ export function useDashboardRead<T>(bindings: DashboardBindings, load: (signal: 
 
 /** The filter enumerates actual account IDs, including servers with more than one hundred people. */
 export function useDashboardAccounts(bindings: DashboardBindings) {
-  const [cursor, setCursor] = useState(''), [page, setPage] = useState<{items: Awaited<ReturnType<DashboardBindings['read']['people']>>['items']; nextCursor: string}>({items: [], nextCursor: ''});
-  const load = useCallback((signal: AbortSignal) => bindings.read.people({period: 'all'}, cursor, signal), [bindings, cursor]);
+  const load = useCallback((signal: AbortSignal) => readDashboardAccounts(bindings, signal), [bindings]);
   const state = useDashboardRead(bindings, load, true, 0, accountChanges);
-  useEffect(() => {if (state.value) setPage(previous => ({items: cursor ? [...previous.items, ...state.value!.items.filter(item => !previous.items.some(p => p.accountId === item.accountId))] : state.value!.items, nextCursor: state.value!.nextCursor}));}, [state.value, cursor]);
-  return {...page, loading: state.loading, loadMore: () => {if (page.nextCursor) setCursor(page.nextCursor);}};
+  return {items: state.value ?? [], loading: state.loading};
 }
 
 const noAuthoritySubscription = () => () => {};
