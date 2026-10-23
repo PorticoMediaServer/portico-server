@@ -3,7 +3,6 @@ package httpapi
 
 // routeLanes is a projection of the live API metadata plus non-API infrastructure.
 var routeLanes = map[string]string{
-	"DELETE /v1/admin/access-tokens/{id}":                                        "security-fence",
 	"DELETE /v1/admin/api-keys/{id}":                                             "security-fence",
 	"DELETE /v1/admin/backups/{id}":                                              "admin-heavy",
 	"DELETE /v1/admin/diagnostics/client-logs/{id}":                              "admin",
@@ -51,7 +50,6 @@ var routeLanes = map[string]string{
 	"DELETE /v1/storage/sources/webdav/{id}":                                     "default",
 	"GET /health/live":                                                           "default",
 	"GET /health/ready":                                                          "default",
-	"GET /v1/admin/access-tokens":                                                "admin",
 	"GET /v1/admin/access/devices":                                               "admin",
 	"GET /v1/admin/access/devices/{id}":                                          "admin",
 	"GET /v1/admin/access/invitations":                                           "admin",
@@ -401,6 +399,7 @@ var routeLanes = map[string]string{
 	"POST /v1/admin/access/invitations":                                          "admin",
 	"POST /v1/admin/access/invitations/{id}/link":                                "security-fence",
 	"POST /v1/admin/access/invitations/{id}/revoke":                              "security-fence",
+	"POST /v1/admin/access/members/bulk":                                         "security-fence",
 	"POST /v1/admin/api-keys":                                                    "security-fence",
 	"POST /v1/admin/backups":                                                     "admin-heavy",
 	"POST /v1/admin/backups/restore":                                             "admin-long",

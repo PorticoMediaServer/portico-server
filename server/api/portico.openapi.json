@@ -17432,6 +17432,12 @@
           },
           "limits": {
             "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
               "allowUnrated": {
                 "type": "boolean"
               },
@@ -17453,8 +17459,16 @@
                 ],
                 "type": "object"
               },
+              "conversion": {
+                "type": "string"
+              },
               "maxContentRating": {
                 "type": "string"
+              },
+              "maxProfiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "maxStreams": {
                 "maximum": 9007199254740991,
@@ -17533,6 +17547,10 @@
               }
             },
             "required": [
+              "accessTokens",
+              "maxProfiles",
+              "allowRemote",
+              "conversion",
               "maxStreams",
               "remoteBitrateKbps",
               "ratingSystem",
@@ -17604,6 +17622,12 @@
           },
           "limits": {
             "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
               "allowUnrated": {
                 "type": "boolean"
               },
@@ -17625,8 +17649,16 @@
                 ],
                 "type": "object"
               },
+              "conversion": {
+                "type": "string"
+              },
               "maxContentRating": {
                 "type": "string"
+              },
+              "maxProfiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "maxStreams": {
                 "maximum": 9007199254740991,
@@ -17705,6 +17737,10 @@
               }
             },
             "required": [
+              "accessTokens",
+              "maxProfiles",
+              "allowRemote",
+              "conversion",
               "maxStreams",
               "remoteBitrateKbps",
               "ratingSystem",
@@ -17755,152 +17791,30 @@
                 "disabled": {
                   "type": "boolean"
                 },
-                "disabledAt": {
-                  "type": "string"
-                },
-                "disabledReason": {
-                  "type": "string"
-                },
-                "hostedAccountId": {
-                  "type": "string"
-                },
-                "joinedAt": {
-                  "type": "string"
-                },
-                "joinedVia": {
+                "email": {
                   "type": "string"
                 },
                 "lastActiveAt": {
                   "type": "string"
                 },
-                "limits": {
-                  "properties": {
-                    "allowUnrated": {
-                      "type": "boolean"
-                    },
-                    "channelPolicy": {
-                      "properties": {
-                        "channels": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "mode": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "mode",
-                        "channels"
-                      ],
-                      "type": "object"
-                    },
-                    "maxContentRating": {
-                      "type": "string"
-                    },
-                    "maxStreams": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "maximumAge": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "ratingSystem": {
-                      "type": "string"
-                    },
-                    "remoteBitrateKbps": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "schedule": {
-                      "properties": {
-                        "timezone": {
-                          "type": "string"
-                        },
-                        "windows": {
-                          "items": {
-                            "properties": {
-                              "days": {
-                                "items": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "type": "array"
-                              },
-                              "endMinute": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "startMinute": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              }
-                            },
-                            "required": [
-                              "days",
-                              "startMinute",
-                              "endMinute"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        }
-                      },
-                      "required": [
-                        "timezone",
-                        "windows"
-                      ],
-                      "type": "object"
-                    },
-                    "tagPolicy": {
-                      "properties": {
-                        "deniedLabels": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      },
-                      "required": [
-                        "deniedLabels"
-                      ],
-                      "type": "object"
-                    }
+                "libraryNames": {
+                  "items": {
+                    "type": "string"
                   },
-                  "required": [
-                    "maxStreams",
-                    "remoteBitrateKbps",
-                    "ratingSystem",
-                    "maxContentRating",
-                    "maximumAge",
-                    "allowUnrated",
-                    "schedule",
-                    "channelPolicy",
-                    "tagPolicy"
-                  ],
-                  "type": "object"
-                },
-                "limitsRevision": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
+                  "type": "array"
                 },
                 "liveState": {
                   "type": "string"
                 },
-                "notes": {
-                  "type": "string"
+                "maxStreams": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "profileId": {
-                  "type": "string"
+                "profileCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "profileNames": {
                   "items": {
@@ -17916,6 +17830,9 @@
                 "role": {
                   "type": "string"
                 },
+                "status": {
+                  "type": "string"
+                },
                 "username": {
                   "type": "string"
                 }
@@ -17923,13 +17840,14 @@
               "required": [
                 "accountId",
                 "username",
-                "profileId",
                 "role",
-                "disabled",
                 "revision",
+                "disabled",
+                "status",
                 "allowedLibraries",
-                "limitsRevision",
-                "limits",
+                "libraryNames",
+                "maxStreams",
+                "profileCount",
                 "profileNames",
                 "liveState"
               ],
@@ -17942,13 +17860,25 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "matchedCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "nextCursor": {
             "type": "string"
+          },
+          "totalCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           }
         },
         "required": [
           "limit",
-          "items"
+          "items",
+          "totalCount",
+          "matchedCount"
         ],
         "type": "object"
       },
@@ -157837,102 +157767,6 @@
         ],
         "type": "object"
       },
-      "ListMemberAccessTokensRequest": {
-        "properties": {},
-        "required": [],
-        "type": "object"
-      },
-      "ListMemberAccessTokensResponse": {
-        "properties": {
-          "items": {
-            "items": {
-              "properties": {
-                "createdAt": {
-                  "type": "string"
-                },
-                "endedReason": {
-                  "type": "string"
-                },
-                "expiresAt": {
-                  "type": "string"
-                },
-                "hint": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "lastUsedAt": {
-                  "type": "string"
-                },
-                "member": {
-                  "properties": {
-                    "accountId": {
-                      "type": "string"
-                    },
-                    "profile": {
-                      "type": "string"
-                    },
-                    "profileId": {
-                      "type": "string"
-                    },
-                    "username": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "accountId",
-                    "username",
-                    "profileId",
-                    "profile"
-                  ],
-                  "type": "object"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "scopes": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "state": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "kind",
-                "name",
-                "scopes",
-                "hint",
-                "createdAt",
-                "state",
-                "member"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "limit": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "nextCursor": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "limit",
-          "items"
-        ],
-        "type": "object"
-      },
       "ListMissingTitlesRequest": {
         "properties": {},
         "required": [],
@@ -162696,6 +162530,97 @@
           "createdAt",
           "expiresAt",
           "revision"
+        ],
+        "type": "object"
+      },
+      "PostAdminAccessMembersBulkRequest": {
+        "properties": {
+          "access": {
+            "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
+              "allowedLibraries": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "maxContentRating": {
+                "type": "string"
+              },
+              "maxProfiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxStreams": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "action": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "expectedLimitsRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "expectedRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "accountId",
+                "expectedRevision",
+                "expectedLimitsRevision"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "operationId",
+          "targets",
+          "action"
+        ],
+        "type": "object"
+      },
+      "PostAdminAccessMembersBulkResponse": {
+        "properties": {
+          "accountIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "action": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountIds",
+          "action"
         ],
         "type": "object"
       },
@@ -187448,6 +187373,12 @@
           },
           "limits": {
             "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
               "allowUnrated": {
                 "type": "boolean"
               },
@@ -187469,8 +187400,16 @@
                 ],
                 "type": "object"
               },
+              "conversion": {
+                "type": "string"
+              },
               "maxContentRating": {
                 "type": "string"
+              },
+              "maxProfiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "maxStreams": {
                 "maximum": 9007199254740991,
@@ -187549,6 +187488,10 @@
               }
             },
             "required": [
+              "accessTokens",
+              "maxProfiles",
+              "allowRemote",
+              "conversion",
               "maxStreams",
               "remoteBitrateKbps",
               "ratingSystem",
@@ -187617,6 +187560,12 @@
           },
           "limits": {
             "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
               "allowUnrated": {
                 "type": "boolean"
               },
@@ -187638,8 +187587,16 @@
                 ],
                 "type": "object"
               },
+              "conversion": {
+                "type": "string"
+              },
               "maxContentRating": {
                 "type": "string"
+              },
+              "maxProfiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "maxStreams": {
                 "maximum": 9007199254740991,
@@ -187718,6 +187675,10 @@
               }
             },
             "required": [
+              "accessTokens",
+              "maxProfiles",
+              "allowRemote",
+              "conversion",
               "maxStreams",
               "remoteBitrateKbps",
               "ratingSystem",
@@ -187748,6 +187709,12 @@
           },
           "limits": {
             "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
               "allowUnrated": {
                 "type": "boolean"
               },
@@ -187769,8 +187736,16 @@
                 ],
                 "type": "object"
               },
+              "conversion": {
+                "type": "string"
+              },
               "maxContentRating": {
                 "type": "string"
+              },
+              "maxProfiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "maxStreams": {
                 "maximum": 9007199254740991,
@@ -187849,6 +187824,10 @@
               }
             },
             "required": [
+              "accessTokens",
+              "maxProfiles",
+              "allowRemote",
+              "conversion",
               "maxStreams",
               "remoteBitrateKbps",
               "ratingSystem",
@@ -187932,6 +187911,12 @@
           },
           "limits": {
             "properties": {
+              "accessTokens": {
+                "type": "boolean"
+              },
+              "allowRemote": {
+                "type": "boolean"
+              },
               "allowUnrated": {
                 "type": "boolean"
               },
@@ -187953,8 +187938,16 @@
                 ],
                 "type": "object"
               },
+              "conversion": {
+                "type": "string"
+              },
               "maxContentRating": {
                 "type": "string"
+              },
+              "maxProfiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "maxStreams": {
                 "maximum": 9007199254740991,
@@ -188033,6 +188026,10 @@
               }
             },
             "required": [
+              "accessTokens",
+              "maxProfiles",
+              "allowRemote",
+              "conversion",
               "maxStreams",
               "remoteBitrateKbps",
               "ratingSystem",
@@ -197846,82 +197843,6 @@
         },
         "required": [
           "results"
-        ],
-        "type": "object"
-      },
-      "RevokeMemberAccessTokenRequest": {
-        "properties": {},
-        "required": [],
-        "type": "object"
-      },
-      "RevokeMemberAccessTokenResponse": {
-        "properties": {
-          "createdAt": {
-            "type": "string"
-          },
-          "endedReason": {
-            "type": "string"
-          },
-          "expiresAt": {
-            "type": "string"
-          },
-          "hint": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string"
-          },
-          "lastUsedAt": {
-            "type": "string"
-          },
-          "member": {
-            "properties": {
-              "accountId": {
-                "type": "string"
-              },
-              "profile": {
-                "type": "string"
-              },
-              "profileId": {
-                "type": "string"
-              },
-              "username": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "accountId",
-              "username",
-              "profileId",
-              "profile"
-            ],
-            "type": "object"
-          },
-          "name": {
-            "type": "string"
-          },
-          "scopes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "state": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "name",
-          "scopes",
-          "hint",
-          "createdAt",
-          "state",
-          "member"
         ],
         "type": "object"
       },
@@ -211145,321 +211066,6 @@
         "x-scope": "session"
       }
     },
-    "/v1/admin/access-tokens": {
-      "get": {
-        "operationId": "list_member_access_tokens",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "accountId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "items": {
-                      "items": {
-                        "properties": {
-                          "createdAt": {
-                            "type": "string"
-                          },
-                          "endedReason": {
-                            "type": "string"
-                          },
-                          "expiresAt": {
-                            "type": "string"
-                          },
-                          "hint": {
-                            "type": "string"
-                          },
-                          "id": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "type": "string"
-                          },
-                          "lastUsedAt": {
-                            "type": "string"
-                          },
-                          "member": {
-                            "properties": {
-                              "accountId": {
-                                "type": "string"
-                              },
-                              "profile": {
-                                "type": "string"
-                              },
-                              "profileId": {
-                                "type": "string"
-                              },
-                              "username": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "accountId",
-                              "username",
-                              "profileId",
-                              "profile"
-                            ],
-                            "type": "object"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "scopes": {
-                            "items": {
-                              "type": "string"
-                            },
-                            "type": "array"
-                          },
-                          "state": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "kind",
-                          "name",
-                          "scopes",
-                          "hint",
-                          "createdAt",
-                          "state",
-                          "member"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "limit": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "nextCursor": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "limit",
-                    "items"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "List the personal access tokens members have made",
-        "x-access": "owner",
-        "x-admission": "admin",
-        "x-cost": "page_sized",
-        "x-error-codes": [
-          "unauthorized",
-          "not_permitted",
-          "session_required",
-          "invalid_request",
-          "administration_unavailable",
-          "internal"
-        ],
-        "x-lane": "default",
-        "x-scope": "session"
-      }
-    },
-    "/v1/admin/access-tokens/{id}": {
-      "delete": {
-        "operationId": "revoke_member_access_token",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "createdAt": {
-                      "type": "string"
-                    },
-                    "endedReason": {
-                      "type": "string"
-                    },
-                    "expiresAt": {
-                      "type": "string"
-                    },
-                    "hint": {
-                      "type": "string"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "kind": {
-                      "type": "string"
-                    },
-                    "lastUsedAt": {
-                      "type": "string"
-                    },
-                    "member": {
-                      "properties": {
-                        "accountId": {
-                          "type": "string"
-                        },
-                        "profile": {
-                          "type": "string"
-                        },
-                        "profileId": {
-                          "type": "string"
-                        },
-                        "username": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "accountId",
-                        "username",
-                        "profileId",
-                        "profile"
-                      ],
-                      "type": "object"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "scopes": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "state": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "kind",
-                    "name",
-                    "scopes",
-                    "hint",
-                    "createdAt",
-                    "state",
-                    "member"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Revoke a member's personal access token",
-        "x-access": "owner",
-        "x-admission": "security-fence",
-        "x-cost": "constant",
-        "x-error-codes": [
-          "unauthorized",
-          "not_permitted",
-          "session_required",
-          "invalid_request",
-          "not_found",
-          "administration_unavailable",
-          "internal"
-        ],
-        "x-lane": "security",
-        "x-scope": "session"
-      }
-    },
     "/v1/admin/access/devices": {
       "get": {
         "operationId": "get_admin_access_devices",
@@ -212819,6 +212425,46 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -212842,152 +212488,30 @@
                           "disabled": {
                             "type": "boolean"
                           },
-                          "disabledAt": {
-                            "type": "string"
-                          },
-                          "disabledReason": {
-                            "type": "string"
-                          },
-                          "hostedAccountId": {
-                            "type": "string"
-                          },
-                          "joinedAt": {
-                            "type": "string"
-                          },
-                          "joinedVia": {
+                          "email": {
                             "type": "string"
                           },
                           "lastActiveAt": {
                             "type": "string"
                           },
-                          "limits": {
-                            "properties": {
-                              "allowUnrated": {
-                                "type": "boolean"
-                              },
-                              "channelPolicy": {
-                                "properties": {
-                                  "channels": {
-                                    "items": {
-                                      "type": "string"
-                                    },
-                                    "type": "array"
-                                  },
-                                  "mode": {
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "mode",
-                                  "channels"
-                                ],
-                                "type": "object"
-                              },
-                              "maxContentRating": {
-                                "type": "string"
-                              },
-                              "maxStreams": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "maximumAge": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "ratingSystem": {
-                                "type": "string"
-                              },
-                              "remoteBitrateKbps": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "schedule": {
-                                "properties": {
-                                  "timezone": {
-                                    "type": "string"
-                                  },
-                                  "windows": {
-                                    "items": {
-                                      "properties": {
-                                        "days": {
-                                          "items": {
-                                            "maximum": 9007199254740991,
-                                            "minimum": -9007199254740991,
-                                            "type": "integer"
-                                          },
-                                          "type": "array"
-                                        },
-                                        "endMinute": {
-                                          "maximum": 9007199254740991,
-                                          "minimum": -9007199254740991,
-                                          "type": "integer"
-                                        },
-                                        "startMinute": {
-                                          "maximum": 9007199254740991,
-                                          "minimum": -9007199254740991,
-                                          "type": "integer"
-                                        }
-                                      },
-                                      "required": [
-                                        "days",
-                                        "startMinute",
-                                        "endMinute"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    "type": "array"
-                                  }
-                                },
-                                "required": [
-                                  "timezone",
-                                  "windows"
-                                ],
-                                "type": "object"
-                              },
-                              "tagPolicy": {
-                                "properties": {
-                                  "deniedLabels": {
-                                    "items": {
-                                      "type": "string"
-                                    },
-                                    "type": "array"
-                                  }
-                                },
-                                "required": [
-                                  "deniedLabels"
-                                ],
-                                "type": "object"
-                              }
+                          "libraryNames": {
+                            "items": {
+                              "type": "string"
                             },
-                            "required": [
-                              "maxStreams",
-                              "remoteBitrateKbps",
-                              "ratingSystem",
-                              "maxContentRating",
-                              "maximumAge",
-                              "allowUnrated",
-                              "schedule",
-                              "channelPolicy",
-                              "tagPolicy"
-                            ],
-                            "type": "object"
-                          },
-                          "limitsRevision": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
+                            "type": "array"
                           },
                           "liveState": {
                             "type": "string"
                           },
-                          "notes": {
-                            "type": "string"
+                          "maxStreams": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           },
-                          "profileId": {
-                            "type": "string"
+                          "profileCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           },
                           "profileNames": {
                             "items": {
@@ -213003,6 +212527,9 @@
                           "role": {
                             "type": "string"
                           },
+                          "status": {
+                            "type": "string"
+                          },
                           "username": {
                             "type": "string"
                           }
@@ -213010,13 +212537,14 @@
                         "required": [
                           "accountId",
                           "username",
-                          "profileId",
                           "role",
-                          "disabled",
                           "revision",
+                          "disabled",
+                          "status",
                           "allowedLibraries",
-                          "limitsRevision",
-                          "limits",
+                          "libraryNames",
+                          "maxStreams",
+                          "profileCount",
                           "profileNames",
                           "liveState"
                         ],
@@ -213029,13 +212557,25 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "matchedCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "nextCursor": {
                       "type": "string"
+                    },
+                    "totalCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
                     "limit",
-                    "items"
+                    "items",
+                    "totalCount",
+                    "matchedCount"
                   ],
                   "type": "object"
                 }
@@ -213086,6 +212626,162 @@
           "internal"
         ],
         "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/access/members/bulk": {
+      "post": {
+        "operationId": "post_admin_access_members_bulk",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "access": {
+                    "properties": {
+                      "accessTokens": {
+                        "type": "boolean"
+                      },
+                      "allowRemote": {
+                        "type": "boolean"
+                      },
+                      "allowedLibraries": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "maxContentRating": {
+                        "type": "string"
+                      },
+                      "maxProfiles": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "maxStreams": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "action": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "targets": {
+                    "items": {
+                      "properties": {
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "expectedLimitsRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "expectedRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "expectedRevision",
+                        "expectedLimitsRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "targets",
+                  "action"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "action": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "accountIds",
+                    "action"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Change selected people in one transaction",
+        "x-access": "admin_scope",
+        "x-admission": "security-fence",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "revision_mismatch",
+          "internal"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 65536,
         "x-scope": "admin"
       }
     },
@@ -213140,6 +212836,12 @@
                     },
                     "limits": {
                       "properties": {
+                        "accessTokens": {
+                          "type": "boolean"
+                        },
+                        "allowRemote": {
+                          "type": "boolean"
+                        },
                         "allowUnrated": {
                           "type": "boolean"
                         },
@@ -213161,8 +212863,16 @@
                           ],
                           "type": "object"
                         },
+                        "conversion": {
+                          "type": "string"
+                        },
                         "maxContentRating": {
                           "type": "string"
+                        },
+                        "maxProfiles": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
                         "maxStreams": {
                           "maximum": 9007199254740991,
@@ -213241,6 +212951,10 @@
                         }
                       },
                       "required": [
+                        "accessTokens",
+                        "maxProfiles",
+                        "allowRemote",
+                        "conversion",
                         "maxStreams",
                         "remoteBitrateKbps",
                         "ratingSystem",
@@ -213374,6 +213088,12 @@
                     },
                     "limits": {
                       "properties": {
+                        "accessTokens": {
+                          "type": "boolean"
+                        },
+                        "allowRemote": {
+                          "type": "boolean"
+                        },
                         "allowUnrated": {
                           "type": "boolean"
                         },
@@ -213395,8 +213115,16 @@
                           ],
                           "type": "object"
                         },
+                        "conversion": {
+                          "type": "string"
+                        },
                         "maxContentRating": {
                           "type": "string"
+                        },
+                        "maxProfiles": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
                         "maxStreams": {
                           "maximum": 9007199254740991,
@@ -213475,6 +213203,10 @@
                         }
                       },
                       "required": [
+                        "accessTokens",
+                        "maxProfiles",
+                        "allowRemote",
+                        "conversion",
                         "maxStreams",
                         "remoteBitrateKbps",
                         "ratingSystem",
@@ -213576,6 +213308,12 @@
                   },
                   "limits": {
                     "properties": {
+                      "accessTokens": {
+                        "type": "boolean"
+                      },
+                      "allowRemote": {
+                        "type": "boolean"
+                      },
                       "allowUnrated": {
                         "type": "boolean"
                       },
@@ -213597,8 +213335,16 @@
                         ],
                         "type": "object"
                       },
+                      "conversion": {
+                        "type": "string"
+                      },
                       "maxContentRating": {
                         "type": "string"
+                      },
+                      "maxProfiles": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "maxStreams": {
                         "maximum": 9007199254740991,
@@ -213677,6 +213423,10 @@
                       }
                     },
                     "required": [
+                      "accessTokens",
+                      "maxProfiles",
+                      "allowRemote",
+                      "conversion",
                       "maxStreams",
                       "remoteBitrateKbps",
                       "ratingSystem",
@@ -213715,6 +213465,12 @@
                     },
                     "limits": {
                       "properties": {
+                        "accessTokens": {
+                          "type": "boolean"
+                        },
+                        "allowRemote": {
+                          "type": "boolean"
+                        },
                         "allowUnrated": {
                           "type": "boolean"
                         },
@@ -213736,8 +213492,16 @@
                           ],
                           "type": "object"
                         },
+                        "conversion": {
+                          "type": "string"
+                        },
                         "maxContentRating": {
                           "type": "string"
+                        },
+                        "maxProfiles": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
                         "maxStreams": {
                           "maximum": 9007199254740991,
@@ -213816,6 +213580,10 @@
                         }
                       },
                       "required": [
+                        "accessTokens",
+                        "maxProfiles",
+                        "allowRemote",
+                        "conversion",
                         "maxStreams",
                         "remoteBitrateKbps",
                         "ratingSystem",
@@ -213973,6 +213741,12 @@
                     },
                     "limits": {
                       "properties": {
+                        "accessTokens": {
+                          "type": "boolean"
+                        },
+                        "allowRemote": {
+                          "type": "boolean"
+                        },
                         "allowUnrated": {
                           "type": "boolean"
                         },
@@ -213994,8 +213768,16 @@
                           ],
                           "type": "object"
                         },
+                        "conversion": {
+                          "type": "string"
+                        },
                         "maxContentRating": {
                           "type": "string"
+                        },
+                        "maxProfiles": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
                         "maxStreams": {
                           "maximum": 9007199254740991,
@@ -214074,6 +213856,10 @@
                         }
                       },
                       "required": [
+                        "accessTokens",
+                        "maxProfiles",
+                        "allowRemote",
+                        "conversion",
                         "maxStreams",
                         "remoteBitrateKbps",
                         "ratingSystem",
@@ -214263,6 +214049,12 @@
                     },
                     "limits": {
                       "properties": {
+                        "accessTokens": {
+                          "type": "boolean"
+                        },
+                        "allowRemote": {
+                          "type": "boolean"
+                        },
                         "allowUnrated": {
                           "type": "boolean"
                         },
@@ -214284,8 +214076,16 @@
                           ],
                           "type": "object"
                         },
+                        "conversion": {
+                          "type": "string"
+                        },
                         "maxContentRating": {
                           "type": "string"
+                        },
+                        "maxProfiles": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
                         "maxStreams": {
                           "maximum": 9007199254740991,
@@ -214364,6 +214164,10 @@
                         }
                       },
                       "required": [
+                        "accessTokens",
+                        "maxProfiles",
+                        "allowRemote",
+                        "conversion",
                         "maxStreams",
                         "remoteBitrateKbps",
                         "ratingSystem",

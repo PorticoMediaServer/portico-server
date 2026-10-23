@@ -193,6 +193,8 @@ func (s *Store) credentialTx(ctx context.Context, tx *sql.Tx, id string) (Creden
 
 // CreateCredential issues a key or token for maker, the caller's own live
 // principal. issuer creates the session family behind it in this transaction.
+var ErrAccessTokensOff = errors.New("Access tokens are turned off for this account.")
+
 func (s *Store) CreateCredential(ctx context.Context, auth Authorize, issuer *identity.Service, maker identity.Principal, kind string, q CredentialRequest) (out IssuedCredential, err error) {
 	if issuer == nil || (kind != identity.CredentialKindKey && kind != identity.CredentialKindToken) {
 		return out, identity.ErrUnauthorized
@@ -224,6 +226,16 @@ func (s *Store) CreateCredential(ctx context.Context, auth Authorize, issuer *id
 		return out, invalid(fields...)
 	}
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		if kind == identity.CredentialKindToken {
+			var permitted bool
+			if e := tx.QueryRowContext(ctx, `SELECT access_tokens=1 AND disabled=0 FROM direct_memberships WHERE account_id=?`, maker.AccountID).Scan(&permitted); e != nil {
+				return e
+			}
+			if !permitted {
+				return ErrAccessTokensOff
+			}
+		}
+
 		scope := "api-credential:" + kind + ":" + maker.AccountID
 		body, want, e := receipt(tx, scope, q.OperationID, q)
 		if e != nil {

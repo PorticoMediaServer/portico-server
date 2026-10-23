@@ -983,7 +983,7 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 	restriction := fixture.Restriction(libraries)
 	narrowed, _ := json.Marshal(restriction.Libraries)
 	blocked, _ := json.Marshal(restriction.BlockedLabels)
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('matrix-owner','matrix-owner',x'00','matrix-owner-profile',1)`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('matrix-owner','matrix-owner',x'00','matrix-owner-profile',1)`); err != nil {
 		t.Fatal(err)
 	}
 	tokens := map[string]string{}
@@ -994,7 +994,7 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 		{"open", "matrix-open", "matrix-open-profile", string(allJSON)},
 		{"restricted", "matrix-limited", "matrix-limited-profile", string(narrowed)},
 	} {
-		if _, err = db.Exec(`INSERT INTO accounts VALUES(?,?,x'00',?,1)`, viewer.account, viewer.account, viewer.profile); err != nil {
+		if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`, viewer.account, viewer.account, viewer.profile); err != nil {
 			t.Fatal(err)
 		}
 		if _, err = db.Exec(`INSERT INTO direct_memberships(account_id,role,allowed_libraries,revision,disabled) VALUES(?,'member',?,1,0)

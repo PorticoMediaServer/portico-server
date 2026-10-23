@@ -78,8 +78,12 @@ type TagPolicy struct {
 //	ChannelPolicy        — Enforcer.AdmitChannel, called by the v1 channel
 //	                       start path with canonical v1 ids only.
 type Limits struct {
-	MaxStreams        int `json:"maxStreams"`
-	RemoteBitrateKbps int `json:"remoteBitrateKbps"`
+	AccessTokens      bool   `json:"accessTokens"`
+	MaxProfiles       int    `json:"maxProfiles"`
+	AllowRemote       bool   `json:"allowRemote"`
+	Conversion        string `json:"conversion"`
+	MaxStreams        int    `json:"maxStreams"`
+	RemoteBitrateKbps int    `json:"remoteBitrateKbps"`
 	// RatingSystem and MaxContentRating name the highest rating the account
 	// may see, exactly as a profile's restriction does: one value of one of
 	// the published rating systems (GET /v1/rating-systems). With no system
@@ -99,7 +103,7 @@ type Limits struct {
 // DefaultLimits is an unrestricted member: zero means unlimited everywhere, an
 // empty rating means no ceiling, and unrated content is allowed.
 func DefaultLimits() Limits {
-	return Limits{MaximumAge: -1, AllowUnrated: true, Schedule: AccessSchedule{Windows: []ScheduleWindow{}}, Channels: ChannelPolicy{Mode: "all", Channels: []string{}}, Tags: TagPolicy{DeniedLabels: []string{}}}
+	return Limits{AccessTokens: true, MaxProfiles: 8, AllowRemote: true, Conversion: "server", MaximumAge: -1, AllowUnrated: true, Schedule: AccessSchedule{Windows: []ScheduleWindow{}}, Channels: ChannelPolicy{Mode: "all", Channels: []string{}}, Tags: TagPolicy{DeniedLabels: []string{}}}
 }
 
 // LimitsDocument is the wire shape every limits read and write returns.
@@ -112,6 +116,12 @@ type LimitsDocument struct {
 
 func normalizeLimits(v *Limits) error {
 	fields := []string{}
+	if v.MaxProfiles < 1 || v.MaxProfiles > 8 {
+		fields = append(fields, "limits.maxProfiles")
+	}
+	if v.Conversion != "server" && v.Conversion != "audio" && v.Conversion != "none" {
+		fields = append(fields, "limits.conversion")
+	}
 	if v.MaxStreams < 0 || v.MaxStreams > 1000 {
 		fields = append(fields, "limits.maxStreams")
 	}
@@ -256,6 +266,9 @@ func readLimits(tx *sql.Tx, account string) (LimitsDocument, error) {
 	var updated int64
 	err := tx.QueryRow(`SELECT revision,updated_ms,body FROM access_limits WHERE account_id=?`, account).Scan(&out.Revision, &updated, &body)
 	if errors.Is(err, sql.ErrNoRows) {
+		if e := tx.QueryRow(`SELECT access_tokens,max_profiles FROM direct_memberships WHERE account_id=?`, account).Scan(&out.Limits.AccessTokens, &out.Limits.MaxProfiles); e != nil {
+			return out, e
+		}
 		// A member with no stored row is unrestricted at revision 1, so a client
 		// can write against that revision without a create step.
 		return out, nil
@@ -266,6 +279,9 @@ func readLimits(tx *sql.Tx, account string) (LimitsDocument, error) {
 	out.Limits = DefaultLimits()
 	if err = json.Unmarshal([]byte(body), &out.Limits); err != nil {
 		return out, err
+	}
+	if e := tx.QueryRow(`SELECT access_tokens,max_profiles FROM direct_memberships WHERE account_id=?`, account).Scan(&out.Limits.AccessTokens, &out.Limits.MaxProfiles); e != nil {
+		return out, e
 	}
 	out.Limits.MaximumAge = out.Limits.Ceiling()
 	out.UpdatedAt = time.UnixMilli(updated).UTC().Format(time.RFC3339)
@@ -328,6 +344,9 @@ func (s *Store) SetLimits(ctx context.Context, auth Authorize, account string, c
 		revision, now := current.Revision+1, s.now()
 		raw, _ := json.Marshal(c.Limits)
 		if _, e = tx.Exec(`INSERT INTO access_limits VALUES(?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET revision=excluded.revision,updated_ms=excluded.updated_ms,body=excluded.body`, account, revision, now, string(raw)); e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET access_tokens=?,max_profiles=? WHERE account_id=?`, c.Limits.AccessTokens, c.Limits.MaxProfiles, account); e != nil {
 			return e
 		}
 		out = LimitsDocument{AccountID: account, Revision: revision, UpdatedAt: time.UnixMilli(now).UTC().Format(time.RFC3339), Limits: c.Limits}

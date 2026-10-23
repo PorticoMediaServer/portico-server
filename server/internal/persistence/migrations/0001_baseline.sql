@@ -1594,7 +1594,7 @@ END;
 
 -- ===== everything else
 CREATE TABLE configuration(key TEXT PRIMARY KEY,value TEXT NOT NULL) STRICT;
-CREATE TABLE accounts(id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,password_hash BLOB NOT NULL,profile_id TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1) STRICT;
+CREATE TABLE accounts(id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,email TEXT NOT NULL DEFAULT '',display_name TEXT NOT NULL DEFAULT '',password_hash BLOB NOT NULL,profile_id TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE TABLE libraries(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,root TEXT NOT NULL UNIQUE, position INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE metadata_jobs(item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE provider_evidence(item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,provider TEXT NOT NULL,provider_id INTEGER NOT NULL,payload TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(item_id,provider)) STRICT;
@@ -3121,6 +3121,7 @@ CREATE TABLE dvr_defaults(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revis
 CREATE TABLE direct_memberships(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  role TEXT NOT NULL CHECK(role IN('owner','admin','member')),
+ access_tokens INTEGER NOT NULL DEFAULT 1 CHECK(access_tokens IN(0,1)),max_profiles INTEGER NOT NULL DEFAULT 8 CHECK(max_profiles BETWEEN 1 AND 8),
  allowed_libraries TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(allowed_libraries)),
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), disabled INTEGER NOT NULL DEFAULT 0 CHECK(disabled IN(0,1)),
  -- When and why the account was turned off: 'owner' (an owner or administrator
@@ -3128,7 +3129,7 @@ CREATE TABLE direct_memberships(
  -- empty while the account is on; the direct_membership_disabled trigger keeps
  -- them so whichever statement flips "disabled".
  disabled_ms INTEGER NOT NULL DEFAULT 0 CHECK(disabled_ms>=0),
- disabled_reason TEXT NOT NULL DEFAULT '' CHECK(disabled_reason IN('','owner','left')),
+ disabled_reason TEXT NOT NULL DEFAULT '' CHECK(disabled_reason IN('','owner','left','did_not_move')),
  notes TEXT CHECK(notes IS NULL OR length(notes)<=500),
  joined_via TEXT NOT NULL DEFAULT '', joined_ms INTEGER NOT NULL DEFAULT 0 CHECK(joined_ms>=0)
 ) STRICT;
@@ -4846,7 +4847,7 @@ CREATE TRIGGER audio_genre_projection_reset AFTER UPDATE OF revision ON audio_me
  UPDATE audio_genre_projection SET policy_revision=NEW.revision,cursor='',completed_at='' WHERE library_id=NEW.library_id;
  INSERT OR IGNORE INTO audio_genre_projection(library_id,policy_revision) VALUES(NEW.library_id,NEW.revision);END;
 CREATE TRIGGER direct_profile_capacity BEFORE INSERT ON direct_profiles
- WHEN NEW.deleted=0 AND (SELECT count(*) FROM direct_profiles WHERE account_id=NEW.account_id AND deleted=0)>=8
+ WHEN NEW.deleted=0 AND (SELECT count(*) FROM direct_profiles WHERE account_id=NEW.account_id AND deleted=0)>=(SELECT max_profiles FROM direct_memberships WHERE account_id=NEW.account_id)
  BEGIN SELECT RAISE(ABORT,'profile_capacity'); END;
 CREATE TRIGGER identity_restrictions_revision AFTER UPDATE ON profile_restrictions
  WHEN NEW.revision=OLD.revision BEGIN
@@ -7990,12 +7991,6 @@ CREATE TRIGGER api_credentials_api_keys_list_update AFTER UPDATE ON api_credenti
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','apiKeys',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER api_credentials_api_keys_list_delete AFTER DELETE ON api_credentials WHEN OLD.kind='key' BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','apiKeys',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
-CREATE TRIGGER api_credentials_member_tokens_list_insert AFTER INSERT ON api_credentials WHEN NEW.kind='token' BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','memberTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
-CREATE TRIGGER api_credentials_member_tokens_list_update AFTER UPDATE ON api_credentials WHEN NEW.kind='token' BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','memberTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
-CREATE TRIGGER api_credentials_member_tokens_list_delete AFTER DELETE ON api_credentials WHEN OLD.kind='token' BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','memberTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER api_credentials_access_tokens_list_insert AFTER INSERT ON api_credentials WHEN NEW.kind='token' BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:local:'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','accessTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER api_credentials_access_tokens_list_update AFTER UPDATE ON api_credentials WHEN NEW.kind='token' BEGIN
@@ -8421,3 +8416,14 @@ CREATE TRIGGER identity_kind_local_fence BEFORE UPDATE OF sign_in_kind ON identi
 CREATE TRIGGER identity_kind_portico_fence BEFORE UPDATE OF sign_in_kind ON identity_state
  WHEN NEW.sign_in_kind='portico' AND EXISTS(SELECT 1 FROM accounts WHERE length(password_hash)>0)
  BEGIN SELECT RAISE(ABORT,'sign_in_kind_portico'); END;
+
+CREATE TABLE identity_move_waiting(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,move_id TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('waiting','linked','did_not_move')),old_password_hash BLOB,old_password_until_ms INTEGER NOT NULL DEFAULT 0,created_ms INTEGER NOT NULL) STRICT;
+CREATE INDEX accounts_people_username ON accounts(username COLLATE NOCASE,id);
+CREATE INDEX direct_memberships_people_role ON direct_memberships(role,disabled,account_id);
+CREATE INDEX identity_devices_people_activity ON identity_devices(account_id,authority,platform,last_seen DESC);
+
+CREATE TRIGGER identity_access_tokens_disabled AFTER UPDATE OF access_tokens ON direct_memberships WHEN NEW.access_tokens=0 AND OLD.access_tokens=1 BEGIN
+ UPDATE api_credentials SET revoked_ms=unixepoch('subsec')*1000,ended_reason='permission_removed' WHERE account_id=NEW.account_id AND kind='token' AND revoked_ms=0;
+ UPDATE authorization_session_families SET revoked=1,revoked_reason='membership_removed' WHERE id IN(SELECT family_id FROM api_credentials WHERE account_id=NEW.account_id AND kind='token') AND revoked=0;
+END;
+CREATE TRIGGER identity_access_tokens_insert BEFORE INSERT ON api_credentials WHEN NEW.kind='token' AND NOT EXISTS(SELECT 1 FROM direct_memberships WHERE account_id=NEW.account_id AND access_tokens=1 AND disabled=0) BEGIN SELECT RAISE(ABORT,'access_tokens_off');END;

@@ -15566,6 +15566,12 @@ export const schemas = {
       },
       "limits": {
         "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
           "allowUnrated": {
             "type": "boolean"
           },
@@ -15587,8 +15593,16 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "conversion": {
+            "type": "string"
+          },
           "maxContentRating": {
             "type": "string"
+          },
+          "maxProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "maxStreams": {
             "maximum": 9007199254740991,
@@ -15667,6 +15681,10 @@ export const schemas = {
           }
         },
         "required": [
+          "accessTokens",
+          "maxProfiles",
+          "allowRemote",
+          "conversion",
           "maxStreams",
           "remoteBitrateKbps",
           "ratingSystem",
@@ -15738,6 +15756,12 @@ export const schemas = {
       },
       "limits": {
         "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
           "allowUnrated": {
             "type": "boolean"
           },
@@ -15759,8 +15783,16 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "conversion": {
+            "type": "string"
+          },
           "maxContentRating": {
             "type": "string"
+          },
+          "maxProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "maxStreams": {
             "maximum": 9007199254740991,
@@ -15839,6 +15871,10 @@ export const schemas = {
           }
         },
         "required": [
+          "accessTokens",
+          "maxProfiles",
+          "allowRemote",
+          "conversion",
           "maxStreams",
           "remoteBitrateKbps",
           "ratingSystem",
@@ -15889,152 +15925,30 @@ export const schemas = {
             "disabled": {
               "type": "boolean"
             },
-            "disabledAt": {
-              "type": "string"
-            },
-            "disabledReason": {
-              "type": "string"
-            },
-            "hostedAccountId": {
-              "type": "string"
-            },
-            "joinedAt": {
-              "type": "string"
-            },
-            "joinedVia": {
+            "email": {
               "type": "string"
             },
             "lastActiveAt": {
               "type": "string"
             },
-            "limits": {
-              "properties": {
-                "allowUnrated": {
-                  "type": "boolean"
-                },
-                "channelPolicy": {
-                  "properties": {
-                    "channels": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "mode": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "mode",
-                    "channels"
-                  ],
-                  "type": "object"
-                },
-                "maxContentRating": {
-                  "type": "string"
-                },
-                "maxStreams": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "maximumAge": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "ratingSystem": {
-                  "type": "string"
-                },
-                "remoteBitrateKbps": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "schedule": {
-                  "properties": {
-                    "timezone": {
-                      "type": "string"
-                    },
-                    "windows": {
-                      "items": {
-                        "properties": {
-                          "days": {
-                            "items": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            },
-                            "type": "array"
-                          },
-                          "endMinute": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "startMinute": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "days",
-                          "startMinute",
-                          "endMinute"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "timezone",
-                    "windows"
-                  ],
-                  "type": "object"
-                },
-                "tagPolicy": {
-                  "properties": {
-                    "deniedLabels": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "deniedLabels"
-                  ],
-                  "type": "object"
-                }
+            "libraryNames": {
+              "items": {
+                "type": "string"
               },
-              "required": [
-                "maxStreams",
-                "remoteBitrateKbps",
-                "ratingSystem",
-                "maxContentRating",
-                "maximumAge",
-                "allowUnrated",
-                "schedule",
-                "channelPolicy",
-                "tagPolicy"
-              ],
-              "type": "object"
-            },
-            "limitsRevision": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
+              "type": "array"
             },
             "liveState": {
               "type": "string"
             },
-            "notes": {
-              "type": "string"
+            "maxStreams": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
-            "profileId": {
-              "type": "string"
+            "profileCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
             "profileNames": {
               "items": {
@@ -16050,6 +15964,9 @@ export const schemas = {
             "role": {
               "type": "string"
             },
+            "status": {
+              "type": "string"
+            },
             "username": {
               "type": "string"
             }
@@ -16057,13 +15974,14 @@ export const schemas = {
           "required": [
             "accountId",
             "username",
-            "profileId",
             "role",
-            "disabled",
             "revision",
+            "disabled",
+            "status",
             "allowedLibraries",
-            "limitsRevision",
-            "limits",
+            "libraryNames",
+            "maxStreams",
+            "profileCount",
             "profileNames",
             "liveState"
           ],
@@ -16076,13 +15994,25 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "matchedCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "nextCursor": {
         "type": "string"
+      },
+      "totalCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
       "limit",
-      "items"
+      "items",
+      "totalCount",
+      "matchedCount"
     ],
     "type": "object"
   },
@@ -139852,102 +139782,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "ListMemberAccessTokensRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "ListMemberAccessTokensResponse": {
-    "properties": {
-      "items": {
-        "items": {
-          "properties": {
-            "createdAt": {
-              "type": "string"
-            },
-            "endedReason": {
-              "type": "string"
-            },
-            "expiresAt": {
-              "type": "string"
-            },
-            "hint": {
-              "type": "string"
-            },
-            "id": {
-              "type": "string"
-            },
-            "kind": {
-              "type": "string"
-            },
-            "lastUsedAt": {
-              "type": "string"
-            },
-            "member": {
-              "properties": {
-                "accountId": {
-                  "type": "string"
-                },
-                "profile": {
-                  "type": "string"
-                },
-                "profileId": {
-                  "type": "string"
-                },
-                "username": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "accountId",
-                "username",
-                "profileId",
-                "profile"
-              ],
-              "type": "object"
-            },
-            "name": {
-              "type": "string"
-            },
-            "scopes": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "state": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "id",
-            "kind",
-            "name",
-            "scopes",
-            "hint",
-            "createdAt",
-            "state",
-            "member"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "limit": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "nextCursor": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "limit",
-      "items"
-    ],
-    "type": "object"
-  },
   "ListMissingTitlesRequest": {
     "properties": {},
     "required": [],
@@ -144647,6 +144481,97 @@ export const schemas = {
       "createdAt",
       "expiresAt",
       "revision"
+    ],
+    "type": "object"
+  },
+  "PostAdminAccessMembersBulkRequest": {
+    "properties": {
+      "access": {
+        "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "maxContentRating": {
+            "type": "string"
+          },
+          "maxProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxStreams": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "action": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "targets": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "expectedLimitsRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "expectedRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "accountId",
+            "expectedRevision",
+            "expectedLimitsRevision"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "operationId",
+      "targets",
+      "action"
+    ],
+    "type": "object"
+  },
+  "PostAdminAccessMembersBulkResponse": {
+    "properties": {
+      "accountIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "action": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "accountIds",
+      "action"
     ],
     "type": "object"
   },
@@ -169135,6 +169060,12 @@ export const schemas = {
       },
       "limits": {
         "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
           "allowUnrated": {
             "type": "boolean"
           },
@@ -169156,8 +169087,16 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "conversion": {
+            "type": "string"
+          },
           "maxContentRating": {
             "type": "string"
+          },
+          "maxProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "maxStreams": {
             "maximum": 9007199254740991,
@@ -169236,6 +169175,10 @@ export const schemas = {
           }
         },
         "required": [
+          "accessTokens",
+          "maxProfiles",
+          "allowRemote",
+          "conversion",
           "maxStreams",
           "remoteBitrateKbps",
           "ratingSystem",
@@ -169304,6 +169247,12 @@ export const schemas = {
       },
       "limits": {
         "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
           "allowUnrated": {
             "type": "boolean"
           },
@@ -169325,8 +169274,16 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "conversion": {
+            "type": "string"
+          },
           "maxContentRating": {
             "type": "string"
+          },
+          "maxProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "maxStreams": {
             "maximum": 9007199254740991,
@@ -169405,6 +169362,10 @@ export const schemas = {
           }
         },
         "required": [
+          "accessTokens",
+          "maxProfiles",
+          "allowRemote",
+          "conversion",
           "maxStreams",
           "remoteBitrateKbps",
           "ratingSystem",
@@ -169435,6 +169396,12 @@ export const schemas = {
       },
       "limits": {
         "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
           "allowUnrated": {
             "type": "boolean"
           },
@@ -169456,8 +169423,16 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "conversion": {
+            "type": "string"
+          },
           "maxContentRating": {
             "type": "string"
+          },
+          "maxProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "maxStreams": {
             "maximum": 9007199254740991,
@@ -169536,6 +169511,10 @@ export const schemas = {
           }
         },
         "required": [
+          "accessTokens",
+          "maxProfiles",
+          "allowRemote",
+          "conversion",
           "maxStreams",
           "remoteBitrateKbps",
           "ratingSystem",
@@ -169619,6 +169598,12 @@ export const schemas = {
       },
       "limits": {
         "properties": {
+          "accessTokens": {
+            "type": "boolean"
+          },
+          "allowRemote": {
+            "type": "boolean"
+          },
           "allowUnrated": {
             "type": "boolean"
           },
@@ -169640,8 +169625,16 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "conversion": {
+            "type": "string"
+          },
           "maxContentRating": {
             "type": "string"
+          },
+          "maxProfiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "maxStreams": {
             "maximum": 9007199254740991,
@@ -169720,6 +169713,10 @@ export const schemas = {
           }
         },
         "required": [
+          "accessTokens",
+          "maxProfiles",
+          "allowRemote",
+          "conversion",
           "maxStreams",
           "remoteBitrateKbps",
           "ratingSystem",
@@ -179389,82 +179386,6 @@ export const schemas = {
     },
     "required": [
       "results"
-    ],
-    "type": "object"
-  },
-  "RevokeMemberAccessTokenRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "RevokeMemberAccessTokenResponse": {
-    "properties": {
-      "createdAt": {
-        "type": "string"
-      },
-      "endedReason": {
-        "type": "string"
-      },
-      "expiresAt": {
-        "type": "string"
-      },
-      "hint": {
-        "type": "string"
-      },
-      "id": {
-        "type": "string"
-      },
-      "kind": {
-        "type": "string"
-      },
-      "lastUsedAt": {
-        "type": "string"
-      },
-      "member": {
-        "properties": {
-          "accountId": {
-            "type": "string"
-          },
-          "profile": {
-            "type": "string"
-          },
-          "profileId": {
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "accountId",
-          "username",
-          "profileId",
-          "profile"
-        ],
-        "type": "object"
-      },
-      "name": {
-        "type": "string"
-      },
-      "scopes": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "state": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "id",
-      "kind",
-      "name",
-      "scopes",
-      "hint",
-      "createdAt",
-      "state",
-      "member"
     ],
     "type": "object"
   },

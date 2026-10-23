@@ -47,7 +47,7 @@ func TestLibrarySummaryIsViewerRestrictedAndPathFree(t *testing.T) {
 func TestLibraryAudienceHonorsDisabledAndLibraryScope(t *testing.T) {
 	db, _, _ := browseFixture(t)
 	for _, id := range []string{"owner", "all", "limited", "disabled"} {
-		if _, err := db.Exec(`INSERT INTO accounts VALUES(?,?,x'00',?,1)`, id, id, id+"-profile"); err != nil {
+		if _, err := db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`, id, id, id+"-profile"); err != nil {
 			t.Fatal(err)
 		}
 	}

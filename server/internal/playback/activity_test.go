@@ -29,7 +29,7 @@ func activityFixture(t *testing.T) (*sql.DB, *Service, identity.Principal, Activ
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','profile',1)`)
+	_, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','profile',1)`)
 	if e != nil {
 		t.Fatal(e)
 	}

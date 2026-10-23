@@ -370,7 +370,6 @@ export function decodeListDownloadRevocationsResponse(input: unknown): types.Lis
 export function decodeListLiveSourceChannelsResponse(input: unknown): types.ListLiveSourceChannelsResponse { return decode("ListLiveSourceChannelsResponse", input) as types.ListLiveSourceChannelsResponse; }
 export function decodeListLiveSourceGroupsResponse(input: unknown): types.ListLiveSourceGroupsResponse { return decode("ListLiveSourceGroupsResponse", input) as types.ListLiveSourceGroupsResponse; }
 export function decodeListLiveSourcesResponse(input: unknown): types.ListLiveSourcesResponse { return decode("ListLiveSourcesResponse", input) as types.ListLiveSourcesResponse; }
-export function decodeListMemberAccessTokensResponse(input: unknown): types.ListMemberAccessTokensResponse { return decode("ListMemberAccessTokensResponse", input) as types.ListMemberAccessTokensResponse; }
 export function decodeListMissingTitlesResponse(input: unknown): types.ListMissingTitlesResponse { return decode("ListMissingTitlesResponse", input) as types.ListMissingTitlesResponse; }
 export function decodeListPlaybackFailureMemoryResponse(input: unknown): types.ListPlaybackFailureMemoryResponse { return decode("ListPlaybackFailureMemoryResponse", input) as types.ListPlaybackFailureMemoryResponse; }
 export function decodeListQueueEntriesResponse(input: unknown): types.ListQueueEntriesResponse { return decode("ListQueueEntriesResponse", input) as types.ListQueueEntriesResponse; }
@@ -399,6 +398,7 @@ export function decodePostAccessInvitationsAcceptResponse(input: unknown): types
 export function decodePostAdminAccessInvitationLinkResponse(input: unknown): types.PostAdminAccessInvitationLinkResponse { return decode("PostAdminAccessInvitationLinkResponse", input) as types.PostAdminAccessInvitationLinkResponse; }
 export function decodePostAdminAccessInvitationsResponse(input: unknown): types.PostAdminAccessInvitationsResponse { return decode("PostAdminAccessInvitationsResponse", input) as types.PostAdminAccessInvitationsResponse; }
 export function decodePostAdminAccessInvitationsIdRevokeResponse(input: unknown): types.PostAdminAccessInvitationsIdRevokeResponse { return decode("PostAdminAccessInvitationsIdRevokeResponse", input) as types.PostAdminAccessInvitationsIdRevokeResponse; }
+export function decodePostAdminAccessMembersBulkResponse(input: unknown): types.PostAdminAccessMembersBulkResponse { return decode("PostAdminAccessMembersBulkResponse", input) as types.PostAdminAccessMembersBulkResponse; }
 export function decodePostAdminBackgroundPauseResponse(input: unknown): types.PostAdminBackgroundPauseResponse { return decode("PostAdminBackgroundPauseResponse", input) as types.PostAdminBackgroundPauseResponse; }
 export function decodePostAdminBackupsResponse(input: unknown): types.PostAdminBackupsResponse { return decode("PostAdminBackupsResponse", input) as types.PostAdminBackupsResponse; }
 export function decodePostAdminBackupsRestoreResponse(input: unknown): types.PostAdminBackupsRestoreResponse { return decode("PostAdminBackupsRestoreResponse", input) as types.PostAdminBackupsRestoreResponse; }
@@ -624,7 +624,6 @@ export function decodeRevalidateDownloadReceiptsResponse(input: unknown): types.
 export function decodeRevokeAccessTokenResponse(input: unknown): types.RevokeAccessTokenResponse { return decode("RevokeAccessTokenResponse", input) as types.RevokeAccessTokenResponse; }
 export function decodeRevokeApiKeyResponse(input: unknown): types.RevokeApiKeyResponse { return decode("RevokeApiKeyResponse", input) as types.RevokeApiKeyResponse; }
 export function decodeRevokeDownloadReceiptsResponse(input: unknown): types.RevokeDownloadReceiptsResponse { return decode("RevokeDownloadReceiptsResponse", input) as types.RevokeDownloadReceiptsResponse; }
-export function decodeRevokeMemberAccessTokenResponse(input: unknown): types.RevokeMemberAccessTokenResponse { return decode("RevokeMemberAccessTokenResponse", input) as types.RevokeMemberAccessTokenResponse; }
 export function decodeRevokeProfileDownloadsResponse(input: unknown): types.RevokeProfileDownloadsResponse { return decode("RevokeProfileDownloadsResponse", input) as types.RevokeProfileDownloadsResponse; }
 export function decodeSaveLiveSourceResponse(input: unknown): types.SaveLiveSourceResponse { return decode("SaveLiveSourceResponse", input) as types.SaveLiveSourceResponse; }
 export function decodeSaveQueueAsPlaylistResponse(input: unknown): types.SaveQueueAsPlaylistResponse { return decode("SaveQueueAsPlaylistResponse", input) as types.SaveQueueAsPlaylistResponse; }
