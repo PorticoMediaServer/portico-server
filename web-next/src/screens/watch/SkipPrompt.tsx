@@ -17,7 +17,7 @@ export function WatchSkipPrompt({binding, snapshot, expanded, controlsVisible, l
   const marker = policy.prompt.marker;
   const act = (kind: 'skip' | 'dismiss') => { void dispatchWatchMarker(binding, snapshot, {kind, markerId: marker.id}).catch(binding.reportError); };
   return <div className={styles.corner} data-watch-skip data-layout={layout} data-controls-visible={controlsVisible} style={style}>
-    {layout !== 'phone' && <button className={styles.dismiss} type="button" aria-label={defaultI18n.t('action.dismiss')} onClick={() => act('dismiss')}><Icon name="i-close" size={20} /></button>}
+    {layout !== 'phone' && <button className={styles.dismiss} type="button" aria-label={defaultI18n.t('action.dismiss')} onClick={() => act('dismiss')}><Icon name="i-x" size={20} /></button>}
     <button className={styles.skip} type="button" onClick={() => act('skip')}>{defaultI18n.t('player.skip', {kind: marker.kind})}<Icon name="i-next" size={layout === 'phone' ? 18 : 20} /></button>
   </div>;
 }
