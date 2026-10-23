@@ -43,7 +43,7 @@ function Row({row, flat, dependent = false, inheritedDisabled = false, ...props}
   if (!state.present) return null;
   const parent = row.enableWhen && settingsRowIndex.get(row.enableWhen.id)?.row;
   const condition = parent && props.state(parent).value;
-  const disabled = inheritedDisabled || state.disabled || state.saving || !!row.enableWhen && !row.enableWhen.in.some(value => String(value) === String(condition));
+  const disabled = inheritedDisabled || state.disabled || state.saving || !!row.enableWhen && !((!row.enableWhen.in || row.enableWhen.in.includes(condition as never)) && (!row.enableWhen.notIn || !row.enableWhen.notIn.includes(condition as never)));
   const c = row.control, label = state.label ?? t(row.label), options = state.choices ?? c.options ?? [];
   const changed = state.changed && !row.noChanged;
   const defaultLabel = state.defaultLabel ?? (options.find(option => option.value === state.defaultValue)?.label ? t(options.find(option => option.value === state.defaultValue)!.label) : typeof state.defaultValue === 'boolean' ? t(state.defaultValue ? 'next.settings.on' : 'next.settings.off') : state.defaultValue === null ? t('next.settings.notSet') : state.defaultValue === undefined ? undefined : String(state.defaultValue));

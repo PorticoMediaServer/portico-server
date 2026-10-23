@@ -11,7 +11,7 @@ type Frame = {left: number; top: number; width: number; height: number};
 const dimensions = ['left', 'top', 'width', 'height'] as const;
 
 /** Mount the owner's one real video element here for its entire life. Never portals or clones. */
-export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden = false, finished = false, className}: MediaSurfaceProps) {
+export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden = false, finished = false, nativeRenderActive = false, className}: MediaSurfaceProps) {
   const ref = useRef<HTMLDivElement | null>(null), reduced = useDockReducedMotion(ref);
   const animation = useRef<Animation | null>(null), first = useRef(true), epoch = useRef(0);
   const physics = useRef<Partial<Record<keyof Frame, PlayerMorph>>>({});
@@ -86,5 +86,5 @@ export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden
     return () => { observer.disconnect(); document.removeEventListener(dockMotionEvent, follow); window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true); identity?.removeEventListener('pointerenter', enter); identity?.removeEventListener('pointerleave', leave); identity?.removeEventListener('focusin', enter); identity?.removeEventListener('focusout', leave); };
   }, [expanded, reduced, hidden, dockSlot, expandedSlot]);
   useLayoutEffect(() => () => { epoch.current++; animation.current?.cancel(); }, []);
-  return <div ref={ref} className={[styles.mediaSurface, className].filter(Boolean).join(' ')} data-docked={!expanded || undefined} data-finished={finished || undefined} aria-hidden={!expanded || hidden || undefined}><div className={styles.surfacePicture}>{children}{!expanded && <span className={styles.surfaceExpand}><Icon name={finished ? 'i-back' : 'i-zoom'} size={22} /></span>}</div></div>;
+  return <div ref={ref} className={[styles.mediaSurface, className].filter(Boolean).join(' ')} data-media-surface data-native-video-active={nativeRenderActive && !hidden && !finished || undefined} data-media-hidden={hidden || undefined} data-docked={!expanded || undefined} data-finished={finished || undefined} aria-hidden={!expanded || hidden || undefined}><div className={styles.surfacePicture} data-media-picture>{children}{!expanded && <span className={styles.surfaceExpand}><Icon name={finished ? 'i-back' : 'i-zoom'} size={22} /></span>}</div></div>;
 }
