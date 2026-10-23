@@ -8,7 +8,7 @@ export type AccountMode = 'browser' | 'native';
  * when the start asks for it. Only a service that says so is asked: an older one refuses unknown
  * start fields. */
 export type IdentityOptions = {password:boolean;registration:boolean;recovery:boolean;accountSecurity:boolean;verifiedContactRequired:boolean;nativeCompletion?:'code';providers:{id:IdentityProvider;enabled:boolean;native:boolean;nativeClientIds:string[]}[]};
-export type IdentityTransaction = {transactionId:string;provider:IdentityProvider;mode:'login'|'reauthenticate'|'link';status:'started'|'exchanging'|'onboarding'|'contact_pending'|'verified'|'completed'|'proof_issued'|'failed';expiresAt:string;contactVerified:boolean;needsUsername:boolean;onboardingToken?:string;suggestedName?:string;mfaRequired:boolean};
+export type IdentityTransaction = {transactionId:string;provider:IdentityProvider;mode:'login'|'reauthenticate'|'link';status:'started'|'exchanging'|'onboarding'|'contact_pending'|'verified'|'completed'|'proof_issued'|'failed';expiresAt:string;contactVerified:boolean;needsUsername:boolean;onboardingToken?:string;suggestedName?:string;verifiedEmail?:string;mfaRequired:boolean};
 export type Registration = {kind:'registration';registrationId:string;status:'contact_pending'|'verified'|'completed';revision:string;maskedAddress:string;expiresAt:string;contactVerified:boolean};
 export type MFAChallenge = {mfaRequired:true;challengeId:string;challengeToken:string;expiresAt:string};
 export type ContactChallenge = {challengeId:string;maskedAddress:string;expiresAt:string};
@@ -48,7 +48,11 @@ export function parseIdentityOptions(v:unknown):IdentityOptions {
 export function parseIdentityTransaction(v:unknown,expected?:string):IdentityTransaction {
  if(!object(v))return invalid();const transactionId=identifier(v.transactionId);
  if(expected&&transactionId!==expected||!['login','reauthenticate','link'].includes(String(v.mode))||!['started','exchanging','onboarding','contact_pending','verified','completed','proof_issued','failed'].includes(String(v.status)))return invalid();
- return{transactionId,provider:provider(v.provider),mode:v.mode as IdentityTransaction['mode'],status:v.status as IdentityTransaction['status'],expiresAt:timestamp(v.expiresAt),contactVerified:boolean(v.contactVerified),needsUsername:boolean(v.needsUsername),mfaRequired:v.mfaRequired===true,...(v.onboardingToken?{onboardingToken:text(v.onboardingToken,256)}:{}),...(v.suggestedName?{suggestedName:text(v.suggestedName,120)}:{})};
+ const contactVerified=boolean(v.contactVerified);
+ // This optional fact is the current transaction's verified contact, never the account's
+ // primary address. Older services and privacy-gated transaction views omit it entirely.
+ if(v.verifiedEmail!==undefined&&(!contactVerified||!['onboarding','verified','completed','proof_issued'].includes(String(v.status))))return invalid();
+ return{transactionId,provider:provider(v.provider),mode:v.mode as IdentityTransaction['mode'],status:v.status as IdentityTransaction['status'],expiresAt:timestamp(v.expiresAt),contactVerified,needsUsername:boolean(v.needsUsername),mfaRequired:v.mfaRequired===true,...(v.onboardingToken?{onboardingToken:text(v.onboardingToken,256)}:{}),...(v.suggestedName?{suggestedName:text(v.suggestedName,120)}:{}),...(v.verifiedEmail!==undefined?{verifiedEmail:text(v.verifiedEmail,320)}:{})};
 }
 export function parseRegistration(v:unknown):Registration {
  if(!object(v)||v.kind!=='registration'||!['contact_pending','verified','completed'].includes(String(v.status))||typeof v.revision!=='string'||!/^\d+$/.test(v.revision))return invalid();

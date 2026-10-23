@@ -557,6 +557,23 @@ func (s *Service) RevokeDirectSessions(ctx context.Context, bearer, family strin
 	return gated4.Commit()
 }
 func (s *Service) ChangeDirectPassword(ctx context.Context, bearer, current, next, code string) error {
+	return s.ChangeDirectPasswordWithReset(ctx, bearer, current, next, code, false)
+}
+
+// DirectPasswordChange keeps the ordinary password action and adds only the
+// post-file-proof owner choice. No ordinary or member reset family may use it
+// to turn off a factor. The choice commits with the replacement password.
+type DirectPasswordChange struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+	Code            string `json:"code"`
+	TurnOffTwoStep  bool   `json:"turnOffTwoStep,omitempty"`
+}
+
+func (DirectPasswordChange) String() string   { return "[password change redacted]" }
+func (DirectPasswordChange) GoString() string { return "[password change redacted]" }
+
+func (s *Service) ChangeDirectPasswordWithReset(ctx context.Context, bearer, current, next, code string, turnOffTwoStep bool) error {
 	if err := s.RequireSignInKind(ctx, SignInLocal); err != nil {
 		return err
 	}
@@ -587,11 +604,25 @@ func (s *Service) ChangeDirectPassword(ctx context.Context, bearer, current, nex
 	if e != nil {
 		return e
 	}
-	if e = s.verifySecondFactorTx(ctx, tx, c.account.ID, code); e != nil {
-		return e
+	ownerFileProof := proof.reset && c.account.Role == TierOwner
+	if turnOffTwoStep && !ownerFileProof {
+		return ErrForbidden
+	}
+	// Possession of the spent reset file authorized this bounded owner-only
+	// password step. Keeping the factor leaves it required at the next sign-in;
+	// it does not require another proof merely to set this password.
+	if !ownerFileProof {
+		if e = s.verifySecondFactorTx(ctx, tx, c.account.ID, code); e != nil {
+			return e
+		}
 	}
 	if e = ValidateNewLocalPasswordTx(ctx, tx, next); e != nil {
 		return e
+	}
+	if turnOffTwoStep {
+		if e = disableResetFactorTx(ctx, tx, c.account.ID); e != nil {
+			return e
+		}
 	}
 	if e = s.revokeCredentialsTx(ctx, tx, c.account.ID); e != nil {
 		return e

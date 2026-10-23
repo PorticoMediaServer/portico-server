@@ -12636,6 +12636,9 @@ export const routes = [
     "lane": "security",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "X-Portico-Installation-Id"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
