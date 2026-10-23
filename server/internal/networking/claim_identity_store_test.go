@@ -239,3 +239,30 @@ func TestClaimIdentityStoreRefusesHostileFreshNamedObject(t *testing.T) {
 		t.Fatalf("startup verification accepted a hostile trigger: %v", e)
 	}
 }
+
+func TestIdentityCodeTxReadsCurrentPublicationWithoutStoredCode(t *testing.T) {
+	db := identityStoreFixture(t)
+	defer db.Close()
+	ctx := context.Background()
+	raw := make([]byte, 32)
+	for i := range raw {
+		raw[i] = byte(i)
+	}
+	server, e := ServerIdentity(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	stageIdentityFixture(t, db, nil, DurableIdentity{ServerID: server, PublicKey: raw, KeyIncarnation: "identity-code-vector"})
+	tx, e := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback()
+	code, e := IdentityCodeTx(ctx, tx)
+	if e != nil || code != "JJWY-C8J8-J26F" {
+		t.Fatal("current identity-code vector mismatch", e)
+	}
+	if _, e = IdentityCodeTx(ctx, nil); e == nil {
+		t.Fatal("nil identity transaction accepted")
+	}
+}

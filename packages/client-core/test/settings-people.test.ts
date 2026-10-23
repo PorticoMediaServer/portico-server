@@ -4,7 +4,7 @@ import {parseSettingsPeoplePage, SettingsPeopleClient, type SettingsPersonRow} f
 import {parseMemberLimits} from '../src/server-administration.ts';
 
 const person = (index: number): SettingsPersonRow => ({accountId: `person-${index}`, username: `person${index}`, email: `person${index}@example.test`, role: 'member', revision: index + 1, limitsRevision: index + 3,
-  disabled: false, status: 'active', hasMoveCode:false,allowedLibraries: [], libraryNames: ['Actual library'], maxStreams: 2, profileCount: 1, profileNames: [`Profile ${index}`], liveState: 'idle'});
+  disabled: false, status: 'active', hasMoveCode:false,allowedLibraries: [], libraryNames: ['Actual library'], maxStreams: 2, maxStreamsMode:'limit',serverMaxStreams:null,effectiveMaxStreams:2,profileCount: 1, profileNames: [`Profile ${index}`], liveState: 'idle'});
 const page = () => ({items: Array.from({length: 40}, (_, index) => person(index)), totalCount: 137, matchedCount: 120, nextCursor: 'opaque-cursor', limit: 40});
 const query = {search: 'person 2', role: 'member', status: 'month', sort: 'active', direction: 'desc'} as const;
 
@@ -41,7 +41,7 @@ test('authority handover rejects late private data and disposal aborts pending r
   current = true; const second = client.read(query); client.dispose(); assert.equal(signal!.aborted, true); answer(page()); await assert.rejects(second);
 });
 test('the account permission boundary preserves false token and away permissions and refuses invented defaults', () => {
-  const limits = {accessTokens: false, maxProfiles: 2, allowRemote: false, conversion: 'none', maxStreams: 1, remoteBitrateKbps: 0, allowUnrated: true};
+  const limits = {accessTokens: false, maxProfiles: 2, allowRemote: false, conversion: 'none', maxStreams: 1, maxStreamsMode:'limit', remoteBitrateKbps: 0, allowUnrated: true};
   assert.equal(parseMemberLimits(limits).accessTokens, false); assert.equal(parseMemberLimits(limits).allowRemote, false);
-  for (const key of ['accessTokens', 'maxProfiles', 'allowRemote', 'conversion']) {const raw = {...limits} as Record<string, unknown>; delete raw[key]; assert.throws(() => parseMemberLimits(raw));}
+  for (const key of ['accessTokens', 'maxProfiles', 'allowRemote', 'conversion','maxStreams','maxStreamsMode']) {const raw = {...limits} as Record<string, unknown>; delete raw[key]; assert.throws(() => parseMemberLimits(raw));}
 });

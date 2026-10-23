@@ -172,6 +172,12 @@ func (s *Service) Register(ctx context.Context, q SelfRegistrationRequest, priva
 	if taken {
 		return DirectSignIn{}, ErrRegistrationTaken
 	}
+	if e = RequireSignInKindTx(ctx, tx, SignInLocal); e != nil {
+		return DirectSignIn{}, e
+	}
+	if e = ValidateNewLocalPasswordTx(ctx, tx, q.Password); e != nil {
+		return DirectSignIn{}, e
+	}
 	account, profile := Token(), Token()
 	if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,?,?,1)`, account, username, hash, profile); e != nil {
 		return DirectSignIn{}, e

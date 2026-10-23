@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
+	"portico.local/server/internal/networkpolicy"
 	"strings"
 )
 
@@ -50,14 +52,36 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 			return networking.ClaimRequestOwner{}, identity.ErrUnauthorized
 		}
 		resume, _ := json.Marshal(claimResume{Digest: p.Hash, AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch})
-		return networking.ClaimRequestOwner{Owner: networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, Guard: func(ctx context.Context, tx *sql.Tx) error {
-			_, e := id.SessionFamilyTx(ctx, tx, p)
-			if errors.Is(e, identity.ErrUnauthorized) {
+		return networking.ClaimRequestOwner{Owner: networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, WebOrigin: d.ownerSwitchWebOrigin(r), Guard: func(ctx context.Context, tx *sql.Tx) error {
+			e := id.RequireMainProfileTx(ctx, tx, p)
+			if errors.Is(e, identity.ErrUnauthorized) || errors.Is(e, identity.ErrForbidden) {
 				return networking.ErrClaimOwnerRequired
 			}
 			return e
 		}, Resume: string(resume)}, nil
 	}
+}
+
+// ownerSwitchWebOrigin is only a transport prerequisite. The browser must
+// independently require its secure context and protected storage before any
+// private state. A bearer or missing Origin is not native-context attestation.
+func (d Dependencies) ownerSwitchWebOrigin(r *http.Request) string {
+	origin := networkpolicy.Origin(r, d.trustedProxyPrefixes(r.Context()))
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return ""
+	}
+	if supplied := r.Header.Get("Origin"); supplied != "" && supplied != origin {
+		return ""
+	}
+	if u.Scheme == "https" && d.secureTransport(r) {
+		return origin
+	}
+	peer, ok := networkpolicy.Peer(r)
+	if u.Scheme == "http" && u.Hostname() == "localhost" && ok && peer.IsLoopback() {
+		return origin
+	}
+	return ""
 }
 
 // claimResume notes the owner sign-in that asked for a web approval: the
@@ -95,7 +119,10 @@ func NetworkingClaimResume(id *identity.Service) func(string) networking.ClaimRe
 			if errors.Is(e, identity.ErrUnauthorized) || e == nil && (p.Authority != "local" || p.Role != "owner" || p.AccountID != r.AccountID || p.ProfileID != r.ProfileID || p.Epoch != r.Epoch) {
 				return networking.ErrClaimOwnerRequired
 			}
-			return e
+			if e != nil {
+				return e
+			}
+			return id.RequireMainProfileTx(ctx, tx, p)
 		}
 	}
 }
