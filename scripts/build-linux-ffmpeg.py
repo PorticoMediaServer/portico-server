@@ -57,7 +57,10 @@ def main():
     # Snapshot the small job inputs before either build. Switching the lane's
     # branch to publish an independent checked component cannot change a
     # running container's helper, compiler capture or source lock.
-    inputs = {'build-portico-disc.py': root / 'scripts/build-portico-disc.py',
+    inputs = {'build-linux-ffmpeg.py': Path(__file__).resolve(),
+              'build-ffmpeg.sh': root / 'scripts/build-ffmpeg.sh',
+              'configure-ffmpeg-recipe.py': root / 'scripts/configure-ffmpeg-recipe.py',
+              'build-portico-disc.py': root / 'scripts/build-portico-disc.py',
               'capture-compiler.py': root / 'scripts/capture-ffmpeg-compiler.py',
               'sources.lock.json': root / 'third_party/ffmpeg/sources.lock.json',
               'portico-disc.c': work / 'recipe/portico-disc/portico-disc.c',
