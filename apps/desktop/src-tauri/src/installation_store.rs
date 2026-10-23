@@ -30,7 +30,7 @@ impl InstallationStore{
         };
         let mut connection=Connection::open_with_flags(path,OpenFlags::SQLITE_OPEN_READ_WRITE|OpenFlags::SQLITE_OPEN_NO_MUTEX|OpenFlags::SQLITE_OPEN_NOFOLLOW).map_err(|_|Error::PreferencesUnavailable)?;
         connection.busy_timeout(std::time::Duration::from_secs(2)).map_err(|_|Error::PreferencesUnavailable)?;
-        connection.execute_batch("PRAGMA trusted_schema=OFF; PRAGMA synchronous=FULL;").map_err(|_|Error::PreferencesUnavailable)?;
+        connection.execute_batch("PRAGMA trusted_schema=OFF; PRAGMA synchronous=FULL; PRAGMA locking_mode=EXCLUSIVE;").map_err(|_|Error::PreferencesUnavailable)?;
         let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|_|Error::PreferencesUnavailable)?;
         if created{
             tx.execute_batch("CREATE TABLE desktop_installation(id INTEGER PRIMARY KEY CHECK(id=1),installation_id TEXT NOT NULL CHECK(length(installation_id)=64)) STRICT;").map_err(|_|Error::PreferencesUnavailable)?;
@@ -58,7 +58,8 @@ mod tests{
     #[test]
     fn durable_installation_identity_is_local_unique_and_never_account_or_output_keyed(){
         let first=path("first"),second=path("second");
-        let store=InstallationStore::open(&first).unwrap();let original=store.read().unwrap();assert_eq!(original.len(),64);drop(store);
+        let store=InstallationStore::open(&first).unwrap();let original=store.read().unwrap();assert_eq!(original.len(),64);
+        assert!(InstallationStore::open(&first).is_err(),"a second app cannot rotate the same credential vault concurrently");drop(store);
         assert!(InstallationStore::open(&first).unwrap().read().unwrap()==original);
         assert!(InstallationStore::open(&second).unwrap().read().unwrap()!=original);
         #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;assert_eq!(std::fs::metadata(&first).unwrap().permissions().mode()&0o777,0o600);}
