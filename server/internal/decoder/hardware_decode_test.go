@@ -72,12 +72,17 @@ func TestHardwareDecodeTargetRuntime(t *testing.T) {
 	probe := detector.Probe(ctx, path, backend, "/dev/dri/renderD128")
 	posture := mediaexec.Decide(path)
 	result, _ := json.Marshal(struct {
-		Backend HardwareBackend `json:"backend"`
-		Encoder bool            `json:"encoder"`
-		Decode  map[string]bool `json:"decode"`
-		Sandbox bool            `json:"sandbox"`
-		Reason  string          `json:"sandboxReason"`
-	}{backend, probe.Available, probe.DecodeCodecs, posture.Sandboxed, posture.Reason})
+		Backend     HardwareBackend `json:"backend"`
+		Encoder     bool            `json:"encoder"`
+		Decode      map[string]bool `json:"decode"`
+		Output      map[string]bool `json:"outputEncoders"`
+		Quality     map[string]bool `json:"outputQuality"`
+		Scale       bool            `json:"scale"`
+		ToneMap     bool            `json:"toneMap"`
+		Deinterlace bool            `json:"deinterlace"`
+		Sandbox     bool            `json:"sandbox"`
+		Reason      string          `json:"sandboxReason"`
+	}{backend, probe.Available, probe.DecodeCodecs, probe.OutputEncoders, probe.OutputQuality, probe.ScaleFilters, probe.ToneMapFilters, probe.DeinterlaceFilters, posture.Sandboxed, posture.Reason})
 	t.Log(string(result))
 	if !probe.Available || !probe.DecodeCodecs["h264:8"] {
 		t.Fatal("observed Intel device did not pass the required H264 encode/decode cell", probe.Reason)
