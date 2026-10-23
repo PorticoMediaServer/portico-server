@@ -365,6 +365,23 @@ type artworkWork struct {
 	attempts                                                 int
 }
 
+func (s *Service) artworkJobEnabled(ctx context.Context, tx *sql.Tx, j artworkWork) (bool, error) {
+	// Generated pictures can only be remade by the episode runtime with its
+	// source authority. They are never a provider or local-image acquisition.
+	if j.provider == "generated" {
+		return false, nil
+	}
+	ent, err := readRepairEntity(ctx, tx, j.target)
+	if err != nil {
+		return false, err
+	}
+	allowed, err := EpisodeProviderStillAllowedTx(ctx, tx, ent.library, ent.itemKind, j.role, j.actor, j.provider)
+	if err != nil || !allowed {
+		return false, err
+	}
+	return s.artworkProviderEnabledForEntity(ctx, tx, ent, j.provider)
+}
+
 func (s *Service) ArtworkStep(ctx context.Context) error {
 	if s.cacheRoot == "" || !diskspace.Room(s.cacheRoot, diskspace.ProducerFloor) {
 		// Wait for capacity before acquiring a lease or downloading any bytes.
@@ -404,7 +421,7 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	} else if err != nil {
 		return err
 	}
-	enabled, err := s.artworkProviderEnabled(ctx, tx, j.target, j.provider)
+	enabled, err := s.artworkJobEnabled(ctx, tx, j)
 	if err != nil {
 		return err
 	}
@@ -483,7 +500,7 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT revision FROM artwork_selections WHERE kind=? AND entity_id=? AND role=? AND subject=?),0)`, j.target.Kind, entity, j.role, j.subject).Scan(&revision); err != nil {
 		return err
 	}
-	enabled, err = s.artworkProviderEnabled(ctx, tx, j.target, j.provider)
+	enabled, err = s.artworkJobEnabled(ctx, tx, j)
 	if err != nil {
 		return err
 	}
