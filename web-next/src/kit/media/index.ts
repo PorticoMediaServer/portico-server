@@ -1,4 +1,5 @@
 export {Equalizer, DeviceEqualizer} from './Equalizer';
+export {BrowserSettingsEqualizer} from './BrowserSettingsEqualizer';
 export type {EqualizerProps, MediaTranslate} from './Equalizer';
 export {createBrowserEqualizerPort} from './equalizer-port';
 export type {EqualizerPort} from './equalizer-port';

@@ -7,6 +7,7 @@ import type {V1Request, V1Response} from '@core/playback-v1/http.ts';
 import type {ServerEvent} from '@core/playback-v1/types.ts';
 import {WebShellPlaybackRuntime} from '../src/platform/playback/runtime.ts';
 import {ByteCache} from '../src/platform/playback/audio/bytes.ts';
+import {PlayOnController, type WebCastPort} from '../src/platform/playback/play-on.ts';
 import type {WebPlaybackSettings, WebPlaybackSource} from '../src/platform/playback/types.ts';
 import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {HomeSelectionPlaybackItem} from '@core/home-selection/types.ts';
@@ -259,6 +260,101 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, e
   return {runtime, source, api, server, log, video, hls, clock, arrive, arriveLive, offers, expireLiveBookmark: () => { channels.windowStartMs = 50000; }, invalidate: () => { current = false; }, callbacks: () => [...callbacks.values()].reduce((n, v) => n + v.size, 0), intercept: (fn: typeof intercept) => { intercept = fn; }, changeViewerFence: () => { viewerFence = 'other_detail_viewer'; }};
 }
 function deferred() { let resolve!: () => void, enter!: () => void; const promise = new Promise<void>(r => { resolve = r; }), started = new Promise<void>(r => { enter = r; }); return {started, resolve, hold: async () => { enter(); await promise; }}; }
+
+/** The platform sender boundary; SDK transport/picker qualification stays with its owner. */
+class ControlledCastSender implements WebCastPort {
+  state: ReturnType<WebCastPort['getSnapshot']> = {available: true, phase: 'off', positionSeconds: 0, durationSeconds: 0, paused: false, audioTracks: [], textTracks: []};
+  listeners = new Set<() => void>();
+  starts: Parameters<WebCastPort['start']>[] = [];
+  commands: unknown[][] = [];
+  disposed = false;
+  private finish?: (ok: boolean) => void;
+  getSnapshot = () => this.state;
+  subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
+  prepareOnIdle() { return () => {}; }
+  async prepareForPlayer() { return true; }
+  publish(patch: Partial<typeof this.state>) { this.state = {...this.state, ...patch}; for (const listener of [...this.listeners]) listener(); }
+  start(...args: Parameters<WebCastPort['start']>) { this.starts.push(args); this.publish({phase: 'connecting', itemId: args[0], title: args[1].title}); return new Promise<boolean>(resolve => { this.finish = resolve; }); }
+  acknowledge(ok: boolean) { this.finish?.(ok); this.finish = undefined; }
+  cancelConnecting() { this.commands.push(['cancel']); this.publish({phase: 'off'}); this.acknowledge(false); }
+  play() { this.commands.push(['play']); }
+  pause() { this.commands.push(['pause']); }
+  toggle() { this.commands.push(['toggle']); }
+  seek(seconds: number) { this.commands.push(['seek', seconds]); }
+  setAudioTrack(id: number) { this.commands.push(['audio', id]); }
+  setSubtitleTrack(id: number | null) { this.commands.push(['subtitles', id]); }
+  answerTakeover(allow: boolean) { this.commands.push(['takeover', allow]); }
+  stop() { this.commands.push(['stop']); this.publish({phase: 'off'}); }
+  dismiss() { this.commands.push(['dismiss']); this.publish({phase: 'off'}); }
+  dispose() { this.disposed = true; this.listeners.clear(); }
+}
+function castController(t: TestContext, f: ReturnType<typeof setup>) {
+  const sender = new ControlledCastSender(), errors: unknown[] = [];
+  const controller = new PlayOnController({sender, runtime: f.runtime, isCurrent: f.source.isCurrent, reportError: error => errors.push(error), now: f.clock.now, setTimer: f.clock.setTimer, clearTimer: f.clock.clearTimer, key: () => 'remote-attempt'});
+  t.after(() => controller.dispose());
+  return {controller, sender, errors};
+}
+
+test('Cast keeps the mounted local engine through pairing and waiting, handing off only on casting', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const session = f.runtime.getSnapshot().session!, local = f.hls.instances[0]!;
+  const {controller, sender, errors} = castController(t, f), start = controller.startCast();
+  assert.equal(sender.starts.length, 1, 'picker call stays synchronous with the row click');
+  assert.deepEqual(sender.starts[0]![3], {queue: session.queue});
+  assert.deepEqual(Object.keys(sender.starts[0]![1]).sort(), ['artworkPath', 'kind', 'subtitle', 'title']);
+  for (const phase of ['connecting', 'pairing', 'waiting'] as const) {
+    sender.publish({phase});
+    assert.equal(f.runtime.getSnapshot().session!.id, session.id); assert.equal(local.destroyed, false);
+    assert.equal(controller.getSnapshot().remote!.positionKnown, false, 'requested start is never a receiver clock');
+  }
+  sender.publish({phase: 'casting', device: {name: 'Living Room'}, receiver: {itemId: 'movie', positionSeconds: 27, durationSeconds: 3186, paused: false}});
+  sender.acknowledge(true); assert.equal(await start, true); await settle();
+  assert.equal(f.runtime.getSnapshot().session, undefined); assert.equal(local.destroyed, true);
+  assert.equal(controller.getSnapshot().remote!.positionSeconds, 27); assert.deepEqual(errors, []);
+});
+
+test('Cast cancellation preserves local playback and source replacement retires a pending attempt', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const session = f.runtime.getSnapshot().session!.id, {controller, sender} = castController(t, f);
+  let start = controller.startCast(); controller.stop(controller.getSnapshot().remote!);
+  assert.equal(await start, false); await settle();
+  assert.equal(controller.getSnapshot().remote, undefined); assert.equal(f.runtime.getSnapshot().session!.id, session);
+  assert.deepEqual(sender.commands, [['cancel']]);
+  start = controller.startCast(); await f.runtime.play('another', 10); await f.arrive();
+  assert.equal(await start, false); assert.equal(f.runtime.getSnapshot().session!.itemId, 'another');
+  f.invalidate(); f.runtime.dispose();
+  assert.equal(controller.getSnapshot().disposed, true); assert.equal(sender.disposed, true);
+  assert.throws(() => controller.openPlayOn(), /playback_authority_retired/);
+});
+
+test('Cast controls require current receiver facts and tokens, never an optimistic seek position', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const {controller, sender} = castController(t, f), start = controller.startCast();
+  sender.publish({phase: 'casting', positionSeconds: 999, durationSeconds: 9999}); sender.acknowledge(true); await start; await settle();
+  let token = controller.getSnapshot().remote!;
+  assert.equal(token.positionKnown, false); controller.seek(token, 100); assert.deepEqual(sender.commands, []);
+  sender.publish({receiver: {itemId: 'movie', positionSeconds: 40, durationSeconds: 100, paused: true}, audioTracks: [{id: 2, name: 'English', active: true}]});
+  controller.toggle(token); assert.deepEqual(sender.commands, [], 'a previous status token cannot command the receiver');
+  token = controller.getSnapshot().remote!;
+  controller.seek(token, 150); controller.seek(token, NaN); controller.audio(token, 3); controller.audio(token, 2); controller.subtitles(token, 3); controller.subtitles(token, null);
+  assert.deepEqual(sender.commands, [['seek', 100], ['audio', 2], ['subtitles', null]]);
+  assert.equal(controller.getSnapshot().remote!.positionSeconds, 40);
+});
+
+test('Cast stopped continuation uses retained receiver time, expires at fifteen seconds and never stops adopted local playback', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const {controller, sender} = castController(t, f), start = controller.startCast();
+  sender.publish({phase: 'casting', receiver: {itemId: 'movie', positionSeconds: 57, durationSeconds: 3186, paused: false}}); sender.acknowledge(true); await start; await settle();
+  sender.stop(); const token = controller.getSnapshot().remote!;
+  assert.equal(token.phase, 'stopped'); assert.equal(token.positionSeconds, 57);
+  f.clock.advance(14_999); assert.equal(controller.getSnapshot().remote!.phase, 'stopped');
+  await controller.continueHere(token); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.itemId, 'movie'); assert.equal(f.hls.instances.at(-1)!.config.startPosition, 57);
+  assert.equal(controller.getSnapshot().remote, undefined);
+  sender.publish({phase: 'casting', itemId: 'movie', receiver: {itemId: 'movie', positionSeconds: 60, durationSeconds: 3186, paused: false}});
+  sender.publish({phase: 'replaced'}); f.clock.advance(15_000);
+  assert.equal(controller.getSnapshot().remote, undefined); assert.equal(f.runtime.getSnapshot().session!.itemId, 'movie');
+});
 
 test('entry version choice reaches the real canonical start and mounted engine using grouped version id', async t => {
   const f = setup(t);

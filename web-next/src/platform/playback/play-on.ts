@@ -217,5 +217,17 @@ export function mediaAirPlayPort(video: HTMLVideoElement, userAgent = navigator.
   const element = video as WirelessVideo;
   const safari = /Safari\//.test(userAgent) && !/Chrome\/|Chromium\/|Edg\/|OPR\/|CriOS\/|FxiOS\//.test(userAgent);
   const supported = safari && typeof element.webkitShowPlaybackTargetPicker === 'function';
-  return {available: () => supported, subscribe: () => () => {}, showPicker: () => { if (supported) element.webkitShowPlaybackTargetPicker!(); }};
+  const available = () => supported && !element.disableRemotePlayback;
+  return {
+    available,
+    subscribe: listener => {
+      if (!supported) return () => {};
+      const observer = new MutationObserver(listener);
+      observer.observe(element, {attributes: true, attributeFilter: ['disableremoteplayback']});
+      element.addEventListener('loadedmetadata', listener);
+      element.addEventListener('emptied', listener);
+      return () => { observer.disconnect(); element.removeEventListener('loadedmetadata', listener); element.removeEventListener('emptied', listener); };
+    },
+    showPicker: () => { if (available()) element.webkitShowPlaybackTargetPicker!(); },
+  };
 }

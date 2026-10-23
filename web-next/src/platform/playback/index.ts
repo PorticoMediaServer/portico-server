@@ -10,4 +10,6 @@ export type {WebMediaPlayerOptions, WebPlayerNotice} from './web-media-player.ts
 export {eqFrequencies, flatEqualizer, parseEqualizer, equalizerResponse} from './audio/equalizer.ts';
 export type {EqualizerSettings} from './audio/equalizer.ts';
 export type {BrowserAudioFacts} from './audio/output.ts';
+export {videoPresentationLayout, VideoPresentationContinuity} from './video-presentation.ts';
+export type {PlaybackWindow, VideoPresentationLayout} from './video-presentation.ts';
 export {loadDeviceEqualizer, saveDeviceEqualizer, resetDeviceEqualizer, subscribeDeviceEqualizer} from './audio/equalizer-store.ts';

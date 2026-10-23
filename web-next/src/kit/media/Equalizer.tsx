@@ -33,6 +33,7 @@ export function Equalizer({value, onChange, onReset, reportError, layout = 'sett
   const knobs = useRef<(HTMLButtonElement | null)[]>([]), toggle = useRef<HTMLButtonElement>(null), reset = useRef<HTMLButtonElement>(null);
   const lastBand = useRef(0), leftControl = useRef<'switch' | 'reset'>('switch'), draft = useRef(value);
   const [display, setDisplay] = useState(value);
+  useEffect(() => { if (layout === 'tv') toggle.current?.focus(); }, [layout]);
   useEffect(() => { if (dragging === null) { draft.current = value; setDisplay(value); } }, [value, dragging]);
   const number = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${formatNumber(Math.abs(n), {minimumFractionDigits: 1, maximumFractionDigits: 1})}`;
   const db = (n: number) => t('next.media.eq.db', {value: number(n)});
@@ -79,6 +80,7 @@ export function Equalizer({value, onChange, onReset, reportError, layout = 'sett
         onPointerUp={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); setDragging(null); }}
         onPointerCancel={() => setDragging(null)} onLostPointerCapture={() => setDragging(null)} />
       {dragging === index && <span className={styles.bubble} style={horizontal ? {left: `${100 - position(gain)}%`} : {top: `${position(gain)}%`}}>{number(gain)}</span>}
+      {layout === 'tv' && <><span className={`${styles.nudge} ${styles.up}`} style={{top: `${position(gain)}%`}} aria-hidden="true"><Icon name="i-up" size={22} /></span><span className={`${styles.nudge} ${styles.down}`} style={{top: `${position(gain)}%`}} aria-hidden="true"><Icon name="i-down" size={22} /></span></>}
     </span>
     <span className={styles.frequency}>{horizontal ? db(gain) : label}</span>
   </div>;
@@ -93,7 +95,7 @@ export function Equalizer({value, onChange, onReset, reportError, layout = 'sett
     onFocus={() => { leftControl.current = 'reset'; }} onKeyDown={event => leftKeys(event, 'reset')}
     onClick={() => { try { void Promise.resolve(onReset()).catch(reportError); } catch (error) { reportError(error); } }}>{t('next.media.eq.reset')}</button>;
   return <section className={styles.equalizer} data-layout={layout} data-enabled={display.enabled} aria-label={t('next.media.eq.title')}>
-    <div className={styles.heading} data-window-drag-region={layout === 'panel' ? 'now-playing-top-strip' : undefined}>
+    <div className={styles.heading}>
       {onBack && <button type="button" className={styles.back} data-window-no-drag="" onClick={onBack} aria-label={t('next.media.eq.backQueue')}><Icon name="i-left" size={22} /></button>}
       <div className={styles.label}><b>{t('next.media.eq.title')}</b>{layout !== 'panel' && <span className={styles.scope}>{t('preferences.thisDevice')}</span>}
         {bitPerfectOutputOffered && layout !== 'panel' && layout !== 'tv' && <small>{t('next.media.eq.help')}</small>}</div>
@@ -109,7 +111,7 @@ export function Equalizer({value, onChange, onReset, reportError, layout = 'sett
         <div className={styles.bands}>
           <i className={styles.zero} />
           {response && <svg className={styles.curve} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="currentColor" stopOpacity=".22" /><stop offset="1" stopColor="currentColor" stopOpacity=".04" /></linearGradient></defs><path d={`${response} L1000,500 L0,500 Z`} fill={`url(#${id})`} /><path d={response} fill="none" stroke="currentColor" strokeOpacity=".75" strokeWidth="2" vectorEffect="non-scaling-stroke" /></svg>}
-          {display.bandsDb.map((gain, i) => band(i + 1, gain, labels[i]!))}
+          {display.bandsDb.map((gain, i) => band(i + 1, gain, layout === 'settings' ? t(i < 5 ? 'next.media.eq.hz' : 'next.media.eq.khz', {frequency: i < 5 ? eqFrequencies[i]! : eqFrequencies[i]! / 1000}) : labels[i]!))}
         </div>
       </div>
     </div>
