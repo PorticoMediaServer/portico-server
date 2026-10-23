@@ -12,7 +12,7 @@ import (
 )
 
 // This is a local current-state boundary, using real SQLite, canonical schema,
-// signed cached claim authority and real key/CSR/X509 validation. The certificate
+// the actual installed credential and real key/CSR/X509 validation. The certificate
 // issuer and successful route observation are controlled fixtures, not ACME or a
 // real Hosted dial-back acceptance claim.
 func managedHTTPSFixture(t *testing.T) (*sqlFixture, *ClaimHandler, context.Context, string) {
@@ -23,23 +23,11 @@ func managedHTTPSFixture(t *testing.T) (*sqlFixture, *ClaimHandler, context.Cont
 	h.runner = m.runner
 	installSyntheticCertificate(t, m, ctx)
 	m.SetListening(32500, true)
-	v, e := f.store.InstalledIntent(ctx)
-	if e != nil {
-		t.Fatal(e)
-	}
 	f.store.installedGuard = GuardInstalledClaim
-	proof, verify := authorityFixture(t, v, "active", 1)
-	consumer, e := NewClaimAuthorityConsumer(f.store, verify, func(context.Context, *sql.Tx, Intent, string) error { return nil })
-	if e != nil {
+	if _, e := f.db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'portico')`); e != nil {
 		t.Fatal(e)
 	}
-	if e = consumer.Apply(ctx, v, proof); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = f.db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'portico')`); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = m.observedPublicAddress(ctx, "188.68.34.120"); e != nil {
+	if _, e := m.observedPublicAddress(ctx, "188.68.34.120"); e != nil {
 		t.Fatal(e)
 	}
 	config, q, _, e := m.snapshot(ctx)
@@ -97,9 +85,9 @@ func readManagedHTTPS(t *testing.T, f *sqlFixture, h *ClaimHandler, ctx context.
 func TestCurrentManagedHTTPSIsReadOnlyAndRequiresCurrentLiveTuple(t *testing.T) {
 	f, h, ctx, origin := managedHTTPSFixture(t)
 	readManagedHTTPS(t, f, h, ctx, origin)
-	var authorityExpiry string
-	if e := f.db.QueryRow(`SELECT expires_at FROM networking_claim_authority`).Scan(&authorityExpiry); e != nil {
-		t.Fatal(e)
+	var observations int
+	if e := f.db.QueryRow(`SELECT count(*) FROM networking_claim_authority`).Scan(&observations); e != nil || observations != 0 {
+		t.Fatalf("fresh serving authority required a fabricated observation: count=%d error=%v", observations, e)
 	}
 	tests := []struct{ name, change, restore string }{
 		{"Local kind", `UPDATE identity_state SET sign_in_kind='local'`, `UPDATE identity_state SET sign_in_kind='portico'`},
@@ -117,8 +105,6 @@ func TestCurrentManagedHTTPSIsReadOnlyAndRequiresCurrentLiveTuple(t *testing.T) 
 		{"credential generation changed", `UPDATE networking_claim_credentials SET credential_generation='999'`, `UPDATE networking_claim_credentials SET credential_generation=(SELECT credential_generation FROM networking_claim_intents WHERE networking_claim_intents.operation_id=networking_claim_credentials.operation_id)`},
 		{"non-origin route", `UPDATE networking_certificate_state SET route_url=route_url||'/untrusted'`, `UPDATE networking_certificate_state SET route_url=?`},
 		{"route error", `UPDATE networking_certificate_state SET route_error_code='route_not_ready'`, `UPDATE networking_certificate_state SET route_error_code=''`},
-		{"terminal authority", `UPDATE networking_claim_authority SET state='revoked'`, `UPDATE networking_claim_authority SET state='active'`},
-		{"expired active authority", `UPDATE networking_claim_authority SET expires_at='2000-01-01T00:00:00Z'`, `UPDATE networking_claim_authority SET expires_at=?`},
 		{"certificate state not issued", `UPDATE networking_certificates SET state='submitted'`, `UPDATE networking_certificates SET state='issued'`},
 	}
 	for _, tt := range tests {
@@ -128,9 +114,6 @@ func TestCurrentManagedHTTPSIsReadOnlyAndRequiresCurrentLiveTuple(t *testing.T) 
 			}
 			readManagedHTTPS(t, f, h, ctx, "")
 			var args []any
-			if tt.name == "expired active authority" {
-				args = []any{authorityExpiry}
-			}
 			if tt.name == "non-origin route" {
 				args = []any{origin}
 			}
@@ -159,25 +142,34 @@ func TestCurrentManagedHTTPSIsReadOnlyAndRequiresCurrentLiveTuple(t *testing.T) 
 		h.certificates.roots = old
 		readManagedHTTPS(t, f, h, ctx, origin)
 	})
-	t.Run("missing active observation", func(t *testing.T) {
+	t.Run("missing current credential", func(t *testing.T) {
+		f, h, ctx, origin := managedHTTPSFixture(t)
+		readManagedHTTPS(t, f, h, ctx, origin)
+		if _, e := f.db.Exec(`DELETE FROM networking_claim_credentials`); e != nil {
+			t.Fatal(e)
+		}
+		readManagedHTTPS(t, f, h, ctx, "")
+	})
+	t.Run("terminal denial remains sticky after expiry", func(t *testing.T) {
+		f, h, ctx, origin := managedHTTPSFixture(t)
+		readManagedHTTPS(t, f, h, ctx, origin)
 		v, e := f.store.InstalledIntent(ctx)
 		if e != nil {
 			t.Fatal(e)
 		}
-		proof, verify := authorityFixture(t, v, "active", 1)
+		proof, verify := authorityFixture(t, v, "revoked", 1)
 		consumer, e := NewClaimAuthorityConsumer(f.store, verify, func(context.Context, *sql.Tx, Intent, string) error { return nil })
 		if e != nil {
 			t.Fatal(e)
 		}
-		// Missing observation may permit control-plane recovery, never address readiness.
-		if _, e := f.db.Exec(`DELETE FROM networking_claim_authority`); e != nil {
-			t.Fatal(e)
-		}
-		readManagedHTTPS(t, f, h, ctx, "")
 		if e := consumer.Apply(ctx, v, proof); e != nil {
 			t.Fatal(e)
 		}
-		readManagedHTTPS(t, f, h, ctx, origin)
+		readManagedHTTPS(t, f, h, ctx, "")
+		if _, e := f.db.Exec(`UPDATE networking_claim_authority SET expires_at='2000-01-01T00:00:00Z'`); e != nil {
+			t.Fatal(e)
+		}
+		readManagedHTTPS(t, f, h, ctx, "")
 	})
 }
 func TestCurrentManagedHTTPSDoesNotPromoteUnverifiedCandidates(t *testing.T) {

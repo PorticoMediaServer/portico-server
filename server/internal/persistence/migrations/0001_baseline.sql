@@ -8202,15 +8202,19 @@ CREATE TABLE music_virtual_tracks(
 CREATE INDEX music_virtual_tracks_entity ON music_virtual_tracks(entity_id);
 
 CREATE TABLE music_sonic_embeddings(
- result_id TEXT PRIMARY KEY REFERENCES analysis_results(id) ON DELETE CASCADE,
+ result_id TEXT NOT NULL REFERENCES analysis_results(id) ON DELETE CASCADE,
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ source_start_us INTEGER NOT NULL CHECK(source_start_us>=0),source_end_us INTEGER NOT NULL CHECK(source_end_us>source_start_us),
  model_id TEXT NOT NULL,model_version TEXT NOT NULL,model_sha256 TEXT NOT NULL,
- dimensions INTEGER NOT NULL CHECK(dimensions=200),vector BLOB NOT NULL CHECK(length(vector)=800)
+ dimensions INTEGER NOT NULL CHECK(dimensions=200),vector BLOB NOT NULL CHECK(length(vector)=800),PRIMARY KEY(result_id,entity_id)
 ) STRICT;
-CREATE INDEX music_sonic_embeddings_model ON music_sonic_embeddings(model_id,model_version,model_sha256,result_id);
+CREATE INDEX music_sonic_embeddings_model ON music_sonic_embeddings(model_id,model_version,model_sha256,result_id,entity_id);
+CREATE INDEX music_sonic_embeddings_entity ON music_sonic_embeddings(entity_id,result_id);
 CREATE TABLE music_sonic_tags(
- result_id TEXT NOT NULL REFERENCES music_sonic_embeddings(result_id) ON DELETE CASCADE,
+ result_id TEXT NOT NULL,entity_id INTEGER NOT NULL,
  tag_index INTEGER NOT NULL CHECK(tag_index BETWEEN 0 AND 49),score REAL NOT NULL CHECK(score BETWEEN 0 AND 1),
- PRIMARY KEY(result_id,tag_index)
+ PRIMARY KEY(result_id,entity_id,tag_index),
+ FOREIGN KEY(result_id,entity_id) REFERENCES music_sonic_embeddings(result_id,entity_id) ON DELETE CASCADE
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE library_sonic_settings(
  library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,

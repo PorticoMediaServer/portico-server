@@ -26,6 +26,30 @@ type guideDirectoryHTTPFixture struct {
 	a, b          livechannels.SourceInput
 }
 
+func TestGuideHTTPKeepsAuthorizedDirectoryMarkAcrossFiltering(t *testing.T) {
+	f := newGuideDirectoryHTTPFixture(t)
+	for _, token := range []string{f.owner.AccessToken, f.member.AccessToken} {
+		directory := f.directory(t, token, url.Values{"sourceId": {f.a.ID}, "search": {"Channel 00"}, "limit": {"1"}})
+		if len(directory.Channels) != 1 || directory.Channels[0].Mark == nil {
+			t.Fatal(directory)
+		}
+		q := url.Values{"kind": {"live-source"}, "sourceId": {f.a.ID}, "search": {"Channel 00"}, "programmes": {"none"}, "start": {"2026-09-05T12:00:00Z"}, "end": {"2026-09-05T13:00:00Z"}, "timezone": {"UTC"}, "limit": {"1"}}
+		response := f.call(t, "GET", "/v1/guide?"+q.Encode(), token, nil)
+		if response.Code != http.StatusOK {
+			t.Fatalf("guide: %d %s", response.Code, response.Body)
+		}
+		var envelope struct {
+			Guide livechannels.Guide `json:"guide"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if len(envelope.Guide.Channels) != 1 || !reflect.DeepEqual(envelope.Guide.Channels[0].Mark, directory.Channels[0].Mark) {
+			t.Fatalf("guide lost full-source directory mark: %+v vs %+v", envelope.Guide.Channels, directory.Channels)
+		}
+	}
+}
+
 func TestGuideDirectoryHTTPNeighborScopeAndUnavailableRuntime(t *testing.T) {
 	f := newGuideDirectoryHTTPFixture(t)
 	page := f.directory(t, f.owner.AccessToken, url.Values{"sort": {"number"}, "limit": {"1"}})
