@@ -32,7 +32,7 @@ export function TitlePeople({binding, data, episode = false}: {binding: DetailBi
       if (!credits.length) return null;
       const total = data.metadata.creditTotals?.[kind];
       return <section key={kind}><header className={styles.peopleHeader}><h2>{t(kind === 'cast' ? 'title.cast' : 'title.crew')}</h2>
-        {total !== undefined && total > Math.min(6, credits.length) && <Button ref={trigger} variant="text" size="small" onClick={() => load(kind)}>{t('title.seeAll')} {total}</Button>}</header>
+        {total !== undefined && total > Math.min(6, credits.length) && <Button ref={trigger} variant="text" size="small" onClick={() => load(kind)}>{t('shelf.seeAllCount', {count: total})}</Button>}</header>
         <div className={styles.people}>{credits.slice(0, 6).map(credit => <Person key={credit.id} credit={credit} data={data} binding={binding} />)}</div>
       </section>;
     })}

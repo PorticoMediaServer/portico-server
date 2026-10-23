@@ -2,11 +2,22 @@ import type {HTMLAttributes, ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button} from '../controls';
 import {Artwork, type ArtworkSource} from '../artwork';
+import type {FactPart} from '@core/presentation/kit-model';
 import styles from './title-parts.module.css';
 
 /** Exact title/biography prose from desktop-detail and detail-phone. */
 export function TitleProse({variant = 'body', className, ...props}: HTMLAttributes<HTMLParagraphElement> & {variant?: 'body' | 'hero'}) {
   return <p {...props} data-variant={variant} className={[styles.prose, className].filter(Boolean).join(' ')} />;
+}
+/** Title pages and Top result put a border around kind/rating only, never runtime. */
+export function TitleFactsLine({parts}: {parts: readonly FactPart[]}) {
+  return <div className={styles.facts}>{parts.map(part => <span key={part.id} data-fact={part.id} data-role={part.role}>{part.text}</span>)}</div>;
+}
+/** Artwork-led Top result, desktop-search frame 4. Its heading scale is specific to this frame. */
+export function SearchResultHero({title, eyebrow, artwork, facts, synopsis, actions}: {title: string; eyebrow: string; artwork: ReactNode; facts: ReactNode; synopsis?: string; actions: ReactNode}) {
+  return <section className={styles.searchHero} aria-label={eyebrow}>
+    {artwork}<div className={styles.searchCopy}><p className={styles.searchKind}>{eyebrow}</p><h3>{title}</h3>{facts}{synopsis && <TitleProse variant="hero" className={styles.searchSynopsis}>{synopsis}</TitleProse>}{actions}</div>
+  </section>;
 }
 /** An episode opens inline under its row, on the page background. Never an overlay. */
 export function EpisodeDetailsLayout({title, artwork, backdrop, context, facts, synopsis, actions, adjacent, credits, onClose}: {

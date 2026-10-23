@@ -8,6 +8,7 @@ import {PosterCard, SquareCard, CircleCard, EpisodeTile} from '../../kit/cards';
 import {Artwork} from '../../kit/artwork';
 import {WindowedGrid} from '../../kit/layout';
 import {StateView} from '../../kit/states';
+import {SearchEmpty} from '../../kit/states/SearchEmpty';
 import {entryCard} from '../detail/model';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../platform/freshness';
@@ -15,6 +16,7 @@ import {Icon} from '../../kit/Icon';
 import type {SearchBindings} from './bindings';
 import {appendedWindow} from './window';
 import styles from './search.module.css';
+import {TopResult} from './TopResult';
 
 type ChipId = SearchGroup | 'all';
 const keyOf = (entry: SearchEntry) => JSON.stringify(['libraryId' in entry ? entry.libraryId : '', entry.kind, entry.id]);
@@ -65,12 +67,12 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
         trailing={text ? <Button variant="icon" icon="i-x" iconOnly aria-label={t('web.search.clear')} onClick={() => { setText(''); setChip('all'); input.current?.focus(); }} />
           : <span className={styles.hint}><kbd>{t('next.controls.searchShortcut')}</kbd>{t('next.controls.searchFromAnywhere')}</span>} />
     </form>
-    {text.trim() && <div className={styles.chips}>{SEARCH_CHIPS.map(value => {
-      const capability = showing?.capabilities.groups.find(item => item.id === value.id), result = groups.find(item => item.id === value.id);
+    {text.trim() && !(empty && !group) && <div className={styles.chips} role="group" aria-label={t('web.search.title')}>{SEARCH_CHIPS.map(value => {
+      const capability = showing?.capabilities.groups.find(item => item.id === value.id), result = groups.find(item => item.id === value.id) ?? binding.summary().find(item => item.id === value.id);
       if (value.id !== 'all' && capability?.available === false) return null;
       const off = value.id !== 'all' && result?.status === 'success' && result.totalCountExact && result.totalCount === 0;
       return <Chip key={value.id} variant="search" selected={chip === value.id} dim={off} disabled={off} retry={result?.status === 'error'}
-        count={result?.totalCountExact ? result.totalCount : undefined} onClick={() => { setChip(value.id); }}>{t(value.label)}</Chip>;
+        count={!off && result?.totalCountExact ? result.totalCount : undefined} onClick={() => { setChip(value.id); }}>{t(value.label)}</Chip>;
     })}</div>}
     <div ref={results} className={styles.results}>
       {!text.trim() && recent.length > 0 && <section className={styles.recent}><header><h2>{t('web.search.recent')}</h2><Button variant="text" size="small" onClick={() => {
@@ -81,10 +83,11 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
       {snapshot.phase === 'loading' && !showing && <div className={styles.skeleton} role="status" aria-label={t('next.states.loading')}>{Array.from({length: 7}, (_, index) => <span key={index} />)}</div>}
       {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
         primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}} />}
-      {failed.length > 0 && <div role="status" className={styles.partial}><span>{t('web.search.partial', {groups: failed.map(value => t(searchGroupLabel(value.id))).join(', ')})}</span><Button variant="text" size="small" onClick={() => { void service.refresh(); }}>{t('next.states.tryAgain')}</Button></div>}
-      {empty && <StateView title={t('web.search.noMatches', {query: text.trim()})} body={t('web.search.noMatchesBody')} />}
-      {top && <section className={styles.top}><span>{t('search.topResult')}</span><SearchResult entry={top.entry} binding={binding} onCommit={commit} /><Button size="compact" onClick={() => { commit(); binding.open(top.entry); }}>{t('next.layout.details')}</Button></section>}
-      {group ? <SearchGroupWindow binding={binding} group={group} result={groups.find(value => value.id === group)} onCommit={commit} />
+      {failed.length > 0 && <div role="status" className={styles.partial}><Icon name="i-clock" size={22} /><span>{t('web.search.partial', {groups: new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format(failed.map(value => t(searchGroupLabel(value.id))))})}</span><Button icon="i-retry" size="small" onClick={() => { void service.refresh(); }}>{t('next.states.tryAgain')}</Button></div>}
+      {empty && <SearchEmpty title={t(group ? 'web.search.nothingIn' : 'web.search.noMatches', group ? {group: t(searchGroupLabel(group))} : {query: text.trim()})} body={group ? undefined : t('web.search.noMatchesBody')}
+        action={group ? <Button variant="primary" size="compact" onClick={() => setChip('all')}>{t('web.search.everything')}</Button> : undefined} />}
+      {top && <TopResult binding={binding} result={top} />}
+      {group && !empty ? <SearchGroupWindow binding={binding} group={group} result={groups.find(value => value.id === group)} onCommit={commit} />
         : orderedSearchGroups(groups).map(result => {
           const entries = result.items.filter(entry => entry !== top?.entry), cap = result.id === 'episodes' || result.id === 'songs' ? 4 : result.id === 'movies' || result.id === 'shows' ? 7 : 4;
           if (!entries.length) return null;
@@ -107,7 +110,7 @@ export function SearchResult({entry, binding, onCommit}: {entry: SearchEntry; bi
   const model = entryCard(entry, {t, locale: locale()}, 'search'), playable = entry.available === true && !!entry.playback;
   const props = {model, context: 'search' as const, watched: entry.watched, isNew: entry.new, onNavigate: open,
     onPlay: playable ? () => { const task = binding.play(entry); onCommit(); void task.catch(context.effects.reportError); } : undefined};
-  if (entry.kind === 'song') return <button className={styles.song} type="button" onClick={open}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><span><b>{entry.title}</b><small>{entry.artist?.name}</small></span></button>;
+  if (entry.kind === 'song') return <button className={styles.song} type="button" onClick={playable ? () => { const task = binding.play(entry); onCommit(); void task.catch(context.effects.reportError); } : open}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><span><b>{entry.title}</b><small>{entry.artist?.name}{entry.album?.name && <span>{entry.album.name}</span>}</small></span><span>{model.detail.find(part => part.id === 'duration')?.text}</span></button>;
   if (entry.kind === 'episode') return <EpisodeTile {...props} artwork={context.artwork.foreground(entry.stillUrl ?? entry.backdropUrl, 632, 16 / 9)} artworkKind={entry.stillUrl ? 'still' : 'backdrop'} description={entry.overview} />;
   if (entry.kind === 'artist') return <CircleCard {...props} covers={art ? [art] : []} variant="artist" />;
   if (['album', 'book', 'audiobook_file'].includes(entry.kind)) return <SquareCard {...props} artwork={context.artwork.foreground(entry.posterUrl, 300, 1)} />;

@@ -22,13 +22,16 @@
 
 .copy > .actions { margin-bottom: 0; }
 
-.sticky { position: sticky; top: 64px; z-index: var(--layer-hero-navigation); min-height: 64px; padding: 0 64px; display: flex; align-items: center; justify-content: space-between; background: var(--color-ink); border-bottom: 1px solid var(--color-line); }
+.sticky { position: sticky; top: 76px; z-index: var(--layer-hero-navigation); min-height: 64px; padding: 0 64px; display: flex; align-items: center; gap: 26px; background: transparent; border-bottom: 1px solid var(--color-line); }
 
-.sticky > span { font-size: var(--type-detail-heading-size); font-weight: var(--type-button-weight); }
+.sticky > span { display: none; font-size: var(--type-detail-heading-size); font-weight: var(--type-button-weight); }
 
-.sticky .actions { margin: 0; }
+.sticky .actions { display: none; margin: 0 0 0 auto; }
+.tabAnchor { height: 1px; margin-bottom: -1px; }
+.sticky[data-stuck] { background: color-mix(in srgb,var(--color-ink) 86%,transparent); backdrop-filter: blur(22px) saturate(1.2); }
+.sticky[data-stuck] > span,.sticky[data-stuck] .actions { display: flex; }
 
-.details { display: grid; grid-template-columns: 1.1fr 1fr; gap: 64px; padding: 36px 64px 80px; }
+.details { display: grid; grid-template-columns: 360px 1fr; gap: 64px; padding: 36px 64px 80px; }
 
 .details h2 { font-size: var(--type-row-heading-size); font-weight: var(--type-button-weight); margin: 0 0 20px; }
 
@@ -36,7 +39,7 @@
 
 .details dl { margin: 20px 0 0; }
 
-.details dl > div { display: grid; grid-template-columns: 140px 1fr; gap: 20px; margin-top: 14px; font-size: var(--type-person-title-size); }
+.details dl > div { display: grid; grid-template-columns: 124px 1fr; gap: 16px; margin-top: 12px; font-size: var(--type-person-title-size); }
 
 .details dt { color: var(--color-text-tertiary); }
 
@@ -57,6 +60,11 @@
 .people small { font-size: var(--type-label-size); color: var(--color-text-tertiary); margin-top: 4px; }
 
 .loading { display: grid; gap: 20px; padding: 100px 64px 50px; }
+
+.manageBody { display: grid; gap: 12px; }
+.manageBody [role=radiogroup] { display: grid; gap: 8px; }
+.versionName { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.path { font-size: var(--type-label-size); overflow-wrap: anywhere; color: var(--color-text-tertiary); }
 
 .compactHeader { padding: 24px; }
 

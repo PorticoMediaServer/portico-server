@@ -38,6 +38,7 @@ export function createEntryDetailsBindings(context: ScreenContext, authority: En
       guard(captured, signal);
       const action = data?.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
       if (!data || !action?.playback || offered.itemId !== item.itemId || !offered.versions.some(value => value.id === versionId)) throw new Error('Version playback unavailable');
+      if (data.scope.viewerFence !== captured.scope.privacyFence || String(data.revision.catalog) !== captured.revision.catalogRevision || String(data.revision.viewer) !== captured.revision.viewerRevision) throw new DOMException('Title revision changed', 'AbortError');
       detail.current(data);
       await context.effects.play({...item, startSeconds: action.playback.startSeconds, versionId}, life.signal(signal));
     },

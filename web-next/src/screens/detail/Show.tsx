@@ -18,8 +18,9 @@ import styles from './show.module.css';
 import detail from './detail.module.css';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../platform/freshness';
-import {EpisodeDetailsLayout, TitleProse} from '../../kit/title/TitleParts';
+import {EpisodeDetailsLayout, TitleProse, TitleFactsLine} from '../../kit/title/TitleParts';
 import {TitlePeople} from './People';
+import {TitleTabs} from './TitleTabs';
 
 export type ShowScreenProps = {binding: ShowBindings; target: ShowWorkspaceRoute};
 export function ShowScreen({binding, target}: ShowScreenProps) {
@@ -54,9 +55,9 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
   return <article className={detail.page} data-show-id={show.id} data-compact={compact || undefined}>
     {!compact ? <header className={detail.hero}>
       {preferenceValue<boolean>(preferences, 'appearance.showBackdrops') && <AmbientArt className={detail.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(show.backdropUrl ?? show.posterUrl)} foreground={art.foreground(show.backdropUrl ?? show.posterUrl, phone ? 800 : 1920, 16 / 9)} />}
-      <div className={detail.copy}><Lockup title={show.title} platform={phone ? 'phone-web' : 'desktop'} /><HeroFacts parts={facts} />{show.overview && <TitleProse variant="hero" className={detail.blurb}>{show.overview}</TitleProse>}{actions}</div>
+      <div className={detail.copy}><Lockup title={show.title} platform={phone ? 'phone-web' : 'desktop'} /><TitleFactsLine parts={facts} />{show.overview && <TitleProse variant="hero" className={detail.blurb}>{show.overview}</TitleProse>}{actions}</div>
     </header> : <div className={detail.compactHeader}><h1>{show.title}</h1>{actions}</div>}
-    <div className={detail.sticky}><span>{show.title}</span><Tabs value={tab} onValueChange={setTab} items={[{value: 'episodes', label: t('next.controls.episodes')}, {value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}]} /></div>
+    <TitleTabs title={show.title} compact={compact}><Tabs value={tab} onValueChange={setTab} items={[{value: 'episodes', label: t('next.controls.episodes')}, {value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}]} /></TitleTabs>
     {tab === 'episodes' && <section className={styles.episodes}>
       <div className={styles.toolbar}>
         <Menu open={seasonMenu} onOpenChange={setSeasonMenu} title={t('title.seasonMenu')} trigger={<Chip variant="toolbar" trailingIcon="i-down">{selectedSeason ? selectedSeason.number === 0 ? t('next.kit.special') : t('next.kit.season', {number: selectedSeason.number}) : data.groups.find(group => group.id === data.selected.group)?.title ?? t('next.controls.episodes')}</Chip>}>
