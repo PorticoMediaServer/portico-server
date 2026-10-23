@@ -1,5 +1,5 @@
 import {EPUB} from 'foliate-js/epub.js';
-import 'foliate-js/paginator.js';
+import './vendor/paginator.js';
 import {fromRange, joinIndir} from 'foliate-js/epubcfi.js';
 import {ReaderError, throwIfAborted} from '../errors.ts';
 import type {ReaderAdapter, ReaderDocument, ReaderLocation, ReaderMetadata, ReaderMount,
@@ -197,7 +197,7 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
   const surface=document.createElement('div');surface.style.cssText='position:relative;width:100%;height:100%;overflow:hidden;';
   renderer.style.cssText='display:block;position:absolute;left:0;right:0;width:100%;';
   const urls={literata:URL.createObjectURL(options.fonts.literata),manrope:URL.createObjectURL(options.fonts.manrope)};
-  let location:ReaderLocation|null=null,preferences=mount.preferences,viewport=mount.viewport,dead=false,loaded=false;
+  let location:ReaderLocation|null=null,preferences=mount.preferences,viewport=mount.viewport,dead=false;
   let cleanupDoc:()=>void=()=>{};
   function current(){throwIfAborted(signal);if(dead)throw new ReaderError('closed');}
   function apply() {
@@ -219,6 +219,8 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
   };
   const load=(event:Event)=>{
     if(dead||signal.aborted)return;cleanupDoc();const {doc,index}=(event as CustomEvent<{doc:Document;index:number}>).detail;
+    const iframe=doc.defaultView?.frameElement;
+    if(mount.metadata?.title)iframe?.setAttribute('title',mount.metadata.title);
     doc.documentElement.lang ||= metadataText(book.metadata?.language)??'';
     const listenerAbort=new AbortController(),opts={signal:listenerAbort.signal};cleanupDoc=()=>listenerAbort.abort();
     const selection=()=>{
@@ -248,9 +250,8 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
     },opts);
   };
   renderer.addEventListener('relocate',relocate);renderer.addEventListener('load',load);
-  renderer.open(book);surface.append(renderer);mount.container.append(surface);apply();
   const dispose=()=>{if(dead)return;dead=true;abort.abort();cleanupDoc();renderer.removeEventListener('relocate',relocate);renderer.removeEventListener('load',load);
-    try{if(loaded)renderer.destroy();}finally{surface.remove();URL.revokeObjectURL(urls.literata);URL.revokeObjectURL(urls.manrope);}};
+    try{renderer.destroy();}finally{surface.remove();URL.revokeObjectURL(urls.literata);URL.revokeObjectURL(urls.manrope);}};
   signal.addEventListener('abort',dispose,{once:true});
   const view:ReaderView<P>={
     async navigate(target:ReaderNavigation,callerSignal) {
@@ -273,10 +274,11 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
     getLocation(){return location;},dispose
   };
   try {
+    current();renderer.open(book);surface.append(renderer);mount.container.append(surface);apply();
     const body=book.landmarks?.find(mark=>mark.type.includes('bodymatter')||mark.type.includes('text'));
     const target=body?book.resolveHref(body.href):null;
     const index=Math.max(0,book.sections.findIndex(s=>s.linear!=='no'));
-    await cancellable(renderer.goTo(target??{index}),signal);loaded=true;current();return view;
+    await cancellable(renderer.goTo(target??{index}),signal);current();return view;
   }
   catch(error){dispose();throw error;}
 }

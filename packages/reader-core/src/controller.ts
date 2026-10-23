@@ -1,6 +1,6 @@
 import type {ReaderAdapter, ReaderDocument, ReaderFormat, ReaderLocation, ReaderNavigation, ReaderMetadata,
   ReaderSearchOptions, ReaderSearchResult, ReaderSnapshot, ReaderSource, ReaderView, ReaderViewport,
-  ReaderZoom, ReaderSurfaceInput} from './ports.ts';
+  ReaderZoom, ReaderSurfaceInput, ReaderPageImage} from './ports.ts';
 import {ReaderError, readerErrorCode, throwIfAborted} from './errors.ts';
 import {validateSource} from './source.ts';
 import {validateViewport} from './layout.ts';
@@ -78,8 +78,10 @@ export class ReaderController<P extends object> {
       if (!this.current(session)) { await document.dispose(); return; }
       session.document = document;
       if (document.format !== options.format || document.id !== options.source.id || document.revision !== options.source.revision) throw new ReaderError('invalid_book');
+      const metadata = copy(options.metadata === undefined ? document.metadata : {...document.metadata, ...options.metadata,
+        title: options.metadata.title, author: options.metadata.author, language: options.metadata.language});
       const view = await document.mount({container: options.container, preferences: this.snapshot.preferences,
-        viewport: this.viewport, signal: session.abort.signal,
+        viewport: this.viewport, metadata, signal: session.abort.signal,
         onLocation: location => {
           if (!this.current(session)) return;
           validateLocation(location, options.format);
@@ -103,8 +105,7 @@ export class ReaderController<P extends object> {
       const location = view.getLocation();
       if (location) validateLocation(location, options.format);
       this.refreshViewState();
-      this.publish({status: 'ready', metadata: copy(options.metadata === undefined ? document.metadata : {...document.metadata, ...options.metadata,
-        title: options.metadata.title, author: options.metadata.author, language: options.metadata.language}), toc: freezeToc(document.toc),
+      this.publish({status: 'ready', metadata, toc: freezeToc(document.toc),
         location: location ? copy(location) : this.snapshot.location});
     } catch (error) {
       if (!this.current(session)) return;
@@ -177,6 +178,28 @@ export class ReaderController<P extends object> {
   pan(offset: Readonly<{x: number; y: number}>): Promise<void> {
     if (!Number.isFinite(offset.x) || !Number.isFinite(offset.y)) return Promise.reject(new ReaderError('invalid_preferences'));
     return this.enqueue((view, signal) => { if (!view.pan) throw new ReaderError('unsupported_operation'); return view.pan(offset, signal); });
+  }
+  /** One authorized document supplies owned previews; no second open/cache. */
+  async page(index: number, options: Readonly<{width: number; signal: AbortSignal}>): Promise<ReaderPageImage> {
+    const session = this.session, document = session?.document;
+    if (!session || !document || !this.current(session) || this.snapshot.status !== 'ready') throw new ReaderError('closed');
+    if (!Number.isSafeInteger(index) || index < 0 || (document.metadata.pageCount !== undefined && index >= document.metadata.pageCount))
+      throw new ReaderError('invalid_location');
+    if (!Number.isSafeInteger(options.width) || options.width < 32 || options.width > 2048) throw new ReaderError('limit_exceeded');
+    if (!document.page) throw new ReaderError('unsupported_operation');
+    const signal = AbortSignal.any([options.signal, session.abort.signal]);throwIfAborted(signal);
+    let abort!: () => void;
+    const stopped = new Promise<never>((_,reject)=>{
+      abort=()=>reject(new ReaderError('aborted'));signal.addEventListener('abort',abort,{once:true});
+    });
+    try {
+      const image = await Promise.race([document.page(index,{width:options.width,signal}),stopped]);
+      throwIfAborted(signal);if (!this.current(session)) throw new ReaderError('aborted');
+      if (!['image/jpeg','image/png','image/webp'].includes(image.mime) || !(image.bytes instanceof Uint8Array)
+        || !image.bytes.length || image.bytes.length > 16*1024*1024 || !Number.isSafeInteger(image.width) || image.width < 1
+        || !Number.isSafeInteger(image.height) || image.height < 1) throw new ReaderError('invalid_book');
+      return Object.freeze({...image,bytes:image.bytes.slice()});
+    } finally {signal.removeEventListener('abort',abort);}
   }
   async *search(query: string, options: ReaderSearchOptions): AsyncIterable<ReaderSearchResult> {
     const session = this.session;

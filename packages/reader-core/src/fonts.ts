@@ -15,7 +15,10 @@ export async function loadLiterataFont(options: Readonly<{signal?: AbortSignal}>
     throwIfAborted(signal);
     const prefix=new Uint8Array(4);let at=0;
     for(const chunk of chunks){const length=Math.min(4-at,chunk.length);prefix.set(chunk.subarray(0,length),at);at+=length;if(at===4)break;}
-    if(size!==expected||prefix[0]!==0||prefix[1]!==1)throw new ReaderError('invalid_source');
-    return new Blob(chunks,{type:'font/ttf'});
+    if(size!==expected||prefix[0]!==0||prefix[1]!==1||prefix[2]!==0||prefix[3]!==0)throw new ReaderError('invalid_source');
+    const blob=new Blob(chunks,{type:'font/ttf'});
+    const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer())),x=>x.toString(16).padStart(2,'0')).join('');
+    throwIfAborted(signal);if(hash!==LITERATA_FONT_SHA256)throw new ReaderError('invalid_source');
+    return blob;
   } finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
 }

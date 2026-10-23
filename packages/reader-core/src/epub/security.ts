@@ -24,8 +24,32 @@ function cleanDeclarations(style:CSSStyleDeclaration,transformed:boolean) {
     if(unsafe)style.removeProperty(property);
   }
 }
+function localImports(raw:string,transformed:boolean):string[] {
+  const imports:string[]=[];let depth=0;
+  const quoteEnd=(start:number)=>{let end=start+1;for(;end<raw.length;end++){if(raw[end]==='\\')end++;else if(raw[end]===raw[start])return end;}return raw.length;};
+  for(let at=0;at<raw.length;at++) {
+    if(raw.startsWith('/*',at)){const end=raw.indexOf('*/',at+2);at=end<0?raw.length:end+1;continue;}
+    if(raw[at]==='"'||raw[at]==="'"){at=quoteEnd(at);continue;}
+    if(raw[at]==='\\'){at++;continue;}
+    if(raw[at]==='{'){depth++;continue;}if(raw[at]==='}'){depth=Math.max(0,depth-1);continue;}
+    if(depth||!/^@import(?=[\s("'])/i.test(raw.slice(at,at+9)))continue;
+    let end=at,parens=0;
+    for(;end<raw.length;end++) {
+      if(raw[end]==='"'||raw[end]==="'"){end=quoteEnd(end);continue;}
+      if(raw[end]==='(')parens++;else if(raw[end]===')')parens--;
+      else if((raw[end]===';'&&!parens)||raw[end]==='{'||raw[end]==='}')break;
+    }
+    const rule=raw.slice(at,end),match=/^@import\s+(?:url\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\s()"']+))\s*\)|"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\s*([^{};]*)$/i.exec(rule);
+    at=end;if(!match)continue;
+    const url=decodedCss(match[1]??match[2]??match[3]??match[4]??match[5]??''),condition=match[6].trim();
+    if(!url||/["'()\\]/.test(url)||!localReference(url,transformed)||(transformed&&!/^blob:/.test(url))||!/^[a-z\d_\s():.,-]*$/i.test(condition))continue;
+    imports.push(`@import url("${url}")${condition?' '+condition:''};`);
+  }
+  return imports;
+}
 /** A detached constructed sheet cannot load @import. Parse CSS with the browser
  * (including escape normalization), then retain only non-network declarations.
+ * Local imports are retained separately for the bounded publication rewriter.
  * CSP independently blocks resources if a future CSS feature is introduced. */
 export function secureCss(raw:string,transformed=false):string {
   if(raw.length>16*1024*1024)throw new ReaderError('limit_exceeded');
@@ -36,7 +60,7 @@ export function secureCss(raw:string,transformed=false):string {
       if('cssRules' in rule)clean((rule as CSSGroupingRule).cssRules);
     }
   }
-  clean(sheet.cssRules);return Array.from(sheet.cssRules,r=>r.cssText).join('\n');
+  clean(sheet.cssRules);return [...localImports(raw,transformed),...Array.from(sheet.cssRules,r=>r.cssText)].join('\n');
 }
 export function secureMarkup(raw: string, mime: 'application/xhtml+xml' | 'text/html' | 'image/svg+xml', transformed = false): string {
   if (raw.length > 16*1024*1024 || /<!\s*(?:DOCTYPE|ENTITY)\b/i.test(raw.replace(/<!DOCTYPE\s+html\s*>/i,''))) throw new ReaderError('invalid_book');
