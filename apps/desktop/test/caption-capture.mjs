@@ -12,7 +12,7 @@ const reference=process.env.PORTICO_REFERENCE_URL,revision='812dacacc70e296ac870
 if(!reference||!out)throw new Error('explicit reference and output required');
 const check=await fetch(reference);if(!check.ok||check.headers.get('x-portico-design-revision')!==revision)throw new Error('immutable reference mismatch');
 await mkdir(tmp,{recursive:true});await mkdir(out,{recursive:true});
-await build({configFile:false,root:repo,plugins:[react()],build:{outDir:path.join(tmp,'bundle'),emptyOutDir:true,minify:false,lib:{entry:path.join(repo,'apps/desktop/test/window-chrome.fixture.tsx'),formats:['es'],fileName:()=> 'caption.js',cssFileName:'caption'}}});
+await build({configFile:false,root:repo,plugins:[react()],define:{'process.env.NODE_ENV':JSON.stringify('production')},build:{outDir:path.join(tmp,'bundle'),emptyOutDir:true,minify:false,lib:{entry:path.join(repo,'apps/desktop/test/window-chrome.fixture.tsx'),formats:['es'],fileName:()=> 'caption.js',cssFileName:'caption'}}});
 const server=createServer(async(req,res)=>{
  const files={'/caption.js':['caption.js','text/javascript'],'/caption.css':['caption.css','text/css']};const file=files[req.url];
  if(!file){res.writeHead(404);res.end();return;}
