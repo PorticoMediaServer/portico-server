@@ -641,6 +641,50 @@ test('entry version choice uses the real grouped version id and fresh title resu
   assert.equal(f.hls.instances[0]!.config.startPosition, 120, 'binding21 supersedes the former caller-supplied25s fixture; fresh actual Options.resume is120s');
 });
 
+test('a captured screen starts the actual item and library, preserves ordinary start-over and uses fresh explicit-version resume', async t => {
+  const f = setup(t), abort = new AbortController(), context = {signal: abort.signal, isCurrent: () => true};
+  await f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 0}, context); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.itemId, 'movie');
+  assert.equal(f.hls.instances.at(-1)!.config.startPosition, 0);
+  versionFixture(f, 120);
+  await f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 25, versionId: 'v1'}, context); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v1');
+  assert.equal(f.hls.instances.at(-1)!.config.startPosition, 120);
+  const before = f.log.length;
+  await f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 9}, context); await f.arrive();
+  assert.equal(f.hls.instances.at(-1)!.config.startPosition, 9);
+  assert.ok(f.log.slice(before).every(request => !(request.body as {versionId?: string} | undefined)?.versionId));
+});
+
+test('foreign library and unavailable explicit version cannot replace still-playing media', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const session = f.runtime.getSnapshot().session!.id, before = f.log.length;
+  const context = {signal: new AbortController().signal, isCurrent: () => true};
+  await assert.rejects(f.runtime.playFromScreen({libraryId: 'foreign', itemId: 'movie', startSeconds: 0}, context), /invalid_playback_target/);
+  await assert.rejects(f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 0, versionId: 'not-offered'}, context), /playback_version_unavailable/);
+  assert.equal(f.runtime.getSnapshot().session!.id, session); assert.equal(f.video.paused, false);
+  assert.ok(f.log.slice(before).every(request => request.method !== 'POST' && request.method !== 'DELETE'));
+});
+
+test('screen cancellation or navigation during real start cannot adopt late output or stop a newer Play', async t => {
+  for (const change of ['abort', 'navigation', 'new-play'] as const) {
+    const f = setup(t), gate = deferred(), abort = new AbortController(); let current = true;
+    f.intercept(async (request, response) => {
+      if (request.method === 'POST' && request.path === '/v1/playback/sessions' && (request.body as {itemId?: string}).itemId === 'movie') await gate.hold();
+      return response;
+    });
+    const pending = f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 0}, {signal: abort.signal, isCurrent: () => current});
+    const done = assert.rejects(pending);
+    await gate.started;
+    if (change === 'navigation') current = false;
+    else if (change === 'new-play') {await f.runtime.play('newer', 20); await f.arrive();abort.abort();}
+    else abort.abort();
+    gate.resolve(); await done; await settle();
+    assert.notEqual(f.runtime.getSnapshot().session?.itemId, 'movie');
+    if (change === 'new-play') assert.equal(f.runtime.getSnapshot().session!.itemId, 'newer');
+  }
+});
+
 function versionFixture(f: ReturnType<typeof setup>, resume = 120) {
   let positionMs: number | undefined = resume * 1000, offered = ['v2', 'v1'];
   const handle = async (request: V1Request, response: V1Response) => {
