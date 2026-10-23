@@ -89,6 +89,7 @@ try {
   assert.equal(await evaluate('document.activeElement?.textContent'), 'AaSepia');
   await evaluate('Promise.all(document.querySelector("[data-reader-panel]").getAnimations().map(animation => animation.finished))');
   const bounds = await evaluate('document.querySelector("[data-reader-panel]").getBoundingClientRect().toJSON()');
+  const controlMetrics = await evaluate(`(()=>{const p=document.querySelector('[data-reader-panel]'),base=p.getBoundingClientRect();return[...p.firstElementChild.children,...p.querySelectorAll('h3')].map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{text:e.textContent,y:r.y-base.y,height:r.height,font:s.font}})})()`);
   assert.equal(bounds.x, 460); assert.equal(bounds.y, 96); assert.equal(bounds.width, 360); assert.ok(bounds.height >= 720);
   // Match the existing reference crop's size/state. This is only the supplied
   // tablet Display controls, not a full book or accepted Read screen.
@@ -148,14 +149,14 @@ try {
     await evaluate(`new Promise((resolve,reject)=>{const until=performance.now()+10000;const check=()=>{if(document.querySelector('.aapanel.sidep'))resolve();else if(performance.now()>until)reject(new Error('Frame did not mount'));else requestAnimationFrame(check)};check()})`);
     await evaluate(`Promise.all([document.fonts.load('600 22px Literata', 'Aa'),document.fonts.load('700 13px Manrope', 'Page')]).then(()=>document.fonts.ready)`);
     await paint();
-    reference = await evaluate(`(()=>{const p=document.querySelector('.aapanel.sidep');return{bounds:p.getBoundingClientRect().toJSON(),fonts:[...document.fonts].map(f=>({family:f.family,weight:f.weight,status:f.status})),sampleFont:getComputedStyle(p.querySelector('.th span')).font}})()`);
+    reference = await evaluate(`(()=>{const p=document.querySelector('.aapanel.sidep'),base=p.getBoundingClientRect();return{bounds:base.toJSON(),fonts:[...document.fonts].map(f=>({family:f.family,weight:f.weight,status:f.status})),sampleFont:getComputedStyle(p.querySelector('.th span')).font,metrics:[...p.children,...p.querySelectorAll('h3')].map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{text:e.textContent,y:r.y-base.y,height:r.height,font:s.font}})}})()`);
     for (const family of ['Literata', 'Manrope']) assert.ok(reference.fonts.some(font => font.family.replaceAll('"', '') === family && font.status === 'loaded'), family);
     assert.equal(reference.bounds.width, 360);
     const frameImage = await call('Page.captureScreenshot', {format: 'jpeg', quality: 94,
       clip: {x: reference.bounds.x, y: reference.bounds.y, width: 360, height: 720, scale: 1}});
     await writeFile(resolve(output, 'reference-controls.jpg'), Buffer.from(frameImage.data, 'base64'));
   }
-  result = {status: 'PASS', observations, callbacks, scroll, motion, final, capture: {name: 'display-controls.jpg', width: 360, height: 720, bounds},
+  result = {status: 'PASS', observations, callbacks, scroll, motion, final, capture: {name: 'display-controls.jpg', width: 360, height: 720, bounds, controlMetrics},
     reference,
     scope: 'controlled components only; no canonical Reading15, public Read session, whole frame or hardware acceptance'};
   console.log('READER_DISPLAY_BROWSER ' + JSON.stringify(result));

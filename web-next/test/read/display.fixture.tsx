@@ -47,7 +47,7 @@ function DisplayFixture() {
     size={{label: 'Size', sliderLabel: 'Text size', smallerLabel: 'Smaller', largerLabel: 'Larger', value: size, min: 1, max: 7, step: 1, valueText: `${size} of 7`, onChange: value => change('size', value, setSize)}} rows={rows}
     twoPages={{label: 'Two pages side by side in landscape', description: 'Held upright, a book always shows one page.', checked: twoPages, onChange: value => change('twoPages', value, setTwoPages)}}
     copy={{sample: 'Aa', sizeSample: 'A', sessionNote: 'Changes here last until you close this book.', defaultsNote: 'Your defaults are in Settings, Reading.', openSettings: 'Open Settings'}} onOpenSettings={() => probe.changes.push({key: 'settings', value: true})} />;
-  return <div style={{width: '100vw', height: '100dvh', position: 'relative', '--reader-publisher-font': 'Georgia'} as CSSProperties}>
+  return <div style={{width: '100vw', height: '100dvh', position: 'relative', '--reader-publisher-font': 'Georgia, serif'} as CSSProperties}>
     <ReaderChrome copy={{back: 'Back', previous: 'Previous page', next: 'Next page', progress: 'Position in book'}} direction="ltr" tapTurnEnabled pageTurnsEnabled
       onBack={() => {}} onTurn={turn => probe.turns.push(turn)} actions={[]} showPageArrows={false} panel={open ? panel : null} panelReflows={open}
       onPanelDismiss={reason => dismiss(false, reason)} subscribeSurfaceInput={subscribe} initiallyVisible>
