@@ -7,7 +7,7 @@ async function harness(fixture={}){
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
  const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_DISCONNECTED:'disconnect'},MessageType:{JSON:'json'}}}};
  let failed=false,expired=false,preparing=!!fixture.preparing,generation=1;
- const presentation=(start)=>({generation,mode:fixture.direct?'direct':'stream',url:fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8',container:fixture.direct?'mp4':'fmp4_hls',startPositionMs:start||0,subtitles:[],decision:fixture.transcode?{video:{action:'transcode',reasons:[]}}:{video:{action:'copy',reasons:[]}}});
+ const presentation=(start)=>({generation,mode:fixture.direct?'direct':'stream',url:fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8',container:fixture.container||(fixture.direct?'mp4':'fmp4_hls'),startPositionMs:start||0,subtitles:[],decision:fixture.audioOnly?{audio:{action:'copy',reasons:[]}}:fixture.transcode?{video:{action:'transcode',reasons:[]}}:{video:{action:'copy',reasons:[]}}});
  const sessionFor=(body,start)=>({id:'ps_1',revision:String(generation),kind:'vod',role:'local',state:'playing',itemId:body?.itemId||'movie',...(body?.queue?{queue:body.queue}:fixture.queue?{queue:{queueId:'q-1',entryId:'entry-1'}}:{}),lease:{reportEveryMs:10000},presentation:presentation(start)});
  const reply=(payload,status=200)=>new Response(status===204?null:JSON.stringify(payload),{status});
  const context={document,cast,navigator:fixture.mediaCapabilities?{mediaCapabilities:fixture.mediaCapabilities}:{},URL,URLSearchParams,TextDecoder,AbortController,Uint8Array,console,Number,Promise,setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearTimeout:id=>timers.delete(id),setInterval:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearInterval:id=>timers.delete(id),fetch:async(url,options)=>{
@@ -319,4 +319,11 @@ test('CAF public media status contains opaque IDs and the private URL map is bou
  assert.equal(h.resolved(h.loads[0]),'','old private address evicted');
  assert.equal(h.resolved(h.loads.at(-1)),'/v1/media/grant/master.m3u8');
  await h.interceptors.STOP({});assert.equal(h.resolved(h.loads.at(-1)),'');
+});
+
+test('audio-only ISO-BMFF demuxer identity has an audio MIME type and unknown containers fail closed',async()=>{
+ const h=await harness({direct:true,audioOnly:true,container:'mov'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0);
+ assert.equal(h.loads[0].media.contentType,'audio/mp4');
+ const bad=await harness({direct:true,container:'unrecognized'});await bad.receiver.redeem('ABCD');
+ await assert.rejects(()=>bad.receiver.startPlayback('movie',0),/unsupported_media_container/);assert.equal(bad.loads.length,0);
 });

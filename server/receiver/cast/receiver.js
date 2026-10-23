@@ -424,7 +424,8 @@
       media.hlsSegmentFormat = media.hlsVideoSegmentFormat = container === 'fmp4_hls' ? 'FMP4' : 'TS';
     } else {
       if (!directTypes[container]) throw new Error('unsupported_media_container');
-      media.contentType = directTypes[container];
+      var audioOnly = p.decision && !p.decision.video && !!p.decision.audio;
+      media.contentType = audioOnly && ['mp4','mov','m4v'].indexOf(container)>=0 ? 'audio/mp4' : audioOnly && container==='webm' ? 'audio/webm' : directTypes[container];
     }
     // Title and artwork for CAF's standard player, the Google TV ambient UI and the Google Home app (CAST-01 §2).
     var metadata = castMetadata(meta, image);
