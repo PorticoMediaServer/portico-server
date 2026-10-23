@@ -2328,6 +2328,15 @@ libraries.position
 libraries.root
 library_configuration.library_id
 library_configuration.revision
+library_preferences.episode_numbering
+library_preferences.find_extras
+library_preferences.group_collections
+library_preferences.library_id
+library_preferences.local_tags
+library_preferences.lyrics_source
+library_preferences.revision
+library_preferences.sort_ignore_articles
+library_preferences.title_source
 library_metadata_agents.agent
 library_metadata_agents.library_id
 library_metadata_agents.revision

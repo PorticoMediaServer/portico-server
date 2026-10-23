@@ -201,6 +201,11 @@ func readScreenBaseWithin(ctx context.Context, tx *sql.Tx, kind, id string, boun
 			b.LocalAllowed = true
 		}
 	}
+	var localMode, titleSource string
+	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(p.local_tags,'prefer'),COALESCE(p.title_source,'tags') FROM libraries l LEFT JOIN library_preferences p ON p.library_id=l.id WHERE l.id=?`, b.Library).Scan(&localMode, &titleSource); err != nil {
+		return b, err
+	}
+	b.LocalAllowed = b.LocalAllowed && localMode != "off"
 	if kind == "show" {
 		b.ItemKind = "show"
 		err = tx.QueryRowContext(ctx, `SELECT incarnation,source_revision,hierarchy_revision,selection_revision,descriptive_revision FROM tvdb_publication_heads WHERE show_id=?`, entity).Scan(&b.Incarnation, &b.SourceRevision, &b.HierarchyRevision, &b.IdentityRevision, &b.DescriptionRevision)
@@ -284,6 +289,9 @@ func readScreenBaseWithin(ctx context.Context, tx *sql.Tx, kind, id string, boun
 		// fetch is in flight does not discard that fetch.
 		if b.ItemKind != "episode" {
 			_ = enc.Encode(embedded)
+		}
+		if titleSource == "names" {
+			embedded = naming.Embedded{}
 		}
 		r := naming.ReadWithEmbedded(relative, b.LibraryKind, embedded)
 		for _, e := range r.Editions {

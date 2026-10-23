@@ -361,6 +361,7 @@ index lc_ref_channel
 index lc_schedule_items
 index lc_schedule_window
 index libraries_admin_name
+index libraries_admin_position
 index library_navigation_order
 index library_sources_due
 index library_sources_library
@@ -942,6 +943,7 @@ table lc_template_installs
 table lc_used
 table libraries
 table library_configuration
+table library_preferences
 table library_metadata_agents
 table library_navigation
 table library_navigation_revisions
@@ -1913,6 +1915,7 @@ trigger lc_receipts_bound_insert
 trigger library_change_hint
 trigger library_configuration_create
 trigger library_configuration_update
+trigger library_preferences_configuration
 trigger library_directory_delete_hint
 trigger library_directory_insert_hint
 trigger library_directory_name_hint

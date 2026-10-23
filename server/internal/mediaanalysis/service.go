@@ -75,7 +75,7 @@ func New(o Options) (*Service, error) {
 		o.MaxGeneratedBytes = 256 << 20
 	}
 	if o.MaxPreviewFrames == 0 {
-		o.MaxPreviewFrames = 720
+		o.MaxPreviewFrames = 4096
 	}
 	if o.MaxCacheBytes == 0 {
 		o.MaxCacheBytes = 32 << 30
