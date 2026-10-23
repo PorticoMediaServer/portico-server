@@ -12,10 +12,11 @@ job-labelled fixture, runs the three native mixed workloads and cleans up on
 success or failure. Use the admitted remote runner and a canonical private
 `TMPDIR`; `-race` may be passed for a focused race round. No host install is made.
 
-Build with `docker build --label portico=remote-sources-r40 --label "portico.job=$PORTICO_SAMBA_TEST_JOB" --iidfile "$TMPDIR/samba-image" internal/rcloneprogram/testdata/smb`.
+Build with `docker build --network=host --label portico=remote-sources-r40 --label "portico.job=$PORTICO_SAMBA_TEST_JOB" --iidfile "$TMPDIR/samba-image" internal/rcloneprogram/testdata/smb`.
 Set `PORTICO_SAMBA_TEST_IMAGE` to that exact image ID and
 `PORTICO_SAMBA_TEST_JOB` to a unique safe job label before running
-`TestLockedSMBMixedOperationBudget`. The test binds only loopback, mounts only
+`TestLockedSMBMixedOperationBudget`. The test uses the runner network namespace
+but binds only loopback, mounts only
 its throwaway media directory read-only, and retires its own labelled container.
 The job must also remove containers matching its exact job label and its exact
 image in a shell exit trap, including on test timeout. Do not prune Docker.

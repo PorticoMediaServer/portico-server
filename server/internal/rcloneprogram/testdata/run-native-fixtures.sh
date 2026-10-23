@@ -79,7 +79,7 @@ print('Official locked rclone archive and executable verified; no owner state us
 PY
 export PORTICO_RCLONE_TEST_PROGRAM="$fixture_scratch/rclone"
 
-docker build --label portico=remote-sources-r40 --label "portico.job=$PORTICO_SAMBA_TEST_JOB" \
+docker build --network=host --label portico=remote-sources-r40 --label "portico.job=$PORTICO_SAMBA_TEST_JOB" \
     --iidfile "$fixture_scratch/samba-image" internal/rcloneprogram/testdata/smb
 export PORTICO_SAMBA_TEST_IMAGE="$(cat "$fixture_scratch/samba-image")"
 go test -json -tags=rcloneintegration -count=1 -timeout=180s "$@" \

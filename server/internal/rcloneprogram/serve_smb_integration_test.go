@@ -63,7 +63,7 @@ func TestLockedSMBMixedOperationBudget(t *testing.T) {
 	}
 	port := backendFixturePort(t)
 	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
-	raw, err := command(ctx, "run", "--detach", "--rm", "--label", "portico=remote-sources-r40", "--label", "portico.job="+job, "--read-only", "--memory=256m", "--cpus=1", "--pids-limit=128", "--tmpfs", "/run", "--tmpfs", "/var/lib/samba", "--tmpfs", "/var/cache/samba", "--tmpfs", "/var/log/samba", "--publish", address+":445", "--mount", "type=bind,source="+root+",target=/media,readonly", image).Output()
+	raw, err := command(ctx, "run", "--detach", "--rm", "--label", "portico=remote-sources-r40", "--label", "portico.job="+job, "--read-only", "--memory=256m", "--cpus=1", "--pids-limit=128", "--network=host", "--tmpfs", "/run", "--tmpfs", "/var/lib/samba", "--tmpfs", "/var/cache/samba", "--tmpfs", "/var/log/samba", "--mount", "type=bind,source="+root+",target=/media,readonly", image, "/usr/sbin/smbd", "--foreground", "--no-process-group", "--debug-stdout", "--configfile=/etc/samba/smb.conf", "--option=smb ports="+strconv.Itoa(port)).Output()
 	if err != nil {
 		t.Fatal("owned Samba fixture start", err)
 	}
