@@ -21,6 +21,7 @@ import {createSettingsBindings} from './bindings';
 import {readingSettingsAdapter} from './reading-adapter';
 import {hasWebPreferenceEffect} from './effects';
 import {PeopleScreen, type PeopleBindings} from './People';
+import {SettingsInvitations} from './invitations';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
 const historyContexts = new WeakMap<ShellAssemblyContext, ReportContext>();
@@ -65,10 +66,12 @@ export function SettingsEntry() {
     };
     const controller = new SettingsController(options);
     const session = context.session();
+    const logicalOrigin = context.api.getRouteConnection()?.logicalOrigin;
     const people: PeopleBindings | undefined = route.section === 'people' && identity.primaryProfile === true && identity.capabilities?.managePeople === true &&
       (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {
         client: new SettingsPeopleClient(context.api, current), serverName: context.facts.serverName, libraries: identity.libraries,
         actor: {accountId: viewer.accountId, role}, openHome, reportError,
+        ...(logicalOrigin ? {invitations: new SettingsInvitations(context.api, current, logicalOrigin, viewer.serverId)} : {}),
         authority: {scope: {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, sessionFamilyId: session.sessionFamilyId},
           isCurrent: current, subscribe: listener => {authorityListeners.add(listener); return () => {authorityListeners.delete(listener);};}, onAuthorityChanged: openHome},
       } : undefined;
@@ -91,7 +94,7 @@ export function SettingsEntry() {
       rowState: (row, selected) => row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected),
     };
     setFailure(false);setOwned({context, settings, dashboard});
-    return () => {active = false;people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();controller.dispose();};
+    return () => {active = false;people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();controller.dispose();};
   }, [context, retry, route.section, reportTimeZone]);
   if (!protectedContext || !owned || owned.context !== context) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};

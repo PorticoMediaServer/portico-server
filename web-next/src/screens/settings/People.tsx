@@ -10,6 +10,8 @@ import {SettingsRow as Row} from '../../kit/shell/SettingsSurfaces';
 import {SettingsPageFailure} from '../../kit/settings';
 import {peopleTableRow} from './people-table-row';
 import type {SettingsViewerScope} from '../../platform/settings-platform';
+import type {SettingsInvitations} from './invitations';
+import {Invitations} from './Invitations';
 
 const t = defaultI18n.t, section = settingsSpec.find(section => section.scope === 'server' && section.id === 'people')!;
 const table = section.groups![0].rows[0].control, personSpec = section.panels!.person;
@@ -29,6 +31,7 @@ export type PeopleBindings = Readonly<{
   client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier};
   authority: Readonly<{scope: SettingsViewerScope; isCurrent: () => boolean; subscribe: (listener: () => void) => () => void; onAuthorityChanged: () => void}>;
   streamLimits?: PeopleStreamLimits; invite?: (opener: HTMLElement) => void; openHome: () => void; reportError: (error: unknown) => void;
+  invitations?: SettingsInvitations;
 }>;
 
 /** The table query, detail revision and bulk transaction stay bound to one real session. */
@@ -176,6 +179,7 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
         {id: 'remove', label: t(table.select!.bulk[2].label), destructive: true, onAction: (ids, element) => ask('remove', ids, element)},
       ]} />}
     </SettingsGroup>
+    {bindings.invitations && <Invitations source={bindings.invitations} libraries={bindings.libraries} isCurrent={bindings.authority.isCurrent} home={bindings.openHome} />}
     {personId && <SettingsPanel open onClose={() => {setPersonId(undefined); setPerson(undefined);}} title={person?.username ?? personRow?.username ?? t(section.title)} audience={t(bindings.actor.role === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}
       returnFocusRef={opener} selectedTab={tab} onTabChange={setTab} saveState={saving ? 'saving' : saved ? 'saved' : undefined}
       error={error ? t('next.states.pageFailedBody') : undefined} tabs={personSpec.tabs!.map(tab => ({id: tab.id, title: t(tab.title), content: !person ? <p role="status">{t('next.settings.loading')}</p> : <SettingsRows holder={tab} state={state} change={change} reset={() => {}} advancedOpen={advanced} onAdvancedChange={setAdvanced}
