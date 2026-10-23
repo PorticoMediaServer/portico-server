@@ -14,3 +14,7 @@ export type {PdfOptions as PdfAdapterOptions} from './pdf/engine.ts';
 export {createComicAdapter} from './comic/adapter.ts';
 export type {ComicAdapterOptions} from './comic/adapter.ts';
 export type {ComicPageProvider, ComicPage} from './comic/archive.ts';
+// Inspect bounded encoded page bytes before browser decoding. This is a size
+// and MIME sniffer; callers retain byte limits and decode-failure handling.
+export {rasterInfo} from './comic/image.ts';
+export type {RasterInfo} from './comic/image.ts';
