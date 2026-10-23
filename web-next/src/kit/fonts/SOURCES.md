@@ -10,9 +10,9 @@ The font's own version is 4.504 and its weight axis covers 200–800; fonts.css
 exposes the approved UI range of 400–800 as Manrope. Vite resolves the relative
 asset URL to a same-origin hashed file. No remote or data font URL is used.
 
-The official asset retains all 216 Unicode code points supplied by the former
-bundled re-subset and adds U+0102 (217 total). It removes no existing web-font
-coverage. Scripts outside this Latin slice continue to use the existing system
+The official asset retains all 216 code points reported by Fontconfig for the
+former bundled re-subset and adds U+0102 (217 total). The raw cmap also retains
+both existing control/sentinel entries. It removes no existing web-font coverage. Scripts outside this Latin slice continue to use the existing system
 fallback; this change does not narrow their coverage.
 
 The previous FontTools re-subset remains preserved in Git (blob
