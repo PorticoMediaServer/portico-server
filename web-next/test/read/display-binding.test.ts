@@ -25,12 +25,14 @@ const adapter: ReaderAdapter<ReadingPreferences> = {format: 'epub', async open({
 }};
 const source = {id: 'display-binding-unit', revision: 'unit-1', size: 1};
 
-test('Display uses the actual core snapshot and changes only its current book overrides', async () => {
+test('Display uses the actual core snapshot and changes only its current book overrides', async t => {
   const confirmed = parsePreferenceSnapshot(recorded), before = JSON.stringify(confirmed);
   const controller = createReadingController({adapters: [adapter], preferenceSnapshot: confirmed});
+  t.after(() => controller.close());
   const authority = {isCurrent: () => true, subscribe: () => () => {}};
   const errors: string[] = [];
-  await controller.open({source, format: 'epub', container: {} as HTMLElement});
+  await controller.open({source, format: 'epub', container: {} as HTMLElement, viewport: {width: 390, height: 844}});
+  assert.equal(controller.getSnapshot().status, 'ready');
   const model = () => readingDisplayControls({controller, authority, copy, scale, phone: true, reportError: code => errors.push(code)});
   assert.equal(model().size.value, controller.getSnapshot().preferences.textSize);
   model().themes.onChange('sepia'); model().fonts.onChange('literata'); model().size.onChange(5);
@@ -44,25 +46,33 @@ test('Display uses the actual core snapshot and changes only its current book ov
   assert.deepEqual(new Set(controller.getSnapshot().overriddenKeys), new Set(['theme', 'font', 'textSize', 'layout', 'twoPages']));
   assert.equal(JSON.stringify(confirmed), before); assert.deepEqual(errors, []);
   await controller.close();
-  await controller.open({source, format: 'epub', container: {} as HTMLElement});
+  await controller.open({source, format: 'epub', container: {} as HTMLElement, viewport: {width: 390, height: 844}});
   assert.deepEqual(controller.getSnapshot().overriddenKeys, []);
   assert.equal(model().themes.value, confirmed.effective['reading.theme']);
   await controller.close();
 });
 
-test('stale Display callbacks and invalid control values cannot alter a retired or unopened book', async () => {
+test('stale Display callbacks and invalid control values cannot alter a retired or unopened book', async t => {
   const controller = createReadingController({adapters: [adapter], preferenceSnapshot: parsePreferenceSnapshot(recorded)});
+  t.after(() => controller.close());
   let current = true;
   const errors: string[] = [];
   const authority = {isCurrent: () => current, subscribe: () => () => {}};
-  const controls = readingDisplayControls({controller, authority, copy, scale, reportError: code => errors.push(code)});
-  controls.themes.onChange('sepia'); await tick(); assert.deepEqual(controller.getSnapshot().overriddenKeys, []);
-  await controller.open({source, format: 'epub', container: {} as HTMLElement});
+  const model = () => readingDisplayControls({controller, authority, copy, scale, reportError: code => errors.push(code)});
+  const beforeOpen = model();
+  beforeOpen.themes.onChange('sepia'); await tick(); assert.deepEqual(controller.getSnapshot().overriddenKeys, []);
+  await controller.open({source, format: 'epub', container: {} as HTMLElement, viewport: {width: 390, height: 844}});
+  assert.equal(controller.getSnapshot().status, 'ready');
+  beforeOpen.themes.onChange('sepia'); await tick(); assert.deepEqual(controller.getSnapshot().overriddenKeys, []);
+  const controls = model();
   controls.themes.onChange('unknown'); controls.fonts.onChange('unknown');
   controls.size.onChange(NaN); controls.size.onChange(8); controls.size.onChange(2.5);
   controls.rows.find(row => row.id === 'layout')!.onChange('scrolling');
   await tick(); assert.deepEqual(controller.getSnapshot().overriddenKeys, []);
   current = false; controls.themes.onChange('sepia'); controls.twoPages!.onChange(false);
   await tick(); assert.deepEqual(controller.getSnapshot().overriddenKeys, []); assert.deepEqual(errors, []);
+  current = true;
+  await controller.open({source: {...source, revision: 'unit-2'}, format: 'epub', container: {} as HTMLElement, viewport: {width: 390, height: 844}});
+  controls.themes.onChange('sepia'); await tick(); assert.deepEqual(controller.getSnapshot().overriddenKeys, []);
   await controller.close();
 });

@@ -23,9 +23,11 @@ export function readingDisplayControls({controller, authority, copy, scale, phon
   controller: ReadingController; authority: ReaderMountAuthority; copy: ReadingDisplayCopy;
   scale: ReadingDisplayScale; phone?: boolean; reportError: (code: ReaderErrorCode) => void;
 }>): ReaderDisplayControlsProps {
-  const {preferences} = controller.getSnapshot();
+  const initial = controller.getSnapshot(), {preferences} = initial;
   const change = (patch: Partial<ReadingPreferences>) => {
-    if (!authority.isCurrent() || controller.getSnapshot().status !== 'ready') return;
+    const current = controller.getSnapshot();
+    if (initial.status !== 'ready' || !authority.isCurrent() || current.status !== 'ready'
+      || current.sourceId !== initial.sourceId || current.sourceRevision !== initial.sourceRevision) return;
     void controller.setOverride(patch).catch(error => {if (authority.isCurrent()) reportError(readerErrorCode(error));});
   };
   const choice = <K extends string>(label: ChoiceCopy<K>, values: readonly K[], value: K, changed: (value: K) => void) => ({
