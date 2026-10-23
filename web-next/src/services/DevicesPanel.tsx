@@ -2,12 +2,13 @@ import {HostedError} from '../kit/accounts/ServicesAuth';
 import {useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {ApiError} from '@core/index.ts';
 import type {AccountSessionReviewService} from '@core/account-sessions.ts';
-import {ServicesBadge, ServicesGroup, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
+import {ServicesBadge, ServicesGroup, ServicesInlineFacts, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
 import {Button} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
 import type {IconName} from '../kit/Icon';
 import {servicesI18n} from './i18n';
 import type {WorkspaceApi, WorkspaceDevices} from './workspace-api';
+import {servicesRelativeTime, servicesSignInDate} from './time';
 
 /** A family is revoked only from a current canonical review; logout-all would end this browser. */
 export async function signOutOtherDevices(service: AccountSessionReviewService) {
@@ -53,7 +54,7 @@ export function DevicesPanel({api, frame}: Props) {
       if (!device) return null;
       const icon: IconName = device.platform === 'ios' || device.platform === 'android' ? 'i-phone' : device.platform === 'tvos' || device.platform === 'androidtv' ? 'i-tv' : 'i-laptop';
       const app = device.platform === 'web' ? t('services.workspace.appWeb') : device.platform === 'tvos' ? t('services.workspace.appAppleTV') : device.platform === 'ios' ? t('services.workspace.appIPhone') : device.platform === 'androidtv' ? t('services.workspace.appAndroidTV') : device.app;
-      const help = <>{app && <>{app}<br /></>}{t('web.hostedAccount.signedInOn', {date: i18n.date(item.createdAt)})}{device.lastSeenAt && <> · {t('web.hostedAccount.lastUsed', {when: i18n.relativeTime(device.lastSeenAt)})}</>}</>;
+      const help = <ServicesInlineFacts items={[app, t('web.hostedAccount.signedInOn', {date: servicesSignInDate(i18n, item.createdAt)}), device.lastSeenAt ? t('web.hostedAccount.lastUsed', {when: servicesRelativeTime(i18n, device.lastSeenAt)}) : '']} />;
       return <ServicesWorkspaceRow key={item.id} icon={icon} title={device.name} help={help} badge={item.current ? <ServicesBadge tone="accent">{t('web.hostedAccount.thisBrowser')}</ServicesBadge> : undefined}>
         {!item.current && <Button size="small" loading={state.pending === item.id} disabled={busy} onClick={() => setEnding(item.id)}>{t('action.signOut')}</Button>}
       </ServicesWorkspaceRow>;

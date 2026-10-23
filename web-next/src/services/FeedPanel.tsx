@@ -5,6 +5,7 @@ import {Button, Switch} from '../kit/controls';
 import {ServicesFeed} from './feed';
 import {serviceNoticeCopy} from './notification-copy';
 import {servicesI18n} from './i18n';
+import {servicesRelativeTime} from './time';
 
 export function FeedPanel({feed, onReviewDevices}: {feed: ServicesFeed; onReviewDevices: () => void}) {
   const i18n = useMemo(servicesI18n, []), {t} = i18n;
@@ -32,7 +33,7 @@ export function FeedPanel({feed, onReviewDevices}: {feed: ServicesFeed; onReview
       const copy = serviceNoticeCopy(item, i18n);
       const actions = item.kind === 'new_device' ? <Button size="small" disabled={state.busy} onClick={() => { if (!item.read) void feed.markRead([item.id]); onReviewDevices(); }}>{t('services.feed.reviewDevices')}</Button>
         : item.kind === 'account_export_ready' && item.detail.exportId ? <Button size="small" loading={downloading === item.detail.exportId} disabled={Boolean(downloading)} onClick={() => void download(item.detail.exportId!, item.id)}>{t('action.download')}</Button> : undefined;
-      return <ServicesFeedRow key={item.id} {...copy} unread={!item.read} when={i18n.relativeTime(item.occurredAt)} actions={actions} />;
+      return <ServicesFeedRow key={item.id} {...copy} unread={!item.read} when={servicesRelativeTime(i18n, item.occurredAt)} actions={actions} />;
     })}</ServicesGroup> : null}
     {state.cursor && <Button size="small" variant="text" disabled={state.busy} onClick={() => void feed.older()}>{t('web.account.notif.older')}</Button>}
     <ServicesGroup title={t('web.account.notif.prefsTitle')} description={t('web.account.notif.prefsHelp')}>

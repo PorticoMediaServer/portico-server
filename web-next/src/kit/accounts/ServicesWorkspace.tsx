@@ -90,6 +90,7 @@ export function ServicesWorkspaceRow({title, help, children, icon, badge}: {titl
   return <div className={styles.iconRow}><span className={styles.icon}><Icon name={icon} size={24} /></span><div><b>{title}{badge}</b>{help && <p>{help}</p>}</div><div>{children}</div></div>;
 }
 export function ServicesRowNote({children}: {children: ReactNode}) { return <p className={styles.rowNote}>{children}</p>; }
+export function ServicesInlineFacts({items}: {items: readonly string[]}) { return <span className={styles.inlineFacts}>{items.filter(Boolean).map((item, index) => <span key={index}>{item}</span>)}</span>; }
 export function ServicesBadge({children, tone = 'default'}: {children: ReactNode; tone?: 'default' | 'accent' | 'healthy'}) { return <span className={styles.badge} data-tone={tone}>{children}</span>; }
 export function ServicesEmpty({title, description, actions}: {title: ReactNode; description: ReactNode; actions?: ReactNode}) { return <div className={styles.empty}><b>{title}</b><p>{description}</p>{actions}</div>; }
 export function ServicesFeedRow({unread, icon, tone = 'blue', title, body, when, actions}: {unread: boolean; icon: IconName; tone?: 'blue' | 'green' | 'amber'; title: ReactNode; body: ReactNode; when: ReactNode; actions?: ReactNode}) {

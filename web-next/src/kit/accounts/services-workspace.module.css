@@ -71,6 +71,7 @@
 .recoveryActions { display: flex; gap: 10px; margin-top: 14px; }
 .recoveryActions > button { height: 44px; padding: 0 18px; border-radius: 10px; gap: 8px; font-size: 15px; line-height: normal; font-weight: 700; letter-spacing: normal; }
 .rowNote { margin: 0; padding: 0 22px 18px; font-size: 13.5px; line-height: 1.45; color: var(--color-text-tertiary); }
+.inlineFacts { display: inline-flex; flex-wrap: wrap; column-gap: 12px; }
 .dangerAction.dangerAction { height: 46px; padding: 0 18px; border-radius: 10px; font-size: 15px; line-height: normal; font-weight: 700; letter-spacing: normal; background: rgba(243,139,136,.14); color: var(--color-danger); }
 .dangerAction.dangerAction[data-size="xs"] { height: 36px; padding: 0 14px; border-radius: 9px; font-size: 14px; }
 .start { min-height: 1070px; position: relative; background: var(--color-ink); }
