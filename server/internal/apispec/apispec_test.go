@@ -3,7 +3,6 @@ package apispec
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -11,8 +10,10 @@ import (
 
 // The generated API document must parse before any contract checks run.
 func TestEveryDocumentParses(t *testing.T) {
-	_, here, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(here), "..", "..", "api")
+	dir, err := apiDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
 	files := []string{filepath.Join(dir, "portico.openapi.json")}
 	for _, file := range files {
 		raw, err := os.ReadFile(file)
