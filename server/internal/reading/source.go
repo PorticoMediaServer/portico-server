@@ -17,6 +17,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/sourceaccess"
 	"portico.local/server/internal/storage"
 )
@@ -30,6 +31,7 @@ type Service struct {
 	DB             *sql.DB
 	Storage        *storage.Client
 	Mounts         *mounts.Service
+	Remote         *remotesources.Service
 	Authorize      Authorization
 	Visible        Visibility
 	sessionMu      sync.Mutex
@@ -129,16 +131,20 @@ func (s *Service) validate(ctx context.Context, p identity.Principal, selected S
 // and after each bounded extent. No immutable/no-splice claim is made from it.
 type Source struct {
 	Selection
-	ctx       context.Context
-	p         identity.Principal
-	service   *Service
-	reader    *storage.ObservedPlaybackReader
-	roots     *sourceaccess.Registry
-	mu        sync.Mutex
-	observed  storage.ObservedFileObservation
-	onClose   func()
-	onFailure func()
-	closeOnce sync.Once
+	ctx            context.Context
+	p              identity.Principal
+	service        *Service
+	reader         *storage.ObservedPlaybackReader
+	roots          *sourceaccess.Registry
+	mu             sync.Mutex
+	observed       storage.ObservedFileObservation
+	remoteSession  *Session
+	remoteRange    *remotesources.SourceRange
+	remoteRetained bool
+	remoteCancel   func()
+	onClose        func()
+	onFailure      func()
+	closeOnce      sync.Once
 }
 
 // Context carries both this request's cancellation and the captured reader
@@ -154,10 +160,10 @@ func (s *Service) Open(ctx context.Context, p identity.Principal, item, sourceID
 	if expected != "" && expected != v.Revision {
 		return nil, ErrChanged
 	}
-	// Pool labels on Remote.Acquire do not carry interactive read authority.
-	// Until that real producer is checked on main, remote sources stay closed.
+	// Remote reads use the retained interactive session resolver, never a
+	// playback/analysis scheduling pool as operation authority.
 	if s.Storage.IsRemote(v.path) {
-		return nil, ErrUnavailable
+		return s.openRemote(ctx, p, v, nil)
 	}
 	// A typed nil mount service must not become a nonnil mountOwner interface.
 	// Unmanaged local roots still use the actual registration/helper boundary.
@@ -238,6 +244,19 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	if err := f.service.validate(f.ctx, f.p, f.Selection); err != nil {
 		return 0, err
 	}
+	if f.remoteSession != nil {
+		if f.Sequential() {
+			return 0, storage.ErrRemoteRange
+		}
+		if f.remoteRange == nil {
+			var err error
+			f.remoteRange, err = f.remoteSession.remote.OpenRange(f.ctx)
+			if err != nil {
+				return 0, err
+			}
+		}
+		return f.remoteRange.ReadAt(f.ctx, b, offset)
+	}
 	wanted := min(int64(len(b)), f.Size-offset)
 	done := 0
 	for int64(done) < wanted {
@@ -269,8 +288,21 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 }
 func (f *Source) Close() error {
 	f.closeOnce.Do(func() {
-		f.reader.Close()
-		f.roots.Close()
+		if f.remoteCancel != nil {
+			f.remoteCancel()
+		}
+		if f.reader != nil {
+			f.reader.Close()
+		}
+		if f.roots != nil {
+			f.roots.Close()
+		}
+		if f.remoteRange != nil {
+			f.remoteRange.Close()
+		}
+		if f.remoteSession != nil && !f.remoteRetained {
+			f.remoteSession.close()
+		}
 		if f.onClose != nil {
 			f.onClose()
 		}
@@ -292,6 +324,12 @@ func (f *Source) Validate() (failure error) {
 	}
 	if err := f.service.validate(f.ctx, f.p, f.Selection); err != nil {
 		return err
+	}
+	if f.remoteSession != nil {
+		if f.remoteRange != nil {
+			return f.remoteRange.Check(f.ctx)
+		}
+		return f.remoteSession.remote.Check(f.ctx)
 	}
 	o, err := f.reader.Observe(f.ctx)
 	if err != nil {

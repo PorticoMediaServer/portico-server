@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/storage"
 )
 
@@ -22,6 +23,7 @@ type Session struct {
 	actor, owner string
 	family       string
 	observed     storage.ObservedFileObservation
+	remote       *remotesources.SourceReadLease
 	life         context.Context
 	cancel       context.CancelFunc
 	timer        *time.Timer
@@ -32,15 +34,22 @@ type Session struct {
 
 func (s *Session) close() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.closed {
-		s.closed = true
-		s.cancel()
-		if s.timer != nil {
-			s.timer.Stop()
-		}
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	s.closed = true
+	s.cancel()
+	if s.timer != nil {
+		s.timer.Stop()
+	}
+	remote := s.remote
+	s.mu.Unlock()
+	if remote != nil {
+		_ = remote.Close()
 	}
 }
+
 func (s *Session) touch() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -143,10 +152,21 @@ func (s *Service) captureSessionState(p identity.Principal, f *Source) (*Session
 	}
 	// This is the actual authenticated token/horizon deadline, independent of
 	// idle expiry or provider throttling. It cannot extend captured authority.
-	life, cancel := context.WithDeadline(context.Background(), p.ExpiresAt)
-	out := &Session{ID: identity.Token(), selection: f.Selection, actor: p.Hash, owner: owner, family: family, observed: f.observed, life: life, cancel: cancel}
+	out := f.remoteSession
+	if out == nil {
+		life, cancel := context.WithDeadline(context.Background(), p.ExpiresAt)
+		out = &Session{ID: identity.Token(), selection: f.Selection, actor: p.Hash, owner: owner, observed: f.observed, life: life, cancel: cancel}
+	}
+	out.mu.Lock()
+	if out.closed || out.life.Err() != nil {
+		out.mu.Unlock()
+		return nil, ErrChanged
+	}
+	out.family = family
 	out.timer = time.AfterFunc(sessionIdle, out.close)
-	context.AfterFunc(life, out.close)
+	out.mu.Unlock()
+	f.remoteRetained = true
+	context.AfterFunc(out.life, out.close)
 	s.sessions[out.ID] = out
 	return out, nil
 }
@@ -232,7 +252,19 @@ func (s *Service) OpenSession(ctx context.Context, p identity.Principal, id stri
 	request, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(session.life, cancel)
 	owner := &sessionRequestContext{Context: request, owner: session.life}
-	f, err := s.Open(owner, p, session.selection.ItemID, session.selection.SourceID, session.selection.Revision)
+	var f *Source
+	if session.remote != nil {
+		var v Selection
+		v, err = s.Resolve(owner, p, session.selection.ItemID, session.selection.SourceID)
+		if err == nil && v.Revision != session.selection.Revision {
+			err = ErrChanged
+		}
+		if err == nil {
+			f, err = s.openRemote(owner, p, v, session)
+		}
+	} else {
+		f, err = s.Open(owner, p, session.selection.ItemID, session.selection.SourceID, session.selection.Revision)
+	}
 	if err != nil {
 		stop()
 		cancel()

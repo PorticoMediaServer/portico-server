@@ -51,6 +51,9 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 		m.Lane, m.Admission, m.Cost = apikit.Media, laneMediaBody, apikit.Constant
 		m.Headers, m.Status, m.ResponseContentType = []string{"If-Match", "Range"}, status, "application/pdf"
 		m.ResponseStatuses = []int{416}
+		if method == "GET" {
+			m.ResponseStatuses = []int{200, 416}
+		}
 		if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, m); err != nil {
 			return err
 		}
