@@ -3,6 +3,8 @@
  * port, the timeline reporter, queues, the viewer's playback choices and the device event feed.
  */
 export type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource, PlayerState, SidecarSubtitle} from './port.ts';
+export {localPlayerSource, localPlayerLoadReceipt} from './local-port.ts';
+export type {LocalPlayerSource, LocalPlayerLoadContext, LocalPlayerLoadReceipt} from './local-port.ts';
 export {ServerClock, driftCorrection, timelinePosition, type ClockEstimate, type ClockSample, type DriftCorrection} from './clock.ts';
 export {GenerationGate} from './generation.ts';
 export {TimelineReporter, type FailureKind, type MarkerType, type TimelineReport, type TimelineReporterOptions, type TimelineSend, type TimelineSnapshot, type TimelineState} from './timeline.ts';
