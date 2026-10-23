@@ -10,14 +10,14 @@ const reference = referenceRepo && execFileSync('git', ['-C', referenceRepo, 'sh
 const session: DashboardSession = {id: 'source', user: 'person', profile: 'person', device: 'device', title: 'title', kind: 'vod', state: 'playing', positionMs: 0, location: 'local', decision: {}};
 test('drawn source and delivery strings use actual selected and delivered facts', () => {
   assert.equal(formatVideoSource({id: 'v', height: 2160, codec: 'hevc', profile: 'Main 10', hdr: 'hdr10'}), '4K HEVC HDR10');
-  assert.equal(formatVideoSource({id: 'v', height: 1080, codec: 'hevc', profile: 'Main 10'}), '1080p HEVC Main 10');
-  assert.equal(formatVideoSource({id: 'v', height: 1080, codec: 'h264'}), '1080p H.264');
+  assert.equal(formatVideoSource({id: 'v', height: 1080, codec: 'hevc', profile: 'Main 10'}), 'HEVC Main 10');
+  assert.equal(formatVideoSource({id: 'v', height: 1080, codec: 'h264'}), 'H.264');
   const audio = {id: 'a', codec: 'truehd', language: 'en', layout: '7.1', channels: 8, atmos: false, commentary: false, default: true, visualImpaired: false};
   assert.equal(formatAudioSource(audio, false), 'English TrueHD 7.1');
   assert.equal(formatAudioSource({...audio, codec: 'aac', language: 'ja', layout: 'stereo', channels: 2}, false), 'Japanese AAC 2.0');
   assert.equal(formatAudioSource({...audio, codec: 'flac', bitDepth: 24, sampleRate: 96000}, true), 'FLAC 24-bit 96 kHz');
   assert.equal(formatSubtitleSource({id: 's', format: 'srt', language: 'en'}), 'English SRT');
-  assert.equal(formatDeliveryTarget({...session, delivery: {streams: [], videoHeight: 1080}}, 'video', 'h264'), '1080p');
+  assert.equal(formatDeliveryTarget({...session, delivery: {streams: [], videoHeight: 1080}}, 'video', 'h264'), undefined);
   assert.equal(formatDeliveryTarget({...session, delivery: {streams: [], audioChannels: 2}}, 'audio', 'aac'), 'AAC stereo');
 });
 test('absent source facts never become guessed language, quality, or multichannel layout', () => {
@@ -45,7 +45,7 @@ test('VS-10 maps only known per-track decisions and preserves protocol identifie
   const track = sessionTracks(raw)[0]; assert.equal(track.reportedAction, 'convert'); assert.equal(track.route, 'converted'); assert.equal(raw.delivery.streams[0].action, 'convert');
   for (const [protocol, display] of [['direct', 'original'], ['original', 'original'], ['copy', 'repackaged'], ['convert', 'converted'], ['transcode', 'converted'], ['burn', 'converted'], ['burn_in', 'converted']]) assert.equal(trackRoute(protocol), display);
   for (const action of [undefined, 'drop', 'unknown', 'future', 'sidecar', 'device']) assert.equal(trackRoute(action), undefined);
-  assert.equal(formatTrackRoute(track), 'Converted to 1080p');
+  assert.equal(formatTrackRoute(track), 'Converted');
   assert.equal(formatTrackRoute({...track, route: 'original'}), 'Original');
   assert.equal(formatTrackRoute({...track, route: 'repackaged'}), 'Repackaged');
   assert.equal(formatTrackRoute({...track, kind: 'audio', output: 'AAC stereo'}), 'Converted to AAC stereo');

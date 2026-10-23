@@ -85,7 +85,9 @@ export function formatLanguage(code?: string): string | undefined {
   if (!code || code === 'und') return undefined;
   try {return new Intl.DisplayNames([defaultI18n.locale], {type: 'language', fallback: 'none'}).of(code);} catch {return undefined;}
 }
-export const formatResolution = (height?: number): string | undefined => height && height > 0 ? height === 2160 ? t('next.kit.4k') : t('quality.height', {height}) : undefined;
+/** The consumed contract has no source/output scan fact. A pixel height alone
+ * cannot establish the drawing's p/i suffix. The 4K name asserts neither. */
+export const formatResolution = (height?: number): string | undefined => height === 2160 ? t('next.kit.4k') : undefined;
 function sourceChannels(audio: NonNullable<NonNullable<DashboardSession['media']>['audio']>): string | undefined {
   const layout = /^(\d+\.\d+)(?:\([^)]*\))?$/.exec(audio.layout ?? '')?.[1];
   if (layout) return layout;
