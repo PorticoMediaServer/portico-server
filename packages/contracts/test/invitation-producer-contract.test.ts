@@ -10,7 +10,8 @@ import {schemas} from '../src/schemas.ts';
 import {parseDirectSignIn} from '../../client-core/src/profile-management.ts';
 
 // Capture fresh, marshalled acceptance/sign-in producer results, including a
-// confirmed server factor and a real pending-device record. No hand-built
+// current local and signed-in states. New invitations have no existing factor;
+// device approval is retired. No hand-built
 // successful snapshot or credential-bearing fixture can mask a producer drift.
 test('published acceptance decoder and client consume actual producer states',()=>{
  const directory=mkdtempSync(join(tmpdir(),'portico-invitation-contract-'));
@@ -22,7 +23,7 @@ test('published acceptance decoder and client consume actual producer states',()
    timeout:120_000,stdio:'pipe',
   });
   const responses=JSON.parse(readFileSync(path,'utf8'));
-  assert.deepEqual(Object.keys(responses).sort(),['challenge','device-pending','local','signed-in']);
+  assert.deepEqual(Object.keys(responses).sort(),['local','signed-in']);
   for(const [state,raw] of Object.entries(responses) as [string,any][]){
    const result=decode('PostAccessInvitationsAcceptResponse',raw) as any;
    assert.equal('notes' in result,false);
@@ -34,29 +35,21 @@ test('published acceptance decoder and client consume actual producer states',()
    } else {
     assert.equal(parseDirectSignIn(raw).kind,state);
     assert.equal(parseDirectSignIn(result).kind,state);
-    if(state==='challenge'||state==='device-pending'){
-     assert.equal(result.profiles,null);
-     assert.equal(result.account.allowedLibraries,null);
-    }
    }
   }
-  // Additive presentation fields may overlap intermediate states deliberately.
-  // anyOf must retain a usable challenge rather than rejecting two matches.
-  const overlap={...responses['device-pending'],challenge:responses.challenge.challenge};
-  assert.equal(parseDirectSignIn(decode('PostAccessInvitationsAcceptResponse',overlap)).kind,'challenge');
+  // Keep malformed factor envelopes rejected. Successful factor production is
+  // exercised by the separate sign-in flow, not fabricated for an invitation.
+  const incomplete={...responses['signed-in'],session:undefined,profiles:null,account:{...responses['signed-in'].account,allowedLibraries:null}};
   for(const bad of [
    {}, null, [],
-   {...responses.challenge,challenge:undefined},
-   {...responses.challenge,challenge:{token:42,expiresAt:'invalid'}},
-   {...responses['device-pending'],deviceId:undefined},
-   {...responses['device-pending'],installationId:42},
-   {...responses['device-pending'],deviceApprovalPending:'true'},
+   {...incomplete,challenge:undefined},
+   {...incomplete,challenge:{token:42,expiresAt:'invalid'}},
    {...responses['signed-in'],session:undefined},
    {...responses['signed-in'],profiles:null},
    {...responses['signed-in'],account:{...responses['signed-in'].account,allowedLibraries:null}},
   ]) assert.throws(()=>decode('PostAccessInvitationsAcceptResponse',bad));
   const variants=(schemas.PostAccessInvitationsAcceptResponse as any).anyOf;
-  assert.equal(variants.length,4);
+  assert.equal(variants.length,3);
   for(const branch of variants){
    assert.equal('notes' in branch.properties,false);
    assert.equal('email' in branch.properties,false);
