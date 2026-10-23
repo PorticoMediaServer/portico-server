@@ -104,6 +104,18 @@ func TestReadingRemoteRegistered(t *testing.T) {
 		t.Fatal("supported actual DAV configuration", err)
 	}
 	remoteRoot := configured.Source.RootPath
+	// These are real saved owner settings for this throwaway source, matching
+	// the cap1 sequential fixture. No default/policy is rewritten to authorize
+	// Reading, and the scan tier remains file_list_only.
+	profile, _ := remotesources.SourceReadPreset("list")
+	profile.Limits = remotesources.ReadLimits{Connections: 1, RequestsPerSecond: 50}
+	err = dbwork.WithWriteTx(context.Background(), f.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		_, err := remote.ApplySourceReadProfileTx(context.Background(), tx, f.id, principal, remotesources.SourceReadProfileChange{SourceID: configured.Source.ID, Generation: "1", Profile: profile})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	f.deps.Storage.Remote = remote
 	f.cat.SetStorage(f.deps.Storage)
 	life, cancel := context.WithCancel(context.Background())
@@ -145,9 +157,8 @@ func TestReadingRemoteRegistered(t *testing.T) {
 			if err != nil {
 				t.Fatal("real remote library", err)
 			}
-			// Preserve the actual default two-requests/second source cap. Root
-			// observations on every real scanner quantum can exceed the local
-			// fixture's30s budget; observe the SAME first job for up to120s.
+			// Observe the SAME first queued scan; do not retry a failed job or
+			// seed catalogue/observation rows to skip actual source publication.
 			readingScanWithin(t, f, library.ID, 120*time.Second)
 			member, err := f.id.CreateDirectMember(context.Background(), owner.AccountToken, identity.DirectMemberCreate{Username: "reader-" + kind, Password: "different-test-password", Name: "Reader", AllowedLibraries: []string{library.ID}})
 			if err != nil {
