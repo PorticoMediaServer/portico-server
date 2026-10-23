@@ -467,8 +467,9 @@ type Reach struct {
 	Remote                  bool
 	AdminMaxVideoBitrateBPS int
 	// SavedQuality is the viewer's saved default quality for this reach
-	// ("original", "automatic" or a ladder id); empty is the original.
-	SavedQuality string
+	// ("original", "automatic" or a ladder id); empty applies the link/kind default.
+	SavedQuality   string
+	TransportClass string
 	// DeviceID is the device asking, whose capability document decides whether
 	// a previewed subtitle would be drawn by the device or burned in.
 	DeviceID string
@@ -562,7 +563,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 	}
 	if preview.Quality.Mode == "" {
-		preview.Quality = savedQuality(reach.SavedQuality)
+		preview.Quality = savedQuality(playback.DefaultSavedQuality(reach.SavedQuality, reach.TransportClass, audioOnly))
 	}
 	preview.Quality.Step = ""
 	if preview.VersionID == "" && !audioOnly && len(out.Versions) > 1 {
@@ -650,7 +651,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		offset += part.DurationMs
 	}
 	done()
-	out.Preferred = &Preferred{VersionID: version.ID, Reason: "default", Quality: savedQuality(reach.SavedQuality)}
+	out.Preferred = &Preferred{VersionID: version.ID, Reason: "default", Quality: savedQuality(playback.DefaultSavedQuality(reach.SavedQuality, reach.TransportClass, audioOnly))}
 	if s.Playback != nil {
 		plan, err := s.Playback.PlanV1(ctx, p, item, choice)
 		switch {

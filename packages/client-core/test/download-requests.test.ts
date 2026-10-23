@@ -144,3 +144,17 @@ test('a request keeps its identity, state, counts, cursor and bounds exact', asy
   await assert.rejects(createDownloadRequest(api, {operationId: 'op-1', target: {kind: 'show', id: 's'}, deviceId: 'dev-1', quality: 'original', policy: {episodes: 'some'} as any}));
   assert.equal(api.calls.length, 0);
 });
+
+test('quality defaults r25: omitted container quality is Original and explicit choices are preserved',async()=>{
+ const api=fakeApi({'POST /v1/downloads/requests':()=>request()});
+ const input={operationId:'default-op',target:{kind:'album' as const,id:'album'},deviceId:'dev',policy:{episodes:'all' as const}};
+ await createDownloadRequest(api,input);
+ assert.equal((api.calls.at(-1)!.body as any).quality,'original');
+ for(const quality of ['original','automatic','720p-high','1080p-low']) {
+  await createDownloadRequest(api,{...input,quality});
+  assert.equal((api.calls.at(-1)!.body as any).quality,quality);
+ }
+ const n=api.calls.length;
+ for(const quality of ['',null,42,'auto','1080p','bogus'])await assert.rejects(createDownloadRequest(api,{...input,quality} as any));
+ assert.equal(api.calls.length,n);
+});

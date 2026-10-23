@@ -350,3 +350,20 @@ test('container options keep server aggregate sizes and reject a different targe
   wrong=true;await assert.rejects(service.containerOptions({kind:'season',id:'season'},'device',{episodes:'all'}));
  } finally {service.dispose();}
 });
+
+test('quality defaults r25: item omission sends Original and never rewrites an explicit request',async()=>{
+ const s=server([]),sent:any[]=[];
+ const api={request:async<T>(path:string,method='GET',body?:any):Promise<T>=>{
+  if(path==='/v1/downloads/preparations'&&method==='POST'){sent.push(body);return {batchId:'b',accepted:1,items:[preparation({quality:body.quality})],rejected:[],duplicate:false} as T;}
+  return s.api.request<T>(path,method,body);
+ }};
+ const service=new DownloadsService(api,()=>'op');
+ try {
+  await service.request({mediaId:'item'});
+  assert.equal(sent.at(-1).quality,'original');
+  for(const quality of ['original','automatic','720p-high']){await service.request({mediaId:'item'},quality);assert.equal(sent.at(-1).quality,quality);}
+  const n=sent.length;
+  for(const quality of ['',null,'auto','1080p','bogus'])await assert.rejects(service.request({mediaId:'item'},quality as any));
+  assert.equal(sent.length,n);
+ }finally{service.dispose();}
+});

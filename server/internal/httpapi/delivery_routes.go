@@ -91,10 +91,10 @@ func (d Dependencies) deliveryRoutes(mux *http.ServeMux) {
 				return
 			}
 			tx := gated.Tx()
-			read, _, _, prefErr := operations.EffectivePreferences(tx, p.Viewer, edge.DeviceClass)
+			read, sources, _, prefErr := operations.EffectivePreferences(tx, p.Viewer, edge.DeviceClass)
 			_ = gated.Rollback()
 			if prefErr == nil {
-				values = read
+				values = playback.WithPreferenceSources(read, sources)
 			}
 		}
 		policy := playback.ResolveDeliveryPolicy(values, edge.NetworkClass, edge.ServerLocality, edge.TransportClass, cfg)

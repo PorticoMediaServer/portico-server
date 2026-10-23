@@ -28,7 +28,7 @@ func TestQualityR24AboveSourceStoresOriginalWithoutOptimization(t *testing.T) {
 		if !option.SameAsOriginal || option.RequiresPrepare || option.Estimated || option.EffectiveQuality != "original" {
 			t.Fatalf("above source %+v", option)
 		}
-		batch, err := h.service.Submit(ctx, h.viewer, Request{OperationID: "above-" + option.Quality, MediaID: h.item, Quality: option.Quality}, nil)
+		batch, err := h.service.Submit(ctx, h.viewer, Request{OperationID: "above-" + option.Quality, MediaID: h.item, Quality: RequestQuality(option.Quality)}, nil)
 		if err != nil || len(batch.Items) != 1 || batch.Items[0].Quality != "original" {
 			t.Fatalf("created conversion %+v %v", batch, err)
 		}

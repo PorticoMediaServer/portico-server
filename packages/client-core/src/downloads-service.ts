@@ -1,3 +1,4 @@
+import {canonicalQualityLadder} from '../../contracts/src/types.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {decodeGetContainerDownloadOptionsResponse} from "../../contracts/src/decoders.ts";
 import {routeBody} from "../../contracts/src/routes.ts";
@@ -11,7 +12,7 @@ import {mergeRevalidatedList} from './freshness-actions.ts';
  * Forgiving by design: a failed refresh keeps the list that is on screen. While anything is
  * still being prepared it polls gently; once everything has settled it stops. */
 import {serviceProblem} from './presentation/service-text.ts';
-import {downloadReasonMessage,parseDownloadProfileRevocation,parseDownloadBatch,parseDownloadBundle,parseDownloadGrant,parseDownloadOptions,parseDownloadPage,parseDownloadPreparation,parseDownloadSettings,parseDownloadUsage,type DownloadAction,type DownloadBatch,type DownloadBundle,type DownloadGrant,type DownloadOptionsView,type DownloadPreparation,type DownloadQualityChoice,type DownloadUsage} from './downloads.ts';
+import {downloadReasonMessage,parseDownloadProfileRevocation,parseDownloadBatch,parseDownloadBundle,parseDownloadGrant,parseDownloadOptions,parseDownloadPage,parseDownloadPreparation,parseDownloadSettings,parseDownloadUsage,type DownloadAction,type DownloadBatch,type DownloadBundle,type DownloadGrant,type DownloadOptionsView,type DownloadPreparation,type DownloadQualityChoice,type DownloadUsage,originalQuality} from './downloads.ts';
 import {createDownloadRequest,getDownloadRequest,isDownloadRequestTerminal,listDownloadRequests,type DownloadEpisodes,type DownloadRequest,type DownloadRequestKind} from './download-requests.ts';
 
 export type DownloadsApi={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};
@@ -185,7 +186,8 @@ export class DownloadsService{
  }
  /** Asks the server to prepare one title, several, a whole season or album, or the next one.
   * A batch is partial by design: what could not be accepted is reported, the rest proceeds. */
- async request(target:DownloadTarget,quality:string):Promise<DownloadBatch>{
+ async request(target:DownloadTarget,quality:string=originalQuality):Promise<DownloadBatch>{
+  if(!canonicalQualityLadder.some(q=>q.id===quality))throw new Error('Choose a download quality.');
   // Only the item fields are sent, whatever else the caller's object carries (containers are durable requests).
   const body={operationId:this.operationId(),...(target.versionId?{versionId:target.versionId}:{}),...(target.mediaId?{mediaId:target.mediaId}:{}),...(target.mediaIds?{mediaIds:[...target.mediaIds]}:{}),...(target.nextAfterMediaId?{nextAfterMediaId:target.nextAfterMediaId}:{}),quality};
   const batch=parseDownloadBatch(await this.api.request<RouteResponse<"create_download_preparations">>(routePath("create_download_preparations"),'POST',body));
@@ -197,7 +199,7 @@ export class DownloadsService{
   * own operationId per intent for safe retries. Capture shows as an
   * indeterminate state until `totalKnown` is true.
   */
- async requestContainer(input:Readonly<{target:ContainerDownloadTarget;deviceId:string;quality:string;policy:ContainerDownloadPolicy;operationId?:string}>):Promise<DownloadRequest>{
+ async requestContainer(input:Readonly<{target:ContainerDownloadTarget;deviceId:string;quality?:string;policy:ContainerDownloadPolicy;operationId?:string}>):Promise<DownloadRequest>{
   if(!input.target||input.target.kind!=='show'&&input.target.kind!=='season'&&input.target.kind!=='album'&&input.target.kind!=='book'&&input.target.kind!=='playlist'||!input.target.id)throw new Error('Whole downloads cover shows, seasons, albums, books and playlists.');
   const title=input.target.title??'';
   const request=await createDownloadRequest(this.api,{operationId:input.operationId??this.operationId(),target:{kind:input.target.kind,id:input.target.id},deviceId:input.deviceId,quality:input.quality,policy:{...input.policy}});

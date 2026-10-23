@@ -39,7 +39,7 @@ type ContainerRequest struct {
 	OperationID string          `json:"operationId"`
 	Target      ContainerTarget `json:"target"`
 	DeviceID    string          `json:"deviceId"`
-	Quality     string          `json:"quality"`
+	Quality     RequestQuality  `json:"quality,omitempty"`
 	Policy      EpisodePolicy   `json:"policy"`
 }
 type RequestView struct {
@@ -88,7 +88,8 @@ func (s *Service) requestAccess(ctx context.Context, tx *sql.Tx, p identity.Prin
 	return access(ctx, tx, p, device, "i.id")
 }
 func normalizeContainerRequest(r *ContainerRequest) error {
-	if !validID.MatchString(r.OperationID) || !validID.MatchString(r.DeviceID) || !validID.MatchString(r.Target.ID) || preparationQuality(r.Quality) != nil {
+	r.Quality = r.Quality.withDefault()
+	if !validID.MatchString(r.OperationID) || !validID.MatchString(r.DeviceID) || !validID.MatchString(r.Target.ID) || preparationQuality(string(r.Quality)) != nil {
 		return ErrInput
 	}
 	switch r.Target.Kind {

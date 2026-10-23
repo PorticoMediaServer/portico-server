@@ -102,8 +102,8 @@ func TestQualityOffersRevisionFencesSelection(t *testing.T) {
 		t.Fatal("disabled rung accepted")
 	}
 	rung, ok := SelectedRung(rungs, "")
-	if !ok || rung.ID != "automatic" {
-		t.Fatal("empty selection did not default to automatic", rung)
+	if !ok || rung.ID != "original" {
+		t.Fatal("empty selection did not default to Original", rung)
 	}
 }
 

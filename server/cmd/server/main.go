@@ -782,8 +782,8 @@ func run() (runErr error) {
 	}
 	doneDecoder(nil)
 	player.ConfigureDelivery(deliverySettings, func(tx *sql.Tx, v identity.Viewer, deviceClass string) (playback.DeliveryPreferenceReader, error) {
-		values, _, _, err := operations.EffectivePreferences(tx, v, deviceClass)
-		return values, err
+		values, sources, _, err := operations.EffectivePreferences(tx, v, deviceClass)
+		return playback.WithPreferenceSources(values, sources), err
 	}, detector, ffmpegPath)
 	// Probe encoders once at startup, off the request path, so the first session
 	// never waits on ffmpeg. Sessions that arrive earlier take software until then.
