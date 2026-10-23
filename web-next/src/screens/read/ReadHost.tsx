@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react';
 import {useMatch, useRouterState} from '@tanstack/react-router';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
+import {router} from '../../router';
 import {ReadEntry} from './ReadEntry';
 import {readSearch, retainedReadTarget, type ReadTarget} from './route-search';
 import styles from './entry.module.css';
@@ -18,7 +19,9 @@ export function ReadHost() {
   if (!captured || !retained) return null;
   const visible = !!match && retained.itemId === itemId && retained.sourceId === sourceId;
   return <div className={styles.host} hidden={!visible} inert={!visible} aria-hidden={!visible}>
-    <ReadEntry key={JSON.stringify([retained.itemId, retained.sourceId])} captured={captured} itemId={retained.itemId} sourceId={retained.sourceId}/>
+    <ReadEntry key={JSON.stringify([retained.itemId, retained.sourceId])} captured={captured} itemId={retained.itemId} sourceId={retained.sourceId} active={visible}
+      onClose={() => {setRetained(undefined); if (window.history.length > 1) router.history.back();
+        else void router.navigate({to: '/item/$itemId', params: {itemId: retained.itemId}, replace: true}).catch(captured.binding.home.effects.reportError);}}/>
   </div>;
 }
 

@@ -25,7 +25,7 @@ type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 type OpenBook = Readonly<{session: ReadingSession; publication: ReadingPublication; controller: ReadingController;
   authority: ReaderMountAuthority; location?: ReaderLocation}>;
 
-function ReaderBook({book, reportError, onBack}: {book: OpenBook; reportError: (error: unknown) => void; onBack: () => void}) {
+function ReaderBook({book, active, reportError, onBack}: {book: OpenBook; active: boolean; reportError: (error: unknown) => void; onBack: () => void}) {
   const {controller, publication, authority} = book;
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), width = useShellWidth();
   const [panel, setPanel] = useState<'display' | 'contents' | 'search'>(), [query, setQuery] = useState('');
@@ -33,13 +33,14 @@ function ReaderBook({book, reportError, onBack}: {book: OpenBook; reportError: (
   const anchor = useRef<HTMLButtonElement>(null);
   const engineError = useCallback((code: ReaderErrorCode) => reportError({code}), [reportError]);
   const presentation = width < 600 ? 'phone' : width < 1024 ? 'tablet' : 'desktop';
+  useEffect(() => {if (!active) setPanel(undefined);}, [active]);
   const navigate = (location: ReaderLocation) => {
     if (!authority.isCurrent()) return;
     void controller.navigate({kind: 'location', location}).catch(reportError);
     if (presentation === 'phone') setPanel(undefined);
   };
   useEffect(() => {
-    if (panel !== 'search' || !query.trim()) {setHits([]); setSearching(false); return;}
+    if (!active || panel !== 'search' || !query.trim()) {setHits([]); setSearching(false); return;}
     const life = new AbortController(); let active = true;
     setSearching(true); setHits([]);
     void (async () => {
@@ -50,7 +51,7 @@ function ReaderBook({book, reportError, onBack}: {book: OpenBook; reportError: (
       }
     })().catch(error => {if (active && authority.isCurrent()) reportError(error);}).finally(() => {if (active) setSearching(false);});
     return () => {active = false; life.abort();};
-  }, [controller, authority, panel, query, reportError]);
+  }, [controller, authority, active, panel, query, reportError]);
   const contents = (items: readonly ReaderTocItem[]): readonly ReaderContentsEntry[] => items.map(item => ({id: item.id, label: item.label,
     page: item.location.pageLabel, onNavigate: () => navigate(item.location), children: item.children ? contents(item.children) : undefined}));
   const searchHits: ReaderSearchHit[] = hits.map(hit => {
@@ -58,7 +59,7 @@ function ReaderBook({book, reportError, onBack}: {book: OpenBook; reportError: (
     const context = start < 0 ? [{text: hit.excerpt}] : [{text: hit.excerpt.slice(0, start)}, {text: hit.excerpt.slice(start, start + query.length), match: true}, {text: hit.excerpt.slice(start + query.length)}];
     return {id: hit.id, chapter: hit.chapter, page: hit.location.pageLabel, context, onNavigate: () => {setCurrentHit(hit.id); navigate(hit.location);}};
   });
-  const panelContent = panel === 'contents' ? <ReaderPanel label={t('next.reader.contents')} tabs={[{id: 'contents', label: t('next.reader.contents')}]}
+  const panelContent = !active ? undefined : panel === 'contents' ? <ReaderPanel label={t('next.reader.contents')} tabs={[{id: 'contents', label: t('next.reader.contents')}]}
     selected="contents" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderContents entries={contents(snapshot.toc)}/></ReaderPanel>
     : panel === 'search' ? <ReaderPanel label={t('next.reader.search')} tabs={[{id: 'search', label: t('next.reader.search')}]}
       selected="search" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderSearch query={query} onQuery={setQuery} hits={searchHits} current={currentHit} loading={searching}
@@ -68,7 +69,7 @@ function ReaderBook({book, reportError, onBack}: {book: OpenBook; reportError: (
       : panel === 'display' ? <ReadingDisplay controller={controller} authority={authority} copy={readingDisplayCopy(defaultI18n, presentation, 7)}
         scale={{min: 1, max: 7, step: 1, ticks: [1, 2, 3, 4, 5, 6, 7]}} presentation={presentation} label={t('next.reader.display')}
         open onOpenChange={open => {if (!open) setPanel(undefined);}} anchorRef={anchor} reportError={code => reportError({code})}
-        onOpenSettings={() => {void router.navigate({to: '/settings', search: {scope: 'account', section: 'reading'}}).catch(reportError);}}/> : undefined;
+        onOpenSettings={() => {setPanel(undefined); void router.navigate({to: '/settings', search: {scope: 'account', section: 'reading'}}).catch(reportError);}}/> : undefined;
   return <ReadReader<ReadingPreferences> controller={controller} source={publication.source} format={publication.format} initialLocation={book.location}
     metadata={publication.metadata} signal={publication.signal} authority={authority} reportError={engineError} onBack={onBack}
     state={state => state.status === 'error' ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}/> : <Skeleton height="100%"/>}
@@ -88,7 +89,7 @@ function ReaderBook({book, reportError, onBack}: {book: OpenBook; reportError: (
 }
 
 /** Real publication session; services start only inside the captured route lifetime. */
-export function ReadEntry({captured, itemId, sourceId}: {captured: Captured; itemId: string; sourceId?: string}) {
+export function ReadEntry({captured, itemId, sourceId, active = true, onClose}: {captured: Captured; itemId: string; sourceId?: string; active?: boolean; onClose?: () => void}) {
   const [state, setState] = useState<Readonly<{book?: OpenBook; failed?: boolean}>>({});
   const [retry, setRetry] = useState(0);
   const reportRef = useRef(captured.binding.home.effects.reportError); reportRef.current = captured.binding.home.effects.reportError;
@@ -128,7 +129,7 @@ export function ReadEntry({captured, itemId, sourceId}: {captured: Captured; ite
     })().catch(error => {if (alive && bindings.authority.isCurrent()) {reportError(error); setState({failed: true});} void dispose().catch(() => {});});
     return () => {void dispose().catch(() => {});};
   }, [captured.context, itemId, sourceId, reportError, retry]);
-  if (state.book) return <ReaderBook key={state.book.session.manifest.sessionId} book={state.book} reportError={reportError} onBack={() => router.history.back()}/>;
+  if (state.book) return <ReaderBook key={state.book.session.manifest.sessionId} book={state.book} active={active} reportError={reportError} onBack={onClose ?? (() => router.history.back())}/>;
   if (state.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
   return <div className={styles.loading}><Skeleton height="100dvh"/></div>;
