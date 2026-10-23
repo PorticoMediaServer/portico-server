@@ -1,8 +1,9 @@
 import type {ShellBootstrap} from './shell/bootstrap';
 import {browserEntryDestination, isProfileSettingsLocation, profileSettingsAliasPath, type createEntryDestinationStore} from './route-registry-destination';
+import {accountReturnPath} from './route-registry-return';
 
 export function isAccountEntryPath(path: string): boolean {
-  return path === '/sign-in' || path === '/profiles' || path === '/servers';
+  return path === '/sign-in' || path === '/profiles' || path === '/servers' || path === accountReturnPath;
 }
 type Location = Readonly<{pathname: string; search?: Record<string, unknown>}>;
 type Navigation = Readonly<{fromLocation?: Location; toLocation: Location}>;
