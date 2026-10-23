@@ -83,7 +83,7 @@ def run(args, cwd, env=None):
     subprocess.run(args, cwd=cwd, env=env, check=True)
 
 
-def build_web(snapshot, destination, web_ui="legacy"):
+def build_web(snapshot, destination, web_ui="legacy", *, hosted_origin="https://web.getportico.tv"):
     release_inputs(web_ui)  # Refuse unknown input before installing or building.
     web_env = {k: v for k, v in os.environ.items() if not k.startswith("VITE_") and k != "NODE_OPTIONS"}
     if web_ui == "web-next":
@@ -92,7 +92,9 @@ def build_web(snapshot, destination, web_ui="legacy"):
         if actual != wanted:
             raise ValueError("Hosted web-next requires the captured .node-version")
     run(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"], snapshot, web_env)
-    web_env.update(VITE_HOSTED_WEB="true", VITE_ACCOUNT_WORKSPACE="true", VITE_HOSTED_URL="https://web.getportico.tv", PORTICO_RELEASE_WEB=str(destination))
+    # The release CLI keeps the production default. Isolated composition checks
+    # can build against their real loopback API without rewriting built assets.
+    web_env.update(VITE_HOSTED_WEB="true", VITE_ACCOUNT_WORKSPACE="true", VITE_HOSTED_URL=hosted_origin, PORTICO_RELEASE_WEB=str(destination))
     code = "import {build} from 'vite'; await build({build:{outDir:process.env.PORTICO_RELEASE_WEB,emptyOutDir:true,sourcemap:false}});"
     run(["node", "--input-type=module", "-e", code], snapshot / ("web-next" if web_ui == "web-next" else "web"), web_env)
 

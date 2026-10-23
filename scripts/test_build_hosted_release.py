@@ -46,6 +46,14 @@ class HostedWebInputTests(unittest.TestCase):
                     release.build_web(snapshot, snapshot / "output/web", "web-next")
                 run.assert_not_called()
 
+    def test_isolated_composition_sets_its_real_api_at_build_time(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            snapshot = Path(temporary)
+            (snapshot / ".node-version").write_text("24.21.0\n")
+            with patch.object(release.subprocess, "check_output", return_value="v24.21.0\n"), patch.object(release, "run") as run:
+                release.build_web(snapshot, snapshot / "output/web", "web-next", hosted_origin="http://127.0.0.1:19410")
+                self.assertEqual(run.call_args[0][2]["VITE_HOSTED_URL"], "http://127.0.0.1:19410")
+
     def test_legacy_still_builds_legacy_without_selecting_services(self):
         with patch.object(release, "run") as run, patch.object(release.subprocess, "check_output") as node:
             release.build_web(Path("/captured"), Path("/output/web"))
