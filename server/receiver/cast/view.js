@@ -80,7 +80,11 @@
   }
   function playing(observation) {
     observation = observation || {};
+    var previousIdentity = identity(metadata);
     if (observation.meta !== undefined) metadata = observation.meta;
+    // An ordinary queue advance may have no next-title artwork yet. The prior
+    // occurrence's resolved cover is never a fact about the new occurrence.
+    if (identity(metadata) !== previousIdentity && observation.artworkUrl === undefined) image = '';
     if (observation.artworkUrl !== undefined) image = observation.artworkUrl || '';
     var audio = isAudio(metadata), nextIdentity = identity(metadata);
     var playingState = ['playing', 'paused', 'buffering'].indexOf(observation.state) !== -1 ? observation.state : 'playing';
