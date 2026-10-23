@@ -36,9 +36,9 @@ function BoundProfiles({entry}: {entry: BrowserAccountEntry}) {
       const session = await account.service.accessSession();
       const current = () => {const selected = account.service.getSnapshot().session;return selected?.account.id === session.account.id && selected.familyId === session.familyId;};
       if (!current()) return;
-      await flow.portico({request: async (path, method = 'GET', body, signal) => {
+      await flow.portico({request: async <T,>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal) => {
         if (!current()) throw new DOMException('Account changed', 'AbortError');
-        const response = await account.api.send(path, method, body, signal, session.accessToken);
+        const response = await account.api.send<T>(path, method, body, signal, session.accessToken);
         if (!current()) throw new DOMException('Account changed', 'AbortError');
         return response;
       }}, account.api.origin, current);

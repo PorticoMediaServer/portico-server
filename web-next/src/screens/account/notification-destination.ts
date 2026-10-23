@@ -1,6 +1,7 @@
 import type {NotificationAction} from '@core/notifications.ts';
 
-export type NoticeDestination = Readonly<{view: 'home' | 'settings' | 'dashboard'}> | Readonly<{view: 'library' | 'item'; id: string}>;
+export type NoticeDestination = Readonly<{view: 'home'}> | Readonly<{view: 'settings'}> | Readonly<{view: 'dashboard'}>
+  | Readonly<{view: 'library'; id: string}> | Readonly<{view: 'item'; id: string}>;
 /** Explicit route targets only. A command is never silently aliased to a page. */
 export function notificationDestination(action: NotificationAction, libraries: readonly {id: string}[], canManageServer: boolean): NoticeDestination | undefined {
   if (action.kind !== 'navigate' || !action.target) return;
