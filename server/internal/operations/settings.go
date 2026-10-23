@@ -267,6 +267,8 @@ type SettingsChange struct {
 
 func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 	v := DefaultSettings()
+	// Until a canonical mode is stored, preserve the existing owner gate.
+	v.ConversionMode = ""
 	var revision int64 = 1
 	e := readStoredSettings(tx, &v)
 	if e != nil {
@@ -285,6 +287,12 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 	}
 	if e = tx.QueryRow(`SELECT transcoding_enabled,per_account_cap,server_cap FROM playback_owner_policy WHERE singleton=1`).Scan(&v.TranscodingEnabled, &v.PerAccountCap, &v.ServerCap); e != nil {
 		return SettingsDocument{}, e
+	}
+	if v.ConversionMode == "" {
+		v.ConversionMode = "never"
+		if v.TranscodingEnabled {
+			v.ConversionMode = "all"
+		}
 	}
 	v.TranscodingEnabled = v.ConversionMode != "never"
 	b, _ := json.Marshal(v)
@@ -375,9 +383,6 @@ func validateSettings(v *Settings) error {
 	}
 	if !oneOf(v.DownloadMaxQuality, ownerDownloadQualities()) {
 		return invalidFields("values.downloadMaxQuality")
-	}
-	if v.MusicAwayQuality == "" {
-		v.MusicAwayQuality = "original"
 	}
 	if !oneOf(v.MusicAwayQuality, qualityladder.MusicIDs()) {
 		return invalidFields("values.musicAwayQuality")
