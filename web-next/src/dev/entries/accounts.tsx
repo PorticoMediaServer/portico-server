@@ -1,7 +1,7 @@
 import {createRoot} from 'react-dom/client';
 import {useState} from 'react';
 import {IconSprite} from '../../kit/Icon';
-import {LocalServerSignIn, PorticoServerSignIn, ServerProfiles, ServerProfilePIN} from '../../kit/accounts';
+import {LocalInvitationForm, LocalServerSignIn, PorticoServerSignIn, ServerProfiles, ServerProfilePIN} from '../../kit/accounts';
 import '../../kit/tokens.css';
 import '../../kit/fonts.css';
 import '../../bootstrap.css';
@@ -19,9 +19,13 @@ const remembered = [
   {accountId: 'theo', username: 'theo', displayName: 'Theo', avatarVersion: 0, automaticSignIn: false, lastUsed: ''},
 ];
 function Specimen() {
-  const frame = new URLSearchParams(location.search).get('frame') ?? '4';
+  const params = new URLSearchParams(location.search), frame = params.get('frame') ?? '4';
   const [remember, setRemember] = useState(false);
+  const [invitationError, setInvitationError] = useState<unknown>();
   const record = (kind: string, value?: unknown) => {document.documentElement.dataset.accountAction = JSON.stringify({kind, value});};
+  if (frame === '12') return <LocalInvitationForm serverName="Portico demo" inviter="Demo" libraries={['Movies', 'TV Shows', 'Anime']}
+    initialValues={{name: 'Nana', username: 'nana_r', password: 'Guest-pass1!', confirmation: 'Guest-pass1!'}} error={invitationError}
+    onJoin={(username, password, name) => {record('join-local', {username, password, name}); if (params.get('error') === 'taken') setInvitationError({code: 'username_taken'});}} onBack={() => record('back')} />;
   if (frame === '13') return <ServerProfiles serverName="Portico demo" profiles={profiles} onSelect={value => record('profile', value.id)} onSwitchServer={() => record('servers')} autoFocusId={innerWidth > 700 ? 'alex' : undefined} />;
   if (frame === '14') return <ServerProfilePIN serverName="Portico demo" profile={profiles[1]} remember={remember} onRememberChange={setRemember} error
     onComplete={value => record('pin', value)} onOtherProfiles={() => record('profiles')} onForgotPIN={() => record('forgot-pin')} onSwitchServer={() => record('servers')} />;

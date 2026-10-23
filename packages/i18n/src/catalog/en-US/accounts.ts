@@ -53,6 +53,11 @@ export const accountMessages = {
   'accounts.profiles.open': 'Open {profile}',
   'accounts.profiles.retry': 'Try again',
   'accounts.servers.title': 'Your servers',
+  // Auth 12: the server's own Local invitation form.
+  'accounts.invitation.to': 'You’ve been invited to',
+  'accounts.invitation.localBody': 'Choose a username and password to create your account.',
+  'accounts.invitation.invitedYou': 'invited you',
+  'accounts.password.good': 'Good',
   'accounts.move.oldPasswordAction': 'Use your old username and password',
   'accounts.move.oldSignIn': 'Your old sign-in',
   'accounts.move.oldSignInBody': 'The username and password you used on {server}.',

@@ -16,7 +16,7 @@
 .form { display: flex; flex-direction: column; }
 .form > [data-variant="auth"] { margin-bottom: 16px; }
 .form label { line-height: normal; }
-.form input[type="password"] { font-size: 20px; letter-spacing: .14em; }
+.form [data-variant="auth"] input[type="password"] { font-size: 20px; letter-spacing: .14em; }
 .form input { caret-color: var(--color-accent-strong); }
 .form > [data-variant="auth"]:has(input[data-filled]) > div { background: rgba(64,159,212,.13); }
 .form input:-webkit-autofill { box-shadow: 0 0 0 1000px var(--color-raised-high) inset; -webkit-text-fill-color: var(--color-text); }
@@ -65,6 +65,23 @@
 .recovery form { display: flex; flex-direction: column; gap: 18px; }
 .recovery > label { color: var(--color-text-secondary); font-size: 13px; font-weight: 700; }
 .recovery .recoveryQuiet { font-size: 13px; color: var(--color-text-tertiary); text-align: center; }
+/* Auth 12: actual invitation facts, with no guessed library-kind artwork. */
+.invitationContent { width: 480px; }
+.invitedBy { display: flex; align-items: center; gap: 12px; margin: -10px 0 26px; font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); }
+.invitedBy b { color: var(--color-text-secondary); }
+.inviterAvatar { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--color-text); background: linear-gradient(135deg,#2f86bb,#153749); }
+.invitationGap { display: inline-block; width: 12px; }
+.invitationForm label { display: flex; align-items: baseline; gap: 10px; }
+.invitationForm label small { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--color-text-tertiary); }
+.invitationPair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+.invitationPair > * { min-width: 0; }
+.passwordStrength { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; line-height: normal; font-weight: 700; color: var(--color-healthy); }
+.passwordStrength i { flex: none; width: 40px; height: 4px; border-radius: 2px; background: var(--color-line-strong); }
+.passwordStrength [data-on] { background: var(--color-healthy); }
+.passwordStrength span { margin-left: 6px; }
+.passwordStrength[data-level="0"], .passwordStrength[data-level="1"] { color: var(--color-danger); }
+.passwordStrength[data-level="0"] [data-on], .passwordStrength[data-level="1"] [data-on] { background: var(--color-danger); }
+.invitationSubmit { width: 100%; margin-top: 6px; }
 @media (max-width: 700px) {
   .hasPhoneBackdrop .standardBackdrop { display: none; }
   .phoneBackdrop { display: block; }
