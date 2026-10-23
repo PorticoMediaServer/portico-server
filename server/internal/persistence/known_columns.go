@@ -2545,6 +2545,9 @@ library_scan_policies.tier
 library_scan_policies.trickplay_interval_seconds
 library_scan_policies.trickplay_max_tiles
 library_scan_policies.trickplay_tile_width
+library_sonic_settings.enabled
+library_sonic_settings.library_id
+library_sonic_settings.revision
 library_sources.changes_pruned_sequence
 library_sources.classification
 library_sources.configured_root
@@ -3402,6 +3405,15 @@ music_match_observations.margin
 music_match_observations.provider_error
 music_match_observations.query_digest
 music_match_observations.strong_signals
+music_sonic_embeddings.dimensions
+music_sonic_embeddings.model_id
+music_sonic_embeddings.model_sha256
+music_sonic_embeddings.model_version
+music_sonic_embeddings.result_id
+music_sonic_embeddings.vector
+music_sonic_tags.result_id
+music_sonic_tags.score
+music_sonic_tags.tag_index
 music_technical_facts.asset_id
 music_technical_facts.bit_depth
 music_technical_facts.channels
