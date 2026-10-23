@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -122,7 +123,13 @@ func (p Policy) DSN(path string) (string, error) {
 	values.Add("_pragma", "temp_store(MEMORY)")
 	values.Add("_pragma", fmt.Sprintf("cache_size(-%d)", p.CacheSizeKiB))
 	values.Add("_pragma", fmt.Sprintf("mmap_size(%d)", p.MmapSizeBytes))
-	return "file:" + path + "?" + values.Encode(), nil
+	return sqliteFileURI(path) + "?" + values.Encode(), nil
+}
+
+// sqliteFileURI treats path as a literal filename, including any %, ? or #.
+// Escape only the path; the driver's separately encoded policy query follows it.
+func sqliteFileURI(path string) string {
+	return "file:" + (&url.URL{Path: filepath.ToSlash(path)}).EscapedPath()
 }
 
 // writerWALAutocheckpoint is the writer connection's automatic checkpoint, in
@@ -138,7 +145,8 @@ func (p Policy) WriterDSN(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.Replace(dsn, url.QueryEscape(fmt.Sprintf("wal_autocheckpoint(%d)", p.WALAutocheckpoint)), url.QueryEscape(fmt.Sprintf("wal_autocheckpoint(%d)", writerWALAutocheckpoint)), 1), nil
+	filename, query, _ := strings.Cut(dsn, "?")
+	return filename + "?" + strings.Replace(query, url.QueryEscape(fmt.Sprintf("wal_autocheckpoint(%d)", p.WALAutocheckpoint)), url.QueryEscape(fmt.Sprintf("wal_autocheckpoint(%d)", writerWALAutocheckpoint)), 1), nil
 }
 
 // RuntimePragmas is the same set as statements. It is executed once after open

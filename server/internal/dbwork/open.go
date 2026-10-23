@@ -57,7 +57,7 @@ func OpenHandle(path string, policy Policy) (*sql.DB, error) {
 		// Establish the file format once, before WAL creates the header. It is
 		// intentionally absent from the DSN: repeated assignments on existing
 		// connections can mutate the file being preserved for restore rollback.
-		initial, err := sql.Open("sqlite", path)
+		initial, err := sql.Open("sqlite", sqliteFileURI(path))
 		if err != nil {
 			return nil, err
 		}
