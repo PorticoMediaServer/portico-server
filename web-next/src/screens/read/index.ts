@@ -10,7 +10,7 @@ export {ReadBookHero, ReadBookFacts, ReadBookSections} from '../../kit/reader/Re
 export type {ReadBookHeroProps, ReadDetailFact} from '../../kit/reader/ReadBookHero';
 export {ReaderSurface} from './ReaderSurface';
 export type {ReaderSurfaceProps} from './ReaderSurface';
-export type {ReaderMountAuthority} from './mount';
+export type {ReaderHostController, ReaderMountAuthority} from './mount';
 export {ReadReader} from './ReadReader';
 export type {ReadReaderProps, ReaderChromePresentation} from './ReadReader';
 export {ReaderDisplayControls, ReaderDisplayPopover, ReaderDisplaySheet, ReaderDisplaySidePanel} from '../../kit/reader/ReaderDisplay';
@@ -20,3 +20,5 @@ export {loadReadFonts} from './fonts';
 export type {ReadFonts} from './fonts';
 export {loadReadPagePreview} from './preview';
 export type {ReadPagePreview, ReadPagePreviewOptions} from './preview';
+export {bindReadPreferences} from './preferences';
+export type {ReadPreferenceSource, ReadPreferenceBinding} from './preferences';

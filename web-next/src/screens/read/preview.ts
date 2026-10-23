@@ -1,9 +1,9 @@
-import {ReaderError, type ReaderController} from '@portico/reader-core';
-import type {ReaderMountAuthority} from './mount';
+import {ReaderError} from '@portico/reader-core';
+import type {ReaderHostController, ReaderMountAuthority} from './mount';
 
 export type ReadPagePreview = Readonly<{url: string; width: number; height: number; dispose: () => void}>;
 export type ReadPagePreviewOptions<P extends object> = Readonly<{
-  controller: ReaderController<P>; index: number; width: number;
+  controller: ReaderHostController<P>; index: number; width: number;
   authority: ReaderMountAuthority; signal: AbortSignal;
 }>;
 

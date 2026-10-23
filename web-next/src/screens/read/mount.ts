@@ -5,8 +5,11 @@ export type ReaderMountAuthority = Readonly<{
   /** The existing viewer/origin lifetime supplies its real retirement event. */
   subscribe: (listener: () => void) => (() => void);
 }>;
+/** Public session methods only: the canonical Reading facade deliberately
+ * omits the low-level preference updater and the controller's private fields. */
+export type ReaderHostController<P extends object> = Omit<ReaderController<P>, 'updatePreferences'>;
 export type ReaderSurfaceMountOptions<P extends object> = Readonly<{
-  controller: ReaderController<P>; source: ReaderSource; format: ReaderFormat; initialLocation?: ReaderLocation;
+  controller: ReaderHostController<P>; source: ReaderSource; format: ReaderFormat; initialLocation?: ReaderLocation;
   /** Actual manifest identity; an omitted author stays omitted in the engine and chrome. */
   metadata?: ReaderMetadata;
   authority: ReaderMountAuthority; container: HTMLElement;
