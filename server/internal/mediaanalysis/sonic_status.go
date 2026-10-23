@@ -45,7 +45,7 @@ func (s *Service) SonicStatus(ctx context.Context, library string, at time.Time,
 		return out, err
 	}
 	out.PolicyAllows = policy.Allows(catalog.SonicOperation)
-	out.Runtime = s.options.Sonic.Availability()
+	out.Runtime = s.sonicRuntime().Availability()
 	if out.Work, err = workpolicy.ReadHeavyWorkTx(ctx, tx, "analysis", at); err != nil {
 		return out, err
 	}
