@@ -17,3 +17,30 @@ AVX2 and ARM64. A missing library/model or failed child is an explicit Sonic
 unavailable state; the server keeps working and genre discovery remains usable.
 
 Runtime source/licence: https://github.com/microsoft/onnxruntime/tree/v1.20.1
+
+The offline source build uses these separate inputs:
+
+1. Stage the exact original publisher wheel with
+   `scripts/prepare-musicnn-model.py CHECKPOINT --wheel WHEEL`.
+2. In CPython3.11.11 with `third_party/musicnn/requirements-export.txt`, run
+   `scripts/export-musicnn-onnx.py CHECKPOINT MODEL_DIRECTORY`. Conversion checks
+   numeric parity against the original saved graph and refuses to publish a
+   model whose bytes differ from the checked model lock.
+3. Stage the original runtime SDK with
+   `scripts/prepare-sonic-runtime.py SDK --archive ARCHIVE --target linux-x64`.
+4. Configure/build this directory using that absolute SDK path, then install the
+   helper. The deployment closure also needs the verified runtime shared library,
+   its original MIT licence and third-party notices, plus the converted model
+   directory and its original ISC licence. Compilation alone is insufficient.
+
+The server resolves the helper beside FFmpeg and the model in its sibling
+`musicnn-mtt` directory. Explicit installation paths use `PORTICO_SONIC_HELPER`
+and `PORTICO_SONIC_MODEL_DIRECTORY`; extra runtime libraries use
+`PORTICO_SONIC_LIBRARIES`. These operator paths are never recording inputs.
+Missing installations leave ordinary playback and genre discovery available.
+
+Conformance jobs supply `PORTICO_SONIC_HELPER_TEST` and
+`PORTICO_SONIC_MODEL_TEST` for actual supervised inference/cancellation tests.
+The media-tier `TestSonicActualConfinedCueDecodeAndSingleAllocation` additionally
+uses the real FFmpeg range decoder. It tests source/decoder/model composition;
+it is separate from the owner/job publication and discovery contracts.
