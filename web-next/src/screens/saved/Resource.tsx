@@ -6,7 +6,7 @@ import type {SavedIntent} from '@core/saved.ts';
 import {historyPeriods} from '@core/saved.ts';
 import {shapeFor, shapeAspect} from '@core/presentation/card-shape.ts';
 import {Artwork, CoverMosaic, type ArtworkSource} from '../../kit/artwork';
-import {Button, Select, Switch, TextField} from '../../kit/controls';
+import {Button, Select, Switch} from '../../kit/controls';
 import {ViewToggle} from '../../kit/browse';
 import {Dialog, Menu} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
@@ -19,6 +19,8 @@ import {SavedSection} from './Saved';
 import {sameSavedRoute} from './route.ts';
 import {playlistRemovalUndo, type PlaylistRemovalUndo} from './removal.ts';
 import {RemovalUndo} from './RemovalUndo';
+import {ResourceFields} from './ResourceFields';
+import {SavedDialog} from './SavedDialog';
 import {personalEntriesWindow} from './window.ts';
 import styles from './saved.module.css';
 
@@ -96,14 +98,14 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
       if (Date.now() >= value.until) return;
       perform({action: 'restore', undoToken: value.token}, {action: 'entries', undoToken: value.token}, clearUndo);
     }} />
-    <Dialog open={!!dialog} onOpenChange={open => { if (!open && !busy) setDialog(undefined); }} title={dialog === 'rename' ? renameTitle : t('web.saved.deleteTitle', {name: nameShown ?? ''})} initialFocusRef={dialog === 'rename' ? nameInput : cancel}
+    <SavedDialog busy={busy} open={!!dialog} onOpenChange={open => { if (!open && !busy) setDialog(undefined); }} title={dialog === 'rename' ? renameTitle : t('web.saved.deleteTitle', {name: nameShown ?? ''})} initialFocusRef={dialog === 'rename' ? nameInput : cancel}
       description={dialog === 'delete' ? t(kind === 'playlist' ? 'web.saved.deletePlaylistBody' : kind === 'view' ? 'web.saved.deleteViewBody' : 'web.saved.deleteCollectionBody') : undefined}
       footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setDialog(undefined)}>{t('action.cancel')}</Button><Button variant="primary" className={dialog === 'delete' ? styles.destructive : undefined} size="small" loading={busy} disabled={dialog === 'rename' && !name.trim()} onClick={() => {
         if (dialog === 'rename') perform({action: 'rename', name: name.trim(), ...(actions.includes('summary') ? {summary} : {})}, {action: 'update', name: name.trim(), summary}, () => setDialog(undefined));
         else perform({action: 'delete'}, {action: 'delete'}, () => effects.selectRoute({view: kind === 'playlist' ? 'playlists' : kind === 'view' ? 'views' : 'collections'}));
       }}>{t(dialog === 'rename' ? 'action.save' : kind === 'playlist' ? 'web.saved.deletePlaylistAction' : kind === 'view' ? 'web.saved.deleteViewAction' : 'web.saved.deleteCollectionAction')}</Button></>}>
-      {dialog === 'rename' && <><TextField ref={nameInput} label={t('lib.saveViewName')} value={name} disabled={busy} onChange={event => setName(event.currentTarget.value)} /><TextField label={t('web.saved.summary')} value={summary} disabled={busy} onChange={event => setSummary(event.currentTarget.value)} /></>}
-    </Dialog>
+      {dialog === 'rename' && <ResourceFields nameRef={nameInput} name={name} summary={summary} onNameChange={setName} onSummaryChange={setSummary} nameMaxLength={isPlaylist ? 200 : 400} summaryMaxLength={isPlaylist ? 4000 : 8000} disabled={busy} summaryDisabled={isPlaylist && !actions.includes('summary')} />}
+    </SavedDialog>
   </main>;
 }
 

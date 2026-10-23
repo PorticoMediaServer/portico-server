@@ -47,6 +47,18 @@ try {
   await dialog.waitFor({state: 'visible'});
   await dialog.getByRole('button', {name: 'Close', exact: true}).last().click();
   await dialog.waitFor({state: 'hidden'});
+  await page.evaluate(() => window.savedDownloadsComponentProof.mountDraftFields());
+  const draft = page.getByRole('dialog', {name: 'New playlist', exact: true});
+  await draft.waitFor({state: 'visible'});
+  await page.getByLabel('Name', {exact: true}).fill('Rainy day films');
+  assert.equal(await draft.getByRole('button', {name: 'Create', exact: true}).isDisabled(), true, 'there is no captured writer in a fields-only proof');
+  await page.evaluate(async () => { await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))); });
+  const fields = page.locator('[data-saved-resource-fields]');
+  const fieldsBounds = await fields.boundingBox();
+  await fields.screenshot({path: join(process.env.PORTICO_RUNNER_OUTPUT, 'resource-draft-fields.jpg'), type: 'jpeg', quality: 95, caret: 'initial'});
+  await draft.screenshot({path: join(process.env.PORTICO_RUNNER_OUTPUT, 'resource-draft-context.jpg'), type: 'jpeg', quality: 95, caret: 'initial'});
+  await draft.getByRole('button', {name: 'Cancel', exact: true}).click();
+  await draft.waitFor({state: 'hidden'});
   await page.evaluate(() => window.savedDownloadsComponentProof.dispose());
-  console.log(JSON.stringify({kind: 'COMPONENT ONLY; no application/native acceptance', node: process.version, actualTransportResponses: responses, observations, retryAndClose: true}));
+  console.log(JSON.stringify({kind: 'COMPONENT ONLY; no application/native acceptance', node: process.version, actualTransportResponses: responses, observations, retryAndClose: true, fieldsOnly: {fieldsBounds, actualUserEntry: 'Rainy day films', summary: '', writerAvailable: false, cancel: true}}));
 } finally { await browser?.close(); await server.close(); }

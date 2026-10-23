@@ -6,9 +6,8 @@ import type {PersonalResource, PersonalResourceEntry, PersonalSavedService} from
 import {serverTextLabel} from '@core/presentation/server-text.ts';
 import {shapeFor} from '@core/presentation/card-shape.ts';
 import {dependsOn} from '@core/freshness-hub.ts';
-import {Button, Select, Tabs, TextField, Switch} from '../../kit/controls';
+import {Button, Select, Tabs, Switch} from '../../kit/controls';
 import {ViewToggle} from '../../kit/browse';
-import {Dialog} from '../../kit/overlays';
 import {PlaylistMosaic, PosterCard, SquareCard, NewPlaylistCard, type CardSelection} from '../../kit/cards';
 import {AmbientArt, type AmbientArtSource, type ArtworkSource} from '../../kit/artwork';
 import {WindowedGrid} from '../../kit/layout';
@@ -23,6 +22,8 @@ import type {SavedRuntime, SavedScreenRoute} from './runtime.ts';
 import {savedSectionWindow} from './window.ts';
 import {savedText as s} from './text.ts';
 import {SavedHistory, SavedResourceScreen} from './Resource';
+import {ResourceFields} from './ResourceFields';
+import {SavedDialog} from './SavedDialog';
 import type {SavedOperations} from './operations.ts';
 import {sameSavedRoute, savedViewKey} from './route.ts';
 import {useSavedViewOperations} from './use-view-operations.ts';
@@ -213,21 +214,21 @@ function PersonalResourceTile({resource, bindings}: {resource: PersonalResource;
 }
 
 function CreateResourceDialog({kind, bindings, close}: {kind: 'playlist' | 'collection' | undefined; bindings: SavedViewBindings; close: () => void}) {
-  const [name, setName] = useState(''), [shared, setShared] = useState(false), [busy, setBusy] = useState(false);
+  const [name, setName] = useState(''), [summary, setSummary] = useState(''), [shared, setShared] = useState(false), [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => { setName(''); setShared(false); }, [kind]);
+  useEffect(() => { setName(''); setSummary(''); setShared(false); }, [kind]);
   const create = () => {
     if (!kind || busy || !name.trim() || !bindings.operations.current) return;
     setBusy(true);
     void bindings.operations.run(async () => {
-      if (kind === 'playlist') await bindings.runtime.saved.mutate({action: 'create', name: name.trim()});
-      else if (!await bindings.runtime.personal.mutate({action: 'create', kind: 'collection', name: name.trim(), visibility: shared ? 'server' : 'private'})) throw bindings.runtime.personal.getSnapshot().mutationError;
+      if (kind === 'playlist') await bindings.runtime.saved.mutate({action: 'create', name: name.trim(), summary});
+      else if (!await bindings.runtime.personal.mutate({action: 'create', kind: 'collection', name: name.trim(), summary, visibility: shared ? 'server' : 'private'})) throw bindings.runtime.personal.getSnapshot().mutationError;
     }, () => { setBusy(false); close(); }).catch(error => { setBusy(false); bindings.effects.reportError(error); });
   };
-  return <Dialog open={!!kind} onOpenChange={open => { if (!open && !busy) close(); }} title={t(kind === 'collection' ? 'web.saved.newCollection' : 'web.saved.newPlaylist')} initialFocusRef={input}
+  return <SavedDialog busy={busy} open={!!kind} onOpenChange={open => { if (!open && !busy) close(); }} title={t(kind === 'collection' ? 'web.saved.newCollection' : 'web.saved.newPlaylist')} initialFocusRef={input}
     footer={<><Button size="small" disabled={busy} onClick={close}>{t('action.cancel')}</Button><Button size="small" variant="primary" loading={busy} disabled={!name.trim()} onClick={create}>{t('web.saved.create')}</Button></>}>
-    <form onSubmit={event => { event.preventDefault(); create(); }}><TextField ref={input} label={t('lib.saveViewName')} value={name} maxLength={kind === 'collection' ? 400 : 200} disabled={busy} onChange={event => setName(event.currentTarget.value)} />
-      {kind === 'collection' && <label className={styles.visibility}><span>{t('web.saved.visibleToAll')}</span><Switch checked={shared} disabled={busy} onCheckedChange={setShared} /></label>}
+    <form onSubmit={event => { event.preventDefault(); create(); }}><ResourceFields nameRef={input} name={name} summary={summary} onNameChange={setName} onSummaryChange={setSummary} nameMaxLength={kind === 'collection' ? 400 : 200} summaryMaxLength={kind === 'collection' ? 8000 : 4000} disabled={busy} />
+      {kind === 'collection' && <><label className={styles.visibility}><span>{t('web.saved.visibleToAll')}</span><Switch checked={shared} disabled={busy} onCheckedChange={setShared} /></label><p className={styles.visibilityHelp}>{t(shared ? 'web.saved.sharedHelp' : 'web.saved.privateHelp')}</p></>}
     </form>
-  </Dialog>;
+  </SavedDialog>;
 }

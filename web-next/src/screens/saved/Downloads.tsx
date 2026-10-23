@@ -12,6 +12,7 @@ import {diskFractions, downloadShape, localDownloadGroups, localGroupPercent, me
 import type {SavedOperations} from './operations.ts';
 import type {SaveReadyPreparation} from './ready-downloads.ts';
 import {savedText as s} from './text.ts';
+import {SavedDialog} from './SavedDialog';
 import styles from './saved.module.css';
 
 const t = defaultI18n.t;
@@ -254,10 +255,10 @@ export function ServerDownloads({service, operations, effects, artwork, online, 
     <div className={styles.downloadHeading}><h2>{embedded ? t('downloads.onServer') : s('next.saved.prepared')}</h2>{!embedded && snapshot.usage && <span>{t('web.downloads.usage', {size: defaultI18n.bytes(snapshot.usage.profileBytes)})}</span>}</div>
     {!embedded && <p className={styles.browserNote}><Icon name="i-info" size={18} />{s('next.saved.browserNote')}</p>}
     {snapshot.phase === 'ready' && !snapshot.items.length && !snapshot.requests.length && !embedded && <StateView title={t('web.downloads.emptyTitle')} body={t('web.downloads.emptyBody')} />}
-    <Dialog width={380} className={styles.downloadFailure} showCloseButton={false} open={!embedded && snapshot.phase === 'error' && snapshot !== dismissedFailure} onOpenChange={open => { if (!open) setDismissedFailure(snapshot); }} title={s('next.saved.loadFailed')} description={s('next.saved.loadFailedBody')}
+    <SavedDialog width={380} open={!embedded && snapshot.phase === 'error' && snapshot !== dismissedFailure} onOpenChange={open => { if (!open) setDismissedFailure(snapshot); }} title={s('next.saved.loadFailed')} description={s('next.saved.loadFailedBody')}
       footer={<><Button size="small" onClick={() => setDismissedFailure(snapshot)}>{t('action.close')}</Button><Button size="small" variant="primary" disabled={!online} onClick={() => { setDismissedFailure(snapshot); void service.refresh(); }}>{t('action.tryAgain')}</Button></>}>
-      <Button variant="icon" size="small" iconOnly className={styles.downloadFailureClose} aria-label={t('action.close')} onClick={() => setDismissedFailure(snapshot)}><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" d="M6 6l12 12M18 6 6 18" /></svg></Button>
-    </Dialog>
+      <Fragment />
+    </SavedDialog>
     <div className={styles.downloadList} role="list">{snapshot.items.map(item => <div key={item.id} className={styles.downloadRow} role="listitem">
       <span className={styles.art} data-shape={downloadShape(item.title)}><Artwork source={artwork(item)} alt="" /></span>
       <div className={styles.title}><b>{item.title.title}</b><DownloadFacts title={item.title} quality={item.quality === 'original' ? t('web.downloads.original') : qualities.get(item.quality)} bytes={item.artifact.bytes} browser /></div>

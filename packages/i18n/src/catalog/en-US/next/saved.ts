@@ -1,5 +1,6 @@
 /** collections.html 34–36, desktop-app.html f7 and their drawn state frames. */
 export const savedMessages = {
+  'next.saved.optional': 'Optional',
   'next.saved.sections': 'Saved sections',
   'next.saved.removedPlaylist': 'Removed “{title}” from the playlist.',
   'next.saved.savedViewsCount': '{count, plural, one {# saved view} other {# saved views}}',
