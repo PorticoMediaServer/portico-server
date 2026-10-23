@@ -33,6 +33,7 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
   } : undefined, [runtime, binding]);
   const expanded = !!snapshot?.dock.local?.expanded;
   const activeVideo = snapshot?.presentation?.kind === 'video' && !!snapshot.dock.local && !snapshot.dock.remote;
+  const nativeVideoActive = snapshot?.nativeVideoSurfaceActive === true && activeVideo && !snapshot.presentation?.finished;
   const [notice, setNotice] = useState<{runtime: WebShellPlaybackRuntime; value: DockNoticeData} | null>(null), [now, setNow] = useState(() => performance.now());
   const previous = useRef<{runtime?: WebShellPlaybackRuntime; audio?: string; video?: string}>({});
   const leaving = useRef<string | undefined>(undefined);
@@ -81,8 +82,8 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
   return <div className={styles.dock} data-phone={phone} data-shell-dock>
     {snapshot && dockBinding && <><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} />
       <DockNotice notice={currentNotice} nowMs={now} binding={dockBinding} phone={phone} /></>}
-    <div ref={expandedSlot} className={styles.expandedSlot} hidden={!expanded || !activeVideo} data-foundation-media-host />
-    <MediaSurface finished={snapshot?.presentation?.finished} expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} className={styles.surface}>
+    <div ref={expandedSlot} className={styles.expandedSlot} hidden={!expanded || !activeVideo} data-foundation-media-host data-media-slot="expanded" data-native-video-active={expanded && nativeVideoActive || undefined} />
+    <MediaSurface finished={snapshot?.presentation?.finished} expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} nativeRenderActive={nativeVideoActive} className={styles.surface}>
       <video ref={video} controls={expanded} playsInline preload="none" aria-label={playbackIdentityLabel(presentations, snapshot?.fence && fenceKey(snapshot.fence))} />
     </MediaSurface>
     {expanded && <Button variant="glass" size="compact" icon="i-down" iconOnly className={styles.collapse} aria-label={defaultI18n.t('next.home.shell.collapsePlayer')} onClick={collapse} />}

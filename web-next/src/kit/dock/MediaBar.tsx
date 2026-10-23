@@ -63,7 +63,7 @@ export function MediaBar(props: DockRendererProps) {
   return <>
     <span ref={menuAnchor} className={styles.menuAnchor} style={style} aria-hidden="true" />
     {held && <div className={styles.phoneScrim} onClick={() => setHeld(false)} />}
-    <section ref={root} className={[styles.phoneBar, held && styles.held, className].filter(Boolean).join(' ')} data-mode={view.mode} data-holding={holding || undefined} aria-label={t('next.dock.nowPlaying')} style={style}
+    <section ref={root} className={[styles.phoneBar, held && styles.held, className].filter(Boolean).join(' ')} data-mode={view.mode} data-native-underlay-branch="dock" data-holding={holding || undefined} aria-label={t('next.dock.nowPlaying')} style={style}
       onPointerDown={down} onPointerMove={move} onPointerUp={event => release(event)} onPointerCancel={event => release(event, true)}
       onClickCapture={event => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}
       onContextMenu={event => { event.preventDefault(); clearHold(); setHeld(true); }}>
