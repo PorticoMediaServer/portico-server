@@ -254,7 +254,7 @@ export function ServerDownloads({service, operations, effects, artwork, online, 
     <div className={styles.downloadHeading}><h2>{embedded ? t('downloads.onServer') : s('next.saved.prepared')}</h2>{!embedded && snapshot.usage && <span>{t('web.downloads.usage', {size: defaultI18n.bytes(snapshot.usage.profileBytes)})}</span>}</div>
     {!embedded && <p className={styles.browserNote}><Icon name="i-info" size={18} />{s('next.saved.browserNote')}</p>}
     {snapshot.phase === 'ready' && !snapshot.items.length && !snapshot.requests.length && !embedded && <StateView title={t('web.downloads.emptyTitle')} body={t('web.downloads.emptyBody')} />}
-    <Dialog open={!embedded && snapshot.phase === 'error' && snapshot !== dismissedFailure} onOpenChange={open => { if (!open) setDismissedFailure(snapshot); }} title={s('next.saved.loadFailed')} description={s('next.saved.loadFailedBody')}
+    <Dialog width={380} className={styles.downloadFailure} open={!embedded && snapshot.phase === 'error' && snapshot !== dismissedFailure} onOpenChange={open => { if (!open) setDismissedFailure(snapshot); }} title={s('next.saved.loadFailed')} description={s('next.saved.loadFailedBody')}
       footer={<><Button size="small" onClick={() => setDismissedFailure(snapshot)}>{t('action.close')}</Button><Button size="small" variant="primary" disabled={!online} onClick={() => { setDismissedFailure(snapshot); void service.refresh(); }}>{t('action.tryAgain')}</Button></>}><Fragment /></Dialog>
     <div className={styles.downloadList} role="list">{snapshot.items.map(item => <div key={item.id} className={styles.downloadRow} role="listitem">
       <span className={styles.art} data-shape={downloadShape(item.title)}><Artwork source={artwork(item)} alt="" /></span>

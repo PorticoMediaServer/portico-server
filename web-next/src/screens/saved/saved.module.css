@@ -1,4 +1,10 @@
 .page { position: relative; min-height: 100dvh; padding-bottom: 72px; }
+/* collections.html 35f: compact Downloads failure dialog. */
+.downloadFailure.downloadFailure { padding: 24px 24px 20px; }
+.downloadFailure > header > h2 { margin-bottom: 4px; font-size: 21px; }
+.downloadFailure > p { font-size: 14px; }
+.downloadFailure > header > button > svg { width: 18px; height: 18px; }
+.downloadFailure > footer > button { padding: 0 16px; font-size: 14px; }
 .wash { position: absolute; inset: 0 0 auto; height: 640px; pointer-events: none; overflow: hidden; mask-image: linear-gradient(180deg, var(--color-ink) 20%, transparent); }
 .wash > * { width: 100%; height: 100%; }
 .toolbar { position: relative; z-index: var(--layer-content); display: flex; align-items: center; gap: 8px; padding: 22px var(--shell-gutter, var(--gutter-desktop)) 0; }

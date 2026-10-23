@@ -28,6 +28,9 @@ try {
     await document.fonts.ready;
     await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})));
   });
+  // The reference is a pointer state. Preserve the real keyboard focus ring,
+  // and enter pointer modality through an actual non-action dialog click.
+  await dialog.getByRole('heading', {name: 'Couldn’t load Downloads'}).click();
   assert.ok(responses.some(response => response.status >= 500), 'the real failed read must reach the service');
   const observations = await dialog.evaluate(element => {
     const bounds = element.getBoundingClientRect();
