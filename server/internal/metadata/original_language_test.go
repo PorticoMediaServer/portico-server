@@ -38,7 +38,15 @@ func TestOriginalLanguagePublicationReachesDetailWithoutOwnerLanguageOverride(t 
 				}
 			}
 			// The editor's different metadata language cannot supply this fact.
-			publicationExec(t, db, `UPDATE catalog_item_details SET metadata_language='fr' WHERE entity_id=?`, item.ID)
+			target := RepairTarget{Kind: "item", ID: item.Public}
+			state, editErr := s.RepairState(context.Background(), target, allowAll)
+			if editErr != nil {
+				t.Fatal(editErr)
+			}
+			preference := "fr"
+			if _, editErr = s.Repair(context.Background(), target, RepairCommand{ExpectedRevision: state.Revision, Action: "edit", Fields: map[string]RepairFieldEdit{"metadataLanguage": {Value: &preference}}}, editorActor(), allowAll); editErr != nil {
+				t.Fatal(editErr)
+			}
 			if got, err = metadatalanguage.Published(context.Background(), db, item.Public); err != nil || got != want {
 				t.Fatal("editor preference affected original language", got, err)
 			}
