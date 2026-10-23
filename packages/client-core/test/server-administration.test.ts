@@ -7,9 +7,21 @@ import {
  parseMemberDeletionPreview,previewMemberDeletion,deleteMember,
 } from '../src/server-administration.ts';
 
-const limits={accessTokens:true,maxProfiles:8,allowRemote:true,conversion:'server',maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
+const limits={accessTokens:true,maxProfiles:8,allowRemote:true,conversion:'server',maxStreams:1,maxStreamsMode:'limit',remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
  schedule:{timezone:'UTC',windows:[{days:[1,3],startMinute:600,endMinute:780}]},
  channelPolicy:{mode:'deny',channels:['news']},tagPolicy:{deniedLabels:['Spoilers']}};
+
+test('stream intent and server ceiling facts remain distinct at the client boundary', () => {
+ for (const maxStreamsMode of ['inherit','unlimited','limit']) {
+  const maxStreams=maxStreamsMode==='limit'?3:0;
+  const parsed=parseMemberLimits({...limits,maxStreamsMode,maxStreams});
+  assert.equal(parsed.maxStreamsMode,maxStreamsMode);assert.equal(parsed.maxStreams,maxStreams);
+ }
+ for (const patch of [{maxStreamsMode:'automatic',maxStreams:0},{maxStreamsMode:'limit',maxStreams:0},{maxStreamsMode:'unlimited',maxStreams:3}]) assert.throws(()=>parseMemberLimits({...limits,...patch}));
+ const document=parseLimitsDocument({accountId:'member',revision:1,limits:{...limits,maxStreamsMode:'unlimited',maxStreams:0},serverMaxStreams:2,effectiveMaxStreams:2});
+ assert.equal(document.serverMaxStreams,2);assert.equal(document.effectiveMaxStreams,2);assert.equal(document.limits.maxStreamsMode,'unlimited');
+ assert.throws(()=>parseLimitsDocument({accountId:'member',revision:1,limits:{...limits,maxStreamsMode:'inherit',maxStreams:0},serverMaxStreams:-1,effectiveMaxStreams:2}));
+});
 
 test('member limits round-trip, with the rating kept as the server stored it', () => {
  const parsed = parseMemberLimits(limits);
@@ -36,7 +48,7 @@ test('member limits round-trip, with the rating kept as the server stored it', (
 });
 
 test('a limits document is pinned to the account it was read for', () => {
-  const document = parseLimitsDocument({accountId: 'member', revision: 3, updatedAt: '2026-09-16T12:00:00Z', limits}, 'member');
+  const document = parseLimitsDocument({accountId: 'member', revision: 3, updatedAt: '2026-09-16T12:00:00Z', limits,serverMaxStreams:null,effectiveMaxStreams:1}, 'member');
   assert.equal(document.revision, 3);
   assert.equal(document.updatedAt, '2026-09-16T12:00:00Z');
   assert.throws(() => parseLimitsDocument({accountId: 'other', revision: 1, limits}, 'member'));
@@ -45,11 +57,11 @@ test('a limits document is pinned to the account it was read for', () => {
 
 test('a member carries its tier and both revisions', () => {
   const member = parseAccessMember({accountId: 'a', username: 'ada', profileId: 'p', role: 'admin', disabled: false,
-    revision: 2, allowedLibraries: ['lib'], limitsRevision: 1, limits});
+    revision: 2, allowedLibraries: ['lib'], limitsRevision: 1, limits,serverMaxStreams:null,effectiveMaxStreams:1});
   assert.equal(member.role, 'admin');
   assert.equal(member.limitsRevision, 1);
   assert.throws(() => parseAccessMember({accountId: 'a', username: 'ada', profileId: 'p', role: 'root', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits}));
-  const page = parseAccessMemberPage({limit: 25, nextCursor: 'cursor', items: [{accountId: 'a', username: 'ada', profileId: 'p', role: 'member', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits}]});
+  const page = parseAccessMemberPage({limit: 25, nextCursor: 'cursor', items: [{accountId: 'a', username: 'ada', profileId: 'p', role: 'member', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits,serverMaxStreams:null,effectiveMaxStreams:1}]});
   assert.equal(page.items.length, 1);
   assert.equal(page.nextCursor, 'cursor');
   // A page that returns more rows than it promised is a server disagreeing with
@@ -57,7 +69,7 @@ test('a member carries its tier and both revisions', () => {
   assert.throws(() => parseAccessMemberPage({limit: 0, items: []}));
 });
 test('a member page is refused whole when one member cannot be read, so nobody with access is ever missing from it', () => {
-  const member = {accountId: 'a', username: 'ada', profileId: 'p', role: 'member', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits};
+  const member = {accountId: 'a', username: 'ada', profileId: 'p', role: 'member', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits,serverMaxStreams:null,effectiveMaxStreams:1};
   const page = parseAccessMemberPage({limit: 25, nextCursor: '', futureField: 1, items: [member,
     {...member, username: 'again'}, {...member, accountId: 'f', username: 'fay', futureField: {a: 1}}]});
   assert.deepEqual(page.items.map(row => [row.accountId, row.username]), [['a', 'ada'], ['f', 'fay']]);

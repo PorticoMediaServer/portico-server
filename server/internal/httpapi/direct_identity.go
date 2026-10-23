@@ -23,6 +23,7 @@ func directBearer(r *http.Request) string {
 }
 func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 	d.accountMoveRoutes(mux)
+	d.signInPolicyRoutes(mux)
 	d.ownerResetFileRoutes(mux)
 	d.serverReturnRoutes(mux)
 	// A challenge for a Portico identity assertion: the installation asks this
