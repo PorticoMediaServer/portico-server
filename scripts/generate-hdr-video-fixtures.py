@@ -85,9 +85,21 @@ def main():
             raise ValueError(f"unexpected {name} version: {version}")
         tool_versions[name] = {"version": version, "sha256": digest(tool)}
     commands = []
+    aliases = {str(out): "${OUTPUT}", str(ROOT): "${REPO}",
+               str(args.encoder): "${ENCODER}", str(args.ffmpeg): "${FFMPEG}",
+               str(args.ffprobe): "${FFPROBE}", str(args.dovi_tool): "${DOVI_TOOL}",
+               str(args.hdr10plus_tool): "${HDR10PLUS_TOOL}"}
 
     def execute(argv):
-        commands.append([str(x) for x in argv])
+        command = []
+        for arg in argv:
+            value = str(arg)
+            for path, alias in aliases.items():
+                if value == path or value.startswith(path + "/"):
+                    value = alias + value[len(path):]
+                    break
+            command.append(value)
+        commands.append(command)
         return run(argv)
 
     def encode(name, source, transfer):
@@ -142,7 +154,7 @@ def main():
     parsed = json.loads(extracted.read_text())
     if any(metadata[k] != parsed[k] for k in ("SceneInfo", "SceneInfoSummary")):
         raise ValueError("HDR10+ metadata round-trip mismatch")
-    frame_hashes = {}
+    frame_hashes, stream_facts = {}, {}
     for path in sorted(out.glob("*.hevc")):
         if path.stat().st_size > LIMIT:
             raise ValueError("fixture exceeds 1MiB")
@@ -150,6 +162,14 @@ def main():
                                    "-of", "json", path]))["streams"]
         if len(facts) != 1 or int(facts[0]["nb_read_frames"]) != FRAMES:
             raise ValueError("fixture does not decode exactly 24 frames")
+        expected_transfer = "arib-std-b67" if path.name in ("base-hlg.hevc", "dv-8.4.hevc") else "smpte2084"
+        expected_size = (160, 90) if path.name.startswith("enhancement") else (320, 180)
+        if (facts[0].get("color_transfer") != expected_transfer or
+                (facts[0].get("width"), facts[0].get("height")) != expected_size or
+                facts[0].get("pix_fmt") != "yuv420p10le" or facts[0].get("has_b_frames", 0) <= 0):
+            raise ValueError("actual encoded picture facts differ from recipe")
+        stream_facts[path.name] = {k: facts[0][k] for k in
+                                  ("codec_name", "width", "height", "pix_fmt", "color_transfer", "has_b_frames")}
         decoded = execute([args.ffmpeg, "-v", "error", "-threads", "1", "-i", path,
                            "-map", "0:v:0", "-c:v", "rawvideo", "-f", "framemd5", "-"])
         rows = [line for line in decoded.splitlines() if line and not line.startswith("#")]
@@ -176,7 +196,7 @@ def main():
                 "metadata": "synthetically declared; not measured mastering or luminance statistics",
                 "tools": tool_versions, "dependencies": {"doviToolCommit": DOVI_COMMIT,
                 "hdr10plusToolCommit": HDR_COMMIT}, "files": files, "decodedFrameHashes": frame_hashes,
-                "commands": commands}
+                "encodedFacts": stream_facts, "commands": commands}
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(json.dumps({"passed": True, "videoFiles": len(frame_hashes), "framesEach": FRAMES,
                       "hdr10PlusFrames": len(frames), "manifestSha256": digest(out / "manifest.json")}))

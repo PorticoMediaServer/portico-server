@@ -79,7 +79,7 @@ static void author_source(const char *raw, const char *path)
     AVPacket *pkt = av_packet_alloc();
     CHECK(pkt);
     unsigned seen = 0;
-    int count = 0, ret;
+    int count = 0, ret, reordered = 0, b_frames = 0;
     while ((ret = av_read_frame(in, pkt)) >= 0) {
         CHECK(pkt->stream_index == 0 && pkt->size > 0 && pkt->size <= 1048576 && count < 24);
         uint8_t *parsed;
@@ -88,10 +88,12 @@ static void author_source(const char *raw, const char *path)
                             AV_NOPTS_VALUE, AV_NOPTS_VALUE, pkt->pos));
         CHECK(parsed_size == pkt->size && parser->output_picture_number >= 0 && parser->output_picture_number < 24);
         int poc = parser->output_picture_number;
+        reordered |= poc != count;
+        b_frames += parser->pict_type == AV_PICTURE_TYPE_B;
         CHECK(!(seen & (1U << poc)));
         seen |= 1U << poc;
         pkt->pts = poc * 3750 + (poc >= 12 ? 750 : 0);
-        pkt->dts = count * 3750 - 7500;
+        pkt->dts = count * 3750 + (count >= 12 ? 750 : 0) - 11250;
         pkt->duration = poc == 11 ? 4500 : 3750;
         CHECK(pkt->dts <= pkt->pts);
         av_packet_rescale_ts(pkt, clock90k, out->streams[0]->time_base);
@@ -99,7 +101,7 @@ static void author_source(const char *raw, const char *path)
         av_packet_unref(pkt);
         count++;
     }
-    CHECK(ret == AVERROR_EOF && count == 24 && seen == 0xffffffU);
+    CHECK(ret == AVERROR_EOF && count == 24 && seen == 0xffffffU && reordered && b_frames > 0);
     av_packet_free(&pkt);
     av_parser_close(parser);
     avcodec_free_context(&codec);
