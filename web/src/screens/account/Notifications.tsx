@@ -10,7 +10,7 @@ import {Button, Icon, Loading, Notice, SettingsGroup, SettingsRow, StateView, ty
 import styles from './Notifications.module.css';
 
 /** What a notification says: a title, a body line and its icon, from the kind and its detail. */
-export function describeNotification(n: AccountNotification, i18n: I18n): {title: string; body: string; icon: IconName; tone:'amber'|'green'|'blue'}|undefined {
+export function describeNotification(n: AccountNotification, i18n: I18n): {title: string; body: string; icon: IconName; tone?:'amber'|'green'|'blue'}|undefined {
   if(!isAccountFeedNotification(n))return;
   if(n.kind==='server_offline'&&!n.server?.name||n.kind==='new_device'&&!n.detail.name||n.kind==='account_export_ready'&&!n.detail.exportId)return;
   const {t} = i18n;
@@ -23,6 +23,7 @@ export function describeNotification(n: AccountNotification, i18n: I18n): {title
       return {title: event ? t(`web.account.notif.event.${event}` as 'web.account.notif.event.password_changed') : t('web.account.notif.security'), body: t('web.account.notif.securityBody'), icon: 'shield',tone:'blue'};
     }
     case 'account_export_ready': return {title: t('web.account.notif.exportReady'), body: t('web.account.notif.exportReadyBody'), icon: 'download',tone:'green'};
+    case 'signing_key_expiring': return {title:t('web.account.notif.keyExpiring'),body:t('web.account.notif.keyExpiringBody',{key:n.detail.keyId??'',date:n.detail.expiresAt?i18n.date(n.detail.expiresAt):''}),icon:'lock'};
   }
 }
 /** The feed uses the frame's separate short time column, never app/platform
@@ -98,8 +99,8 @@ export function Notifications({scope, onUnread}: {scope: AccountScope; onUnread:
             const d = describeNotification(n, i18n);
             if(!d)return null;
             return <div key={n.id} className={`${styles.item} ${n.read?'':styles.unread}`}>
-              <span className={`${styles.icon} ${styles[d.tone]}`}><Icon name={d.icon} size={22}/></span>
-              <div><b>{n.kind==='security_event'||n.kind==='server_offline'?<button type="button" className={styles.copyButton} onClick={()=>open(n)}>{d.title}</button>:d.title}</b><p>{d.body}</p>
+              <span className={`${styles.icon} ${d.tone?styles[d.tone]:''}`}><Icon name={d.icon} size={22}/></span>
+              <div><b>{n.kind==='security_event'||n.kind==='server_offline'||n.kind==='signing_key_expiring'?<button type="button" className={styles.copyButton} onClick={()=>open(n)}>{d.title}</button>:d.title}</b><p>{d.body}</p>
                 {n.kind==='new_device'&&<div className={styles.actions}><button className={styles.button} type="button" onClick={()=>open(n)}>{t('web.account.notif.reviewDevices')}</button></div>}
                 {n.kind==='account_export_ready'&&n.detail.exportId&&<div className={styles.actions}><button className={`${styles.button} ${styles.primary}`} type="button" onClick={()=>open(n)}><Icon name="download" size={16}/>{t('web.account.export.download')}</button></div>}
               </div><time className={styles.when} dateTime={n.occurredAt}>{notificationWhen(n.occurredAt,i18n)}</time>

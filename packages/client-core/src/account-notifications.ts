@@ -19,10 +19,10 @@ export type AccountNotificationKind =
   | 'server_offline'
   | 'new_device' | 'security_event' | 'account_export_ready' | 'signing_key_expiring';
 export const ACCOUNT_NOTIFICATION_KINDS: readonly AccountNotificationKind[] = ['server_offline', 'new_device', 'security_event', 'account_export_ready', 'signing_key_expiring'];
-/** The ordinary account feed drawn in account27/ruling10. Operator alerts are
- * not reclassified as ordinary account events, nor are server-private notices. */
-export type AccountFeedKind='new_device'|'account_export_ready'|'security_event'|'server_offline';
-export function isAccountFeedNotification(item:AccountNotification):item is AccountNotification&{kind:AccountFeedKind}{return ['new_device','account_export_ready','security_event','server_offline'].includes(item.kind);}
+/** Four ordinary kinds plus the real operator key alert in the same account
+ * feed. The producer scopes that alert to its recipient, not a client role. */
+export type AccountFeedKind='new_device'|'account_export_ready'|'security_event'|'server_offline'|'signing_key_expiring';
+export function isAccountFeedNotification(item:AccountNotification):item is AccountNotification&{kind:AccountFeedKind}{return (ACCOUNT_NOTIFICATION_KINDS as readonly string[]).includes(item.kind);}
 export const ACCOUNT_SECURITY_EVENTS = ['password_changed', 'password_reset', 'recovery_codes_replaced', 'sign_in_method_removed', 'provider_linked', 'two_step_enabled', 'two_step_disabled', 'contact_email_changed', 'contact_email_verified'] as const;
 export type AccountSecurityEvent = (typeof ACCOUNT_SECURITY_EVENTS)[number];
 
