@@ -24,6 +24,10 @@ import (
 
 type ownerCaptureFixture struct {
 	db              *sql.DB
+	store           *networking.SQLiteStore
+	runner          *networking.AuthorityRunner
+	intent          networking.Intent
+	bearer          string
 	s               *identity.Service
 	p               identity.Principal
 	key             ed25519.PrivateKey
@@ -44,7 +48,7 @@ func ownerCaptureSigned(t *testing.T, key ed25519.PrivateKey, value any) claimwe
 // This fixture uses the canonical fresh baseline, genuine Browser Setup and
 // move confirmation, actual PreparePurpose, and complete Ed25519 proofs. It
 // does not claim Hosted, protected-key signing, transport or browser coverage.
-func newOwnerCaptureFixture(t *testing.T) ownerCaptureFixture {
+func newOwnerCaptureFixture(t *testing.T, verifiers ...networking.ApprovalVerifier) ownerCaptureFixture {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -96,9 +100,13 @@ func newOwnerCaptureFixture(t *testing.T) ownerCaptureFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := networking.NewSQLiteStore(db, cipher, networking.GuardLocalOwner, networking.GuardInstalledClaim, func(context.Context, []byte) (networking.ApprovalFacts, error) {
+	verify := networking.ApprovalVerifier(func(context.Context, []byte) (networking.ApprovalFacts, error) {
 		return networking.ApprovalFacts{}, networking.ErrInvalid
-	}, "https://hosted.example")
+	})
+	if len(verifiers) != 0 {
+		verify = verifiers[0]
+	}
+	store, err := networking.NewSQLiteStore(db, cipher, networking.GuardLocalOwner, networking.GuardInstalledClaim, verify, "https://hosted.example")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,8 +119,10 @@ func newOwnerCaptureFixture(t *testing.T) ownerCaptureFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var intent networking.Intent
 	if err = runner.Do(ctx, func(ctx context.Context) error {
-		_, err := store.PreparePurpose(ctx, networking.Binding{OperationID: op, ServerID: server, AccountID: networking.UnboundAccount, PublicKey: pub}, networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, networking.ClaimPurpose{Purpose: "switch"})
+		var err error
+		intent, err = store.PreparePurpose(ctx, networking.Binding{OperationID: op, ServerID: server, AccountID: networking.UnboundAccount, PublicKey: pub}, networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, networking.ClaimPurpose{Purpose: "switch"})
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -125,7 +135,7 @@ func newOwnerCaptureFixture(t *testing.T) ownerCaptureFixture {
 	pkce := sha256.Sum256([]byte(identity.Token()))
 	state := sha256.Sum256([]byte(identity.Token()))
 	start := claimweb.OwnerStart{Kind: claimweb.OwnerStartKind, Audience: claim.Audience, ClaimHash: base64.RawURLEncoding.EncodeToString(hash[:]), OperationID: op, ServerID: server, PublicKey: claim.PublicKey, Address: claim.Address, Purpose: "switch", State: base64.RawURLEncoding.EncodeToString(state[:]), CodeChallenge: base64.RawURLEncoding.EncodeToString(pkce[:]), InstallationID: installation, ServerChallenge: identity.Token(), IssuedAt: now, ExpiresAt: now.Add(4 * time.Minute)}
-	return ownerCaptureFixture{db: db, s: s, p: p, key: key, claim: claim, start: start, original: original, proof: ownerCaptureSigned(t, key, start)}
+	return ownerCaptureFixture{db: db, store: store, runner: runner, intent: intent, bearer: setup.Envelope.AccessToken, s: s, p: p, key: key, claim: claim, start: start, original: original, proof: ownerCaptureSigned(t, key, start)}
 }
 
 func (f ownerCaptureFixture) capture(ctx context.Context, tx *sql.Tx) error {

@@ -59,6 +59,16 @@ func (s *Service) InstallOwnerClaimTx(ctx context.Context, tx *sql.Tx, operation
 	if err = s.prepareMoveMembersKeepingFamilyTx(ctx, tx, caller, move, family.ID); err != nil {
 		return err
 	}
+	// The reservation triggers also protect the target from this writer. Release
+	// it only here, after the final collision/owner checks, while the installation
+	// writer still holds the lock. Any later failure restores it with the move.
+	released, err := tx.ExecContext(ctx, `UPDATE networking_claim_intents SET owner_change_reserved=0 WHERE operation_id=? AND owner_change_reserved=1`, operation)
+	if err != nil {
+		return err
+	}
+	if n, e := released.RowsAffected(); e != nil || n != 1 {
+		return ErrConflict
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE identity_state SET sign_in_kind='portico',revision=revision+1 WHERE singleton=1 AND sign_in_kind='local'`); err != nil {
 		return err
 	}
@@ -68,9 +78,6 @@ func (s *Service) InstallOwnerClaimTx(ctx context.Context, tx *sql.Tx, operation
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE accounts SET username=? WHERE id=?`, username, c.owner); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE networking_claim_intents SET owner_change_reserved=0 WHERE operation_id=? AND owner_change_reserved=1`, operation); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE identity_managed_route SET enabled=1,revision=revision+1 WHERE singleton=1`); err != nil {
