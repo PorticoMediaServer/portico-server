@@ -567,6 +567,9 @@ func (s *Store) runClaim(parent context.Context, c *claim) {
 		result, e = s.driver.Capture(ctx, c.request, func(cp CaptureCheckpoint) error { return s.checkpoint(ctx, c, cp) })
 	}
 	if e == nil {
+		result, e = s.prepareRecordingLayout(ctx, c, result)
+	}
+	if e == nil {
 		e = s.publish(ctx, c, result)
 	}
 	cancel()

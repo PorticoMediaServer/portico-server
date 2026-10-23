@@ -71,6 +71,10 @@ CREATE TABLE IF NOT EXISTS download_plays (
  position_ms INTEGER NOT NULL CHECK(position_ms>=0),ended INTEGER NOT NULL CHECK(ended IN (0,1)),
  observed_ms INTEGER NOT NULL CHECK(observed_ms>=0),PRIMARY KEY(scope_id,play_id)
 ) STRICT;
+CREATE TABLE IF NOT EXISTS download_local_sequence (
+ id INTEGER PRIMARY KEY CHECK(id=1),value INTEGER NOT NULL CHECK(value BETWEEN 0 AND 9007199254740991)
+) STRICT;
+INSERT OR IGNORE INTO download_local_sequence VALUES(1,0);
 CREATE INDEX IF NOT EXISTS download_plays_pending ON download_plays(scope_id,observed_ms,play_id);
 CREATE TABLE IF NOT EXISTS download_garbage (id TEXT PRIMARY KEY) STRICT;
 CREATE TABLE IF NOT EXISTS download_artwork (
@@ -161,6 +165,10 @@ pub struct PendingPlay {
     pub ended: bool,
     pub observed_ms: i64,
 }
+#[derive(Clone,Debug,Serialize,PartialEq,Eq)]
+pub struct PlaybackArtifact {pub sha256:String,pub bytes:u64}
+/// Private path stays native. Only the signed/verified artifact is serialized.
+pub struct VerifiedPlayback {pub path:PathBuf,pub artifact:PlaybackArtifact}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -971,6 +979,26 @@ impl DownloadStore {
             return Err(Error::DownloadVerificationFailed);
         }
         Ok(path)
+    }
+    pub fn verified_playback(&self,viewer:&DownloadViewer,id:&str)->Result<VerifiedPlayback>{
+        // playback_file revalidates the actual viewer's signature, expiry, revocation,
+        // ready row and sealed file. Rehash on native load so same-size damage cannot
+        // be reported as verified artifact facts. Listing does not hash media files.
+        let path=self.playback_file(viewer,id)?;
+        let entry=self.entry(viewer,id)?;
+        let mut file=open_file(&path,false,false)?;
+        let mut hash=Context::new(&SHA256);let mut bytes=0u64;let mut buffer=[0u8;CHUNK_BYTES];
+        loop{
+            let count=file.read(&mut buffer).map_err(unavailable)?;if count==0{break}
+            bytes=bytes.checked_add(count as u64).filter(|size|*size<=entry.bytes).ok_or(Error::DownloadVerificationFailed)?;
+            hash.update(&buffer[..count]);
+        }
+        let sha256=hex(hash.finish().as_ref());
+        if bytes!=entry.bytes||sha256!=entry.sha256{return Err(Error::DownloadVerificationFailed)}
+        Ok(VerifiedPlayback{path,artifact:PlaybackArtifact{sha256,bytes}})
+    }
+    pub fn next_local_sequence(&self)->Result<u64>{
+        self.connection.query_row("UPDATE download_local_sequence SET value=value+1 WHERE id=1 AND value<9007199254740991 RETURNING value",[],|row|count(row,0)).map_err(unavailable)
     }
     pub fn project_access(&self, viewer: &DownloadViewer, entry: &mut LocalDownload) {
         entry.offline_access = if self.playback_file(viewer, &entry.id).is_ok() {
