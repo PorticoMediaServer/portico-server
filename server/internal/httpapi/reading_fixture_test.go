@@ -89,8 +89,15 @@ func newReadingFixture(t *testing.T, kind, format string, publications ...[]byte
 }
 
 func (r *readingFixture) bytesRequest(t *testing.T, method, path string, session *reading.Session, revision, token string, headers map[string]string) *httptest.ResponseRecorder {
+	return r.bytesRequestWithQuery(t, method, path, session, revision, token, headers, nil)
+}
+
+func (r *readingFixture) bytesRequestWithQuery(t *testing.T, method, path string, session *reading.Session, revision, token string, headers map[string]string, extra url.Values) *httptest.ResponseRecorder {
 	t.Helper()
 	query := url.Values{"sourceId": {r.source}, "sessionId": {session.ID}}
+	for key, values := range extra {
+		query[key] = values
+	}
 	req := httptest.NewRequest(method, "/v1/read/items/"+r.item+path+"?"+query.Encode(), nil)
 	req.SetPathValue("id", r.item)
 	if strings.HasPrefix(path, "/assets/") {
