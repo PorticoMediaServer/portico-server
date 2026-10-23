@@ -1,13 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bindWebAccountEntry, isAccountEntryPath} from '../src/route-registry-lifecycle.ts';
-import {ShellBootstrap, type ShellAssembler} from '../src/shell/bootstrap.ts';
+import {createEntryDestinationStore, profileSettingsDestination} from '../src/route-registry-destination.ts';
+import {ShellBootstrap, type ShellAssembler, type ShellBootstrapSnapshot} from '../src/shell/bootstrap.ts';
 import type {SelectedViewerRecord} from '@core/viewer-selection.ts';
 function deferred<T>() {let resolve!: (value: T) => void;const promise = new Promise<T>(done => {resolve = done;});return {promise, resolve};}
 function navigation(path: string) {
-  let listener: ((event: {fromLocation: {pathname: string}; toLocation: {pathname: string}}) => void) | undefined;
-  const router = {state: {location: {pathname: path}}, subscribe(_name: 'onBeforeNavigate', next: NonNullable<typeof listener>) {listener = next;return () => {listener = undefined;};}};
-  return {router, go(to: string) {const fromLocation = router.state.location, toLocation = {pathname: to};listener?.({fromLocation, toLocation});router.state.location = toLocation;}};
+  type Location = {pathname: string; search?: Record<string, unknown>};
+  type Navigation = {fromLocation: Location; toLocation: Location};
+  let before: ((event: Navigation) => void) | undefined, resolved: (() => void) | undefined;
+  const calls: unknown[] = [];
+  const go = (to: string, search?: Record<string, unknown>) => {const fromLocation = router.state.location, toLocation = {pathname: to, search};before?.({fromLocation, toLocation});router.state.location = toLocation;resolved?.();};
+  const router = {state: {location: {pathname: path} as Location},
+    subscribe(name: 'onBeforeNavigate' | 'onResolved', listener: ((event: Navigation) => void) | (() => void)) {
+      if (name === 'onBeforeNavigate') {before = listener as (event: Navigation) => void;return () => {before = undefined;};}
+      resolved = listener as () => void;return () => {resolved = undefined;};
+    },
+    navigate: async (target: typeof profileSettingsDestination & {replace: boolean}) => {calls.push(target);go(target.to, target.search);},
+  };
+  return {router, calls, go};
 }
 const unavailable: ShellAssembler = async () => {throw new Error('Unexpected assembly');};
 test('entry destinations require exact paths and do not restore private state on initial entry', () => {
@@ -36,4 +47,40 @@ test('disposing while account exit waits cannot resurrect a private restore', as
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(reads, 1);assert.equal(bootstrap.getSnapshot().phase, 'signed-out');
   nav.go('/profiles');assert.equal(bootstrap.getSnapshot().entry, undefined);
+});
+
+
+function admission() {
+  let state: ShellBootstrapSnapshot = {phase: 'signed-out'};
+  const listeners = new Set<() => void>();
+  const publish = (next: ShellBootstrapSnapshot) => {state = next;for (const listener of listeners) listener();};
+  return {publish, getSnapshot: () => state,
+    subscribe(listener: () => void) {listeners.add(listener);return () => {listeners.delete(listener);};},
+    start: async () => {}, suspendForAccountEntry: () => publish({phase: 'signed-out', entry: true}),
+    resumeAfterAccountEntry: async () => {publish({phase: 'restoring'});}, dispose: () => publish({phase: 'signed-out'}),
+  };
+}
+test('the drawn profile alias retains navigation through signed-out and restricted setup until an admitted binding exists', async () => {
+  const destination = createEntryDestinationStore(), nav = navigation('/settings/profile'), bootstrap = admission();
+  const close = bindWebAccountEntry(nav.router, bootstrap, destination);
+  nav.go('/settings', profileSettingsDestination.search);nav.go('/sign-in');
+  bootstrap.publish({phase: 'signed-out', entry: true});
+  nav.go('/profiles');assert.deepEqual(nav.calls, []);
+  nav.go('/');assert.deepEqual(nav.calls, []);
+  bootstrap.publish({phase: 'ready'});assert.deepEqual(nav.calls, [], 'a phase label without an admitted binding is insufficient');
+  bootstrap.publish({phase: 'ready', binding: {scopeKey: 'captured-admitted-family'} as never});
+  await Promise.resolve();assert.deepEqual(nav.calls, [{...profileSettingsDestination, replace: true}]);
+  assert.equal(destination.take(), undefined);close();
+});
+test('retiring the browser root cannot redirect from a late admission notification', () => {
+  const destination = createEntryDestinationStore(), nav = navigation('/settings/profile'), bootstrap = admission();
+  const close = bindWebAccountEntry(nav.router, bootstrap, destination);nav.go('/sign-in');nav.go('/');close();
+  bootstrap.publish({phase: 'ready', binding: {scopeKey: 'late'} as never});assert.deepEqual(nav.calls, []);
+});
+test('an unrelated startup does not consume a pending destination before an actual account-entry continuation', () => {
+  const destination = createEntryDestinationStore();destination.rememberProfileSettings();
+  const nav = navigation('/auth/portico-return'), bootstrap = admission();
+  const close = bindWebAccountEntry(nav.router, bootstrap, destination);
+  bootstrap.publish({phase: 'ready', binding: {scopeKey: 'existing'} as never});
+  assert.deepEqual(nav.calls, []);assert.deepEqual(destination.take(), profileSettingsDestination);close();
 });

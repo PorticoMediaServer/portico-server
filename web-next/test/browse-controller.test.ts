@@ -12,6 +12,29 @@ function payload(start: number, total = 50_000, revision = 'revision-one') {
  entries: Array.from({length: Math.min(60, total - start)}, (_, n) => ({id: `movie-${start + n}`, kind: 'movie', title: `Movie ${start + n}`, libraryId: 'lib', navigation: {view: 'item'}})),
  pageInfo: {start, total, totalIsLowerBound: false, revision, hasMore: start + 60 < total, nextCursor: ''}, positionIndex: [{key: 'Z', index: 49_980}]};
 }
+test('linked predicates and all server sorts survive paging and filter edits', async () => {
+ const predicate = {field: 'watched', operator: 'equals' as const, value: false};
+ const sort = [{field: 'title', direction: 'asc' as const}, {field: 'year', direction: 'desc' as const}];
+ const scoped = {...caps, fields: [{id: 'watched', labelKey: 'watched', type: 'boolean', operators: ['equals'], controlHint: 'toggle', applicableKinds: ['movie']}],
+  sorts: [...caps.sorts, {id: 'year', labelKey: 'sort.year', directions: ['asc', 'desc'], defaultDirection: 'desc', applicableKinds: ['movie']}]};
+ const queries: unknown[] = [];
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  if (path.includes('capabilities')) return scoped as T;
+  const request = body as {range: {start: number}; sort: unknown; query: unknown};queries.push(request);
+  return {...payload(request.range.start, 1), applied: {query: request.query, sort: request.sort, seek: null}} as T;
+ }}, {libraryId: 'lib', pivot: 'movies', predicates: [predicate], sorts: sort}, () => true);
+ try {
+  await controller.load();await settle();
+  assert.deepEqual(controller.query().query, predicate);
+  assert.deepEqual(controller.query().sort, sort);
+  controller.setQuery([]);await settle();
+  assert.deepEqual(controller.query().sort, sort);
+  assert.equal(controller.query().query, undefined);
+  controller.setQuery([], {field: 'year', direction: 'asc'});await settle();
+  assert.deepEqual(controller.query().sort, [{field: 'year', direction: 'asc'}]);
+  assert.ok(queries.length <= 3);
+ } finally {controller.dispose();}
+});
 test('sparse distant windows never scan intermediate pages and later ranges carry the actual revision', async () => {
  const requests: {start: number; revision?: string}[] = [];
  const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
