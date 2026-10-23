@@ -541,7 +541,13 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	}
 	if itemKind == "song" || itemKind == "audiobook_file" {
 		if v1.AudioPlanV2 {
-			if result.AudioPlan, e = s.pinAudioPlan(ctx, tx, result, item, aid, grant, v1, ownerTranscoding); e != nil {
+			// The audio renderer must obey the same narrowed ceiling as the
+			// delivery planner, including when measured render facts know a
+			// bitrate that the catalogue stream facts do not yet carry.
+			audioChoice := *v1
+			audioChoice.MaxAudioBitrateBPS = inputs.input.Target.MaxAudioBitrateBPS
+			audioChoice.Limit = audioChoice.Limit || audioChoice.MaxAudioBitrateBPS > 0
+			if result.AudioPlan, e = s.pinAudioPlan(ctx, tx, result, item, aid, grant, &audioChoice, ownerTranscoding); e != nil {
 				return Session{}, e
 			}
 		}

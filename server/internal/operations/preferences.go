@@ -15,7 +15,7 @@ import (
 // PreferenceRegistryRevision changes whenever a field is added, removed, or its
 // domain moves. Clients render settings from the published registry, so the
 // revision is the only thing they have to compare between releases.
-const PreferenceRegistryRevision = "p40.Q2.B5.QL1"
+const PreferenceRegistryRevision = "p40.Q2.B5.QL1.MQ1"
 
 const (
 	HomeLayoutMaxRows        = 64
@@ -170,6 +170,8 @@ var preferenceRegistry = func() []PreferenceField {
 	}
 	out = append(out, qualityFields()...)
 	out = append(out,
+		prefEnum("music.qualityAway", "original", qualityladder.MusicIDs(), ScopeDeviceClass),
+		prefEnum("music.qualityMobile", "320", qualityladder.MusicIDs(), ScopeDeviceClass),
 		prefEnum("music.audioNormalization", "off", []string{"off", "track", "album"}, ScopeProfileServer),
 		prefInt("music.crossfadeMs", 0, 0, 12000, ScopeProfileServer),
 		prefBool("music.gapless", true, ScopeProfileServer),

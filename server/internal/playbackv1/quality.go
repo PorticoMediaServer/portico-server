@@ -228,7 +228,8 @@ func fitAutomatic(throughputKbps int, source SourceFacts) Quality {
 }
 
 // QualityOption is one entry of the quality menu for a title (playback
-// options `qualities`). Original and automatic are always first.
+// options `qualities`). Video starts with Original and Automatic; music
+// offers Original and its five audio limits.
 type QualityOption struct {
 	Mode                string  `json:"mode"`
 	ID                  string  `json:"id,omitempty"`

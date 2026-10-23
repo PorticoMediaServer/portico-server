@@ -639,6 +639,7 @@ export const enUS = {
   'playOn.receiver.allow': 'Allow',
   'playOn.receiver.decline': 'Don’t allow',
   'quality.sameAsOriginal': 'Same as the original',
+  'quality.musicDataPerHour': 'about {amount} MB an hour',
   'quality.dataPerHour': 'about {amount} GB an hour',
   'quality.1080pHigh': '1080p High',
   'quality.1080pLow': '1080p Low',
