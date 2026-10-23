@@ -3,9 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parsePlayHistory as read_parsePlayHistory, parsePlaySummary as read_parsePlaySummary} from '../src/play-history.ts';
 
-const parsePlaySummary=(value:unknown,...args:any[]) => (read_parsePlaySummary as any)(wireFixture(value,{'watchedSeconds': 'watchedMs'},[]),...args);
-
-const parsePlayHistory=(value:unknown,...args:any[]) => (read_parsePlayHistory as any)(wireFixture(value,{'positionSeconds': 'positionMs', 'durationSeconds': 'durationMs'},[]),...args);
+const interval={period:'today',timeZone:'UTC',from:'2026-10-02T00:00:00Z',until:'2026-10-02T12:00:00Z',buckets:[{start:'2026-10-02T00:00:00Z',end:'2026-10-02T12:00:00Z',partial:true}]};
+const parsePlaySummary=(value:unknown,...args:any[]) => (read_parsePlaySummary as any)({...interval,...wireFixture(value,{'watchedSeconds':'watchedMs'},[]) as object},...args);
+const parsePlayHistory=(value:unknown,...args:any[]) => (read_parsePlayHistory as any)({...interval,...wireFixture(value,{'positionSeconds':'positionMs','durationSeconds':'durationMs'},[]) as object},...args);
 
 const play = (id = 'play-1', patch: Record<string, unknown> = {}) => ({id, user: 'justin', accountId: 'account', kind: 'movie', title: 'Movie', libraryId: 'library', startedAt: '2026-10-02T09:08:00Z', positionSeconds: 30, durationSeconds: 60, completed: false, ...patch});
 
@@ -33,7 +33,7 @@ test('the size of the page, its cursor and its outer shape still refuse the whol
 
 test('viewing statistics keep their totals when one named count cannot be read', () => {
   const summary = parsePlaySummary({plays: 4, people: 2, watchedSeconds: 7200, converted: 1, mostPlayed: [{name: 'Movie', plays: 3}, {name: 'Broken', plays: -1}, null], mostActive: [{name: 'justin', plays: 4}], futureField: 1});
-  assert.deepEqual(summary, {plays: 4, people: 2, watchedSeconds: 7200, converted: 1, mostPlayed: [{name: 'Movie', plays: 3}], mostActive: [{name: 'justin', plays: 4}]});
+  assert.deepEqual(summary, {...interval,plays: 4, people: 2, watchedMs: 7200000, converted: 1, mostPlayed: [{name: 'Movie', plays: 3}], mostActive: [{name: 'justin', plays: 4}]});
   assert.throws(() => parsePlaySummary({plays: 4, people: 2, watchedSeconds: 7200, converted: 1, mostPlayed: Array.from({length: 51}, () => ({name: 'Movie', plays: 1})), mostActive: []}));
   assert.throws(() => parsePlaySummary({plays: -1, people: 2, watchedSeconds: 7200, converted: 1, mostPlayed: [], mostActive: []}));
 });

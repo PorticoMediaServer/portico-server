@@ -465,6 +465,7 @@ index play_history_account
 index play_history_library
 index play_history_listen_profile
 index play_history_recent
+index play_history_time_bucket
 index playback_admin_retention
 index playback_channel_sessions_live
 index playback_origin_associations_asset
@@ -909,6 +910,7 @@ table identity_recovery_codes
 table identity_refresh_credentials
 table identity_refresh_predecessors
 table identity_refresh_receipts
+table identity_state
 table identity_unknown_attempts
 table inventory_analysis_queue
 table inventory_artwork_sources
@@ -1107,6 +1109,7 @@ table personal_snapshots
 table personal_watched_intents
 table play_counts
 table play_history
+table play_history_time
 table playback_admin_operations
 table playback_artifacts
 table playback_audio_plans
@@ -1884,6 +1887,12 @@ trigger identity_devices_account_removed
 trigger identity_devices_devices_list_delete
 trigger identity_devices_devices_list_insert
 trigger identity_devices_devices_list_update
+trigger identity_kind_local_fence
+trigger identity_kind_portico_fence
+trigger identity_local_no_portico_link
+trigger identity_local_no_portico_link_update
+trigger identity_portico_no_password_insert
+trigger identity_portico_no_password_update
 trigger identity_restrictions_revision
 trigger inventory_availability_object
 trigger inventory_availability_source

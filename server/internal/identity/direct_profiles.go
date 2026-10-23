@@ -75,6 +75,7 @@ func (s *Service) directSnapshotTx(ctx context.Context, tx *sql.Tx, c directCall
 		}
 		out.CanManage = !pinBlocked
 	}
+	out.Capabilities = ManagementCapabilities{ManageAccount: out.CanManage, ManagePeople: out.CanManage && Administrative(c.account.Role), ManageServer: out.CanManage && Administrative(c.account.Role), ManageSignIn: out.CanManage && c.account.Role == TierOwner}
 	if hosted.Valid && c.account.Role == TierOwner {
 		var custodian sql.NullString
 		if e := tx.QueryRowContext(ctx, `SELECT custodian FROM hosted_membership_sync WHERE singleton=1`).Scan(&custodian); e != nil && !errors.Is(e, sql.ErrNoRows) {

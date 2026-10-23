@@ -28,6 +28,10 @@ func (d Dependencies) telemetryRoutes(mux *http.ServeMux) {
 		return
 	}
 	service := &telemetryService{d: d, capacity: d.capacityComposer()}
+	d.dashboardReportRoute(mux, service)
+	if d.TelemetryContext != nil {
+		service.collector()
+	}
 	if d.Measurements != nil {
 		// The resources panel shows the collector's last sample. It reads what the
 		// collector already has and never starts one, so a panel read stays cheap.
@@ -42,12 +46,15 @@ func (d Dependencies) telemetryRoutes(mux *http.ServeMux) {
 	service.register(mux, "GET /v1/admin/transcode/capacity", nil, func(r *http.Request, a operations.Authorize) (any, error) {
 		return service.capacityReport(r.Context(), a)
 	})
-	service.register(mux, "GET /v1/admin/telemetry", []string{"window"}, func(r *http.Request, a operations.Authorize) (any, error) {
+	service.register(mux, "GET /v1/admin/telemetry", []string{"window", "timeZone", "until"}, func(r *http.Request, a operations.Authorize) (any, error) {
+		if e := validateReportContext(r.URL.Query().Get("timeZone"), r.URL.Query().Get("until")); e != nil {
+			return nil, e
+		}
 		window := r.URL.Query().Get("window")
 		if window == "" {
 			window = "10m"
 		}
-		reading, ok := service.collector().Read(window)
+		reading, ok := service.collector().Read(window, r.URL.Query().Get("timeZone"), r.URL.Query().Get("until"))
 		if !ok {
 			return nil, operations.ErrInvalid
 		}
@@ -186,9 +193,13 @@ const attentionCache = 30 * time.Second
 // so a server nobody is watching runs no reporters at all.
 func (s *telemetryService) collector() *telemetry.Collector {
 	s.start.Do(func() {
-		s.collected = telemetry.New(telemetry.Options{Sampler: telemetry.HostSampler(s.d.stateDirectory()), DB: s.d.DB})
+		s.collected = telemetry.New(telemetry.Options{Sampler: dashboardSampler{host: telemetry.HostSampler(s.d.stateDirectory()), d: s.d}, DB: s.d.DB})
 		s.running.Store(true)
-		supervise.Supervise(context.Background(), "telemetry.collector", s.collected.Run)
+		ctx := s.d.TelemetryContext
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		supervise.Supervise(ctx, "telemetry.collector", s.collected.Run)
 	})
 	return s.collected
 }

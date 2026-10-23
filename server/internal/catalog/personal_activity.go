@@ -91,7 +91,7 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 	if kind == int64(compactcatalog.Part) {
 		threshold = 1
 	}
-	counted, e := recordPlay(tx, v, playbackID, entityID, kind, clock, positionMillis(position), duration, position >= threshold, completed, !preferences.Bool("privacy.pauseWatchHistory") && preferences.Bool("privacy.showActivityToMembers"))
+	counted, e := recordPlay(tx, v, playbackID, entityID, kind, clock, positionMillis(position), duration, position >= threshold, completed, !preferences.Bool("privacy.pauseWatchHistory") && preferences.Bool("privacy.showActivityToMembers"), state)
 	if e != nil {
 		return e
 	}
@@ -231,7 +231,7 @@ type HistoryPage struct {
 
 // HistoryPeriods are the windows a client may ask for. The server computes the
 // boundary so every device agrees on what "last 7 days" means.
-var HistoryPeriods = map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour, "90d": 90 * 24 * time.Hour, "all": 0}
+var HistoryPeriods = map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour, "90d": 90 * 24 * time.Hour, "1y": 365 * 24 * time.Hour, "all": 0}
 
 func (s *Service) History(server, fence, profile, cursor, period, libraryID string, libraries []string, limit int, viewer Viewer) (HistoryPage, error) {
 	if dbwork.Snapshot(s.Context()) == nil {
