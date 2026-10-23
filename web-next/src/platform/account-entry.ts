@@ -7,6 +7,7 @@ import type {AppSessionStore} from '@core/app-sessions.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {browserAppSessions, browserConnectionEnvironment, restoreBrowserConnection} from './server-connections';
 import {browserAppSessionActions, type BrowserAppSessionActions} from './app-sessions';
+import {browserServerDisplay} from './server-display';
 
 export type AccountEntryState = Readonly<{
  phase:'welcome'|'address'|'checking'|'identity'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready';
@@ -18,6 +19,7 @@ type EntryPorts = Readonly<{
  environment:(id?:string)=>ConnectionEnvironment;
  restore:typeof restoreBrowserConnection;
  inspect:typeof inspectDirectServer; connect:typeof connectPairedServer; remember:typeof rememberNativeSession;
+ rememberName?:(api:HttpLocalApi,name:string)=>void;
 }>;
 
 /** Web account entry keeps credential entry behind an explicit kind and private-key proof.
@@ -57,6 +59,7 @@ export class BrowserAccountEntry {
    this.api=connected.api;
    const server=parseServerSignIn(await connected.api.request(routePath('get_system'),'GET',undefined,op.signal));
    if(!op.current())return;if(server.id!==state.server.id||server.signIn!==state.server.signIn)throw new Error('The server sign-in changed.');
+   this.ports.rememberName?.(connected.api,server.name);
    this.publish({...state,server,phase:server.signIn==='local'?'password':'portico',busy:false});
   }catch(error){if(op.current()){this.release();this.publish({...state,busy:false,error});}}
  }
@@ -119,4 +122,4 @@ export class BrowserAccountEntry {
  }
  dispose(){this.cancel();this.disposed=true;this.probe.dispose();this.listeners.clear();}
 }
-export function createBrowserAccountEntry(){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession});}
+export function createBrowserAccountEntry(){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,rememberName:(api,name)=>browserServerDisplay().remember(api,name)});}

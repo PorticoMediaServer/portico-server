@@ -13,6 +13,7 @@ import {runEventFeed} from '@core/event-feed.ts';
 import {fetchGuideSourceSummaries} from '@core/guide/directory.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {browserViewerStorage} from '../platform/viewer-selection-storage';
+import {browserServerDisplay} from '../platform/server-display';
 import {parseServerSignIn,signInLabelKey} from '@core/sign-in.ts';
 import {defaultI18n} from '@i18n';
 import {browserAppSessionActions,signOutBrowserPorticoAccount,type BrowserAppSessionActions} from '../platform/app-sessions';
@@ -169,7 +170,9 @@ export class ShellBootstrap {
     cleanups.push(() => artwork.dispose());
     const signOutPorticoAccount=facts.identity.signIn==='portico'?()=>{if(!isCurrent())return;signingOut=true;this.fence();this.publish({phase:'signed-out'});void signOutBrowserPorticoAccount().catch(error=>this.publish({phase:'error',error})).finally(()=>api.getRouteConnection()?.dispose());}:undefined;
     const switchProfile=async(profileId:string,pin:string,signal:AbortSignal)=>{if(!isCurrent())throw new Error('The viewer changed.');await (this.environment.actions?.()??browserAppSessionActions()).switchProfile(api,session,profileId,pin,signal,isCurrent);if(isCurrent())this.restart();};
-    const savedServers=(await (this.environment.actions?.()??browserAppSessionActions()).store.read()).servers.map(value=>({id:value.connection.pin.serverId,label:value.connection.pin.serverId===session.viewer.serverId?facts.serverName:new URL(value.connection.logicalOrigin).host}));
+    const display=browserServerDisplay();display.remember(api,facts.serverName);
+    const saved=(await (this.environment.actions?.()??browserAppSessionActions()).store.read()).servers;
+    const savedServers=await display.choices(saved.map(value=>({pin:value.connection.pin,origin:value.connection.logicalOrigin,signIn:value.signIn})),signal);
     const assembly = await this.assemble({api, session: () => session, auth, events, freshness, home, inbox, artwork, facts, epoch, viewerFence: document.viewerFence, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,savedServers});
     if (!isCurrent()) { assembly.dispose(); return; }
     cleanups.push(() => assembly.dispose());
