@@ -211,7 +211,8 @@ export class DesktopDownloadStore {
   },signal);}
   acknowledgePlay(play:Pick<PendingPlay,'playId'|'observedMs'>,signal?:AbortSignal){return this.request({action:'acknowledgePlay',playId:id(play.playId),observedMs:integer(play.observedMs)},'done',()=>undefined,signal);}
   dispose(){if(this.disposed)return;this.disposed=true;const lease=this.lease;this.lease='';
-    const cleanup=this.currentPreparation?this.releaseLocalQueue(this.currentPreparation):Promise.resolve();
-    if(lease)void cleanup.catch(()=>{}).then(()=>this.bridge.release(lease)).catch(()=>{});
+    if(!lease)return;
+    if(this.currentPreparation)void this.releaseLocalQueue(this.currentPreparation).catch(()=>{}).then(()=>this.bridge.release(lease)).catch(()=>{});
+    else void this.bridge.release(lease).catch(()=>{});
   }
 }
