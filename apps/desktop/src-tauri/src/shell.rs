@@ -106,8 +106,8 @@ async fn desktop_load_local(window:WebviewWindow,state:tauri::State<'_,Downloads
         let mut guard=downloads.lock().map_err(|_|Error::DownloadsUnavailable)?;
         let session=guard.as_mut().map_err(|e|*e)?;
         let path=session.local_file(&lease,&source.local_source_id)?;
-        let _=session.record_observation(&native.observation(),true);session.retire_local();
-        native.load_local(&path,source.generation,source.start_position_ms,source.autoplay)?;
+        let previous=native.observation();
+        session.transition_output(&previous,||native.load_local(&path,source.generation,source.start_position_ms,source.autoplay))?;
         if let Err(error)=session.begin_local(&lease,&source.local_source_id,source.generation){let _=native.execute(Command::Stop{generation:source.generation});return Err(error)}
         Ok(())
     }).await.map_err(|_|Error::DownloadsUnavailable)?
@@ -129,7 +129,10 @@ async fn desktop_command(window:WebviewWindow,state:tauri::State<'_,EngineState>
     let engine=state.0.lock().map_err(|_|Error::EngineFailure)?.clone()?;let downloads=downloads.0.clone();
     tauri::async_runtime::spawn_blocking(move||{
         let mut guard=downloads.lock().map_err(|_|Error::DownloadsUnavailable)?;
-        if matches!(&command,Command::Load{..}|Command::Stop{..}){if let Ok(session)=guard.as_mut(){let _=session.record_observation(&engine.observation(),true);session.retire_local();}}
+        if matches!(&command,Command::Load{..}|Command::Stop{..}){if let Ok(session)=guard.as_mut(){
+            let previous=engine.observation();
+            return session.transition_output(&previous,||engine.execute(command));
+        }}
         engine.execute(command)
     }).await.map_err(|_|Error::EngineFailure)?
 }

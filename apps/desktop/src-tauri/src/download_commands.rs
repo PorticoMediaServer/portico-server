@@ -597,6 +597,14 @@ impl DownloadsSession {
         self.active_local = None;
         self.release_if_unowned();
     }
+    /// A stale/invalid native command must leave the current offline owner intact.
+    /// Capture the observation before execution, but retire it only after acceptance.
+    pub fn transition_output(&mut self, previous:&crate::boundary::Observation, execute:impl FnOnce()->Result<()>)->Result<()> {
+        execute()?;
+        let _=self.record_observation(previous,true);
+        self.retire_local();
+        Ok(())
+    }
     /// Progress is produced by actual native observations, never by a settings/queue intent.
     pub fn record_observation(
         &mut self,
@@ -836,6 +844,12 @@ mod tests {
         observation.state="ended".into();observation.position_ms=10000.0;
         session.store.acknowledge_play(&viewer,"play",first[0].observed_ms).unwrap();
         session.record_observation(&observation,false).unwrap();assert!(session.store.pending_plays(&viewer).unwrap()[0].ended);
+        let before=session.store.pending_plays(&viewer).unwrap()[0].observed_ms;
+        assert_eq!(session.transition_output(&observation,||Err(Error::StaleGeneration)),Err(Error::StaleGeneration));
+        assert_eq!(session.active_generation(),Some(7));
+        assert_eq!(session.store.pending_plays(&viewer).unwrap()[0].observed_ms,before);
+        session.transition_output(&observation,||Ok(())).unwrap();
+        assert_eq!(session.active_generation(),None);
         session.force_release(&lease);drop(session);std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
