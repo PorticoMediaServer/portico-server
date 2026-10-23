@@ -316,6 +316,35 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				if err = input.Close(); err != nil {
 					t.Fatal(err)
 				}
+				errorView, err := dbwork.BeginSnapshot(ctx, f.s.db)
+				if err != nil {
+					t.Fatal(err)
+				}
+				failedSource, err := resolver.ResolveEpisodeReadSourceTx(ctx, errorView.Tx(), request, func() {})
+				errorView.Rollback()
+				if err != nil {
+					t.Fatal(err)
+				}
+				failedInput, err := failedSource.Open(ctx)
+				if err != nil {
+					failedSource.Close()
+					t.Fatal(err)
+				}
+				stopper, ok := failedInput.(interface{ StopAndRecheck(context.Context) error })
+				if !ok {
+					failedInput.Close()
+					failedSource.Close()
+					t.Fatal("actual Episode range input has no terminal recheck")
+				}
+				beforeFailureGets := gets.Load()
+				if err = stopper.StopAndRecheck(ctx); err != nil || gets.Load() != beforeFailureGets {
+					t.Fatal("Episode error recheck reopened media", err, gets.Load(), beforeFailureGets)
+				}
+				if err = failedInput.Validate(ctx); err == nil {
+					t.Fatal("failed Episode input remained usable")
+				}
+				failedInput.Close()
+				failedSource.Close()
 				publication, err := dbwork.Begin(ctx, f.s.db, dbwork.ClassBackgroundMedia)
 				if err != nil {
 					t.Fatal(err)
