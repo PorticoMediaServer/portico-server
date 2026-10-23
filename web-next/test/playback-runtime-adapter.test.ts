@@ -665,7 +665,7 @@ test('the controlled chooser row adapter preserves actual filtered order and the
   const seen: object[] = [];
   // Controlled canonical-formatter boundary only. No claim that these test strings are the
   // not-yet-MAIN VS3e formatter or product copy; the adapter must preserve them exactly.
-  const rows = playbackVersionRows(choices, version => { seen.push(version); return {primary: 'heading:' + version.id, secondary: 'detail:' + version.id}; });
+  const rows = playbackVersionRows(choices, version => { seen.push(version); return {heading: 'heading:' + version.id, detail: 'detail:' + version.id}; });
   assert.deepEqual(seen, choices.versions);
   assert.deepEqual(rows, [{id: 'v2', heading: 'heading:v2', detail: 'detail:v2'}, {id: 'v1', heading: 'heading:v1', detail: 'detail:v1'}]);
   assert.equal(Object.isFrozen(rows), true); assert.equal(Object.isFrozen(rows![0]), true);
@@ -674,14 +674,14 @@ test('the controlled chooser row adapter preserves actual filtered order and the
   assert.equal(playbackVersionRows(choices, () => { assert.fail('a stale selection cannot invoke the formatter'); }), null);
 });
 
-test('row adaptation drops stale private facts and rejects reordered, added or placeholder rows', async t => {
+test('row adaptation drops stale private facts, rejects changed order and preserves unknown empty content without placeholders', async t => {
   const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
   if (fence.kind !== 'queue') assert.fail('queue fence required');
   versionFixture(f); const choices = await f.runtime.readVersions(fence, new AbortController().signal); assert.ok(choices);
-  const format = () => ({primary: 'heading', secondary: 'detail'});
+  const format = () => ({heading: 'heading', detail: 'detail'});
   assert.throws(() => playbackVersionRows({...choices, versions: [...choices.versions].reverse()}, format), /playback_version_rows_invalid/);
   assert.throws(() => playbackVersionRows({...choices, failedVersionId: 'v1'}, format), /playback_version_rows_invalid/);
-  assert.throws(() => playbackVersionRows(choices, () => ({primary: '', secondary: ''})), /playback_version_rows_invalid/);
+  assert.deepEqual(playbackVersionRows(choices, () => ({heading: '', detail: ''})), choices.versions.map(version => ({id: version.id, heading: '', detail: ''})), 'unknown facts remain empty, without Version1 or other synthesized labels');
   const single = {...choices, failedVersionId: 'v1', versions: [choices.versions[0]!]};
   assert.equal(playbackVersionRows(single, format)!.length, 1, 'one structurally surviving row remains drawable; this test object is not command authority');
   const stale = {...choices, isCurrent: choices.isCurrent};
