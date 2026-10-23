@@ -33,8 +33,6 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 	t.Setenv("PORTICO_RCLONE", program)
 	for _, sequential := range []bool{false, true} {
 		t.Run(fmt.Sprint("sequential=", sequential), func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			defer cancel()
 			f := newObservationFixture(t)
 			state := t.TempDir()
 			managed, err := mounts.New(f.s.db, state, "", program, storage.New(program))
@@ -47,6 +45,10 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				t.Fatal(err)
 			}
 			identities, owner, _ := observationOwner(t, f)
+			// Fixture construction is not provider I/O; keep the controller
+			// operation budget separate from cold race-instrumented SQLite setup.
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
 			payload := bytes.Repeat([]byte("source-range-"), 6000)
 			modified := time.Unix(1700000000, 0).UTC()
 			var active, peak, gets atomic.Int32
