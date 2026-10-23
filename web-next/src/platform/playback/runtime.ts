@@ -13,7 +13,7 @@ import type {GuideChannel} from '@core/channel-guide.ts';
 import type {GroupSessionService} from '@core/group-session.ts';
 import type {GroupTransportCommand} from '@core/social-playback.ts';
 import {bindRuntimeGroup, type RuntimeGroupBinding} from './group-binding.ts';
-import {localPlaybackScope} from '../../../../packages/player-core/src/index.ts';
+import {localPlaybackScope, type SkipMode} from '../../../../packages/player-core/src/index.ts';
 import {listeningRates, audiobookRates} from '@core/listening.ts';
 import {idempotencyKey, type V1Http} from '@core/playback-v1/http.ts';
 import {CapabilityPublisher, PlaybackOptionsClient} from '@core/playback-v1/options.ts';

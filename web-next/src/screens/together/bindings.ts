@@ -38,8 +38,9 @@ export function createTogetherBindings(context: ShellAssemblyContext, playback: 
     const controller = new AbortController();reading = controller;
     const ids = [...new Set([group.timeline.itemId, ...(queue?.entries.filter(entry => !entry.unavailable).map(entry => entry.itemId) ?? [])].filter((id): id is string => !!id))];
     void (async () => {
-      // Bounded visible room window, one actual entitled catalogue read at a time.
-      for (const id of ids.slice(0, 50)) {
+      // The server-bounded real queue, one entitled catalogue read at a time. Never
+      // truncate membership to the currently visible page or make up unread title facts.
+      for (const id of ids) {
         if (!isCurrent() || controller.signal.aborted || key !== next) return;
         try {
           const raw = await api.request<GetItemsIdResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(id)}), 'GET', undefined, controller.signal);
