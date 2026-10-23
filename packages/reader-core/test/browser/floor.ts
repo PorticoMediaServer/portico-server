@@ -16,8 +16,8 @@ function assert(value:unknown,message:string):asserts value {if(!value)throw Err
 function failure(error:unknown):unknown {
   return error instanceof Error?{name:error.name,message:error.message,stack:error.stack,cause:error.cause===undefined?undefined:failure(error.cause)}:{message:String(error)};
 }
-async function asset(path:string,expected:Fixture):Promise<Blob> {
-  const response=await fetch(new URL(path,document.baseURI),{credentials:'omit',redirect:'error'});
+async function asset(path:string,expected:Fixture,signal?:AbortSignal):Promise<Blob> {
+  const response=await fetch(new URL(path,document.baseURI),{credentials:'omit',redirect:'error',signal});
   assert(response.ok,'trusted fixture asset response');
   const bytes=new Uint8Array(await response.arrayBuffer());
   assert(bytes.length===expected.bytes&&digest(bytes)===expected.sha256,'exact trusted fixture asset');
@@ -45,7 +45,7 @@ async function run() {
     finally{clearTimeout(timer);lifetime.abort();surface.replaceChildren();}
   }
   async function pdf(url:string,signal:AbortSignal) {
-    const blob=await asset('./fixtures/publication.pdf',manifest.pdf),source=sourceFromBlob(blob,'lawful-gpo-pdf',manifest.pdf.sha256);
+    const blob=await asset('./fixtures/publication.pdf',manifest.pdf,signal),source=sourceFromBlob(blob,'lawful-gpo-pdf',manifest.pdf.sha256);
     let publication:ReaderDocument<ReadingPreferences>|undefined,view:ReaderView<ReadingPreferences>|undefined;
     try {
       publication=await createPdfAdapter<ReadingPreferences>({workerUrl:url,createWorker(path){
@@ -62,11 +62,11 @@ async function run() {
   if(!direct)await operation('PDF same-version verified Blob worker diagnostic',async signal=>{
     // Diagnostic alternative only after a measured direct-worker failure. The
     // same pinned app asset is hashed; no book URL, CDN or authority is added.
-    const blob=await asset(workerUrl,manifest.worker),url=URL.createObjectURL(new Blob([blob],{type:'text/javascript'}));
+    const blob=await asset(workerUrl,manifest.worker,signal),url=URL.createObjectURL(new Blob([blob],{type:'text/javascript'}));
     try{return await pdf(url,signal);}finally{URL.revokeObjectURL(url);}
   });
   await operation('Offline DEFLATE: real Nemo CBZ member extraction and raster',async signal=>{
-    const blob=await asset('./fixtures/publication.cbz',manifest.comic),source:ReaderSource=sourceFromBlob(blob,'lawful-offline-nemo',manifest.comic.sha256);
+    const blob=await asset('./fixtures/publication.cbz',manifest.comic,signal),source:ReaderSource=sourceFromBlob(blob,'lawful-offline-nemo',manifest.comic.sha256);
     let publication:ReaderDocument<ReadingPreferences>|undefined,view:ReaderView<ReadingPreferences>|undefined;
     try {
       publication=await createComicAdapter<ReadingPreferences>({localArchive:true}).open({source,signal});

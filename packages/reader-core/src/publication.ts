@@ -55,7 +55,8 @@ export async function createReadingPublication(session:ReaderSessionInput,caller
     if(!id||!revision||!Number.isSafeInteger(size)||size<1)throw new ReaderError('invalid_source');
     const direction=manifest.metadata.direction;
     if(direction!==undefined&&direction!=='ltr'&&direction!=='rtl'&&direction!=='vertical')throw new ReaderError('invalid_source');
-    const metadata:ReaderMetadata=Object.freeze({...manifest.metadata,direction,
+    const {direction:_fileDirection,...identity}=manifest.metadata;
+    const metadata:ReaderMetadata=Object.freeze({...identity,...direction===undefined?{}:{direction},
       ...format==='cbz'?{pageCount:manifest.pageNames!.length}:{}});
     let source:ReaderSource;
     if(format==='pdf') {
@@ -83,7 +84,8 @@ export async function createReadingPublication(session:ReaderSessionInput,caller
         current();const progress=response.progress;if(progress===null)return null;
         if(progress.sourceId!==id)throw new ReaderError('invalid_source');
         if(progress.stale||progress.sourceRevision!==revision)return null;
-        const location=readerLocationFromReading(progress.location);validateLocation(location,format);return location;
+        const location=readerLocationFromReading(progress.location);validateLocation(location,format);
+        if(location.format==='cbz'&&location.page>=manifest.pageNames!.length)throw new ReaderError('invalid_location');return location;
       },
       ...format==='cbz'?{async comicPages(candidate:ReaderSource,parent:AbortSignal):Promise<ComicPageProvider> {
         current();throwIfAborted(parent);if(candidate!==source)throw new ReaderError('invalid_source');

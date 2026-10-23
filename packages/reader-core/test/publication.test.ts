@@ -19,7 +19,7 @@ test('PDF publication HEADs once and exposes only captured bounded ranges with o
   const f=fixture('pdf'),publication=await createReadingPublication(f.session);
   assert.deepEqual(f.calls,['head']);assert.equal(publication.source.id,'asset');assert.equal(publication.source.revision,f.session.manifest.revision);
   assert.equal(publication.source.resources,undefined);assert.equal(publication.source.sequential,undefined);assert.equal(publication.comicPages,undefined);
-  assert.deepEqual(publication.metadata,{title:'Catalogue title',direction:undefined});assert.ok(Object.isFrozen(publication.source));
+  assert.deepEqual(publication.metadata,{title:'Catalogue title'});assert.ok(Object.isFrozen(publication.source));
   assert.equal((await publication.source.read!({start:0,endExclusive:65536},active())).length,65536);
   await assert.rejects(publication.source.read!({start:0,endExclusive:65537},active()),{code:'limit_exceeded'});assert.deepEqual(f.calls,['head','range']);
   publication.dispose();await assert.rejects(publication.source.read!({start:0,endExclusive:1},active()),{code:'aborted'});assert.equal(f.lifetime.signal.aborted,false);
