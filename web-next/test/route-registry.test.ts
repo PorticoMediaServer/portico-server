@@ -1,12 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createWebScreenRegistry, defineWebScreen, webScreenIdForRoute, webScreenPaths} from '../src/route-registry.ts';
+import {createWebScreenRegistry, defineWebAction, defineWebScreen, invokeWebAction, webScreenIdForRoute, webScreenPaths} from '../src/route-registry.ts';
 const Screen = () => null;
 test('every existing destination has a stable screen id, with no prefix/opaque-id inference', () => {
-  assert.equal(Object.keys(webScreenPaths).length, 21);
+  assert.equal(Object.keys(webScreenPaths).length, 20);
   for (const [id, path] of Object.entries(webScreenPaths)) assert.equal(webScreenIdForRoute(path), id);
   assert.equal(webScreenIdForRoute('/library/some-id'), undefined);
   assert.equal(webScreenIdForRoute('/settings/extra'), undefined);
+});
+
+test('ruling35 feedback registers one dialog action without a page or navigation target', () => {
+  const Host = () => null;
+  const definition = defineWebAction({id: 'feedback', host: Host, subscribe: () => () => {}, getSnapshot: () => false, invoke() {assert.fail('not a mount effect');}});
+  const registry = createWebScreenRegistry({'feedback.action.tsx': {default: definition}});
+  assert.equal(registry.getAction('feedback')?.host, Host);assert.deepEqual(registry.actions(), [definition]);
+  assert.equal(Object.hasOwn(webScreenPaths, 'feedback'), false);assert.equal(webScreenIdForRoute('/feedback'), undefined);
+  assert.equal(registry.missing().some(id => String(id) === 'feedback'), false);assert.deepEqual(registry.retainedHosts(), []);
+});
+test('feedback gestures reread actual permission and captured currentness instead of stale menu state', () => {
+  let canSubmit = false, current = true, opened = 0;
+  const action = defineWebAction({id: 'feedback', host: Screen, subscribe: () => () => {}, getSnapshot: () => canSubmit, invoke: () => {opened++;}});
+  assert.equal(invokeWebAction(undefined, () => current), false);assert.equal(invokeWebAction(action, () => current), false);
+  canSubmit = true;assert.equal(invokeWebAction(action, () => current), true);assert.equal(opened, 1);
+  current = false;assert.equal(invokeWebAction(action, () => current), false);current = true;canSubmit = false;
+  assert.equal(invokeWebAction(action, () => current), false);assert.equal(opened, 1);
+});
+test('multiple feedback renderers cannot overwrite the action owner', () => {
+  const action = defineWebAction({id: 'feedback', host: Screen, subscribe: () => () => {}, getSnapshot: () => false, invoke() {}});
+  assert.throws(() => createWebScreenRegistry({'first.action.tsx': {default: action}, 'second.action.tsx': {default: action}}), /duplicate-web-action:feedback/);
 });
 test('screen modules register independently; missing components remain visible to diagnostics', () => {
   const registry = createWebScreenRegistry({'./screens/settings/settings.route.tsx': {default: defineWebScreen({id: 'settings', component: Screen})}, './screens/accounts/entry.route.tsx': {default: [defineWebScreen({id: 'signIn', component: Screen}), defineWebScreen({id: 'profiles', component: Screen})]}});

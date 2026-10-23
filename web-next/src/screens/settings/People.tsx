@@ -1,0 +1,190 @@
+import {useCallback, useEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {defaultI18n} from '@i18n';
+import {SettingsPeopleClient, type SettingsPeoplePage, type SettingsPeopleQuery, type SettingsPersonRow, type SettingsBulkAccess, type SettingsBulkAction} from '@core/settings-people.ts';
+import {settingsRowIndex, settingsSpec, type SettingsRow, type SettingsValue} from '@core/presentation/settings-spec.ts';
+import {managesTier, type AccessMember, type AccessTier, type MemberLimits} from '@core/server-administration.ts';
+import {SettingsAction, SettingsGroup, SettingsHours, SettingsSelectionList, SettingsStringList, SettingsPanel, SettingsRows, SettingsTable, type SettingPresentation, type SettingsTableHandle, type TableQuery} from '../../kit/settings';
+import {Button} from '../../kit/controls';
+import {Dialog} from '../../kit/overlays/Dialog';
+import {SettingsRow as Row} from '../../kit/shell/SettingsSurfaces';
+import {SettingsPageFailure} from '../../kit/settings';
+import {peopleTableRow} from './people-table-row';
+import type {SettingsViewerScope} from '../../platform/settings-platform';
+
+const t = defaultI18n.t, section = settingsSpec.find(section => section.scope === 'server' && section.id === 'people')!;
+const table = section.groups![0].rows[0].control, personSpec = section.panels!.person;
+const label = (id: string) => t(settingsRowIndex.get(id)!.row.label);
+const initialQuery: TableQuery = {search: '', filters: {role: 'all', status: 'all'}, sort: {by: 'active', direction: 'desc'}};
+function queryOf(query: TableQuery): SettingsPeopleQuery {
+  return {search: query.search, role: query.filters.role as SettingsPeopleQuery['role'], status: query.filters.status as SettingsPeopleQuery['status'], sort: query.sort.by as SettingsPeopleQuery['sort'], direction: query.sort.direction};
+}
+/** Supplied only by the genuine inherit/unlimited/limit producer facade. */
+export type PeopleStreamLimits = Readonly<{
+  read: (person: AccessMember) => SettingsValue;
+  patch: (person: AccessMember, choice: SettingsValue) => MemberLimits;
+  readBulk: (access: SettingsBulkAccess | undefined) => SettingsValue;
+  patchBulk: (access: SettingsBulkAccess | undefined, choice: SettingsValue) => SettingsBulkAccess;
+}>;
+export type PeopleBindings = Readonly<{
+  client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier};
+  authority: Readonly<{scope: SettingsViewerScope; isCurrent: () => boolean; subscribe: (listener: () => void) => () => void; onAuthorityChanged: () => void}>;
+  streamLimits?: PeopleStreamLimits; invite?: (opener: HTMLElement) => void; openHome: () => void; reportError: (error: unknown) => void;
+}>;
+
+/** The table query, detail revision and bulk transaction stay bound to one real session. */
+export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
+  const scope = bindings.authority.scope;
+  return <PeopleWorkspace key={JSON.stringify([scope.serverId, scope.authority, scope.accountId, scope.profileId, scope.sessionFamilyId, bindings.actor.role])} bindings={bindings} />;
+}
+
+function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
+  const {client} = bindings;
+  const live = useSyncExternalStore(bindings.authority.subscribe, bindings.authority.isCurrent, () => false);
+  const [denied, setDenied] = useState(false);
+  const [query, setQuery] = useState<TableQuery>(initialQuery), [page, setPage] = useState<SettingsPeoplePage>(), [error, setError] = useState<unknown>();
+  const [loading, setLoading] = useState(false), [selected, setSelected] = useState<ReadonlySet<string>>(new Set()), [refresh, setRefresh] = useState(0);
+  const [person, setPerson] = useState<AccessMember>(), [personId, setPersonId] = useState<string>(), [tab, setTab] = useState(personSpec.tabs![0].id);
+  const [advanced, setAdvanced] = useState(false), [saving, setSaving] = useState(false), [saved, setSaved] = useState(false);
+  const [chooseLibraries, setChooseLibraries] = useState(false);
+  const [chooseHours, setChooseHours] = useState(false);
+  const [command, setCommand] = useState<{action: SettingsBulkAction; rows: readonly SettingsPersonRow[]} | undefined>(), [bulk, setBulk] = useState<SettingsBulkAccess>();
+  const tableRef = useRef<SettingsTableHandle>(null), opener = useRef<HTMLElement | null>(null), generation = useRef(0), mounted = useRef(true);
+  const requests = useRef(new Set<AbortController>()), retired = useRef(false);
+  const confirmOpener = useRef<HTMLElement | null>(null);
+  useEffect(() => {const activeRequests = requests.current;mounted.current = true;return () => {mounted.current = false;for (const request of activeRequests) request.abort();activeRequests.clear();};}, []);
+  const failure = useCallback((error: unknown): boolean => {
+    if (!mounted.current || !bindings.authority.isCurrent()) return true;
+    const status = error && typeof error === 'object' && 'status' in error ? error.status : undefined;
+    if (status === 401 || status === 403) {
+      if (retired.current) return true;
+      retired.current = true;++generation.current;client.dispose();
+      for (const request of requests.current) request.abort();requests.current.clear();
+      setDenied(true);setPage(undefined);setPerson(undefined);setPersonId(undefined);setSelected(new Set());setCommand(undefined);setBulk(undefined);setError(undefined);
+      bindings.authority.onAuthorityChanged();return true;
+    }
+    setError(error);return false;
+  }, [bindings.authority, client]);
+  useEffect(() => {
+    if (!live || denied) return;
+    const current = ++generation.current, controller = new AbortController();
+    setPage(undefined); setLoading(true); setError(undefined); setSelected(new Set());
+    const timer = setTimeout(() => {void client.read(queryOf(query), '', controller.signal).then(value => {if (current === generation.current && bindings.authority.isCurrent()) setPage(value);}).catch(error => {if (!controller.signal.aborted && current === generation.current) failure(error);}).finally(() => {if (current === generation.current) setLoading(false);});}, query.search ? 200 : 0);
+    return () => {clearTimeout(timer); controller.abort();};
+  }, [client, query, refresh, live, denied, failure, bindings.authority]);
+  useEffect(() => {
+    if (!live || denied || !personId) {setPerson(undefined); return;}
+    const controller = new AbortController(); setPerson(undefined); setError(undefined); setChooseLibraries(false); setChooseHours(false);
+    void client.person(personId, controller.signal).then(value => {if (!controller.signal.aborted && bindings.authority.isCurrent()) setPerson(value);}).catch(error => {if (!controller.signal.aborted) failure(error);});
+    return () => controller.abort();
+  }, [client, personId, live, denied, failure, bindings.authority]);
+  const more = () => {
+    if (!live || denied || !bindings.authority.isCurrent() || loading || !page?.nextCursor) return;
+    const current = generation.current, before = page, request = new AbortController();requests.current.add(request);setLoading(true);
+    void client.read(queryOf(query), page.nextCursor, request.signal).then(next => {if (current === generation.current && bindings.authority.isCurrent()) {
+      const ids = new Set(before.items.map(row => row.accountId));
+      setPage({...next, items: [...before.items, ...next.items.filter(row => !ids.has(row.accountId))]});
+    }}).catch(error => {if (!request.signal.aborted && current === generation.current) failure(error);}).finally(() => {requests.current.delete(request);if (current === generation.current) setLoading(false);});
+  };
+  const run = async (action: () => Promise<void>) => {
+    if (!live || denied || !bindings.authority.isCurrent() || saving) return; setSaving(true); setSaved(false); setError(undefined);
+    try {await action(); if (mounted.current && bindings.authority.isCurrent() && !retired.current) {setSaved(true); setRefresh(value => value + 1);}}
+    catch (error) {if (!failure(error)) bindings.reportError(error);}
+    finally {if (mounted.current) setSaving(false);}
+  };
+  const canEdit = live && !denied && bindings.authority.isCurrent() && !!person && person.accountId !== bindings.actor.accountId && managesTier(bindings.actor.role, person.role);
+  const values: Readonly<Record<string, SettingsValue | undefined>> = person ? {
+    'people.username': person.username, 'people.notes': person.notes ?? '', 'people.role': person.role === 'admin' ? 'administrator' : person.role,
+    'people.libraries': person.allowedLibraries.length || chooseLibraries ? 'some' : 'all', ...(bindings.streamLimits ? {'people.maxStreams': bindings.streamLimits.read(person)} : {}),
+    'people.awayAccess': person.limits.allowRemote ? 'allowed' : 'home', 'people.conversions': person.limits.conversion === 'audio' ? 'sound' : person.limits.conversion,
+    'people.hours': person.limits.schedule.windows.length || chooseHours ? 'set' : 'any', 'people.hoursTimezone': person.limits.schedule.timezone,
+    'people.maxRating': person.limits.maxContentRating || 'none', 'people.allowUnrated': person.limits.allowUnrated, 'people.accessTokens': person.limits.accessTokens,
+  } : {};
+  const state = (row: SettingsRow): SettingPresentation => ({present: !!person && (Object.hasOwn(values, row.id) || ['people.turnOff', 'people.delete', 'people.profiles', 'people.hoursList', 'people.hiddenLabels'].includes(row.id) || row.id === 'people.libraryList' && (chooseLibraries || !!person.allowedLibraries.length)),
+    value: values[row.id], displayValue: typeof values[row.id] === 'string' ? values[row.id] as string : undefined, disabled: saving || !canEdit});
+  const change = (row: SettingsRow, value: SettingsValue) => {
+    if (!person || !canEdit) return;
+    if (row.id === 'people.libraries' && value === 'some') {setChooseLibraries(true); return;}
+    if (row.id === 'people.hours' && value === 'set') {setChooseHours(true); return;}
+    const before = person;
+    void run(async () => {
+      if (row.id === 'people.notes') {const next = await client.notes(before, String(value)); setPerson(current => current?.accountId === before.accountId ? next : current); return;}
+      if (row.id === 'people.role') {const next = await client.role(before, value === 'administrator' ? 'admin' : value as AccessTier); setPerson(current => current?.accountId === before.accountId ? next : current); return;}
+      if (row.id === 'people.libraries' && value === 'all') {await libraryAccess([]); setChooseLibraries(false); return;}
+      const patch: {-readonly [K in keyof MemberLimits]?: MemberLimits[K]} = {};
+      if (row.id === 'people.maxStreams') {
+        if (!bindings.streamLimits) throw new Error('settings_stream_limit_inheritance_unavailable');
+        const saved = await client.limits(before, bindings.streamLimits.patch(before, value));
+        setPerson(current => current?.accountId === before.accountId ? {...before, limits: saved.limits, limitsRevision: saved.revision} : current);
+        return;
+      }
+      else if (row.id === 'people.awayAccess') patch.allowRemote = value === 'allowed';
+      else if (row.id === 'people.conversions') patch.conversion = value === 'sound' ? 'audio' : value as MemberLimits['conversion'];
+      else if (row.id === 'people.maxRating') patch.maxContentRating = value === 'none' ? '' : String(value);
+      else if (row.id === 'people.allowUnrated') patch.allowUnrated = value === true;
+      else if (row.id === 'people.accessTokens') patch.accessTokens = value === true;
+      else if (row.id === 'people.hoursTimezone') patch.schedule = {...before.limits.schedule, timezone: String(value)};
+      else if (row.id === 'people.hours' && value === 'any') patch.schedule = {...before.limits.schedule, windows: []};
+      else return;
+      const saved = await client.limits(before, {...before.limits, ...patch});
+      setPerson(current => current?.accountId === before.accountId ? {...before, limits: saved.limits, limitsRevision: saved.revision} : current);
+    });
+  };
+  const libraryAccess = async (allowedLibraries: readonly string[]) => {
+    if (!person || !canEdit) return;
+    const row = page?.items.find(row => row.accountId === person.accountId); if (!row) return;
+    await client.bulk([{...row, revision: person.revision, limitsRevision: person.limitsRevision}], 'access', {allowedLibraries: [...allowedLibraries]});
+    const next = await client.person(person.accountId); setPerson(current => current?.accountId === next.accountId ? next : current);
+  };
+  const hours = (windows: MemberLimits['schedule']['windows']) => {
+    if (!person || !canEdit) return;
+    const before = person;
+    void run(async () => {const saved = await client.limits(before, {...before.limits, schedule: {...before.limits.schedule, windows}}); setPerson(current => current?.accountId === before.accountId ? {...before, limits: saved.limits, limitsRevision: saved.revision} : current);});
+  };
+  const ask = (action: SettingsBulkAction, ids: readonly string[], element?: HTMLElement) => {
+    if (!live || denied || !bindings.authority.isCurrent()) return;
+    const rows = (page?.items ?? []).filter(row => ids.includes(row.accountId)).map(row => person?.accountId === row.accountId ? {...row, revision: person.revision, limitsRevision: person.limitsRevision} : row);
+    if (!rows.length || rows.some(row => row.accountId === bindings.actor.accountId || !managesTier(bindings.actor.role, row.role))) return;
+    confirmOpener.current = element ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null); setCommand({action, rows}); if (action === 'access') setBulk({});
+  };
+  const personRow = page?.items.find(row => row.accountId === personId);
+  const filtered = !!query.search.trim() || Object.values(query.filters).some(value => value !== 'all');
+  const special = (row: SettingsRow) => {
+    if (!person) return null;
+    if (row.id === 'people.libraryList') return <SettingsSelectionList label={label(row.id)} minimum={1} items={bindings.libraries.map(library => ({id: library.id, label: library.name}))} selected={person.allowedLibraries} disabled={!canEdit || saving} onChange={ids => {void run(() => libraryAccess(ids));}} />;
+    if (row.id === 'people.hoursList') return <SettingsHours windows={person.limits.schedule.windows} disabled={!canEdit || saving} onChange={hours} />;
+    if (row.id === 'people.hiddenLabels') return <SettingsStringList label={label(row.id)} values={person.limits.tagPolicy.deniedLabels} addLabel={t(row.control.addLabel!)} disabled={!canEdit || saving} onChange={deniedLabels => {
+      const before = person;
+      void run(async () => {const saved = await client.limits(before, {...before.limits, tagPolicy: {deniedLabels}}); setPerson(current => current?.accountId === before.accountId ? {...before, limits: saved.limits, limitsRevision: saved.revision} : current);});
+    }} />;
+    if (row.id === 'people.profiles') return <>{person.profileNames?.map((name, index) => <Row key={index} label={name}><span /></Row>)}</>;
+    if (row.control.type === 'readonly') return <span>{values[row.id] as string}</span>;
+    if (row.control.type === 'action') return <SettingsAction appearance={row.control.style === 'danger' ? 'danger' : 'glass'} disabled={!canEdit || saving || !personRow} onClick={() => {if (personRow) ask(row.id === 'people.delete' ? 'remove' : person.disabled ? 'enable' : 'disable', [personId!]);}}>{row.id === 'people.turnOff' && person.disabled ? t('next.settings.turnOn') : t(row.control.label!)}</SettingsAction>;
+    return null;
+  };
+  if (!live || denied) return null;
+  return <>
+    <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="small" variant="primary" icon="i-plus" iconSize={20} disabled={!bindings.invite} onClick={event => {if (bindings.authority.isCurrent()) bindings.invite?.(event.currentTarget);}}>{t(table.addLabel!)}</Button>}>
+    {error && !page && !personId ? <SettingsPageFailure retry={() => setRefresh(value => value + 1)} home={bindings.openHome} /> : <SettingsTable ref={tableRef} height={table.height}
+      label={t(section.title)} rows={(page?.items ?? []).map(row => peopleTableRow(row, bindings.actor))} columns={table.columns!.map(column => ({id: column.id!, label: t(column.label), kind: column.kind as 'main', sortable: column.sort, width: column.width}))}
+      query={query} onQueryChange={setQuery} filters={table.filters!.map(filter => ({id: filter.id, label: t(filter.label), showAllValue: false, options: filter.options.map(option => ({value: option.value, label: t(option.label)}))}))}
+      searchLabel={t(table.search!)} countLabel={page ? t(filtered ? 'next.settings.peopleCount' : 'next.settings.peopleTotal', {matched: page.matchedCount, total: page.totalCount}) : undefined} emptyLabel={t(table.empty!)} loading={loading}
+      matchedCount={page?.matchedCount} hasMore={!!page?.nextCursor} onLoadMore={more} selected={selected} onSelectionChange={setSelected}
+      rowAction={{label: t(table.rowAction!.label), onAction: (row, element) => {opener.current = element; setPersonId(row.id); setTab(personSpec.tabs![0].id);}}}
+      bulkActions={[
+        {id: 'access', label: t(table.select!.bulk[0].label), onAction: (ids, element) => ask('access', ids, element)},
+        {id: 'disable', label: t(table.select!.bulk[1].label), onAction: (ids, element) => ask('disable', ids, element)},
+        {id: 'remove', label: t(table.select!.bulk[2].label), destructive: true, onAction: (ids, element) => ask('remove', ids, element)},
+      ]} />}
+    </SettingsGroup>
+    {personId && <SettingsPanel open onClose={() => {setPersonId(undefined); setPerson(undefined);}} title={person?.username ?? personRow?.username ?? t(section.title)} audience={t(bindings.actor.role === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}
+      returnFocusRef={opener} selectedTab={tab} onTabChange={setTab} saveState={saving ? 'saving' : saved ? 'saved' : undefined}
+      error={error ? t('next.states.pageFailedBody') : undefined} tabs={personSpec.tabs!.map(tab => ({id: tab.id, title: t(tab.title), content: !person ? <p role="status">{t('next.settings.loading')}</p> : <SettingsRows holder={tab} state={state} change={change} reset={() => {}} advancedOpen={advanced} onAdvancedChange={setAdvanced}
+        renderSpecial={special} />
+      }))} />}
+    {command && <Dialog open title={command.action === 'access' ? t(table.select!.bulk[0].label) : t('next.settings.confirmPeople', {count: command.rows.length})} onOpenChange={open => {if (!open && !saving) {setCommand(undefined); setBulk(undefined);}}}
+      returnFocusRef={confirmOpener} footer={<><Button disabled={saving} onClick={() => {setCommand(undefined); setBulk(undefined);}}>{t('next.settings.cancel')}</Button><Button variant="primary" loading={saving} disabled={command.action === 'access' && !Object.keys(bulk ?? {}).length} onClick={() => {void run(async () => {await client.bulk(command.rows, command.action, command.action === 'access' ? bulk : undefined); setCommand(undefined); setBulk(undefined); setSelected(new Set()); if (command.action === 'remove' && command.rows.some(row => row.accountId === personId)) {setPersonId(undefined); setPerson(undefined);} else if (personId) {const next = await client.person(personId); setPerson(current => current?.accountId === next.accountId ? next : current);}});}}>{t('next.settings.apply')}</Button></>}>
+      {command.action === 'access' ? <SettingsRows holder={section.panels!.bulkAccess} advancedOpen={false} onAdvancedChange={() => {}} reset={() => {}} state={row => ({present: ['bulk.awayAccess', 'bulk.maxRating'].includes(row.id) || row.id === 'bulk.maxStreams' && !!bindings.streamLimits, value: row.id === 'bulk.maxStreams' ? bindings.streamLimits?.readBulk(bulk) : row.id === 'bulk.awayAccess' ? bulk?.allowRemote === undefined ? 'keep' : bulk.allowRemote ? 'allowed' : 'home' : bulk?.maxContentRating === undefined ? 'keep' : bulk.maxContentRating || 'none'})}
+        change={(row, value) => setBulk(before => {if (row.id === 'bulk.maxStreams') return bindings.streamLimits?.patchBulk(before, value) ?? before; const next = {...before}; if (row.id === 'bulk.awayAccess') {if (value === 'keep') delete next.allowRemote; else next.allowRemote = value === 'allowed';} else {if (value === 'keep') delete next.maxContentRating; else next.maxContentRating = value === 'none' ? '' : String(value);} return next;})} renderSpecial={() => null} /> : <p>{t(command.action === 'remove' ? table.select!.bulk[2].confirm! : table.select!.bulk[1].confirm!)}</p>}
+    </Dialog>}
+  </>;
+}

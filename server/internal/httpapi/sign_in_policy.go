@@ -19,6 +19,10 @@ func (d Dependencies) signInPolicyRoutes(mux *http.ServeMux) {
 		write(w, 200, out)
 	})
 	d.httpHandle(mux, "PATCH /v1/admin/sign-in/policy", func(w http.ResponseWriter, r *http.Request) {
+		if _, e := d.owner(r); e != nil {
+			signInPolicyFailure(w, e)
+			return
+		}
 		var q identity.SignInPolicyPatch
 		if e := decode(w, r, &q); e != nil {
 			signInPolicyFailure(w, e)
