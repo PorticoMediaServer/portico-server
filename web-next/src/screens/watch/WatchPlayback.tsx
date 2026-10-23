@@ -9,10 +9,12 @@ import {DockHost, DockNotice, MediaSurface, type DockBinding, type DockNoticeDat
 import {WatchScreen} from './WatchScreen';
 import {WatchSkipPrompt} from './SkipPrompt';
 import {WatchUndoPrompt} from './UndoPrompt';
+import {WatchUpNextPrompt} from './UpNextPrompt';
 import type {WatchBindings, WatchSurfaces, WatchGeometry} from './types';
 import {createWatchPlayOn, type WatchPlaybackContext, type WatchPlayOnBinding} from './play-on-binding';
 import {createWindowChromePublisher, type WindowChromePublisher} from '../../platform/window-chrome';
 import {router} from '../../router';
+import {settingsPlatform} from '../../platform/settings-platform';
 import {fenceKey, localVideoSurfaceActive, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice} from '../../shell/playback-model';
 import {PlaybackMediaOwner} from '../../shell/playback-media-owner';
 import {useShellWidth} from '../../shell/viewport';
@@ -35,7 +37,9 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   const castAnchor = useRef<HTMLElement | null>(null);
   const [castOwner, setCastOwner] = useState<{runtime: WebShellPlaybackRuntime; context: WatchPlaybackContext; value: WatchPlayOnBinding} | null>(null);
   useEffect(() => {
-    if (!binding || !context || !video.current || !context.isCurrent()) return;
+    // Desktop's native media owner has no browser-video Cast/AirPlay transport. Its real
+    // platform is installed before the unchanged web entry, never inferred from the UA.
+    if (!binding || !context || !video.current || !context.isCurrent() || settingsPlatform()?.environment.platform === 'desktop') return;
     const value = createWatchPlayOn(context, binding, video.current, import.meta.env.VITE_CAST_APPLICATION_ID);
     setCastOwner({runtime: binding.runtime, context, value});
     return value.dispose;
@@ -130,7 +134,8 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   const drawnSurfaces: WatchSurfaces = {...surfaces, available: [...new Set([...(surfaces?.available ?? []), ...(castAvailable ? ['play-on' as const] : [])])], render: surfaces?.render ?? (() => null),
     playOn: cast && castAvailable ? {active: remoteState?.panel === 'play-on', open: anchor => {castAnchor.current = anchor ?? null;cast.controller.openPlayOn();}, close: () => cast.controller.closePanel()} : surfaces?.playOn,
     prompts: <>{surfaces?.prompts}{policy && snapshot && <><WatchSkipPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} />
-      <WatchUndoPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} /></>}</>};
+      <WatchUndoPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} />
+      <WatchUpNextPrompt binding={policy} snapshot={snapshot} expanded={expanded} layout={layout} artwork={binding!.artwork} environment={binding!.environment} /></>}</>};
   const remote = remoteState?.remote;
   const visualId = remote?.phase === 'playing' ? remoteState?.cast.receiver?.itemId : remote?.itemId;
   const item = visualId ? cast?.item(visualId) : undefined;

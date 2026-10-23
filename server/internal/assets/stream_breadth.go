@@ -28,20 +28,22 @@ type StreamBreadth struct {
 // AudioVariant names the bitstream, not the decoder family. The distinction is
 // required even when DTS-HD and DTS core use the same FFmpeg codec name.
 func AudioVariant(codec, profile, objects string) string {
-	p := strings.ToLower(profile)
+	p := strings.ToLower(strings.TrimSpace(profile))
 	switch {
 	case codec == "dts" || codec == "dca":
 		switch {
 		case objects == "dtsx":
 			return "dtsx"
-		case strings.Contains(p, "ma"):
+		case p == "dts-hd ma" || p == "dts hd ma" || p == "dts-hd master audio" || p == "dts hd master audio":
 			return "dts_hd_ma"
-		case strings.Contains(p, "hra") || strings.Contains(p, "high resolution"):
+		case p == "dts-hd hra" || p == "dts hd hra" || p == "dts-hd high resolution audio" || p == "dts hd high resolution audio":
 			return "dts_hd_hra"
-		case strings.Contains(p, "express"):
+		case p == "dts express" || p == "dts-express":
 			return "dts_express"
-		default:
+		case "dts" == p || p == "dts-es" || p == "dts es" || p == "dts-es matrix" || p == "dts es matrix" || p == "dts 96/24":
 			return "dts_core"
+		default:
+			return ""
 		}
 	case codec == "truehd" || codec == "mlp":
 		if objects == "atmos" {

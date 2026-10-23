@@ -52,6 +52,7 @@ export function ServicesProviderContext({provider, email}: {provider: IdentityPr
   </span>;
 }
 export function ServicesBackAction({children}: {children: ReactNode}) { return <span className={styles.backAction}><Icon name="i-left" size={18} />{children}</span>; }
+export function ServicesInvitationCredentials({children}: {children: ReactNode}) { return <div className={styles.invitationCredentials}>{children}</div>; }
 export function ServicesDivider({children}: {children: ReactNode}) { return <div className={styles.divider}>{children}</div>; }
 export function ServicesPair({children}: {children: ReactNode}) { return <div className={styles.pair}>{children}</div>; }
 export function ServicesHint({children}: {children: ReactNode}) { return <p className={styles.hint}>{children}</p>; }

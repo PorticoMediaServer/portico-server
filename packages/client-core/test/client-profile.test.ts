@@ -123,7 +123,7 @@ test('a probe that throws or hangs leaves the declared floor',async()=>{
 
 test('Apple facts widen and narrow the declared table',()=>{
  const options={television:true,osVersion:'18.0'};
- const tv=appleProfile(options,{model:'AppleTV14,1',hardwareDecode:{hevc:true,av1:false,dolbyVision:true},hdrModes:{hdr10:true,hlg:true,dolbyVision:true},eligibleForHDRPlayback:true,screen:{width:3840,height:2160,maxFrameRate:60},audio:{maxOutputChannels:8,route:'HDMI',spatial:false}});
+ const tv=appleProfile(options,{model:'AppleTV14,1',hardwareDecode:{hevc:true,av1:false,dolbyVision:true},videoEligibility:{dolbyVision5:true,dolbyVision81:true,dolbyVision84:true},hdrModes:{hdr10:true,hlg:true,dolbyVision:true},eligibleForHDRPlayback:true,screen:{width:3840,height:2160,maxFrameRate:60},audio:{maxOutputChannels:8,route:'HDMI',spatial:false}});
  assert.equal(capabilityDocumentProblem(tv),null);
  assert.equal(tv.engines.native.evidence,'mixed');
  assert.deepEqual(tv.engines.native.video!.find(v=>v.codec==='hevc')!.dolbyVisionProfiles,[5,8]);
@@ -138,7 +138,7 @@ test('Apple facts widen and narrow the declared table',()=>{
  assert.equal(appleProfile(options,null).engines.native.evidence,'declared');
  // Hardware HEVC decodes HDR10/HLG (and Dolby Vision with its decoder) for an SDR screen too: the
  // decoder lists the ranges, the display stays SDR, and the engine says it tone-maps.
- const sdrScreen=appleProfile(options,{hardwareDecode:{hevc:true,dolbyVision:true},hdrModes:{},eligibleForHDRPlayback:false,audio:{maxOutputChannels:2}});
+ const sdrScreen=appleProfile(options,{hardwareDecode:{hevc:true,dolbyVision:true},videoEligibility:{dolbyVision5:true,dolbyVision81:true,dolbyVision84:true},hdrModes:{},eligibleForHDRPlayback:false,audio:{maxOutputChannels:2}});
  assert.deepEqual(sdrScreen.engines.native.video!.find(v=>v.codec==='hevc')!.dynamicRanges,['sdr','hdr10','hlg','dolby_vision']);
  assert.deepEqual(sdrScreen.display!.dynamicRanges,['sdr']);
  assert.equal(sdrScreen.engines.native.toneMapsHdr,true,'device tone mapping is declared, not implied');
@@ -260,4 +260,23 @@ test('explicit runtime operating-point denial is not replaced with a fabricated 
  assert.deepEqual(d.engines.native.video,[]);
  assert.equal(d.engines.native.audio!.find(a=>a.codec==='eac3')!.objectAudio,undefined,'codec support alone is not Atmos evidence');
  assert.equal(capabilityDocumentProblem(d),null);
+});
+
+
+test('Apple exact MIME and route facts narrow DV and JOC without invented output channels',()=>{
+ const options={television:true};
+ const guessed=appleProfile(options,{hardwareDecode:{hevc:true,dolbyVision:true},hdrModes:{dolbyVision:true},audio:{spatial:true,maxOutputChannels:2,route:'HDMI'}});
+ assert.deepEqual(guessed.engines.native.video!.find(v=>v.codec==='hevc')!.dolbyVisionProfiles,[]);
+ assert.equal(guessed.audioOutput!.maxChannels,2);
+ assert.equal(guessed.engines.native.audio!.find(a=>a.codec==='eac3')!.objectAudio,undefined);
+ const exact=appleProfile(options,{videoEligibility:{dolbyVision5:true,dolbyVision81:true,dolbyVision84:true},audio:{maximumOutputNumberOfChannels:2,outputNumberOfChannels:2,spatial:true,route:'HDMI',eac3JocEligible:true}});
+ assert.deepEqual(exact.engines.native.video!.find(v=>v.codec==='hevc')!.dolbyVisionProfiles,[5,8]);
+ assert.equal(exact.audioOutput!.maxChannels,2);assert.deepEqual(exact.engines.native.audio!.find(a=>a.codec==='eac3')!.objectAudio,['atmos']);
+ assert.equal(exact.engines.native.audio!.some(a=>a.codec==='truehd'),false);
+ const only81=appleProfile(options,{videoEligibility:{dolbyVision81:true,dolbyVision84:false}}).engines.native.video!.find(v=>v.codec==='hevc')!;
+ assert.deepEqual(only81.dolbyVisionProfiles,[8]);assert.deepEqual(only81.dolbyVisionProfile8Compatibility,[1]);
+ const only84=appleProfile(options,{videoEligibility:{dolbyVision84:true}}).engines.native.video!.find(v=>v.codec==='hevc')!;
+ assert.deepEqual(only84.dolbyVisionProfiles,[8]);assert.deepEqual(only84.dolbyVisionProfile8Compatibility,[4]);
+ assert.equal(appleProfile(options,{audio:{maximumOutputNumberOfChannels:1,spatial:true}}).audioOutput!.maxChannels,1);
+ assert.equal(appleDeclaredProfile(options).engines.native.audio!.find(a=>a.codec==='eac3')!.objectAudio,undefined);
 });

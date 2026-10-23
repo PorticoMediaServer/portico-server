@@ -6,6 +6,7 @@ import {BrowserAccountEntry} from '../src/platform/account-entry.ts';
 
 const serverId = 'srv_' + 's'.repeat(43), origin = 'https://reset.example';
 function fixture(kind: 'local' | 'portico' = 'local') {
+  let selected: unknown;
   let revision = 4, resetRole = 'member', wrongServer = false, twoStep = false;
   let verifyGate: Promise<void> | undefined, releaseVerify: (() => void) | undefined;
   const calls: {path: string; body?: unknown}[] = [], retired: string[] = [], installed: string[] = [], admitted: string[] = [];
@@ -34,11 +35,11 @@ function fixture(kind: 'local' | 'portico' = 'local') {
     throw new Error('Unexpected public route: ' + path);
   }) as HttpLocalApi['request'];
   const temporary = {request: async (path: string, _method: string, body?: unknown) => {calls.push({path: 'restricted:' + path, body});}} as HttpLocalApi;
-  const entry = new BrowserAccountEntry({store: {read: async () => ({version: 1, revision, servers: []}), connectionStorage: (_id: string, value: {expectedRevision: number}) => {assert.equal(value.expectedRevision, 4); return {read: async () => undefined, change: async () => {}};}} as never,
+  const entry = new BrowserAccountEntry({store: {selected: async () => selected, read: async () => ({version: 1, revision, servers: []}), connectionStorage: (_id: string, value: {expectedRevision: number}) => {assert.equal(value.expectedRevision, 4); return {read: async () => undefined, change: async () => {}};}} as never,
     actions: {} as never, environment: () => ({storage: {read: async () => undefined, change: async () => {}}}), restore: async () => undefined,
     inspect: async () => connection.pin, connect: (async () => ({api, connection})) as never,
     temporary: (_api, session) => {assert.equal(session.sessionFamilyId, 'restricted-family'); return temporary;},
-    remember: async (_api, session) => {admitted.push(session.sessionFamilyId);}, retire: async (_api, session) => {retired.push(session.sessionFamilyId); calls.push({path: 'retire:' + session.sessionFamilyId});},
+    remember: async (_api, session) => {admitted.push(session.sessionFamilyId);selected = {signIn: kind, connection: {pin: connection.pin, session}};}, retire: async (_api, session) => {retired.push(session.sessionFamilyId); calls.push({path: 'retire:' + session.sessionFamilyId});},
   }, {inspect: async () => system, getSnapshot: () => ({origin}), cancel: () => {}, dispose: () => {}} as unknown as ServerSignInProbe);
   return {entry, calls, retired, installed, admitted, owner: () => {resetRole = 'owner';}, wrongServer: () => {wrongServer = true;}, factor: () => {twoStep = true;}, revise: () => {revision++;},
     hold: () => {verifyGate = new Promise(resolve => {releaseVerify = resolve;});}, release: () => releaseVerify?.()};

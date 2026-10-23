@@ -203,7 +203,10 @@ func videoCodecString(p *DeliveryPlan) string {
 		return fmt.Sprintf("avc1.%02x00%02x", profile, level)
 	case "hevc":
 		if hevcSampleEntry(p) == "dvh1" {
-			return fmt.Sprintf("dvh1.%02d.%02d", p.Trace.Video.DolbyVisionProfile, max(1, p.Trace.Video.DolbyVisionLevel))
+			if p.Trace.Video.DolbyVisionLevel <= 0 {
+				return ""
+			}
+			return fmt.Sprintf("dvh1.%02d.%02d", p.Trace.Video.DolbyVisionProfile, p.Trace.Video.DolbyVisionLevel)
 		}
 		level := 120
 		if p.VideoAction == "convert" {
@@ -351,7 +354,7 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 		case 4:
 			brand = "db4h"
 		}
-		if brand != "" {
+		if brand != "" && videoCodecString(p) != "" {
 			fmt.Fprintf(&b, ",SUPPLEMENTAL-CODECS=\"%s/%s\"", videoCodecString(p), brand)
 		}
 	}

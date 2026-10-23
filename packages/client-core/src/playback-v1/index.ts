@@ -3,6 +3,8 @@
  * port, the timeline reporter, queues, the viewer's playback choices and the device event feed.
  */
 export type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource, PlayerState, SidecarSubtitle} from './port.ts';
+export {localPlayerSource, localPlayerLoadReceipt} from './local-port.ts';
+export type {LocalPlayerSource, LocalPlayerLoadContext, LocalPlayerLoadReceipt} from './local-port.ts';
 export {ServerClock, driftCorrection, timelinePosition, type ClockEstimate, type ClockSample, type DriftCorrection} from './clock.ts';
 export {GenerationGate} from './generation.ts';
 export {TimelineReporter, type FailureKind, type MarkerType, type TimelineReport, type TimelineReporterOptions, type TimelineSend, type TimelineSnapshot, type TimelineState} from './timeline.ts';
@@ -25,3 +27,5 @@ export {audioGainLinear, audioSeconds, audioTrimWindow, parseAudioRenderV2, play
 export {V1ChannelControl, serverSupportsV1Channels, channelView, parseChannelSession, v1ChannelId, type ChannelPlayback, type ChannelStartOptions, type ChannelView, type ChannelViewSink, type V1ChannelOptions} from './channel-control.ts';
 
 export {musicQualityPresentation, qualityPresentation, qualityLimitKbps, qualityLimit} from './quality-presentation.ts';
+
+export {parseObservedPlayback, type ObservedPlayback, type ObservedDynamicRange} from './observed-playback.ts';

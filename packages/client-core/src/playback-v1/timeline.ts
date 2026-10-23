@@ -13,12 +13,14 @@
  *   120 s lease: `onLeaseRisk` fires once so the controller can restart from the last position.
  */
 import {GenerationGate} from './generation.ts';
+import {parseObservedPlayback, type ObservedPlayback} from './observed-playback.ts';
 import type {PlayerObservation, PlayerState} from './port.ts';
 
 export type TimelineState = 'playing' | 'paused' | 'buffering' | 'ended' | 'error';
 export type MarkerType = 'intro' | 'recap' | 'credits' | 'preview' | 'commercial';
 
 export type TimelineReport = Readonly<{
+  observedPlayback?: ObservedPlayback;
   seq: number;
   generation: number;
   state: TimelineState;
@@ -121,7 +123,12 @@ export class TimelineReporter {
   observe(observation: PlayerObservation, cause: 'time' | 'state' | 'seeked' = 'time'): void {
     if (this.stopped || !this.gate.accepts(observation.generation) || !reportable[observation.state]) return;
     const previous = this.latest;
-    this.latest = observation;
+    // Capture a whitelisted immutable snapshot now; later bridge mutations
+    // cannot change an already observed generation or add private fields.
+    let output: ObservedPlayback | undefined;
+    try { output = parseObservedPlayback(observation.observedPlayback); }
+    catch { output = Object.freeze({}); } // Invalid output never interrupts progress/lease reporting.
+    this.latest = Object.freeze({...observation, observedPlayback: output});
     const changed = !previous || reportable[previous.state] !== reportable[observation.state] || reportable[observation.state] !== this.lastSent;
     // A track switch (a local sidecar subtitle, say) is reported at once (spec §17).
     const tracks = !!previous && (previous.audioTrackId !== observation.audioTrackId || previous.subtitleTrackId !== observation.subtitleTrackId);
@@ -193,6 +200,7 @@ export class TimelineReporter {
     if (!state) return undefined;
     return Object.freeze({
       seq: ++this.seq, generation, state, positionMs: Math.max(0, Math.round(o.positionMs)), rate: o.rate,
+      ...(o.observedPlayback !== undefined ? {observedPlayback: o.observedPlayback} : {}),
       ...(o.partIndex !== undefined ? {partIndex: o.partIndex} : {}),
       ...(o.bufferedMs !== undefined ? {bufferedMs: Math.round(o.bufferedMs)} : {}),
       ...(o.bandwidthKbps !== undefined ? {bandwidthKbps: Math.round(o.bandwidthKbps)} : {}),

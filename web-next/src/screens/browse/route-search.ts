@@ -1,0 +1,30 @@
+import {parseBrowseNode, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
+import type {ContentView} from '@core/library-content.ts';
+
+const views: readonly ContentView[] = ['discover', 'browse', 'collections', 'categories', 'show', 'season', 'artist', 'album', 'book', 'collection', 'releases', 'songs', 'authors', 'series', 'author', 'book_series', 'disc'];
+function invalid(): never {throw new Error('invalid-library-route');}
+function text(value: unknown, max = 256): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || !value || value.length > max || /[\x00-\x1f\x7f]/.test(value)) invalid();
+  return value;
+}
+export type LibraryScreenSearch = Readonly<{view?: ContentView; entityId?: string; category?: string; pivot?: string; query?: BrowseNode; sort?: readonly BrowseSortSelection[]; q?: string}>;
+/** A malformed owned predicate must not silently broaden the destination. */
+export function parseLibraryScreenSearch(raw: Record<string, unknown>): LibraryScreenSearch {
+  const view = raw.view === undefined ? undefined : views.find(view => view === raw.view);
+  if (raw.view !== undefined && !view) invalid();
+  const entityId = text(raw.entityId), category = text(raw.category), pivot = text(raw.pivot, 64), q = text(raw.q, 512);
+  const query = raw.query === undefined ? undefined : parseBrowseNode(raw.query);
+  let sort: BrowseSortSelection[] | undefined;
+  if (raw.sort !== undefined) {
+    if (!Array.isArray(raw.sort) || raw.sort.length < 1 || raw.sort.length > 3) invalid();
+    sort = raw.sort.map(row => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) invalid();
+      const field = text(row.field, 64);
+      if (!field || row.direction !== 'asc' && row.direction !== 'desc' || row.seed !== undefined && (!Number.isSafeInteger(row.seed) || row.seed < 0)) invalid();
+      return {field, direction: row.direction, ...(row.seed === undefined ? {} : {seed: row.seed})};
+    });
+  }
+  return {...(view ? {view} : {}), ...(entityId ? {entityId} : {}), ...(category ? {category} : {}), ...(pivot ? {pivot} : {}),
+    ...(query ? {query} : {}), ...(sort ? {sort} : {}), ...(q ? {q} : {})};
+}

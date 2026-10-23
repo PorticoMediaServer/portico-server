@@ -4,6 +4,7 @@ import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import assert from 'node:assert/strict';
+import {buildFloorWitness} from './build-floor-witness.mjs';
 
 // Remote verification only, driven through native CDP with no browser package,
 // credentials, retained profile or product route/assembly replacement.
@@ -12,10 +13,15 @@ let server,chrome,socket;
 try {
   const root=fileURLToPath(new URL('./browser/',import.meta.url));
   const fixed=process.env.PORTICO_READER_MODE==='fixed';
-  const fixtures=fixed?{'/fixture.pdf':{bytes:await readFile(process.env.PORTICO_READER_PDF),mime:'application/pdf'},'/fixture.cbz':{bytes:await readFile(process.env.PORTICO_READER_CBZ),mime:'application/zip'}}
+  const floor=process.env.PORTICO_READER_MODE==='floor';
+  const retainedBuild=process.env.PORTICO_READER_BUILD_DIR;
+  assert(!retainedBuild||floor,'only the explicit floor artifact may be supplied prebuilt');
+  const built=retainedBuild??join(scratch,'dist');
+  const fixtures=floor?{}:fixed?{'/fixture.pdf':{bytes:await readFile(process.env.PORTICO_READER_PDF),mime:'application/pdf'},'/fixture.cbz':{bytes:await readFile(process.env.PORTICO_READER_CBZ),mime:'application/zip'}}
     :{'/publication.epub':{bytes:await readFile(process.env.PORTICO_READER_EPUB),mime:'application/epub+zip'}};
-  await build({root,configFile:false,publicDir:false,build:{outDir:join(scratch,'dist'),emptyOutDir:true,rolldownOptions:{input:join(root,fixed?'fixed.html':'index.html')}}});
-  server=await preview({root,configFile:false,build:{outDir:join(scratch,'dist')},preview:{host:'127.0.0.1',port:0},plugins:[{name:'lawful-verification-fixture',configurePreviewServer(value){value.middlewares.use((req,res,next)=>{
+  if(floor){if(!retainedBuild)await buildFloorWitness(built,process.env.PORTICO_READER_PDF,process.env.PORTICO_READER_CBZ);}
+  else await build({root,configFile:false,publicDir:false,build:{outDir:join(scratch,'dist'),emptyOutDir:true,rolldownOptions:{input:join(root,fixed?'fixed.html':'index.html')}}});
+  server=await preview({root,configFile:false,build:{outDir:built},preview:{host:'127.0.0.1',port:0},plugins:[{name:'lawful-verification-fixture',configurePreviewServer(value){value.middlewares.use((req,res,next)=>{
     const fixture=fixtures[req.url];if(fixture){res.setHeader('Content-Type',fixture.mime);res.setHeader('Content-Length',fixture.bytes.length);res.end(fixture.bytes);}else next();
   });}}]});
   const httpPort=server.httpServer.address().port;
@@ -36,9 +42,9 @@ try {
   await request('Page.enable');await request('Runtime.enable');
   const loaded=new Promise(resolve=>events.set('Page.loadEventFired',[resolve]));
   await request('Page.navigate',{url:`http://127.0.0.1:${httpPort}/${fixed?'fixed.html':''}`});await loaded;
-  const outcome=await request('Runtime.evaluate',{expression:'window.snapshotProof.then(result=>({result,cleanup:window.readerCleanup}))',awaitPromise:true,returnByValue:true,timeout:60000});
+  const outcome=await request('Runtime.evaluate',{expression:'window.snapshotProof.then(result=>({result,cleanup:window.readerCleanup}))',awaitPromise:true,returnByValue:true,timeout:floor?120000:60000});
   assert.ok(!outcome.exceptionDetails,JSON.stringify(outcome));
-  const value=outcome.result.value;assert.equal(value.result.status,'pass');assert.equal(value.cleanup.surfaceChildren,0);assert.equal(value.cleanup.overrides,0);
+  const value=outcome.result.value;assert.equal(value.result.status,'pass',JSON.stringify(value));assert.equal(value.cleanup.surfaceChildren,0);assert.equal(value.cleanup.overrides,0);
   console.log(JSON.stringify(value));
 }finally{
   socket?.close();

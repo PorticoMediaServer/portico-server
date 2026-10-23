@@ -191,6 +191,23 @@ func TestReadingRegisteredPDFLifecycle(t *testing.T) {
 	}
 }
 
+func TestReadingRegisteredIndependentOpenLifetimes(t *testing.T) {
+	r := newReadingFixture(t, "book", "pdf")
+	h := New(r.d)
+	a, b := readingOpened(t, r, h), readingOpened(t, r, h)
+	if a.SessionID == b.SessionID || a.SourceID != b.SourceID || a.Revision != b.Revision {
+		t.Fatal("separate opens need separate retirement under the same publication", a.SessionID, b.SessionID)
+	}
+	w := readingHTTP(t, h, "DELETE", "/v1/reading/sessions/"+a.SessionID, r.f.owner.AccessToken, "", nil)
+	if w.Code != 204 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = readingHTTP(t, h, "HEAD", "/v1/reading/sessions/"+b.SessionID+"/source", r.f.owner.AccessToken, b.Revision, nil)
+	if w.Code != 200 {
+		t.Fatal("retiring an earlier open ended its successor", w.Code, w.Body.String())
+	}
+}
+
 func TestReadingRegisteredArchiveAssets(t *testing.T) {
 	for _, tc := range []struct{ kind, format string }{{"book", "epub"}, {"comic", "cbz"}} {
 		t.Run(tc.format, func(t *testing.T) {

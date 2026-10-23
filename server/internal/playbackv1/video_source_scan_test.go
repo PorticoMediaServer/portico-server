@@ -65,3 +65,37 @@ func TestVideoHDRNamesUseTypedFactsRatherThanJSONWords(t *testing.T) {
 		}
 	}
 }
+
+func TestAudioStreamRetainsActualProfileAndExplicitObjectFacts(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("movies", "Movies", "movie", "/private")
+	movie := c.Movie(lib, "/private/movie.mkv", "Movie", 2026)
+	_, asset := c.File(movie.ID, "/private/source.mkv", 60)
+	tx, err := c.DB.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = assets.PersistStreams(tx, asset, 1000, 1, []assets.Stream{
+		{Index: 1, Type: "audio", Codec: "dts", Channels: 8, ChannelLayout: "7.1", Detail: assets.StreamDetail{Profile: "DTS-HD MA", ObjectAudio: "dtsx", StreamBreadth: assets.StreamBreadth{AudioVariant: "dtsx"}}},
+		{Index: 2, Type: "audio", Codec: "eac3", Title: "Atmos", Channels: 6},
+	})
+	if err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	var version Version
+	s := &Service{DB: c.DB}
+	if err = s.streams(context.Background(), tx, asset, &version); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if len(version.Audio) != 2 || version.Audio[0].Profile != "DTS-HD MA" || !version.Audio[0].DTSX || version.Audio[0].ObjectAudio != "dtsx" {
+		t.Fatal(version.Audio)
+	}
+	if version.Audio[1].Atmos || version.Audio[1].ObjectAudio != "" {
+		t.Fatal("codec/title invented objects", version.Audio[1])
+	}
+}
