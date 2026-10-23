@@ -74,6 +74,7 @@ index catalog_assets_duration
 index catalog_assets_height
 index catalog_attribute_ambiguous_restrictions
 index catalog_automatic_collection_entity
+index catalog_automatic_member_overrides_item
 index catalog_automatic_members_group
 index catalog_book_context_author
 index catalog_book_context_series
@@ -298,6 +299,8 @@ index download_requests_viewer
 index download_requests_work
 index dvr_catalog_provenance_asset_id_fk
 index dvr_programme_images_url
+index dvr_recording_layouts_linked_path
+index dvr_recording_layouts_live_path
 index dvr_recording_shares_capture
 index dvr_recordings_due
 index dvr_recordings_owner_page
@@ -333,6 +336,7 @@ index inventory_changes_source
 index inventory_directories_pending
 index inventory_directories_visited
 index inventory_directory_children
+index inventory_disc_facts_asset
 index inventory_integrity_runs
 index inventory_objects_analysis
 index inventory_objects_asset
@@ -365,6 +369,7 @@ index lc_ref_channel
 index lc_schedule_items
 index lc_schedule_window
 index libraries_admin_name
+index libraries_admin_position
 index library_navigation_order
 index library_sources_due
 index library_sources_library
@@ -641,6 +646,8 @@ table authorization_family_grants
 table authorization_family_renewals
 table authorization_family_tokens
 table authorization_session_families
+table backup_destinations
+table backup_settings
 table book_resume
 table catalog_albums
 table catalog_artists
@@ -883,6 +890,7 @@ table dvr_private_libraries
 table dvr_programme_images
 table dvr_receipts
 table dvr_recording_grants
+table dvr_recording_layouts
 table dvr_recording_shares
 table dvr_recordings
 table dvr_retention_retry
@@ -934,6 +942,11 @@ table inventory_artwork_sources
 table inventory_changes
 table inventory_directories
 table inventory_directory_cache
+table inventory_disc_chapters
+table inventory_disc_clips
+table inventory_disc_facts
+table inventory_disc_streams
+table inventory_disc_titles
 table inventory_objects
 table inventory_operation_jobs
 table inventory_path_notices
@@ -966,6 +979,7 @@ table library_metadata_agents
 table library_navigation
 table library_navigation_revisions
 table library_network_policy
+table library_preferences
 table library_revisions
 table library_scan_policies
 table library_sources
@@ -1148,6 +1162,7 @@ table playback_manifest_subtitles
 table playback_marker_skips
 table playback_observations
 table playback_observed_acquisitions
+table playback_observed_output
 table playback_origin_albums
 table playback_origin_assets
 table playback_origin_associations
@@ -1230,7 +1245,10 @@ table remote_object_refs
 table remote_playback
 table remote_scan_cursors
 table remote_scan_generations
+table remote_scan_observation_hashes
+table remote_scan_observations
 table remote_source_operations
+table remote_source_read_profiles
 table remote_sources
 table reset_file_sessions
 table restriction_outbox
@@ -1263,6 +1281,12 @@ table search_history
 table segment_catchup
 table segment_files
 table segment_shows
+table server_configuration_pending
+table server_configuration_state
+table server_log_retention
+table server_setting_lists
+table server_setting_sources
+table server_settings
 table setup_rate_limits_v1
 table show_people_credits
 table social_cast_bootstraps
@@ -1961,6 +1985,7 @@ trigger library_metadata_agents_browse_update
 trigger library_navigation_revisions_bound_check
 trigger library_navigation_revisions_bound_delete
 trigger library_navigation_revisions_bound_insert
+trigger library_preferences_configuration
 trigger library_revision_create
 trigger library_revision_update
 trigger listening_attention_book_insert
