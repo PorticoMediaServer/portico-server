@@ -24,6 +24,7 @@ import {browserNativeHlsPolicy} from './native-hls.ts';
 import {documentVisibility} from './page-visibility.ts';
 import {SubtitleSurface, type SubtitleHost} from './subtitle-surface.ts';
 import {entrySubject, itemSubject} from './subject.ts';
+import {playbackEnvironment} from './environment.ts';
 import {browserClientProfile} from './client-profile.ts';
 import {selectionSegments, selectionStartSeconds} from './selection.ts';
 import type {VideoLike} from './web-media-player.ts';
@@ -84,7 +85,7 @@ export class WebShellPlaybackRuntime {
   private readonly life = new AbortController();
   private readonly channelControl: V1ChannelControl;
 
-  constructor(source: WebPlaybackSource, environment: WebPlaybackEnvironment = {}) {
+  constructor(source: WebPlaybackSource, environment: WebPlaybackEnvironment = playbackEnvironment()) {
     if (source.contentScope.serverId !== source.authority.serverId || !source.authority.viewerFence || !source.isCurrent()) problem('invalid_playback_authority');
     this.authority = Object.freeze({...source.authority});
     this.source = Object.freeze({...source, authority: this.authority, contentScope: Object.freeze({...source.contentScope})});
@@ -133,7 +134,8 @@ export class WebShellPlaybackRuntime {
       loadHls: this.env.loadHls ?? (() => import('hls.js').then(module => module.default as unknown as import('./web-media-player.ts').HlsModule)),
       nativeHls: this.env.nativeHls ?? browserNativeHlsPolicy(), timers: this.env.timers, playerTimers: this.env.playerTimers, key: this.env.key,
       deviceMemory: typeof navigator === 'undefined' ? undefined : (navigator as Navigator & {deviceMemory?: number}).deviceMemory,
-      createRender: (service, element) => new DecodeAudioRender(service, path => this.source.api.mediaUrl(path), element as HTMLVideoElement, (current, next) => !!current && (service.getQueueController()?.sameAlbum?.(current, next) ?? false), this.audioCache),
+      createPlayer: this.env.createPlayer,
+      createRender: this.env.createRender === null ? undefined : this.env.createRender ?? ((service, element) => new DecodeAudioRender(service, path => this.source.api.mediaUrl(path), element as HTMLVideoElement, (current, next) => !!current && (service.getQueueController()?.sameAlbum?.(current, next) ?? false), this.audioCache)),
     });
     const service = new PlaybackService({...web.transport, progressPlayback: async (id, payload) => {
       const before = service.getSnapshot();
@@ -151,8 +153,8 @@ export class WebShellPlaybackRuntime {
     }}, this.env.key, {...this.env.service, queueRequired: true, deferRecovery: true, pageVisibility: documentVisibility, beforeFreshPlayback: async () => {
       // The copied real browser probe is the capability source. Node's media-port tests have
       // no browser; they exercise the actual server's baseline planning instead.
-      if (typeof document === 'undefined' || typeof window === 'undefined') return;
-      const profile = await browserClientProfile();
+      if (!this.env.capabilities && (typeof document === 'undefined' || typeof window === 'undefined')) return;
+      const profile = await (this.env.capabilities ?? browserClientProfile)();
       if (!this.current(stackReference)) return;
       await this.capabilityPublisher.publish(profile, life.signal);
     }});
@@ -180,7 +182,7 @@ export class WebShellPlaybackRuntime {
     this.assertCurrent();
     if (this.video) problem('playback_surface_already_mounted');
     this.video = video;
-    if (compatibleVideo(video) && SubtitleSurface.supported(video)) this.surface = new SubtitleSurface(video);
+    if (this.env.subtitleSurface !== false && compatibleVideo(video) && SubtitleSurface.supported(video)) this.surface = new SubtitleSurface(video);
     this.bindElement(this.stack);
     const volume = () => this.sync();
     video.addEventListener('volumechange', volume);
@@ -653,8 +655,8 @@ export class WebShellPlaybackRuntime {
     if (fence.kind !== 'queue') problem('playback_quality_unavailable');
     const stack = this.require(fence), options = stack.options, session = this.snapshot.session;
     const source = this.snapshot.offers?.sources.find(value => value.id === fence.sourceId);
-    const enabled = source?.qualities.some(rung => rung.enabled && (choice === 'automatic' ? rung.kind === 'automatic' : choice === 'original' ? rung.kind === 'original' : rung.kind === 'fixed' && rung.id === choice + 'p'));
-    if (!enabled || !options || !session || !options.qualities.some(offer => qualityChoiceOf(offer) === choice)) problem('playback_quality_unavailable');
+    const enabled = source?.qualities.some(rung => rung.enabled && (choice === 'automatic' ? rung.kind === 'automatic' : choice === 'original' ? rung.kind === 'original' : rung.kind === 'fixed' && rung.id === choice));
+    if (!enabled || !options || !session || !options.qualities.some(offer => offer.applicable !== false && qualityChoiceOf(offer) === choice)) problem('playback_quality_unavailable');
     await stack.service.changePlayback({quality: qualityRequest(choice)});
     if (!this.current(stack) || stack.service.getSnapshot().session?.id !== fence.sessionId) return;
     this.choices.set('quality', fence.playback, choice);

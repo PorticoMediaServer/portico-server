@@ -208,7 +208,7 @@ class ChannelPort {
     return;
   }
 }
-function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}) {
+function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, environment: import('../src/platform/playback/types.ts').WebPlaybackEnvironment = {}) {
   const clock = manualClock(), server = new FakePlaybackServer({now: clock.now, audioItem: id => id.startsWith('song') || id.startsWith('book'), itemKind: id => id.startsWith('book') ? 'audiobook_file' : undefined}), inner = fakeHttp(server);
   const log: V1Request[] = [], callbacks = new Map<string, Set<(event: ServerEvent) => void>>();
   const hls = fakeHls(), video = new FakeVideo();
@@ -230,7 +230,7 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}) {
       response = {status: 200, headers: {}, body: {
         scope: {serverId: 'server', libraryId: 'library', itemId, viewerFence}, revision: `offer_${session.generation}`,
         offersRevision: 'a'.repeat(64), transcodingEnabled: true,
-        sources: [{id: `source_${itemId}`, available: true, container: 'mp4', videoCodec: 'h264', audioCodec: 'aac', width: 1920, height: 1080, durationMs: 7200000, factsRevision: 1, factsStatus: 'known', relation: 'unknown', boundary: 'whole_source', enabled: false, reason: 'source_selection_unavailable', streams: [{index: 1, type: 'audio', codec: 'aac', channels: 2, default: true, forced: false, enabled: true, reason: ''}], qualities: [{id: 'auto', kind: 'automatic', label: 'Automatic', enabled: true}, {id: 'original', kind: 'original', label: 'Original', enabled: true}, {id: '720p', kind: 'fixed', label: '720p', enabled: true, maxVideoBitrateBps: 4000000, maxAudioBitrateBps: 128000, targetDisplayHeight: 720}]}],
+        sources: [{id: `source_${itemId}`, available: true, container: 'mp4', videoCodec: 'h264', audioCodec: 'aac', width: 1920, height: 1080, durationMs: 7200000, factsRevision: 1, factsStatus: 'known', relation: 'unknown', boundary: 'whole_source', enabled: false, reason: 'source_selection_unavailable', streams: [{index: 1, type: 'audio', codec: 'aac', channels: 2, default: true, forced: false, enabled: true, reason: ''}], qualities: [{id: 'original', kind: 'original', label: 'Original', enabled: true}, {id: 'auto', kind: 'automatic', label: 'Automatic', enabled: true}, {id: '720p-high', kind: 'fixed', label: '720p', enabled: true, maxVideoBitrateBps: 4000000, maxAudioBitrateBps: 128000, targetDisplayHeight: 720}]}],
         current: {sessionId, generation: session.generation, state: session.state, sourceId: `source_${itemId}`, delivery: 'hls', audioSelection: 'server_first_audio', subtitleSelection: 'disabled', qualityId: 'original'},
         controls: [{id: 'source', enabled: false, reason: 'source_selection_unavailable'}, {id: 'audio', enabled: false, reason: 'track_selection_unavailable'}, {id: 'subtitles', enabled: false, reason: 'subtitle_delivery_unavailable'}, {id: 'quality', enabled: true, reason: ''}],
       }};
@@ -244,7 +244,7 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}) {
     events: {on: (type, callback) => { let list = callbacks.get(type); if (!list) callbacks.set(type, list = new Set()); list.add(callback); return () => { list!.delete(callback); }; }},
     settings: {videoSpeed: () => 1, audiobookSpeed: () => 1.25, skipModes: () => ({intro: 'off', recap: 'off', credits: 'off'}), audioEffects: () => ({gapless: false, crossfadeSeconds: 0, normalization: 'off'}), webVolume: () => true, ...preferences},
   };
-  const runtime = new WebShellPlaybackRuntime(source, {timers: clock, playerTimers: clock, loadHls: async () => hls.Hls, nativeHls: 'never', key: () => `runtime-key-${++serial}`});
+  const runtime = new WebShellPlaybackRuntime(source, {timers: clock, playerTimers: clock, loadHls: async () => hls.Hls, nativeHls: 'never', key: () => `runtime-key-${++serial}`, ...environment});
   runtime.mount(video);
   t.after(() => runtime.dispose());
   const arrive = async () => { await settle(); const engine = hls.instances.at(-1)!; video.ready(Number(engine.config.startPosition)); await settle(); return engine; };
@@ -997,18 +997,18 @@ test('runtime quality changes require current options and an enabled rung on the
   assert.ok(fence);
   assert.equal(f.runtime.getSnapshot().options, null);
   const before = f.log.length;
-  await assert.rejects(f.runtime.setQuality(fence, '720'), /playback_quality_unavailable/);
+  await assert.rejects(f.runtime.setQuality(fence, '720p-high'), /playback_quality_unavailable/);
   assert.equal(f.log.slice(before).some(request => request.method === 'PATCH'), false);
   gate.resolve(); await settle();
   assert.ok(f.runtime.getSnapshot().options);
   // The older options endpoint offers 1080p, but this source's current offer does not.
-  await assert.rejects(f.runtime.setQuality(fence, '1080'), /playback_quality_unavailable/);
+  await assert.rejects(f.runtime.setQuality(fence, '1080p-high'), /playback_quality_unavailable/);
   assert.equal(f.log.slice(before).some(request => request.method === 'PATCH'), false);
-  await f.runtime.setQuality(fence, '720'); await settle();
+  await f.runtime.setQuality(fence, '720p-high'); await settle();
   assert.ok(f.log.slice(before).some(request => request.path === `/v1/playback/sessions/${fence.sessionId}` && request.method === 'PATCH'));
   assert.equal(f.runtime.getSnapshot().playback.session?.id, fence.sessionId);
   assert.ok((f.runtime.getSnapshot().playback.session?.generation ?? 0) > fence.generation);
-  await assert.rejects(f.runtime.setQuality(fence, '720'), /stale_playback_command/);
+  await assert.rejects(f.runtime.setQuality(fence, '720p-high'), /stale_playback_command/);
 });
 
 test('runtime Home selection binds distinct Home and detail fences to the actual queue and persistent media', async t => {
@@ -1054,7 +1054,7 @@ test('runtime accepts the same actual detail fence after refresh and a new media
   await f.offers().refresh({quiet: true}); await settle();
   assert.deepEqual(f.runtime.getSnapshot().fence, fence);
   assert.equal(f.runtime.getSnapshot().offers?.scope.viewerFence, detailViewerFence);
-  await f.runtime.setQuality(fence, '720'); await f.arrive();
+  await f.runtime.setQuality(fence, '720p-high'); await f.arrive();
   const changed = f.runtime.getSnapshot(), next = changed.fence;
   assert.ok(next); assert.equal(next.sessionId, fence.sessionId); assert.ok(next.generation > fence.generation);
   assert.equal(changed.offers?.current?.generation, next.generation);
@@ -1069,7 +1069,7 @@ test('runtime cannot rebind a changed detail fence when the media generation cha
   const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
   const first = f.runtime.getSnapshot().fence;
   assert.ok(first);
-  f.changeViewerFence(); await f.runtime.setQuality(first, '720'); await settle();
+  f.changeViewerFence(); await f.runtime.setQuality(first, '720p-high'); await settle();
   assert.equal(f.offers().getSnapshot().error?.code, 'permission_changed');
   assert.equal(f.offers().getSnapshot().data, null);
   assert.equal(f.runtime.getSnapshot().offers, null);
@@ -1111,7 +1111,7 @@ test('runtime rejects an older media-generation offer even when the real offers 
     if (request.path.includes('/playback-offers')) (response.body as {current: {generation: number}}).current.generation = first.generation;
     return response;
   });
-  await f.runtime.setQuality(first, '720'); await f.arrive();
+  await f.runtime.setQuality(first, '720p-high'); await f.arrive();
   assert.ok(f.runtime.getSnapshot().playback.session!.generation > first.generation);
   assert.equal(f.offers().getSnapshot().phase, 'ready');
   assert.equal(f.offers().getSnapshot().data?.current?.generation, first.generation);
@@ -1204,4 +1204,48 @@ test('runtime selection still requires the Home authority fence rather than the 
   await assert.rejects(f.runtime.selectionPlayback(() => true).play({context: wrong, items: [selectionLeaf('movie')], signal: new AbortController().signal}), /stale_selection_context/);
   assert.equal(f.log.length, before); assert.deepEqual(f.log.slice(before), []); assert.equal(f.hls.instances.length, 0);
   assert.equal(f.runtime.getSnapshot().fence, undefined); assert.equal(f.runtime.getSnapshot().offers, null);
+});
+
+
+test('canonical offered quality IDs reach the real replan request without suffixes or aliases', async t => {
+  for (const choice of ['original', 'automatic', '720p-high'] as const) {
+    const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
+    const fence = f.runtime.getSnapshot().fence!;
+    await f.runtime.setQuality(fence, choice); await settle();
+    const patch = f.log.findLast(r => r.method === 'PATCH' && r.path === `/v1/playback/sessions/${fence.sessionId}`)!;
+    assert.deepEqual((patch.body as {quality: unknown}).quality, choice === 'automatic' ? {mode:'automatic', id:'original'} : choice === 'original' ? {mode:'original'} : {mode:'fixed',id:'720p-high'});
+  }
+});
+
+test('a disabled actual source rung cannot be selected even when options offer it', async t => {
+  const f = setup(t);
+  f.intercept(async (r, response) => {
+    if (r.path.includes('/playback-offers') && response.status === 200) {
+      const body = structuredClone(response.body) as any;
+      const rung = body.sources[0].qualities.find((v: any) => v.kind === 'fixed');
+      rung.enabled = false; rung.reason = 'transcoding_disabled';
+      return {...response, body};
+    }
+    return response;
+  });
+  await f.runtime.play('movie'); await f.arrive();
+  const before = f.log.length;
+  await assert.rejects(f.runtime.setQuality(f.runtime.getSnapshot().fence!, '720p-high'), /playback_quality_unavailable/);
+  assert.equal(f.log.slice(before).some(r => r.method === 'PATCH'), false);
+});
+
+test('platform factory owns media with browser renderer disabled and publishes its capability document', async t => {
+  const {webDeclaredProfile} = await import('../../packages/client-core/src/client-profile.ts');
+  const {WebMediaPlayer} = await import('../src/platform/playback/web-media-player.ts');
+  let created = 0, asked = 0;
+  const f = setup(t, {audioEffects: () => ({gapless:true,crossfadeSeconds:0,normalization:'off'})}, {
+    createPlayer: (video, options) => { created++; return new WebMediaPlayer(video, options); },
+    createRender: null, subtitleSurface: false,
+    capabilities: async () => { asked++; return webDeclaredProfile({app:'native-test'}); },
+  });
+  await f.runtime.play('song_factory'); await f.arrive();
+  assert.equal(created, 2, 'empty stack retired before the active music stack'); assert.ok(asked > 0);
+  assert.ok(f.log.some(r => r.method === 'PUT' && r.path.endsWith('/capabilities') && (r.body as any).client.app === 'native-test'));
+  assert.equal(f.runtime.getSnapshot().playback.phase, 'ready');
+  assert.ok(f.log.some(r => r.path.endsWith('/playback-options?versionId=v1')), 'factory media receives music instead of an idle browser slot');
 });
