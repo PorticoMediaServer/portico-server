@@ -14,3 +14,9 @@ export * from './SettingsHours';
 export * from './SettingsPageFailure';
 export * from './SettingsSelectionList';
 export * from './SettingsStringList';
+
+export * from './BackupConfirmationDialog';
+
+export * from './BackupList';
+
+export * from './BackupPassphraseDialog';
