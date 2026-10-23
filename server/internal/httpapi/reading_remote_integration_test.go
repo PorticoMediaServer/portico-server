@@ -145,7 +145,10 @@ func TestReadingRemoteRegistered(t *testing.T) {
 			if err != nil {
 				t.Fatal("real remote library", err)
 			}
-			readingScan(t, f, library.ID)
+			// Preserve the actual default two-requests/second source cap. Root
+			// observations on every real scanner quantum can exceed the local
+			// fixture's30s budget; observe the SAME first job for up to120s.
+			readingScanWithin(t, f, library.ID, 120*time.Second)
 			member, err := f.id.CreateDirectMember(context.Background(), owner.AccountToken, identity.DirectMemberCreate{Username: "reader-" + kind, Password: "different-test-password", Name: "Reader", AllowedLibraries: []string{library.ID}})
 			if err != nil {
 				t.Fatal(err)
