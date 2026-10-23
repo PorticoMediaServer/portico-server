@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -53,6 +54,12 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			modified := time.Unix(1700000000, 0).UTC()
 			var active, peak, gets atomic.Int32
 			var badAuth, providerBackoff atomic.Bool
+			var sharedReadBlocked atomic.Bool
+			sharedReadStarted := make(chan struct{}, 1)
+			sharedReadRelease := make(chan struct{})
+			var releaseShared sync.Once
+			unblockShared := func() { releaseShared.Do(func() { close(sharedReadRelease) }) }
+			defer unblockShared()
 			origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				n := active.Add(1)
 				defer active.Add(-1)
@@ -93,6 +100,17 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				}
 				if r.Method == http.MethodGet {
 					gets.Add(1)
+					if sharedReadBlocked.Load() {
+						select {
+						case sharedReadStarted <- struct{}{}:
+						default:
+						}
+						select {
+						case <-sharedReadRelease:
+						case <-r.Context().Done():
+							return
+						}
+					}
 				}
 				w.Header().Set("ETag", `"origin-one"`)
 				if sequential {
@@ -395,6 +413,52 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			}
 			if counts := process.OperationCounts(); counts.Capacity != 1 || counts.Peak != 1 || counts.Active != 0 {
 				t.Fatal("actual source pools did not share cap1", counts)
+			}
+			if !sequential {
+				endpoint, err := process.Endpoint(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				entry, err := endpoint.Stat(ctx, "film.mkv", process.Check)
+				if err != nil {
+					t.Fatal(err)
+				}
+				beforeShared, beforeGET := endpoint.CoalescedRanges(), gets.Load()
+				sharedReadBlocked.Store(true)
+				read := func() <-chan error {
+					done := make(chan error, 1)
+					go func() {
+						data, e := endpoint.ReadRange(ctx, "film.mkv", entry.ETag, int64(len(payload)), 456, 128, process.Check)
+						if e == nil && !bytes.Equal(data, payload[456:584]) {
+							e = errors.New("shared source extent differs")
+						}
+						done <- e
+					}()
+					return done
+				}
+				leader := read()
+				select {
+				case <-sharedReadStarted:
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				}
+				joiner := read()
+				deadline := time.NewTimer(2 * time.Second)
+				tick := time.NewTicker(time.Millisecond)
+				for endpoint.CoalescedRanges() == beforeShared {
+					select {
+					case <-deadline.C:
+						t.Fatal("same-file viewer did not join admitted transfer")
+					case <-tick.C:
+					}
+				}
+				tick.Stop()
+				deadline.Stop()
+				sharedReadBlocked.Store(false)
+				unblockShared()
+				if a, b := <-leader, <-joiner; a != nil || b != nil || gets.Load() != beforeGET+1 {
+					t.Fatal("same-file viewers did not share one real origin GET", a, b, gets.Load(), beforeGET)
+				}
 			}
 			for _, closedBeforeError := range []bool{false, true} {
 				failedReader := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
