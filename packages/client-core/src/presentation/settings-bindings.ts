@@ -174,6 +174,7 @@ const categories=['server','playback','scan','network','client'] as const;
 const cadences:Readonly<Record<string,readonly string[]>>={nightly:days,weekdays:days.slice(0,5),weekends:days.slice(5),weekly:['sunday']};
 function defaultFeed(sources:SettingsBindingSources):unknown{return sources.configuration?.fields.find(f=>f.id==='general.updateFeed')?.default;}
 function windows(sources:SettingsBindingSources):readonly Readonly<Record<string,unknown>>[]{const v=sources.forms?.maintenance?.windows;return Array.isArray(v)?v:[];}
+function matchingWindow(w:Readonly<Record<string,unknown>>,role:'heavy'|'backup'):boolean { const tasks=w.tasks;return Array.isArray(tasks)&&(role==='backup'?tasks.includes('backup'):tasks.includes('analysis')||tasks.includes('trickplay')); }
 function windowMode(binding:SettingsBinding,w:Readonly<Record<string,unknown>>):unknown{
  if(!w.enabled)return binding.window==='heavy'?'any':'never';
  if(binding.window==='heavy')return w.startMinute===60&&w.durationMinutes===300&&Array.isArray(w.days)&&w.days.length===7&&days.every(d=>(w.days as unknown[]).includes(d))&&!w.timezone?'overnight':'custom';
@@ -236,7 +237,7 @@ export function readSettingsBinding(binding:SettingsBinding,sources:SettingsBind
  const alias=rowId==='general.updateChecks'?'general.updateFeed':rowId==='streaming.awayQuality'?'streaming.awayExact':rowId==='storage.backupKeep'?'storage.backupKeepExact':rowId;
  const fact:ConfigurationValue|undefined=alias?sources.configuration?.fields.find(f=>f.id===alias):undefined;
  if(fact){const display={...binding,scale:undefined,...(rowId==='streaming.awayQuality'?{scale:1/1000}:{})};const show=(v:unknown)=>rowId==='streaming.awayQuality'?presented(binding,typeof v==='number'?v*1000:v,sources):presented(display,v,sources);const current=show(fact.current),effective=show(fact.effective);if(current===undefined||effective===undefined)return undefined;return {current,effective,default:show(fact.default),source:fact.source,configOnly:fact.configOnly,applicationMode:fact.applicationMode};}
- const w=binding.window?windows(sources).find(w=>w.id===binding.window):undefined;
+ const w=binding.window?windows(sources).find(w=>matchingWindow(w,binding.window!)):undefined;
  const raw=binding.window?(binding.codec==='window-mode'?w&&windowMode(binding,w):w?.[binding.key]):at(binding.form==='device'?sources.device:sources.forms?.[binding.form],binding.key);if(raw===undefined)return undefined;
  const current=presented(binding,raw,sources);if(current===undefined)return undefined;return {current,effective:current,default:binding.form==='device'?presented(binding,at(sources.deviceDefaults,binding.key),sources):undefined,source:binding.form,configOnly:false};
 }
@@ -310,13 +311,13 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
  if(binding.scale)raw=value===null&&binding.key==='uploadCapacityKbps'?0:typeof raw==='number'?Math.round(raw*binding.scale):raw;
  if(typeof raw==='number'&&!Number.isFinite(raw)||raw===undefined)throw new Error('Invalid setting value.');
  if(binding.window){
-  const all=windows(sources),existing=all.find(w=>w.id===binding.window);if(!existing)throw new Error('Load maintenance settings before editing a window.');let change:Record<string,unknown>={[binding.key]:raw};
+  const all=windows(sources),existing=all.find(w=>matchingWindow(w,binding.window!));if(!existing)throw new Error('Load maintenance settings before editing a window.');let change:Record<string,unknown>={[binding.key]:raw};
   if(binding.codec==='window-mode'){
    if(binding.window==='heavy')change=value==='any'?{enabled:false}:value==='overnight'?{enabled:true,cadence:'nightly',startMinute:60,durationMinutes:300,days:[...days],timezone:''}:value==='custom'?{enabled:true}:{};
    else change=value==='never'?{enabled:false}:value==='custom'?{enabled:true}:typeof value==='string'&&cadences[value]?{enabled:true,cadence:value,days:[...cadences[value]!]}:{};
    if(!Object.keys(change).length)throw new Error('Invalid maintenance window.');
   }else if(binding.codec==='days')change={days:raw,cadence:'custom'};
-  return {form:binding.form,values:{windows:all.map(w=>w.id===binding.window?{...w,...change}:w)}};
+  return {form:binding.form,values:{windows:all.map(w=>w.id===existing.id?{...w,...change}:w)}};
  }
  return {form:binding.form,values:{[binding.key]:raw}};
 }

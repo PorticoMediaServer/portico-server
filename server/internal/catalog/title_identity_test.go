@@ -490,19 +490,18 @@ func TestTheOwnersRuleDecidesWhenMissingTitlesGo(t *testing.T) {
 	c.Exec(`UPDATE catalog_missing_titles SET missing_since_ms=? WHERE entity_id=?`, time.Now().Add(-48*time.Hour).UnixMilli(), film)
 	s := New(c.DB)
 	ctx := context.Background()
-	rule := func(body string) {
-		c.Exec(`DELETE FROM console_documents WHERE scope='server'`)
-		c.Exec(`INSERT INTO console_documents VALUES('server',1,?,0)`, body)
+	rule := func(mode string, days int) {
+		c.Exec(`INSERT INTO server_settings(singleton,"library.missingTitles","library.missingTitlesDays") VALUES(1,?,?) ON CONFLICT(singleton) DO UPDATE SET "library.missingTitles"=excluded."library.missingTitles","library.missingTitlesDays"=excluded."library.missingTitlesDays"`, mode, days)
 	}
-	rule(`{"library.missingTitles":"never"}`)
+	rule("never", 30)
 	if out, err := s.EmptyMissingDue(ctx); err != nil || out.Titles != 0 || out.Files != 0 {
 		t.Fatalf("never: %+v %v", out, err)
 	}
-	rule(`{"library.missingTitles":"after_days","library.missingTitlesDays":7}`)
+	rule("after_days", 7)
 	if out, err := s.EmptyMissingDue(ctx); err != nil || out.Titles != 0 {
 		t.Fatalf("two days into seven: %+v %v", out, err)
 	}
-	rule(`{"library.missingTitles":"after_days","library.missingTitlesDays":1}`)
+	rule("after_days", 1)
 	if out, err := s.EmptyMissingDue(ctx); err != nil || out.Titles != 1 {
 		t.Fatalf("two days into one: %+v %v", out, err)
 	}
@@ -512,7 +511,7 @@ func TestTheOwnersRuleDecidesWhenMissingTitlesGo(t *testing.T) {
 	// Immediately: a title is removed as soon as it is found missing.
 	b, tokenB := identityFile(t, c, "m", "/m/Mirror (1975).mkv", 1080)
 	attachMovie(t, c, "m", b, "/m/Mirror (1975).mkv", "Mirror", 1975)
-	rule(`{"library.missingTitles":"immediately"}`)
+	rule("immediately", 30)
 	markMissing(t, c, "m", tokenB, time.Now())
 	if out, err := s.EmptyMissingDue(ctx); err != nil || out.Titles != 1 {
 		t.Fatalf("immediately: %+v %v", out, err)
