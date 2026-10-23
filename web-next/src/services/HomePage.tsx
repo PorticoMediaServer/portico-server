@@ -47,6 +47,7 @@ function Start({account, session}: {account: ServicesAccount; session: Omit<Host
   const name = session.account.displayName || session.account.username;
   return <ServicesStart header={<ServicesHeader notifications={false} avatar={<ProfileAvatar appearance="session" initial={[...name][0]?.toLocaleUpperCase() ?? ''} name={name} onClick={() => location.assign('/account')} />} />}
     invitation={invitation} onInvitationChange={value => { setInvitation(value); setInvalid(false); }} onJoin={() => inspect()}
+    onInvitationPaste={value => { setInvitation(value); inspect(value); }}
     onPaste={() => run(async () => { const value = await navigator.clipboard.readText(); setInvitation(value); inspect(value); })}
     onDownload={download} onApps={download} onCopyDownload={() => run(() => navigator.clipboard.writeText(distributionPage))}
     onShareDownload={() => run(async () => { if (navigator.share) await navigator.share({url: distributionPage}); else await navigator.clipboard.writeText(distributionPage); })}
