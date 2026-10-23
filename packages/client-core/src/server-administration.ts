@@ -1,4 +1,5 @@
 import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import {parseServerInvitation,parsePeopleInvitationPage} from './direct-account.ts';
 /**
  * Wire shapes for server administration: access tiers, invitations, per-member
  * limits, devices, API keys, message logs and connectivity.
@@ -12,7 +13,7 @@ import {encodedRoutePath} from "../../contracts/src/routes.ts";
  */
 import {firstOfEach,keepReadable,oneOfOr} from './tolerant.ts';
 export type AccessTier='owner'|'admin'|'member';
-export type InvitationState='pending'|'accepted'|'revoked';
+export type InvitationState='pending'|'accepted'|'revoked'|'expired';
 export type LogLevel='error'|'warn'|'info'|'debug';
 export type LogCategory='server'|'playback'|'scan'|'network'|'client';
 export type RemoteSignInPolicy='allow'|'owner-only'|'off';
@@ -55,7 +56,7 @@ export type AccessMember=Readonly<{accountId:string;username:string;email?:strin
  disabledAt?:string;disabledReason?:'owner'|'left'|'did_not_move';
  hostedAccountId?:string;notes?:string;joinedVia?:string;joinedAt?:string;profileNames?:readonly string[];lastActiveAt?:string;liveState?:'idle'|'watching'|'listening';
  revision:number;allowedLibraries:readonly string[];limitsRevision:number;limits:MemberLimits}> & StreamLimitFacts;
-export type Invitation=Readonly<{id:string;email:string;role:AccessTier;allowedLibraries:readonly string[];state:InvitationState;
+export type Invitation=Readonly<{id:string;email?:never;notes?:string;serverId?:string;role:'member'|'admin';allowedLibraries:readonly string[];state:InvitationState;
  createdAt:string;expiresAt:string;acceptedAt?:string;accountId?:string;revision:number;code?:string;
  /** The one Portico Account this invitation is for, when the owner named one. */
  porticoUsername?:string}>;
@@ -192,16 +193,10 @@ export async function deleteMember(api:MemberDeletionApi,preview:MemberDeletionP
 }
 
 export function parseInvitation(raw:unknown):Invitation{
- if(!obj(raw))return invalid();
- return Object.freeze({id:str(raw.id),email:str(raw.email,254,true),role:oneOf(raw.role,accessTiers),
-  allowedLibraries:list(raw.allowedLibraries,1000,x=>str(x)),state:oneOf(raw.state,['pending','accepted','revoked'] as const),
-  createdAt:when(raw.createdAt),expiresAt:when(raw.expiresAt),acceptedAt:optionalWhen(raw.acceptedAt),
-  ...(raw.accountId?{accountId:str(raw.accountId)}:{}),revision:num(raw.revision,1),
-  // The code exists only on the response that created the invitation. Anything
-  // else carrying one is a server this client does not understand.
-  ...(raw.code?{code:str(raw.code,256)}:{}),...(raw.porticoUsername?{porticoUsername:str(raw.porticoUsername,64)}:{})});
+ const value=parseServerInvitation(raw);
+ return Object.freeze({...value,role:value.role as 'member'|'admin',state:value.state as InvitationState});
 }
-export const parseInvitationPage=(raw:unknown)=>page(raw,parseInvitation,row=>row.id);
+export const parseInvitationPage=(raw:unknown)=>{const value=parsePeopleInvitationPage(raw);return Object.freeze({...value,items:Object.freeze(value.items.map(parseInvitation))});};
 
 export function parseAccessDevice(raw:unknown):AccessDevice{
  if(!obj(raw)||Object.hasOwn(raw,'trust'))return invalid();

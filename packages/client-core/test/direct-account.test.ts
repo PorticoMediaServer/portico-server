@@ -33,8 +33,24 @@ test('invitation preview has explicit public fields and rejects private recipien
  const {parsePublicInvitation}=await import('../src/direct-account.ts');
  const v={serverName:'Fixture server',expiresAt:'2026-11-01T12:00:00Z',role:'member',libraries:[{name:'Films'}],allLibraries:false,signInMethod:'portico',inviterUsername:'fixture_owner'};
  assert.equal(parsePublicInvitation(v).inviterUsername,'fixture_owner');
+ assert.deepEqual(parsePublicInvitation(v).libraries,[{name:'Films'}]);
+ assert.deepEqual(parsePublicInvitation({...v,libraries:[{name:'Films',kind:'movies'}]}).libraries,[{name:'Films',kind:'movies'}]);
+ assert.throws(()=>parsePublicInvitation({...v,libraries:[{name:'Films',kind:null}]}));
  for(const field of ['notes','email','porticoUsername'])assert.throws(()=>parsePublicInvitation({...v,[field]:'private'}));
  for(const patch of [{signInMethod:'other'},{role:'owner'},{libraries:[{}]},{expiresAt:'bad'}])assert.throws(()=>parsePublicInvitation({...v,...patch}));
+});
+test('People invitation list requests whole-set search/sort and preserves authoritative counts',async()=>{
+ const {PeopleInvitationsClient,parsePeopleInvitationPage}=await import('../src/direct-account.ts');
+ const row={id:'invitation-one',revision:1,role:'member',state:'expired',createdAt:'2026-10-01T00:00:00Z',expiresAt:'2026-10-02T00:00:00Z',allowedLibraries:[],notes:'A genuine link-only note'};
+ const page={items:[row],limit:2,totalCount:27,matchedCount:13,nextCursor:'actual-next-cursor'};
+ const calls:{path:string;method?:string;body?:unknown}[]=[];
+ const client=new PeopleInvitationsClient({request:async<T>(path:string,method?:string,body?:unknown)=>{calls.push({path,method,body});return page as T;}});
+ const value=await client.list({q:'find this',sort:'status',direction:'asc',state:'expired',limit:2});
+ assert.equal(value.totalCount,27);assert.equal(value.matchedCount,13);assert.equal(value.items[0].notes,row.notes);
+ const query=new URL(calls[0].path,'https://fixture.invalid');
+ assert.equal(query.pathname,'/v1/admin/access/invitations');assert.equal(query.searchParams.get('q'),'find this');assert.equal(query.searchParams.get('state'),'expired');assert.equal(query.searchParams.get('sort'),'status');assert.equal(query.searchParams.get('direction'),'asc');assert.equal(query.searchParams.get('limit'),'2');
+ for(const change of [{totalCount:undefined},{matchedCount:undefined},{matchedCount:28},{matchedCount:0},{limit:101},{items:[row,row]},{items:[{...row,email:'fabricated@example.invalid'}]},{items:[{...row,code:'must-never-appear'}]}])assert.throws(()=>parsePeopleInvitationPage({...page,...change}));
+ const before=calls.length;await assert.rejects(client.list({limit:101}));await assert.rejects(client.list({q:'😀'.repeat(41)}));assert.equal(calls.length,before);
 });
 test('private notes use Unicode character limits and never accept control or formatting characters',async()=>{
  const {privatePersonNotes}=await import('../src/direct-account.ts');

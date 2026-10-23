@@ -317,6 +317,9 @@ function timelineOf(body:unknown,previous:GroupTimeline):GroupTimeline|undefined
 
 /** What a follower needs from whichever player the app has. Positions are seconds. */
 export type GroupPlayer=Readonly<{
+ /** Optional actual room-occurrence adoption. When supplied, a same-title source from a
+  * different room/entry must be admitted afresh instead of inheriting its controls. */
+ occurrence?(): Readonly<{groupId:string;entryId:string}> | null;
  /** The item loaded now, its position, and whether it is actually moving and able to.
   * `seeking` is true while a seek the player was asked for has not landed yet, and false once it
   * has landed or failed. Only the player knows this: one that leaves it out is given a fixed wait
@@ -375,13 +378,14 @@ export class GroupFollower{
  if(!timeline.itemId&&timeline.currentEntryId){this.player.pause();this.report('buffering',0);return;}
   if(target===undefined||timeline.state==='idle'||timeline.state==='stopped'){if(timeline.state==='stopped'&&this.player.state().playing)this.player.pause();return;}
   const local=this.player.state(),wantPlaying=timeline.state==='playing';
-  if(local.itemId!==timeline.itemId){
+  const occurrence=this.player.occurrence?.();
+  if(local.itemId!==timeline.itemId||(this.player.occurrence&&(!occurrence||occurrence.groupId!==group.id||occurrence.entryId!==timeline.currentEntryId))){
    // Load once per entry; a player still starting up is not asked again every second.
-   const key=timeline.itemId+'/'+timeline.currentEntryId;
+   const key=group.id+'/'+timeline.itemId+'/'+timeline.currentEntryId;
    if(this.loadedFor!==key){this.loadedFor=key;this.own=undefined;this.lead=0;this.player.load(timeline.itemId,target,wantPlaying);}
    this.report('buffering',local.positionSeconds);return;
   }
-  this.loadedFor=timeline.itemId+'/'+timeline.currentEntryId;
+  this.loadedFor=group.id+'/'+timeline.itemId+'/'+timeline.currentEntryId;
   const length=local.durationSeconds;
  if(length!==undefined&&Number.isFinite(length)&&length>0&&local.positionSeconds>=length-0.25&&!local.playing&&target>=length-0.25){
  this.player.setRate(1);this.report('ready',length);
