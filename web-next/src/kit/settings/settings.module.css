@@ -53,7 +53,7 @@
 .tableScroll { overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; background: var(--color-raised); border-radius: 14px; }
 .table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 14px; }
 .table thead { position: sticky; top: 0; z-index: 1; background: color-mix(in srgb, var(--color-ink) 34%, var(--color-raised)); }
-.table th { height: 40px; padding: 0 12px; color: var(--color-text-tertiary); font-size: 13px; font-weight: 650; text-align: left; border-bottom: 1px solid var(--color-line-soft); }
+.table th { height: 40px; padding: 0 12px; color: var(--color-text-tertiary); font-size: 13px; font-weight: 600; text-align: left; border-bottom: 1px solid var(--color-line-soft); }
 .table th button { display: inline-flex; align-items: center; gap: 6px; font: inherit; padding: 0; height: 40px; border: 0; background: none; color: inherit; cursor: pointer; }
 .table td { padding: 0 12px; height: 60px; border-bottom: 1px solid var(--color-line-soft); }
 .table tr[data-table-row]:hover { background: color-mix(in srgb, var(--color-text) 3%, transparent); }
@@ -213,7 +213,7 @@
 
 .cellText > b { font-size: 15.5px; font-weight: 600; }
 
-.cell .cellText > b { font-weight: 700; }
+.cell[data-kind='main'] .cellText > b { font-weight: 700; }
 
 .cellMuted { color: var(--color-text-tertiary); font-weight: 600; }
 
@@ -338,3 +338,5 @@
 .stringList li > span, .stringList form > div { flex: 1; }
 
 .pageFailure { height: calc(100dvh - 304px); min-height: 560px; background: none; }
+
+.badge > b { font-weight: inherit; }

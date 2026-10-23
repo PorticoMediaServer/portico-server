@@ -1,6 +1,6 @@
 import {useState, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
-import {profileArtColors} from '@design';
+import {colors, profileArtColors} from '@design';
 import type {ProfilePickerProfile} from '../artwork/ProfilePicker';
 import {ProfileFace, ProfilePicker} from '../artwork/ProfilePicker';
 import {Button} from '../controls/Button';
@@ -10,7 +10,7 @@ import styles from './accounts.module.css';
 
 const t = defaultI18n.t;
 // Auth's approved blue face is brighter than the compact account avatar.
-const profileTint = (profile: ProfilePickerProfile) => profile.art === 'blue' ? '#2f86bb' : undefined;
+const profileTint = (profile: ProfilePickerProfile) => profile.art === 'blue' ? colors.accountAvatar1Start : undefined;
 export function ServerProfiles({serverName, profiles, onSelect, onSwitchServer, error, autoFocusId}: {
   serverName: string; profiles: readonly ProfilePickerProfile[]; onSelect: (profile: ProfilePickerProfile) => void; onSwitchServer: () => void; error?: unknown; autoFocusId?: string;
 }) {
