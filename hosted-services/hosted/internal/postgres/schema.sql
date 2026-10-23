@@ -1138,7 +1138,8 @@ CREATE TABLE server_returns (
     CONSTRAINT server_returns_check CHECK (((code_hash IS NULL) = (code_expires_at IS NULL))),
     CONSTRAINT server_returns_check1 CHECK (((code_expires_at IS NULL) OR (code_expires_at <= expires_at))),
     CONSTRAINT server_returns_code_hash_check CHECK (((code_hash IS NULL) OR (octet_length(code_hash) = 32))),
-    CONSTRAINT server_returns_purpose_check CHECK ((purpose = ANY (ARRAY['setup'::text, 'switch'::text, 'change-owner'::text]))),
+    CONSTRAINT server_returns_purpose_check CHECK ((purpose = ANY (ARRAY['setup'::text, 'switch'::text, 'change-owner'::text, 'sign-in'::text]))),
+    CONSTRAINT server_returns_signin_binding CHECK (purpose <> 'sign-in' OR (current_owner_account_id='' AND previous_owner_role='')),
     CONSTRAINT server_returns_session_mode_check CHECK ((session_mode = ANY (ARRAY['browser'::text, 'native'::text])))
 );
 CREATE TABLE servers (

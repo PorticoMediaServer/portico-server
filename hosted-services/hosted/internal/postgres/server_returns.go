@@ -26,23 +26,29 @@ func returnTupleTx(ctx context.Context, tx *sql.Tx, account, server, operation, 
 	if e != nil {
 		return t, serverreturn.ErrInvalid
 	}
-	e = tx.QueryRowContext(ctx, `SELECT id,purpose,current_owner_account_id,previous_owner_role FROM claim_operations WHERE ($1='' OR id=$1) AND server_id=$2 AND account_id=$3 AND claim_generation=$4 AND credential_generation=$5 AND state='installed' AND committed_token_hash=(SELECT token_hash FROM servers WHERE id=$2) FOR SHARE`, operation, server, owner, t.claim, t.credential).Scan(&t.operation, &t.purpose, &t.current, &t.previous)
-	if e != nil || t.purpose != purpose {
-		return t, serverreturn.ErrInvalid
-	}
-	if account != owner {
-		return t, serverreturn.ErrInvalid
-	}
-	var role string
-	if e = tx.QueryRowContext(ctx, `SELECT role FROM server_members WHERE server_id=$1 AND account_id=$2 FOR SHARE`, server, account).Scan(&role); e != nil || role != "owner" {
-		return t, serverreturn.ErrInvalid
-	}
-
-	e = tx.QueryRowContext(ctx, `SELECT generation FROM networking_route_state WHERE server_id=$1 AND operation_id=$2 AND claim_generation=$3 AND credential_generation=$4 FOR SHARE`, server, operation, t.claim, t.credential).Scan(&t.route)
+	e = tx.QueryRowContext(ctx, `SELECT o.id,o.purpose,o.current_owner_account_id,o.previous_owner_role FROM claim_operations o JOIN servers s ON s.id=o.server_id WHERE ($1='' OR o.id=$1) AND o.server_id=$2 AND o.account_id=$3 AND o.claim_generation=$4 AND o.credential_generation=$5 AND o.state='installed' AND o.committed_token_hash=s.token_hash AND s.public_key=translate(rtrim(encode(o.public_key,'base64'),'='),'+/','-_') FOR SHARE OF o`, operation, server, owner, t.claim, t.credential).Scan(&t.operation, &t.purpose, &t.current, &t.previous)
 	if e != nil {
 		return t, serverreturn.ErrInvalid
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT c.origin FROM networking_route_candidates c JOIN networking_route_state n USING(server_id) WHERE c.server_id=$1 AND c.operation_id=$2 AND c.generation=$3 AND c.state='verified' AND (n.remote_enabled OR c.class='lan') ORDER BY c.origin LIMIT 65 FOR SHARE OF c`, server, operation, t.route)
+	if purpose == "sign-in" {
+		// Identity is not admission. Waiting accounts have no discovery row yet;
+		// the server alone admits them or redeems its separate local move intent.
+		t.purpose, t.current, t.previous = purpose, "", ""
+	} else {
+		if t.purpose != purpose || account != owner {
+			return t, serverreturn.ErrInvalid
+		}
+		var role string
+		if e = tx.QueryRowContext(ctx, `SELECT role FROM server_members WHERE server_id=$1 AND account_id=$2 FOR SHARE`, server, account).Scan(&role); e != nil || role != "owner" {
+			return t, serverreturn.ErrInvalid
+		}
+	}
+
+	e = tx.QueryRowContext(ctx, `SELECT generation FROM networking_route_state WHERE server_id=$1 AND operation_id=$2 AND claim_generation=$3 AND credential_generation=$4 FOR SHARE`, server, t.operation, t.claim, t.credential).Scan(&t.route)
+	if e != nil {
+		return t, serverreturn.ErrInvalid
+	}
+	rows, e := tx.QueryContext(ctx, `SELECT c.origin FROM networking_route_candidates c JOIN networking_route_state n USING(server_id) WHERE c.server_id=$1 AND c.operation_id=$2 AND c.generation=$3 AND c.state='verified' AND (n.remote_enabled OR c.class='lan') ORDER BY c.origin LIMIT 65 FOR SHARE OF c`, server, t.operation, t.route)
 	if e != nil {
 		return t, e
 	}
@@ -57,7 +63,7 @@ func returnTupleTx(ctx context.Context, tx *sql.Tx, account, server, operation, 
 		if count > 64 {
 			return t, serverreturn.ErrInvalid
 		}
-		if serverreturn.Origin(origin) && serverreturn.RegistrationID(server, operation, t.claim, t.credential, t.route, origin) == registration {
+		if serverreturn.Origin(origin) && serverreturn.RegistrationID(server, t.operation, t.claim, t.credential, t.route, origin) == registration {
 			t.origin = origin
 		}
 	}

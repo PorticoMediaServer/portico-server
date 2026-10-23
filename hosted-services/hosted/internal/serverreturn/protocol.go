@@ -20,9 +20,12 @@ var ErrInvalid = errors.New("invalid server return")
 var identifier = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 var secret = regexp.MustCompile(`^[A-Za-z0-9_-]{32,128}$`)
 
-func Purpose(v string) bool { return v == "setup" || v == "switch" || v == "change-owner" }
+func Purpose(v string) bool      { return v == "sign-in" || claimPurpose(v) }
+func claimPurpose(v string) bool { return v == "setup" || v == "switch" || v == "change-owner" }
+
+// Binding is the owner-claim binding. Ordinary sign-in never authorizes a claim.
 func Binding(purpose, current, previous string) bool {
-	if !Purpose(purpose) {
+	if !claimPurpose(purpose) {
 		return false
 	}
 	if purpose == "setup" {
@@ -38,6 +41,13 @@ func Binding(purpose, current, previous string) bool {
 		return previous == ""
 	}
 	return previous == "admin" || previous == "member" || previous == "remove"
+}
+
+func ReturnBinding(purpose, current, previous string) bool {
+	if purpose == "sign-in" {
+		return current == "" && previous == ""
+	}
+	return Binding(purpose, current, previous)
 }
 
 // Origin accepts an exact HTTPS origin, including its registered port. ASCII
@@ -149,7 +159,7 @@ func (Start) JSONSchema() map[string]any {
 	}
 	props["codeChallenge"] = map[string]any{"type": "string", "minLength": 43, "maxLength": 43, "pattern": "^[A-Za-z0-9_-]+$"}
 	variants := []any{}
-	for _, purpose := range []string{"setup", "switch", "change-owner"} {
+	for _, purpose := range []string{"setup", "switch", "change-owner", "sign-in"} {
 		variant := map[string]any{}
 		for k, v := range shape {
 			variant[k] = v
@@ -170,7 +180,7 @@ func (Exchange) JSONSchema() map[string]any {
 		panic(e)
 	}
 	props := shape["properties"].(map[string]any)
-	props["purpose"] = map[string]any{"type": "string", "enum": []string{"setup", "switch", "change-owner"}}
+	props["purpose"] = map[string]any{"type": "string", "enum": []string{"setup", "switch", "change-owner", "sign-in"}}
 	for _, field := range []string{"code", "verifier", "serverChallenge", "installationId"} {
 		props[field] = map[string]any{"type": "string", "minLength": 32, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"}
 	}

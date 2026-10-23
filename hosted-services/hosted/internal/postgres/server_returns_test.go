@@ -26,11 +26,12 @@ import (
 
 type returnFixture struct {
 	claimJourney
-	handler    http.Handler
-	directory  *directory.Service
-	keys       *security.Keys
-	start      serverreturn.Start
-	completion json.RawMessage
+	handler      http.Handler
+	directory    *directory.Service
+	keys         *security.Keys
+	start        serverreturn.Start
+	accountToken string
+	completion   json.RawMessage
 }
 
 func registeredReturnFixture(t *testing.T) returnFixture {
@@ -113,10 +114,16 @@ func returnCall(t *testing.T, h http.Handler, path, token string, q any, want in
 	}
 	return w.Body.Bytes()
 }
+func (f returnFixture) returnAccountToken() string {
+	if f.accountToken != "" {
+		return f.accountToken
+	}
+	return "claim-owner-access-token-fixture"
+}
 func (f returnFixture) begin(t *testing.T) serverreturn.Started {
 	t.Helper()
 	var out serverreturn.Started
-	raw := returnCall(t, f.handler, "/v1/server-returns/start", "claim-owner-access-token-fixture", f.start, 201)
+	raw := returnCall(t, f.handler, "/v1/server-returns/start", f.returnAccountToken(), f.start, 201)
 	if json.Unmarshal(raw, &out) != nil || bytes.Contains(raw, []byte("code")) {
 		t.Fatal("start disclosed code")
 	}
@@ -125,7 +132,7 @@ func (f returnFixture) begin(t *testing.T) serverreturn.Started {
 func (f *returnFixture) complete(t *testing.T, id string) serverreturn.Exchange {
 	t.Helper()
 	var out serverreturn.Return
-	raw := returnCall(t, f.handler, "/v1/server-returns/"+id+"/complete", "claim-owner-access-token-fixture", struct{}{}, 200)
+	raw := returnCall(t, f.handler, "/v1/server-returns/"+id+"/complete", f.returnAccountToken(), struct{}{}, 200)
 	f.completion = append(json.RawMessage(nil), raw...)
 	if json.Unmarshal(raw, &out) != nil {
 		t.Fatal("bad return")
@@ -237,6 +244,9 @@ func TestRegisteredReturnRawProducerArtifact(t *testing.T) {
 		t.Skip("artifact requested by consumer contract driver")
 	}
 	f := registeredReturnFixture(t)
+	if os.Getenv("PORTICO_RETURN_PRODUCER_PURPOSE") == "sign-in" {
+		f = signInReturnFixture(t, f)
+	}
 	started := f.begin(t)
 	q := f.complete(t, started.TransactionID)
 	raw := returnCall(t, f.handler, "/v1/server-returns/exchange", "", q, 200)
