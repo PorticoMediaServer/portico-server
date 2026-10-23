@@ -4,24 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"math"
-
-	"portico.local/server/internal/assets"
 )
 
 // Basic Musepack uses the validated header's integer count/rate, unlike an
 // ffprobe six-decimal duration string. Preserve that sample clock and project
 // it to the analysis store's microseconds; playback keeps its exact frames.
 func musepackDurationUS(ctx context.Context, tx *sql.Tx, asset, codec string, seconds float64) (int64, error) {
-	var observed, detail string
-	if err := tx.QueryRowContext(ctx, `SELECT st.codec,st.detail_json FROM asset_streams st JOIN catalog_assets a ON a.id=st.asset_id WHERE a.token=? AND st.type='audio' ORDER BY st.stream_index LIMIT 1`, asset).Scan(&observed, &detail); err != nil {
+	var observed string
+	var rate int
+	if err := tx.QueryRowContext(ctx, `SELECT f.codec,f.sample_rate FROM music_technical_facts f JOIN catalog_assets a ON a.token=f.asset_id AND a.size=f.size AND a.modified_ns=f.modified_ns WHERE a.token=?`, asset).Scan(&observed, &rate); err != nil {
 		return 0, err
 	}
 	if observed != codec {
 		return 0, ErrConflict
 	}
-	var stream assets.Stream
-	stream.DecodeDetail(detail)
-	rate := stream.Detail.SampleRate
 	if rate != 32000 && rate != 37800 && rate != 44100 && rate != 48000 {
 		return 0, ErrInput
 	}

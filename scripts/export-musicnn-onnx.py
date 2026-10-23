@@ -7,12 +7,14 @@ must use the separately checked ONNX CPU helper, without TensorFlow or Python.
 import argparse
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import os
 from pathlib import Path
 import shutil
 import tempfile
 import sys
+import types
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -118,6 +120,70 @@ def inference_graph(directory):
     return public
 
 
+def original_inference_definition(directory):
+    """Build the publisher's exact architecture with literal training=False.
+
+    Avoid Grappler's nondeterministic training-graph rewrites. Original variables
+    become original checkpoint constants; the separately imported saved graph
+    remains the numeric reference. No architecture is guessed or retrained.
+    """
+    import tensorflow as tf
+    lock = verify_checkpoint(directory)
+    names = ("musicnn", "musicnn.configuration", "musicnn.models")
+    previous = {name: sys.modules.get(name) for name in names}
+    try:
+        package = types.ModuleType("musicnn")
+        package.__path__ = [str(directory)]
+        sys.modules["musicnn"] = package
+        for name in ("configuration", "models"):
+            spec = importlib.util.spec_from_file_location("musicnn." + name, directory / (name + ".py"))
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["musicnn." + name] = module
+            # The original wheel uses TensorFlow 1's public spelling. Bind that
+            # import to TF's supported v1 compatibility API, without changing a
+            # byte of the verified publisher source or its architecture.
+            original_tf = sys.modules["tensorflow"]
+            try:
+                sys.modules["tensorflow"] = tf.compat.v1
+                spec.loader.exec_module(module)
+            finally:
+                sys.modules["tensorflow"] = original_tf
+            setattr(package, name, module)
+        if (package.configuration.SR, package.configuration.FFT_SIZE, package.configuration.FFT_HOP, package.configuration.N_MELS) != (16000, 512, 256, 96):
+            raise ValueError("different original model preprocessing")
+        tf.compat.v1.disable_resource_variables()
+        with tf.Graph().as_default() as graph:
+            features = tf.compat.v1.placeholder(tf.float32, [None, 187, 96], name="log_mel")
+            with tf.name_scope("model"):
+                outputs = package.models.define_model(features, False, lock["sourceModel"], 50)
+            tf.identity(outputs[-1], name="embedding")
+            tf.math.sigmoid(outputs[0], name="tags")
+        frozen = tf.compat.v1.graph_util.extract_sub_graph(graph.as_graph_def(), ["embedding", "tags"])
+        reader = tf.compat.v1.train.NewCheckpointReader(str(directory) + "/")
+        for node in frozen.node:
+            if node.op in ("Variable", "VariableV2", "VarHandleOp"):
+                value = reader.get_tensor(node.name)
+                dtype = node.attr["dtype"].type
+                node.op = "Const"
+                del node.input[:]
+                node.attr.clear()
+                node.attr["dtype"].type = dtype
+                node.attr["value"].tensor.CopyFrom(tf.make_tensor_proto(value, dtype=dtype))
+            elif node.op == "ReadVariableOp":
+                dtype = node.attr["dtype"].type
+                node.op = "Identity"
+                node.attr.clear()
+                node.attr["T"].type = dtype
+            node.device = ""
+        return frozen
+    finally:
+        for name, module in previous.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
+
 def canonical_graph(model):
     """Alpha-rename and topologically order the pure inference DAG.
 
@@ -217,9 +283,13 @@ def export(directory, output, check_only=False):
     import tf2onnx
     tf.compat.v1.disable_eager_execution()
     graph = inference_graph(directory)
-    converted, external = tf2onnx.convert.from_graph_def(
-        graph.as_graph_def(), input_names=["log_mel:0"],
-        output_names=["embedding:0", "tags:0"], opset=15)
+    # This exact converter version's common entry point skips its public
+    # loader's Grappler rewrite. CPU runtime optimization happens at load time,
+    # after the distributable graph's original constants/identity are sealed.
+    converted, external = tf2onnx.convert._convert_common(
+        original_inference_definition(directory), name="original_musicnn",
+        input_names=["log_mel:0"], output_names=["embedding:0", "tags:0"],
+        opset=15, optimizers={}, continue_on_error=False)
     if external:
         raise ValueError("external weight files are not permitted")
     names = {"log_mel:0": "log_mel", "embedding:0": "embedding", "tags:0": "tags"}

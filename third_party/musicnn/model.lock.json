@@ -1,6 +1,7 @@
 {
   "modelId": "musicnn-mtt",
   "modelVersion": "516acb2a0ff5ef73f64547898e018e793152c506",
+  "sourceModel": "MTT_musicnn",
   "sourceRepository": "https://github.com/jordipons/musicnn",
   "sourceCommit": "516acb2a0ff5ef73f64547898e018e793152c506",
   "license": "ISC",
@@ -24,6 +25,16 @@
     "licenseFile": "musicnn-0.1.0.dist-info/LICENSE.md"
   },
   "files": [
+    {
+      "path": "musicnn/models.py",
+      "bytes": 11594,
+      "sha256": "ca0a4e64b33fa79ef716d56188202cfdb31c123fa5721addb1e295405b671cf8"
+    },
+    {
+      "path": "musicnn/configuration.py",
+      "bytes": 1229,
+      "sha256": "00fd595eb16bad3a605e10bb6eaf0152cb8125bed6e2c884a636f679ae100419"
+    },
     {
       "path": "musicnn/MTT_musicnn/.data-00000-of-00001",
       "bytes": 9465596,
