@@ -42,11 +42,8 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 	}
 	evidence := []any{kind, hex.EncodeToString(sha256Sum(config))}
 	if kind == "webdav" {
-		var c remotemedia.DAVConfig
-		if json.Unmarshal(config, &c) != nil {
-			return out, storage.ErrRemoteConfig
-		}
-		if _, err := remotemedia.NewDAV(c, s.resolver); err != nil {
+		c, err := s.privateDAVConfig(config)
+		if err != nil {
 			return out, err
 		}
 		out.Policy.Approvals = append(out.Policy.Approvals, c.Approval)
@@ -89,6 +86,12 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 	return out, nil
 }
 func sha256Sum(raw []byte) []byte { h := sha256.Sum256(raw); return h[:] }
+
+func sourceObjectSequentialTx(ctx context.Context, tx *sql.Tx, source, path string) (bool, error) {
+	var sequential bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM remote_sources WHERE id=? AND (range_support='unsupported' OR error_code='range_unsupported')) OR EXISTS(SELECT 1 FROM remote_analysis_status WHERE path=? AND code='range_unsupported')`, source, path).Scan(&sequential)
+	return sequential, err
+}
 
 func sourceSequentialTx(ctx context.Context, tx *sql.Tx, source, root string) (bool, error) {
 	var sequential bool
@@ -282,11 +285,8 @@ func (s *Service) serveMaterial(ctx context.Context, slot *sourceProcessLease) (
 	if kind != "webdav" || len(raw) > 64<<10 {
 		return out, storage.ErrRemoteConfig
 	}
-	var c remotemedia.DAVConfig
-	if json.Unmarshal(raw, &c) != nil {
-		return out, storage.ErrRemoteConfig
-	}
-	if _, err := remotemedia.NewDAV(c, s.resolver); err != nil {
+	c, err := s.privateDAVConfig(raw)
+	if err != nil {
 		return out, err
 	}
 	program, err := rcloneprogram.Resolve()
@@ -298,6 +298,25 @@ func (s *Service) serveMaterial(ctx context.Context, slot *sourceProcessLease) (
 		config += "headers=Authorization,Basic " + base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password)) + "\n"
 	}
 	return serveMaterial{Program: program, Remote: "portico:", Configuration: []byte(config)}, nil
+}
+
+// privateDAVConfig uses the existing bounded private-format opener. Its current
+// format is plain configuration; it creates no key or replacement auth store.
+func (s *Service) privateDAVConfig(stored []byte) (remotemedia.DAVConfig, error) {
+	var c remotemedia.DAVConfig
+	if s.mounts == nil {
+		return c, storage.ErrRemoteConfig
+	}
+	raw, err := s.mounts.Open(stored)
+	if err != nil {
+		return c, storage.ErrRemoteCredentials
+	}
+	defer clear(raw)
+	if json.Unmarshal(raw, &c) != nil {
+		return c, storage.ErrRemoteConfig
+	}
+	_, err = remotemedia.NewDAV(c, s.resolver)
+	return c, err
 }
 
 // serveTransport follows only configured crypt members to the selected backend.

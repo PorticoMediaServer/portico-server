@@ -57,7 +57,7 @@ func newObservationFixture(t *testing.T) observationFixture {
 }
 
 func scanFacts(label string) ScanObservation {
-	return ScanObservation{ScanRevision: "1:" + label, Facts: remotemedia.FileObservation{SourceID: "remote", Incarnation: "1", Object: "film.mkv", ObjectID: "object", Size: 16, ModifiedNS: 23, ModifiedKnown: true, ProviderETag: `"provider-` + label + `"`, ServeETag: `"served"`, ProviderHashes: []remotemedia.ProviderHash{{Kind: "opaque-provider-kind", Value: label}}}}
+	return ScanObservation{Facts: remotemedia.FileObservation{SourceID: "remote", Incarnation: "1", Object: "film.mkv", ObjectID: "object", Size: 16, ModifiedNS: 23, ModifiedKnown: true, ProviderETag: `"provider-` + label + `"`, ServeETag: `"served"`, ProviderHashes: []remotemedia.ProviderHash{{Kind: "opaque-provider-kind", Value: label}}}}
 }
 
 func (f observationFixture) record(t *testing.T, value ScanObservation, expected int64) (ObservationRef, error) {
@@ -67,6 +67,14 @@ func (f observationFixture) record(t *testing.T, value ScanObservation, expected
 		t.Fatal(err)
 	}
 	defer gated.Rollback()
+	if value.ScanRevision == "" {
+		b, _, _ := f.s.find(f.file)
+		snapshot, e := observationSnapshot(b, value.Facts.Incarnation, value.Facts)
+		if e != nil {
+			return ObservationRef{}, e
+		}
+		value.ScanRevision = snapshot.Revision
+	}
 	ref, err := f.s.RecordScanObservationTx(context.Background(), gated.Tx(), f.job, f.file, value, expected)
 	if err != nil {
 		return ObservationRef{}, err
@@ -153,5 +161,43 @@ func TestScanObservationStoresMissingTimeAndHashesWithoutInventingThem(t *testin
 	out, err := f.s.ScanObservation(context.Background(), f.file)
 	if err != nil || out.Observation.Facts.ModifiedKnown || out.Observation.Facts.ProviderETag != "" || len(out.Observation.Facts.ProviderHashes) != 0 || out.Observation.Facts.ValidateForRange() == nil {
 		t.Fatal("unknown scan facts promoted", out, err)
+	}
+}
+
+func (f observationFixture) catalogObservationRevision(t *testing.T) string {
+	t.Helper()
+	observed, err := f.s.ScanObservation(context.Background(), f.file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _, _ := f.s.find(f.file)
+	transport, err := observationSnapshot(b, observed.Ref.Generation, observed.Observation.Facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := dbwork.BeginSnapshot(context.Background(), f.s.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer view.Rollback()
+	source, err := catalog.InventoryFenceTx(context.Background(), view.Tx(), f.job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision, _, err := catalog.ObservationRevision(source, transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revision == transport.Revision {
+		t.Fatal("catalog revision aliased transport observation")
+	}
+	return revision
+}
+func TestScanObservationRejectsCallerInventedTransportRevision(t *testing.T) {
+	f := newObservationFixture(t)
+	value := scanFacts("forged")
+	value.ScanRevision = "1:invented"
+	if _, err := f.record(t, value, 0); !errors.Is(err, storage.ErrRemoteChanged) {
+		t.Fatal("invented transport scan revision accepted", err)
 	}
 }

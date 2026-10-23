@@ -47,6 +47,7 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 			if _, err := f.record(t, scanFacts("a"), 0); err != nil {
 				t.Fatal(err)
 			}
+			catalogRevision := f.catalogObservationRevision(t)
 			for _, command := range []struct {
 				sql  string
 				args []any
@@ -54,7 +55,7 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 				{`INSERT INTO catalog_assets(token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration) VALUES('asset',?,16,23,'mkv','h264','aac',1920,1080,60)`, []any{f.file}},
 				{`INSERT INTO catalog_entities(public_id,library_id,kind,title,sort_key,sort_head) SELECT X'00112233445566778899AABBCCDDEEFF',id,4,'Episode','episode','e' FROM catalog_libraries WHERE library_id=?`, []any{f.library}},
 				{`INSERT INTO catalog_asset_links(entity_id,asset_id) SELECT e.id,a.id FROM catalog_entities e CROSS JOIN catalog_assets a WHERE a.token='asset'`, nil},
-				{`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state) SELECT 'object',id,'asset',incarnation,'film.mkv','1:a','{}',16,23,'available' FROM library_sources WHERE id=?`, []any{f.library}},
+				{`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state) SELECT 'object',id,'asset',incarnation,'film.mkv',?,'{}',16,23,'available' FROM library_sources WHERE id=?`, []any{catalogRevision, f.library}},
 			} {
 				if _, err := f.s.db.Exec(command.sql, command.args...); err != nil {
 					t.Fatal(err)
@@ -67,7 +68,7 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 			}
 			facts := &episodeFactsFixture{mode: "off", providerState: "ready", artworkRevision: "artwork-1", leaseRevision: 1, processGeneration: "fixture-process", limits: ReadLimits{Connections: 2, RequestsPerSecond: 2}}
 			resolver := EpisodeAuthorityResolver{Sources: f.s, Identities: identities, Episodes: facts, Work: facts}
-			request := EpisodeAuthorityRequest{Target: EpisodeTarget{LibraryID: f.library, LibrarySourceID: f.library, ObjectID: "object", SourceRevision: "1:a", EpisodeID: episode}, Purpose: EpisodeExplicitOneEpisode, Owner: owner, Operation: "episode_thumbnail", CostClass: "decode"}
+			request := EpisodeAuthorityRequest{Target: EpisodeTarget{LibraryID: f.library, LibrarySourceID: f.library, ObjectID: "object", SourceRevision: catalogRevision, EpisodeID: episode}, Purpose: EpisodeExplicitOneEpisode, Owner: owner, Operation: "episode_thumbnail", CostClass: "decode"}
 			gated, err := dbwork.BeginSnapshot(ctx, f.s.db)
 			if err != nil {
 				t.Fatal(err)

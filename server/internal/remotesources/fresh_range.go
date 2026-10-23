@@ -5,7 +5,6 @@ import (
 	"errors"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/remotemedia"
@@ -98,31 +97,8 @@ func (s *Service) freshFileAdmission(ctx context.Context, process *rcloneprogram
 	if err != nil {
 		return nil, RangeAdmission{}, err
 	}
-	metadata, err := process.Metadata(ctx)
-	if err != nil {
-		return nil, RangeAdmission{}, err
-	}
-	observer, err := process.ObservationEndpoint(ctx)
-	if err != nil {
-		return nil, RangeAdmission{}, err
-	}
 	observe := func(ctx context.Context) (remotemedia.FileObservation, error) {
-		fresh, err := metadata.Stat(ctx, ref.Object, check)
-		if err != nil {
-			return remotemedia.FileObservation{}, err
-		}
-		served, err := observer.Stat(ctx, ref.Object, check)
-		if err != nil {
-			return remotemedia.FileObservation{}, err
-		}
-		if fresh.Directory || served.Directory || fresh.Size != served.Size {
-			return remotemedia.FileObservation{}, remotemedia.ErrObservationChanged
-		}
-		facts := remotemedia.FileObservation{SourceID: id, Incarnation: generation, Object: ref.Object, ObjectID: fresh.ID, Size: fresh.Size, ProviderHashes: fresh.Hashes, ServeETag: served.ETag}
-		if !fresh.Modified.IsZero() && time.Unix(0, fresh.Modified.UnixNano()).Equal(fresh.Modified) {
-			facts.ModifiedKnown, facts.ModifiedNS = true, fresh.Modified.UnixNano()
-		}
-		return facts.Canonical()
+		return observeProcessFile(ctx, process, ref.Object, check)
 	}
 	return endpoint, RangeAdmission{Scan: scan.Observation.Facts, Check: check, Observe: observe, OnChanged: notify}, nil
 }

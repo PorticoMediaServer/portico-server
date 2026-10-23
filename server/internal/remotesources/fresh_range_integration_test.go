@@ -124,7 +124,7 @@ func TestFreshRangeRealMetadataAndRetainedRevocations(t *testing.T) {
 				t.Fatal(err)
 			}
 			facts := remotemedia.FileObservation{SourceID: "remote", Incarnation: "1", Object: "film.mkv", ObjectID: fresh.ID, Size: fresh.Size, ModifiedNS: fresh.Modified.UnixNano(), ModifiedKnown: true, ProviderHashes: fresh.Hashes, ServeETag: served.ETag}
-			ref, err := f.record(t, ScanObservation{Facts: facts, ScanRevision: "1:actual-local-fixture"}, 0)
+			ref, err := f.record(t, ScanObservation{Facts: facts}, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -323,7 +323,7 @@ func TestFreshSequentialRealRangeUnsupportedOrigin(t *testing.T) {
 	if facts.Size != size {
 		t.Fatal("origin size", facts.Size)
 	}
-	ref, err := f.record(t, ScanObservation{Facts: facts, ScanRevision: "1:controlled-http-origin"}, 0)
+	ref, err := f.record(t, ScanObservation{Facts: facts}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -76,9 +76,20 @@ func TestServeStatHasExactMemberAndDoesNotInventProviderEvidence(t *testing.T) {
 	for _, modified := range []string{"", "Fri, 31 Dec 9999 23:59:59 GMT"} {
 		entry.Modified = modified
 		o, err = ServedFileObservation("source", "1", "disc", "file.iso", entry)
-		if err != nil || o.ModifiedKnown || o.ValidateForRange() == nil {
-			t.Fatal("missing or out-of-range modified time admitted a range")
+		// Section15 permits strongest-available observations. Missing time
+		// stays unknown; the served precondition is not immutable identity.
+		if err != nil || o.ModifiedKnown || o.ModifiedNS != 0 || o.ValidateForRange() != nil {
+			t.Fatal("missing time invented evidence or blocked the admitted precondition", o, err)
 		}
+		o.ServeETag = ""
+		if o.ValidateForRange() == nil {
+			t.Fatal("missing served precondition admitted a range")
+		}
+		o.ModifiedNS = 1
+		if o.Validate() == nil {
+			t.Fatal("unknown time carried invented nanoseconds")
+		}
+
 	}
 }
 

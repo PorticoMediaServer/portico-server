@@ -30,6 +30,7 @@ type SourceReadBinding struct {
 	Observation              ObservationRef
 	Path, Root, ScanRevision string
 	Size                     int64
+	Sequential               bool
 	Profile                  SourceReadProfile
 	LeaseID                  int64
 }
@@ -63,7 +64,7 @@ func (s *Service) CaptureReadSourceTx(ctx context.Context, tx *sql.Tx, admission
 		return nil, storage.ErrRemoteConfig
 	}
 	switch admission.Purpose {
-	case SourceReading, SourcePlayback, SourceInventory, SourceEpisodeAutomatic, SourceEpisodeExplicit:
+	case SourceReading, SourcePlayback, SourceEpisodeAutomatic, SourceEpisodeExplicit:
 	default:
 		return nil, storage.ErrRemoteConfig
 	}
@@ -96,11 +97,15 @@ func (s *Service) CaptureReadSourceTx(ctx context.Context, tx *sql.Tx, admission
 	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return nil, storage.ErrRemoteConfig
 	}
+	sequential, err := sourceObjectSequentialTx(ctx, tx, ref.SourceID, filepath.Join(root, filepath.FromSlash(ref.Object)))
+	if err != nil {
+		return nil, err
+	}
 	id := s.readLeaseSequence.Add(1)
 	if id < 1 {
 		return nil, storage.ErrRemoteLimit
 	}
-	binding := SourceReadBinding{Purpose: admission.Purpose, Observation: ref, Path: filepath.Join(root, filepath.FromSlash(ref.Object)), Root: root, ScanRevision: scan.Observation.ScanRevision, Size: scan.Observation.Facts.Size, Profile: profile, LeaseID: id}
+	binding := SourceReadBinding{Purpose: admission.Purpose, Observation: ref, Path: filepath.Join(root, filepath.FromSlash(ref.Object)), Root: root, ScanRevision: scan.Observation.ScanRevision, Size: scan.Observation.Facts.Size, Sequential: sequential, Profile: profile, LeaseID: id}
 	if err = admission.CheckTx(ctx, tx, binding); err != nil {
 		return nil, err
 	}
@@ -144,7 +149,11 @@ func (l *SourceReadLease) CheckTx(ctx context.Context, tx *sql.Tx) error {
 	if err != nil {
 		return l.fail(err)
 	}
-	if generation != l.binding.Observation.Generation || root != l.binding.Root || profile != l.binding.Profile || scan.Ref != l.binding.Observation || scan.Observation.ScanRevision != l.binding.ScanRevision || scan.Observation.Facts.Size != l.binding.Size {
+	sequential, err := sourceObjectSequentialTx(ctx, tx, l.binding.Observation.SourceID, l.binding.Path)
+	if err != nil {
+		return l.fail(err)
+	}
+	if generation != l.binding.Observation.Generation || root != l.binding.Root || profile != l.binding.Profile || scan.Ref != l.binding.Observation || scan.Observation.ScanRevision != l.binding.ScanRevision || scan.Observation.Facts.Size != l.binding.Size || sequential != l.binding.Sequential {
 		return l.fail(storage.ErrRemoteChanged)
 	}
 	l.mu.Lock()
@@ -254,19 +263,14 @@ func (l *SourceReadLease) process(ctx context.Context) (*rcloneprogram.ServeProc
 	return process, nil
 }
 func (l *SourceReadLease) OpenRange(ctx context.Context) (*SourceRange, error) {
+	if l.binding.Sequential {
+		return nil, storage.ErrRemoteRange
+	}
 	call, release := l.bound(ctx)
 	defer release()
 	process, err := l.process(call)
 	if err != nil {
 		return nil, err
-	}
-	var unsupported bool
-	err = l.service.db.QueryRowContext(call, `SELECT EXISTS(SELECT 1 FROM remote_sources WHERE id=? AND (range_support='unsupported' OR error_code='range_unsupported')) OR EXISTS(SELECT 1 FROM remote_analysis_status WHERE path=? AND code='range_unsupported')`, l.binding.Observation.SourceID, l.binding.Path).Scan(&unsupported)
-	if err != nil {
-		return nil, l.fail(err)
-	}
-	if unsupported {
-		return nil, storage.ErrRemoteRange
 	}
 	session, err := l.service.OpenFreshRange(call, process, FreshReadAdmission{Observation: l.binding.Observation, ProcessGeneration: process.Generation(), Check: l.Check, OnChanged: l.changed})
 	if err != nil {

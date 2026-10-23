@@ -271,7 +271,18 @@ func (r EpisodeAuthorityResolver) resolveTx(ctx context.Context, tx *sql.Tx, req
 		if e != nil {
 			return out, e
 		}
-		if observation.Ref.Generation != out.RemoteGeneration || observation.Observation.ScanRevision != t.SourceRevision || observation.Observation.Facts.Size != size || observation.Observation.Facts.ValidateForRange() != nil {
+		if observation.Ref.Generation != out.RemoteGeneration || observation.Observation.Facts.Size != size || observation.Observation.Facts.ValidateForRange() != nil {
+			return out, storage.ErrRemoteChanged
+		}
+		transport, e := observationSnapshot(b, out.RemoteGeneration, observation.Observation.Facts)
+		if e != nil {
+			return out, e
+		}
+		objectRevision, _, e := catalog.ObservationRevision(*s, transport)
+		if e != nil {
+			return out, e
+		}
+		if transport.Revision != observation.Observation.ScanRevision || objectRevision != t.SourceRevision {
 			return out, storage.ErrRemoteChanged
 		}
 		out.Observation = observation.Ref

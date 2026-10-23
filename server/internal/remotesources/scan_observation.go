@@ -117,7 +117,14 @@ func (s *Service) RecordScanObservationTx(ctx context.Context, tx *sql.Tx, job, 
 	if err != nil {
 		return ObservationRef{}, err
 	}
-	if generation != facts.Incarnation || !strings.HasPrefix(observation.ScanRevision, generation+":") {
+	if generation != facts.Incarnation {
+		return ObservationRef{}, storage.ErrRemoteChanged
+	}
+	transport, err := observationSnapshot(b, generation, facts)
+	if err != nil {
+		return ObservationRef{}, err
+	}
+	if observation.ScanRevision != transport.Revision {
 		return ObservationRef{}, storage.ErrRemoteChanged
 	}
 	current, err := readScanObservationTx(ctx, tx, b.ID, object)
