@@ -37,6 +37,7 @@ const session = (itemId, queue) => ({id:`fixture-session-${++serial}`,revision:'
 (async()=>{
   let browser;
   try {
+    fs.rmSync(path.join(scratch,'browser-profile'),{recursive:true,force:true});
     browser = await chromium.launchPersistentContext(path.join(scratch,'browser-profile'), {executablePath:'/usr/bin/google-chrome',headless:true,viewport:{width:1920,height:1080},args:['--disable-dev-shm-usage','--autoplay-policy=no-user-gesture-required','--js-flags=--max-old-space-size=512']});
     const page = browser.pages()[0] || await browser.newPage();
     await page.addInitScript(()=>{
@@ -58,7 +59,7 @@ const session = (itemId, queue) => ({id:`fixture-session-${++serial}`,revision:'
     });
     page.on('console',m=>{if(true)report.console.push({type:m.type(),text:m.text(),location:m.location()});});
     page.on('pageerror',e=>report.pageErrors.push(e.message));
-    page.on('response',r=>{if(/gstatic|googleapis|\/v1\/media\//.test(r.url()))report.resources.push({url:r.url(),status:r.status()});});
+    page.on('response',r=>{if(/gstatic|googleapis|\/v1\/media\//.test(r.url()))report.resources.push({url:r.url(),status:r.status(),...(r.url().includes('/v1/media/')?{range:r.request().headers().range||null}: {})});});
     await page.route(fixtureOrigin+'/**',async route=>{
       const request=route.request(),u=new URL(request.url()),p=u.pathname,body=request.postDataJSON?.();
       const json=async(data,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
