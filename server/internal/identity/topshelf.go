@@ -55,9 +55,6 @@ func (s *Service) IssueTopShelfToken(ctx context.Context, p Principal, installat
 	if e != nil {
 		return TopShelfGrant{}, e
 	}
-	if device.ApprovalState != "approved" {
-		return TopShelfGrant{}, ErrDevicePending
-	}
 	now := time.Now().UTC()
 	out := TopShelfGrant{Viewer: p.Viewer, Hash: p.Hash, Epoch: p.Epoch, Token: Token(), ExpiresAt: now.Add(lifetime).Format(time.RFC3339)}
 	if _, e = tx.ExecContext(ctx, `DELETE FROM topshelf_tokens WHERE expires_at<=? OR (device_id=? AND profile_id=?)`, now.Format(time.RFC3339), device.ID, p.ProfileID); e != nil {
@@ -90,8 +87,8 @@ func (s *Service) TopShelfGrant(ctx context.Context, token string) (TopShelfGran
 	if err != nil || !at.After(time.Now().UTC()) {
 		return TopShelfGrant{}, ErrTopShelfToken
 	}
-	var state string
-	if e = tx.QueryRowContext(ctx, `SELECT approval_state FROM identity_devices WHERE id=? AND authority=? AND account_id=?`, device, authority, account).Scan(&state); e != nil || state != "approved" {
+	var present bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_devices WHERE id=? AND authority=? AND account_id=?)`, device, authority, account).Scan(&present); e != nil || !present {
 		return TopShelfGrant{}, ErrTopShelfToken
 	}
 	role, epoch, e := s.topShelfViewerTx(ctx, tx, authority, account, profile)

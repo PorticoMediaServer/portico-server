@@ -27,7 +27,6 @@ const selfRegistrationKey = "identity.selfRegistration"
 
 type RegistrationPolicy struct {
 	SelfRegistration string `json:"selfRegistration"`
-	DeviceApproval   string `json:"deviceApproval"`
 }
 
 // RegistrationPolicySnapshot reads the two owner choices from one database
@@ -50,26 +49,19 @@ func (s *Service) RegistrationPolicySnapshot(ctx context.Context) (RegistrationP
 	if err != nil {
 		return RegistrationPolicy{}, err
 	}
-	device, err := value(deviceApprovalKey)
-	if err != nil {
-		return RegistrationPolicy{}, err
-	}
 	if !validSelfRegistration(self) {
 		self = SelfRegistrationOff
 	}
-	if !validDeviceApproval(device) {
-		device = DeviceApprovalAuto
-	}
-	return RegistrationPolicy{SelfRegistration: self, DeviceApproval: device}, nil
+	return RegistrationPolicy{SelfRegistration: self}, nil
 }
 
 // SaveRegistrationPolicy validates both choices before writing either one.
 func (s *Service) SaveRegistrationPolicy(ctx context.Context, policy RegistrationPolicy) (RegistrationPolicy, error) {
-	if !validSelfRegistration(policy.SelfRegistration) || !validDeviceApproval(policy.DeviceApproval) {
+	if !validSelfRegistration(policy.SelfRegistration) {
 		return RegistrationPolicy{}, ErrDirectInput
 	}
 	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
-		for key, value := range map[string]string{selfRegistrationKey: policy.SelfRegistration, deviceApprovalKey: policy.DeviceApproval} {
+		for key, value := range map[string]string{selfRegistrationKey: policy.SelfRegistration} {
 			if _, err := tx.ExecContext(ctx, `INSERT INTO configuration(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value); err != nil {
 				return err
 			}

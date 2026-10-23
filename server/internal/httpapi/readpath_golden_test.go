@@ -193,7 +193,7 @@ func buildGoldenFixture(t *testing.T) (*goldenFixture, func(method, path, body, 
 	blocked, _ := json.Marshal(restriction.BlockedLabels)
 
 	// Fixed identities: a golden file cannot depend on a random account id.
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('golden-owner','golden-owner',x'00','golden-owner-profile',1)`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('golden-owner','golden-owner',x'00','golden-owner-profile',1)`); err != nil {
 		t.Fatal(err)
 	}
 	tokens := map[string]string{}
@@ -209,7 +209,7 @@ func buildGoldenFixture(t *testing.T) (*goldenFixture, func(method, path, body, 
 		{"open", "golden-open", "golden-open-profile", all, false},
 		{"restricted", "golden-limited", "golden-limited-profile", string(narrowed), true},
 	} {
-		if _, err = db.Exec(`INSERT INTO accounts VALUES(?,?,x'00',?,1)`, viewer.account, viewer.account, viewer.profile); err != nil {
+		if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`, viewer.account, viewer.account, viewer.profile); err != nil {
 			t.Fatal(err)
 		}
 		if _, err = db.Exec(`INSERT INTO direct_memberships(account_id,role,allowed_libraries,revision,disabled) VALUES(?,'member',?,1,0)
