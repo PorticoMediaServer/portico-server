@@ -108,7 +108,8 @@ class ReviewDeployment(unittest.TestCase):
     def test_private_credentials_refuse_unsafe_permissions_and_links(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / 'review.md'
-            path.write_text('```json\n{"username":"fixture","password":"not-a-real-account"}\n```')
+            import json
+            path.write_text('```json\n' + json.dumps({'username': 'fixture', 'password': os.urandom(24).hex()}) + '\n```')
             path.chmod(0o644)
             with self.assertRaises(ValueError):
                 smoke.read_credentials(path)

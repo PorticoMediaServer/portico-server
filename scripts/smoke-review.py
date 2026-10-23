@@ -40,9 +40,11 @@ def main():
         p.error('exact MAIN source cutoff required')
     subprocess.run(['git', '-C', str(a.repo), 'merge-base', '--is-ancestor', a.commit, 'origin/main'], check=True)
     read_credentials(a.credentials)  # Refuse unsafe custody before starting a browser.
-    script = Path(__file__).with_name('review-smoke.mjs').read_text()
-    command = ['bash', '-c', 'set -eu; export PORTICO_REVIEW_ORIGIN="$2" PORTICO_REVIEW_COMMIT="$3" PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$4"; npm install --prefix "$TMPDIR/browser" --no-save --package-lock=false --no-audit --no-fund playwright@1.58.2 >/dev/null; node --input-type=module -e "$1"', 'release-smoke', script, 'https://demo.getportico.tv', a.commit, '/usr/bin/chromium' if a.host == 'netcup' else '/snap/bin/chromium']
-    args = ['python3', str(a.runner), '--host', a.host, '--browser', '--repo', str(a.repo), '--commit', a.commit, '--lane', 'release-signin-smoke', '--cwd', '.', '--output', str(a.output), '--collect', 'final-page.png', '--collect', 'failure-dom.html', '--'] + command
+    tools_repo = Path(__file__).resolve().parents[1]
+    tools_commit = subprocess.check_output(['git', '-C', str(tools_repo), 'rev-parse', 'HEAD'], text=True).strip()
+    script = subprocess.check_output(['git', '-C', str(tools_repo), 'show', tools_commit + ':scripts/review-smoke.mjs'], text=True)
+    command = ['bash', '-c', 'set -eu; (cd "$PORTICO_RUNNER_SECONDARY_SOURCE/scripts" && python3 -m unittest -v test_deploy_review.py && node --check review-smoke.mjs); export PORTICO_REVIEW_ORIGIN="$2" PORTICO_REVIEW_COMMIT="$3" PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$4"; npm install --prefix "$TMPDIR/browser" --no-save --package-lock=false --no-audit --no-fund playwright@1.58.2 >/dev/null; node --input-type=module -e "$1"', 'release-smoke', script, 'https://demo.getportico.tv', a.commit, '/usr/bin/chromium' if a.host == 'netcup' else '/snap/bin/chromium']
+    args = ['python3', str(a.runner), '--host', a.host, '--browser', '--repo', str(a.repo), '--commit', a.commit, '--secondary-repo', str(tools_repo), '--secondary-commit', tools_commit, '--lane', 'release-signin-smoke', '--cwd', '.', '--output', str(a.output), '--collect', 'final-page.png', '--collect', 'failure-dom.html', '--'] + command
     if (a.output / 'runner.log').exists():
         raise FileExistsError('retain existing browser evidence; use a new cycle output')
     child = subprocess.Popen(args, stdin=subprocess.PIPE, start_new_session=True)
