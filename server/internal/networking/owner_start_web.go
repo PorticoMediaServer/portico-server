@@ -33,9 +33,9 @@ func ownerRandom32(value string) bool {
 	return err == nil && len(raw) == 32 && base64.RawURLEncoding.EncodeToString(raw) == value
 }
 
-// beginOwnerWebClaim is the private initiation producer. The public action
-// decoder composes it only after the secure-origin and protected-state gates.
-// Signed state is returned only by that authenticated POST, never status GET.
+// beginOwnerWebClaim is the private initiation producer. Its public action
+// binding is composed separately and must enforce the secure-origin and
+// protected-state prerequisites. Signed state is never a status GET fact.
 func (h *ClaimHandler) beginOwnerWebClaim(ctx context.Context, v Intent, address, state, codeChallenge, installation string, authority *OwnerStartAuthority) (localWebClaim, error) {
 	var out localWebClaim
 	transport, ok := h.transport.(*HTTPTransport)
