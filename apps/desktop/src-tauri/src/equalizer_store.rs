@@ -8,12 +8,12 @@ CREATE TABLE IF NOT EXISTS desktop_equalizer_state (
     id INTEGER PRIMARY KEY CHECK(id=1),
     revision INTEGER NOT NULL CHECK(revision BETWEEN 0 AND 9007199254740991),
     enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
-    preamp_db REAL NOT NULL CHECK(preamp_db BETWEEN -24 AND 24)
+    preamp_db REAL NOT NULL CHECK(preamp_db BETWEEN -12 AND 12 AND preamp_db*2=CAST(preamp_db*2 AS INTEGER))
 ) STRICT;
 CREATE TABLE IF NOT EXISTS desktop_equalizer_bands (
     state_id INTEGER NOT NULL CHECK(state_id=1) REFERENCES desktop_equalizer_state(id),
     band_index INTEGER NOT NULL CHECK(band_index BETWEEN 0 AND 9),
-    gain_db REAL NOT NULL CHECK(gain_db BETWEEN -24 AND 24),
+    gain_db REAL NOT NULL CHECK(gain_db BETWEEN -12 AND 12 AND gain_db*2=CAST(gain_db*2 AS INTEGER)),
     PRIMARY KEY(state_id,band_index)
 ) STRICT;
 ";

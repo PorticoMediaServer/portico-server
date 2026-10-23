@@ -1,7 +1,7 @@
 use crate::boundary::{Error, Result};
 use serde::{Deserialize, Serialize};
 
-/// Fixed engine band centres. Screen labels/ranges remain owned by the pending frames.
+/// Engine centres for the octave bands labelled 31, 62, 125, 250, 500, 1k..16k.
 pub const BAND_FREQUENCIES_HZ: [f64; 10] = [31.25, 62.5, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0];
 pub const FILTER_LABEL: &str = "portico-equalizer";
 
@@ -20,7 +20,7 @@ impl Default for EqualizerSettings {
 impl EqualizerSettings {
     pub fn validate(&self) -> Result<()> {
         if std::iter::once(&self.preamp_db).chain(self.bands_db.iter())
-            .any(|value| !value.is_finite() || !(-24.0..=24.0).contains(value)) {
+            .any(|value| !value.is_finite() || !(-12.0..=12.0).contains(value) || (value * 2.0).fract() != 0.0) {
             return Err(Error::InvalidCommand);
         }
         Ok(())
@@ -94,5 +94,7 @@ mod tests {
         assert!(serde_json::from_str::<EqualizerSettings>(r#"{"enabled":true,"preampDb":0,"bandsDb":[0]}"#).is_err());
         assert!(EqualizerSettings { preamp_db: f64::NAN, ..Default::default() }.validate().is_err());
         assert!(EqualizerSettings { bands_db: [25.0; 10], ..Default::default() }.validate().is_err());
+        assert!(EqualizerSettings { preamp_db: 0.25, ..Default::default() }.validate().is_err());
+        assert!(EqualizerSettings { preamp_db: -12.0, bands_db: [12.0; 10], ..Default::default() }.validate().is_ok());
     }
 }
