@@ -1,0 +1,68 @@
+import {useCallback, useEffect, useRef, useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import {connectReadingHost, type ReadingGuest} from '@portico/client-core';
+import {createReadingPublication, createEpubAdapter, createPdfAdapter, createComicAdapter} from '@portico/reader-core';
+import {defaultI18n} from '@i18n';
+import '../../../kit/tokens.css';
+import '../../../kit/fonts.css';
+import '../../../bootstrap.css';
+import {Skeleton, StateView} from '../../../kit/states';
+import {ReaderBook, type ReaderBookState} from '../ReaderBook';
+import {bindReadPreferences} from '../preferences';
+import {bindReadingProgress} from '../progress';
+import {loadReadFonts, type ReadFonts} from '../fonts';
+import {readerPdfWorkerUrl} from '../pdf-worker';
+import styles from '../entry.module.css';
+
+type NativeWindow = Window & {ReactNativeWebView?: {postMessage: (message: string) => void}; PorticoReader?: {receive: (message: string) => void; dispose: () => void}};
+const nativeWindow = window as NativeWindow;
+let root: ReturnType<typeof createRoot> | undefined;
+const messages = new Set<(message: string) => void>();
+// Defined before ready is sent. Native delivery calls this fixed app-owned port;
+// it never executes selected-server JS or passes credentials into the document.
+nativeWindow.PorticoReader = {receive(message) {for (const listener of [...messages]) listener(message);}, dispose() {connection.dispose(); root?.unmount();}};
+const connection = connectReadingHost({
+  send(message) {if (!nativeWindow.ReactNativeWebView) throw new Error('reader_host_unavailable'); nativeWindow.ReactNativeWebView.postMessage(message);},
+  subscribe(listener) {messages.add(listener); return () => {messages.delete(listener);};},
+});
+
+function NativeReading({guest}: {guest: ReadingGuest}) {
+  const [book, setBook] = useState<ReaderBookState>(), [failed, setFailed] = useState(false), [active, setActive] = useState(true);
+  const reportError = useCallback(() => setFailed(true), []);
+  const progressRef = useRef<ReturnType<typeof bindReadingProgress>>(undefined);
+  useEffect(() => {
+    let alive = true, fonts: ReadFonts | undefined;
+    let publication: Awaited<ReturnType<typeof createReadingPublication>> | undefined;
+    let reader: ReturnType<typeof bindReadPreferences> | undefined, progress: ReturnType<typeof bindReadingProgress> | undefined;
+    const offActive = guest.onActive(setActive);
+    const authority = {isCurrent: () => alive && !guest.session.signal.aborted,
+      subscribe(listener: () => void) {guest.session.signal.addEventListener('abort', listener); return () => guest.session.signal.removeEventListener('abort', listener);}};
+    void (async () => {
+      publication = await createReadingPublication(guest.session);
+      if (publication.format === 'epub') fonts = await loadReadFonts({document, signal: publication.signal});
+      if (!authority.isCurrent()) return;
+      const adapters = publication.format === 'epub' ? [createEpubAdapter({fonts: fonts!.fonts})] : publication.format === 'pdf'
+        ? [createPdfAdapter({workerUrl: readerPdfWorkerUrl})] : [createComicAdapter({pages: publication.comicPages!})];
+      reader = bindReadPreferences({adapters, preferences: guest.preferences, authority, reportError: () => {if (alive) setFailed(true);}});
+      progress = bindReadingProgress({controller: reader.controller, session: guest.session, initial: guest.initialProgress, authority, reportError: () => {if (alive) setFailed(true);}});
+      progressRef.current = progress;
+      setBook({publication, controller: reader.controller, authority, location: publication.resumeLocation(guest.initialProgress) ?? undefined});
+    })().catch(() => {if (alive) setFailed(true);});
+    return () => {
+      alive = false; offActive(); progressRef.current = undefined;
+      void (async () => {try {await progress?.stop(); await reader?.dispose();} finally {publication?.dispose(); fonts?.dispose(); guest.dispose();}})();
+    };
+  }, [guest]);
+  if (failed) return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}/>;
+  return <div className={styles.host} hidden={!active} aria-hidden={!active} inert={!active}>{book
+    ? <ReaderBook book={book} active={active} reportError={reportError} onBack={() => {void (async () => {await progressRef.current?.stop(); await guest.back();})().catch(reportError);}} onOpenSettings={() => {void guest.openSettings();}}/>
+    : <Skeleton height="100dvh"/>}</div>;
+}
+function NativeReaderEntry() {
+  const [guest, setGuest] = useState<ReadingGuest>(), [failed, setFailed] = useState(false);
+  useEffect(() => {let active = true; void connection.ready.then(value => {if (active) setGuest(value);}, () => {if (active) setFailed(true);}); return () => {active = false; connection.dispose();};}, []);
+  if (failed) return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}/>;
+  return guest ? <NativeReading guest={guest}/> : <Skeleton height="100dvh"/>;
+}
+root = createRoot(document.getElementById('root')!);
+root.render(<NativeReaderEntry/>);

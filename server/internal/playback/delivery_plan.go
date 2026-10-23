@@ -301,7 +301,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	cfg := in.Config.Normalized()
 	outputs := currentConversionOutputs()
 	if in.Server != nil {
-		outputs = decoder.AvailableConversionOutputs(in.Server)
+		outputs = decoder.AvailableConversionOutputsForHardware(in.Server, in.Hardware)
 	}
 	if in.Outputs != nil {
 		outputs = *in.Outputs
