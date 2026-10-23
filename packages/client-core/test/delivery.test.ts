@@ -164,3 +164,17 @@ test('CD-25: audio rendition labels equal sanitized HLS NAME with exact-match id
  assert.equal(parseDeliveryAudioRenditions([{...renditions[0],channelLayout:'stereo,volume=0'}]),undefined);
  assert.equal(parseDeliveryAudioRenditions([{...renditions[0],action:'convert',channels:4,channelLayout:'quad'}]),undefined);
 });
+
+
+test('tablet and the resolved app language reach actual API and playback transports',async()=>{
+ const {setDeliveryContext,deliveryContextHeaders,appLanguageHeader}=await import('../src/delivery.ts');
+ setDeliveryContext({transportClass:'unknown',deviceClass:'',appLanguage:''});
+ const sent:Record<string,string>[]=[];
+ const api=new HttpLocalApi('http://127.0.0.1:19999','token',async(_input,init)=>{sent.push({...init?.headers as Record<string,string>});return new Response(JSON.stringify({ok:true}),{status:200,headers:{'Content-Type':'application/json'}});});
+ api.setDeviceClass('tablet');api.setAppLanguage('en-ca');
+ await api.request('/v1/system');
+ assert.equal(sent[0][deviceClassHeader],'tablet');assert.equal(sent[0][appLanguageHeader],'en-CA');
+ assert.equal(deliveryContextHeaders()[appLanguageHeader],'en-CA');
+ assert.throws(()=>api.setAppLanguage('not a language'));
+ setDeliveryContext({transportClass:'unknown',deviceClass:'',appLanguage:''});
+});

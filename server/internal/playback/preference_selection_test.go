@@ -10,6 +10,7 @@ import (
 func TestApprovedAudioLanguageAndTrackPreferences(t *testing.T) {
 	tracks := []SourceAudio{{Index: 1, Language: "ja", Codec: "aac", Channels: 2, Default: true}, {Index: 2, Language: "eng", Codec: "truehd", Channels: 8}, {Index: 3, Language: "eng", Codec: "aac", Channels: 2}, {Index: 4, Language: "eng", Codec: "aac", Channels: 2, AudioDescription: true}}
 	values := operations.PreferenceValues{}
+	values["region.locale"] = "de"
 	langs := resolvePreferenceLanguages(values, "playback.preferredAudioLanguages", "en-CA")
 	if len(langs) != 2 || langs[0] != "en-CA" || langs[1] != "@original" {
 		t.Fatal(langs)
@@ -42,6 +43,9 @@ func TestForeignAndForcedSubtitleModesAreDistinct(t *testing.T) {
 	values := operations.PreferenceValues{}
 	trace := &DecisionTrace{Audio: &TraceAudio{Language: "jpn"}}
 	foreign := automaticSubtitles(values, trace, "en-US")
+	if defaults := automaticSubtitles(nil, trace, "en-US"); !defaults.ForeignAudio || len(defaults.Languages) != 1 {
+		t.Fatal("missing injection did not use registry defaults", defaults)
+	}
 	if !foreign.ForeignAudio || len(foreign.Languages) != 1 || foreign.Languages[0] != "en-US" {
 		t.Fatal(foreign)
 	}

@@ -1,5 +1,5 @@
 import {routePath} from "../../contracts/src/routes.ts";
-import {parsePreferenceSnapshot,type DeviceClass,type PreferencePatch,type PreferenceScope,type PreferenceSnapshot} from './preferences.ts';
+import {parsePreferenceSnapshot,currentPreferenceSnapshot,type DeviceClass,type PreferencePatch,type PreferenceScope,type PreferenceSnapshot} from './preferences.ts';
 
 /**
  * Minimal viewer-preferences reader (PERF-25): `GET`/`PATCH /v1/preferences`
@@ -23,9 +23,13 @@ export function preferencesOperationId():string{return globalThis.crypto?.random
 
 export class PreferencesReader {
   private disposed=false;private fence?:string;private requests=new Set<AbortController>();
+  private snapshots=new Map<DeviceClass,PreferenceSnapshot>();private listeners=new Set<()=>void>();
+  getSnapshot=(deviceClass:DeviceClass='web')=>this.snapshots.get(deviceClass);
+  subscribe=(listener:()=>void)=>{this.listeners.add(listener);return()=>{this.listeners.delete(listener);};};
+  private adopt(incoming:PreferenceSnapshot){if(this.disposed)throw new Error('This preferences scope is closed.');const current=this.snapshots.get(incoming.deviceClass);const next=currentPreferenceSnapshot(current,incoming);if(current!==next){this.snapshots.set(next.deviceClass,next);for(const listener of this.listeners)listener();}return next;}
   private api:PreferencesApi;readonly scope:PreferencesScope;
   constructor(api:PreferencesApi,scope:PreferencesScope){if(!scope.serverId||!scope.viewerId)throw new Error('A selected viewer is required.');this.api=api;this.scope={...scope};}
-  dispose(){this.disposed=true;for(const c of this.requests)c.abort();this.requests.clear();}
+  dispose(){this.disposed=true;for(const c of this.requests)c.abort();this.requests.clear();this.snapshots.clear();this.listeners.clear();}
   private async call<T>(path:string,method:string,body:unknown,parse:(v:unknown)=>T):Promise<T>{
     if(this.disposed)throw new Error('This preferences scope is closed.');
     const c=new AbortController();this.requests.add(c);const timer=setTimeout(()=>c.abort(),10000);
@@ -36,7 +40,7 @@ export class PreferencesReader {
       const out=parse(raw.data);this.fence=raw.scope.viewerFence;return out;
     }finally{clearTimeout(timer);this.requests.delete(c);}
   }
-  preferences(deviceClass:DeviceClass){return this.call(routePath("get_preferences") + "?deviceClass=" + (deviceClass),'GET',undefined,parsePreferenceSnapshot);}
+  preferences(deviceClass:DeviceClass){return this.call(routePath("get_preferences") + "?deviceClass=" + (deviceClass),'GET',undefined,parsePreferenceSnapshot).then(snapshot=>this.adopt(snapshot));}
   /** `values` carries only the keys that change; `null` clears that override. */
-  applyPreferences(scope:PreferenceScope,deviceClass:DeviceClass,expectedRevision:number,values:PreferencePatch){return this.call(routePath("patch_preferences"),'PATCH',{scope,deviceClass,expectedRevision,values,idempotencyKey:preferencesOperationId()},parsePreferenceSnapshot);}
+  applyPreferences(scope:PreferenceScope,deviceClass:DeviceClass,expectedRevision:number,values:PreferencePatch){return this.call(routePath("patch_preferences"),'PATCH',{scope,deviceClass,expectedRevision,values,idempotencyKey:preferencesOperationId()},parsePreferenceSnapshot).then(snapshot=>this.adopt(snapshot));}
 }

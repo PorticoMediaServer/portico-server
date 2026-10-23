@@ -27982,6 +27982,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "deviceBound": {
+            "type": "boolean"
+          },
           "deviceClass": {
             "type": "string"
           },
@@ -28109,6 +28112,7 @@ export const schemas = {
         "required": [
           "audioEffects",
           "deviceClass",
+          "deviceBound",
           "registry",
           "documents",
           "effective",
@@ -114974,6 +114978,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "deviceBound": {
+            "type": "boolean"
+          },
           "deviceClass": {
             "type": "string"
           },
@@ -115101,6 +115108,7 @@ export const schemas = {
         "required": [
           "audioEffects",
           "deviceClass",
+          "deviceBound",
           "registry",
           "documents",
           "effective",
@@ -143566,6 +143574,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "deviceBound": {
+            "type": "boolean"
+          },
           "deviceClass": {
             "type": "string"
           },
@@ -143693,6 +143704,7 @@ export const schemas = {
         "required": [
           "audioEffects",
           "deviceClass",
+          "deviceBound",
           "registry",
           "documents",
           "effective",

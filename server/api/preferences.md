@@ -25,9 +25,10 @@ Audio language defaults to `[@appLanguage, @original]`, subtitles to
 `[@appLanguage]`, and subtitle mode to `foreign`. Language entries otherwise use
 canonical BCP-47 tags and reject duplicates. `@original` is audio-only, with the
 file's default track as the honest fallback when original-language metadata is
-unavailable. App language resolves from the explicit profile locale, then the
-request's `X-Portico-App-Language` or Accept-Language device fact, then the app's
-English catalogue fallback. Original never counts as one of “my languages”.
+unavailable. App language resolves from the request's `X-Portico-App-Language` (the catalogue
+actually displayed after client fallback), then the explicit profile locale, then
+the app's English catalogue fallback. The OS Accept-Language is not substituted
+for a catalogue the app does not ship. Original never counts as one of “my languages”.
 `foreign` chooses full subtitles for unfamiliar audio and forced lines otherwise;
 `forced` chooses only forced lines. SDH preference, full fallback and the single
 untagged-forced-track rule are explicit registry choices. Session track selections

@@ -8,6 +8,7 @@ import (
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/operations"
 	"portico.local/server/internal/subtitles"
 )
 
@@ -155,17 +156,25 @@ func preferredAudioLanguages(values DeliveryPreferenceReader) []string {
 
 // automaticSubtitles is what the viewer wants from subtitles without being
 // asked, beside the audio language this session will actually play.
+func preferenceReaderOrDefaults(values DeliveryPreferenceReader) DeliveryPreferenceReader {
+	if values == nil {
+		return operations.PreferenceValues{}
+	}
+	return values
+}
+
 func resolvePreferenceLanguages(values DeliveryPreferenceReader, key, appLanguage string) []string {
+	values = preferenceReaderOrDefaults(values)
 	var languages []string
 	if lister, ok := values.(interface{ List(string) []string }); ok && values != nil {
 		languages = lister.List(key)
 	}
-	locale := ""
-	if values != nil {
+	locale := appLanguage
+	if locale == "" && values != nil {
 		locale = values.Text("region.locale")
 	}
-	if locale == "" || locale == "auto" {
-		locale = appLanguage
+	if locale == "auto" {
+		locale = ""
 	}
 	// The app's supported-catalogue fallback is English. A missing device fact
 	// follows that fallback; it never becomes a guessed title language.
@@ -188,9 +197,7 @@ func automaticSubtitles(values DeliveryPreferenceReader, trace *DecisionTrace, a
 	if len(appLanguages) > 0 {
 		appLanguage = appLanguages[0]
 	}
-	if values == nil {
-		return out
-	}
+	values = preferenceReaderOrDefaults(values)
 	mode := values.Text("playback.subtitleMode")
 	out.Enabled, out.Off = mode == "always", mode == "off"
 	out.Languages = resolvePreferenceLanguages(values, "playback.preferredSubtitleLanguages", appLanguage)

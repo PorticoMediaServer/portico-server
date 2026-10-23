@@ -21,8 +21,10 @@ export const assembleShellBindings: ShellAssembler = async context => {
   if (authority !== 'local' && authority !== 'hosted') throw new Error('unsupported-shell-authority');
   let active = true;
   const current = () => active && context.isCurrent();
-  const language = shellLanguage(context.facts.preferences);
+  const currentPreferences = () => context.preferences?.getSnapshot('web') ?? context.facts.preferences;
+  const language = shellLanguage(currentPreferences());
   setServiceI18n(language);
+  context.api.setAppLanguage(language.locale);
   const time = {t: language.t, locale: language.region.formatLocale, timeZone: language.region.timeZone,
     hourCycle: language.region.hour12 === true ? 'h12' as const : language.region.hour12 === false ? 'h23' as const : undefined};
   const feedback = new ShellFeedback(language, current), life = new AbortController();
@@ -30,7 +32,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
   const dispose = () => { if (!active) return; active = false; for (const cleanup of resources.splice(0).reverse()) { try { cleanup(); } catch { /* Continue fencing every other private owner. */ } } };
   try {
   const runtime = new WebShellPlaybackRuntime({api: context.api, authority: {...viewer, authority, epoch: context.epoch, viewerFence: context.viewerFence},
-    contentScope: {serverId: viewer.serverId, viewerId: JSON.stringify([authority, viewer.accountId, viewer.profileId])}, events: context.events, isCurrent: current, settings: shellPlaybackSettings(context.facts.preferences)});
+    contentScope: {serverId: viewer.serverId, viewerId: JSON.stringify([authority, viewer.accountId, viewer.profileId])}, events: context.events, isCurrent: current, settings: shellPlaybackSettings(currentPreferences)});
   resources.push(() => runtime.dispose());
   const currentHomeContext = () => {
     const document = context.home.getSnapshot().document; if (!document) throw new Error('home-document-required');
@@ -47,15 +49,23 @@ export const assembleShellBindings: ShellAssembler = async context => {
   const listeners = new Set<() => void>();
   const changed = () => { if (current()) for (const listener of listeners) listener(); };
   resources.push(runtime.subscribe(changed), selection.subscribe(changed), () => listeners.clear());
+  let homeLayout = JSON.stringify([currentPreferences().effective['home.rowOrder'], currentPreferences().effective['home.hiddenRowIds']]);
+  if (context.preferences) resources.push(context.preferences.subscribe(() => {
+    if (!current()) return;
+    runtime.refreshSettings();
+    const nextLayout = JSON.stringify([currentPreferences().effective['home.rowOrder'], currentPreferences().effective['home.hiddenRowIds']]);
+    if (nextLayout !== homeLayout) { homeLayout = nextLayout; void context.home.revalidate().catch(feedback.reportError); }
+    changed();
+  }));
   const playbackBinding = {runtime, artwork: context.artwork, environment: time, reportError: feedback.reportError,
-    skips: {back: preferenceValue<number>(context.facts.preferences, 'playback.skipBackMs') / 1000, forward: preferenceValue<number>(context.facts.preferences, 'playback.skipForwardMs') / 1000}};
+    get skips() { return {back: preferenceValue<number>(currentPreferences(), 'playback.skipBackMs') / 1000, forward: preferenceValue<number>(currentPreferences(), 'playback.skipForwardMs') / 1000}; }};
   const getBinding = (): ShellBindings => {
     const dockVisible = hasDock(runtime.getSnapshot());
     return {api: context.api, events: context.events, scopeKey: JSON.stringify([viewer.serverId, authority, viewer.accountId, viewer.profileId, context.epoch, context.viewerFence]),
       playback: playbackBinding,
       shell: {identity: context.facts.identity, OwnerActivity: activity.OwnerActivity, dockVisible, onSignOut: context.signOut,
         phoneSelection: selection.phoneSelection(), overlays: <ShellFeedbackHost source={feedback} dockVisible={dockVisible} />},
-      home: {service: context.home, artwork: context.artwork, time, reducedMotion: appearancePreferences(context.facts.preferences, globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches).reducedMotion, selection: selection.selection,
+      home: {service: context.home, artwork: context.artwork, time, reducedMotion: appearancePreferences(currentPreferences(), globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches).reducedMotion, selection: selection.selection,
         effects: {play: async (entry, target) => {
           const document = context.home.getSnapshot().document;
           const item = document && homePlaybackItem(document, entry, target);

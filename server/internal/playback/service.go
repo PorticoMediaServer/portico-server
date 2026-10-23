@@ -92,6 +92,7 @@ func New(db *sql.DB) *Service { return &Service{db: db} }
 // immutable decision, so first play, a rung change and an audio change read it
 // through this one function.
 func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p identity.Principal, input *DeliveryInput, values DeliveryPreferenceReader, catalogued bool, explicitAudio *int) error {
+	values = preferenceReaderOrDefaults(values)
 	device := capabilityDocumentFor(ctx, tx, p)
 	input.Device = &device
 	input.PreferredAudioLanguages = resolvePreferenceLanguages(values, "playback.preferredAudioLanguages", DeliveryContextFrom(ctx).AppLanguage)

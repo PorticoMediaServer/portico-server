@@ -321,8 +321,10 @@ export class HttpLocalApi {
   getTransportClass(): TransportClass { return this.transportClass; }
   /** The surface this client renders on, which scopes its device-class
    * preferences. Unset means the server applies no device-class document. */
-  setDeviceClass(value: 'web' | 'mobile' | 'television' | '') { this.deviceClass = value; setDeliveryContext({ deviceClass: value }); }
+  setDeviceClass(value: 'web' | 'mobile' | 'tablet' | 'television' | '') { this.deviceClass = value; setDeliveryContext({ deviceClass: value }); }
   getDeviceClass() { return this.deviceClass; }
+  /** The catalogue actually displayed by this app, after locale fallback. */
+  setAppLanguage(value: string) { setDeliveryContext({appLanguage: value}); }
   private deliveryHeaders(): Record<string, string> {
     return {
       ...deliveryContextHeaders(),

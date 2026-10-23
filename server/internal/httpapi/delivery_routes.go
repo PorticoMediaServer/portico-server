@@ -34,11 +34,7 @@ func requestAppLanguage(r *http.Request) string {
 			return tag.String()
 		}
 	}
-	if raw := r.Header.Get("Accept-Language"); len(raw) <= 1024 {
-		if tags, _, err := language.ParseAcceptLanguage(raw); err == nil && len(tags) > 0 {
-			return tags[0].String()
-		}
-	}
+
 	return ""
 }
 

@@ -30194,6 +30194,9 @@
                 },
                 "type": "array"
               },
+              "deviceBound": {
+                "type": "boolean"
+              },
               "deviceClass": {
                 "type": "string"
               },
@@ -30329,6 +30332,7 @@
             "required": [
               "audioEffects",
               "deviceClass",
+              "deviceBound",
               "registry",
               "documents",
               "effective",
@@ -119218,6 +119222,9 @@
                 },
                 "type": "array"
               },
+              "deviceBound": {
+                "type": "boolean"
+              },
               "deviceClass": {
                 "type": "string"
               },
@@ -119353,6 +119360,7 @@
             "required": [
               "audioEffects",
               "deviceClass",
+              "deviceBound",
               "registry",
               "documents",
               "effective",
@@ -161601,6 +161609,9 @@
                 },
                 "type": "array"
               },
+              "deviceBound": {
+                "type": "boolean"
+              },
               "deviceClass": {
                 "type": "string"
               },
@@ -161736,6 +161747,7 @@
             "required": [
               "audioEffects",
               "deviceClass",
+              "deviceBound",
               "registry",
               "documents",
               "effective",
@@ -258750,6 +258762,9 @@
                           },
                           "type": "array"
                         },
+                        "deviceBound": {
+                          "type": "boolean"
+                        },
                         "deviceClass": {
                           "type": "string"
                         },
@@ -258885,6 +258900,7 @@
                       "required": [
                         "audioEffects",
                         "deviceClass",
+                        "deviceBound",
                         "registry",
                         "documents",
                         "effective",
@@ -413132,6 +413148,9 @@
                           },
                           "type": "array"
                         },
+                        "deviceBound": {
+                          "type": "boolean"
+                        },
                         "deviceClass": {
                           "type": "string"
                         },
@@ -413267,6 +413286,7 @@
                       "required": [
                         "audioEffects",
                         "deviceClass",
+                        "deviceBound",
                         "registry",
                         "documents",
                         "effective",
@@ -413425,6 +413445,9 @@
                           },
                           "type": "array"
                         },
+                        "deviceBound": {
+                          "type": "boolean"
+                        },
                         "deviceClass": {
                           "type": "string"
                         },
@@ -413560,6 +413583,7 @@
                       "required": [
                         "audioEffects",
                         "deviceClass",
+                        "deviceBound",
                         "registry",
                         "documents",
                         "effective",

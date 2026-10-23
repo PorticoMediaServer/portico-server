@@ -612,6 +612,7 @@ table artwork_uploads
 table artwork_variants
 table asset_chapter_facts
 table asset_chapters
+table asset_stream_breadth
 table asset_stream_facts
 table asset_streams
 table asset_subtitle_facts
