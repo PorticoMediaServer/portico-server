@@ -8,3 +8,9 @@ export type {FixedLayoutInput} from './layout.ts';
 export {createEpubAdapter} from './epub/index.ts';
 export type {EpubAdapterOptions} from './epub/index.ts';
 export {loadLiterataFont, literataFontUrl, LITERATA_FONT_SHA256} from './fonts.ts';
+// Format implementations are consumed only after their checked MAIN landing.
+export {createPdfAdapter} from './pdf/adapter.ts';
+export type {PdfOptions as PdfAdapterOptions} from './pdf/engine.ts';
+export {createComicAdapter} from './comic/adapter.ts';
+export type {ComicAdapterOptions} from './comic/adapter.ts';
+export type {ComicPageProvider, ComicPage} from './comic/archive.ts';
