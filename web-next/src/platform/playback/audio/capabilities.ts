@@ -29,7 +29,7 @@ async function highest(options: readonly number[], check: (v: number) => Promise
   return 0;
 }
 
-export async function probeAudioDecode(check: ConfigCheck | undefined, engine: BrowserEngine = browserEngine()): Promise<AudioDecodeCapability[]> {
+export async function probeAudioDecode(check: ConfigCheck | undefined, engine: BrowserEngine = browserEngine(), outputChannels = 2): Promise<AudioDecodeCapability[]> {
   await check?.ready;
   const known = WEBCODECS_SKIP[engine];
   const out: AudioDecodeCapability[] = [];
@@ -55,7 +55,8 @@ export async function probeAudioDecode(check: ConfigCheck | undefined, engine: B
   if (known.vorbis !== undefined && vorbis && await ok(vorbis)) {
     out.push({codec: 'vorbis', containers: ['ogg'], maxSampleRate: vorbis.sampleRate, sampleRates: [vorbis.sampleRate], maxChannels: vorbis.numberOfChannels, maxBitDepth: 32, via: 'webcodecs'});
   }
-  return out;
+  const ceiling = Number.isSafeInteger(outputChannels) && outputChannels > 0 ? Math.min(8, outputChannels) : 2;
+  return out.map(capability => ({...capability, maxChannels: Math.min(capability.maxChannels ?? ceiling, ceiling)}));
 }
 
 /** The real browser's check. */

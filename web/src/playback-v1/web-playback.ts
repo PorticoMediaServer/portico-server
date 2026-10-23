@@ -514,7 +514,10 @@ export class WebPlayback implements PlaybackAdapter {
       this.blocked = true;
       if (this.render) {
         this.renderRetained = this.render.transportPosition();
-        if (service.getSnapshot().audioEffects.prepared) service.audioPreparationFailed('Network changed; the prepared audio edge was cancelled.');
+        if (service.getSnapshot().audioEffects.prepared) {
+          console.debug('audio_transition_unavailable');
+          (service.audioPreparationFailed as () => void).call(service);
+        }
         this.render.dispose();
         this.render = undefined;
       }
