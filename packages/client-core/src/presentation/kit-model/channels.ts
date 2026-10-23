@@ -16,6 +16,14 @@ export type ChannelMarkDomain =
   | Readonly<{kind: 'complete-authorized'; channels: readonly LineupChannel[]}>;
 export type ChannelMarkModel = ChannelIdentity & ChannelMark;
 export type ChannelMarkIndex = ReadonlyMap<string, ReadonlyMap<string, ChannelMarkModel>>;
+const channelTints = ['#28587a', '#985243', '#796120', '#28665d', '#854d73', '#376f8c', '#4a596a', '#685294'] as const;
+/** §33: exact authoritative seed, UTF-16 code units and signed 32-bit wrap.
+ * The fixed profile-art palette order is shared by every client. */
+export function channelTint(seed: string): string {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index++) hash = (hash * 31 + seed.charCodeAt(index)) | 0;
+  return channelTints[Math.abs(hash) % channelTints.length]!;
+}
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 const words = (s: string): string[] => s.match(/[\p{L}\p{N}]+/gu) ?? [];
 const initials = (tokens: readonly string[]): string => {

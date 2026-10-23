@@ -31,6 +31,9 @@ func logoutHTTPFixture(t *testing.T) (Dependencies, identity.Envelope) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	if _, e = db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local')`); e != nil {
+		t.Fatal(e)
+	}
 	if _, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','owner',X'00','profile',1)`); e != nil {
 		t.Fatal(e)
 	}

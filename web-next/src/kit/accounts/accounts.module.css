@@ -27,6 +27,16 @@
 .links [data-quiet] { color: var(--color-text-secondary); }
 .challengeHelp { margin: 12px 0 10px; color: var(--color-text-tertiary); font-size: 13px; line-height: 1.5; }
 .challengeHelp button { border: 0; padding: 0; background: none; color: var(--color-accent-strong); font: inherit; font-weight: 700; cursor: pointer; }
+.serverGroup > h3 { margin: 18px 4px 8px; font-size: 13.5px; font-weight: 700; color: var(--color-text-tertiary); }
+.serverRow { width: 100%; height: 62px; display: flex; align-items: center; gap: 14px; padding: 0 14px; border: 0; border-radius: 12px; background: none; color: var(--color-text); text-align: left; cursor: pointer; }
+.serverRow + .serverRow { box-shadow: 0 -1px 0 var(--color-line-soft); }
+.serverIcon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: var(--color-raised-bright); color: var(--color-text-secondary); flex: none; }
+.serverRow > span:nth-child(2) { flex: 1; font-size: 15.5px; font-weight: 700; }
+.serverRow small { display: block; margin-top: 1px; color: var(--color-text-tertiary); font-size: 13px; font-weight: 600; }
+.serverRow > svg { color: var(--color-line-strong); }
+.serverRow[data-current] { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.serverRow[data-current] .serverIcon { background: linear-gradient(135deg, var(--color-accent-deep), var(--color-generated-green)); color: var(--color-white); }
+.serverRow:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 .legal { position: absolute; z-index: 1; left: 64px; bottom: 26px; display: flex; gap: 22px; font-size: 13px; line-height: normal; font-weight: 600; color: var(--color-text-tertiary); }
 .legal a { color: inherit; text-decoration: none; }
 .reveal { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--color-text-tertiary); font-size: 14px; font-weight: 700; cursor: pointer; }

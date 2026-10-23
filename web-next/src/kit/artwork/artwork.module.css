@@ -110,7 +110,7 @@
 .mosaic2 { grid-template: 1fr / 1fr 1fr; }
 .mosaic3 > :first-child { grid-row: span 2; }
 
-.channelMark { --channel-tint: var(--color-accent-deep); position: relative; display: grid; place-items: center; flex: none; border-radius: 8px; background: var(--channel-tint); color: #fff; overflow: hidden; line-height: normal; }
+.channelMark { position: relative; display: grid; place-items: center; flex: none; border-radius: 8px; background: var(--channel-tint); color: #fff; overflow: hidden; line-height: normal; }
 .monogram { font-size: var(--type-live-monogram-size); font-weight: var(--type-live-monogram-weight); line-height: normal; }
 .channelLogo { position: absolute; inset: 0; }
 .channelLogo:has(.decoded) { background: var(--channel-tint); }
