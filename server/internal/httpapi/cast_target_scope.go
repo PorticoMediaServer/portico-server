@@ -18,6 +18,9 @@ import "strings"
 // (/v1/cast/redeem, /v1/cast/reconnect) carry no session at all and are not
 // part of this.
 func castTargetRoute(method, path string) bool {
+	if castOccurrenceRoute(method, path) {
+		return true
+	} // Always followed by live occurrence authority.
 	read := method == "GET" || method == "HEAD"
 	switch {
 	case path == "/v1/playback" || strings.HasPrefix(path, "/v1/playback/"):

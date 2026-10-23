@@ -83,6 +83,38 @@ func handlerCall(t *testing.T, h *ClaimHandler, method, path string, body any) (
 	}
 	return result, w.Code
 }
+
+func TestFirstOwnerSwitchPreparedSnapshotUsesPendingOperation(t *testing.T) {
+	f, h, tr := handlerFixture(t)
+	if _, err := f.db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local'); INSERT INTO identity_moves(id,owner_id,owner_revision,from_kind,to_kind,start_over,stage,revision,people,devices,profiles,server_name,created_ms,owner_confirmed) VALUES('owner-switch-preview','local_owner',1,'local','portico',0,'preview',1,1,1,1,'Fixture',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	original := h.authorize
+	h.authorize = func(r *http.Request) (ClaimRequestOwner, error) {
+		actor, err := original(r)
+		actor.WebOrigin = "https://web.example"
+		return actor, err
+	}
+	before, code := handlerCall(t, h, http.MethodGet, "/v1/networking/claim", nil)
+	if code != 200 || before.State != "unconfigured" {
+		t.Fatal("initial state", code, before)
+	}
+	prepared, code := handlerCall(t, h, http.MethodPost, "/v1/networking/claim/prepare", ClaimPrepareRequest{Expected: before.Identity, Purpose: "switch"})
+	if code != 200 || prepared.State != string(Prepared) || prepared.Operation == nil {
+		t.Fatal("first owner switch was hidden by empty installed pointer", code, prepared)
+	}
+	again, code := handlerCall(t, h, http.MethodGet, "/v1/networking/claim", nil)
+	if code != 200 || again.Operation == nil || *again.Operation != *prepared.Operation || again.State != string(Prepared) {
+		t.Fatal("pending operation was not resumable", code, again)
+	}
+	var active, installed sql.NullString
+	if err := f.db.QueryRow(`SELECT active_operation_id,installed_operation_id FROM networking_claim_identity WHERE singleton=1`).Scan(&active, &installed); err != nil || active.Valid || installed.Valid {
+		t.Fatal("snapshot invented an installed claim", active.Valid, installed.Valid, err)
+	}
+	if tr.finalizes != 0 || tr.retrieves != 0 {
+		t.Fatal("read/prepare called remote claim commit")
+	}
+}
 func handlerPrepare(t *testing.T, f *sqlFixture, h *ClaimHandler) ClaimStatus {
 	t.Helper()
 	s, code := handlerCall(t, h, "GET", "/v1/networking/claim", nil)
