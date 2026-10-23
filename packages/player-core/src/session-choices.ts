@@ -1,5 +1,5 @@
 import {isQualityChoice, type QualityChoice} from './choices.ts';
-import {playbackFence, playbackIdentity, sameFence, samePlayback, type PlaybackFence, type PlaybackIdentity} from './identity.ts';
+import {playbackFence, playbackIdentity, sameFence, samePlayback, type PlaybackFence, type PlayerPlaybackIdentity} from './identity.ts';
 import {invalidState} from './validation.ts';
 export type SessionChoices = Readonly<{
   subtitleTrackId: string | null; audioTrackId: string; audioLanguage: string; subtitleLanguage: string | null; speed: number; quality: QualityChoice;
@@ -9,7 +9,7 @@ export type SessionChoices = Readonly<{
 /** The old run-keyed store's get/has/subscribe semantics, with explicit begin/stop and typed,
  * bounded keys. No singleton or persistence: an old callback cannot resurrect stopped choices. */
 export class PlayerSessionChoices {
-  private identity?: PlaybackIdentity;
+  private identity?: PlayerPlaybackIdentity;
   private source?: PlaybackFence;
   private held: Partial<SessionChoices> = {};
   private version = 0;
@@ -17,20 +17,20 @@ export class PlayerSessionChoices {
   getVersion = () => this.version;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private changed() { this.version++; for (const listener of [...this.listeners]) listener(); }
-  begin(identity: PlaybackIdentity): void {
+  begin(identity: PlayerPlaybackIdentity): void {
     const next = playbackIdentity(identity);
     if (samePlayback(this.identity,next)) return;
     this.identity = next; this.source=undefined; this.held = {}; this.changed();
   }
-  stop(identity: PlaybackIdentity): boolean {
+  stop(identity: PlayerPlaybackIdentity): boolean {
     if (!samePlayback(this.identity,identity)) return false;
     this.identity = undefined; this.source=undefined; this.held = {}; this.changed(); return true;
   }
-  get<K extends keyof SessionChoices>(name: K, identity: PlaybackIdentity, settings: SessionChoices[K]): SessionChoices[K] {
+  get<K extends keyof SessionChoices>(name: K, identity: PlayerPlaybackIdentity, settings: SessionChoices[K]): SessionChoices[K] {
     return samePlayback(this.identity,identity) && Object.hasOwn(this.held,name) ? this.held[name] as SessionChoices[K] : settings;
   }
-  has(name: keyof SessionChoices, identity: PlaybackIdentity): boolean { return samePlayback(this.identity,identity) && Object.hasOwn(this.held,name); }
-  set<K extends keyof SessionChoices>(name: K, identity: PlaybackIdentity, value: SessionChoices[K], source?: PlaybackFence): boolean {
+  has(name: keyof SessionChoices, identity: PlayerPlaybackIdentity): boolean { return samePlayback(this.identity,identity) && Object.hasOwn(this.held,name); }
+  set<K extends keyof SessionChoices>(name: K, identity: PlayerPlaybackIdentity, value: SessionChoices[K], source?: PlaybackFence): boolean {
     if (!samePlayback(this.identity,identity)) return false;
     const sourceChoice=['audioTrackId','subtitleTrackId','audioLanguage','subtitleLanguage','subtitleOffsetMs'].includes(name);
     if ((sourceChoice || source!==undefined) && (!source || !sameFence(this.source,source))) return false;
