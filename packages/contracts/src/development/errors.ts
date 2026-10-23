@@ -229,6 +229,12 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "factor_setup_required",
+    "status": 403,
+    "message": "Set up two-step verification to finish signing in.",
+    "retry": "never"
+  },
+  {
     "code": "feature_restricted",
     "status": 403,
     "message": "This feature is not permitted for this profile.",
@@ -509,6 +515,12 @@ export const errors = [
     "status": 409,
     "message": "This is more than a playlist can hold.",
     "retry": "never"
+  },
+  {
+    "code": "portico_services_unavailable",
+    "status": 503,
+    "message": "Portico Services is unavailable. Try again when it is reachable.",
+    "retry": "same_request"
   },
   {
     "code": "prepare_not_allowed",

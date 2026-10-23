@@ -34,6 +34,9 @@ type Job struct {
 	Jobs      []string `json:"jobs,omitempty"`
 }
 type Service struct {
+	// The episode stage publishes artwork on this same durable inventory job.
+	EpisodeThumbnails func(context.Context, string, string, string, string, int64) (bool, string, error)
+
 	Admission     func(context.Context, *sql.Tx, string) (bool, error)
 	Subtitles     *subtitles.Service
 	DeepAnalysis  *mediaanalysis.Service

@@ -119,3 +119,55 @@ test('settings updates during initial apply queue behind that apply',async()=>{
   const updating=f.controller.updatePreferences({theme:'light',textSize:3,twoPages:false});
   pending.resolve();await Promise.all([opening,updating]);assert.equal(peak,1);assert.equal(f.seen.at(-1)?.theme,'light');await f.controller.close();
 });
+test('authoritative catalogue omission never revives embedded file identity',async()=>{
+  const f=fixture();Object.defineProperty(f.document,'metadata',{value:{title:'Embedded title',author:'Embedded author',language:'en',pageCount:40,direction:'rtl'}});
+  await f.controller.open({source,format:'epub',container,metadata:{title:'Owner catalogue title'}});
+  const metadata=f.controller.getSnapshot().metadata;
+  assert.equal(metadata?.title,'Owner catalogue title');assert.equal(metadata?.author,undefined);assert.equal(metadata?.language,undefined);
+  assert.equal(f.mount.metadata,metadata);
+  assert.equal(metadata?.pageCount,40);assert.equal(metadata?.direction,'rtl');await f.controller.close();
+});
+test('previews use one current document, own bytes, enforce bounds and discard late cancelled results',async()=>{
+  const f=fixture(),pending=deferred<import('../src/ports.ts').ReaderPageImage>();let signal!:AbortSignal,calls=0;
+  Object.defineProperty(f.document,'metadata',{value:{pageCount:2}});
+  const bytes=new Uint8Array([1,2,3]);
+  f.document.page=async(index,options)=>{calls++;assert.equal(index,1);assert.equal(options.width,120);signal=options.signal;return calls===1?{mime:'image/png',bytes,width:120,height:180}:pending.promise;};
+  await f.controller.open({source,format:'epub',container});
+  const options={width:120,signal:new AbortController().signal};
+  const image=await f.controller.page(1,options);assert.notEqual(image.bytes,bytes);bytes[0]=9;assert.equal(image.bytes[0],1);
+  await assert.rejects(f.controller.page(2,options),{code:'invalid_location'});
+  await assert.rejects(f.controller.page(0,{...options,width:2049}),{code:'limit_exceeded'});assert.equal(calls,1);
+  const preview=f.controller.page(1,options);const rejected=assert.rejects(preview,{code:'aborted'});
+  await f.controller.close();assert.ok(signal.aborted);await rejected;
+  pending.resolve({mime:'image/png',bytes,width:120,height:180});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.controller.getSnapshot().status,'closed');assert.equal(f.docsDisposed,1);
+  await assert.rejects(f.controller.page(1,options),{code:'closed'});
+});
+test('gesture activity publishes changed measured zoom before forwarding and preserves no-op snapshot identity',async()=>{
+  const f=fixture();let scale=1,fit:'page'|'width'|undefined='page',canTurn=true,publications=0,inputs=0;
+  f.view.getZoom=()=>({scale,...(fit?{fit}:{})});f.view.canTurnAtFit=()=>canTurn;
+  await f.controller.open({source,format:'epub',container});
+  const oldMount=f.mount;
+  f.controller.subscribe(()=>publications++);
+  f.controller.subscribeSurfaceInput(()=>{
+    inputs++;assert.equal(f.controller.getSnapshot().zoom?.scale,scale);
+    assert.equal(f.controller.getSnapshot().zoom?.fit,fit);
+    assert.equal(f.controller.getSnapshot().canTurnAtFit,canTurn);
+  });
+  const before=f.controller.getSnapshot();
+  oldMount.onSurfaceInput?.({kind:'activity'});
+  assert.equal(f.controller.getSnapshot(),before);assert.equal(publications,0);assert.equal(inputs,1);
+  scale=2;fit=undefined;canTurn=false;
+  oldMount.onSurfaceInput?.({kind:'activity'});
+  assert.equal(publications,1);assert.equal(inputs,2);assert.ok(Object.isFrozen(f.controller.getSnapshot().zoom));
+  const changed=f.controller.getSnapshot();oldMount.onSurfaceInput?.({kind:'activity'});
+  assert.equal(f.controller.getSnapshot(),changed);assert.equal(publications,1);
+  fit='width';canTurn=true;oldMount.onSurfaceInput?.({kind:'activity'});
+  assert.equal(publications,2);assert.equal(inputs,4);
+  await f.controller.open({source,format:'epub',container});
+  const replacement=f.controller.getSnapshot(),inputCount=inputs;
+  oldMount.onSurfaceInput?.({kind:'activity'});
+  assert.equal(f.controller.getSnapshot(),replacement);assert.equal(inputs,inputCount);
+  await f.controller.close();const closed=f.controller.getSnapshot();
+  f.mount.onSurfaceInput?.({kind:'activity'});assert.equal(f.controller.getSnapshot(),closed);assert.equal(inputs,inputCount);
+});

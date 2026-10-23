@@ -27,28 +27,38 @@ func (s *SQLiteStore) DepartureIntent(ctx context.Context) (Intent, error) {
 	return v.Intent, e
 }
 func (s *SQLiteStore) checkServiceRequest(ctx context.Context, path string, in any) error {
-	if path == "/v1/servers/leave" {
+	if path == "/v1/servers/leave" || path == "/v1/server-claims/cancel" {
 		proof, ok := in.(proofEnvelope)
 		if !ok {
 			return ErrInvalid
 		}
 		payload, e := base64.RawURLEncoding.Strict().DecodeString(proof.Payload)
-		if e != nil {
+		if e != nil || base64.RawURLEncoding.EncodeToString(payload) != proof.Payload {
 			return ErrInvalid
 		}
 		signature, e := base64.RawURLEncoding.Strict().DecodeString(proof.Signature)
-		if e != nil {
+		if e != nil || base64.RawURLEncoding.EncodeToString(signature) != proof.Signature {
 			return ErrInvalid
 		}
-		var queued bool
-		e = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_service_outbox WHERE payload=? AND signature=? AND delivered_ms=0)`, payload, signature).Scan(&queued)
-		if e != nil {
-			return e
+		if path == "/v1/server-claims/cancel" {
+			queued, err := s.queuedPreinstallCancellation(ctx, payload, signature)
+			if err != nil {
+				return err
+			}
+			if queued {
+				return nil
+			}
+		} else {
+			var queued bool
+			e = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_service_outbox WHERE payload=? AND signature=? AND delivered_ms=0)`, payload, signature).Scan(&queued)
+			if e != nil {
+				return e
+			}
+			if !queued {
+				return ErrInvalid
+			}
+			return nil
 		}
-		if !queued {
-			return ErrInvalid
-		}
-		return nil
 	}
 	var kind string
 	e := s.db.QueryRowContext(ctx, `SELECT sign_in_kind FROM identity_state WHERE singleton=1`).Scan(&kind)

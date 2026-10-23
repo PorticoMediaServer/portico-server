@@ -48,6 +48,7 @@ import (
 	"portico.local/server/internal/playbackv1"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/rcloneprogram"
+	"portico.local/server/internal/reading"
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/remotesources"
@@ -68,6 +69,9 @@ type Dependencies struct {
 	CacheDirectory    string
 	Restart           func()
 	ListeningPort     int
+	// LocalHTTPURL comes solely from the actual bound loopback-capable listener.
+	// Empty means no localhost route is reported, never an inferred default.
+	LocalHTTPURL string
 	// SettingsApplied runs after an owner saves console settings so snapshot
 	// readers (delivery configuration) refresh off the request path.
 	SettingsApplied func(context.Context)
@@ -110,6 +114,7 @@ type Dependencies struct {
 	DB                *sql.DB
 	Identity          *identity.Service
 	Catalog           *catalog.Service
+	Reading           *reading.Service
 	Ingestion         *ingestion.Service
 	Playback          *playback.Service
 	Hosted            *hosted.Service
@@ -259,6 +264,10 @@ func reportHTTPFailure(status int, code string, err error) {
 	log.Printf("request failed (%d %s): %s", status, code, boundFailureDetail(err))
 }
 func failure(w http.ResponseWriter, e error) {
+	if errors.Is(e, identity.ErrFactorSetupRequired) {
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "factor_setup_required"})
+		return
+	}
 	if revisionFailure(w, e) {
 		return
 	}
@@ -298,6 +307,10 @@ func failure(w http.ResponseWriter, e error) {
 			code = "sign_in_kind_local"
 		}
 		write(w, 403, map[string]any{"error": map[string]any{"code": code, "message": e.Error(), "retryable": false}})
+		return
+	}
+	if errors.Is(e, hosted.ErrServicesUnavailable) {
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "portico_services_unavailable"})
 		return
 	}
 	status, code := 500, "internal"
@@ -817,6 +830,9 @@ func New(d Dependencies) http.Handler {
 		})
 	}
 	d.v1 = newPlaybackV1(d)
+	if d.Reading == nil {
+		d.Reading = d.readingService()
+	}
 	if d.v1 != nil {
 		d.v1.Traffic = d.streamTraffic
 	}

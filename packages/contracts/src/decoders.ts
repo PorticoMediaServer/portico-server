@@ -328,6 +328,7 @@ export function decodeGetShowsIdRecommendationsResponse(input: unknown): types.G
 export function decodeGetShowsIdSeasonsResponse(input: unknown): types.GetShowsIdSeasonsResponse { return decode("GetShowsIdSeasonsResponse", input) as types.GetShowsIdSeasonsResponse; }
 export function decodeGetShowsScreenMetadataResponse(input: unknown): types.GetShowsScreenMetadataResponse { return decode("GetShowsScreenMetadataResponse", input) as types.GetShowsScreenMetadataResponse; }
 export function decodeGetSignInMoveResponse(input: unknown): types.GetSignInMoveResponse { return decode("GetSignInMoveResponse", input) as types.GetSignInMoveResponse; }
+export function decodeGetSignInPolicyResponse(input: unknown): types.GetSignInPolicyResponse { return decode("GetSignInPolicyResponse", input) as types.GetSignInPolicyResponse; }
 export function decodeGetSignInSettingsResponse(input: unknown): types.GetSignInSettingsResponse { return decode("GetSignInSettingsResponse", input) as types.GetSignInSettingsResponse; }
 export function decodeGetStorageMountsResponse(input: unknown): types.GetStorageMountsResponse { return decode("GetStorageMountsResponse", input) as types.GetStorageMountsResponse; }
 export function decodeGetStorageOperationsIdResponse(input: unknown): types.GetStorageOperationsIdResponse { return decode("GetStorageOperationsIdResponse", input) as types.GetStorageOperationsIdResponse; }
@@ -400,6 +401,7 @@ export function decodePatchItemsIdMetadataManualResponse(input: unknown): types.
 export function decodePatchPlaylistsIdResponse(input: unknown): types.PatchPlaylistsIdResponse { return decode("PatchPlaylistsIdResponse", input) as types.PatchPlaylistsIdResponse; }
 export function decodePatchPreferencesResponse(input: unknown): types.PatchPreferencesResponse { return decode("PatchPreferencesResponse", input) as types.PatchPreferencesResponse; }
 export function decodePatchSavedResourcesIdResponse(input: unknown): types.PatchSavedResourcesIdResponse { return decode("PatchSavedResourcesIdResponse", input) as types.PatchSavedResourcesIdResponse; }
+export function decodePatchSignInPolicyResponse(input: unknown): types.PatchSignInPolicyResponse { return decode("PatchSignInPolicyResponse", input) as types.PatchSignInPolicyResponse; }
 export function decodePostAccessInvitationsAcceptResponse(input: unknown): types.PostAccessInvitationsAcceptResponse { return decode("PostAccessInvitationsAcceptResponse", input) as types.PostAccessInvitationsAcceptResponse; }
 export function decodePostAdminAccessInvitationLinkResponse(input: unknown): types.PostAdminAccessInvitationLinkResponse { return decode("PostAdminAccessInvitationLinkResponse", input) as types.PostAdminAccessInvitationLinkResponse; }
 export function decodePostAdminAccessInvitationsResponse(input: unknown): types.PostAdminAccessInvitationsResponse { return decode("PostAdminAccessInvitationsResponse", input) as types.PostAdminAccessInvitationsResponse; }
@@ -456,6 +458,7 @@ export function decodePostAuthMovePorticoResponse(input: unknown): types.PostAut
 export function decodePostAuthOwnerResetRequestResponse(input: unknown): types.PostAuthOwnerResetRequestResponse { return decode("PostAuthOwnerResetRequestResponse", input) as types.PostAuthOwnerResetRequestResponse; }
 export function decodePostAuthOwnerResetVerifyResponse(input: unknown): types.PostAuthOwnerResetVerifyResponse { return decode("PostAuthOwnerResetVerifyResponse", input) as types.PostAuthOwnerResetVerifyResponse; }
 export function decodePostAuthPorticoReturnExchangeResponse(input: unknown): types.PostAuthPorticoReturnExchangeResponse { return decode("PostAuthPorticoReturnExchangeResponse", input) as types.PostAuthPorticoReturnExchangeResponse; }
+export function decodePostAuthPorticoReturnPrepareResponse(input: unknown): types.PostAuthPorticoReturnPrepareResponse { return decode("PostAuthPorticoReturnPrepareResponse", input) as types.PostAuthPorticoReturnPrepareResponse; }
 export function decodePostAuthRefreshResponse(input: unknown): types.PostAuthRefreshResponse { return decode("PostAuthRefreshResponse", input) as types.PostAuthRefreshResponse; }
 export function decodePostAuthRegisterResponse(input: unknown): types.PostAuthRegisterResponse { return decode("PostAuthRegisterResponse", input) as types.PostAuthRegisterResponse; }
 export function decodePostAuthRememberedAccountsResponse(input: unknown): types.PostAuthRememberedAccountsResponse { return decode("PostAuthRememberedAccountsResponse", input) as types.PostAuthRememberedAccountsResponse; }

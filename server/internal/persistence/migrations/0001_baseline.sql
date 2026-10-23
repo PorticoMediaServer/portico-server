@@ -11,7 +11,8 @@ INSERT INTO catalog_kinds VALUES
  (1,'movie',1,0,1,1,0),(2,'show',0,1,1,1,0),(3,'season',0,1,0,1,0),(4,'episode',1,0,1,1,0),
  (5,'artist',0,1,1,1,1),(6,'album',0,1,1,1,1),(7,'song',1,0,1,1,1),(8,'book',0,1,1,1,1),
  (9,'audiobook_file',1,0,0,1,1),(10,'collection',0,1,1,1,0),(11,'extra',1,0,0,1,0),
- (12,'disc',0,1,0,0,1),(13,'author',0,1,1,1,1);
+ (12,'disc',0,1,0,0,1),(13,'author',0,1,1,1,1),
+ (20,'ebook',0,0,1,1,0),(21,'comic',0,0,1,1,0);
 CREATE TABLE catalog_libraries(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  library_id TEXT NOT NULL UNIQUE REFERENCES libraries(id) ON DELETE CASCADE,
@@ -187,6 +188,41 @@ CREATE TABLE retained_title_identities(
  state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
  PRIMARY KEY(identity,profile_id)) WITHOUT ROWID, STRICT;
 CREATE INDEX retained_title_identities_state ON retained_title_identities(state_id);
+CREATE TABLE reading_publications(
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ asset_id INTEGER NOT NULL UNIQUE REFERENCES catalog_assets(id) ON DELETE CASCADE,
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ PRIMARY KEY(item_id,asset_id),
+ FOREIGN KEY(item_id,asset_id) REFERENCES catalog_asset_links(entity_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE TABLE reading_progress(
+ owner_key TEXT NOT NULL,
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=8192),
+ section TEXT CHECK(section IS NULL OR length(section)<=4096),
+ page_index INTEGER,
+ progression REAL NOT NULL CHECK(progression>=0 AND progression<=1),
+ revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
+ observed_at INTEGER NOT NULL CHECK(observed_at BETWEEN 0 AND 9007199254740991),
+ PRIMARY KEY(owner_key,item_id,asset_id),
+ FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
+ CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_progress_publication ON reading_progress(item_id,asset_id);
+CREATE TABLE retained_reading_progress(
+ state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
+ source_id TEXT NOT NULL CHECK(length(source_id)>0),
+ source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=8192),
+ section TEXT CHECK(section IS NULL OR length(section)<=4096),
+ page_index INTEGER,
+ progression REAL NOT NULL CHECK(progression>=0 AND progression<=1),
+ revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
+ observed_at INTEGER NOT NULL CHECK(observed_at BETWEEN 0 AND 9007199254740991),
+ PRIMARY KEY(state_id,source_id),
+ CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
 CREATE TABLE catalog_shows(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  local_key TEXT NOT NULL,
@@ -2014,7 +2050,8 @@ CREATE TABLE library_sources (
 CREATE TABLE library_scan_policies (
  library_id TEXT PRIMARY KEY REFERENCES libraries(id), revision INTEGER NOT NULL DEFAULT 1,
  tier TEXT NOT NULL DEFAULT 'basic' CHECK(tier IN('file_list_only','basic','complete','custom')),
- operations_json TEXT NOT NULL DEFAULT '["probe","local_metadata","subtitles"]'
+ operations_json TEXT NOT NULL DEFAULT '["probe","local_metadata","subtitles"]',
+ episode_thumbnail_mode TEXT NOT NULL DEFAULT 'off' CHECK(episode_thumbnail_mode IN('provider_then_made','provider','off'))
 , trickplay_interval_seconds INTEGER NOT NULL DEFAULT 0, trickplay_tile_width INTEGER NOT NULL DEFAULT 0, trickplay_max_tiles INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE source_strm_analysis(library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,enabled INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE TABLE inventory_policy_pending (
@@ -4501,7 +4538,7 @@ CREATE TRIGGER inventory_policy_handoff AFTER UPDATE OF revision ON library_scan
 END;
 CREATE TRIGGER inventory_library_create AFTER INSERT ON libraries BEGIN
  INSERT INTO library_sources(id,library_id,name,configured_root,root) VALUES(NEW.id,NEW.id,NEW.name,NEW.root,NEW.root);
- INSERT INTO library_scan_policies(library_id) VALUES(NEW.id);
+ INSERT INTO library_scan_policies(library_id,episode_thumbnail_mode) VALUES(NEW.id,CASE WHEN NEW.kind IN('tv','anime') THEN 'provider_then_made' ELSE 'off' END);
 END;
 CREATE TRIGGER inventory_source_configuration AFTER UPDATE OF name,root,configured_root,classification,follow_symlinks,interval_seconds,enabled,root_identity,identity_confirmed ON library_sources BEGIN
  UPDATE library_configuration SET revision=revision+1 WHERE library_id=NEW.library_id;
@@ -7850,3 +7887,52 @@ INSERT INTO identity_managed_route(singleton) VALUES(1);
 CREATE TRIGGER identity_kind_no_delete BEFORE DELETE ON identity_state BEGIN SELECT RAISE(ABORT,'identity_state_required');END;
 CREATE TRIGGER identity_kind_insert_local_fence BEFORE INSERT ON identity_state WHEN NEW.sign_in_kind='local' AND EXISTS(SELECT 1 FROM account_portico_links) BEGIN SELECT RAISE(ABORT,'sign_in_kind_local');END;
 CREATE TRIGGER identity_kind_insert_portico_fence BEFORE INSERT ON identity_state WHEN NEW.sign_in_kind='portico' AND EXISTS(SELECT 1 FROM accounts WHERE length(password_hash)>0) BEGIN SELECT RAISE(ABORT,'sign_in_kind_portico');END;
+
+CREATE TABLE identity_sign_in_policy(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>=1),
+ stay_signed_in_days INTEGER NOT NULL DEFAULT 90 CHECK(stay_signed_in_days IN(7,30,90,365)),
+ pin_remember_days INTEGER NOT NULL DEFAULT 30 CHECK(pin_remember_days IN(0,7,30,90)),
+ password_attempts TEXT NOT NULL DEFAULT 'standard' CHECK(password_attempts IN('relaxed','standard','strict')),
+ pin_attempts TEXT NOT NULL DEFAULT 'standard' CHECK(pin_attempts IN('relaxed','standard','strict')),
+ password_min_length INTEGER NOT NULL DEFAULT 8 CHECK(password_min_length IN(8,10,12,16)),
+ member_reset_code_minutes INTEGER NOT NULL DEFAULT 60 CHECK(member_reset_code_minutes IN(15,60,1440)),
+ require_two_step TEXT NOT NULL DEFAULT 'nobody' CHECK(require_two_step IN('nobody','administrators','everyone')),
+ remember_accounts INTEGER NOT NULL DEFAULT 1 CHECK(remember_accounts IN(0,1)),
+ ended_sessions_days INTEGER NOT NULL DEFAULT 90 CHECK(ended_sessions_days IN(30,90,365)), updated_ms INTEGER NOT NULL DEFAULT 0
+) STRICT;
+INSERT INTO identity_sign_in_policy(singleton) VALUES(1);
+
+CREATE TABLE preference_scopes(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
+ scope TEXT NOT NULL CHECK(scope IN('profile-server','profile-device-class','profile-device')),
+ device_key TEXT NOT NULL,
+ revision INTEGER NOT NULL CHECK(revision>=1), updated_ms INTEGER NOT NULL,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key),
+ CHECK((scope='profile-server' AND device_key='') OR (scope='profile-device-class' AND device_key IN('web','mobile','tablet','television')) OR (scope='profile-device' AND length(device_key)>0))
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE preference_values(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL, scope TEXT NOT NULL, device_key TEXT NOT NULL,
+ key TEXT NOT NULL, kind TEXT NOT NULL, bool_value INTEGER, number_value REAL, text_value TEXT,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key,key),
+ FOREIGN KEY(authority,account_id,profile_id,scope,device_key) REFERENCES preference_scopes ON DELETE CASCADE,
+ CHECK((kind='boolean' AND bool_value IS NOT NULL AND bool_value IN(0,1) AND number_value IS NULL AND text_value IS NULL)
+ OR (kind IN('integer','number') AND bool_value IS NULL AND number_value IS NOT NULL AND text_value IS NULL AND (kind='number' OR number_value=CAST(number_value AS INTEGER)))
+ OR (kind IN('string','locale') AND bool_value IS NULL AND number_value IS NULL AND text_value IS NOT NULL)
+ OR (kind IN('string-list','languageList') AND bool_value IS NULL AND number_value IS NULL AND text_value IS NULL))
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE preference_list_items(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL, scope TEXT NOT NULL, device_key TEXT NOT NULL,
+ key TEXT NOT NULL, position INTEGER NOT NULL CHECK(position>=0 AND position<64), value TEXT NOT NULL,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key,key,position),
+ UNIQUE(authority,account_id,profile_id,scope,device_key,key,value),
+ FOREIGN KEY(authority,account_id,profile_id,scope,device_key,key) REFERENCES preference_values ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE account_stream_limits(
+ account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+ mode TEXT NOT NULL CHECK(mode IN('inherit','unlimited','limit')),
+ stream_limit INTEGER,
+ CHECK((mode='limit' AND stream_limit IS NOT NULL AND stream_limit BETWEEN 1 AND 1000) OR (mode IN('inherit','unlimited') AND stream_limit IS NULL))
+) STRICT;

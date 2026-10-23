@@ -23,6 +23,9 @@ import (
 type ClaimRequestOwner struct {
 	Owner LocalOwner
 	Guard ClaimRequestGuard
+	// WebOrigin is captured by the HTTP edge from the actual trusted transport,
+	// never from an untrusted caller's proposed callback address.
+	WebOrigin string
 	// Resume rebuilds Guard after a server restart (ResumeWebClaims): an
 	// opaque note of the sign-in that asked, never a credential.
 	Resume string
@@ -126,7 +129,7 @@ func (h *ClaimHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if e = checkClaimRequest(ctx); e != nil {
 			return e
 		}
-		result, e = h.handle(ctx, w, r, actor.Owner)
+		result, e = h.handle(ctx, w, r, actor)
 		if e != nil {
 			return e
 		}
@@ -166,7 +169,8 @@ func readClaimBody(w http.ResponseWriter, r *http.Request, out any) error {
 	// envelope string remains byte-for-byte unchanged after JSON string decoding.
 	return canonicalApprovalJSON(raw, out)
 }
-func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *http.Request, owner LocalOwner) (ClaimStatus, error) {
+func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *http.Request, actor ClaimRequestOwner) (ClaimStatus, error) {
+	owner := actor.Owner
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/networking/claim" {
 		return h.snapshot(ctx)
 	}
@@ -180,6 +184,9 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 		var body ClaimPrepareRequest
 		if e := readClaimBody(w, r, &body); e != nil {
 			return ClaimStatus{}, e
+		}
+		if body.Purpose == "switch" && actor.WebOrigin == "" {
+			return ClaimStatus{}, ErrClaimOwnerRequired
 		}
 		// Web approval (Plex-style): no account is needed to prepare. The person
 		// who approves the code on web.getportico.tv becomes the owner.
@@ -240,6 +247,12 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 	if r.URL.Path == "/v1/networking/claim/web-approval" {
 		address := returnOrigin(r)
+		if expected.Purpose == "switch" {
+			if actor.WebOrigin == "" {
+				return ClaimStatus{}, ErrClaimOwnerRequired
+			}
+			address = actor.WebOrigin
+		}
 		pending, e := h.beginWebClaim(ctx, expected, address)
 		if e != nil {
 			return ClaimStatus{}, e

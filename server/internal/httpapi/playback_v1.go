@@ -11,6 +11,7 @@ import (
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
@@ -41,8 +42,10 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "move_confirmation", Status: 409, Message: identity.ErrMoveConfirmation.Error(), Retry: apierror.Never},
 		{Code: "move_code_invalid", Status: 410, Message: identity.ErrMoveCode.Error(), Retry: apierror.Never},
 		{Code: "account_move_waiting", Status: 403, Message: identity.ErrMoveWaiting.Error(), Retry: apierror.Never},
+		{Code: "factor_setup_required", Status: 403, Message: identity.ErrFactorSetupRequired.Error(), Retry: apierror.Never},
 		{Code: "sign_in_kind_portico", Status: 403, Message: identity.ErrSignInKindPortico.Error(), Retry: apierror.Never},
 		{Code: "sign_in_kind_local", Status: 403, Message: identity.ErrSignInKindLocal.Error(), Retry: apierror.Never},
+		{Code: "portico_services_unavailable", Status: 503, Message: hosted.ErrServicesUnavailable.Error(), Retry: apierror.SameRequest},
 		{Code: "idempotency_key_required", Status: 428, Message: "Send an Idempotency-Key with this request.", Retry: apierror.Never},
 		{Code: "session_ended", Status: 410, Message: "This playback has ended.", Retry: apierror.Never},
 		{Code: "conversion_capacity", Status: 429, Message: "This server is already converting as many streams as it is allowed. Wait a moment or stop another stream, then try again.", Retry: apierror.SameRequest},
@@ -124,6 +127,8 @@ func v1Error(err error) error {
 		return &apierror.Error{Code: "invalid_request", Fields: fields, Cause: err}
 	case errors.Is(err, identity.ErrNotVisible):
 		code = "not_found"
+	case errors.Is(err, identity.ErrFactorSetupRequired):
+		code = "factor_setup_required"
 	case errors.Is(err, identity.ErrForbidden):
 		code = "not_permitted"
 	case errors.Is(err, identity.ErrUnauthorized):

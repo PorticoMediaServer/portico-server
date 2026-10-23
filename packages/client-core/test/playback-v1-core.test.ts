@@ -58,6 +58,24 @@ class FakePlayer implements MediaPlayer {
 let keys = 0;
 const key = () => 'key_' + String(++keys).padStart(16, '0');
 
+test('queue-backed session start preserves the same explicit choices as direct item start', async () => {
+  const server = new FakePlaybackServer();
+  const http = fakeHttp(server);
+  const queues = new QueueClient(http, key);
+  const sessions = new SessionsClient(http);
+  const created = await queues.create([{source: {items: {ids: ['movie-1']}}}]);
+  const entry = created.window[0]!;
+  const choices = {versionId: 'v2', startPositionMs: 17_000, state: 'paused' as const, audio: {trackId: 'a2', channels: 2}, subtitles: {trackId: null}, quality: {mode: 'fixed' as const, id: '720p-high' as const}};
+  const queued = await sessions.start({queue: {queueId: created.queue.id, entryId: entry.entryId}}, choices, key());
+  const direct = await sessions.start({itemId: 'movie-1'}, choices, key());
+  assert.equal(queued.versionId, 'v2');
+  assert.equal(queued.presentation.startPositionMs, 17_000);
+  assert.equal(queued.presentation.audioTrackId, 'a2');
+  assert.deepEqual(queued.presentation.quality, choices.quality);
+  assert.equal(queued.state, 'paused');
+  for (const field of ['versionId', 'positionMs', 'state', 'audio', 'subtitles', 'quality'] as const) assert.deepEqual(server.session(queued.id)?.[field], server.session(direct.id)?.[field], field);
+});
+
 // ── Options (§4) ───────────────────────────────────────────────────
 test('options: tolerant parse, plan summary, default selection, markers and preview queries', async () => {
   const server = new FakePlaybackServer();

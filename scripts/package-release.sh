@@ -30,6 +30,9 @@ cp "$ROOT/server/internal/imagework/SCALE_LICENSE" "$PAYLOAD/licenses/image-scal
 cp "$ROOT/server/internal/thirdparty/sqlite/LICENSE" "$PAYLOAD/licenses/sqlite-driver.txt"
 cp "$ROOT/server/internal/mediaexec/fonts/LICENSE" "$PAYLOAD/licenses/decoder-fonts.txt"
 cp "$ROOT/third_party/hls.js/LICENSE" "$PAYLOAD/licenses/hls-js.txt"
+mkdir -p "$PAYLOAD/licenses/reader"
+cp "$ROOT/third_party/reader/"*-LICENSE "$ROOT/third_party/reader/provenance.json" "$PAYLOAD/licenses/reader/"
+cp "$ROOT/packages/reader-core/assets/OFL.txt" "$PAYLOAD/licenses/reader/literata-OFL.txt"
 cp "$ROOT/web/src/ui/fonts/OFL.txt" "$PAYLOAD/licenses/manrope.txt"
 cp "$ROOT/packages/design/LICENSE-LUCIDE" "$PAYLOAD/licenses/lucide.txt"
 find "$PAYLOAD" \( -name '.DS_Store' -o -name '._*' \) -delete

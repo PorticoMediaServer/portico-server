@@ -17261,6 +17261,9 @@
           "role": {
             "type": "string"
           },
+          "serverId": {
+            "type": "string"
+          },
           "state": {
             "type": "string"
           }
@@ -17325,6 +17328,9 @@
                 "role": {
                   "type": "string"
                 },
+                "serverId": {
+                  "type": "string"
+                },
                 "state": {
                   "type": "string"
                 }
@@ -17384,6 +17390,18 @@
           },
           "displayName": {
             "type": "string"
+          },
+          "effectiveMaxStreams": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "email": {
             "type": "string"
@@ -17445,6 +17463,14 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
+              },
               "maximumAge": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -17522,6 +17548,7 @@
               "allowRemote",
               "conversion",
               "maxStreams",
+              "maxStreamsMode",
               "remoteBitrateKbps",
               "ratingSystem",
               "maxContentRating",
@@ -17561,11 +17588,25 @@
           "role": {
             "type": "string"
           },
+          "serverMaxStreams": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "username": {
             "type": "string"
           }
         },
         "required": [
+          "serverMaxStreams",
+          "effectiveMaxStreams",
           "accountId",
           "username",
           "displayName",
@@ -17590,6 +17631,18 @@
         "properties": {
           "accountId": {
             "type": "string"
+          },
+          "effectiveMaxStreams": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "limits": {
             "properties": {
@@ -17636,6 +17689,14 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
+              },
               "maximumAge": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -17713,6 +17774,7 @@
               "allowRemote",
               "conversion",
               "maxStreams",
+              "maxStreamsMode",
               "remoteBitrateKbps",
               "ratingSystem",
               "maxContentRating",
@@ -17729,6 +17791,18 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "serverMaxStreams": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updatedAt": {
             "type": "string"
           }
@@ -17736,7 +17810,9 @@
         "required": [
           "accountId",
           "revision",
-          "limits"
+          "limits",
+          "serverMaxStreams",
+          "effectiveMaxStreams"
         ],
         "type": "object"
       },
@@ -17761,6 +17837,18 @@
                 },
                 "disabled": {
                   "type": "boolean"
+                },
+                "effectiveMaxStreams": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "email": {
                   "type": "string"
@@ -17790,6 +17878,14 @@
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "maxStreamsMode": {
+                  "enum": [
+                    "inherit",
+                    "unlimited",
+                    "limit"
+                  ],
+                  "type": "string"
+                },
                 "profileCount": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -17808,6 +17904,18 @@
                 },
                 "role": {
                   "type": "string"
+                },
+                "serverMaxStreams": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "status": {
                   "type": "string"
@@ -17828,6 +17936,9 @@
                 "allowedLibraries",
                 "libraryNames",
                 "maxStreams",
+                "maxStreamsMode",
+                "serverMaxStreams",
+                "effectiveMaxStreams",
                 "profileCount",
                 "profileNames",
                 "liveState"
@@ -29224,6 +29335,9 @@
                     },
                     "type": "object"
                   },
+                  "dolbyVisionProfile7To81": {
+                    "type": "boolean"
+                  },
                   "encoders": {
                     "additionalProperties": {
                       "type": "boolean"
@@ -29262,6 +29376,7 @@
                   }
                 },
                 "required": [
+                  "dolbyVisionProfile7To81",
                   "bitstreamFilters",
                   "vulkanAvailable",
                   "openclAvailable",
@@ -35367,6 +35482,9 @@
           },
           "serverId": {
             "type": "string"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -141388,6 +141506,109 @@
         ],
         "type": "object"
       },
+      "GetSignInPolicyRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetSignInPolicyResponse": {
+        "properties": {
+          "revision": {
+            "type": "string"
+          },
+          "values": {
+            "properties": {
+              "endedSessionsDays": {
+                "enum": [
+                  30,
+                  90,
+                  365
+                ],
+                "type": "integer"
+              },
+              "memberResetCodeMinutes": {
+                "enum": [
+                  15,
+                  60,
+                  1440
+                ],
+                "type": "integer"
+              },
+              "passwordAttempts": {
+                "enum": [
+                  "relaxed",
+                  "standard",
+                  "strict"
+                ],
+                "type": "string"
+              },
+              "passwordMinLength": {
+                "enum": [
+                  8,
+                  10,
+                  12,
+                  16
+                ],
+                "type": "integer"
+              },
+              "pinAttempts": {
+                "enum": [
+                  "relaxed",
+                  "standard",
+                  "strict"
+                ],
+                "type": "string"
+              },
+              "pinRememberDays": {
+                "enum": [
+                  0,
+                  7,
+                  30,
+                  90
+                ],
+                "type": "integer"
+              },
+              "rememberAccounts": {
+                "type": "boolean"
+              },
+              "requireTwoStep": {
+                "enum": [
+                  "nobody",
+                  "administrators",
+                  "everyone"
+                ],
+                "type": "string"
+              },
+              "staySignedInDays": {
+                "enum": [
+                  7,
+                  30,
+                  90,
+                  365
+                ],
+                "type": "integer"
+              }
+            },
+            "required": [
+              "staySignedInDays",
+              "pinRememberDays",
+              "passwordAttempts",
+              "pinAttempts",
+              "passwordMinLength",
+              "memberResetCodeMinutes",
+              "requireTwoStep",
+              "rememberAccounts",
+              "endedSessionsDays"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "revision",
+          "values"
+        ],
+        "type": "object"
+      },
       "GetSignInSettingsRequest": {
         "properties": {},
         "required": [],
@@ -143496,13 +143717,32 @@
                 "entries": {
                   "items": {
                     "properties": {
+                      "absoluteNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "airDate": {
+                        "type": "string"
+                      },
+                      "dateBased": {
+                        "type": "boolean"
+                      },
                       "displayUrl": {
                         "type": "string"
+                      },
+                      "episodeNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "id": {
                         "type": "string"
                       },
                       "imageUrl": {
+                        "type": "string"
+                      },
+                      "kind": {
                         "type": "string"
                       },
                       "playUrl": {
@@ -143513,6 +143753,17 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "seasonNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "showTitle": {
+                        "type": "string"
+                      },
+                      "special": {
+                        "type": "boolean"
+                      },
                       "subtitle": {
                         "type": "string"
                       },
@@ -143522,6 +143773,7 @@
                     },
                     "required": [
                       "id",
+                      "kind",
                       "title",
                       "displayUrl"
                     ],
@@ -143537,11 +143789,33 @@
                 },
                 "title": {
                   "type": "string"
+                },
+                "titleText": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "fallback": {
+                      "type": "string"
+                    },
+                    "params": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "fallback"
+                  ],
+                  "type": "object"
                 }
               },
               "required": [
                 "id",
                 "title",
+                "titleText",
                 "shape",
                 "entries"
               ],
@@ -143551,9 +143825,13 @@
           },
           "serverId": {
             "type": "string"
+          },
+          "serverName": {
+            "type": "string"
           }
         },
         "required": [
+          "serverName",
           "serverId",
           "profileId",
           "expiresAt",
@@ -162064,6 +162342,9 @@
           },
           "serverId": {
             "type": "string"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -163502,6 +163783,202 @@
         ],
         "type": "object"
       },
+      "PatchSignInPolicyRequest": {
+        "properties": {
+          "expectedRevision": {
+            "type": "string"
+          },
+          "values": {
+            "properties": {
+              "endedSessionsDays": {
+                "enum": [
+                  30,
+                  90,
+                  365
+                ],
+                "type": "integer"
+              },
+              "memberResetCodeMinutes": {
+                "enum": [
+                  15,
+                  60,
+                  1440
+                ],
+                "type": "integer"
+              },
+              "passwordAttempts": {
+                "enum": [
+                  "relaxed",
+                  "standard",
+                  "strict"
+                ],
+                "type": "string"
+              },
+              "passwordMinLength": {
+                "enum": [
+                  8,
+                  10,
+                  12,
+                  16
+                ],
+                "type": "integer"
+              },
+              "pinAttempts": {
+                "enum": [
+                  "relaxed",
+                  "standard",
+                  "strict"
+                ],
+                "type": "string"
+              },
+              "pinRememberDays": {
+                "enum": [
+                  0,
+                  7,
+                  30,
+                  90
+                ],
+                "type": "integer"
+              },
+              "rememberAccounts": {
+                "type": "boolean"
+              },
+              "requireTwoStep": {
+                "enum": [
+                  "nobody",
+                  "administrators",
+                  "everyone"
+                ],
+                "type": "string"
+              },
+              "staySignedInDays": {
+                "enum": [
+                  7,
+                  30,
+                  90,
+                  365
+                ],
+                "type": "integer"
+              }
+            },
+            "required": [
+              "staySignedInDays",
+              "pinRememberDays",
+              "passwordAttempts",
+              "pinAttempts",
+              "passwordMinLength",
+              "memberResetCodeMinutes",
+              "requireTwoStep",
+              "rememberAccounts",
+              "endedSessionsDays"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "values"
+        ],
+        "type": "object"
+      },
+      "PatchSignInPolicyResponse": {
+        "properties": {
+          "revision": {
+            "type": "string"
+          },
+          "values": {
+            "properties": {
+              "endedSessionsDays": {
+                "enum": [
+                  30,
+                  90,
+                  365
+                ],
+                "type": "integer"
+              },
+              "memberResetCodeMinutes": {
+                "enum": [
+                  15,
+                  60,
+                  1440
+                ],
+                "type": "integer"
+              },
+              "passwordAttempts": {
+                "enum": [
+                  "relaxed",
+                  "standard",
+                  "strict"
+                ],
+                "type": "string"
+              },
+              "passwordMinLength": {
+                "enum": [
+                  8,
+                  10,
+                  12,
+                  16
+                ],
+                "type": "integer"
+              },
+              "pinAttempts": {
+                "enum": [
+                  "relaxed",
+                  "standard",
+                  "strict"
+                ],
+                "type": "string"
+              },
+              "pinRememberDays": {
+                "enum": [
+                  0,
+                  7,
+                  30,
+                  90
+                ],
+                "type": "integer"
+              },
+              "rememberAccounts": {
+                "type": "boolean"
+              },
+              "requireTwoStep": {
+                "enum": [
+                  "nobody",
+                  "administrators",
+                  "everyone"
+                ],
+                "type": "string"
+              },
+              "staySignedInDays": {
+                "enum": [
+                  7,
+                  30,
+                  90,
+                  365
+                ],
+                "type": "integer"
+              }
+            },
+            "required": [
+              "staySignedInDays",
+              "pinRememberDays",
+              "passwordAttempts",
+              "pinAttempts",
+              "passwordMinLength",
+              "memberResetCodeMinutes",
+              "requireTwoStep",
+              "rememberAccounts",
+              "endedSessionsDays"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "revision",
+          "values"
+        ],
+        "type": "object"
+      },
       "PostAccessInvitationsAcceptRequest": {
         "oneOf": [
           {
@@ -163867,6 +164344,9 @@
                   "authorizationHorizon"
                 ],
                 "type": "object"
+              },
+              "twoStepSetupRequired": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -163980,6 +164460,9 @@
               },
               "serverId": {
                 "type": "string"
+              },
+              "twoStepSetupRequired": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -164014,6 +164497,9 @@
             "type": "string"
           },
           "expiresAt": {
+            "type": "string"
+          },
+          "serverId": {
             "type": "string"
           }
         },
@@ -164079,6 +164565,9 @@
             "type": "integer"
           },
           "role": {
+            "type": "string"
+          },
+          "serverId": {
             "type": "string"
           },
           "state": {
@@ -164172,6 +164661,9 @@
           "role": {
             "type": "string"
           },
+          "serverId": {
+            "type": "string"
+          },
           "state": {
             "type": "string"
           }
@@ -164215,6 +164707,14 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
               }
             },
             "required": [],
@@ -170839,6 +171339,9 @@
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -171208,6 +171711,9 @@
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -171520,6 +172026,9 @@
                   "authorizationHorizon"
                 ],
                 "type": "object"
+              },
+              "twoStepSetupRequired": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -171773,6 +172282,9 @@
                   "authorizationHorizon"
                 ],
                 "type": "object"
+              },
+              "twoStepSetupRequired": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -172087,6 +172599,9 @@
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -172096,6 +172611,80 @@
           "profiles",
           "canManage",
           "capabilities"
+        ],
+        "type": "object"
+      },
+      "PostAuthPorticoReturnPrepareRequest": {
+        "properties": {
+          "nonce": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin",
+          "nonce"
+        ],
+        "type": "object"
+      },
+      "PostAuthPorticoReturnPrepareResponse": {
+        "properties": {
+          "challenge": {
+            "type": "string"
+          },
+          "claimOperationId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "hostedOrigin": {
+            "type": "string"
+          },
+          "proof": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "registration": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origin"
+            ],
+            "type": "object"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "hostedOrigin",
+          "claimOperationId",
+          "registration",
+          "challenge",
+          "expiresAt",
+          "proof"
         ],
         "type": "object"
       },
@@ -172465,6 +173054,9 @@
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -172798,6 +173390,9 @@
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -173203,6 +173798,9 @@
             "type": "string"
           },
           "expiresAt": {
+            "type": "string"
+          },
+          "serverId": {
             "type": "string"
           }
         },
@@ -173736,6 +174334,9 @@
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -173939,6 +174540,9 @@
           },
           "serverId": {
             "type": "string"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -174332,6 +174936,9 @@
           },
           "serverId": {
             "type": "string"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -174734,6 +175341,9 @@
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -186564,6 +187174,9 @@
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -186885,6 +187498,9 @@
                   "type": "string"
                 },
                 "expiresAt": {
+                  "type": "string"
+                },
+                "serverId": {
                   "type": "string"
                 },
                 "username": {
@@ -187264,6 +187880,9 @@
                   "authorizationHorizon"
                 ],
                 "type": "object"
+              },
+              "twoStepSetupRequired": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -190025,6 +190644,9 @@
           "role": {
             "type": "string"
           },
+          "serverId": {
+            "type": "string"
+          },
           "state": {
             "type": "string"
           }
@@ -190082,6 +190704,18 @@
           },
           "displayName": {
             "type": "string"
+          },
+          "effectiveMaxStreams": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "email": {
             "type": "string"
@@ -190142,6 +190776,14 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
               },
               "maximumAge": {
                 "maximum": 9007199254740991,
@@ -190220,6 +190862,7 @@
               "allowRemote",
               "conversion",
               "maxStreams",
+              "maxStreamsMode",
               "remoteBitrateKbps",
               "ratingSystem",
               "maxContentRating",
@@ -190259,11 +190902,25 @@
           "role": {
             "type": "string"
           },
+          "serverMaxStreams": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "username": {
             "type": "string"
           }
         },
         "required": [
+          "serverMaxStreams",
+          "effectiveMaxStreams",
           "accountId",
           "username",
           "displayName",
@@ -190331,6 +190988,14 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
+              },
               "maximumAge": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -190408,6 +191073,7 @@
               "allowRemote",
               "conversion",
               "maxStreams",
+              "maxStreamsMode",
               "remoteBitrateKbps",
               "ratingSystem",
               "maxContentRating",
@@ -190434,6 +191100,18 @@
         "properties": {
           "accountId": {
             "type": "string"
+          },
+          "effectiveMaxStreams": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "limits": {
             "properties": {
@@ -190480,6 +191158,14 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
+              },
               "maximumAge": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -190557,6 +191243,7 @@
               "allowRemote",
               "conversion",
               "maxStreams",
+              "maxStreamsMode",
               "remoteBitrateKbps",
               "ratingSystem",
               "maxContentRating",
@@ -190573,6 +191260,18 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "serverMaxStreams": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updatedAt": {
             "type": "string"
           }
@@ -190580,7 +191279,9 @@
         "required": [
           "accountId",
           "revision",
-          "limits"
+          "limits",
+          "serverMaxStreams",
+          "effectiveMaxStreams"
         ],
         "type": "object"
       },
@@ -190627,6 +191328,18 @@
           },
           "displayName": {
             "type": "string"
+          },
+          "effectiveMaxStreams": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "email": {
             "type": "string"
@@ -190688,6 +191401,14 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "maxStreamsMode": {
+                "enum": [
+                  "inherit",
+                  "unlimited",
+                  "limit"
+                ],
+                "type": "string"
+              },
               "maximumAge": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -190765,6 +191486,7 @@
               "allowRemote",
               "conversion",
               "maxStreams",
+              "maxStreamsMode",
               "remoteBitrateKbps",
               "ratingSystem",
               "maxContentRating",
@@ -190804,11 +191526,25 @@
           "role": {
             "type": "string"
           },
+          "serverMaxStreams": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "username": {
             "type": "string"
           }
         },
         "required": [
+          "serverMaxStreams",
+          "effectiveMaxStreams",
           "accountId",
           "username",
           "displayName",
@@ -193568,6 +194304,9 @@
           },
           "serverId": {
             "type": "string"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -213376,6 +214115,9 @@
                             "authorizationHorizon"
                           ],
                           "type": "object"
+                        },
+                        "twoStepSetupRequired": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -213489,6 +214231,9 @@
                         },
                         "serverId": {
                           "type": "string"
+                        },
+                        "twoStepSetupRequired": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -213548,6 +214293,9 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "sign_in_kind_local",
+          "sign_in_kind_portico",
+          "factor_setup_required",
           "internal"
         ],
         "x-lane": "default",
@@ -214064,6 +214812,9 @@
                           "role": {
                             "type": "string"
                           },
+                          "serverId": {
+                            "type": "string"
+                          },
                           "state": {
                             "type": "string"
                           }
@@ -214234,6 +214985,9 @@
                     "role": {
                       "type": "string"
                     },
+                    "serverId": {
+                      "type": "string"
+                    },
                     "state": {
                       "type": "string"
                     }
@@ -214356,6 +215110,9 @@
                       "type": "integer"
                     },
                     "role": {
+                      "type": "string"
+                    },
+                    "serverId": {
                       "type": "string"
                     },
                     "state": {
@@ -214522,6 +215279,9 @@
                     "role": {
                       "type": "string"
                     },
+                    "serverId": {
+                      "type": "string"
+                    },
                     "state": {
                       "type": "string"
                     }
@@ -214631,6 +215391,9 @@
                       "type": "string"
                     },
                     "expiresAt": {
+                      "type": "string"
+                    },
+                    "serverId": {
                       "type": "string"
                     }
                   },
@@ -214771,6 +215534,9 @@
                       "type": "integer"
                     },
                     "role": {
+                      "type": "string"
+                    },
+                    "serverId": {
                       "type": "string"
                     },
                     "state": {
@@ -214921,6 +215687,18 @@
                           "disabled": {
                             "type": "boolean"
                           },
+                          "effectiveMaxStreams": {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "email": {
                             "type": "string"
                           },
@@ -214949,6 +215727,14 @@
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "maxStreamsMode": {
+                            "enum": [
+                              "inherit",
+                              "unlimited",
+                              "limit"
+                            ],
+                            "type": "string"
+                          },
                           "profileCount": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -214967,6 +215753,18 @@
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "serverMaxStreams": {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "status": {
                             "type": "string"
@@ -214987,6 +215785,9 @@
                           "allowedLibraries",
                           "libraryNames",
                           "maxStreams",
+                          "maxStreamsMode",
+                          "serverMaxStreams",
+                          "effectiveMaxStreams",
                           "profileCount",
                           "profileNames",
                           "liveState"
@@ -215106,6 +215907,14 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "maxStreamsMode": {
+                        "enum": [
+                          "inherit",
+                          "unlimited",
+                          "limit"
+                        ],
+                        "type": "string"
                       }
                     },
                     "required": [],
@@ -215268,6 +216077,18 @@
                     "displayName": {
                       "type": "string"
                     },
+                    "effectiveMaxStreams": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "email": {
                       "type": "string"
                     },
@@ -215327,6 +216148,14 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "maxStreamsMode": {
+                          "enum": [
+                            "inherit",
+                            "unlimited",
+                            "limit"
+                          ],
+                          "type": "string"
                         },
                         "maximumAge": {
                           "maximum": 9007199254740991,
@@ -215405,6 +216234,7 @@
                         "allowRemote",
                         "conversion",
                         "maxStreams",
+                        "maxStreamsMode",
                         "remoteBitrateKbps",
                         "ratingSystem",
                         "maxContentRating",
@@ -215444,11 +216274,25 @@
                     "role": {
                       "type": "string"
                     },
+                    "serverMaxStreams": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "username": {
                       "type": "string"
                     }
                   },
                   "required": [
+                    "serverMaxStreams",
+                    "effectiveMaxStreams",
                     "accountId",
                     "username",
                     "displayName",
@@ -215536,6 +216380,18 @@
                     "accountId": {
                       "type": "string"
                     },
+                    "effectiveMaxStreams": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "limits": {
                       "properties": {
                         "accessTokens": {
@@ -215580,6 +216436,14 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "maxStreamsMode": {
+                          "enum": [
+                            "inherit",
+                            "unlimited",
+                            "limit"
+                          ],
+                          "type": "string"
                         },
                         "maximumAge": {
                           "maximum": 9007199254740991,
@@ -215658,6 +216522,7 @@
                         "allowRemote",
                         "conversion",
                         "maxStreams",
+                        "maxStreamsMode",
                         "remoteBitrateKbps",
                         "ratingSystem",
                         "maxContentRating",
@@ -215674,6 +216539,18 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "serverMaxStreams": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "updatedAt": {
                       "type": "string"
                     }
@@ -215681,7 +216558,9 @@
                   "required": [
                     "accountId",
                     "revision",
-                    "limits"
+                    "limits",
+                    "serverMaxStreams",
+                    "effectiveMaxStreams"
                   ],
                   "type": "object"
                 }
@@ -215801,6 +216680,14 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "maxStreamsMode": {
+                        "enum": [
+                          "inherit",
+                          "unlimited",
+                          "limit"
+                        ],
+                        "type": "string"
+                      },
                       "maximumAge": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -215878,6 +216765,7 @@
                       "allowRemote",
                       "conversion",
                       "maxStreams",
+                      "maxStreamsMode",
                       "remoteBitrateKbps",
                       "ratingSystem",
                       "maxContentRating",
@@ -215912,6 +216800,18 @@
                   "properties": {
                     "accountId": {
                       "type": "string"
+                    },
+                    "effectiveMaxStreams": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "limits": {
                       "properties": {
@@ -215957,6 +216857,14 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "maxStreamsMode": {
+                          "enum": [
+                            "inherit",
+                            "unlimited",
+                            "limit"
+                          ],
+                          "type": "string"
                         },
                         "maximumAge": {
                           "maximum": 9007199254740991,
@@ -216035,6 +216943,7 @@
                         "allowRemote",
                         "conversion",
                         "maxStreams",
+                        "maxStreamsMode",
                         "remoteBitrateKbps",
                         "ratingSystem",
                         "maxContentRating",
@@ -216051,6 +216960,18 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "serverMaxStreams": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "updatedAt": {
                       "type": "string"
                     }
@@ -216058,7 +216979,9 @@
                   "required": [
                     "accountId",
                     "revision",
-                    "limits"
+                    "limits",
+                    "serverMaxStreams",
+                    "effectiveMaxStreams"
                   ],
                   "type": "object"
                 }
@@ -216180,6 +217103,18 @@
                     "displayName": {
                       "type": "string"
                     },
+                    "effectiveMaxStreams": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "email": {
                       "type": "string"
                     },
@@ -216239,6 +217174,14 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "maxStreamsMode": {
+                          "enum": [
+                            "inherit",
+                            "unlimited",
+                            "limit"
+                          ],
+                          "type": "string"
                         },
                         "maximumAge": {
                           "maximum": 9007199254740991,
@@ -216317,6 +217260,7 @@
                         "allowRemote",
                         "conversion",
                         "maxStreams",
+                        "maxStreamsMode",
                         "remoteBitrateKbps",
                         "ratingSystem",
                         "maxContentRating",
@@ -216356,11 +217300,25 @@
                     "role": {
                       "type": "string"
                     },
+                    "serverMaxStreams": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "username": {
                       "type": "string"
                     }
                   },
                   "required": [
+                    "serverMaxStreams",
+                    "effectiveMaxStreams",
                     "accountId",
                     "username",
                     "displayName",
@@ -216495,6 +217453,18 @@
                     "displayName": {
                       "type": "string"
                     },
+                    "effectiveMaxStreams": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "email": {
                       "type": "string"
                     },
@@ -216554,6 +217524,14 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "maxStreamsMode": {
+                          "enum": [
+                            "inherit",
+                            "unlimited",
+                            "limit"
+                          ],
+                          "type": "string"
                         },
                         "maximumAge": {
                           "maximum": 9007199254740991,
@@ -216632,6 +217610,7 @@
                         "allowRemote",
                         "conversion",
                         "maxStreams",
+                        "maxStreamsMode",
                         "remoteBitrateKbps",
                         "ratingSystem",
                         "maxContentRating",
@@ -216671,11 +217650,25 @@
                     "role": {
                       "type": "string"
                     },
+                    "serverMaxStreams": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "username": {
                       "type": "string"
                     }
                   },
                   "required": [
+                    "serverMaxStreams",
+                    "effectiveMaxStreams",
                     "accountId",
                     "username",
                     "displayName",
@@ -255756,6 +256749,9 @@
                           "expiresAt": {
                             "type": "string"
                           },
+                          "serverId": {
+                            "type": "string"
+                          },
                           "username": {
                             "type": "string"
                           }
@@ -256203,6 +257199,9 @@
                             "authorizationHorizon"
                           ],
                           "type": "object"
+                        },
+                        "twoStepSetupRequired": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -256618,6 +257617,424 @@
         "x-lane": "security",
         "x-max-body-bytes": 16384,
         "x-scope": "session"
+      }
+    },
+    "/v1/admin/sign-in/policy": {
+      "get": {
+        "operationId": "get_sign_in_policy",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "revision": {
+                      "type": "string"
+                    },
+                    "values": {
+                      "properties": {
+                        "endedSessionsDays": {
+                          "enum": [
+                            30,
+                            90,
+                            365
+                          ],
+                          "type": "integer"
+                        },
+                        "memberResetCodeMinutes": {
+                          "enum": [
+                            15,
+                            60,
+                            1440
+                          ],
+                          "type": "integer"
+                        },
+                        "passwordAttempts": {
+                          "enum": [
+                            "relaxed",
+                            "standard",
+                            "strict"
+                          ],
+                          "type": "string"
+                        },
+                        "passwordMinLength": {
+                          "enum": [
+                            8,
+                            10,
+                            12,
+                            16
+                          ],
+                          "type": "integer"
+                        },
+                        "pinAttempts": {
+                          "enum": [
+                            "relaxed",
+                            "standard",
+                            "strict"
+                          ],
+                          "type": "string"
+                        },
+                        "pinRememberDays": {
+                          "enum": [
+                            0,
+                            7,
+                            30,
+                            90
+                          ],
+                          "type": "integer"
+                        },
+                        "rememberAccounts": {
+                          "type": "boolean"
+                        },
+                        "requireTwoStep": {
+                          "enum": [
+                            "nobody",
+                            "administrators",
+                            "everyone"
+                          ],
+                          "type": "string"
+                        },
+                        "staySignedInDays": {
+                          "enum": [
+                            7,
+                            30,
+                            90,
+                            365
+                          ],
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "staySignedInDays",
+                        "pinRememberDays",
+                        "passwordAttempts",
+                        "pinAttempts",
+                        "passwordMinLength",
+                        "memberResetCodeMinutes",
+                        "requireTwoStep",
+                        "rememberAccounts",
+                        "endedSessionsDays"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "revision",
+                    "values"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the server sign-in policy",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "revision_required",
+          "revision_mismatch",
+          "factor_setup_required",
+          "internal"
+        ],
+        "x-lane": "security",
+        "x-scope": "admin"
+      },
+      "patch": {
+        "operationId": "patch_sign_in_policy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "type": "string"
+                  },
+                  "values": {
+                    "properties": {
+                      "endedSessionsDays": {
+                        "enum": [
+                          30,
+                          90,
+                          365
+                        ],
+                        "type": "integer"
+                      },
+                      "memberResetCodeMinutes": {
+                        "enum": [
+                          15,
+                          60,
+                          1440
+                        ],
+                        "type": "integer"
+                      },
+                      "passwordAttempts": {
+                        "enum": [
+                          "relaxed",
+                          "standard",
+                          "strict"
+                        ],
+                        "type": "string"
+                      },
+                      "passwordMinLength": {
+                        "enum": [
+                          8,
+                          10,
+                          12,
+                          16
+                        ],
+                        "type": "integer"
+                      },
+                      "pinAttempts": {
+                        "enum": [
+                          "relaxed",
+                          "standard",
+                          "strict"
+                        ],
+                        "type": "string"
+                      },
+                      "pinRememberDays": {
+                        "enum": [
+                          0,
+                          7,
+                          30,
+                          90
+                        ],
+                        "type": "integer"
+                      },
+                      "rememberAccounts": {
+                        "type": "boolean"
+                      },
+                      "requireTwoStep": {
+                        "enum": [
+                          "nobody",
+                          "administrators",
+                          "everyone"
+                        ],
+                        "type": "string"
+                      },
+                      "staySignedInDays": {
+                        "enum": [
+                          7,
+                          30,
+                          90,
+                          365
+                        ],
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "staySignedInDays",
+                      "pinRememberDays",
+                      "passwordAttempts",
+                      "pinAttempts",
+                      "passwordMinLength",
+                      "memberResetCodeMinutes",
+                      "requireTwoStep",
+                      "rememberAccounts",
+                      "endedSessionsDays"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "values"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "revision": {
+                      "type": "string"
+                    },
+                    "values": {
+                      "properties": {
+                        "endedSessionsDays": {
+                          "enum": [
+                            30,
+                            90,
+                            365
+                          ],
+                          "type": "integer"
+                        },
+                        "memberResetCodeMinutes": {
+                          "enum": [
+                            15,
+                            60,
+                            1440
+                          ],
+                          "type": "integer"
+                        },
+                        "passwordAttempts": {
+                          "enum": [
+                            "relaxed",
+                            "standard",
+                            "strict"
+                          ],
+                          "type": "string"
+                        },
+                        "passwordMinLength": {
+                          "enum": [
+                            8,
+                            10,
+                            12,
+                            16
+                          ],
+                          "type": "integer"
+                        },
+                        "pinAttempts": {
+                          "enum": [
+                            "relaxed",
+                            "standard",
+                            "strict"
+                          ],
+                          "type": "string"
+                        },
+                        "pinRememberDays": {
+                          "enum": [
+                            0,
+                            7,
+                            30,
+                            90
+                          ],
+                          "type": "integer"
+                        },
+                        "rememberAccounts": {
+                          "type": "boolean"
+                        },
+                        "requireTwoStep": {
+                          "enum": [
+                            "nobody",
+                            "administrators",
+                            "everyone"
+                          ],
+                          "type": "string"
+                        },
+                        "staySignedInDays": {
+                          "enum": [
+                            7,
+                            30,
+                            90,
+                            365
+                          ],
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "staySignedInDays",
+                        "pinRememberDays",
+                        "passwordAttempts",
+                        "pinAttempts",
+                        "passwordMinLength",
+                        "memberResetCodeMinutes",
+                        "requireTwoStep",
+                        "rememberAccounts",
+                        "endedSessionsDays"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "revision",
+                    "values"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Change the server sign-in policy",
+        "x-access": "owner",
+        "x-admission": "security-fence",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "revision_required",
+          "revision_mismatch",
+          "factor_setup_required",
+          "internal"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
       }
     },
     "/v1/admin/state-permissions:fix": {
@@ -258456,6 +259873,9 @@
                               },
                               "type": "object"
                             },
+                            "dolbyVisionProfile7To81": {
+                              "type": "boolean"
+                            },
                             "encoders": {
                               "additionalProperties": {
                                 "type": "boolean"
@@ -258494,6 +259914,7 @@
                             }
                           },
                           "required": [
+                            "dolbyVisionProfile7To81",
                             "bitstreamFilters",
                             "vulkanAvailable",
                             "openclAvailable",
@@ -261861,6 +263282,9 @@
                         "authorizationHorizon"
                       ],
                       "type": "object"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -262370,6 +263794,9 @@
                         "authorizationHorizon"
                       ],
                       "type": "object"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -262818,6 +264245,9 @@
                             "authorizationHorizon"
                           ],
                           "type": "object"
+                        },
+                        "twoStepSetupRequired": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -263071,6 +264501,9 @@
                             "authorizationHorizon"
                           ],
                           "type": "object"
+                        },
+                        "twoStepSetupRequired": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -263461,6 +264894,9 @@
                         "authorizationHorizon"
                       ],
                       "type": "object"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -263523,10 +264959,162 @@
           "account_move_waiting",
           "move_collision",
           "move_code_invalid",
+          "portico_services_unavailable",
           "internal"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
+        "x-scope": "session"
+      }
+    },
+    "/v1/auth/portico-return/prepare": {
+      "post": {
+        "operationId": "post_auth_portico_return_prepare",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Portico-Installation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "nonce": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "origin",
+                  "nonce"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "challenge": {
+                      "type": "string"
+                    },
+                    "claimOperationId": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "hostedOrigin": {
+                      "type": "string"
+                    },
+                    "proof": {
+                      "properties": {
+                        "payload": {
+                          "type": "string"
+                        },
+                        "signature": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "payload",
+                        "signature"
+                      ],
+                      "type": "object"
+                    },
+                    "registration": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "origin"
+                      ],
+                      "type": "object"
+                    },
+                    "serverId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "serverId",
+                    "hostedOrigin",
+                    "claimOperationId",
+                    "registration",
+                    "challenge",
+                    "expiresAt",
+                    "proof"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Prepare a return from an existing verified server origin",
+        "x-access": "public",
+        "x-admission": "auth",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "rate_limited",
+          "sign_in_kind_local",
+          "portico_services_unavailable",
+          "internal"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 2048,
         "x-scope": "session"
       }
     },
@@ -263975,6 +265563,9 @@
                         "authorizationHorizon"
                       ],
                       "type": "object"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -264506,6 +266097,9 @@
                         "authorizationHorizon"
                       ],
                       "type": "object"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -275840,6 +277434,9 @@
                     },
                     "serverId": {
                       "type": "string"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -276678,6 +278275,9 @@
                     },
                     "expiresAt": {
                       "type": "string"
+                    },
+                    "serverId": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -277394,6 +278994,9 @@
                         "authorizationHorizon"
                       ],
                       "type": "object"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -277888,6 +279491,9 @@
                     },
                     "serverId": {
                       "type": "string"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -278228,6 +279834,9 @@
                     },
                     "serverId": {
                       "type": "string"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -278577,6 +280186,9 @@
                     },
                     "serverId": {
                       "type": "string"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -279120,6 +280732,9 @@
                     },
                     "serverId": {
                       "type": "string"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -280657,6 +282272,9 @@
                         "authorizationHorizon"
                       ],
                       "type": "object"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -444615,6 +446233,9 @@
                         "authorizationHorizon"
                       ],
                       "type": "object"
+                    },
+                    "twoStepSetupRequired": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -461793,13 +463414,32 @@
                           "entries": {
                             "items": {
                               "properties": {
+                                "absoluteNumber": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "airDate": {
+                                  "type": "string"
+                                },
+                                "dateBased": {
+                                  "type": "boolean"
+                                },
                                 "displayUrl": {
                                   "type": "string"
+                                },
+                                "episodeNumber": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "id": {
                                   "type": "string"
                                 },
                                 "imageUrl": {
+                                  "type": "string"
+                                },
+                                "kind": {
                                   "type": "string"
                                 },
                                 "playUrl": {
@@ -461810,6 +463450,17 @@
                                   "minimum": -9007199254740991,
                                   "type": "integer"
                                 },
+                                "seasonNumber": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "showTitle": {
+                                  "type": "string"
+                                },
+                                "special": {
+                                  "type": "boolean"
+                                },
                                 "subtitle": {
                                   "type": "string"
                                 },
@@ -461819,6 +463470,7 @@
                               },
                               "required": [
                                 "id",
+                                "kind",
                                 "title",
                                 "displayUrl"
                               ],
@@ -461834,11 +463486,33 @@
                           },
                           "title": {
                             "type": "string"
+                          },
+                          "titleText": {
+                            "properties": {
+                              "code": {
+                                "type": "string"
+                              },
+                              "fallback": {
+                                "type": "string"
+                              },
+                              "params": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "code",
+                              "fallback"
+                            ],
+                            "type": "object"
                           }
                         },
                         "required": [
                           "id",
                           "title",
+                          "titleText",
                           "shape",
                           "entries"
                         ],
@@ -461848,9 +463522,13 @@
                     },
                     "serverId": {
                       "type": "string"
+                    },
+                    "serverName": {
+                      "type": "string"
                     }
                   },
                   "required": [
+                    "serverName",
                     "serverId",
                     "profileId",
                     "expiresAt",

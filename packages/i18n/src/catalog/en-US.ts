@@ -19,10 +19,13 @@ import {drawnSubtitleMessages} from './en-US/subtitles.ts';
 import {ownerConsoleMessages} from './en-US/owner-console.ts';
 import {ownerParityMessages} from './en-US/owner-parity.ts';
 import {connectionTrustMessages} from './en-US/connection-trust.ts';
+import {systemMessages} from './en-US/system.ts';
 import {accountMessages} from './en-US/accounts.ts';
 import {secureConnectionMessages} from './en-US/secure-connection.ts';
+import {servicesMessages} from './en-US/services.ts';
 
 export const enUS = {
+  ...systemMessages,
   ...accountMessages,
   'listening.rewound': 'Rewound {seconds} seconds',
   'section.recently_played': 'Recently played',
@@ -950,6 +953,7 @@ export const enUS = {
   'device.platform.tvos': 'Apple TV',
   'device.platform.android': 'Android',
   'device.platform.androidtv': 'Android TV',
+  'device.platform.googleCast': 'Google Cast',
   // The server's play history (Settings › Server › Play history).
   'server.plays.user': 'User',
   'server.plays.type': 'Type',
@@ -2123,6 +2127,7 @@ export const enUS = {
   // ── Owner certificates and Apple's local plain HTTP (catalog/en-US/connection-trust.ts) ──
   ...connectionTrustMessages,
   ...secureConnectionMessages,
+  ...servicesMessages,
   ...nextMessages,
 } as const satisfies Record<string, string>;
 

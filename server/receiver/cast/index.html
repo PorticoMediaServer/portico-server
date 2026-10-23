@@ -4,118 +4,51 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Portico</title>
-<!--
-  The Cast receiver framework is the one external script this page loads. Every
-  other byte (fonts, logo, script) is served from this Portico server, so the
-  page works on a LAN with no internet route once the framework is cached, and it
-  never contacts a third party for media, credentials or telemetry.
-
-  Presentation (decision V-11 / D-FEAT-6): Google's standard player
-  (<cast-media-player>) styled for Portico draws playback, pause, seek and
-  buffering. The overlays below cover the states it doesn't: the idle splash,
-  preparing a title, errors, and another phone asking to take over the TV.
-  Colours are Portico's design tokens (packages/design).
--->
+<!-- CAF owns the mounted media element. Portico's view only presents engine observations.
+     All assets except Google's framework ship in the embedded receiver filesystem. -->
+<link rel="stylesheet" href="receiver.css">
 <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-<style>
-  @font-face { font-family: 'Portico Sans'; src: url('assets/manrope-400.ttf') format('truetype'); font-weight: 400; }
-  @font-face { font-family: 'Portico Sans'; src: url('assets/manrope-600.ttf') format('truetype'); font-weight: 600; }
-  :root {
-    color-scheme: dark;
-    --ink: #071018; --raised: #10212d; --overlay: #132634; --ambient: #153749;
-    --text: #edf5fa; --text-secondary: #bdccd6; --text-tertiary: #96a9b5;
-    --accent: #409fd4; --danger: #f38b88; --line: #28404f;
-  }
-  html, body { margin: 0; height: 100%; background: var(--ink); color: var(--text);
-    font: 400 24px/1.4 'Portico Sans', 'Avenir Next', system-ui, sans-serif; overflow: hidden; }
-  cast-media-player {
-    --background-color: var(--ink);
-    --font-family: 'Portico Sans', 'Avenir Next', sans-serif;
-    --progress-color: var(--accent);
-    --logo-image: url('assets/portico-wordmark-mono-white.svg');
-    --logo-size: 22vw;
-    --splash-image: url('assets/portico-wordmark-mono-white.svg');
-    --splash-size: 22vw;
-    --playback-logo-image: url('assets/portico-symbol-mono-white.svg');
-    position: absolute; inset: 0;
-  }
-  /* Overlays: one visible at a time, chosen by #ui[data-state]. */
-  #ui > section { position: absolute; inset: 0; display: none; }
-  #ui[data-state="idle"] #splash,
-  #ui[data-state="loading"] #loading,
-  #ui[data-state="error"] #error { display: grid; }
-  .atmosphere { background: radial-gradient(ellipse 84% 52% at 50% -6%, rgba(21, 55, 73, .78) 0%, transparent 74%), linear-gradient(180deg, #0a1720 0%, var(--ink) 46%); }
-  .center { place-items: center; text-align: center; padding: 8vh 10vw; }
-  .wordmark { width: 18vw; min-width: 220px; margin: 0 auto 5vh; display: block; }
-  h1 { font-size: 44px; line-height: 52px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 16px; }
-  p { margin: 0 0 12px; color: var(--text-secondary); }
-  .hint { color: var(--text-tertiary); font-size: 24px; }
-  /* Preparing a title: artwork and identity while the server gets the stream ready. */
-  #loading { grid-template-columns: auto 1fr; align-items: end; gap: 56px; padding: 0 80px 120px; }
-  #loading-art { width: 280px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 14px; background: var(--raised); }
-  #loading-art.square { aspect-ratio: 1; }
-  .eyebrow { font-size: 18px; font-weight: 600; letter-spacing: .055em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 8px; }
-  .spinner { width: 52px; height: 52px; border-radius: 50%; border: 4px solid rgba(150, 169, 181, .35); border-top-color: var(--accent); animation: spin 1s linear infinite; margin-top: 28px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  /* Error card */
-  #error .card { max-width: 900px; background: var(--overlay); border: 1px solid var(--line); border-radius: 24px; padding: 48px 64px; }
-  #error h1 { color: var(--text); }
-  #error .mark { width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 24px; display: grid; place-items: center; background: rgba(243, 139, 136, .16); color: var(--danger); font-size: 32px; font-weight: 600; }
-  /* Takeover prompt and transient notices sit over the video, bottom centre, opaque. */
-  #takeover, #notice { position: absolute; left: 50%; transform: translateX(-50%); bottom: 96px; max-width: 70vw;
-    background: var(--overlay); border: 1px solid var(--line); border-radius: 20px; padding: 28px 44px; text-align: center; }
-  #takeover h2 { font-size: 32px; line-height: 40px; font-weight: 600; margin: 0 0 8px; }
-  #takeover p, #notice { font-size: 24px; color: var(--text-secondary); margin: 0; }
-  #notice { bottom: 48px; padding: 18px 32px; }
-  [hidden] { display: none !important; }
-  /* Only when the page is opened in an ordinary browser (a Cast device has no keyboard). */
-  #browser-pair { margin-top: 32px; }
-  #browser-pair label { display: block; margin-bottom: 8px; color: var(--text-tertiary); font-size: 18px; }
-  #browser-pair input { font: 600 40px/1.2 ui-monospace, Menlo, monospace; letter-spacing: .12em; text-align: center; text-transform: uppercase;
-    width: 9ch; padding: 8px; border-radius: 8px; border: 1px solid #637580; background: var(--raised); color: var(--text); }
-  #browser-pair button { font: 600 20px/1 'Portico Sans', system-ui, sans-serif; margin-left: 12px; padding: 16px 28px; border-radius: 8px; border: 0; background: var(--accent); color: #03121c; }
-  #status { min-height: 32px; color: var(--text-tertiary); font-size: 20px; margin-top: 16px; }
-  #status[data-tone="error"] { color: var(--danger); }
-</style>
 </head>
 <body>
-<cast-media-player id="player"></cast-media-player>
-<div id="ui" data-state="idle">
-  <section id="splash" class="atmosphere center" aria-live="polite">
-    <div>
-      <img class="wordmark" src="assets/portico-wordmark-mono-white.svg" alt="Portico">
-      <h1>Ready to play from Portico</h1>
-      <p class="hint">On your phone or computer, open Portico, choose Play on, and pick this TV.</p>
-      <form id="browser-pair" hidden>
-        <label for="code-input">Pairing code</label>
-        <input id="code-input" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false">
-        <button id="pair" type="submit">Connect</button>
+<video id="player" class="castMediaElement" playsinline></video>
+<div id="ui" class="tv" data-state="idle" data-overlay="hidden">
+  <svg class="sprites" width="0" height="0" aria-hidden="true"><defs>
+    <symbol id="i-pause" viewBox="0 0 24 24"><g fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1.2"/><rect x="14" y="4" width="4" height="16" rx="1.2"/></g></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="17" cy="16" rx="3" ry="2"/></g></symbol>
+    <symbol id="i-tv" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="12.5" rx="2"/><path d="m9 2.5 3 3.5 3-3.5"/></g></symbol>
+    <symbol id="i-cast" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.2V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5.5"/><path d="M3 12.2a6.8 6.8 0 0 1 6.8 6.8M3 16.2a2.8 2.8 0 0 1 2.8 2.8"/><circle cx="3.6" cy="19.2" r=".4"/></g></symbol>
+  </defs></svg>
+  <section id="splash" class="screen atmosphere" aria-live="polite">
+    <div class="gen round"></div><img class="wm" src="assets/portico-wordmark-mono-white.svg" alt="Portico">
+    <div class="mid"><h1 data-text="idle.title"></h1><p id="idle-hint"></p>
+      <form id="browser-pair" class="bp" hidden>
+        <label for="code-input" data-text="pair.label"></label>
+        <div class="row"><input class="code" id="code-input" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="btn play" id="pair" type="submit" data-text="pair.connect"></button></div>
+        <p class="stat" id="status" role="status"></p>
       </form>
-      <p id="status" role="status"></p>
     </div>
   </section>
-  <section id="loading" class="atmosphere" aria-live="polite">
-    <img id="loading-art" alt="" hidden>
-    <div>
-      <p class="eyebrow" id="loading-eyebrow">Getting ready</p>
-      <h1 id="loading-title"></h1>
-      <p id="loading-subtitle"></p>
-      <div class="spinner" aria-hidden="true"></div>
+  <section id="loading" class="screen atmosphere" aria-live="polite">
+    <div class="gen"></div><img class="amb" id="loading-ambient" alt="" hidden><div class="shade" id="loading-shade" hidden></div>
+    <div class="ldrow">
+      <div class="art none" id="loading-art-tile"><img id="loading-art" alt="" hidden><svg id="loading-glyph" width="200" height="200" aria-hidden="true"><use href="#i-tv"/></svg></div>
+      <div class="tx"><p class="st"><i aria-hidden="true"></i><span id="loading-eyebrow" data-text="gettingReady"></span></p><h1 id="loading-title"></h1><p class="sub" id="loading-subtitle" hidden></p><p class="sub2" id="loading-album" hidden></p><p class="wait" id="loading-wait" data-text="preparingLong" hidden></p></div>
     </div>
   </section>
-  <section id="error" class="atmosphere center" role="alert">
-    <div class="card">
-      <div class="mark" aria-hidden="true">!</div>
-      <h1 id="error-title">This title couldn’t play on this TV</h1>
-      <p id="error-body">Try again from your phone or computer.</p>
-    </div>
+  <section id="playback-splash" class="screen atmosphere"><div class="gen round"></div><img class="splash" src="assets/portico-wordmark-mono-white.svg" alt="Portico"></section>
+  <section id="playing" class="screen" data-audio="false">
+    <div class="audio-only gen"></div><img class="audio-only amb" id="playing-ambient" alt="" hidden><div class="audio-only shade" id="playing-shade" hidden></div>
+    <div class="audio-only ldrow"><div class="art sq none" id="playing-art-tile"><img id="playing-art" alt="" hidden><svg id="playing-glyph" width="200" height="200" aria-hidden="true"><use href="#i-music"/></svg></div><div class="tx"><p class="st"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><span data-text="nowPlaying"></span></p><h1 id="audio-title"></h1><p class="sub" id="audio-artist" hidden></p><p class="sub2" id="audio-album" hidden></p></div></div>
+    <span class="audio-only sym"><img src="assets/portico-wordmark-mono-white.svg" alt="Portico"></span>
+    <div class="video-only" id="video-overlay"><div class="veil"></div><div class="sh-t"></div><div class="sh-b"></div><div class="ptop"><div class="pid"><h1 id="playing-title"></h1><p class="epl" id="playing-subtitle" hidden></p></div></div><span class="sym"><img src="assets/portico-wordmark-mono-white.svg" alt="Portico"></span></div>
+    <div class="pbot" id="playing-progress"><div class="sb" id="progress-track" hidden><div class="trk2"><i id="progress-fill"></i></div></div><div class="under"><span class="l" id="time-played" hidden></span><span class="state" id="state-pill" hidden><svg id="state-pause" width="22" height="22" aria-hidden="true"><use href="#i-pause"/></svg><i id="state-buffering" aria-hidden="true" hidden></i><span id="state-label"></span></span><span class="r" id="time-left" hidden></span></div></div>
   </section>
-  <div id="takeover" role="alert" hidden>
-    <h2 id="takeover-title">Someone wants to play on this TV</h2>
-    <p id="takeover-body">Waiting for the person watching now to allow it.</p>
-  </div>
-  <div id="notice" role="status" hidden></div>
+  <section id="error" class="screen atmosphere" role="alert"><div class="gen round"></div><img class="wm" src="assets/portico-wordmark-mono-white.svg" alt="Portico"><div class="ec"><div class="mk" aria-hidden="true">!</div><h1 id="error-title"></h1><p id="error-body"></p></div></section>
+  <div class="tko" id="takeover" role="alert" hidden><span class="ic"><svg width="44" height="44" aria-hidden="true"><use href="#i-cast"/></svg></span><div><h2 id="takeover-title"></h2><p id="takeover-body"></p><div class="keys" id="takeover-keys" hidden><span class="hint"><span class="key-cap" data-text="key.ok"></span><span data-text="allow"></span></span><span class="hint"><span class="key-cap" data-text="key.back"></span><span data-text="deny"></span></span></div></div><span class="left" aria-hidden="true"><b id="takeover-remaining"></b></span></div>
+  <div class="nt warn" id="notice" role="status" data-tone="warning" hidden><span class="ni" aria-hidden="true">!</span><span id="notice-message"></span></div>
 </div>
+<script src="receiver-text.js"></script>
+<script src="view.js"></script>
 <script src="receiver.js"></script>
 </body>
 </html>
