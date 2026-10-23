@@ -133,6 +133,8 @@
   var scope = null;   // {accountId, profileId, authority, capabilities}
   // The Playback v1 session playing here: {id, revision, itemId, generation, serverSeek}.
   var playback = null;
+  var mediaAddresses = new Map(); // bounded receiver-private addresses; never placed in CAF status
+  function mediaAddress(request) { return request && request.media ? mediaAddresses.get(request.media.contentId) || '' : ''; }
   var queueBoundaryTimer = null;
   var queueNext = null, queueNonce = token(16); // one private lookahead, owned by the current session
   function queuePath(id) { return '/v1/queues/' + encodeURIComponent(id); }
@@ -413,7 +415,10 @@
     var p = session.presentation;
     if (typeof p.url !== 'string' || !/^\/v1\/media\/[^\\\s]+$/.test(p.url)) throw new Error('invalid_media_url');
     var container = String(p.container || '');
-    var media = {contentId: session.itemId || session.id, contentUrl: base + p.url, streamType: 'BUFFERED'};
+    var contentId = 'portico-' + token(16);
+    mediaAddresses.set(contentId, base + p.url);
+    while (mediaAddresses.size > 8) mediaAddresses.delete(mediaAddresses.keys().next().value);
+    var media = {contentId: contentId, streamType: 'BUFFERED'};
     if (p.mode === 'stream') {
       media.contentType = 'application/x-mpegurl';
       media.hlsSegmentFormat = media.hlsVideoSegmentFormat = container === 'fmp4_hls' ? 'FMP4' : 'TS';
@@ -424,7 +429,11 @@
     // Title and artwork for CAF's standard player, the Google TV ambient UI and the Google Home app (CAST-01 §2).
     var metadata = castMetadata(meta, image);
     if (metadata) media.metadata = metadata;
-    return {media: media, currentTime: Math.max(0, (p.startPositionMs || 0) / 1000), autoplay: autoplay !== false};
+    var load = {media: media, currentTime: Math.max(0, (p.startPositionMs || 0) / 1000), autoplay: autoplay !== false};
+    // A local CAF load must initialize its default queue before QueueManager inserts lookahead.
+    // QueueData is read before a LOAD interceptor, so only local loads initialize it here.
+    if (queueRef(session.queue)) load.queueData = {items:[{media:media,autoplay:load.autoplay,startTime:load.currentTime}],startIndex:0};
+    return load;
   }
 
   async function stopPlayback(ended) {
@@ -433,6 +442,7 @@
     var id = playback.id, at = Math.round(position() * 1000);
     playback = null; meta = null; queueNext = null; queueNonce = token(16);
     if (manager) manager.stop();
+    mediaAddresses.clear();
     showIdle();
     // A session that has already ended (404, 410) is simply gone.
     await api(sessionPath(id), {method: 'DELETE', body: ended ? undefined : {positionMs: at}}).catch(function (e) { if (!e.status || e.status >= 500) throw e; });
@@ -499,7 +509,7 @@
       var prepared = answer.body;
       if (!prepared || typeof prepared.token !== 'string' || !prepared.presentation || !prepared.presentation.url) return null;
       var load = loadRequest({id:owner.id,itemId:prepared.itemId,presentation:prepared.presentation},'',true);
-      next.prepared = prepared;
+      next.prepared = prepared; next.media = load.media; next.url = prepared.presentation.url;
       load.media.customData = {porticoQueue:next.nonce};
       return Object.assign({},request,{media:load.media});
     } catch (e) { return null; }
@@ -512,6 +522,8 @@
     var current = answer.body.session;
     if (!current || !current.presentation) throw new Error('playback_not_ready');
     var load = loadRequest(current,'',true);
+    if (current.presentation.url === next.url) load.media = next.media;
+    delete load.queueData; // CAF is already moving through its existing queue at this boundary.
     clearTimeout(queueBoundaryTimer);
     playback = track(current); queueNext = null; queueNonce = token(16); meta = null;
     reportSeq=0;reportFailures=0;recoveries=0;
@@ -693,6 +705,8 @@
     if (!window.cast || !window.cast.framework) { return; }
     var context = cast.framework.CastReceiverContext.getInstance();
     castContext=context; manager = context.getPlayerManager();
+    // CAF's documented resolver keeps grant-bearing URLs out of its public media/queue status.
+    manager.setMediaUrlResolver(mediaAddress);
     var types=cast.framework.messages.MessageType;
     // Media-channel commands from a sender that isn't the controller: pause and stop are allowed
     // (anyone in the room can do that with the remote); load, play and seek are not.

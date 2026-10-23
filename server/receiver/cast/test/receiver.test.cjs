@@ -1,8 +1,8 @@
 const test=require('node:test'), assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),crypto=require('node:crypto');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../receiver.js'),'utf8');
 async function harness(fixture={}){
- const calls=[],loads=[],interceptors={},events={},timers=new Map(),storage=new Map(),sent=[],ctxEvents={},senders=[],queueItems=[];let timer=0,at=0,state='PAUSED',listener;
- const manager={getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{loads.push(x);state=x.autoplay?'PLAYING':'PAUSED'},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>interceptors[k]=v,addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
+ const calls=[],loads=[],interceptors={},events={},timers=new Map(),storage=new Map(),sent=[],ctxEvents={},senders=[],queueItems=[];let timer=0,at=0,state='PAUSED',listener,urlResolver;
+ const manager={setMediaUrlResolver:fn=>urlResolver=fn,getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{loads.push(x);if(x.queueData){queueItems.length=0;for(const item of x.queueData.items)queueItems.push({...item,itemId:queueItems.length+1});}state=x.autoplay?'PLAYING':'PAUSED'},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>interceptors[k]=v,addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
  const castContext={getDeviceCapabilities:()=>fixture.caps||{},canDisplayType:(mime,codecs,width,height,fps)=>{assert(!mime.includes(';'));return !!fixture.supports?.(mime,codecs,width,height,fps)},getPlayerManager:()=>manager,addCustomMessageListener:(ns,fn)=>listener=fn,sendCustomMessage:(ns,id,body)=>sent.push({id,body}),addEventListener:(k,v)=>ctxEvents[k]=v,getSenders:()=>senders,start:()=>{}};
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
  const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_DISCONNECTED:'disconnect'},MessageType:{JSON:'json'}}}};
@@ -37,7 +37,7 @@ async function harness(fixture={}){
  }};
  context.window={cast,crypto:crypto.webcrypto,location:{origin:'https://cast.getportico.tv'},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}};
  vm.runInNewContext(source,context);await new Promise(setImmediate);
- return {receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,queueItems,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
+ return {resolved:request=>urlResolver(request),receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,queueItems,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
 }
 for(const [name,fixture,want]of[
  ['Chromecast 3',{supports:()=>false},['h264','vp8']],
@@ -47,7 +47,7 @@ const settle0=async()=>{for(let i=0;i<30;i++)await new Promise(setImmediate);};
 const fireAll=async(h,ms)=>{for(const [id,t] of [...h.timers])if(ms===undefined||t.ms===ms){h.fire(id);await settle0();}};
 test('a load starts a Playback v1 session and plays its presentation; a lost start is repeated exactly (SV-012)',async()=>{
  const h=await harness({ambiguous:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',37);
- assert.equal(h.loads.length,1);assert.equal(h.loads[0].currentTime,37);assert.equal(h.loads[0].media.contentUrl,'/v1/media/grant/master.m3u8');
+ assert.equal(h.loads.length,1);assert.equal(h.loads[0].currentTime,37);assert.equal(h.resolved(h.loads[0]),'/v1/media/grant/master.m3u8');
  assert.equal(h.loads[0].media.contentType,'application/x-mpegurl');assert.equal(h.loads[0].media.hlsSegmentFormat,'FMP4');assert.equal(h.loads[0].media.hlsVideoSegmentFormat,'FMP4');
  const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions'));assert.equal(starts.length,2);
  assert.deepEqual(starts[0].body,starts[1].body);assert.equal(starts[0].headers['Idempotency-Key'],starts[1].headers['Idempotency-Key']);
@@ -60,7 +60,7 @@ test('a direct file gets its container’s type; a preparing session is asked ag
  const started=h.receiver.startPlayback('movie');await settle0();
  const retry=[...h.timers].find(([,t])=>t.ms===500);assert(retry,'waits retryAfterMs');h.fire(retry[0]);await started;
  const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions'));assert.equal(starts.length,2);assert.equal(starts[0].headers['Idempotency-Key'],starts[1].headers['Idempotency-Key']);
- assert.equal(starts[0].body.startFrom,'resume');assert.equal(h.loads[0].media.contentType,'video/mp4');assert.equal(h.loads[0].media.contentUrl,'/v1/media/grant');
+ assert.equal(starts[0].body.startFrom,'resume');assert.equal(h.loads[0].media.contentType,'video/mp4');assert.equal(h.resolved(h.loads[0]),'/v1/media/grant');
 });
 test('the timeline reports state and renews through the device token; pause is the player’s own',async()=>{
  const h=await harness({expired:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
@@ -266,12 +266,12 @@ test('music formats and fMP4 transport declarations follow device probes',async(
 test('receiver queue preloads privately and only the CAF current-item boundary commits authority',async()=>{
  const h=await harness({queue:true});await h.message('phone',{type:'pair',code:'ABCD',origin:''});
  await h.message('phone',{type:'load',requestId:'load-1',itemId:'song-1',queue:{queueId:'q-1',entryId:'entry-1'},contentUrl:'https://evil.test/file'});
- assert.equal(h.queueItems.length,1);assert.equal(h.queueItems[0].preloadTime,10);
+ assert.equal(h.queueItems.length,2);assert.equal(h.queueItems[1].preloadTime,10);assert.equal(h.loads[0].queueData.startIndex,0);
  assert.deepEqual(h.calls.find(c=>c.url==='/v1/playback/sessions').body.queue,{queueId:'q-1',entryId:'entry-1'});
  assert(h.sent.some(s=>s.body.type==='loaded'&&s.body.requestId==='load-1'));
- const request={media:h.queueItems[0].media};
+ const request={media:h.queueItems[1].media};
  assert.equal(await h.interceptors.PRELOAD({...request,senderId:'stranger'}),null);
- const preloaded=await h.interceptors.PRELOAD(request);assert(preloaded);assert.equal(preloaded.media.contentUrl,'/v1/media/private-next');
+ const preloaded=await h.interceptors.PRELOAD(request);assert(preloaded);assert.equal(h.resolved(preloaded),'/v1/media/private-next');
  assert.equal(h.receiver.state().playbackId,'ps_1');assert(!h.calls.some(c=>c.url.endsWith(':commit-next')));
  assert.equal(h.calls.filter(c=>c.url==='/v1/playback/sessions').length,1,'preload creates no separate public session');
  const committed=await h.interceptors.LOAD(preloaded);assert(committed);assert.equal(h.receiver.state().playbackId,'ps_2');
@@ -281,13 +281,13 @@ test('receiver queue preloads privately and only the CAF current-item boundary c
 });
 test('unavailable private preparation leaves current authority and ordinary advance works',async()=>{
  const h=await harness({queue:true,noPrivateURL:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
- assert.equal(await h.interceptors.PRELOAD({media:h.queueItems[0].media}),null);assert.equal(h.receiver.state().playbackId,'ps_1');
+ assert.equal(await h.interceptors.PRELOAD({media:h.queueItems[1].media}),null);assert.equal(h.receiver.state().playbackId,'ps_1');
  h.events.MEDIA_FINISHED();await settle();assert.equal(h.receiver.state().playbackId,'ps_2');
  assert(h.calls.some(c=>c.url.endsWith(':advance')));assert(!h.calls.some(c=>c.url.endsWith(':commit-next')));
 });
 test('a stale next nonce and server-canceled preparation never adopt another session',async()=>{
  const h=await harness({queue:true,rejectCommit:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
- const preloaded=await h.interceptors.PRELOAD({media:h.queueItems[0].media});
+ const preloaded=await h.interceptors.PRELOAD({media:h.queueItems[1].media});
  assert.equal(await h.interceptors.LOAD(preloaded),null);assert.equal(h.receiver.state().playbackId,'ps_1');
  await h.interceptors.STOP({});assert.equal(await h.interceptors.LOAD(preloaded),null);
 });
@@ -310,4 +310,13 @@ test('standard CAF queue reads and mutations cannot bypass controller authority'
   assert.deepEqual(h.interceptors[kind]({senderId:'phone'}),{senderId:'phone'});
  }
  for(const kind of ['QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE'])assert.equal(h.interceptors[kind]({senderId:'phone'}),null);
+});
+
+test('CAF public media status contains opaque IDs and the private URL map is bounded',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');
+ for(let i=0;i<12;i++)await h.receiver.startPlayback('movie-'+i,0);
+ assert(!JSON.stringify(h.loads).includes('/v1/media/'));
+ assert.equal(h.resolved(h.loads[0]),'','old private address evicted');
+ assert.equal(h.resolved(h.loads.at(-1)),'/v1/media/grant/master.m3u8');
+ await h.interceptors.STOP({});assert.equal(h.resolved(h.loads.at(-1)),'');
 });
