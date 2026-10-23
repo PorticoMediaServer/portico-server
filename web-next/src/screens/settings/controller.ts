@@ -153,7 +153,7 @@ export class SettingsController {
       changed: value.default !== undefined && changedFromDefault(value.effective, value.default),
       displayValue: option ? defaultI18n.t(option.label) : typeof current === 'boolean' ? defaultI18n.t(current ? 'next.settings.on' : 'next.settings.off') : typeof current === 'object' ? JSON.stringify(current) : String(current),
       disabled: this.writing || !this.current(), saving: this.writing,
-      readOnly: row.id === 'device.appVersion' || row.id === 'device.name' && this.options.device?.getSnapshot().facts.name?.readOnly === true,
+      readOnly: settingsBinding(row.id)?.readOnly === true || row.id === 'device.appVersion' || row.id === 'device.name' && (!settingsBinding(row.id) || this.options.device?.getSnapshot().facts.name?.readOnly === true),
       error: this.rowErrors.has(row.id) ? defaultI18n.t('next.states.pageFailedBody') : undefined};
   };
   configurationMatches = (query: string) => this.configuration && this.options.role === 'owner' && this.options.mainProfile ? searchConfiguration(this.configuration, query).filter(field => configurationFieldEligible(field, this.eligible)).map(field => ({...field, label: settingsRowIndex.has(field.id) ? defaultI18n.t(settingsRowIndex.get(field.id)!.row.label) : field.key, path: this.configuration!.path})) : [];

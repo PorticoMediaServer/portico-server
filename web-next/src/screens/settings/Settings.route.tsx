@@ -1,4 +1,6 @@
 import {useEffect, useState} from 'react';
+import {defaultI18n} from '@i18n';
+import {Button} from '../../kit/controls';
 import {useRouterState} from '@tanstack/react-router';
 import {settingsBinding} from '@core/presentation/settings-bindings.ts';
 import {captureReportContext, type ReportContext} from '@core/report-context.ts';
@@ -62,10 +64,14 @@ export function SettingsEntry() {
         artwork: (id, kind, revision) => revision ? context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind}) + '?' + new URLSearchParams({v: revision}), kind === 'backdrop' ? 800 : 400, kind === 'poster' ? 2 / 3 : kind === 'backdrop' ? 16 / 9 : 1) : undefined,
         effects: {openHome, openSettings, reportError, openHistory: report => {if (current()) {historyContexts.set(context, report);openSettings('history');}}}});
     }
-    const settings = createSettingsBindings(controller, options, identity, {openHome,
-      special: () => null,
+    const source = createSettingsBindings(controller, options, identity, {openHome,
+      special: row => row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null,
       section: selected => selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : undefined,
     });
+    const settings: SettingsBindings = {...source,
+      eligible: (row, selected) => row.id === 'metadata.perLibrary' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected),
+      rowState: (row, selected) => row.id === 'metadata.perLibrary' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected),
+    };
     setFailure(false);setOwned({context, settings, dashboard});
     return () => {active = false;dashboard?.dispose();controller.dispose();};
   }, [context, retry, route.section]);
