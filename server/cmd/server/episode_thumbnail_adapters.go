@@ -5,8 +5,12 @@ import (
 	"database/sql"
 	"time"
 
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/remotesources"
+	"portico.local/server/internal/storage"
+	"portico.local/server/internal/subtitlevideo"
 	"portico.local/server/internal/workpolicy"
 )
 
@@ -51,3 +55,64 @@ func (a episodeAnalysisSchedule) ReadEpisodeAnalysisTx(ctx context.Context, tx *
 
 var _ remotesources.EpisodeStateReader = episodeMetadataState{}
 var _ remotesources.EpisodeAnalysisReader = episodeAnalysisSchedule{}
+
+type episodeSourceAdapter struct {
+	resolver remotesources.EpisodeAuthorityResolver
+}
+
+func episodeSourceTarget(target metadata.EpisodeThumbnailTarget) remotesources.EpisodeTarget {
+	return remotesources.EpisodeTarget{LibraryID: target.LibraryID, LibrarySourceID: target.LibrarySourceID, ObjectID: target.ObjectID, SourceRevision: target.SourceRevision, EpisodeID: target.EpisodeID}
+}
+
+func (a episodeSourceAdapter) EpisodeRangesSupportedTx(ctx context.Context, tx *sql.Tx, target metadata.EpisodeThumbnailTarget) (bool, error) {
+	return a.resolver.EpisodeRangesSupportedTx(ctx, tx, episodeSourceTarget(target))
+}
+
+func (a episodeSourceAdapter) ResolveEpisodeThumbnailTx(ctx context.Context, tx *sql.Tx, invocation metadata.EpisodeThumbnailInvocation) (metadata.EpisodeThumbnailSource, error) {
+	var purpose remotesources.EpisodePurpose
+	switch invocation.Purpose {
+	case metadata.EpisodeThumbnailAutomatic:
+		purpose = remotesources.EpisodeAutomatic
+	case metadata.EpisodeThumbnailExplicit:
+		purpose = remotesources.EpisodeExplicitOneEpisode
+	default:
+		return nil, remotesources.ErrEpisodeAuthority
+	}
+	life, cancel := context.WithCancel(ctx)
+	source, err := a.resolver.ResolveEpisodeReadSourceTx(life, tx, remotesources.EpisodeAuthorityRequest{
+		Target: episodeSourceTarget(invocation.Target), Purpose: purpose,
+		Operation: invocation.Operation, CostClass: invocation.CostClass,
+		JobID: invocation.JobID, Owner: invocation.Owner,
+	}, cancel)
+	if err != nil || source == nil {
+		cancel()
+		return nil, err // nil success is the resolver's one positive tier exclusion.
+	}
+	return &retainedEpisodeSource{EpisodeReadSource: source, cancel: cancel}, nil
+}
+
+type retainedEpisodeSource struct {
+	*remotesources.EpisodeReadSource
+	cancel context.CancelFunc
+}
+
+func (s *retainedEpisodeSource) Close() error {
+	s.cancel()
+	return s.EpisodeReadSource.Close()
+}
+
+func episodeThumbnailRuntime(meta *metadata.Service, sources *remotesources.Service, identities *identity.Service, local *storage.Client, inputs *subtitlevideo.Runtime) *metadata.EpisodeThumbnailRuntime {
+	resolver := remotesources.EpisodeAuthorityResolver{
+		Sources: sources, Identities: identities, LocalStorage: local,
+		Episodes: episodeMetadataState{service: meta}, Analysis: episodeAnalysisSchedule{},
+	}
+	return &metadata.EpisodeThumbnailRuntime{
+		Sources: episodeSourceAdapter{resolver: resolver},
+		Decoder: func(input mediaanalysis.Input) mediaanalysis.Decode { return inputs.AnalysisDecoder(input) },
+		// The genuine current-size producer must supply ArtworkContext. Leaving
+		// it absent keeps both automatic generation and the owner command closed.
+	}
+}
+
+var _ metadata.EpisodeThumbnailSources = episodeSourceAdapter{}
+var _ metadata.EpisodeThumbnailSource = (*retainedEpisodeSource)(nil)
