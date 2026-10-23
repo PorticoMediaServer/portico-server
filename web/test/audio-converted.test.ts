@@ -21,6 +21,21 @@ function server(budget?: number) {
 }
 const plan = {id: 'm1', url: '/v1/media/g/audio-converted', container: 'flac', codec: 'flac', sampleRate: rate, channels: 2, durationFrames: total, trim: {startFrames: 0, endFrames: 0}};
 
+test('an injected fetch callback never receives the ConvertedSource as its receiver', async () => {
+  const s = server();let calls = 0;
+  const fetcher = function(this: unknown, url: string, init: RequestInit): Promise<Response> {
+    assert.equal(this, undefined);calls++;
+    assert.equal(init.credentials, 'omit');assert.equal(init.cache, 'no-store');assert.equal(init.redirect, 'error');assert.ok(init.signal);
+    return s.fetch(url);
+  };
+  const source = new ConvertedSource(plan, 50_000, {locked: false, fetch: fetcher});
+  try {
+    const block = await source.read(10);
+    assert.ok(block);assert.ok(Math.abs(block.channels[0]![0]! - sig(50_000)) < 1e-4);
+    assert.equal(calls, 1);assert.deepEqual(s.requests, ['/v1/media/g/audio-converted?fromFrame=50000']);
+  } finally {source.close();}
+});
+
 async function drain(source: ConvertedSource) {
   let n = 0, worst = 0;
   for (;;) { const b = await source.read(4096); if (!b) break; for (let i = 0; i < b.frames; i++, n++) worst = Math.max(worst, Math.abs(b.channels[0]![i]! - sig(n))); }

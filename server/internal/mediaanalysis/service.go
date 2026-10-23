@@ -43,6 +43,7 @@ type Input interface {
 type Decode func(context.Context, string, decoder.AnalysisSpec, func(io.Reader) error) error
 type Options struct {
 	Sonic             *sonic.Runtime
+	OpenSonic         func() (*sonic.Runtime, error)
 	DB                *sql.DB
 	Directory, FFmpeg string
 	Open              func(context.Context, string, string) (Input, error)
@@ -61,6 +62,7 @@ type Service struct {
 	// Source IO and decoder execution never hold this mutex or a database writer.
 	publication     sync.Mutex
 	sonicProgressMu sync.Mutex
+	sonicMu         sync.RWMutex
 	sonicProgress   map[string][]sonicProgressSample
 	slot            chan struct{}
 	physical        *livechannels.PhysicalLocks

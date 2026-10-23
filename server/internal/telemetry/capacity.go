@@ -15,6 +15,10 @@ import (
 // stays a leaf package and the mapping from the registry is written once, in
 // the HTTP layer, where both sides are already in view.
 type TranscodeSettings struct {
+	ConversionMode          string
+	OutputFormat            string
+	DownloadMaxQuality      string
+	MaxMusicQuality         string
 	Enabled                 bool
 	HardwareBackend         string
 	HardwareDevice          string

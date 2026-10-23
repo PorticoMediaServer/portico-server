@@ -58,6 +58,9 @@ func (c *ConsoleSettingsChange) UnmarshalJSON(raw []byte) error {
 	for i := 0; i < fields.NumField(); i++ {
 		field := fields.Field(i)
 		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if name == "-" {
+			continue
+		}
 		known[name] = true
 		value, ok := values[name]
 		if !ok || field.Type.Kind() != reflect.Pointer && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
@@ -170,8 +173,10 @@ func registerConversionOwnerSettings(registry *apikit.Registry, d Dependencies) 
 		if err != nil {
 			return ConsoleReply[operations.SettingsDocument]{}, conversionSettingsError(err)
 		}
-		if err := d.applyLiveSettings(ctx); err != nil {
-			return ConsoleReply[operations.SettingsDocument]{}, conversionSettingsError(err)
+		if !d.configurationOwnsLiveSettings {
+			if err := d.applyLiveSettings(ctx); err != nil {
+				return ConsoleReply[operations.SettingsDocument]{}, conversionSettingsError(err)
+			}
 		}
 		if err := d.ConsoleCheck(ctx, auth); err != nil {
 			return ConsoleReply[operations.SettingsDocument]{}, conversionSettingsError(err)
