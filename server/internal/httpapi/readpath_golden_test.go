@@ -609,6 +609,7 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 			want.Response = goldenHomeCoverDecoration(t, f, actual, want.Response)
 		}
 		want.Response = goldenBrowseExtension(t, f, actual, want.Response)
+		want.Response = goldenListeningExtension(t, f, actual, want.Response)
 		if want.Status != actual.Status {
 			differences++
 			t.Errorf("%s: status %d, golden %d\n  body: %s", actual.Name, actual.Status, want.Status, truncate(actual.Response))
