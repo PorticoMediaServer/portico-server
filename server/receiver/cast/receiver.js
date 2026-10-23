@@ -71,11 +71,70 @@
   var ui = $('ui');
   var status = $('status');
   var errorTimer = null, noticeTimer = null;
+  var viewGeneration = 0, viewLoading = false, pictureReady = false, viewBuffering = false;
+  var currentArtwork = '', preparingSince = null, preparingTimer = null, observedRemoteKeys = false, activeTrackKey = null;
+
+  // The view owns drawing only. No credential, session, grant or control callback crosses this port.
+  function viewCall(method, args) {
+    var view = window.porticoCastView;
+    if (!view || typeof view[method] !== 'function') return false;
+    try { view[method].apply(view, args || []); return true; } catch (e) { return false; }
+  }
+  // The composed receiver loads its generated canonical text before this engine.
+  // The existing page keeps its old copy until that checked view/asset composition lands.
+  function copy(key, legacy, params) {
+    var catalogue = window.porticoCastText;
+    return catalogue && typeof catalogue.t === 'function' ? catalogue.t('cast.receiver.' + key, params) : legacy;
+  }
+  function remoteKeysAvailable() {
+    try { if (castContext && castContext.getDeviceCapabilities().dpad_input_supported === true) return true; } catch (e) { /* unknown */ }
+    return observedRemoteKeys;
+  }
+  function stopPreparing() { clearTimeout(preparingTimer); preparingTimer = null; preparingSince = null; }
+  function preparing() {
+    if (preparingSince !== null) return;
+    preparingSince = Date.now();
+    var generation = viewGeneration;
+    function tick() {
+      if (generation !== viewGeneration || preparingSince === null) return;
+      viewCall('preparing', [Math.max(0, Date.now() - preparingSince)]);
+      preparingTimer = setTimeout(tick, 1000);
+    }
+    tick();
+  }
+  function resetViewPlayback() {
+    stopPreparing(); viewGeneration++; viewLoading = false; pictureReady = false; viewBuffering = false;
+    currentArtwork = ''; activeTrackKey = null;
+  }
+  function clockFacts() {
+    var facts = {};
+    if (!playback || !manager) return facts;
+    try { var at = manager.getCurrentTimeSec(); if (typeof at === 'number' && Number.isFinite(at) && at >= 0) facts.positionSeconds = at; } catch (e) { /* unknown */ }
+    try { var length = typeof manager.getDurationSec === 'function' ? manager.getDurationSec() : undefined; if (typeof length === 'number' && Number.isFinite(length) && length >= 0) facts.durationSeconds = length; } catch (e) { /* unknown */ }
+    return facts;
+  }
+  function playingView(revealOverlay) {
+    if (!pictureReady || !playback || !manager) return;
+    var state = viewBuffering ? 'BUFFERING' : manager.getPlayerState();
+    if (['PLAYING','PAUSED','BUFFERING'].indexOf(state) < 0) return;
+    // Observe selected tracks rather than treating a requested track change as applied.
+    try {
+      var audio = manager.getAudioTracksManager(), textTracks = manager.getTextTracksManager();
+      var key = JSON.stringify([typeof audio.getActiveId === 'function' ? audio.getActiveId() : null, typeof textTracks.getActiveIds === 'function' ? textTracks.getActiveIds() : null]);
+      if (activeTrackKey !== null && key !== activeTrackKey) revealOverlay = true;
+      activeTrackKey = key;
+    } catch (e) { /* no track observation */ }
+    var snapshot = Object.assign({meta: meta ? Object.assign({},meta) : null, state: state.toLowerCase(), remoteKeysAvailable: remoteKeysAvailable()}, clockFacts());
+    if (currentArtwork) snapshot.artworkUrl = currentArtwork;
+    if (revealOverlay === true) snapshot.revealOverlay = true;
+    viewCall('playing', [snapshot]);
+  }
 
   function show(state) { if (ui && ui.setAttribute) ui.setAttribute('data-state', state); }
   function text(id, value) { var el = $(id); if (el) el.textContent = value || ''; }
   function visible(id, on) { var el = $(id); if (el) el.hidden = !on; }
   function say(message, tone) {
+    if (viewCall('pairingStatus', [message || '', tone])) return;
     if (!status) return;
     status.textContent = message || '';
     if (tone) { status.setAttribute('data-tone', tone); } else { status.removeAttribute('data-tone'); }
@@ -83,26 +142,36 @@
   /** A short notice over whatever is on screen ("Reconnecting…"). */
   function notice(message, ms) {
     clearTimeout(noticeTimer);
+    if (viewCall('notice', [message || ''])) {
+      if (message && ms) noticeTimer = setTimeout(function () { viewCall('notice', ['']); }, ms);
+      return;
+    }
     text('notice', message); visible('notice', !!message);
     if (message && ms) noticeTimer = setTimeout(function () { visible('notice', false); }, ms);
   }
-  function showIdle() { clearTimeout(errorTimer); show('idle'); }
+  function showIdle() { clearTimeout(errorTimer); resetViewPlayback(); if (!viewCall('idle')) show('idle'); }
   function showLoading(meta) {
     clearTimeout(errorTimer);
-    text('loading-eyebrow', 'Getting ready');
+    resetViewPlayback(); viewLoading = true;
+    if (window.porticoCastView && typeof window.porticoCastView.loading === 'function' && !(meta && meta.title)) { viewLoading = false; return; }
+    if (viewCall('loading', [meta ? Object.assign({},meta) : null])) return;
+    text('loading-eyebrow', copy('gettingReady', 'Getting ready'));
     text('loading-title', meta && meta.title || '');
     text('loading-subtitle', meta && (meta.subtitle || meta.seriesTitle) || '');
     visible('loading-art', false);
     show('loading');
   }
   function showArtwork(url, square) {
+    if (!url) return;
+    currentArtwork = url;
+    if (viewCall('artwork', [url, !!square])) return;
     var art = $('loading-art');
     if (!art || !url) return;
     art.src = url;
     if (art.classList) art.classList.toggle('square', !!square);
     art.hidden = false;
   }
-  function showPlaying() { clearTimeout(errorTimer); show('playing'); }
+  function showPlaying() { clearTimeout(errorTimer); if (window.porticoCastView && typeof window.porticoCastView.playing === 'function') { playingView(); return; } show('playing'); }
   var errorCopy = {
     unavailable: ['This title isn’t available right now', 'It may have been removed, or your access may have changed.'],
     busy: ['Your server is busy right now', 'Try again in a moment from your phone or computer.'],
@@ -120,9 +189,13 @@
   }
   /** A visible error card: the TV always says what went wrong (CAST-01). Never shows raw codes. */
   function showError(code) {
-    var copy = errorCopy[errorKind(code)];
-    text('error-title', copy[0]); text('error-body', copy[1]);
-    show('error');
+    stopPreparing(); viewGeneration++; pictureReady = false; viewLoading = false;
+    var message = errorCopy[errorKind(code)];
+    if (!viewCall('error', [errorKind(code)])) {
+      text('error-title', copy('error.' + errorKind(code) + '.title', message[0]));
+      text('error-body', copy('error.' + errorKind(code) + '.body', message[1]));
+      show('error');
+    }
     clearTimeout(errorTimer);
     errorTimer = setTimeout(function () { if (!playback) showIdle(); }, ERROR_VISIBLE_MS);
   }
@@ -337,19 +410,20 @@
   var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
   var castDevice = /CrKey|Android|Google ?TV|Fuchsia|AFT/i.test(ua);
   var browserPair = $('browser-pair');
+  viewCall('browserPair', [!castDevice]);
   if (!castDevice && browserPair) {
     browserPair.hidden = false;
     browserPair.addEventListener('submit', function (event) {
       if (event && event.preventDefault) event.preventDefault();
       var input = $('code-input'), button = $('pair');
       var code = ((input && input.value) || '').trim().toUpperCase();
-      if (code.length < 4) { say('Enter the code shown on your phone.', 'error'); return; }
+      if (code.length < 4) { say(copy('pair.enterCode', 'Enter the code shown on your phone.'), 'error'); return; }
       if (button) button.disabled = true;
-      say('Connecting…');
+      say(copy('pair.connecting', 'Connecting…'));
       serial(function(){return redeem(code);}).then(function () {
         if (button) button.disabled = false;
         if (input) input.value = '';
-        say('Connected. Choose a title on your phone or computer.');
+        say(copy('pair.connected', 'Connected. Choose a title on your phone or computer.'));
       }).catch(function (error) {
         if (button) button.disabled = false;
         say(pairingMessage(error), 'error');
@@ -359,13 +433,13 @@
 
   function pairingMessage(error) {
     switch (error && error.code) {
-      case 'cast_code_expired': return 'That code has expired. Try again from your phone or computer.';
-      case 'cast_code_consumed': return 'That code has already been used. Try again from your phone or computer.';
-      case 'cast_code_revoked': return 'That code was canceled.';
-      case 'cast_code_not_found': return 'That code isn’t valid.';
-      case 'rate_limited': return 'Too many attempts. Wait a moment, then try again.';
-      case 'tv_busy': return 'This TV is playing something for someone else. Ask them to stop, then try again.';
-      default: return 'This TV couldn’t connect. Try again.';
+      case 'cast_code_expired': return copy('pair.expired', 'That code has expired. Try again from your phone or computer.');
+      case 'cast_code_consumed': return copy('pair.consumed', 'That code has already been used. Try again from your phone or computer.');
+      case 'cast_code_revoked': return copy('pair.canceled', 'That code was canceled.');
+      case 'cast_code_not_found': return copy('pair.invalid', 'That code isn’t valid.');
+      case 'rate_limited': return copy('pair.rateLimited', 'Too many attempts. Wait a moment, then try again.');
+      case 'tv_busy': return copy('pair.busy', 'This TV is playing something for someone else. Ask them to stop, then try again.');
+      default: return copy('pair.failed', 'This TV couldn’t connect. Try again.');
     }
   }
 
@@ -399,7 +473,9 @@
     var images = image ? [{url: image}] : [];
     if (m.kind === 'episode') return {metadataType: 2, title: m.title, seriesTitle: m.seriesTitle || m.subtitle, season: m.season, episode: m.episode, images: images};
     if (m.kind === 'movie') return {metadataType: 1, title: m.title, subtitle: m.subtitle, images: images};
-    if (m.kind === 'song' || m.kind === 'album') return {metadataType: 3, title: m.title, artist: m.subtitle, images: images};
+    // The old subtitle may join artist and album text; it is not an artist fact.
+    // Genuine separate artist/album fields require the checked sender contract.
+    if (m.kind === 'song' || m.kind === 'album') return {metadataType: 3, title: m.title, images: images};
     return {metadataType: 0, title: m.title, subtitle: m.subtitle, images: images};
   }
 
@@ -471,7 +547,8 @@
     playback = null;
     meta = identity || null;
     showLoading(meta);
-    var art = meta && meta.artworkPath ? artworkUrl(meta.artworkPath).then(function (url) { if (url) showArtwork(url, meta && (meta.kind === 'song' || meta.kind === 'album')); return url; }) : Promise.resolve('');
+    var viewLoad = viewGeneration;
+    var art = meta && meta.artworkPath ? artworkUrl(meta.artworkPath).then(function (url) { if (url && viewLoad === viewGeneration) showArtwork(url, meta && (meta.kind === 'song' || meta.kind === 'album')); return url; }) : Promise.resolve('');
     await prepareProfile();
     var body = {itemId: itemId, state: 'playing'};
     if (Number.isFinite(startSeconds)) body.startPositionMs = Math.round(Math.max(0, startSeconds) * 1000); else body.startFrom = 'resume';
@@ -486,13 +563,17 @@
     for (;;) {
       answer = await api('/v1/playback/sessions', {body: body, headers: {'Idempotency-Key': key}});
       if (answer.status !== 202) break;
+      preparing();
       var delay = Math.min(10000, Math.max(250, Number(answer.body.retryAfterMs) || 1000));
       if (Date.now() + delay > deadline) throw new Error('preparation_timeout');
       await wait(delay);
     }
+    stopPreparing();
     var started = answer.body;
     if (!started || !started.presentation) throw new Error('playback_not_ready');
-    var image = await Promise.race([art, wait(1500).then(function () { return ''; })]);
+    var artTimer, image;
+    try { image = await Promise.race([art, new Promise(function(resolve){artTimer=setTimeout(function(){resolve('');},1500);})]); }
+    finally { clearTimeout(artTimer); }
     var load;
     try { load = loadRequest(started, image, true); }
     catch (e) { await api(sessionPath(started.id), {method:'DELETE'}).catch(function(){}); throw e; }
@@ -543,6 +624,7 @@
     delete load.queueData; // CAF is already moving through its existing queue at this boundary.
     clearTimeout(queueBoundaryTimer);
     playback = track(current); queueNext = null; queueNonce = token(16); meta = null;
+    resetViewPlayback();
     reportSeq=0;reportFailures=0;recoveries=0;
     scheduleReport(0); broadcast();
     return Object.assign({},request,load);
@@ -556,6 +638,7 @@
     if (playback !== owner || !answer.body.session) return false;
     var current=answer.body.session, load=loadRequest(current,'',true);
     playback=track(current);queueNext=null;queueNonce=token(16);meta=null;reportSeq=0;
+    resetViewPlayback();
     await manager.load(load);showPlaying();scheduleReport(0);await enqueueNext();broadcast();return true;
   }
 
@@ -575,7 +658,7 @@
       // The server no longer has this session (stopped elsewhere, moved, ended by an administrator),
       // or no longer accepts this TV's pairing: with no sender connected, nothing else would stop it.
       if (e.status === 404 || e.status === 410 || e.code === 'session_ended' || e.pairingEnded) { if (playback && playback.id === id) { playback = null; meta = null; if (manager) manager.stop(); showIdle(); broadcast(); } return; }
-      reportFailures++; notice('Reconnecting…');
+      reportFailures++; // b4: transient engine events are silent.
       throw e;
     }
   }
@@ -620,7 +703,7 @@
   }
   function recover(code) {
     if(recovering||!playback||recoveries>=3)return;
-    recovering=true;recoveries++;broadcast();notice('Reconnecting…');
+    recovering=true;recoveries++;broadcast();
     serial(async function(){var item=playback.itemId,at=position(),wasPaused=paused(),identity=meta;
       // The server remembers that this way of delivering the file failed here and re-plans the
       // same session another way, from where the picture stopped.
@@ -642,13 +725,21 @@
   function requesterName(message, senderId) {
     var name = cleanText(message && message.displayName, 64);
     if (name) return name;
-    try { var sender = castContext && castContext.getSender && castContext.getSender(senderId); if (sender && sender.userAgent && /iPhone|iPad/.test(sender.userAgent)) return 'An iPhone or iPad'; } catch (e) { /* ignore */ }
-    return 'Someone';
+    return copy('someone', 'Someone');
   }
-  function hideTakeover() { visible('takeover', false); }
+  function hideTakeover() { if (!viewCall('takeover', [null])) visible('takeover', false); }
+  function takeoverView(controllerHere, remaining) {
+    return viewCall('takeover', [{requester: pendingPair.requester, controllerPresent: controllerHere, timeoutMs: remaining, remoteKeysAvailable: remoteKeysAvailable()}]);
+  }
   function askTakeover(requester, controllerHere) {
-    text('takeover-title', requester + ' wants to play on this TV');
-    text('takeover-body', controllerHere ? 'Waiting for the person watching now to allow it.' : 'Switching in a few seconds.');
+    var timeoutMs = controllerHere ? TAKEOVER_ASK_MS : TAKEOVER_ABSENT_MS;
+    if (pendingPair) {
+      pendingPair.viewDeadline = Date.now() + timeoutMs;
+      pendingPair.viewControllerPresent = controllerHere;
+      if (takeoverView(controllerHere, timeoutMs)) return;
+    }
+    text('takeover-title', copy('takeover.title', requester + ' wants to play on this TV', {requester:requester}));
+    text('takeover-body', controllerHere ? copy('takeover.present', 'Waiting for the person watching now to allow it.') : copy('takeover.absent', 'Switching in a few seconds.'));
     visible('takeover', true);
   }
   function discardPair(p) {
@@ -677,7 +768,7 @@
   /** A pair request: redeem first (keeping the current pairing), then decide whether to switch now or ask. */
   function handlePair(senderId, message) {
     var named = serverOrigin(message.origin);
-    if (named === null) { send(senderId, {type: 'pair-failed', code: 'origin_refused', message: 'This server can only be reached over HTTPS.'}); return; }
+    if (named === null) { send(senderId, {type: 'pair-failed', code: 'origin_refused', message: pairingMessage({code:'origin_refused'})}); return; }
     var requester = requesterName(message, senderId);
     var code = String(message.code || '').trim().toUpperCase();
     redeemAt(named, code).then(function (result) {
@@ -701,6 +792,11 @@
   }
   // The TV remote (where a Google TV delivers keys to the page): Select allows, Back declines.
   if (window.addEventListener) window.addEventListener('keydown', function (event) {
+    if (['Enter',' ','Escape','Backspace','GoBack','BrowserBack','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].indexOf(event.key) >= 0 && !observedRemoteKeys) {
+      observedRemoteKeys = true;
+      if (pendingPair) takeoverView(pendingPair.viewControllerPresent, Math.max(0, pendingPair.viewDeadline - Date.now()));
+      playingView();
+    }
     if (!pendingPair) return;
     if (event.key === 'Enter' || event.key === ' ') allowPending();
     else if (event.key === 'Escape' || event.key === 'Backspace' || event.key === 'GoBack' || event.key === 'BrowserBack') denyPending('tv_busy');
@@ -713,19 +809,8 @@
       textTracks: manager ? manager.getTextTracksManager().getTracks().map(function(t){return {id:t.trackId,language:t.language||'',name:t.name||''};}) : [],
       paused: paused(), state: recovering?'recovering':playback?(paused()?'paused':'playing'):'idle'
     };
-    // A fallback zero used for local bookkeeping is not a receiver clock fact.
-    // Omit unknown readings so the sender cannot offer continuation at an invented position.
-    if (playback && manager) {
-      try {
-        var at = manager.getCurrentTimeSec();
-        if (typeof at === 'number' && Number.isFinite(at) && at >= 0) status.positionSeconds = at;
-      } catch (e) { /* The SDK has not supplied a clock yet. */ }
-      try {
-        var length = typeof manager.getDurationSec === 'function' ? manager.getDurationSec() : undefined;
-        if (typeof length === 'number' && Number.isFinite(length) && length >= 0) status.durationSeconds = length;
-      } catch (e) { /* The SDK has not supplied a duration yet. */ }
-    }
-    return status;
+    // A bookkeeping fallback zero is not a receiver clock fact.
+    return Object.assign(status, clockFacts());
   }
 
   // --- Cast framework wiring ------------------------------------------------
@@ -761,7 +846,7 @@
     manager.setMessageInterceptor(types.SEEK,function(request){
       if (fromOther(request) || !playback || !Number.isFinite(request.currentTime)) return null;
       if (!playback.serverSeek) return request;
-      seekTo(request.currentTime).catch(function(){notice('That seek couldn’t be made.', 5000);});
+      seekTo(request.currentTime).catch(function(){notice(copy('notice.seekFailed', 'That seek couldn’t be made.'), 5000);});
       return null;
     });
     manager.setMessageInterceptor(types.STOP,function(request){return serial(stopPlayback).then(function(){return request;}).catch(function(){return null;});});
@@ -801,10 +886,10 @@
           break;
         case 'play': if (playback) manager.play(); break;
         case 'pause': if (playback) manager.pause(); break;
-        case 'seek': if(Number.isFinite(message.positionSeconds)) seekTo(message.positionSeconds).catch(function(){notice('That seek couldn’t be made.', 5000);}); break;
+        case 'seek': if(Number.isFinite(message.positionSeconds)) seekTo(message.positionSeconds).catch(function(){notice(copy('notice.seekFailed', 'That seek couldn’t be made.'), 5000);}); break;
         case 'audio': if(Number.isSafeInteger(message.trackId)) manager.getAudioTracksManager().setActiveById(message.trackId); break;
         case 'subtitles': if(Array.isArray(message.trackIds)&&message.trackIds.length<=1&&message.trackIds.every(Number.isSafeInteger)) manager.getTextTracksManager().setActiveByIds(message.trackIds); break;
-        case 'stop': serial(stopPlayback).catch(function(){notice('Stop couldn’t be confirmed.', 5000);}); break;
+        case 'stop': serial(stopPlayback).catch(function(){notice(copy('notice.stopFailed', 'Stop couldn’t be confirmed.'), 5000);}); break;
         case 'status': break;
         default: return;
       }
@@ -814,7 +899,7 @@
     broadcast = function () { if (controllerSender && controllerPresent) send(controllerSender, statusBody()); };
     var events=cast.framework.events.EventType;
     manager.addEventListener(events.ERROR,function(e){var code=Number(e.detailedErrorCode);if(code>=300&&code<500)recover('decode_error');});
-    manager.addEventListener(events.BUFFERING,function(e){clearTimeout(bufferingTimer);if(e.isBuffering)bufferingTimer=setTimeout(function(){recover('stalled_without_data');},20000);});
+    manager.addEventListener(events.BUFFERING,function(e){viewBuffering=e.isBuffering===true;playingView();clearTimeout(bufferingTimer);if(e.isBuffering)bufferingTimer=setTimeout(function(){recover('stalled_without_data');},20000);});
     // The title is over whether or not its last report gets through: the TV must not stay on a
     // finished title, still reporting, with nobody connected to stop it.
     manager.addEventListener(events.MEDIA_FINISHED,function(event){if(event&&event.endedReason&&event.endedReason!=='FINISHED')return;serial(async function(){
@@ -829,8 +914,15 @@
       try{await report('ended');}finally{notice('');await stopPlayback(true);}
     }).catch(function(){serial(function(){return stopPlayback(true);}).catch(function(){});});});
     if(events.PLAYER_LOAD_COMPLETE)manager.addEventListener(events.PLAYER_LOAD_COMPLETE,function(){serial(enqueueNext).catch(function(){});});
+    if(events.PLAYER_LOADING)manager.addEventListener(events.PLAYER_LOADING,function(){
+      pictureReady=false;viewBuffering=false;activeTrackKey=null;
+      if(!viewLoading){if(meta&&meta.title)showLoading(meta);else viewCall('splash');}
+    });
+    // LOADED_DATA is the SDK's first-frame-loaded event; PLAYING confirms playback start.
+    [events.LOADED_DATA,events.PLAYING].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){pictureReady=true;viewLoading=false;stopPreparing();playingView(name===events.PLAYING);scheduleReport(0);broadcast();});});
     // A state change or a completed seek is reported at once.
-    [events.PAUSE,events.PLAYING,events.SEEKED].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){scheduleReport(0);broadcast();});});
+    [events.PAUSE,events.SEEKED].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){playingView(true);scheduleReport(0);broadcast();});});
+    [events.TIME_UPDATE,events.DURATION_CHANGE,events.MEDIA_STATUS].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){playingView();});});
     context.addEventListener(cast.framework.system.EventType.SENDER_DISCONNECTED,function(e){
       if (e && e.senderId && e.senderId === controllerSender) {
         controllerPresent = false;
@@ -842,7 +934,10 @@
       // leaves Wi-Fi drops its connection; only Stop, the end of the title or the server ends playback.
       if(context.getSenders().length===0){controllerPresent=false;}
     });
-    setInterval(function(){if(playback)broadcast();},2000);
+    var statusInterval=setInterval(function(){if(playback){broadcast();playingView();}},2000);
+    if(cast.framework.system.EventType.SHUTDOWN)context.addEventListener(cast.framework.system.EventType.SHUTDOWN,function(){
+      resetViewPlayback();clearInterval(statusInterval);clearTimeout(reportTimer);clearTimeout(bufferingTimer);clearTimeout(queueBoundaryTimer);clearTimeout(errorTimer);clearTimeout(noticeTimer);if(pendingPair)clearTimeout(pendingPair.timer);
+    });
     // The standard idle timeout closes the app when nothing is playing and nobody is connected (CAST-01 §5).
     context.start({ customNamespaces: (function () { var n = {}; n[NAMESPACE] = cast.framework.system.MessageType.JSON; return n; })() });
   }

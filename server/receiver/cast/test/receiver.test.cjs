@@ -5,7 +5,7 @@ async function harness(fixture={}){
  const manager={setMediaUrlResolver:fn=>urlResolver=fn,getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{if(fixture.loadFails)throw new Error('decode_error');loads.push(x);if(x.queueData){queueItems.length=0;for(const item of x.queueData.items)queueItems.push({...item,itemId:queueItems.length+1});}state=x.autoplay?'PLAYING':'PAUSED'},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>interceptors[k]=v,addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
  const castContext={getDeviceCapabilities:()=>fixture.caps||{},getDeviceInformation:()=>fixture.info||{},canDisplayType:(mime,codecs,width,height,fps)=>{assert(!mime.includes(';'));return !!fixture.supports?.(mime,codecs,width,height,fps)},getPlayerManager:()=>manager,addCustomMessageListener:(ns,fn)=>listener=fn,sendCustomMessage:(ns,id,body)=>sent.push({id,body}),addEventListener:(k,v)=>ctxEvents[k]=v,getSenders:()=>senders,start:()=>{}};
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
- const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_DISCONNECTED:'disconnect'},MessageType:{JSON:'json'}}}};
+ const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PLAYER_LOADING','LOADED_DATA','TIME_UPDATE','DURATION_CHANGE','MEDIA_STATUS','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_DISCONNECTED:'disconnect',SHUTDOWN:'shutdown'},MessageType:{JSON:'json'}}}};
  let failed=false,expired=false,preparing=!!fixture.preparing,generation=1;
  const presentation=(start,mediaUrl)=>{
   const url=mediaUrl===undefined?(fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8'):mediaUrl;
@@ -38,7 +38,8 @@ async function harness(fixture={}){
   if(path.startsWith('/v1/cast/devices/')&&options.method==='DELETE')return reply({},204);
   throw new Error('unexpected path '+path);
  }};
- context.window={cast,crypto:crypto.webcrypto,location:{origin:'https://cast.getportico.tv'},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}};
+ if(fixture.clock)context.Date=class extends Date{static now(){return fixture.clock.now}};
+ context.window={cast,porticoCastView:fixture.view,porticoCastText:fixture.text,addEventListener:(name,fn)=>{ctxEvents['window:'+name]=fn},crypto:crypto.webcrypto,location:{origin:'https://cast.getportico.tv'},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}};
  vm.runInNewContext(source,context);await new Promise(setImmediate);
  return {resolved:request=>urlResolver(request),receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,queueItems,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
 }
@@ -401,4 +402,68 @@ test('receiver status publishes only actual finite SDK clock readings, including
  assert.equal(unknownDuration.positionSeconds,61.25);assert(!Object.hasOwn(unknownDuration,'durationSeconds'));
  h.manager.getCurrentTimeSec=()=>{throw new Error('not ready')};h.manager.getDurationSec=()=>{throw new Error('not ready')};await h.message('phone',{type:'status'});
  const notReady=h.sent.filter(m=>m.body.type==='status').at(-1).body;assert(!Object.hasOwn(notReady,'positionSeconds'));assert(!Object.hasOwn(notReady,'durationSeconds'));
+});
+
+function viewFixture(){const calls=[];return {calls,view:Object.fromEntries(['idle','loading','artwork','preparing','playing','takeover','notice','error','pairingStatus','browserPair','splash'].map(name=>[name,(...args)=>calls.push({name,args:j(args)})]))};}
+test('view playback starts at an actual first-frame/play event and clock ticks do not reveal overlays',async()=>{
+ const v=viewFixture(),h=await harness({view:v.view,caps:{dpad_input_supported:true}});
+ await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0,{title:'Pilot',seriesTitle:'The Show',season:1,episode:2,kind:'episode'});
+ assert(v.calls.some(c=>c.name==='loading'&&c.args[0].title==='Pilot'));assert(!v.calls.some(c=>c.name==='playing'));
+ h.manager.getDurationSec=()=>180;h.events.LOADED_DATA();
+ let playing=v.calls.filter(c=>c.name==='playing').at(-1).args[0];assert.equal(playing.positionSeconds,0);assert.equal(playing.durationSeconds,180);assert.equal(playing.remoteKeysAvailable,true);assert.equal(playing.revealOverlay,undefined);
+ h.manager.seek(42);h.events.TIME_UPDATE();playing=v.calls.filter(c=>c.name==='playing').at(-1).args[0];assert.equal(playing.positionSeconds,42);assert.equal(playing.revealOverlay,undefined);
+ h.events.PLAYING();assert.equal(v.calls.filter(c=>c.name==='playing').at(-1).args[0].revealOverlay,true);
+ h.events.TIME_UPDATE();assert.equal(v.calls.filter(c=>c.name==='playing').at(-1).args[0].revealOverlay,undefined);
+ h.manager.pause();h.events.PAUSE();playing=v.calls.filter(c=>c.name==='playing').at(-1).args[0];assert.equal(playing.state,'paused');assert.equal(playing.revealOverlay,true);
+ h.events.BUFFERING({isBuffering:true});assert.equal(v.calls.filter(c=>c.name==='playing').at(-1).args[0].state,'buffering');
+ assert(!JSON.stringify(v.calls).includes('bearer-'));assert(!JSON.stringify(v.calls).includes('/v1/media/'));
+});
+test('a title-less CAF load gets the fallback splash only from actual PLAYER_LOADING',async()=>{
+ const v=viewFixture(),h=await harness({view:v.view});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
+ assert(!v.calls.some(c=>c.name==='splash'||c.name==='playing'||c.name==='loading'));
+ h.events.PLAYER_LOADING();assert.equal(v.calls.filter(c=>c.name==='splash').length,1);
+ const titled=viewFixture(),known=await harness({view:titled.view});await known.receiver.redeem('ABCD');await known.receiver.startPlayback('movie',0,{title:'Pilot'});
+ known.events.PLAYER_LOADING();assert(!titled.calls.some(c=>c.name==='splash'));
+ const music=await harness();await music.receiver.redeem('ABCD');await music.receiver.startPlayback('song',0,{title:'Song',kind:'song',subtitle:'Artist · Album'});
+ assert.equal(music.loads[0].media.metadata.artist,undefined,'joined display text is not a genuine artist field');
+});
+test('view preparation elapsed time comes only from a real202 response and stops at readiness/shutdown',async()=>{
+ const v=viewFixture(),clock={now:1000},h=await harness({view:v.view,clock,preparing:true});await h.receiver.redeem('ABCD');
+ const started=h.receiver.startPlayback('movie',0,{title:'Pilot'});await settle();
+ assert.equal(v.calls.filter(c=>c.name==='preparing').at(-1).args[0],0);
+ clock.now=9500;const tick=[...h.timers].find(([,t])=>t.ms===1000);h.fire(tick[0]);assert.equal(v.calls.filter(c=>c.name==='preparing').at(-1).args[0],8500);
+ const retry=[...h.timers].find(([,t])=>t.ms===500);h.fire(retry[0]);await started;
+ assert(![...h.timers.values()].some(t=>t.ms===1000));
+ h.ctxEvents.shutdown();assert.equal(h.timers.size,0);
+ const regular=viewFixture(),plain=await harness({view:regular.view});await plain.receiver.redeem('ABCD');await plain.receiver.startPlayback('movie',0,{title:'Pilot'});
+ assert(!regular.calls.some(c=>c.name==='preparing'));
+});
+test('takeover view receives actual authority windows and remote observations cannot reset their deadline',async()=>{
+ const v=viewFixture(),clock={now:1000},h=await harness({view:v.view,clock});h.senders.push('phone','guest');
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});await h.message('guest',{type:'pair',code:'OTHER1',origin:'',displayName:'Sam’s phone'});
+ let prompt=v.calls.filter(c=>c.name==='takeover'&&c.args[0]).at(-1).args[0];assert.equal(prompt.timeoutMs,30000);assert.equal(prompt.controllerPresent,true);assert.equal(prompt.remoteKeysAvailable,false);
+ clock.now=6000;h.ctxEvents['window:keydown']({key:'ArrowUp'});
+ prompt=v.calls.filter(c=>c.name==='takeover'&&c.args[0]).at(-1).args[0];assert.equal(prompt.timeoutMs,25000);assert.equal(prompt.remoteKeysAvailable,true);
+ await h.message('phone',{type:'takeover',allow:false});assert.equal(v.calls.filter(c=>c.name==='takeover').at(-1).args[0],null);
+});
+test('view observes active track changes, omits unknown clocks, and suppresses transient engine notices',async()=>{
+ const v=viewFixture(),h=await harness({view:v.view,timelineDown:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0,{title:'Pilot'});
+ let active=1;h.manager.getAudioTracksManager=()=>({getTracks:()=>[],getActiveId:()=>active});h.events.PLAYING();
+ active=2;h.events.TIME_UPDATE();assert.equal(v.calls.filter(c=>c.name==='playing').at(-1).args[0].revealOverlay,true);
+ h.events.TIME_UPDATE();assert.equal(v.calls.filter(c=>c.name==='playing').at(-1).args[0].revealOverlay,undefined);
+ h.manager.getCurrentTimeSec=()=>undefined;h.manager.getDurationSec=()=>NaN;h.events.TIME_UPDATE();
+ const p=v.calls.filter(c=>c.name==='playing').at(-1).args[0];assert(!Object.hasOwn(p,'positionSeconds'));assert(!Object.hasOwn(p,'durationSeconds'));
+ await fireAll(h,0);assert(v.calls.filter(c=>c.name==='notice').every(c=>c.args[0]===''));
+ const failed=viewFixture(),bad=await harness({view:failed.view,loadFails:true});await bad.receiver.redeem('ABCD');await assert.rejects(()=>bad.receiver.startPlayback('movie',0),/decode_error/);
+ assert.equal(failed.calls.filter(c=>c.name==='error').at(-1).args[0],'decode');
+});
+test('engine status copy uses the generated catalogue when loaded and never guesses a requester model',async()=>{
+ const h=await harness({text:{t:(key)=>'translated:'+key}});
+ await h.message('phone',{type:'pair',code:'ABCD',origin:'http://unsafe.example'});
+ assert.equal(h.sent.at(-1).body.message,'translated:cast.receiver.pair.failed');
+ await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});
+ await h.message('guest',{type:'pair',code:'OTHER1',origin:''});
+ assert.equal(h.nodes['takeover-title'].textContent,'translated:cast.receiver.takeover.title');
+ await h.message('phone',{type:'takeover',allow:false});
+ assert.equal(h.sent.filter(m=>m.id==='guest').at(-1).body.message,'translated:cast.receiver.pair.busy');
 });
