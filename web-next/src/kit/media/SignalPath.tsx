@@ -1,3 +1,4 @@
+import {useOverlayPortalTarget} from '../overlays/portal-target';
 import {useRef, useState, type RefObject} from 'react';
 import {Dialog, Popover} from 'radix-ui';
 import {formatSignalText} from '@core/music-signal.ts';
@@ -22,6 +23,7 @@ function SignalSteps({model, translate, locale = defaultI18n.locale}: Pick<Signa
 
 /** Facts and localized decisions come from the canonical Music formatter, never persisted intent. */
 export function SignalPath({model, translate, locale, layout = 'desktop', open, onOpenChange, anchorRef}: SignalPathProps) {
+  const portalTarget = useOverlayPortalTarget();
   const done = useRef<HTMLButtonElement>(null);
   const title = translate('player.signal.title');
   const pill = <span className={styles.signalPill} data-healthy={model.healthy || undefined}>{formatSignalText(model.pill, translate)}</span>;
@@ -34,9 +36,9 @@ export function SignalPath({model, translate, locale, layout = 'desktop', open, 
   </>;
   if (layout === 'desktop') return <Popover.Root open={open} onOpenChange={onOpenChange}>
     <Popover.Anchor virtualRef={{current: {getBoundingClientRect: () => anchorRef.current?.getBoundingClientRect() ?? new DOMRect()}}} />
-    <Popover.Portal><Popover.Content className={styles.signalPopover} side="top" align="start" sideOffset={4} alignOffset={-12} collisionPadding={8} role="dialog" aria-label={title} onCloseAutoFocus={restore}>{content}</Popover.Content></Popover.Portal>
+    <Popover.Portal container={portalTarget}><Popover.Content className={styles.signalPopover} side="top" align="start" sideOffset={4} alignOffset={-12} collisionPadding={8} role="dialog" aria-label={title} onCloseAutoFocus={restore}>{content}</Popover.Content></Popover.Portal>
   </Popover.Root>;
-  return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal>
+  return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal container={portalTarget}>
     <Dialog.Overlay className={styles.signalScrim} />
     <Dialog.Content className={styles.signalDialog} data-layout={layout} aria-describedby={undefined} onCloseAutoFocus={restore} onOpenAutoFocus={event => { if (layout === 'tv') { event.preventDefault(); done.current?.focus(); } }}>
       <Dialog.Title className={styles.srOnly}>{title}</Dialog.Title>
