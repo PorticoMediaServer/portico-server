@@ -367,6 +367,11 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		if err != nil {
 			return out, foundationAdministrationError(err)
 		}
+		if d.Console != nil {
+			if err = d.Console.FlushConfiguration(context.WithoutCancel(ctx)); err != nil {
+				return out, foundationAdministrationError(err)
+			}
+		}
 		// Integration merge (edit 14): a saved background priority applies to
 		// the running supervisor at once, as the legacy route did.
 		if d.Storage != nil && d.Storage.Supervisor != nil {
@@ -712,6 +717,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	if err := registerUnitProjections(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerSettingsConfiguration(registry, d); err != nil {
 		return nil, err
 	}
 	if err := registerConversionSettings(registry, d); err != nil {

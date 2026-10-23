@@ -828,6 +828,11 @@ table configuration
 table console_alert_params
 table console_alerts
 table console_audit
+table server_configuration_state
+table server_setting_sources
+table server_settings
+table server_setting_lists
+table server_log_retention
 table console_documents
 table console_exports
 table console_notifications
@@ -997,6 +1002,8 @@ table maintenance_retention_rows
 table maintenance_table_bounds
 table maintenance_window_days
 table maintenance_window_tasks
+table maintenance_settings
+table maintenance_retention
 table maintenance_windows
 table managed_mounts
 table mb_album_heads
@@ -2412,7 +2419,6 @@ trigger screen_wake_video_nfo_evidence_INSERT
 trigger screen_wake_video_nfo_evidence_UPDATE
 trigger search_generation_published
 trigger server_settings_hint
-trigger server_settings_insert_hint
 trigger social_cast_bootstraps_retention_delete
 trigger social_cast_bootstraps_retention_insert
 trigger social_cast_devices_retention_delete

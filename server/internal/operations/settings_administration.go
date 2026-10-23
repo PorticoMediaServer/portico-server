@@ -102,7 +102,7 @@ func validateAdministration(v *Settings) []string {
 			set++
 		}
 	}
-	if set != 0 && set != len(custom) {
+	if v.OwnAddressEnabled && set != len(custom) {
 		fields = append(fields, "values.customCertificatePath")
 	}
 	for _, path := range custom[:2] {
@@ -137,6 +137,9 @@ func validateAdministration(v *Settings) []string {
 // LogRetentionDays projects the retention rows as a map for servicelog.
 func (s Settings) LogRetentionDays() map[string]int {
 	out := map[string]int{}
+	for _, category := range LogCategories {
+		out[category] = s.DiagnosticDays
+	}
 	for _, entry := range s.LogRetention {
 		out[entry.Category] = entry.Days
 	}

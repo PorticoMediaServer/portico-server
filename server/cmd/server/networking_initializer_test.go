@@ -149,7 +149,7 @@ func TestCurrentNetworkingMissingIncarnationRefused(t *testing.T) {
 // The custom certificate domain publishes as an HTTPS origin on the remote
 // public port, with no :port at 443; the access URL list passes through.
 func TestAccessURLsForPublicationComposesDomainRoute(t *testing.T) {
-	v := operations.Settings{AccessURLs: []string{"https://vpn.example.com:8443"}, CustomCertificateDomain: "media.example.com"}
+	v := operations.Settings{OwnAddressEnabled: true, AccessURLs: []string{"https://vpn.example.com:8443"}, CustomCertificateDomain: "media.example.com"}
 	got := accessURLsForPublication(v, 32500)
 	if len(got) != 2 || got[0] != "https://vpn.example.com:8443" || got[1] != "https://media.example.com:32500" {
 		t.Fatalf("port 32500: %v", got)
@@ -158,6 +158,10 @@ func TestAccessURLsForPublicationComposesDomainRoute(t *testing.T) {
 	if len(got) != 2 || got[1] != "https://media.example.com" {
 		t.Fatalf("port 443: %v", got)
 	}
+	v.OwnAddressEnabled = false
+	if disabled := accessURLsForPublication(v, 443); len(disabled) != 1 || disabled[0] != "https://vpn.example.com:8443" {
+		t.Fatalf("disabled own route: %v", disabled)
+	}
 	got = accessURLsForPublication(operations.Settings{}, 32500)
 	if got == nil || len(got) != 0 {
 		t.Fatalf("empty settings must clear, not nil: %v", got)
@@ -165,7 +169,7 @@ func TestAccessURLsForPublicationComposesDomainRoute(t *testing.T) {
 }
 
 func TestPublicationFiltersPlainHTTPAndIncludesExternalAddress(t *testing.T) {
-	v := operations.Settings{AccessURLs: []string{"http://overlay.example:32500", "https://media.example"}, AdvertiseURL: "https://external.example"}
+	v := operations.Settings{OwnAddressEnabled: true, AccessURLs: []string{"http://overlay.example:32500", "https://media.example"}, AdvertiseURL: "https://external.example"}
 	got := accessURLsForPublication(v, 32500)
 	if len(got) != 2 || got[1] != "https://media.example" || got[0] != "https://external.example" {
 		t.Fatalf("%v", got)

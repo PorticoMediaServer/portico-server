@@ -33,6 +33,7 @@ type Policy struct {
 	UploadCapacityKbps      int      `json:"uploadCapacityKbps"`
 	PausedSessionTimeout    int      `json:"pausedSessionTimeoutMinutes"`
 	AdvertisedInterface     string   `json:"advertisedInterface"`
+	OwnAddressEnabled       bool     `json:"ownAddressEnabled"`
 	CustomCertificatePath   string   `json:"customCertificatePath"`
 	CustomCertificateKey    string   `json:"customCertificateKeyPath"`
 	CustomCertificateDomain string   `json:"customCertificateDomain"`
@@ -44,7 +45,7 @@ func ProjectPolicy(document operations.SettingsDocument) Policy {
 	out := Policy{ConnectionLimit: v.ConnectionLimit, AdvertiseURL: v.AdvertiseURL, Revision: document.Revision, RemoteSignIn: v.RemoteSignInPolicy, RemoteBitrateLimitKbps: v.RemoteBitrateLimitKbps,
 		LANNetworks: v.LANNetworks, AccessURLs: v.AccessURLs, LANDiscoveryEnabled: v.LANDiscoveryEnabled, DLNAEnabled: v.DLNAEnabled,
 		TrustedProxies: v.TrustedProxies, UploadCapacityKbps: v.UploadCapacityKbps, PausedSessionTimeout: v.PausedSessionTimeoutMinutes,
-		AdvertisedInterface: v.AdvertisedInterface, CustomCertificatePath: v.CustomCertificatePath, CustomCertificateKey: v.CustomCertificateKeyPath, CustomCertificateDomain: v.CustomCertificateDomain}
+		AdvertisedInterface: v.AdvertisedInterface, OwnAddressEnabled: v.OwnAddressEnabled, CustomCertificatePath: v.CustomCertificatePath, CustomCertificateKey: v.CustomCertificateKeyPath, CustomCertificateDomain: v.CustomCertificateDomain}
 	if out.TrustedProxies == nil {
 		out.TrustedProxies = []string{}
 	}

@@ -2334,6 +2334,56 @@ CREATE TABLE analysis_stage_runs (
  next_ms INTEGER NOT NULL DEFAULT 0, updated_ms INTEGER NOT NULL,
  PRIMARY KEY(job_id,object_id,source_revision,policy_revision,stage,algorithm)
 ) STRICT;
+
+CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), updated_ms INTEGER NOT NULL DEFAULT 0,
+ "analysisStorageGiB" INTEGER,
+ "analysisStageStorageMiB" INTEGER,
+ "subtitleTrackLimit" INTEGER,
+ "subtitleFileLimitMiB" INTEGER,
+ "hardwareBackend" TEXT,
+ "hardwareDevice" TEXT,
+ "hdrToneMapping" INTEGER,
+ "hdrToneMappingAlgorithm" TEXT,
+ "x264Preset" TEXT,
+ "directStreamRemux" INTEGER,
+ "planningPolicy" TEXT,
+ "throttleBufferMs" INTEGER,
+ "playedRetentionMs" INTEGER,
+ "temporaryDirectory" TEXT,
+ "ffmpegPath" TEXT,
+ "sessionStorageMiB" INTEGER,
+ "maxConcurrentSessions" INTEGER,
+ "maxHardwareSessions" INTEGER,
+ "maxSoftwareSessions" INTEGER,
+ "maxBackgroundSessions" INTEGER,
+ "diagnosticDays" INTEGER,
+ "notificationDays" INTEGER,
+ "jobDays" INTEGER,
+ "playHistoryDays" INTEGER,
+ "apiRequestsPerMinute" INTEGER,
+ "home.communityActivityEnabled" INTEGER,
+ "updates.releaseChannel" TEXT,
+ "updates.feedUrl" TEXT,
+ "library.missingTitles" TEXT,
+ "library.missingTitlesDays" INTEGER,
+ "library.segmentDetection" TEXT,
+ "remoteSignInPolicy" TEXT,
+ "remoteBitrateLimitKbps" INTEGER,
+ "connectionLimit" INTEGER,
+ "advertiseUrl" TEXT,
+ "lanDiscoveryEnabled" INTEGER,
+ "dlnaEnabled" INTEGER,
+ "uploadCapacityKbps" INTEGER,
+ "pausedSessionTimeoutMinutes" INTEGER,
+ "advertisedInterface" TEXT,
+ "ownAddressEnabled" INTEGER,
+ "customCertificatePath" TEXT,
+ "customCertificateKeyPath" TEXT,
+ "customCertificateDomain" TEXT,
+ "logLevel" TEXT) STRICT;
+CREATE TABLE server_setting_lists(setting TEXT NOT NULL,position INTEGER NOT NULL CHECK(position>=0),value TEXT NOT NULL,PRIMARY KEY(setting,position)) WITHOUT ROWID, STRICT;
+CREATE TABLE server_log_retention(category TEXT PRIMARY KEY,days INTEGER NOT NULL CHECK(days BETWEEN 1 AND 90)) STRICT;
+
 CREATE TABLE console_documents(scope TEXT PRIMARY KEY,revision INTEGER NOT NULL,body TEXT NOT NULL,updated_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE console_receipts(scope TEXT NOT NULL,key TEXT NOT NULL,digest TEXT NOT NULL,result TEXT NOT NULL,expires_ms INTEGER NOT NULL,PRIMARY KEY(scope,key)) STRICT;
 CREATE TABLE console_audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,time_ms INTEGER NOT NULL,actor TEXT NOT NULL,action TEXT NOT NULL,target TEXT NOT NULL,revision INTEGER NOT NULL,previous_hash TEXT NOT NULL,hash TEXT NOT NULL) STRICT;
@@ -3812,7 +3862,7 @@ CREATE TABLE live_icon_jobs(
  skipped INTEGER NOT NULL DEFAULT 0,
  next_attempt_ms INTEGER NOT NULL DEFAULT 0
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE "maintenance_window_tasks"(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,task TEXT NOT NULL CHECK(task='backup'),PRIMARY KEY(window_id,task)) STRICT;
+CREATE TABLE "maintenance_window_tasks"(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,task TEXT NOT NULL CHECK(task IN('backup','analysis','trickplay')),PRIMARY KEY(window_id,task)) STRICT;
 CREATE TABLE networking_claim_credentials(
  operation_id TEXT PRIMARY KEY REFERENCES networking_claim_intents(operation_id),
  server_id TEXT NOT NULL, local_generation INTEGER NOT NULL CHECK(local_generation>=0),
@@ -5032,14 +5082,14 @@ INSERT INTO notification_revision(singleton,value) VALUES(1,1);
 INSERT INTO download_settings(singleton,max_prepared_bytes,retention_days,revision) VALUES(1,0,30,1);
 INSERT INTO download_receipt_sequence(singleton,value) VALUES(1,0);
 INSERT INTO maintenance_policy(singleton,revision,background_priority) VALUES(1,1,'lower');
-INSERT INTO maintenance_windows(id,name,enabled,cadence,start_minute,duration_minutes,timezone) VALUES('nightly','Overnight',1,'nightly',180,240,'');
-INSERT INTO maintenance_window_days(window_id,day) VALUES('nightly','monday');
-INSERT INTO maintenance_window_days(window_id,day) VALUES('nightly','tuesday');
-INSERT INTO maintenance_window_days(window_id,day) VALUES('nightly','wednesday');
-INSERT INTO maintenance_window_days(window_id,day) VALUES('nightly','thursday');
-INSERT INTO maintenance_window_days(window_id,day) VALUES('nightly','friday');
-INSERT INTO maintenance_window_days(window_id,day) VALUES('nightly','saturday');
-INSERT INTO maintenance_window_days(window_id,day) VALUES('nightly','sunday');
+INSERT INTO maintenance_windows(id,name,enabled,cadence,start_minute,duration_minutes,timezone) VALUES('backup','Backups',1,'nightly',180,240,'');
+INSERT INTO maintenance_window_days(window_id,day) VALUES('backup','monday');
+INSERT INTO maintenance_window_days(window_id,day) VALUES('backup','tuesday');
+INSERT INTO maintenance_window_days(window_id,day) VALUES('backup','wednesday');
+INSERT INTO maintenance_window_days(window_id,day) VALUES('backup','thursday');
+INSERT INTO maintenance_window_days(window_id,day) VALUES('backup','friday');
+INSERT INTO maintenance_window_days(window_id,day) VALUES('backup','saturday');
+INSERT INTO maintenance_window_days(window_id,day) VALUES('backup','sunday');
 INSERT INTO dvr_defaults(singleton,revision,before_seconds,after_seconds,retention_days,episode_limit) VALUES(1,1,60,180,0,0);
 INSERT INTO hosted_trust_state(singleton,revision) VALUES(1,0);
 INSERT INTO mount_revision(id,revision) VALUES(1,1);
@@ -5050,7 +5100,7 @@ INSERT INTO live_allocation_reconcile_cursor(singleton,cursor) VALUES(1,'');
 INSERT INTO lc_maintenance_cursor(singleton,position,channel_id) VALUES(1,-1,'');
 INSERT INTO dvr_storage_policy(singleton,revision,retention_days,episode_limit,floor_bytes,cap_bytes) VALUES(1,1,0,0,0,0);
 INSERT INTO hosted_membership_sync(singleton,acked,full_pending,next_at,attempts,full_through,full_page,full_cursor,custodian) VALUES(1,0,1,0,0,0,0,'',NULL);
-INSERT INTO maintenance_window_tasks(window_id,task) VALUES('nightly','backup');
+INSERT INTO maintenance_window_tasks(window_id,task) VALUES('backup','backup');
 INSERT INTO catalog_collection_visible_state(id,class_cursor,generation_cursor,item_cursor,backfill_done,turn) VALUES(1,0,0,0,0,0);
 INSERT INTO catalog_attribute_fields(id,field) VALUES(1,'contentRating');
 INSERT INTO catalog_attribute_fields(id,field) VALUES(2,'label');
@@ -6754,7 +6804,7 @@ CREATE TRIGGER personal_change_hint AFTER INSERT ON viewer_revisions BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'personal.changed','library',NEW.library_id,CAST(NEW.revision AS TEXT),CASE WHEN NEW.title_path<>'' THEN json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT),'titles',NEW.title_path) ELSE json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT)) END) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=CASE WHEN json_extract(api_change_pending.data,'$.titles') IS NULL OR json_extract(excluded.data,'$.titles') IS NULL THEN json_remove(excluded.data,'$.titles') WHEN json_extract(excluded.data,'$.titles')=json_extract(api_change_pending.data,'$.titles') OR json_extract(excluded.data,'$.titles') LIKE '%/'||json_extract(api_change_pending.data,'$.titles') THEN excluded.data WHEN json_extract(api_change_pending.data,'$.titles') LIKE '%/'||json_extract(excluded.data,'$.titles') THEN json_set(excluded.data,'$.titles',json_extract(api_change_pending.data,'$.titles')) ELSE json_remove(excluded.data,'$.titles') END; END;
 CREATE TRIGGER personal_change_hint_update AFTER UPDATE ON viewer_revisions BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,CASE WHEN OLD.revision IS NOT NEW.revision THEN 'personal.changed' ELSE 'progress.changed' END,'library',NEW.library_id,CAST(NEW.revision AS TEXT),CASE WHEN NEW.title_path<>'' THEN json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT),'titles',NEW.title_path) ELSE json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT)) END) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=CASE WHEN json_extract(api_change_pending.data,'$.titles') IS NULL OR json_extract(excluded.data,'$.titles') IS NULL THEN json_remove(excluded.data,'$.titles') WHEN json_extract(excluded.data,'$.titles')=json_extract(api_change_pending.data,'$.titles') OR json_extract(excluded.data,'$.titles') LIKE '%/'||json_extract(api_change_pending.data,'$.titles') THEN excluded.data WHEN json_extract(api_change_pending.data,'$.titles') LIKE '%/'||json_extract(excluded.data,'$.titles') THEN json_set(excluded.data,'$.titles',json_extract(api_change_pending.data,'$.titles')) ELSE json_remove(excluded.data,'$.titles') END; END;
-CREATE TRIGGER server_settings_hint AFTER UPDATE ON console_documents WHEN NEW.scope='server' BEGIN
+CREATE TRIGGER server_settings_hint AFTER UPDATE OF revision ON console_settings_revision BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','settings.changed','settings','server',CAST(NEW.revision AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 
 CREATE TABLE catalog_retention_cursors(name TEXT PRIMARY KEY,after_id INTEGER NOT NULL,after_root TEXT NOT NULL DEFAULT '',after_key TEXT NOT NULL DEFAULT '') STRICT;
@@ -6763,8 +6813,7 @@ CREATE INDEX catalog_credits_department ON catalog_credits(department_id,entity_
 
 
 CREATE INDEX catalogue_failures_recent ON catalog_derivation_failures(failed_ms DESC,domain,entity_id);
-CREATE TRIGGER server_settings_insert_hint AFTER INSERT ON console_documents WHEN NEW.scope='server' BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','settings.changed','settings','server',CAST(NEW.revision AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+
 
 CREATE TRIGGER catalogue_generation_published AFTER UPDATE OF retaining ON catalog_generations WHEN OLD.retaining=1 AND NEW.retaining=0 BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1; END;
@@ -8427,3 +8476,15 @@ CREATE TRIGGER identity_access_tokens_disabled AFTER UPDATE OF access_tokens ON 
  UPDATE authorization_session_families SET revoked=1,revoked_reason='membership_removed' WHERE id IN(SELECT family_id FROM api_credentials WHERE account_id=NEW.account_id AND kind='token') AND revoked=0;
 END;
 CREATE TRIGGER identity_access_tokens_insert BEFORE INSERT ON api_credentials WHEN NEW.kind='token' AND NOT EXISTS(SELECT 1 FROM direct_memberships WHERE account_id=NEW.account_id AND access_tokens=1 AND disabled=0) BEGIN SELECT RAISE(ABORT,'access_tokens_off');END;
+CREATE TABLE server_setting_sources(field TEXT PRIMARY KEY,source TEXT NOT NULL CHECK(source IN('server','file'))) STRICT;
+CREATE TABLE server_configuration_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),pending_revision INTEGER NOT NULL DEFAULT 0) STRICT;
+INSERT INTO server_configuration_state(singleton) VALUES(1);
+
+INSERT INTO maintenance_windows VALUES('heavy','Heavy background work',0,'nightly',60,300,'');
+INSERT INTO maintenance_window_days SELECT 'heavy',day FROM maintenance_window_days WHERE window_id='backup';
+INSERT INTO maintenance_window_tasks VALUES('heavy','analysis'),('heavy','trickplay');
+
+CREATE TABLE maintenance_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,backup_keep_count INTEGER NOT NULL DEFAULT 7 CHECK(backup_keep_count BETWEEN 1 AND 365),background_speed TEXT NOT NULL DEFAULT 'normal' CHECK(background_speed IN('gentle','normal','fast')),updated_ms INTEGER NOT NULL DEFAULT 0) STRICT;
+INSERT INTO maintenance_settings(singleton) VALUES(1);
+CREATE TABLE maintenance_retention(category TEXT PRIMARY KEY CHECK(category IN('trickplay','prepared','conversions','subtitles','downloads','logs')),days INTEGER NOT NULL CHECK(days BETWEEN 0 AND 3650)) STRICT;
+INSERT INTO maintenance_retention VALUES('trickplay',365),('prepared',90),('conversions',7),('subtitles',365),('downloads',30),('logs',30);

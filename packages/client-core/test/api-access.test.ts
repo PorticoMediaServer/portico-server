@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
- accessTokenPrefix,apiKeyPrefix,apiScopePresets,createAccessToken,createApiKey,createWebhook,isApiCredentialSecret,listApiKeys,listMemberAccessTokens,listWebhookDeliveries,
+ accessTokenPrefix,apiKeyPrefix,apiScopePresets,createAccessToken,createApiKey,createWebhook,isApiCredentialSecret,listApiKeys,listAccessTokens,listWebhookDeliveries,
  parseApiAccessOptions,parseApiCredential,parseIssuedApiCredential,parseIssuedWebhook,parsePathReport,parseTitlePage,parseWebhook,parseWebhookDelivery,parseWebhookDeliveryPage,parseWebhookList,
  changeWebhook,presetOf,queryTitles,reportChangedPaths,revokeApiKey,sendWebhookTest,updateWebhook,webhookChangeApplies,webhookEdits,type ApiAccessTransport,
 } from '../src/api-access.ts';
@@ -52,8 +52,8 @@ test('credential services call the documented routes', async () => {
  const page=recorder({items:[credential],limit:100});
  assert.equal((await listApiKeys(page.transport,'next page')).items.length,1);
  assert.equal(page.calls[0].path,'/v1/admin/api-keys?limit=100&cursor=next%20page');
- await listMemberAccessTokens(page.transport,{accountId:'a/b'});
- assert.equal(page.calls[1].path,'/v1/admin/access-tokens?limit=100&accountId=a%2Fb');
+ await listAccessTokens(page.transport);
+ assert.equal(page.calls[1].path,'/v1/me/access-tokens?limit=100');
  const made=recorder({credential,secret:apiKeyPrefix+'s'});
  await createApiKey(made.transport,{operationId:'op-12345678',name:'Automation',scopes:['read']});
  assert.deepEqual(made.calls[0],{path:'/v1/admin/api-keys',method:'POST',body:{operationId:'op-12345678',name:'Automation',scopes:['read']}});

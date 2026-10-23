@@ -2052,3 +2052,5 @@ export {highestRatingChoices} from './profile-limits.ts';
 
 export * from './account-reset.ts';
 export * from './same-tab-return.ts';
+export * from './settings-configuration.ts';
+export * from './presentation/settings-bindings.ts';

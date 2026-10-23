@@ -11,10 +11,10 @@ const server = (platform: 'web' | 'phone' | 'tv') => settingsStructure({owner: t
 const page = (pages: readonly SettingsPage[], id: string) => pages.find(p => p.id === id);
 const rowIds = (p: SettingsPage) => p.sections.flatMap(s => s.rows.map((r: SettingsRow) => (r.kind === 'server-setting' ? `${r.form}.${r.key}` : r.kind === 'custom' ? r.id : '')));
 
-test('the web has one page for keys, members\' tokens, webhooks and assistants', () => {
+test('Integrations keeps keys and app integrations while member tokens stay private', () => {
   const integrations = page(server('web'), 'integrations')!;
-  assert.deepEqual(integrations.tabs?.map(x => x.id), ['keys', 'tokens', 'webhooks', 'assistants']);
-  assert.deepEqual(rowIds(integrations), ['server.apiKeys', 'runtime.apiRequestsPerMinute', 'server.memberTokens', 'runtime.blockMemberAccessTokens', 'server.webhooks', 'server.assistants']);
+  assert.deepEqual(integrations.tabs?.map(x => x.id), ['keys', 'webhooks', 'assistants']);
+  assert.deepEqual(rowIds(integrations), ['server.apiKeys', 'runtime.apiRequestsPerMinute', 'server.webhooks', 'server.assistants']);
   // People keeps accounts and invitations; keys moved out.
   assert.deepEqual(page(server('web'), 'people')!.tabs?.map(x => x.id), ['accounts', 'invitations', 'devices']);
 });
@@ -72,8 +72,10 @@ test('secure connection comes first on remote access: its status, a switch once 
   }
 });
 
-test('background work speed is one named choice beside background priority', () => {
-  const rows = page(server('web'), 'schedule')!.sections.flatMap(s => s.rows);
+test('General comes first and owns background speed without a Schedule page', () => {
+  assert.equal(server('web')[0]?.id,'general');
+  assert.equal(page(server('web'),'schedule'),undefined);
+  const rows = page(server('web'), 'general')!.sections.flatMap(s => s.rows);
   const speed = rows.find(r => r.kind === 'server-setting' && r.key === 'backgroundSpeed');
   assert.ok(speed && speed.kind === 'server-setting' && speed.control.type === 'choice');
   assert.deepEqual(speed.control.choices.map(c => c.value), ['gentle', 'normal', 'fast']);
@@ -139,9 +141,9 @@ test('a list setting takes an entry once, trimmed, and never an empty one', () =
 
 test('the second-pass rows are where an owner would look', () => {
   const web = server('web');
-  assert.deepEqual(rowIds(page(web, 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired', 'server.devices']);
+  assert.deepEqual(rowIds(page(web, 'people')!).filter(id => id.includes('evice')), ['server.devices']);
   // Phones and tablets have the approval switch and the list of everyone's devices, as the web does.
-  assert.deepEqual(rowIds(page(server('phone'), 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired', 'server.devices']);
+  assert.deepEqual(rowIds(page(server('phone'), 'people')!).filter(id => id.includes('evice')), ['server.devices']);
   for (const id of ['runtime.sessionStorageMiB', 'runtime.ffmpegPath', 'runtime.temporaryDirectory', 'runtime.hardwareBackend']) assert.ok(rowIds(page(web, 'streaming')!).includes(id), id);
   for (const id of ['liveDefaults.importLimits.channels', 'liveDefaults.importLimits.programmes', 'liveDefaults.importLimits.bytes']) assert.ok(rowIds(page(web, 'live')!).includes(id), id);
   assert.ok(rowIds(page(web, 'general')!).includes('server.restart'));
@@ -164,7 +166,7 @@ test('the third-pass panels sit beside the settings they explain', () => {
   const web = server('web');
   const storage = rowIds(page(web, 'storage')!);
   for (const id of ['server.resourceUsage', 'server.storageStatus', 'server.downloadUsage']) assert.ok(storage.includes(id), id);
-  const schedule = rowIds(page(web, 'schedule')!);
+  const schedule = rowIds(page(web, 'general')!);
   assert.ok(schedule.indexOf('server.backgroundPause') === schedule.indexOf('maintenance.backgroundSpeed') + 1, 'the pause follows the speed it interrupts');
   const playback = rowIds(page(web, 'streaming')!);
   assert.ok(playback.indexOf('server.ffmpegStatus') === playback.indexOf('runtime.ffmpegPath') + 1, 'the check result follows the path it checked');

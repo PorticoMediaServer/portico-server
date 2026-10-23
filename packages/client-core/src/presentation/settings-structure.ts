@@ -102,7 +102,7 @@ export type SettingsCustomId =
   | 'server.playHistory'
   | 'server.libraries'
   | 'server.liveSources' | 'server.tuners' | 'server.recordingRules' | 'server.recordingStorage' | 'server.channels'
-  | 'server.accounts' | 'server.invitations' | 'server.devices' | 'server.apiKeys' | 'server.memberTokens' | 'server.webhooks' | 'server.assistants'
+  | 'server.accounts' | 'server.invitations' | 'server.devices' | 'server.apiKeys' | 'server.webhooks' | 'server.assistants'
   | 'server.metadataSettings'
   | 'server.transcodeStatus'
   | 'server.remoteStatus' | 'server.secureConnection' | 'server.accountConnection' | 'server.certificateStatus' | 'server.addresses' | 'server.connection' | 'server.ownCertificateStatus'
@@ -373,6 +373,23 @@ const noLimit = {stores: 0, placeholder: 'settings.server.unlimited'} as const;
 const PAUSED_MINUTES = [0, 15, 30, 60, 120, 240];
 
 const serverPages: readonly AuthoredPage[] = [
+  {id: 'general', title: 'settings.server.general', icon: 'server', sections: [
+    {id:'background',rows:[
+      setting('maintenance','backgroundSpeed','metadata.settings.backgroundSpeed',{type:'choice',choices:[{value:'gentle',label:'metadata.settings.gentle'},{value:'normal',label:'metadata.settings.normal'},{value:'fast',label:'metadata.settings.fast'}]}),
+      custom('server.backgroundPause','settings.server.pauseBackground'),
+    ]},
+    {id: 'identity', title: 'web.general.identity', rows: [
+      setting('runtime', 'name', 'web.general.serverName', {type: 'text', maxLength: 100}, {help: 'web.general.serverNameHelp'}),
+      custom('server.identity'),
+    ]},
+    panel('updates', 'server.updates', 'settings.server.updates'),
+    panel('restart', 'server.restart', 'web.maintenance.serverRestart', {platforms: ['web', 'phone']}),
+    {id: 'alerts', title: 'settings.server.alertThresholds', description: 'web.alerts.lede', rows: [
+      setting('alerts', 'storageWarningPercent', 'web.alerts.storageWarning', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageWarningHelp'}),
+      setting('alerts', 'storageCriticalPercent', 'web.alerts.storageCritical', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageCriticalHelp'}),
+      setting('alerts', 'certificateWarningDays', 'web.alerts.certificateWarning', {type: 'number', min: 1, max: 60, unit: 'settings.unit.days'}, {help: 'web.alerts.certificateWarningHelp'}),
+    ]},
+  ]},
   {id: 'dashboard', title: 'settings.server.dashboard', icon: 'pulse', sections: [
     panel('nowPlaying', 'server.nowPlaying', 'settings.server.nowPlaying', {administrators: true}),
     panel('alerts', 'server.alerts', 'settings.server.alerts'),
@@ -437,23 +454,16 @@ const serverPages: readonly AuthoredPage[] = [
     sections: [
       panel('accounts', 'server.accounts', undefined, {tab: 'accounts', administrators: true}),
       panel('invitations', 'server.invitations', undefined, {tab: 'invitations', administrators: true}),
-      // Holding new devices until the owner approves them, and every device that has signed in, newest first.
-      {id: 'deviceApproval', tab: 'devices', rows: [on('runtime', 'deviceApprovalRequired', 'server.people.deviceApproval', 'server.people.deviceApprovalHelp')]},
       panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web', 'phone'], administrators: true}),
     ]},
   // Everything another program uses to work with this server, in one place: the owner's keys, members' own tokens,
   // messages sent out when something happens, and the address an assistant connects to.
   {id: 'integrations', title: 'settings.server.integrations', icon: 'link', platforms: ['web', 'phone'],
-    tabs: [{id: 'keys', title: 'settings.server.apiKeys'}, {id: 'tokens', title: 'settings.server.memberTokens'}, {id: 'webhooks', title: 'api.webhooks.title'}, {id: 'assistants', title: 'settings.server.assistants'}],
+    tabs: [{id: 'keys', title: 'settings.server.apiKeys'}, {id: 'webhooks', title: 'api.webhooks.title'}, {id: 'assistants', title: 'settings.server.assistants'}],
     sections: [
       panel('apiKeys', 'server.apiKeys', 'settings.server.apiKeys', {tab: 'keys'}),
       {id: 'apiLimits', tab: 'keys', title: 'settings.server.apiLimits', rows: [
         setting('runtime', 'apiRequestsPerMinute', 'settings.server.apiRate', {type: 'number', min: 1, max: 100000, unit: 'settings.unit.perMinute', empty: {stores: 0, placeholder: 'settings.server.apiRateUsual'}}, {help: 'settings.server.apiRateHelp'}),
-      ]},
-      panel('memberTokens', 'server.memberTokens', 'settings.server.memberTokens', {tab: 'tokens'}),
-      {id: 'tokenRules', tab: 'tokens', rows: [
-        // Stored as "blocked"; asked the way a person thinks of it.
-        setting('runtime', 'blockMemberAccessTokens', 'settings.server.memberTokensMay', {type: 'choice', choices: [{value: false, label: 'settings.server.memberTokensMay.yes'}, {value: true, label: 'settings.server.memberTokensMay.no'}]}, {help: 'settings.server.memberTokensMayHelp'}),
       ]},
       panel('webhooks', 'server.webhooks', 'api.webhooks.title', {tab: 'webhooks'}),
       panel('assistants', 'server.assistants', 'settings.server.assistants', {tab: 'assistants'}),
@@ -506,6 +516,7 @@ const serverPages: readonly AuthoredPage[] = [
     // For an owner with a domain and no reverse proxy: where the files are, and whether the server is using them.
     {id: 'ownCertificate', title: 'web.connectivity.customCert', description: 'settings.server.ownCertificateLede', rows: [
       custom('server.ownCertificateStatus', 'web.connectivity.customCert'),
+      on('connectivity','ownAddressEnabled','settings.server.ownAddress'),
       setting('connectivity', 'customCertificateDomain', 'web.connectivity.customCertDomain', {type: 'text', mono: true, example: 'media.example.com'}),
       setting('connectivity', 'customCertificatePath', 'web.connectivity.customCertPath', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/fullchain.pem'}),
       setting('connectivity', 'customCertificateKeyPath', 'web.connectivity.customCertKey', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/privkey.pem'}),
@@ -572,15 +583,6 @@ const serverPages: readonly AuthoredPage[] = [
       custom('server.missingTitles'),
     ]},
   ]},
-  {id: 'schedule', title: 'settings.server.schedule', icon: 'calendar', sections: [
-    panel('jobs', 'server.jobs', 'settings.server.jobs'),
-    panel('windows', 'server.windows', 'settings.server.windows', {description: 'settings.server.windowsLede'}),
-    {id: 'priority', rows: [
-      // One named choice in place of rates and worker counts: how hard matching and artwork work.
-      setting('maintenance', 'backgroundSpeed', 'metadata.settings.backgroundSpeed', {type: 'choice', choices: [{value: 'gentle', label: 'metadata.settings.gentle'}, {value: 'normal', label: 'metadata.settings.normal'}, {value: 'fast', label: 'metadata.settings.fast'}]}, {help: 'settings.server.backgroundSpeedHelp'}),
-      custom('server.backgroundPause', 'settings.server.pauseBackground'),
-    ]},
-  ]},
   {id: 'troubleshooting', title: 'settings.server.troubleshooting', icon: 'wrench', sections: [
     // One control for more detail, in place of three.
     {id: 'detail', rows: [custom('server.detailWindow', 'settings.server.detailWindow')]},
@@ -597,19 +599,7 @@ const serverPages: readonly AuthoredPage[] = [
     panel('feedback', 'server.feedback', 'settings.server.feedback'),
     panel('state', 'server.stateFolder'),
   ]},
-  {id: 'general', title: 'settings.server.general', icon: 'server', sections: [
-    {id: 'identity', title: 'web.general.identity', rows: [
-      setting('runtime', 'name', 'web.general.serverName', {type: 'text', maxLength: 100}, {help: 'web.general.serverNameHelp'}),
-      custom('server.identity'),
-    ]},
-    panel('updates', 'server.updates', 'settings.server.updates'),
-    panel('restart', 'server.restart', 'web.maintenance.serverRestart', {platforms: ['web', 'phone']}),
-    {id: 'alerts', title: 'settings.server.alertThresholds', description: 'web.alerts.lede', rows: [
-      setting('alerts', 'storageWarningPercent', 'web.alerts.storageWarning', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageWarningHelp'}),
-      setting('alerts', 'storageCriticalPercent', 'web.alerts.storageCritical', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageCriticalHelp'}),
-      setting('alerts', 'certificateWarningDays', 'web.alerts.certificateWarning', {type: 'number', min: 1, max: 60, unit: 'settings.unit.days'}, {help: 'web.alerts.certificateWarningHelp'}),
-    ]},
-  ]},
+
 ];
 
 // ── The structure ────────────────────────────────────────────────────────────
@@ -750,19 +740,16 @@ export function registryComposite(id: CompositeId): boolean {
 }
 
 /**
- * The choice a registry composite shows for the stored keys. A combination only an API client
- * could have written reads as the nearest choice a person can make, never as a fourth option.
+ * Only an exact preset matches. Unmatched Advanced values remain Custom.
  */
 export function readComposite(id: CompositeId, read: Read): string | boolean {
   switch (id) {
     case 'playbackMethod': {
-      if (read('delivery.directPlay') === 'never') return 'convert';
-      if (read('delivery.transcode') === 'never') return 'original';
-      return 'automatic';
+      return Object.entries(METHODS).find(([,values])=>Object.entries(values).every(([key,value])=>read(key)===value))?.[0]??'custom';
     }
     case 'cardSize': {
-      const percent = Number(read('appearance.cardSizePercent') ?? 100);
-      return percent < 90 ? 'small' : percent > 115 ? 'large' : 'medium';
+      const percent=read('appearance.cardSizePercent');
+      return Object.entries(CARD_SIZE).find(([,value])=>percent===value)?.[0]??'custom';
     }
     default: return '';
   }
@@ -771,8 +758,8 @@ export function readComposite(id: CompositeId, read: Read): string | boolean {
 /** The keys a choice writes: one consistent combination, never a contradictory one. */
 export function compositePatch(id: CompositeId, choice: string | boolean): PreferencePatch {
   switch (id) {
-    case 'playbackMethod': return {...(METHODS[String(choice)] ?? METHODS.automatic!)};
-    case 'cardSize': return {'appearance.cardSizePercent': CARD_SIZE[String(choice)] ?? 100};
+    case 'playbackMethod': {const values=METHODS[String(choice)];if(!values)throw new Error('Custom is derived.');return {...values};}
+    case 'cardSize': {const value=CARD_SIZE[String(choice)];if(value===undefined)throw new Error('Custom is derived.');return {'appearance.cardSizePercent':value};}
     default: return {};
   }
 }

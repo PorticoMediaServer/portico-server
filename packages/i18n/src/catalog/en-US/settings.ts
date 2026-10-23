@@ -4,6 +4,8 @@
  * Merged into `enUS` statically.
  */
 export const settingsMessages = {
+ 'settings.server.ownAddress': 'Your own address',
+
  'settings.server.ffmpegPath': 'FFmpeg location',
 
   'settings.heading.account': 'Account',

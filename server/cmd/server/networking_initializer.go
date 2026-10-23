@@ -164,7 +164,7 @@ func accessURLsForPublication(v operations.Settings, publicPort int) []string {
 			out = append(out, u)
 		}
 	}
-	if v.CustomCertificateDomain != "" {
+	if v.OwnAddressEnabled && v.CustomCertificateDomain != "" {
 		u := "https://" + v.CustomCertificateDomain
 		if publicPort != 443 {
 			u += ":" + strconv.Itoa(publicPort)
