@@ -115,7 +115,7 @@ function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings;
   }, []);
   const grid = bindings.presentation.view === 'grid', cardWidth = bindings.presentation.cardWidth, rowHeight = grid ? cardWidth * 1.5 + 48 : 90;
   const columns = grid ? Math.max(1, Math.floor((width + 16) / (cardWidth + 16))) : 1;
-  const height = Math.max(rowHeight, Math.min(window.innerHeight, Math.ceil((entries.length + Number(!!bindings.runtime.personal.getSnapshot().nextCursor)) / columns) * (rowHeight + (grid ? 30 : 0))));
+  const height = Math.max(rowHeight, Math.min(window.innerHeight, Math.ceil(entries.length / columns) * (rowHeight + (grid ? 30 : 0))));
   return <div className={styles.personalRows}><div ref={root}><WindowedGrid collection={collection} label={bindings.runtime.personal.getSnapshot().resource?.name ?? t('saved.title')}
     height={height} cardWidth={grid ? cardWidth : Math.max(1, width)} rowHeight={rowHeight} gap={16} rowGap={grid ? 30 : 0} reducedMotion={bindings.presentation.reducedMotion}
     renderPlaceholder={() => <Skeleton width={grid ? cardWidth : width} height={grid ? cardWidth * 1.5 : 72} />} renderItem={entry => {
@@ -128,7 +128,7 @@ function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings;
       onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(() => bindings.effects.playEntry(media)).catch(bindings.effects.reportError); } : undefined};
     return <div className={grid ? undefined : styles.mediaListRow}>{shape === 'circle' ? <CircleCard {...common} covers={artwork ? [artwork] : []} variant="person" />
       : shape === 'square' ? <SquareCard {...common} artwork={artwork} /> : <PosterCard {...common} artwork={artwork} />}</div>;
-  }} /></div></div>;
+  }} /></div>{bindings.runtime.personal.getSnapshot().nextCursor && <Button size="small" className={styles.showMore} loading={bindings.runtime.personal.getSnapshot().loading} onClick={() => { void bindings.runtime.personal.next(); }}>{t('action.showMore')}</Button>}</div>;
 }
 
 export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {

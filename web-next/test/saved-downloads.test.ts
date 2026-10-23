@@ -32,16 +32,17 @@ test('personal resource grid follows the real opaque cursor without turning a li
   const window = personalEntriesWindow(service);
   try {
     await service.select({view: 'resource', resourceId: 'collection'});
-    assert.equal(window.getSnapshot().total, 4);
+    assert.equal(window.getSnapshot().total, 3);
     assert.equal(window.getSnapshot().totalIsLowerBound, true);
     assert.deepEqual(window.slotAt(3), {kind: 'placeholder', index: 3, key: 'placeholder:3'});
     window.ensureRange(0, 2); window.ensureRange(0, 3);
-    assert.equal(calls, 2, 'one initial read and one real continuation while it is pending');
+    assert.equal(calls, 1, 'scrolling the current page cannot silently replace it');
+    const advancing = service.next();
     const published = new Promise<void>(resolve => { const off = service.subscribe(() => { if (!service.getSnapshot().loading) { off(); resolve(); } }); });
-    next({resource, entries: [entry('four')], nextCursor: 'opaque-later'}); await published;
-    assert.deepEqual(window.residentItems().map(value => value.id), ['one', 'two', 'three', 'four']);
-    assert.equal(window.getSnapshot().total, 5); assert.equal(window.getSnapshot().totalIsLowerBound, true);
-    assert.equal(window.keyAt(3), 'four'); window.dispose(); window.ensureRange(0, 4); assert.equal(calls, 2);
+    next({resource, entries: [entry('four')], nextCursor: 'opaque-later'}); await published; await advancing;
+    assert.deepEqual(window.residentItems().map(value => value.id), ['four']);
+    assert.equal(window.getSnapshot().total, 1); assert.equal(window.getSnapshot().totalIsLowerBound, true);
+    assert.equal(window.keyAt(0), 'four'); window.dispose(); window.ensureRange(0, 4); assert.equal(calls, 2);
   } finally { window.dispose(); service.dispose(); }
 });
 test('every captured identity boundary distinguishes the binding', () => {

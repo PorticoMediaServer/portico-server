@@ -163,7 +163,7 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
   const first = section.entries[0], media = first && mediaEntry(first), square = first?.kind === 'playlist' || media && shapeFor(media.kind) === 'square';
   const ratio = square ? 1 : 2 / 3, rowHeight = presentation.view === 'list' ? 90 : presentation.cardWidth / ratio + 48;
   const columns = presentation.view === 'list' ? 1 : Math.max(1, Math.floor((width + 16) / (presentation.cardWidth + 16)));
-  const height = Math.max(rowHeight, Math.min(window.innerHeight, Math.ceil((section.entries.length + Number(!!section.nextCursor)) / columns) * (rowHeight + 30)));
+  const height = Math.max(rowHeight, Math.min(window.innerHeight, Math.ceil(section.entries.length / columns) * (rowHeight + 30)));
   return <section className={styles.savedSection} ref={root}>
     {bindings.heading && <h2>{serverTextLabel(defaultI18n, section.heading)}</h2>}
     <WindowedGrid collection={collection} label={serverTextLabel(defaultI18n, section.heading)} height={height} cardWidth={presentation.view === 'list' ? Math.max(1, width) : presentation.cardWidth} rowHeight={rowHeight} rowGap={presentation.view === 'list' ? 0 : 30} gap={16} reducedMotion={presentation.reducedMotion} onVisibleRange={onVisibleRange}
@@ -182,6 +182,7 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
         if (presentation.view === 'list') return <div className={styles.mediaListRow}><PosterCard {...common} /></div>;
         return square ? <SquareCard {...common} /> : <PosterCard {...common} />;
       }} />
+    {section.nextCursor && <Button className={styles.showMore} size="small" loading={service.getSnapshot().phase === 'loading'} onClick={() => { void service.next(section.id); }}>{t('action.showMore')}</Button>}
   </section>;
 }
 function mediaEntry(entry: SavedEntry): ContentEntry | undefined {

@@ -2,8 +2,8 @@ import type {WindowedCollection, CollectionSnapshot} from '@core/collections/win
 import type {SavedEntry, SavedService, SavedSnapshot} from '@core/saved.ts';
 import type {PersonalResourceEntry, PersonalSavedService, PersonalSavedSnapshot} from '@core/personal-saved.ts';
 
-/** Presentation of the service's already bounded pages, with one non-entity slot
- * for its real continuation. No offset is invented for an opaque server cursor. */
+/** Presentation of the service's actual bounded page. No offset or appended
+ * membership is invented for an opaque server cursor. */
 export function savedSectionWindow(service: SavedService, sectionId: string): WindowedCollection<SavedEntry> {
   let prior: SavedSnapshot | undefined, version = 0, snapshot: CollectionSnapshot;
   let disposed = false;
@@ -14,7 +14,7 @@ export function savedSectionWindow(service: SavedService, sectionId: string): Wi
     if (current !== prior) {
       prior = current; version++;
       const shown = section();
-      snapshot = Object.freeze({generation: current.generation, total: shown ? shown.entries.length + Number(!!shown.nextCursor) : current.phase === 'ready' ? 0 : undefined,
+      snapshot = Object.freeze({generation: current.generation, total: shown ? shown.entries.length : current.phase === 'ready' ? 0 : undefined,
         totalIsLowerBound: !!shown?.nextCursor, status: current.phase === 'error' || current.phase === 'refresh-required' ? 'error' : current.phase === 'idle' ? 'idle' : shown ? 'ready' : 'loading',
         error: current.error, positionIndex: undefined, refreshing: current.phase === 'loading' && !!shown});
     }
@@ -36,11 +36,7 @@ export function savedSectionWindow(service: SavedService, sectionId: string): Wi
       const item = section()?.entries[index];
       return item ? {kind: 'item', index, key: item.id, item} : {kind: 'placeholder', index, key: `placeholder:${index}`};
     },
-    ensureRange: (_first, last) => {
-      if (disposed) return;
-      const shown = section();
-      if (shown?.nextCursor && service.getSnapshot().phase === 'ready' && last >= Math.max(0, shown.entries.length - 10)) void service.next(sectionId);
-    },
+    ensureRange: () => {},
     indexOfLetter: () => undefined,
     invalidate: () => { if (!disposed) void service.refresh(); },
     revalidate: options => disposed ? Promise.resolve() : service.revalidate({settle: options?.hold}),
@@ -51,8 +47,8 @@ export function savedSectionWindow(service: SavedService, sectionId: string): Wi
   };
 }
 
-/** Personal resources keep their real cursor and resident entries. The one
- * extra slot invites that continuation; it never claims a directory total. */
+/** The service exposes its current bounded page, rather than an appended
+ * collection. Preserve that contract until its canonical window seam lands. */
 export function personalEntriesWindow(service: PersonalSavedService): WindowedCollection<PersonalResourceEntry> {
   let prior: PersonalSavedSnapshot | undefined, version = 0, generation = 0, snapshot: CollectionSnapshot;
   let disposed = false;
@@ -62,7 +58,7 @@ export function personalEntriesWindow(service: PersonalSavedService): WindowedCo
     if (current !== prior) {
       if (prior?.route !== current.route) generation++;
       prior = current; version++;
-      snapshot = Object.freeze({generation, total: current.loading && !current.entries.length ? undefined : current.entries.length + Number(!!current.nextCursor),
+      snapshot = Object.freeze({generation, total: current.loading && !current.entries.length ? undefined : current.entries.length,
         totalIsLowerBound: !!current.nextCursor, status: current.error ? 'error' : current.loading && !current.entries.length ? 'loading' : 'ready',
         error: current.error, positionIndex: undefined, refreshing: current.loading && !!current.entries.length});
     }
@@ -78,10 +74,9 @@ export function personalEntriesWindow(service: PersonalSavedService): WindowedCo
     getPageVersion: () => { getSnapshot(); return String(version); }, pageOf: index => Math.floor(index / 40),
     itemAt: index => service.getSnapshot().entries[index], keyAt: index => service.getSnapshot().entries[index]?.id ?? `placeholder:${index}`,
     slotAt: index => { const item = service.getSnapshot().entries[index]; return item ? {kind: 'item', index, key: item.id, item} : {kind: 'placeholder', index, key: `placeholder:${index}`}; },
-    ensureRange: (_first, last) => {
-      const current = service.getSnapshot();
-      if (!disposed && !current.loading && !current.error && current.nextCursor && last >= Math.max(0, current.entries.length - 10)) void service.next();
-    },
+    // Advancing the service here would discard the page under the pointer.
+    // The screen retains its explicit, existing continuation action.
+    ensureRange: () => {},
     indexOfLetter: () => undefined,
     invalidate: () => { if (!disposed) void service.refresh(); },
     revalidate: options => disposed ? Promise.resolve() : service.revalidate({settle: options?.hold}),
