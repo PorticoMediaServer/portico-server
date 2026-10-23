@@ -1,4 +1,4 @@
-package identity
+package identity_test
 
 import (
 	"context"
@@ -15,13 +15,15 @@ import (
 
 	"portico.local/server/internal/claimweb"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/persistence"
 )
 
 type ownerCaptureFixture struct {
-	s               *Service
-	p               Principal
+	db              *sql.DB
+	s               *identity.Service
+	p               identity.Principal
 	key             ed25519.PrivateKey
 	claim           claimweb.Request
 	start           claimweb.OwnerStart
@@ -60,12 +62,12 @@ func newOwnerCaptureFixture(t *testing.T) ownerCaptureFixture {
 	if _, err = db.Exec(`INSERT INTO networking_server_identities(server_id,public_key,key_incarnation,created_at) VALUES(?,?,?,?);INSERT INTO networking_claim_identity(singleton,server_id,public_key,reset_generation) VALUES(1,?,?,0);INSERT INTO configuration(key,value) VALUES('id',?)`, server, []byte(pub), "capture-test-key", time.Now().UTC().Format(time.RFC3339Nano), server, []byte(pub), server); err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(db, root)
+	s, err := identity.New(db, root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	const installation = "d297a1dc-3adc-4b1c-a7f2-fbd4640f69e8"
-	ctx, err = WithIssuingDevice(ctx, DeviceRegistration{InstallationID: installation, Name: "Owner browser", Platform: "web", App: "portico"}, "127.0.0.1:1234")
+	ctx, err = identity.WithIssuingDevice(ctx, identity.DeviceRegistration{InstallationID: installation, Name: "Owner browser", Platform: "web", App: "portico"}, "127.0.0.1:1234")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +75,7 @@ func newOwnerCaptureFixture(t *testing.T) ownerCaptureFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setup, err := s.SetupWithOptions(ctx, SetupOptions{SetupToken: secret, AuthMode: "local", Username: "owner", Password: "Local-password1!", Name: "Capture server"}, true)
+	setup, err := s.SetupWithOptions(ctx, identity.SetupOptions{SetupToken: secret, AuthMode: "local", Username: "owner", Password: "Local-password1!", Name: "Capture server"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,11 +83,11 @@ func newOwnerCaptureFixture(t *testing.T) ownerCaptureFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	move, err := s.PreviewAccountMove(ctx, setup.Envelope.AccessToken, MovePreviewRequest{To: SignInPortico})
+	move, err := s.PreviewAccountMove(ctx, setup.Envelope.AccessToken, identity.MovePreviewRequest{To: identity.SignInPortico})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.ConfirmPorticoMove(ctx, setup.Envelope.AccessToken, MoveConfirmRequest{MoveID: move.ID, ExpectedRevision: move.Revision}); err != nil {
+	if _, err = s.ConfirmPorticoMove(ctx, setup.Envelope.AccessToken, identity.MoveConfirmRequest{MoveID: move.ID, ExpectedRevision: move.Revision}); err != nil {
 		t.Fatal(err)
 	}
 	cipher, err := networking.OpenClaimCipher(ctx, db, root)
@@ -98,7 +100,7 @@ func newOwnerCaptureFixture(t *testing.T) ownerCaptureFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	op := Token()
+	op := identity.Token()
 	if _, err = store.PreparePurpose(ctx, networking.Binding{OperationID: op, ServerID: server, AccountID: networking.UnboundAccount, PublicKey: pub}, networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, networking.ClaimPurpose{Purpose: "switch"}); err != nil {
 		t.Fatal(err)
 	}
@@ -107,10 +109,10 @@ func newOwnerCaptureFixture(t *testing.T) ownerCaptureFixture {
 	original := ownerCaptureSigned(t, key, claim)
 	raw, _ := base64.RawURLEncoding.DecodeString(original.Payload)
 	hash := sha256.Sum256(raw)
-	pkce := sha256.Sum256([]byte(Token()))
-	state := sha256.Sum256([]byte(Token()))
-	start := claimweb.OwnerStart{Kind: claimweb.OwnerStartKind, Audience: claim.Audience, ClaimHash: base64.RawURLEncoding.EncodeToString(hash[:]), OperationID: op, ServerID: server, PublicKey: claim.PublicKey, Address: claim.Address, Purpose: "switch", State: base64.RawURLEncoding.EncodeToString(state[:]), CodeChallenge: base64.RawURLEncoding.EncodeToString(pkce[:]), InstallationID: installation, ServerChallenge: Token(), IssuedAt: now, ExpiresAt: now.Add(4 * time.Minute)}
-	return ownerCaptureFixture{s: s, p: p, key: key, claim: claim, start: start, original: original, proof: ownerCaptureSigned(t, key, start)}
+	pkce := sha256.Sum256([]byte(identity.Token()))
+	state := sha256.Sum256([]byte(identity.Token()))
+	start := claimweb.OwnerStart{Kind: claimweb.OwnerStartKind, Audience: claim.Audience, ClaimHash: base64.RawURLEncoding.EncodeToString(hash[:]), OperationID: op, ServerID: server, PublicKey: claim.PublicKey, Address: claim.Address, Purpose: "switch", State: base64.RawURLEncoding.EncodeToString(state[:]), CodeChallenge: base64.RawURLEncoding.EncodeToString(pkce[:]), InstallationID: installation, ServerChallenge: identity.Token(), IssuedAt: now, ExpiresAt: now.Add(4 * time.Minute)}
+	return ownerCaptureFixture{db: db, s: s, p: p, key: key, claim: claim, start: start, original: original, proof: ownerCaptureSigned(t, key, start)}
 }
 
 func (f ownerCaptureFixture) capture(ctx context.Context, tx *sql.Tx) error {
@@ -120,7 +122,7 @@ func (f ownerCaptureFixture) capture(ctx context.Context, tx *sql.Tx) error {
 func TestOwnerCaptureFreezesFullProofsAndBindsOnlyActualTransaction(t *testing.T) {
 	f := newOwnerCaptureFixture(t)
 	ctx := context.Background()
-	err := dbwork.WithWriteTx(ctx, f.s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+	err := dbwork.WithWriteTx(ctx, f.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
 		if err := f.capture(ctx, tx); err != nil {
 			return err
 		}
@@ -128,9 +130,9 @@ func TestOwnerCaptureFreezesFullProofsAndBindsOnlyActualTransaction(t *testing.T
 			t.Fatal("exact capture retry", err)
 		}
 		changed := f.start
-		newState := sha256.Sum256([]byte(Token()))
+		newState := sha256.Sum256([]byte(identity.Token()))
 		changed.State = base64.RawURLEncoding.EncodeToString(newState[:])
-		if err := f.s.CaptureOwnerClaimTx(ctx, tx, f.p, f.original, ownerCaptureSigned(t, f.key, changed), f.claim.Audience); !errors.Is(err, ErrConflict) {
+		if err := f.s.CaptureOwnerClaimTx(ctx, tx, f.p, f.original, ownerCaptureSigned(t, f.key, changed), f.claim.Audience); !errors.Is(err, identity.ErrConflict) {
 			t.Fatal("changed signed state replaced capture", err)
 		}
 		if err := f.s.BindOwnerClaimTransactionTx(ctx, tx, f.p, f.claim.OperationID, "actual_hosted_transaction"); err != nil {
@@ -139,7 +141,7 @@ func TestOwnerCaptureFreezesFullProofsAndBindsOnlyActualTransaction(t *testing.T
 		if err := f.s.BindOwnerClaimTransactionTx(ctx, tx, f.p, f.claim.OperationID, "actual_hosted_transaction"); err != nil {
 			t.Fatal("exact transaction replay", err)
 		}
-		if err := f.s.BindOwnerClaimTransactionTx(ctx, tx, f.p, f.claim.OperationID, "different_transaction"); !errors.Is(err, ErrConflict) {
+		if err := f.s.BindOwnerClaimTransactionTx(ctx, tx, f.p, f.claim.OperationID, "different_transaction"); !errors.Is(err, identity.ErrConflict) {
 			t.Fatal("different transaction replaced capture", err)
 		}
 		return nil
@@ -149,10 +151,10 @@ func TestOwnerCaptureFreezesFullProofsAndBindsOnlyActualTransaction(t *testing.T
 	}
 	var phase, state, transaction string
 	var challenge, link int
-	if err = f.s.db.QueryRow(`SELECT phase,state_hash,transaction_id,(SELECT count(*) FROM hosted_identity_challenges),(SELECT count(*) FROM account_portico_links) FROM identity_owner_completions WHERE operation_id=?`, f.claim.OperationID).Scan(&phase, &state, &transaction, &challenge, &link); err != nil || phase != "prepared" || state != Digest(f.start.State) || state == f.start.State || transaction != "actual_hosted_transaction" || challenge != 1 || link != 0 {
+	if err = f.db.QueryRow(`SELECT phase,state_hash,transaction_id,(SELECT count(*) FROM hosted_identity_challenges),(SELECT count(*) FROM account_portico_links) FROM identity_owner_completions WHERE operation_id=?`, f.claim.OperationID).Scan(&phase, &state, &transaction, &challenge, &link); err != nil || phase != "prepared" || state != identity.Digest(f.start.State) || state == f.start.State || transaction != "actual_hosted_transaction" || challenge != 1 || link != 0 {
 		t.Fatalf("capture projection phase=%s challenge=%d links=%d: %v", phase, challenge, link, err)
 	}
-	if kind, err := f.s.SignInKind(ctx); err != nil || kind != SignInLocal {
+	if kind, err := f.s.SignInKind(ctx); err != nil || kind != identity.SignInLocal {
 		t.Fatal("capture changed kind", err)
 	}
 }
@@ -169,7 +171,7 @@ func TestOwnerCaptureRechecksLiveFamilyMoveAndKeyBeforeAnyChallenge(t *testing.T
 		"claim withdrawn":        `UPDATE networking_claim_intents SET stage='cancelled'`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			tx, err := f.s.db.BeginTx(ctx, nil)
+			tx, err := f.db.BeginTx(ctx, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -191,8 +193,8 @@ func TestOwnerCaptureRechecksLiveFamilyMoveAndKeyBeforeAnyChallenge(t *testing.T
 func TestOwnerCaptureChallengeAndProofRollbackTogether(t *testing.T) {
 	f := newOwnerCaptureFixture(t)
 	ctx := context.Background()
-	abort := errors.New("caller did not persist full pending")
-	err := dbwork.WithWriteTx(ctx, f.s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+	abort := errors.identity.New("caller did not persist full pending")
+	err := dbwork.WithWriteTx(ctx, f.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
 		if err := f.capture(ctx, tx); err != nil {
 			return err
 		}
@@ -202,7 +204,7 @@ func TestOwnerCaptureChallengeAndProofRollbackTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	if err = f.s.db.QueryRow(`SELECT (SELECT count(*) FROM identity_owner_completions)+(SELECT count(*) FROM hosted_identity_challenges)`).Scan(&count); err != nil || count != 0 {
+	if err = f.db.QueryRow(`SELECT (SELECT count(*) FROM identity_owner_completions)+(SELECT count(*) FROM hosted_identity_challenges)`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("failed caller left challenge or proof", count, err)
 	}
 }
