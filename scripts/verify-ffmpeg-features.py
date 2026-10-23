@@ -74,8 +74,15 @@ def main():
     resample = run('-h', 'filter=aresample')
     if not re.search(r'\bsoxr\b', resample):
         missing.append('audio.resampler:soxr')
+    # This stock BSF strips or recompresses RPU data. It must never be
+    # mistaken for the separately qualified profile-7-to-8.1 converter.
+    stock_dovi = run('-h', 'bsf=dovi_rpu')
+    stock_options = set(re.findall(r'^\s+-(\w+)\s', stock_dovi, re.M))
+    if not {'strip', 'compression'} <= stock_options or 'mode' in stock_options:
+        missing.append('metadata.stock-dovi-rpu:strip/compression-only')
     report = {'target': target, 'contractId': contract['contractId'], 'version': run('-version').splitlines()[0],
               'sourceCommit': lock['ffmpeg']['commit'], 'missing': missing,
+              'stockDoviRpuOptions': sorted(stock_options),
               'inventories': {k: sorted(v) for k, v in inventories.items()}}
     if args.report:
         args.report.write_text(json.dumps(report, indent=2) + '\n')

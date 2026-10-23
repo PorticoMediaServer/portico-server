@@ -74,6 +74,19 @@ def main():
                 raise ValueError('audio codec round trip failed: ' + codec)
             results.append({'id': codec + '-roundtrip', 'codec': track['codec_name'], 'decodedPCMBytes': len(pcm)})
 
+        wma = work / 'generated.wma'
+        convert('-f', 'lavfi', '-i', 'sine=frequency=997:sample_rate=48000:duration=1',
+                '-ac', '2', '-c:a', 'wmav2', '-b:a', '192k', '-f', 'asf', wma)
+        track = streams(wma)[0]
+        pcm = convert('-i', wma, '-map', '0:a:0', '-c:a', 'pcm_s16le', '-f', 's16le', '-')
+        # WMA's block delay is codec framing, so permit one 4096-sample block
+        # around one second while requiring actual non-silent decoded samples.
+        frames = len(pcm) // 4
+        if (track['codec_name'] != 'wmav2' or track['sample_rate'] != '48000' or
+                abs(frames - 48000) > 4096 or not any(pcm)):
+            raise ValueError('WMAv2/ASF round trip failed')
+        results.append({'id': 'wmav2-asf-roundtrip', 'decodedFrames': frames})
+
         for rate, output_rate in [(176400, 88200), (192000, 96000)]:
             source, output = work / (str(rate) + '.wav'), work / (str(output_rate) + '.wav')
             convert('-f', 'lavfi', '-i', 'aevalsrc=0.1*sin(2*PI*997*t):s=' + str(rate) + ':d=2',
