@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SavedOperations} from '../src/screens/saved/operations.ts';
 import {sameSavedDownloadsScope, type SavedDownloadsScope, type SavedLocalDownload} from '../src/screens/saved/downloads-port.ts';
-import {diskFractions, localDownloadGroups, measuredPercent} from '../src/screens/saved/downloads-model.ts';
+import {diskFractions, localDownloadGroups, localGroupPercent, measuredPercent} from '../src/screens/saved/downloads-model.ts';
 import {createSavedRuntime} from '../src/screens/saved/runtime.ts';
 import {sameSavedRoute, savedViewKey} from '../src/screens/saved/route.ts';
 
@@ -61,6 +61,11 @@ test('storage bar uses actual OS total/free and all native Portico bytes', () =>
   assert.deepEqual(diskFractions({totalBytes: 1000, freeBytes: 400, usedBytes: 70}), {portico: 0.07, other: 0.53});
   for (const storage of [{totalBytes: 0, freeBytes: 0, usedBytes: 0}, {totalBytes: 100, freeBytes: 80, usedBytes: 30}, {totalBytes: 100, freeBytes: -1, usedBytes: 0}]) assert.equal(diskFractions(storage), undefined);
   assert.equal(measuredPercent(null), undefined); assert.equal(measuredPercent(NaN), undefined); assert.equal(measuredPercent(101), undefined); assert.equal(measuredPercent(0), 0);
+});
+test('native group progress requires exact consistent byte observations', () => {
+  assert.equal(localGroupPercent({bytes: 400, bytesDone: 100}), 25);
+  assert.equal(localGroupPercent({bytes: 400, bytesDone: 0}), 0);
+  for (const value of [{bytes: 0, bytesDone: 0}, {bytes: 400, bytesDone: 401}, {bytes: 400, bytesDone: -1}, {bytes: 400, bytesDone: 1.5}, {bytes: Number.MAX_SAFE_INTEGER + 1, bytesDone: 10}]) assert.equal(localGroupPercent(value), undefined);
 });
 test('local group identity survives duplicate show names; missing-server bytes remain visible', () => {
   const item = (id: string, parentId: string, onServer = true): SavedLocalDownload => ({id, revision: 1, preparationId: id, itemId: id, quality: 'original', state: 'ready', held: false, bytes: 100, bytesDone: 100, percent: 100, offlineAccess: 'valid', onServer, title: {kind: 'episode', title: id, year: 2026, durationSeconds: 1, parentId, parentTitle: 'Same show name', groupId: '', groupTitle: '', groupNumber: 1, number: 1, artist: '', onServer}});

@@ -39,6 +39,9 @@ export type SavedLocalDownloadGroup = Readonly<{
   count: number;
   bytes: number;
   bytesDone: number;
+  /** Present only when the same nonempty scalar exists on EVERY native member. */
+  parentTitle?: string;
+  artist?: string;
   /** Summary facts appear only when uniform across every native member. */
   quality?: string;
   qualityLabel?: string;

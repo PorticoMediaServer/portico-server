@@ -8,7 +8,7 @@ import {Dialog, MenuRow, Popover} from '../../kit/overlays';
 import {Icon} from '../../kit/Icon';
 import {StateView} from '../../kit/states';
 import {sameSavedDownloadsScope, type SavedDownloadsPort, type SavedDownloadRules, type SavedDownloadsSnapshot, type SavedLocalDownload, type SavedLocalDownloadGroup, type SavedOtherDownloadsConfirmation} from './downloads-port.ts';
-import {diskFractions, downloadShape, localDownloadGroups, measuredPercent, preparationPercent} from './downloads-model.ts';
+import {diskFractions, downloadShape, localDownloadGroups, localGroupPercent, measuredPercent, preparationPercent} from './downloads-model.ts';
 import type {SavedOperations} from './operations.ts';
 import {savedText as s} from './text.ts';
 import styles from './saved.module.css';
@@ -78,6 +78,20 @@ function LocalStatus({item, items}: {item: SavedLocalDownload; items: readonly S
   </span>;
 }
 
+function LocalGroupStatus({group}: {group: SavedLocalDownloadGroup}) {
+  const percent = localGroupPercent(group), checkIn = group.state === 'ready' && group.offlineAccess === 'needsCheckIn';
+  const label = checkIn ? s('next.saved.checkIn') : group.state === 'ready' ? s('next.saved.downloaded')
+    : group.state === 'failed' ? s('next.saved.stopped') : group.state === 'paused' ? t('downloads.paused')
+      : group.state === 'queued' ? t('web.downloads.state.waiting') : percent === undefined ? s('next.saved.downloadingUnknown') : s('next.saved.downloading', {percent: Math.floor(percent)});
+  return <span className={styles.status}>
+    <b data-tone={checkIn ? 'warning' : group.state === 'failed' ? 'error' : group.state === 'ready' ? 'healthy' : undefined}>
+      {group.state === 'ready' && !checkIn && <Icon name="i-check" size={16} />}{label}
+    </b>
+    {group.state === 'failed' && percent !== undefined && <small>{t('server.plays.stoppedAt', {percent: Math.floor(percent)})}</small>}
+    {group.state === 'downloading' && <Progress percent={percent} />}
+  </span>;
+}
+
 type LocalConfirmation = Readonly<{kind: 'item'; item: SavedLocalDownload}> | Readonly<{kind: 'others'; value: SavedOtherDownloadsConfirmation}> | Readonly<{kind: 'group'; group: SavedLocalDownloadGroup; title: string}>;
 export function LocalDownloads({port, operations, effects, server}: {port: SavedDownloadsPort; operations: SavedOperations; effects: SavedDownloadEffects; server?: ReactNode}) {
   const snapshot = useSyncExternalStore(port.subscribe, port.getSnapshot, port.getSnapshot);
@@ -111,18 +125,19 @@ export function LocalDownloads({port, operations, effects, server}: {port: Saved
           <div className={styles.downloadList} role="list">
             {group.items.map(item => {
               const allAlbumGroups = group.kind === 'music' && item.title.kind === 'song' ? snapshot.groups?.filter(value => value.kind === 'songs' && value.parentId === item.title.parentId) : undefined;
-              const album = allAlbumGroups?.length === 1 && allAlbumGroups[0].state && item.title.parentTitle ? allAlbumGroups[0] : undefined;
+              const album = allAlbumGroups?.length === 1 && allAlbumGroups[0].state && allAlbumGroups[0].parentTitle ? allAlbumGroups[0] : undefined;
+              const albumTitle = album?.parentTitle;
               if (album && group.items.find(value => value.title.parentId === album.parentId) !== item) return null;
-              if (album) {
+              if (album && albumTitle) {
                 const selector = {kind: album.kind, parentId: album.parentId, ...(album.groupId ? {groupId: album.groupId} : {})};
                 return <div key={`album:${album.parentId}:${album.groupId}`} className={styles.downloadRow} role="listitem">
                   <NativeArtwork id={album.artworkId ?? item.id} revision={album.revision} title={item.title} port={port} />
-                  <div className={styles.title}><b>{item.title.parentTitle}</b><small className={styles.facts}>{item.title.artist && <span>{item.title.artist}</span>}<span>{t('next.kit.songs', {count: album.count})}</span>{album.qualityLabel && <span>{album.qualityLabel}</span>}{album.bytes > 0 && <span>{defaultI18n.bytes(album.bytes)}</span>}</small></div>
-                  <span className={styles.status}><b data-tone={album.state === 'ready' ? album.offlineAccess === 'needsCheckIn' ? 'warning' : 'healthy' : undefined}>{album.state === 'ready' ? album.offlineAccess === 'needsCheckIn' ? s('next.saved.checkIn') : <><Icon name="i-check" size={16} />{s('next.saved.downloaded')}</> : album.state === 'failed' ? s('next.saved.stopped') : album.state === 'paused' ? t('downloads.paused') : album.state === 'queued' ? t('web.downloads.state.waiting') : s('next.saved.downloadingUnknown')}</b></span>
+                  <div className={styles.title}><b>{albumTitle}</b><small className={styles.facts}>{album.artist && <span>{album.artist}</span>}<span>{t('next.kit.songs', {count: album.count})}</span>{album.qualityLabel && <span>{album.qualityLabel}</span>}{album.bytes > 0 && <span>{defaultI18n.bytes(album.bytes)}</span>}</small></div>
+                  <LocalGroupStatus group={album} />
                   <span className={styles.actions}>
                     {album.state === 'ready' && album.held === false && album.offlineAccess === 'valid' && port.playGroup && <Button className={styles.rowButton} variant="primary" size="small" icon="i-play" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.playGroup!(selector, album.revision, signal))}>{t('action.play')}</Button>}
                     {album.state === 'downloading' && <Button className={styles.rowButton} size="small" icon="i-pause" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.actionGroup(selector, album.revision, 'pause', signal))}>{t('action.pause')}</Button>}
-                    <DownloadMenu><MenuRow onClick={() => effects.openItem(album.parentId)}>{t('web.downloads.goToTitle')}</MenuRow><MenuRow destructive onClick={() => setConfirmation({kind: 'group', group: album, title: item.title.parentTitle})}>{t('downloads.removeFromDevice')}</MenuRow></DownloadMenu>
+                    <DownloadMenu><MenuRow onClick={() => effects.openItem(album.parentId)}>{t('web.downloads.goToTitle')}</MenuRow><MenuRow destructive onClick={() => setConfirmation({kind: 'group', group: album, title: albumTitle})}>{t('downloads.removeFromDevice')}</MenuRow></DownloadMenu>
                   </span>
                 </div>;
               }
@@ -205,6 +220,7 @@ function DownloadRules({snapshot, busy, onChange, onChooseFolder}: {snapshot: Sa
 export function ServerDownloads({service, operations, effects, artwork, online, embedded = false}: {service: DownloadsService; operations: SavedOperations; effects: SavedDownloadEffects; artwork: ArtworkForPreparation; online: boolean; embedded?: boolean}) {
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const [qualities, setQualities] = useState<ReadonlyMap<string, string>>(new Map()), [confirmation, setConfirmation] = useState<Readonly<{item: DownloadPreparation; action: 'remove' | 'cancel'}>>();
+  const pendingSaves = useRef(new Set<string>()), [saving, setSaving] = useState<readonly string[]>([]);
   const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!online || !operations.current) return;
@@ -220,6 +236,16 @@ export function ServerDownloads({service, operations, effects, artwork, online, 
       if (failure) throw failure;
     }, () => setConfirmation(undefined)).catch(effects.reportError);
   };
+  const saveFile = (item: DownloadPreparation) => {
+    if (!online || !operations.current || item.state !== 'ready' || pendingSaves.current.has(item.id)) return;
+    pendingSaves.current.add(item.id); setSaving([...pendingSaves.current]);
+    void operations.run(async signal => {
+      try { await effects.saveFile(item, signal); }
+      finally { pendingSaves.current.delete(item.id); }
+    }, () => setSaving([...pendingSaves.current])).catch(error => {
+      setSaving([...pendingSaves.current]); effects.reportError(error);
+    });
+  };
   if (!operations.current) return null;
   if (snapshot.unavailable) return embedded ? null : <StateView title={t('web.downloads.offTitle')} body={t(effects.openServerSettings ? 'web.downloads.offOwner' : 'web.downloads.offMember')}
     primary={effects.openServerSettings ? {id: 'settings', label: s('next.saved.openServerSettings'), onPress: effects.openServerSettings} : undefined} />;
@@ -233,7 +259,7 @@ export function ServerDownloads({service, operations, effects, artwork, online, 
       <div className={styles.title}><b>{item.title.title}</b><DownloadFacts title={item.title} quality={item.quality === 'original' ? t('web.downloads.original') : qualities.get(item.quality)} bytes={item.artifact.bytes} browser /></div>
       <ServerStatus item={item} service={service} />
       <span className={styles.actions}>
-        {item.state === 'ready' && <Button variant="primary" className={styles.rowButton} size="small" icon="i-download" disabled={!online} onClick={() => { void operations.run(signal => effects.saveFile(item, signal)).catch(effects.reportError); }}>{t('web.downloads.save')}</Button>}
+        {item.state === 'ready' && <Button variant="primary" className={styles.rowButton} size="small" icon="i-download" disabled={!online} loading={saving.includes(item.id)} onClick={() => saveFile(item)}>{t('web.downloads.save')}</Button>}
         {item.actions.filter(action => action !== 'remove').map(action => <Button key={action} className={styles.rowButton} size="small" disabled={!online} loading={snapshot.busy.includes(item.id)} onClick={() => { if (action === 'cancel') setConfirmation({item, action}); else act(item, action); }}>{t(action === 'pause' ? 'action.pause' : action === 'resume' ? 'web.downloads.resume' : action === 'cancel' ? 'web.downloads.stop' : 'action.tryAgain')}</Button>)}
         <DownloadMenu><MenuRow onClick={() => effects.openItem(item.itemId)}>{t('web.downloads.goToTitle')}</MenuRow>{item.actions.includes('remove') && <MenuRow destructive onClick={() => setConfirmation({item, action: 'remove'})}>{t('action.removeShort')}</MenuRow>}</DownloadMenu>
       </span>

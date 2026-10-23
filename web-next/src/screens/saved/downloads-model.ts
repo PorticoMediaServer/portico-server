@@ -1,5 +1,5 @@
 import type {DownloadPreparation, DownloadTitle} from '@core/downloads.ts';
-import type {SavedLocalDownload} from './downloads-port.ts';
+import type {SavedLocalDownload, SavedLocalDownloadGroup} from './downloads-port.ts';
 
 export type LocalDownloadGroup = Readonly<{
   id: string;
@@ -31,6 +31,12 @@ export function downloadShape(title: DownloadTitle): 'wide' | 'square' | 'poster
 
 export function measuredPercent(percent: number | null | undefined): number | undefined {
   return typeof percent === 'number' && Number.isFinite(percent) && percent >= 0 && percent <= 100 ? percent : undefined;
+}
+
+/** Exact complete-native aggregate bytes, never the sum of a loaded page. */
+export function localGroupPercent({bytes, bytesDone}: Pick<SavedLocalDownloadGroup, 'bytes' | 'bytesDone'>): number | undefined {
+  return Number.isSafeInteger(bytes) && bytes > 0 && Number.isSafeInteger(bytesDone) && bytesDone >= 0 && bytesDone <= bytes
+    ? measuredPercent(bytesDone / bytes * 100) : undefined;
 }
 
 export function preparationPercent(preparation: DownloadPreparation): number | undefined {
