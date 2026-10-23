@@ -17,7 +17,7 @@ import (
 )
 
 // PlaybackAnalysisRevision invalidates earlier scan results on the next bounded inventory pass.
-const PlaybackAnalysisRevision = "playback_facts:3"
+const PlaybackAnalysisRevision = "playback_facts:4"
 
 func (p Probe) analysisOutput(ctx context.Context, path string, limit int, args ...string) ([]byte, error) {
 	if p.ReadGuard != nil {
@@ -73,11 +73,12 @@ func (p Probe) AnalyzePlayback(ctx context.Context, path string, f *Facts) {
 	}
 	// HDR10+ and, where the container did not carry it, HDR10 static metadata
 	// travel in the first picture (SEI in HEVC elementary and MPEG-TS sources).
-	if (video.Codec == "hevc" || video.Codec == "av1" || video.Codec == "vp9") && video.ColorTransfer == "smpte2084" {
+	if (video.Codec == "hevc" || video.Codec == "av1" || video.Codec == "vp9") && video.ColorTransfer == "smpte2084" || video.Detail.DolbyVisionProfile > 0 {
 		bounded, cancel := context.WithTimeout(ctx, 8*time.Second)
-		raw, e := p.analysisOutput(bounded, path, 1<<20, "-select_streams", "v:0", "-read_intervals", "%+#1", "-show_frames", "-show_entries", "frame=side_data_list", "-of", "json")
+		raw, e := p.analysisOutput(bounded, path, 1<<20, "-select_streams", "v:0", "-read_intervals", "%+#1", "-show_frames", "-show_entries", "frame=media_type,width,height,side_data_list", "-of", "json")
 		cancel()
 		if e == nil {
+			analyzeDolbyVisionFrames(raw, &video.Detail)
 			var doc struct {
 				Frames []struct {
 					Side []probeSideData `json:"side_data_list"`
