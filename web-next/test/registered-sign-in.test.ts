@@ -23,7 +23,7 @@ async function fixture() {
       capabilities: {manageAccount: true, managePeople: false, manageServer: false, manageSignIn: false},
       account: {id: 'server-account', username: 'person', primaryProfileId: 'main', role: 'member', revision: 1, disabled: false, allowedLibraries: [], hostedAccountId: 'actual-hosted-account'},
       profiles: [{id: 'main', name: 'Main', primary: true, art: 'blue', position: 0, revision: 1, pinRevision: 1, pinRequired: true}]},
-    session: {accessToken: 'server-access', refreshToken: 'server-refresh', sessionFamilyId: 'new-server-family', tokenGeneration: '1', installationId: installation,
+    session: {accessToken: 'server-access', refreshToken: Buffer.alloc(32, 8).toString('base64url'), sessionFamilyId: 'new-server-family', tokenGeneration: '1', installationId: installation,
       expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-02-01T00:00:00Z', viewer: {authority: 'local', serverId: pin.serverId, accountId: 'server-account', profileId: 'main', role: 'account'}},
   };
   const calls: string[] = [], retired: string[] = [], exposed: RegisteredSignIn[] = [];
