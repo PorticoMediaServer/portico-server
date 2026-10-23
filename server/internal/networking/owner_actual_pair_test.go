@@ -140,16 +140,19 @@ func (b *ownerPairBridge) RoundTrip(r *http.Request) (*http.Response, error) {
 			return nil, r.Context().Err()
 		}
 	}
-	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	if err != nil {
-		return nil, err
+	var raw []byte
+	if r.Body != nil {
+		var err error
+		raw, err = io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			return nil, err
+		}
 	}
 	defer clear(raw)
-	var body any
-	if len(raw) > 0 && json.Unmarshal(raw, &body) != nil {
+	if len(raw) > 0 && !json.Valid(raw) {
 		return nil, errors.New("invalid pair HTTP request")
 	}
-	out := b.call(map[string]any{"Action": "http", "Method": r.Method, "Path": r.URL.RequestURI(), "Headers": r.Header, "Body": body})
+	out := b.call(map[string]any{"Action": "http", "Method": r.Method, "Path": r.URL.RequestURI(), "Headers": r.Header, "Body": json.RawMessage(raw)})
 	payload := out.Body
 	if out.BodyEmpty {
 		payload = nil
