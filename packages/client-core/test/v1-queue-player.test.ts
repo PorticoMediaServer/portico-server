@@ -46,11 +46,13 @@ const settle = () => new Promise(r => setTimeout(r, 20));
 test('playItem caller lifetime refuses stale input before changing an intent or issuing a request', async () => {
   const {player, playback, log, stop} = setup();
   try {
+    await settle(); // The initial current-queue read is independent of a Play intent.
+    const beforeRequests = log.length;
     const before = playback.getSnapshot();
     const controller = new AbortController(); controller.abort();
     for (const context of [{signal: controller.signal}, {isCurrent: () => false}]) {
       await assert.rejects(player.playItem('movie', 17, undefined, undefined, undefined, {versionId: 'v2'}, context), {name: 'AbortError'});
-      assert.equal(log.length, 0);
+      assert.equal(log.length, beforeRequests);
       assert.equal(playback.getSnapshot(), before);
     }
   } finally { stop(); }
