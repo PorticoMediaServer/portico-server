@@ -11,20 +11,23 @@ import (
 
 const EpisodeThumbnailOperation = "episode_thumbnail"
 const EpisodeThumbnailCostClass = "decode"
-const EpisodeThumbnailDefaultMode = "provider_then_generated"
+const EpisodeThumbnailDefaultMode = "provider_then_made"
+const EpisodeThumbnailProviderMode = "provider"
+const EpisodeThumbnailOffMode = "off"
 
 // EpisodeThumbnailRequest is the seam consumed by the effective library/source
-// policy owner. Authorize rechecks that intersection before source acquisition
-// and before publishing bytes. Input remains a range reader; this operation
-// never materializes or assumes a whole-file download.
+// policy owner. Authorize must recheck the effective library/source intersection
+// for the supplied operation and cost class. Open acquires a retained range
+// reader only after permission is granted; provider/off never acquire media.
+// The publication transaction must independently recheck the same authority.
 type EpisodeThumbnailRequest struct {
 	Mode          string
 	Manual        bool
 	ProviderStill bool
 	DurationUS    int64
-	Input         Input
+	Open          func(context.Context) (Input, error)
 	Decoder       func(Input) Decode
-	Authorize     func(context.Context) error
+	Authorize     func(context.Context, string, string) error
 	SourceVideo   decoder.PreviewVideoFacts
 }
 type EpisodeThumbnailResult struct {
@@ -40,30 +43,25 @@ func EpisodeThumbnailMode(libraryKind string) string {
 	if libraryKind == "tv" || libraryKind == "anime" {
 		return EpisodeThumbnailDefaultMode
 	}
-	return "off"
+	return EpisodeThumbnailOffMode
 }
 
 // MakeEpisodeThumbnail produces exactly one bounded picture, or chooses an
 // already available provider still. Manual generation obeys the same permission
-// callback and cannot bypass an off/provider-only choice.
+// callback and cannot bypass an off/provider choice. ProviderStill describes an
+// already permitted provider picture; this function never performs a lookup.
 func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (EpisodeThumbnailResult, error) {
 	out := EpisodeThumbnailResult{Origin: "fallback"}
-	if r.Authorize == nil {
-		return out, ErrInput
-	}
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
-	if err := r.Authorize(ctx); err != nil {
-		return out, err
-	}
 	switch r.Mode {
-	case "off":
+	case EpisodeThumbnailOffMode:
 		if r.Manual {
 			return out, ErrUnsupported
 		}
 		return out, nil
-	case "provider_only":
+	case EpisodeThumbnailProviderMode:
 		if r.Manual {
 			return out, ErrUnsupported
 		}
@@ -79,10 +77,30 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 		out.Origin = "provider"
 		return out, nil
 	}
-	if r.Input == nil || r.Decoder == nil || r.DurationUS <= 0 || r.DurationUS > (1<<53)-1 {
+	if r.Open == nil || r.Decoder == nil || r.Authorize == nil || r.DurationUS <= 0 || r.DurationUS > (1<<53)-1 {
 		return out, ErrInput
 	}
-	if err := r.Input.Validate(ctx); err != nil {
+	authorize := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return r.Authorize(ctx, EpisodeThumbnailOperation, EpisodeThumbnailCostClass)
+	}
+	if err := authorize(); err != nil {
+		return out, err
+	}
+	input, err := r.Open(ctx)
+	if err != nil {
+		return out, err
+	}
+	if input == nil {
+		return out, ErrInput
+	}
+	defer input.Close()
+	if err := input.Validate(ctx); err != nil {
+		return out, err
+	}
+	if err := authorize(); err != nil {
 		return out, err
 	}
 	// Ten percent avoids most opening cards; a short episode still has a valid
@@ -90,11 +108,11 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 	position := min(r.DurationUS-1, r.DurationUS/10)
 	spec := decoder.AnalysisSpec{Kind: "image", StartUS: position, MaxDurationUS: r.DurationUS, SourceVideo: r.SourceVideo}
 	var data []byte
-	decode := r.Decoder(r.Input)
+	decode := r.Decoder(input)
 	if decode == nil {
 		return out, ErrUnsupported
 	}
-	err := decode(ctx, EpisodeThumbnailOperation, spec, func(reader io.Reader) error {
+	err = decode(ctx, EpisodeThumbnailOperation, spec, func(reader io.Reader) error {
 		var err error
 		data, err = io.ReadAll(io.LimitReader(reader, (1<<20)+1))
 		if len(data) > 1<<20 {
@@ -109,10 +127,13 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 	if err != nil || shape.Width != 320 || shape.Height != 180 {
 		return out, ErrUnsupported
 	}
-	if err = r.Input.Validate(ctx); err != nil {
+	if _, err = jpeg.Decode(bytes.NewReader(data)); err != nil {
+		return out, ErrUnsupported
+	}
+	if err = input.Validate(ctx); err != nil {
 		return out, err
 	}
-	if err = r.Authorize(ctx); err != nil {
+	if err = authorize(); err != nil {
 		return out, err
 	}
 	if err = ctx.Err(); err != nil {
