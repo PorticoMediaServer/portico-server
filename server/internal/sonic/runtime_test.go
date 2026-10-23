@@ -45,6 +45,9 @@ func actualRuntime(t *testing.T) (*Runtime, *storage.Supervisor) {
 		t.Skip("actual checked ONNX model/helper are supplied by the runtime conformance job")
 	}
 	sup := &storage.Supervisor{Limit: 1}
+	if _, err := mediaexec.Configure(mediaexec.Options{StateDir: t.TempDir(), SkipOrphanKill: true}); err != nil {
+		t.Fatal(err)
+	}
 	r, err := OpenRuntime(RuntimeOptions{Helper: helper, ModelDirectory: model, Supervisor: sup})
 	if err != nil {
 		t.Fatal(err)
