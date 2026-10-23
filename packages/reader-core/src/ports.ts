@@ -6,8 +6,11 @@ export interface ReaderSource {
   readonly revision: string;
   readonly size: number;
   readonly resources?: ReaderResources;
+  /** Genuine interactive from-start stream; never a synthetic random reader. */
+  readonly sequential?: ReaderSequentialSource;
   read?(range: ReaderRange, signal: AbortSignal): Promise<Uint8Array>;
 }
+export type ReaderSequentialSource = Readonly<{open(signal: AbortSignal): Promise<ReadableStream<Uint8Array>>}>;
 export type ReaderResource = Readonly<{path: string; mime: string; size: number}>;
 export interface ReaderResources {
   readonly entries: readonly ReaderResource[];
