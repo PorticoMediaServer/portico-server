@@ -952,9 +952,9 @@ func run() (runErr error) {
 	})
 	// Author/series navigation identities are derived from book and tag
 	// publications. Keeping the batch here makes audiobook reads read-only.
-	// Only books and book_files commits can name a new author or series (every
-	// audiobook ingest writes book_files); another library's scan does not wake
-	// it (B85). The step runs a pass at startup and after such a change.
+	// Subscribe to the canonical book facts and derived series context, which
+	// are the tables the bounded pass reads. The retired books/book_files names
+	// cannot observe those publications. Run at startup and after changes (B85).
 	supervise.Supervise(ctx, "cmd.listening-groups", func(life context.Context) {
 		wake, changed := worker.NewSignal(), worker.NewSignal()
 		unregister := subscribeListeningGroups(wake, changed)

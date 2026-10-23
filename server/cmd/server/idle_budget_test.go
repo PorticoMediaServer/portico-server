@@ -22,6 +22,16 @@ type idleBudgetReport struct {
 	WindowSeconds float64                        `json:"windowSeconds"`
 	Statements    []uint64                       `json:"statements"`
 	Top           []dbwork.StatementProfileEntry `json:"top,omitempty"`
+	Samples       []idleBudgetSample             `json:"samples,omitempty"`
+}
+
+type idleBudgetSample struct {
+	Window          int                            `json:"window"`
+	StartedAt       time.Time                      `json:"startedAt"`
+	ElapsedSeconds  float64                        `json:"elapsedSeconds"`
+	Statements      uint64                         `json:"statements"`
+	ChangingCommits uint64                         `json:"changingCommits"`
+	Top             []dbwork.StatementProfileEntry `json:"top,omitempty"`
 }
 
 // The default mode catches accidentally restored subsecond polling in a real
@@ -121,8 +131,35 @@ func TestServerIdleBudgetHelper(t *testing.T) {
 		for i := 0; i < windows; i++ {
 			dbwork.ProfileStatements(true)
 			before := dbwork.Reads().Statements
+			beforeCommits := dbwork.ChangingCommits()
+			started := time.Now()
 			timer := time.NewTimer(window)
-			<-timer.C
+			var samples *time.Ticker
+			var sample <-chan time.Time
+			if os.Getenv("PORTICO_DBWORK_TRACE") == "1" {
+				samples = time.NewTicker(5 * time.Second)
+				sample = samples.C
+			}
+		observe:
+			for {
+				select {
+				case <-timer.C:
+					break observe
+				case <-sample:
+					// Memory-only counters/profile snapshots attribute when a late
+					// wake arrives. They issue no SQL, reset no profile and do not
+					// change the complete-minute assertion or startup barriers.
+					profile := dbwork.StatementProfile()
+					sort.Slice(profile, func(i, j int) bool { return profile[i].Count > profile[j].Count })
+					if len(profile) > 16 {
+						profile = profile[:16]
+					}
+					report.Samples = append(report.Samples, idleBudgetSample{Window: i + 1, StartedAt: started.UTC(), ElapsedSeconds: time.Since(started).Seconds(), Statements: dbwork.Reads().Statements - before, ChangingCommits: dbwork.ChangingCommits() - beforeCommits, Top: profile})
+				}
+			}
+			if samples != nil {
+				samples.Stop()
+			}
 			report.Statements = append(report.Statements, dbwork.Reads().Statements-before)
 			profile := dbwork.StatementProfile()
 			dbwork.ProfileStatements(false)

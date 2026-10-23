@@ -6,7 +6,7 @@ import (
 )
 
 func subscribeListeningGroups(wake, changed *worker.Signal) func() {
-	stopWake := dbwork.WakeOnTables(wake, "books", "book_files")
-	stopChanged := dbwork.WakeOnTables(changed, "books", "book_files")
+	stopWake := dbwork.WakeOnTables(wake, "catalog_books", "catalog_book_context")
+	stopChanged := dbwork.WakeOnTables(changed, "catalog_books", "catalog_book_context")
 	return func() { stopWake(); stopChanged() }
 }
