@@ -143,9 +143,9 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   const item = visualId ? cast?.item(visualId) : undefined;
   const source = remote?.source?.fence.kind === 'queue' && remote.source.fence.itemId === visualId ? remote.source : undefined;
   const subject = item ? itemSubject(item) : source?.subject;
-  const visuals = {itemId: subject ? visualId : undefined, identity: subject && binding ? playbackIdentity(subject, 'full', binding.environment) : undefined,
-    artwork: subject && binding ? binding.artwork.foreground(item?.posterUrl ?? item?.backdropUrl ?? source?.posterUrl ?? source?.backdropUrl, 256, 16 / 9, {group: 'playback', priority: 'high'}) : undefined,
-    skipBackSeconds: binding?.skips.back, skipForwardSeconds: binding?.skips.forward};
+  const visuals = binding ? {itemId: subject ? visualId : undefined, identity: subject ? playbackIdentity(subject, 'full', binding.environment) : undefined,
+    artwork: subject ? binding.artwork.foreground(item?.posterUrl ?? item?.backdropUrl ?? source?.posterUrl ?? source?.backdropUrl, 256, 16 / 9, {group: 'playback', priority: 'high'}) : undefined,
+    skipBackSeconds: binding.skips.back, skipForwardSeconds: binding.skips.forward} : undefined;
   return <div ref={host} className={styles.dock} data-phone={phone} data-shell-dock data-watch-playback-host>
     {snapshot && dockBinding && <div className={styles.localDock} data-covered={!!remote}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} />
       <DockNotice notice={currentNotice} nowMs={now} binding={dockBinding} phone={phone} /></div>}
@@ -155,7 +155,7 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
     {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
       surfaces={drawnSurfaces} geometry={geometry}
       windowPort={typeof document !== 'undefined' && document.fullscreenEnabled ? {fullscreen: {active: fullscreen, toggle: toggleFullscreen}} : undefined} />}
-    {cast && binding && <div className={styles.remote}><CastPlayback controller={cast.controller} visuals={visuals} phone={phone} anchorRef={castAnchor} reportError={binding.reportError} /></div>}
+    {cast && binding && visuals && <div className={styles.remote}><CastPlayback controller={cast.controller} visuals={visuals} phone={phone} anchorRef={castAnchor} reportError={binding.reportError} /></div>}
   </div>;
 }
 function playbackIdentityLabel(presentations: readonly DockPresentation[], key: string | undefined) { return presentations.find(value => fenceKey(value.fence) === key)?.identity.title ?? defaultI18n.t('next.dock.nowPlaying'); }
