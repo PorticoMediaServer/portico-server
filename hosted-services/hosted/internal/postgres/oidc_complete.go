@@ -345,8 +345,11 @@ func (o *OIDCLogin) completeSecurityTx(ctx context.Context, tx *sql.Tx, r oidcRo
 			}
 		}
 		// Never replace or merge a contact by email similarity when linking.
-		if e = o.Security.notifyTx(ctx, tx, expected.AccountID, "provider_linked", intent.OperationID); e != nil {
-			return out, e
+		// Reconfirming an already-active method adds no method and no notice.
+		if owner == "" || revoked.Valid {
+			if e = o.Security.notifyTx(ctx, tx, expected.AccountID, "provider_linked", intent.OperationID); e != nil {
+				return out, e
+			}
 		}
 		// Adding a sign-in method invalidates no credential, so every session
 		// stays signed in (only credential changes revoke families).
