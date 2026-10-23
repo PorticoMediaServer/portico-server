@@ -17,6 +17,7 @@ import (
 type ServeSource struct {
 	Program                rcloneprogram.Program
 	Remote, Generation     string
+	ApprovedProgramDigest  string
 	Configuration          []byte
 	CacheBytes, CacheFloor int64
 }
@@ -64,5 +65,5 @@ func (s *Service) CaptureServeSource(ctx context.Context, id, generation string)
 		clear(raw)
 		return out, storage.ErrRemoteChanged
 	}
-	return ServeSource{Program: rcloneprogram.Program{Path: b.executable}, Remote: b.remote, Generation: generation, Configuration: raw, CacheBytes: cache, CacheFloor: floor}, nil
+	return ServeSource{Program: rcloneprogram.Program{Path: b.executable}, ApprovedProgramDigest: b.digest, Remote: b.remote, Generation: generation, Configuration: raw, CacheBytes: cache, CacheFloor: floor}, nil
 }

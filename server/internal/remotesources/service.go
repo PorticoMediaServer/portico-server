@@ -24,6 +24,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
 )
@@ -49,6 +50,7 @@ type Service struct {
 	commands            sync.Mutex
 	serveMu             sync.Mutex
 	serveLeases         map[string]*sourceProcessLease
+	readLeases          map[string]map[int64]*SourceReadLease
 	serveClosed         bool
 	serveLife           context.Context
 	readLeaseSequence   atomic.Int64
@@ -238,6 +240,8 @@ func (s *Service) check(ctx context.Context, b binding, generation string) error
 }
 func mapError(err error) error {
 	switch {
+	case errors.Is(err, rcloneprogram.ErrServeProgram):
+		return storage.ErrRemoteBinary
 	case err == nil:
 		return nil
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
@@ -369,9 +373,17 @@ func (s *Service) InspectRoot(ctx context.Context, path string) (storage.Snapsho
 }
 func (s *Service) PlaybackActive(id string) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	for _, r := range s.active[id] {
 		if r.lane == "playback" {
+			s.mu.Unlock()
+			return true
+		}
+	}
+	s.mu.Unlock()
+	s.serveMu.Lock()
+	defer s.serveMu.Unlock()
+	for _, lease := range s.readLeases[id] {
+		if lease.binding.Purpose == SourceReading || lease.binding.Purpose == SourcePlayback {
 			return true
 		}
 	}
@@ -379,6 +391,7 @@ func (s *Service) PlaybackActive(id string) bool {
 }
 func (s *Service) invalidate(id string) {
 	s.stopServeProcess(id)
+	s.stopReadLeases(id, storage.ErrRemoteChanged, nil)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.active[id] {

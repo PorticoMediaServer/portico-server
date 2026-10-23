@@ -154,9 +154,26 @@ func (l *sourceProcessLease) Release() {
 		_ = os.RemoveAll(l.cache)
 	}
 	l.service.serveMu.Lock()
-	defer l.service.serveMu.Unlock()
+	process := l.process
 	if l.service.serveLeases[l.source] == l {
 		delete(l.service.serveLeases, l.source)
+	}
+	var readers []*SourceReadLease
+	for _, reader := range l.service.readLeases[l.source] {
+		readers = append(readers, reader)
+	}
+	l.service.serveMu.Unlock()
+	// A physical exit ends only readers bound to that exact process epoch.
+	// A provisional reader which never opened bytes has no retired epoch.
+	if process != nil {
+		for _, reader := range readers {
+			reader.mu.Lock()
+			same := reader.processGeneration == process.Generation()
+			reader.mu.Unlock()
+			if same {
+				reader.fail(storage.ErrRemoteOffline)
+			}
+		}
 	}
 }
 
@@ -170,11 +187,12 @@ func (s *Service) stopServeProcess(source string) {
 
 func (s *Service) stopServeProcesses() {
 	s.serveMu.Lock()
-	defer s.serveMu.Unlock()
 	s.serveClosed = true
 	for _, lease := range s.serveLeases {
 		lease.cancel()
 	}
+	s.serveMu.Unlock()
+	s.stopReadLeases("", storage.ErrRemoteOffline, nil)
 }
 
 // ReadProfileCommitted applies a committed profile change to process custody.
@@ -190,6 +208,7 @@ func (s *Service) ReadProfileCommitted(ctx context.Context, source string, revis
 	}
 	defer snapshot.Rollback()
 	profile, err := SourceReadProfileTx(ctx, snapshot.Tx(), source)
+	snapshot.Rollback()
 	if err != nil {
 		return err
 	}
@@ -197,9 +216,10 @@ func (s *Service) ReadProfileCommitted(ctx context.Context, source string, revis
 		return storage.ErrRemoteChanged
 	}
 	s.serveMu.Lock()
-	defer s.serveMu.Unlock()
 	if lease := s.serveLeases[source]; lease != nil && lease.profile != profile {
 		lease.cancel()
 	}
+	s.serveMu.Unlock()
+	s.stopReadLeases(source, storage.ErrRemoteChanged, &profile)
 	return nil
 }

@@ -27,18 +27,19 @@ var ErrServeConfiguration = errors.New("remote serve configuration is invalid")
 // or set proxy environment variables (SFTP/SMB connect directly).
 // There is deliberately no default enforcement or inherited environment.
 type ServeCommandSpec struct {
-	SourceID          string
-	SourceGeneration  string
-	PrivateDirectory  string
-	Configuration     []byte
-	Remote            string
-	Port              int
-	MetadataPort      int
-	Username          string
-	Password          string
-	Connections       int
-	RequestsPerSecond int
-	BytesPerSecond    int64
+	ApprovedProgramDigest string
+	SourceID              string
+	SourceGeneration      string
+	PrivateDirectory      string
+	Configuration         []byte
+	Remote                string
+	Port                  int
+	MetadataPort          int
+	Username              string
+	Password              string
+	Connections           int
+	RequestsPerSecond     int
+	BytesPerSecond        int64
 	// SequentialReads disables VFS chunk reopens for known start-only sources.
 	// This is transport behavior, never operation permission or fake ReadAt.
 	SequentialReads bool
@@ -81,6 +82,9 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 		return nil, ErrServeConfiguration
 	}
 	if !program.Included {
+		if err := checkServeProgram(program, spec.ApprovedProgramDigest); err != nil {
+			return nil, err
+		}
 		if _, err := program.Check(ctx); err != nil {
 			return nil, err
 		}
@@ -134,6 +138,14 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	childprocess.Configure(p.Command)
 	if err = spec.Enforce(p.Command); err != nil {
 		return nil, err
+	}
+	if !program.Included {
+		if p.Command.Path != program.Path {
+			return nil, ErrServeProgram
+		}
+		if err = checkServeProgram(program, spec.ApprovedProgramDigest); err != nil {
+			return nil, err
+		}
 	}
 	good = true
 	return p, nil
@@ -237,6 +249,11 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		}
 	}
 	if err = lease.Check(life); err == nil {
+		if !program.Included {
+			err = checkServeProgram(program, spec.ApprovedProgramDigest)
+		}
+	}
+	if err == nil {
 		// Bounds pipe inheritance even when a custom program starts descendants.
 		prepared.Command.WaitDelay = 100 * time.Millisecond
 		err = prepared.Command.Start()

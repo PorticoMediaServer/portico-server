@@ -110,7 +110,25 @@ func (s *Service) CaptureReadSourceTx(ctx context.Context, tx *sql.Tx, admission
 		return nil, err
 	}
 	life, cancel := context.WithCancel(ctx)
-	return &SourceReadLease{service: s, binding: binding, admission: admission, life: life, cancel: cancel}, nil
+	lease := &SourceReadLease{service: s, binding: binding, admission: admission, life: life, cancel: cancel}
+	s.serveMu.Lock()
+	if s.serveClosed {
+		s.serveMu.Unlock()
+		cancel()
+		return nil, storage.ErrRemoteOffline
+	}
+	if s.readLeases == nil {
+		s.readLeases = make(map[string]map[int64]*SourceReadLease)
+	}
+	if s.readLeases[ref.SourceID] == nil {
+		s.readLeases[ref.SourceID] = make(map[int64]*SourceReadLease)
+	}
+	s.readLeases[ref.SourceID][id] = lease
+	s.serveMu.Unlock()
+	// Owner expiry/close retires activity even when no further extent arrives.
+	// The callback does no DB, provider I/O or user notification.
+	context.AfterFunc(life, func() { lease.fail(life.Err()) })
+	return lease, nil
 }
 func (l *SourceReadLease) Binding() SourceReadBinding { return l.binding }
 func (l *SourceReadLease) CheckTx(ctx context.Context, tx *sql.Tx) error {
@@ -209,7 +227,40 @@ func (l *SourceReadLease) fail(err error) error {
 	}
 	out := l.terminal
 	l.mu.Unlock()
+	if first {
+		l.service.serveMu.Lock()
+		readers := l.service.readLeases[l.binding.Observation.SourceID]
+		if readers[l.binding.LeaseID] == l {
+			delete(readers, l.binding.LeaseID)
+			if len(readers) == 0 {
+				delete(l.service.readLeases, l.binding.Observation.SourceID)
+			}
+		}
+		l.service.serveMu.Unlock()
+	}
 	return out
+}
+
+// stopReadLeases cancels only captured logical readers. Process capacity stays
+// with sourceProcessLease until physical Wait. No caller notice runs in a DB
+// transaction or while service locks are held; Check delivers a changed notice.
+func (s *Service) stopReadLeases(source string, reason error, keep *SourceReadProfile) {
+	s.serveMu.Lock()
+	var readers []*SourceReadLease
+	for id, group := range s.readLeases {
+		if source != "" && source != id {
+			continue
+		}
+		for _, lease := range group {
+			if keep == nil || lease.binding.Profile != *keep {
+				readers = append(readers, lease)
+			}
+		}
+	}
+	s.serveMu.Unlock()
+	for _, lease := range readers {
+		lease.fail(reason)
+	}
 }
 func (l *SourceReadLease) notifyChanged() {
 	l.mu.Lock()

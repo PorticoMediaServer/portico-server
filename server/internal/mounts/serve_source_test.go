@@ -24,6 +24,10 @@ func TestCaptureServeSourcePreservesConfigurationAndExactGeneration(t *testing.T
 	if source.Generation != "1" || source.Remote != input.Remote || string(source.Configuration) != input.Config || source.Program.Path != input.Executable {
 		t.Fatal("configuration capture mismatch")
 	}
+	digest, err := executableDigest(input.Executable)
+	if err != nil || source.ApprovedProgramDigest != digest || len(digest) != 64 {
+		t.Fatal("capture lost the actual owner-approved program image", err)
+	}
 	clear(source.Configuration)
 	stored, err := os.ReadFile(filepath.Join(s.private, row.ID+".conf"))
 	if err != nil || string(stored) != input.Config {

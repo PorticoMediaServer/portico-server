@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -158,5 +160,71 @@ func TestServeTransportHasNoProxyCommandOrNativeFallback(t *testing.T) {
 	actual, _, _, err := serveTransport([]byte("[active]\ntype=crypt\nremote=underlying:path\n[underlying]\ntype=drive\n"), "active:")
 	if err != nil || actual != "drive" {
 		t.Fatal("configured crypt chain", actual, err)
+	}
+}
+
+func TestSourceSessionActivityExpiresWithoutAnotherRead(t *testing.T) {
+	f := newObservationFixture(t)
+	identities, owner, _ := observationOwner(t, f)
+	ref, err := f.record(t, scanFacts("lifetime"), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	life, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	view, err := dbwork.BeginSnapshot(life, f.s.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := f.s.CaptureReadSourceTx(life, view.Tx(), SourceSessionAdmission{Purpose: SourceReading, Observation: ref, OnChanged: func() { t.Error("owner expiry reported replacement") }, CheckTx: func(ctx context.Context, tx *sql.Tx, binding SourceReadBinding) error {
+		if binding.Observation != ref || binding.Path != f.file {
+			return storage.ErrRemoteChanged
+		}
+		return currentLocalOwnerTx(ctx, tx, identities, owner)
+	}})
+	view.Rollback()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	if !f.s.PlaybackActive("remote") {
+		t.Fatal("actual retained interactive session not active")
+	}
+	cancel()
+	deadline := time.Now().Add(time.Second)
+	for f.s.PlaybackActive("remote") && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if f.s.PlaybackActive("remote") {
+		t.Fatal("expired idle session retained activity")
+	}
+	if err = lease.Check(context.Background()); err == nil {
+		t.Fatal("expired owner lifetime revived")
+	}
+}
+
+func TestSourceSessionShutdownAndInvalidationRetireCurrentReaders(t *testing.T) {
+	for _, shutdown := range []bool{false, true} {
+		t.Run(fmt.Sprint("shutdown=", shutdown), func(t *testing.T) {
+			f := newObservationFixture(t)
+			identities, owner, _ := observationOwner(t, f)
+			ref, err := f.record(t, scanFacts("retire"), 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lease := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
+			defer lease.Close()
+			if shutdown {
+				f.s.stopServeProcesses()
+			} else {
+				f.s.invalidate("remote")
+			}
+			if f.s.PlaybackActive("remote") {
+				t.Fatal("retired source retained activity")
+			}
+			if err = lease.Check(context.Background()); err == nil {
+				t.Fatal("old source reader survived retirement")
+			}
+		})
 	}
 }

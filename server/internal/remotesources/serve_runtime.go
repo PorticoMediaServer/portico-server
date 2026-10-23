@@ -207,7 +207,7 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	if metadata == endpoint {
 		return nil, storage.ErrBusy
 	}
-	spec := rcloneprogram.ServeCommandSpec{SourceID: slot.source, SourceGeneration: slot.generation, PrivateDirectory: s.private, Configuration: material.Configuration, Remote: material.Remote, Port: endpoint, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: slot.profile.Limits.Connections, RequestsPerSecond: slot.profile.Limits.RequestsPerSecond, BytesPerSecond: slot.profile.Limits.BytesPerSecond, SequentialReads: slot.sequential,
+	spec := rcloneprogram.ServeCommandSpec{SourceID: slot.source, SourceGeneration: slot.generation, ApprovedProgramDigest: material.ApprovedProgramDigest, PrivateDirectory: s.private, Configuration: material.Configuration, Remote: material.Remote, Port: endpoint, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: slot.profile.Limits.Connections, RequestsPerSecond: slot.profile.Limits.RequestsPerSecond, BytesPerSecond: slot.profile.Limits.BytesPerSecond, SequentialReads: slot.sequential,
 		Enforce: func(cmd *exec.Cmd) error {
 			if err := slot.Check(ctx); err != nil {
 				return err
@@ -233,7 +233,7 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	// StartServe consumes/releases custody on every physical success/failure.
 	transferred = true
 	if err != nil {
-		return nil, err
+		return nil, mapError(err)
 	}
 	if err = slot.Check(ctx); err != nil {
 		process.Stop()
@@ -262,6 +262,7 @@ type serveMaterial struct {
 	Program                rcloneprogram.Program
 	Remote                 string
 	Configuration          []byte
+	ApprovedProgramDigest  string
 	CacheBytes, CacheFloor int64
 }
 
@@ -280,7 +281,7 @@ func (s *Service) serveMaterial(ctx context.Context, slot *sourceProcessLease) (
 		if err != nil {
 			return out, err
 		}
-		return serveMaterial{Program: captured.Program, Remote: captured.Remote, Configuration: captured.Configuration, CacheBytes: captured.CacheBytes, CacheFloor: captured.CacheFloor}, nil
+		return serveMaterial{Program: captured.Program, ApprovedProgramDigest: captured.ApprovedProgramDigest, Remote: captured.Remote, Configuration: captured.Configuration, CacheBytes: captured.CacheBytes, CacheFloor: captured.CacheFloor}, nil
 	}
 	if kind != "webdav" || len(raw) > 64<<10 {
 		return out, storage.ErrRemoteConfig

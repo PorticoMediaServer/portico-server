@@ -163,6 +163,9 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			defer first.Close()
 			second := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
 			defer second.Close()
+			if !f.s.PlaybackActive("remote") {
+				t.Fatal("interactive source leases disappeared from removal admission")
+			}
 			if first.Binding().Sequential != sequential || second.Binding().Profile.Limits.Connections != 1 {
 				t.Fatal(first.Binding(), second.Binding())
 			}
@@ -196,6 +199,9 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			if err = first.Close(); err != nil {
 				t.Fatal(err)
 			}
+			if !f.s.PlaybackActive("remote") {
+				t.Fatal("closing one reader hid another active session")
+			}
 			if err = second.Check(ctx); err != nil {
 				t.Fatal("closing one logical reader killed shared process", err)
 			}
@@ -221,6 +227,9 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			}
 			if err = f.s.ReadProfileCommitted(ctx, "remote", updated.Profile.Revision); err != nil {
 				t.Fatal(err)
+			}
+			if f.s.PlaybackActive("remote") {
+				t.Fatal("revoked profile left a live interactive activity record")
 			}
 			if err = second.Check(ctx); !errors.Is(err, storage.ErrRemoteChanged) {
 				t.Fatal("old profile lease survived", err)
