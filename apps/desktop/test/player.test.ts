@@ -17,7 +17,7 @@ function harness() {
   return {player,commands,handlers,setCommand:(effect:NonNullable<typeof commandEffect>)=>{commandEffect=effect;},setReading:(x:Partial<NativeObservation>)=>{reading={...reading,...x};},setAnswer:(x:()=>Promise<NativeObservation>)=>{answer=x;}};
 }
 function processingSnapshot(id:string,gainDb:number):Pick<PlaybackSnapshot,'phase'|'session'|'audioEffects'>{
- return {phase:'playing',session:{id,generation:1,streamUrl:source.url,mode:'direct',duration:2,resumeSeconds:0,audio:{version:2,id:'audio',mode:'direct',url:source.url,gain:{trackDb:gainDb,trackPeak:1,source:'ebur128'}}},
+ return {phase:'ready',session:{id,generation:1,streamUrl:source.url,mode:'direct',duration:2,resumeSeconds:0,audio:{version:2,id:'audio',mode:'direct',url:source.url,gain:{trackDb:gainDb,trackPeak:1,source:'ebur128'}}},
   audioEffects:{settings:{gapless:true,crossfadeSeconds:0,normalization:'track'},rendering:false,rate:1,eqApplied:false,levelingApplied:false}};
 }
 test('real port forwards only projection and translates private native generations',async()=>{
