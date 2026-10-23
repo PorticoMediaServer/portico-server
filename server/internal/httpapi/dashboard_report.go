@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -21,6 +22,16 @@ func validateReportContext(zone, until string) error {
 		return operations.ErrInvalid
 	}
 	return nil
+}
+
+// Report validation is a caller error on these owner reads. Keep the generic
+// failure mapping for database/service errors and other route families.
+func dashboardFailure(w http.ResponseWriter, err error) {
+	if errors.Is(err, operations.ErrInvalid) || errors.Is(err, reportwindow.ErrInvalid) {
+		consoleError(w, operations.ErrInvalid)
+		return
+	}
+	failure(w, err)
 }
 
 type ReportContext struct {
@@ -60,7 +71,7 @@ func (d Dependencies) dashboardReportRoute(mux *http.ServeMux, service *telemetr
 		}
 		values := r.URL.Query()
 		if e := validateReportContext(values.Get("timeZone"), values.Get("until")); e != nil {
-			failure(w, operations.ErrInvalid)
+			dashboardFailure(w, operations.ErrInvalid)
 			return
 		}
 		period := values.Get("period")
@@ -80,7 +91,7 @@ func (d Dependencies) dashboardReportRoute(mux *http.ServeMux, service *telemetr
 			window = "24h"
 		}
 		if window == "10m" || window == "1h" {
-			failure(w, operations.ErrInvalid)
+			dashboardFailure(w, operations.ErrInvalid)
 			return
 		}
 		limit := func(key string, fallback, max int) (int, error) {
@@ -95,12 +106,12 @@ func (d Dependencies) dashboardReportRoute(mux *http.ServeMux, service *telemetr
 		}
 		tableLimit, e := limit("tableLimit", 100, 200)
 		if e != nil {
-			failure(w, e)
+			dashboardFailure(w, e)
 			return
 		}
 		peopleLimit, e := limit("peopleLimit", 12, 100)
 		if e != nil {
-			failure(w, e)
+			dashboardFailure(w, e)
 			return
 		}
 		query := catalog.PlayHistoryQuery{TimeZone: values.Get("timeZone"), Until: values.Get("until"), Period: period, AccountID: values.Get("accountId"), LibraryID: values.Get("libraryId"), Media: values.Get("media"), Search: values.Get("q"), Sort: values.Get("sort"), Direction: values.Get("direction"), Cursor: values.Get("tableCursor"), Limit: tableLimit}
@@ -150,7 +161,7 @@ func (d Dependencies) dashboardReportRoute(mux *http.ServeMux, service *telemetr
 			return e
 		})
 		if e != nil {
-			failure(w, e)
+			dashboardFailure(w, e)
 			return
 		}
 		if _, e = d.owner(r); e != nil {

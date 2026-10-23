@@ -78,6 +78,7 @@ export function legacyChannelRow(c: GuideChannel): GuideChannelRow {
   return {
     id: c.id, sourceId: c.provenance === 'library-channel' ? 'library' : c.sourceId, kind: c.provenance === 'library-channel' ? 'library' : 'live',
     number: c.number, name: c.name, group: c.group, ...(c.logoPath ? {logoUrl: c.logoPath} : {}), favorite: c.favorite,
+    ...(c.mark ? {mark: c.mark} : {}),
     tuneAvailable: c.tuneAvailable, ...(c.tuneUnavailableReason ? {tuneUnavailableReason: c.tuneUnavailableReason} : {}),
     recordAvailable: c.recordAvailable, guide: 'full', native: c,
   };
