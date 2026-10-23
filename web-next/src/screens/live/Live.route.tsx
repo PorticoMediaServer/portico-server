@@ -94,7 +94,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   {t, locale: defaultI18n.region.formatLocale, timeZone: timezone});
   const mark = (channel: GuideChannelRow) => {
     const native = legacyChannel(channel);
-    const actual = native && captured.context.home.getSnapshot().document?.rows.flatMap(row => row.live?.channels ?? []).find(home => home.channel.id === native.id && home.channel.sourceId === native.sourceId && home.channel.generation === native.generation)?.channel.mark;
+    const actual = channel.mark;
     return actual && native ? <ChannelMark mark={{sourceId: native.sourceId, id: native.id, ...actual}} size={phone ? 36 : 34}/>
       : <span className={styles.mark} aria-hidden="true"/>;
   };
