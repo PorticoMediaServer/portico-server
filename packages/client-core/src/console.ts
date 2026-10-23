@@ -1,3 +1,4 @@
+import {parseSettingsConfiguration} from './settings-configuration.ts';
 import {canonicalQualityLadder,canonicalMusicQualityLadder} from '../../contracts/src/types.ts';
 import {reportQuery,verifyReportInterval,type ReportContext} from './report-context.ts';
 import {routePath, routePrefix, encodedRoutePath} from "../../contracts/src/routes.ts";
@@ -183,6 +184,8 @@ export class ConsoleClient {
 
  }
  registry(){return this.call(routePath("get_console_registry"),'GET',undefined,base);}
+ /** Uses the same selected-server and viewer fence as every console read. */
+ configuration(){return this.call(routePath("get_settings_configuration"),'GET',undefined,parseSettingsConfiguration);}
  async settings(){const doc=await this.call(routePath("get_console_settings"),'GET',undefined,parseSettings);this.rememberSettings(doc);return doc;}
  private rememberSettings(doc:SettingsDocument){this.settingsRead.set(doc.revision,JSON.parse(JSON.stringify(doc.requested)) as RuntimeSettings);if(this.settingsRead.size>8)this.settingsRead.delete(this.settingsRead.keys().next().value!);}
  async applySettings(expectedRevision:number,values:Partial<RuntimeSettings>,saved?:RuntimeSettings){
