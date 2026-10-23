@@ -191,7 +191,9 @@ func TestResetFileRefusesUnsafeFilesAndParents(t *testing.T) {
 					t.Fatal(e)
 				}
 			case "parent":
-				if e := os.Remove(s.resetDir); e != nil {
+				// Keys also contains the real setup secret in the portable layout.
+				// Preserve it while replacing the parent with the hostile symlink.
+				if e := os.Rename(s.resetDir, s.resetDir+"-before-symlink"); e != nil {
 					t.Fatal(e)
 				}
 				if e := os.Symlink(filepath.Dir(external), s.resetDir); e != nil {

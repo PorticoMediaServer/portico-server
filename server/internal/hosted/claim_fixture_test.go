@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"portico.local/server/internal/hostedtrust"
 	"portico.local/server/internal/storagepaths"
 	"strings"

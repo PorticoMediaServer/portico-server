@@ -8,7 +8,7 @@ export function parseResetFileLocation(raw:unknown):ResetFileLocation {
  return Object.freeze({systemKind:v.systemKind as ResetFileLocation['systemKind'],dataDirectory:v.dataDirectory,fileDirectory:v.fileDirectory,fileName:'reset-code.txt',retryAfterSeconds:Number(v.retryAfterSeconds)});
 }
 export async function requestOwnerResetFile(api:ProfileAPI,username?:string,signal?:AbortSignal):Promise<ResetFileLocation>{
- return parseResetFileLocation(await api.request(routePath('post_auth_owner_reset_request'),'POST',routeBody('post_auth_owner_reset_request',{...(username===undefined?{}:{username})}),signal));
+ return parseResetFileLocation(await api.request(routePath('post_auth_owner_reset_request'),'POST',routeBody('post_auth_owner_reset_request',username===undefined?{}:{username}),signal));
 }
 export async function verifyOwnerResetFile(api:ProfileAPI,code:string,turnOffTwoStep=false,signal?:AbortSignal):Promise<DirectSignIn>{
  const out=parseDirectSignIn(await api.request(routePath('post_auth_owner_reset_verify'),'POST',routeBody('post_auth_owner_reset_verify',{code:code.trim(),turnOffTwoStep}),signal));
