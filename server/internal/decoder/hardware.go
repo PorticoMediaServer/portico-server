@@ -809,7 +809,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			out.Input = append(out.Input, "-hwaccel", "videotoolbox")
 			decode = ExecutionHardware
 		}
-		if native && !r.Deinterlace && r.MaxFrameRate == 0 {
+		if native && !r.DisableHardwareDecode && !r.Deinterlace && r.MaxFrameRate == 0 {
 			switch backend {
 			case BackendNVENC:
 				out.Input = append(out.Input, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
