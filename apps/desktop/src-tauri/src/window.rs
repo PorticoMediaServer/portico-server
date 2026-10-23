@@ -42,6 +42,8 @@ pub struct ChromeState {
     hover:AtomicU8,
     attached:AtomicBool,
     active:AtomicBool,
+    #[cfg(target_os="macos")]
+    mac_layout:Mutex<Option<platform::SavedLayout>>,
 }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
@@ -121,11 +123,12 @@ pub fn update(window:&WebviewWindow,state:Arc<ChromeState>,mut value:ChromeUpdat
             platform::title_hidden(window,true)?;
             state.active.store(true,std::sync::atomic::Ordering::Release);
         }else if !value.enabled&&state.active.load(std::sync::atomic::Ordering::Acquire){
+            platform::restore(window,&mut *state.mac_layout.lock().map_err(|_|Error::WindowUnavailable)?)?;
             window.set_title_bar_style(tauri::TitleBarStyle::Visible).map_err(|_|Error::WindowUnavailable)?;
             platform::title_hidden(window,false)?;
             state.active.store(false,std::sync::atomic::Ordering::Release);
         }
-        if value.enabled{platform::position(window,value.surface,value.controls_visible,fullscreen)?;}
+        if value.enabled{platform::position(window,value.surface,value.controls_visible,fullscreen,&mut *state.mac_layout.lock().map_err(|_|Error::WindowUnavailable)?)?;}
     }
     #[cfg(target_os="linux")]
     {let _=(state,value,fullscreen); /* The window manager owns all Linux decorations. */}
