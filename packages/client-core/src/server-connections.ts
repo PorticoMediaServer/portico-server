@@ -7,6 +7,7 @@ import {hostedGate} from './hosted-gate.ts';
 import {ApiError,HttpLocalApi,type HostedServer,type LocalSession} from './index.ts';
 import {credentialLock,installationIdentity} from './installation.ts';
 import {parseLocalSession} from './local-session.ts';
+import {parseServerSignIn} from './sign-in.ts';
 import {RouteConnection,bindSessionRoute,forgetSessionRoute,sessionRoute,sessionRoute as sessionRouteForRotation,type DiscoveryRoute,type RouteMemory} from './route-connection.ts';
 import {RouteError,routeBase64,probeRoute,routeOrigin,routeJSON,serverPin,sameServerPin,verifyRoutes,webRouteCrypto,type RouteCrypto,type RouteKey,type ServerPin,type SignedRoutes,type VerifiedRoutes} from './route-identity.ts';
 export type RememberedServer = {
@@ -70,6 +71,21 @@ export async function connectPairedServer(origin:string,pin:ServerPin,env:Connec
  const checked=await serverPin(pin.serverId,pin.publicKey,pin.fingerprint,env.crypto);
  const connection=new RouteConnection({pin:checked,logicalOrigin:routeOrigin(origin),memory:{paired:[routeOrigin(origin)]},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover});
  try{await connection.resolve(signal);const api=new HttpLocalApi(connection.logicalOrigin,'',env.fetcher);api.useRoutes(connection);return{api,connection};}catch(e){connection.dispose();throw e;}
+}
+/** A Waiting member may prove this server before it has a Hosted directory row.
+ * Pairing proves the exact server; the authenticated account source supplies only
+ * its route-key binding. This reads no member routes and saves no credential. */
+export async function connectPairedPorticoServer(origin:string,pin:ServerPin,source:HostedConnectionSource,env:ConnectionEnvironment,signal:AbortSignal):Promise<{api:HttpLocalApi;connection:RouteConnection;hosted:NonNullable<RememberedServer['hosted']>}>{
+ const accountOrigin=hostedOrigin(source.origin);
+ if(!/^[A-Za-z0-9_-]{1,128}$/.test(source.accountId))throw new RouteError('identity_mismatch','Choose the Portico Account before signing in to this server.');
+ signal.throwIfAborted();
+ const paired=await connectPairedServer(origin,pin,env,signal);
+ try{
+  const system=parseServerSignIn(await paired.api.request(routePath('get_system'),'GET',undefined,signal));
+  if(system.id!==pin.serverId||system.signIn!=='portico')throw new RouteError('identity_mismatch','This server does not use Portico Accounts.');
+  const key=await routeKey(source,env,signal);signal.throwIfAborted();
+  return {...paired,hosted:{origin:accountOrigin,accountId:source.accountId,key}};
+ }catch(error){paired.connection.dispose();throw error;}
 }
 export async function rememberNativeSession(api:HttpLocalApi,session:LocalSession,env:ConnectionEnvironment,hosted?:RememberedServer['hosted'],isCurrent:()=>boolean=()=>true):Promise<void>{
  const parsed=parseLocalSession(session),connection=api.getRouteConnection();if(!connection||connection.getSnapshot().phase!=='ready'||connection.pin.serverId!==parsed.viewer.serverId)throw new RouteError('identity_mismatch','Verify this server before saving its sign-in.');
