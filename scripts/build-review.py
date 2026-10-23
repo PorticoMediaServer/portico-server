@@ -18,6 +18,7 @@ def public_root(path):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('commit')
+    p.add_argument('--host', choices=['netcup', 'contabo'], default='netcup')
     p.add_argument('--repo', required=True, type=Path)
     p.add_argument('--output', required=True, type=Path)
     p.add_argument('--artifacts', required=True, type=Path)
@@ -36,12 +37,13 @@ def main():
              + ' -X portico.local/server/internal/buildinfo.Version=0.1.0-review+' + a.commit[:8]
              + ' -X portico.local/server/internal/buildinfo.BuildID=' + a.commit)
     a.artifacts.mkdir(parents=True, exist_ok=True)
-    common = ['python3', str(a.runner), '--host', 'netcup', '--repo', str(a.repo), '--commit', a.commit]
+    common = ['python3', str(a.runner), '--host', a.host, '--repo', str(a.repo), '--commit', a.commit]
     build = ['bash', '-c', 'set -euo pipefail; export GOMAXPROCS=2 GOMEMLIMIT=1400MiB GOTOOLCHAIN="$1"; '
              'go version; go build -p=2 -tags release -trimpath -buildvcs=false -mod=readonly '
              '-ldflags "$2" -o "$PORTICO_RUNNER_OUTPUT/portico-server" ./cmd/server', 'review', 'go' + go, flags]
     subprocess.run(common + ['--lane', 'release-server', '--cwd', 'server', '--output', str(a.output / 'server'),
                              '--artifact', 'portico-server', '--artifact-output', str(a.artifacts), '--'] + build, check=True)
+    host = {'netcup': 'portico-runner-g12', 'contabo': 'portico-runner'}[a.host]
     remote_artifact = '/home/runner/work/artifacts/release-r40/' + a.commit + '-web'
     web_script = """set -euo pipefail
 export NODE_OPTIONS=--max-old-space-size=1536
@@ -57,11 +59,11 @@ tar -cf "$2/web.tar" -C "$PORTICO_RUNNER_OUTPUT/web" .
         raise FileExistsError('existing web artifact retained; choose a new artifact directory')
     try:
         with target.open('xb') as out:
-            subprocess.run(['ssh', '-o', 'BatchMode=yes', 'portico-runner-g12', 'cat ' + remote_artifact + '/web.tar'], stdout=out, check=True)
+            subprocess.run(['ssh', '-o', 'BatchMode=yes', host, 'cat ' + remote_artifact + '/web.tar'], stdout=out, check=True)
         if not 0 < target.stat().st_size < 100 * 1024**2:
             raise ValueError('unexpected built web package size')
     finally:
-        subprocess.run(['ssh', '-o', 'BatchMode=yes', 'portico-runner-g12',
+        subprocess.run(['ssh', '-o', 'BatchMode=yes', host,
                         'rm -f ' + remote_artifact + '/web.tar; rmdir ' + remote_artifact], check=True)
     print('Built review artifacts:', a.artifacts)
 
