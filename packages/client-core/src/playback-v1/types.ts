@@ -36,7 +36,7 @@ export function url(v: unknown, what: string): string {
 }
 
 // ── Options (spec §4.1) ─────────────────────────────────────────────
-export type VideoStream = Readonly<{id: string; codec: string; profile?: string; bitDepth?: number; width?: number; height?: number; fps?: number; hdr?: string; bitrateKbps?: number}>;
+export type VideoStream = Readonly<{interlaced?: boolean; id: string; codec: string; profile?: string; bitDepth?: number; width?: number; height?: number; fps?: number; hdr?: string; bitrateKbps?: number}>;
 export type AudioStream = Readonly<{id: string; codec: string; channels?: number; layout?: string; sampleRate?: number; bitDepth?: number; variant?: string; objectAudio?: string; dtsx?: boolean; atmos: boolean; language?: string; title?: string; default: boolean; commentary: boolean; visualImpaired: boolean}>;
 export type SubtitleStream = Readonly<{id: string; format: string; source: 'embedded' | 'sidecar' | 'downloaded' | 'other'; language?: string; title?: string; forced: boolean; sdh: boolean; default: boolean; deliveries?: readonly import('../subtitles.ts').SubtitleDelivery[]}>;
 export type VersionPart = Readonly<{id: string; index: number; durationMs: number; sizeBytes?: number}>;

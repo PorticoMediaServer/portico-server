@@ -15960,6 +15960,16 @@
         "required": [],
         "type": "object"
       },
+      "DeleteReadingSessionsSessionIdRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "DeleteReadingSessionsSessionIdResponse": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
       "DeleteSavedResourcesIdRequest": {
         "properties": {
           "accountId": {
@@ -96126,6 +96136,52 @@
         "format": "binary",
         "type": "string"
       },
+      "GetItemsItemIdReadingVersionsRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetItemsItemIdReadingVersionsResponse": {
+        "properties": {
+          "versions": {
+            "items": {
+              "properties": {
+                "format": {
+                  "enum": [
+                    "epub",
+                    "pdf",
+                    "cbz"
+                  ],
+                  "type": "string"
+                },
+                "inventoryAvailable": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "sourceId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "sourceId",
+                "format",
+                "size",
+                "inventoryAvailable"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions"
+        ],
+        "type": "object"
+      },
       "GetItemsRequest": {
         "properties": {},
         "required": [],
@@ -116979,6 +117035,9 @@
                       "id": {
                         "type": "string"
                       },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
                       "level": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -121815,6 +121874,171 @@
           "status"
         ],
         "type": "object"
+      },
+      "GetReadingItemsRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetReadingItemsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "format": {
+                  "enum": [
+                    "epub",
+                    "pdf",
+                    "cbz"
+                  ],
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "inventoryAvailable": {
+                  "type": "boolean"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "libraryId",
+                "title",
+                "format",
+                "sourceId",
+                "inventoryAvailable"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "GetReadingSessionsSessionIdAssetsRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetReadingSessionsSessionIdAssetsResponse": {
+        "format": "binary",
+        "type": "string"
+      },
+      "GetReadingSessionsSessionIdPagesPageIndexRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetReadingSessionsSessionIdPagesPageIndexResponse": {
+        "format": "binary",
+        "type": "string"
+      },
+      "GetReadingSessionsSessionIdProgressRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetReadingSessionsSessionIdProgressResponse": {
+        "properties": {
+          "progress": {
+            "anyOf": [
+              {
+                "properties": {
+                  "location": {
+                    "properties": {
+                      "cfi": {
+                        "type": "string"
+                      },
+                      "format": {
+                        "enum": [
+                          "epub",
+                          "pdf",
+                          "cbz"
+                        ],
+                        "type": "string"
+                      },
+                      "pageIndex": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "progression": {
+                        "type": "number"
+                      },
+                      "section": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "format",
+                      "progression"
+                    ],
+                    "type": "object"
+                  },
+                  "observedAt": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  },
+                  "sourceRevision": {
+                    "type": "string"
+                  },
+                  "stale": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "sourceRevision",
+                  "location",
+                  "revision",
+                  "observedAt",
+                  "stale"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "progress"
+        ],
+        "type": "object"
+      },
+      "GetReadingSessionsSessionIdSourceRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetReadingSessionsSessionIdSourceResponse": {
+        "format": "binary",
+        "type": "string"
       },
       "GetRemotePlaybackControlsRequest": {
         "properties": {},
@@ -145606,6 +145830,15 @@
         "format": "binary",
         "type": "string"
       },
+      "HeadReadingSessionsSessionIdSourceRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "HeadReadingSessionsSessionIdSourceResponse": {
+        "format": "binary",
+        "type": "string"
+      },
       "HeadV1MediaSubtitlesGrantResourceRevisionFontsFontRequest": {
         "properties": {},
         "required": [],
@@ -159591,6 +159824,9 @@
                         },
                         "id": {
                           "type": "string"
+                        },
+                        "interlaced": {
+                          "type": "boolean"
                         },
                         "level": {
                           "maximum": 9007199254740991,
@@ -187485,6 +187721,119 @@
         ],
         "type": "object"
       },
+      "PostReadingSessionsRequest": {
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "sourceId"
+        ],
+        "type": "object"
+      },
+      "PostReadingSessionsResponse": {
+        "properties": {
+          "format": {
+            "enum": [
+              "epub",
+              "pdf",
+              "cbz"
+            ],
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "metadata": {
+            "properties": {
+              "author": {
+                "type": "string"
+              },
+              "direction": {
+                "enum": [
+                  "ltr",
+                  "rtl",
+                  "vertical"
+                ],
+                "type": "string"
+              },
+              "language": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "pageNames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resources": {
+            "items": {
+              "properties": {
+                "mime": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "size": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "path",
+                "mime",
+                "size"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "size": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "spine": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessionId",
+          "itemId",
+          "sourceId",
+          "revision",
+          "format",
+          "size",
+          "metadata"
+        ],
+        "type": "object"
+      },
       "PostSavedResourcesRequest": {
         "properties": {
           "accountId": {
@@ -190934,6 +191283,9 @@
           "libraries": {
             "items": {
               "properties": {
+                "kind": {
+                  "type": "string"
+                },
                 "name": {
                   "type": "string"
                 }
@@ -199045,6 +199397,133 @@
           "playlistId",
           "revision",
           "deleted"
+        ],
+        "type": "object"
+      },
+      "PutReadingSessionsSessionIdProgressRequest": {
+        "properties": {
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "location": {
+            "properties": {
+              "cfi": {
+                "type": "string"
+              },
+              "format": {
+                "enum": [
+                  "epub",
+                  "pdf",
+                  "cbz"
+                ],
+                "type": "string"
+              },
+              "pageIndex": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "progression": {
+                "type": "number"
+              },
+              "section": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "format",
+              "progression"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "location"
+        ],
+        "type": "object"
+      },
+      "PutReadingSessionsSessionIdProgressResponse": {
+        "properties": {
+          "progress": {
+            "anyOf": [
+              {
+                "properties": {
+                  "location": {
+                    "properties": {
+                      "cfi": {
+                        "type": "string"
+                      },
+                      "format": {
+                        "enum": [
+                          "epub",
+                          "pdf",
+                          "cbz"
+                        ],
+                        "type": "string"
+                      },
+                      "pageIndex": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "progression": {
+                        "type": "number"
+                      },
+                      "section": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "format",
+                      "progression"
+                    ],
+                    "type": "object"
+                  },
+                  "observedAt": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  },
+                  "sourceRevision": {
+                    "type": "string"
+                  },
+                  "stale": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "sourceRevision",
+                  "location",
+                  "revision",
+                  "observedAt",
+                  "stale"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "saved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "progress",
+          "saved"
         ],
         "type": "object"
       },
@@ -215482,6 +215961,9 @@
                     "libraries": {
                       "items": {
                         "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
                           "name": {
                             "type": "string"
                           }
@@ -256871,6 +257353,9 @@
                                   },
                                   "id": {
                                     "type": "string"
+                                  },
+                                  "interlaced": {
+                                    "type": "boolean"
                                   },
                                   "level": {
                                     "maximum": 9007199254740991,
@@ -375283,6 +375768,9 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "interlaced": {
+                                  "type": "boolean"
+                                },
                                 "level": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -375890,6 +376378,118 @@
           "subtitle_provider_busy"
         ],
         "x-lane": "default",
+        "x-scope": "read"
+      }
+    },
+    "/v1/items/{itemId}/reading/versions": {
+      "get": {
+        "operationId": "get_items_itemId_reading_versions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "versions": {
+                      "items": {
+                        "properties": {
+                          "format": {
+                            "enum": [
+                              "epub",
+                              "pdf",
+                              "cbz"
+                            ],
+                            "type": "string"
+                          },
+                          "inventoryAvailable": {
+                            "type": "boolean"
+                          },
+                          "size": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "sourceId",
+                          "format",
+                          "size",
+                          "inventoryAvailable"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "versions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "List a reading publication's actual versions",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal"
+        ],
+        "x-lane": "browsing",
         "x-scope": "read"
       }
     },
@@ -435433,6 +436033,1191 @@
         ],
         "x-lane": "default",
         "x-scope": "open"
+      }
+    },
+    "/v1/reading/items": {
+      "get": {
+        "operationId": "get_reading_items",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "libraryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "format": {
+                            "enum": [
+                              "epub",
+                              "pdf",
+                              "cbz"
+                            ],
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "inventoryAvailable": {
+                            "type": "boolean"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "libraryId",
+                          "title",
+                          "format",
+                          "sourceId",
+                          "inventoryAvailable"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "List visible reading publications",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
+    "/v1/reading/sessions": {
+      "post": {
+        "operationId": "post_reading_sessions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "itemId",
+                  "sourceId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "format": {
+                      "enum": [
+                        "epub",
+                        "pdf",
+                        "cbz"
+                      ],
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "metadata": {
+                      "properties": {
+                        "author": {
+                          "type": "string"
+                        },
+                        "direction": {
+                          "enum": [
+                            "ltr",
+                            "rtl",
+                            "vertical"
+                          ],
+                          "type": "string"
+                        },
+                        "language": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "type": "object"
+                    },
+                    "pageNames": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "resources": {
+                      "items": {
+                        "properties": {
+                          "mime": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "mime",
+                          "size"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "revision": {
+                      "type": "string"
+                    },
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "spine": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "sessionId",
+                    "itemId",
+                    "sourceId",
+                    "revision",
+                    "format",
+                    "size",
+                    "metadata"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Open an authorized reading publication",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-max-body-bytes": 4096,
+        "x-scope": "playback"
+      }
+    },
+    "/v1/reading/sessions/{sessionId}": {
+      "delete": {
+        "operationId": "delete_reading_sessions_sessionId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Close this caller's reading session",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "playback"
+      }
+    },
+    "/v1/reading/sessions/{sessionId}/assets": {
+      "get": {
+        "operationId": "get_reading_sessions_sessionId_assets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-None-Match",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "304": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read one enumerated original EPUB asset",
+        "x-access": "device",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "playback"
+      }
+    },
+    "/v1/reading/sessions/{sessionId}/pages/{pageIndex}": {
+      "get": {
+        "operationId": "get_reading_sessions_sessionId_pages_pageIndex",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pageIndex",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "width",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-None-Match",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "304": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read one bounded comic page image",
+        "x-access": "device",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "playback"
+      }
+    },
+    "/v1/reading/sessions/{sessionId}/progress": {
+      "get": {
+        "operationId": "get_reading_sessions_sessionId_progress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "progress": {
+                      "anyOf": [
+                        {
+                          "properties": {
+                            "location": {
+                              "properties": {
+                                "cfi": {
+                                  "type": "string"
+                                },
+                                "format": {
+                                  "enum": [
+                                    "epub",
+                                    "pdf",
+                                    "cbz"
+                                  ],
+                                  "type": "string"
+                                },
+                                "pageIndex": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "progression": {
+                                  "type": "number"
+                                },
+                                "section": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "format",
+                                "progression"
+                              ],
+                              "type": "object"
+                            },
+                            "observedAt": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "sourceId": {
+                              "type": "string"
+                            },
+                            "sourceRevision": {
+                              "type": "string"
+                            },
+                            "stale": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "sourceId",
+                            "sourceRevision",
+                            "location",
+                            "revision",
+                            "observedAt",
+                            "stale"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "progress"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the selected publication's saved location",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
+      },
+      "put": {
+        "operationId": "put_reading_sessions_sessionId_progress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "location": {
+                    "properties": {
+                      "cfi": {
+                        "type": "string"
+                      },
+                      "format": {
+                        "enum": [
+                          "epub",
+                          "pdf",
+                          "cbz"
+                        ],
+                        "type": "string"
+                      },
+                      "pageIndex": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "progression": {
+                        "type": "number"
+                      },
+                      "section": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "format",
+                      "progression"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "location"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "progress": {
+                      "anyOf": [
+                        {
+                          "properties": {
+                            "location": {
+                              "properties": {
+                                "cfi": {
+                                  "type": "string"
+                                },
+                                "format": {
+                                  "enum": [
+                                    "epub",
+                                    "pdf",
+                                    "cbz"
+                                  ],
+                                  "type": "string"
+                                },
+                                "pageIndex": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "progression": {
+                                  "type": "number"
+                                },
+                                "section": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "format",
+                                "progression"
+                              ],
+                              "type": "object"
+                            },
+                            "observedAt": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "sourceId": {
+                              "type": "string"
+                            },
+                            "sourceRevision": {
+                              "type": "string"
+                            },
+                            "stale": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "sourceId",
+                            "sourceRevision",
+                            "location",
+                            "revision",
+                            "observedAt",
+                            "stale"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "saved": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "progress",
+                    "saved"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Save the selected publication's location with compare and swap",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-max-body-bytes": 8192,
+        "x-scope": "playback"
+      }
+    },
+    "/v1/reading/sessions/{sessionId}/source": {
+      "get": {
+        "operationId": "get_reading_sessions_sessionId_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Range",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "206": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "416": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the selected PDF's exact byte range",
+        "x-access": "device",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "playback"
+      },
+      "head": {
+        "operationId": "head_reading_sessions_sessionId_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Range",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "416": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the selected PDF's exact byte range",
+        "x-access": "device",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "playback"
       }
     },
     "/v1/receivers": {
