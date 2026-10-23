@@ -27,7 +27,7 @@ container="$(docker create --label portico=video-server-r29 --label portico.purp
   --env TMPDIR=/job --env DEBIAN_FRONTEND=noninteractive --env JOB_UID="$(id -u)" --env JOB_GID="$(id -g)" \
   "$image_id" bash -c '
     set -euo pipefail
-    trap 'chown -R "$JOB_UID:$JOB_GID" /job' EXIT
+    trap "chown -R $JOB_UID:$JOB_GID /job" EXIT
     apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
     apt-get install --no-install-recommends -y build-essential ca-certificates git meson ninja-build pkg-config python3
     dpkg-query -W gcc meson ninja-build pkg-config git python3
