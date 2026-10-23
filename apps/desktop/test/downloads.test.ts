@@ -110,3 +110,41 @@ test('a wrong family, selection revision or duplicate native queue handle is rej
   finally{store.dispose();}
  }
 });
+
+const localReceipt=(generation=9)=>({kind:'local',scope,preparationId:prepared().preparationId,localSourceId:prepared().items[0].localSourceId,generation,
+ sessionId:`local:${prepared().items[0].id}:1`,playId:'7'.repeat(64),entryId:prepared().items[0].id,itemId:prepared().items[0].itemId,artifact:{sha256:'8'.repeat(64),bytes:5}});
+test('local load returns only native acknowledged identity/artifact and never synthesizes a URL or journal play',async()=>{
+ const requests:unknown[]=[],retired:unknown[]=[];
+ const native:NativeDownloadsBridge={...bridge(async()=>({kind:'localQueue',value:prepared()})),async loadLocal(lease,source){requests.push({lease,source});return {...localReceipt(source.generation),path:'/private/not-public',token:'hidden'}},async retireLocal(lease,generation){retired.push({lease,generation})}};
+ const store=await DesktopDownloadStore.bind(scope,()=>true,native),signal=new AbortController().signal;
+ try{
+  const queue=await store.prepareLocalQueue(selection,signal),ack=await store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,signal);
+  assert.deepEqual(ack,localReceipt());assert.doesNotMatch(JSON.stringify(ack),/path|private|token|url|lease/);
+  assert.deepEqual(requests,[{lease,source:{preparationId:queue.preparationId,localSourceId:queue.items[0].localSourceId,generation:9,startPositionMs:0,autoplay:true}}]);
+  assert.ok(Object.isFrozen(ack.artifact));assert.equal(retired.length,0);
+  await store.retireLocal(9);assert.deepEqual(retired,[{lease,generation:9}]);
+ }finally{store.dispose();}
+});
+test('late local ACK after cancellation/disposal retires exactly its captured native generation and original lease',async()=>{
+ let complete!:(value:unknown)=>void;const retired:unknown[]=[];
+ const native:NativeDownloadsBridge={...bridge(async(_,op)=>op.action==='prepareLocalQueue'?{kind:'localQueue',value:prepared()}:{kind:'done'}),loadLocal:()=>new Promise(resolve=>{complete=resolve}),async retireLocal(lease,generation){retired.push({lease,generation})}};
+ const store=await DesktopDownloadStore.bind(scope,()=>true,native),abort=new AbortController(),queue=await store.prepareLocalQueue(selection,abort.signal);
+ const pending=store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,abort.signal);
+ abort.abort();store.dispose();complete(localReceipt());
+ await assert.rejects(pending,{name:'AbortError'});assert.deepEqual(retired,[{lease,generation:9}]);
+});
+test('mismatched native local receipt cannot be adopted, and the potentially committed load is retired',async()=>{
+ for(const bad of [
+  {...localReceipt(),scope:{...scope,sessionFamilyId:'other'}},
+  {...localReceipt(),generation:8},
+  {...localReceipt(),preparationId:'a'.repeat(64)},
+  {...localReceipt(),localSourceId:'b'.repeat(64)},
+  {...localReceipt(),sessionId:'remote-session'},
+  {...localReceipt(),artifact:{sha256:'8'.repeat(64),bytes:0}},
+ ]){
+  const retired:number[]=[];
+  const store=await DesktopDownloadStore.bind(scope,()=>true,{...bridge(async()=>({kind:'localQueue',value:prepared()})),async loadLocal(){return bad},async retireLocal(_,generation){retired.push(generation)}});
+  try{const signal=new AbortController().signal,queue=await store.prepareLocalQueue(selection,signal);await assert.rejects(store.loadLocal(queue,queue.items[0].localSourceId,9,0,true,signal),/downloads_unavailable/);assert.deepEqual(retired,[9]);}
+  finally{store.dispose();}
+ }
+});

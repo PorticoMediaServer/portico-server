@@ -56,6 +56,9 @@ func (s *Store) publish(ctx context.Context, c *claim, result CaptureResult) err
 		}
 		return gated.Commit()
 	}
+	if e = verifyRecordingLayoutPublicationTx(ctx, tx, c, result); e != nil {
+		return e
+	}
 	// A successful producer does not bypass a source change between the last
 	// renewal and publication. Preserve validated bytes as incomplete, including
 	// sealed-object recovery whose original source revision was checkpointed.

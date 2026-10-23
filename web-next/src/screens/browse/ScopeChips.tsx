@@ -1,34 +1,49 @@
 import {useEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
-import type {BrowseFacetPage, BrowseCount} from '@core/browse.ts';
+import type {Library} from '@core/index.ts';
+import type {BrowseCount, BrowseNode} from '@core/browse.ts';
 import {Chip} from '../../kit/controls';
 import type {BrowseController} from './controller';
+import {scopeTypes, type ScopeType} from './scope-types';
 import styles from './browse.module.css';
 
-/** Counts and membership stay server-evaluated under the immutable Home row condition. */
-export function BrowseScopeChips({controller, reportError}: Readonly<{controller: BrowseController; reportError: (error: unknown) => void}>) {
+/** Each chip is a separate server-evaluated count over the immutable Home row.
+ * Multiple libraries of one kind are one query; their counts are never summed. */
+export function BrowseScopeChips({controller, libraries, reportError}: Readonly<{controller: BrowseController; libraries?: readonly Library[]; reportError: (error: unknown) => void}>) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
-  const [scope, setScope] = useState<Readonly<{facets: BrowseFacetPage; all: BrowseCount; query: string}> | undefined>(undefined);
-  const offered = controller.source.libraryId === '*' && state.capabilities?.fields.some(field => field.id === 'library' && field.facetSource);
-  const query = JSON.stringify(state.predicates.filter(node => !('field' in node) || node.field !== 'library'));
+  const [scope, setScope] = useState<Readonly<{owner: BrowseController; counts: readonly BrowseCount[]; signature: string}> | undefined>(undefined);
+  const offered = !!libraries && controller.source.libraryId === '*' && state.capabilities?.fields.some(field => field.id === 'library' && field.operators.includes('in'));
+  const signature = JSON.stringify({predicates: state.predicates.filter(node => !('field' in node) || node.field !== 'library'), groups: scopeTypes(libraries ?? [])});
   useEffect(() => {
     if (!offered) return;
-    const stop = new AbortController(), predicates = state.predicates.filter(node => !('field' in node) || node.field !== 'library');
+    const stop = new AbortController();
+    const {predicates, groups}: {predicates: readonly BrowseNode[]; groups: readonly ScopeType[]} = JSON.parse(signature);
     const timer = setTimeout(() => {
-      void Promise.all([controller.facets('library', '', predicates, stop.signal), controller.count(predicates, stop.signal)]).then(([facets, all]) => {
-        if (!stop.signal.aborted) setScope({facets, all, query});
+      void (async () => {
+        const queries = [{id: 'all', predicates}, ...groups.map(group => ({id: group.kind,
+          predicates: [...predicates, controller.parseNode({field: 'library', operator: 'in', value: group.libraryIds})]}))];
+        return controller.counts(queries, stop.signal);
+      })().then(counts => {
+        if (!stop.signal.aborted) setScope({owner: controller, counts, signature});
       }).catch(error => {if (!stop.signal.aborted) {setScope(undefined);reportError(error);}});
     }, 180);
     return () => {clearTimeout(timer);stop.abort();};
-  }, [controller, offered, state.predicates, query, reportError]);
-  if (!offered || !scope || scope.query !== query) return null;
+  }, [controller, offered, signature, reportError]);
+  if (!offered || !scope || scope.owner !== controller || scope.signature !== signature) return null;
+  const groups = scopeTypes(libraries ?? []), all = scope.counts.find(count => count.id === 'all');
+  if (!all) return null;
   const selected = state.predicates.find(node => 'field' in node && node.field === 'library');
-  const values = selected && 'field' in selected ? Array.isArray(selected.value) ? selected.value : [selected.value] : [];
-  const count = (total: number, lower: boolean) => lower ? defaultI18n.t('next.browse.countAtLeast', {count: total}) : defaultI18n.number(total);
-  const change = (value?: string) => {
-    try {controller.setQuery([...state.predicates.filter(node => !('field' in node) || node.field !== 'library'), ...(value ? [controller.parseNode({field: 'library', operator: 'in', value: [value]})] : [])]);}
+  const values = selected && 'field' in selected && selected.operator === 'in' ? Array.isArray(selected.value) ? selected.value : [selected.value] : [];
+  const checked = (group: ScopeType) => group.libraryIds.length === values.length && group.libraryIds.every(id => values.includes(id));
+  const label = (count: BrowseCount) => count.totalIsLowerBound ? defaultI18n.t('next.browse.countAtLeast', {count: count.total}) : defaultI18n.number(count.total);
+  const change = (libraryIds?: readonly string[]) => {
+    try {controller.setQuery([...state.predicates.filter(node => !('field' in node) || node.field !== 'library'),
+      ...(libraryIds ? [controller.parseNode({field: 'library', operator: 'in', value: libraryIds})] : [])]);}
     catch (error) {reportError(error);}
   };
-  return <><div className={styles.scopeChips} role="radiogroup" aria-label={defaultI18n.t('next.browse.libraries')}><Chip variant="quick" role="radio" aria-checked={values.length === 0} selected={values.length === 0} count={count(scope.all.total, scope.all.totalIsLowerBound)} onClick={() => change()}>{defaultI18n.t('next.controls.all')}</Chip>
-    {scope.facets.values.map(facet => <Chip key={facet.value} variant="quick" role="radio" aria-checked={values.includes(facet.value)} selected={values.includes(facet.value)} count={count(facet.count, facet.countIsLowerBound === true)} onClick={() => change(facet.value)}>{facet.label}</Chip>)}</div><span className={styles.scopeSeparator} aria-hidden="true"/></>;
+  return <><div className={styles.scopeChips} role="radiogroup" aria-label={defaultI18n.t('next.browse.libraries')}><Chip variant="quick" role="radio" aria-checked={!selected} selected={!selected} count={label(all)} onClick={() => change()}>{defaultI18n.t('next.controls.all')}</Chip>
+    {groups.map(group => {
+      const count = scope.counts.find(count => count.id === group.kind);
+      return count && (count.total > 0 || checked(group)) ? <Chip key={group.kind} variant="quick" role="radio" aria-checked={checked(group)} selected={checked(group)} count={label(count)} onClick={() => change(group.libraryIds)}>{defaultI18n.t(group.label)}</Chip> : null;
+    })}</div><span className={styles.scopeSeparator} aria-hidden="true"/></>;
 }

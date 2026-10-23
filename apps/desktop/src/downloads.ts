@@ -16,15 +16,26 @@ export type PreparedLocalQueue = Readonly<{
   preparationId:string;scope:DownloadScope;selectionRevision:string;
   items:readonly Readonly<{id:string;revision:number;itemId:string;title:DownloadTitle;durationMs:number;localSourceId:string}>[];
 }>;
+/** App-private bridge acknowledgement. This generation is native, never the public
+ * player generation. The MediaPort adapter remaps it only for its exact live load. */
+export type NativeLocalLoadReceipt=Readonly<{
+  kind:'local';scope:DownloadScope;preparationId:string;localSourceId:string;generation:number;
+  sessionId:string;playId:string;itemId:string;entryId:string;artifact:Readonly<{sha256:string;bytes:number}>;
+}>;
+export type NativeLocalLoadRequest=Readonly<{preparationId:string;localSourceId:string;generation:number;startPositionMs:number;autoplay:boolean}>;
 export type NativeDownloadsBridge = Readonly<{
   bind(scope:DownloadScope):Promise<string>;
   release(lease:string):Promise<void>;
   command(lease:string,operation:Readonly<Record<string,unknown>>):Promise<unknown>;
+  loadLocal?(lease:string,source:NativeLocalLoadRequest):Promise<unknown>;
+  retireLocal?(lease:string,generation:number):Promise<void>;
 }>;
 export const nativeDownloadsBridge:NativeDownloadsBridge = Object.freeze({
   bind:scope=>invoke<string>('desktop_downloads_bind',{scope}),
   release:lease=>invoke<void>('desktop_downloads_release',{lease}),
   command:(lease,operation)=>invoke<unknown>('desktop_downloads_command',{lease,operation}),
+  loadLocal:(lease,source)=>invoke<unknown>('desktop_load_local',{lease,source}),
+  retireLocal:(lease,generation)=>invoke<void>('desktop_retire_local',{lease,generation}),
 });
 const fixedCodes = new Set(['downloads_unavailable','downloads_conflict','download_not_ready','download_verification_failed','invalid_receipt','storage_full','invalid_command','forbidden_origin','unsupported']);
 export function downloadFailure(error:unknown):Error {
@@ -149,6 +160,34 @@ export class DesktopDownloadStore {
       if(reply.kind!=='done')return invalid();
       this.preparations.delete(prepared);
     }catch(error){throw downloadFailure(error);}
+  }
+  async loadLocal(prepared:PreparedLocalQueue,localSourceId:string,generation:number,startPositionMs:number,autoplay:boolean,signal:AbortSignal):Promise<NativeLocalLoadReceipt>{
+    this.guard(signal);
+    const owned=this.preparations.get(prepared),member=prepared.items.find(item=>item.localSourceId===localSourceId);
+    if(!owned||owned.retired||this.currentPreparation!==prepared||!member||!sameSavedDownloadsScope(prepared.scope,this.scope))throw new Error('downloads_conflict');
+    if(!this.bridge.loadLocal||!this.bridge.retireLocal)throw new Error('unsupported');
+    if(integer(generation)===0||!Number.isFinite(startPositionMs)||startPositionMs<0||startPositionMs>1e12||typeof autoplay!=='boolean')throw new Error('invalid_command');
+    const retire=()=>this.bridge.retireLocal!(owned.lease,generation);
+    try{
+      const raw=object(await this.bridge.loadLocal(owned.lease,{preparationId:prepared.preparationId,localSourceId,generation,startPositionMs,autoplay}));
+      const scope=checkScope(object(raw.scope) as unknown as DownloadScope),artifact=object(raw.artifact),entryId=digest(raw.entryId),sessionId=text(raw.sessionId,256);
+      const suffix=sessionId.startsWith(`local:${entryId}:`)?sessionId.slice(`local:${entryId}:`.length):'';
+      if(raw.kind!=='local'||!sameSavedDownloadsScope(scope,this.scope)||raw.preparationId!==prepared.preparationId||raw.localSourceId!==localSourceId||raw.generation!==generation
+        ||entryId!==member.id||raw.itemId!==member.itemId||!/^[1-9][0-9]{0,15}$/.test(suffix)||!Number.isSafeInteger(Number(suffix))||integer(artifact.bytes)===0)return invalid();
+      const receipt=Object.freeze({kind:'local' as const,scope,preparationId:prepared.preparationId,localSourceId,generation,sessionId,playId:digest(raw.playId),itemId:member.itemId,entryId,artifact:Object.freeze({sha256:digest(artifact.sha256),bytes:integer(artifact.bytes)})});
+      this.guard(signal);
+      if(owned.retired||this.currentPreparation!==prepared)throw new Error('downloads_conflict');
+      return receipt;
+    }catch(error){
+      // The native command may already have committed before cancellation or an
+      // invalid/late reply. Retire only that exact private generation and lease.
+      await retire().catch(()=>{});this.guard(signal);throw downloadFailure(error);
+    }
+  }
+  async retireLocal(generation:number):Promise<void>{
+    if(integer(generation)===0)throw new Error('invalid_command');
+    if(!this.bridge.retireLocal)throw new Error('unsupported');
+    await this.bridge.retireLocal(this.lease,generation);
   }
   async request<T>(operation:Readonly<Record<string,unknown>>,kind:string,parse:(value:unknown)=>T,signal?:AbortSignal):Promise<T>{
     this.guard(signal);

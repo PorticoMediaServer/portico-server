@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {BrowseNode, BrowseSortSelection} from '@core/browse.ts';
+import type {Library} from '@core/index.ts';
 import {browseNameId} from '@core/presentation/browse-toolbar.ts';
 import {appliedFilterParts, browseToolbarModel, type TextEnvironment} from '@portico/client-core/kit-model';
 import {LibraryHeader, LibrarySwitcher, StickyBrowseHeader, BrowseToolbar, FilteredEmpty, type LibraryChoice, type BrowseLabels} from '../../kit/browse';
@@ -36,6 +37,7 @@ export type LibraryBindings = Readonly<{
   /** Required real selection bar and per-entry capabilities from the selected viewer. */
   selection: Readonly<{toolbar?: ReactNode; actions: (member: BrowseMember, index: number) => BrowseItemActions; registerWindow?: (first: number, last: number) => void}>;
   familyForEntry?: Parameters<typeof BrowseResults>[0]['familyForEntry'];
+  scopeLibraries?: readonly Library[];
   shape?: 'poster' | 'square' | 'collection';
   onSaveView?: () => void;
   canSaveView: boolean;
@@ -100,7 +102,7 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
       onReshuffle={() => sort({...model.sort, seed: crypto.getRandomValues(new Uint32Array(1))[0]})}
       view={views.includes('grid') && views.includes('list') ? {value: view, onValueChange: view => bindings.onAppearanceChange({view})} : undefined}
       cardSize={!compact && view === 'grid' ? {value: appearance.cardSize, options: (['small', 'medium', 'large'] as const).map(value => ({value, label: t(`next.browse.${value}`)})), onValueChange: value => {if (value === 'small' || value === 'medium' || value === 'large') bindings.onAppearanceChange({cardSize: value});}} : undefined}
-      actions={<BrowseScopeChips controller={controller} reportError={reportError}/>} save={bindings.showSaveView === false || !bindings.onSaveView ? undefined : {canSave: bindings.canSaveView, onSave: bindings.onSaveView}} applied={chips}
+      actions={<BrowseScopeChips controller={controller} libraries={bindings.scopeLibraries} reportError={reportError}/>} save={bindings.showSaveView === false || !bindings.onSaveView ? undefined : {canSave: bindings.canSaveView, onSave: bindings.onSaveView}} applied={chips}
       onRemoveFilter={id => setPredicates(state.predicates.filter(node => node !== model.applied[Number(id)]))} onClearFilters={() => setPredicates([])} selection={selection.toolbar}/>
     <BrowseResults controller={controller} label={library.name} view={view} cardWidth={appearance.cardWidth} shape={shape} artwork={bindings.artwork} env={env} backdrops={appearance.backdrops}
       reducedMotion={bindings.preferences?.reducedMotion ?? bindings.reducedMotion} actions={selection.actions} familyForEntry={bindings.familyForEntry} onVisibleRange={selection.registerWindow} onSort={sort}
