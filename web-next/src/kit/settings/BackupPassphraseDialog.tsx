@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, type RefObject} from 'react';
+import {useEffect, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button, TextField} from '../controls';
 import {Dialog} from '../overlays/Dialog';
@@ -7,6 +7,9 @@ import styles from './settings.module.css';
 const t = defaultI18n.t;
 export type BackupPassphraseDialogProps = Readonly<{
   open: boolean; mode: 'protect' | 'change' | 'restore'; onClose: () => void;
+  scopeKey: string;
+  isCurrent: () => boolean;
+  subscribeAuthority: (listener: () => void) => () => void;
   /** The real facade adapter maps only its authenticated wrong-passphrase outcome. */
   submit: (passphrase: string, signal: AbortSignal) => Promise<'done' | 'wrong-passphrase'>;
   onDone: () => void;
@@ -16,7 +19,12 @@ export type BackupPassphraseDialogProps = Readonly<{
 }>;
 
 /** Ruling §17's controlled password step; no persistence, logging or optimistic switch mutation. */
-export function BackupPassphraseDialog({open, mode, onClose, submit, onDone, onFailure, returnFocusRef}: BackupPassphraseDialogProps) {
+export function BackupPassphraseDialog(props: BackupPassphraseDialogProps) {
+  const current = useSyncExternalStore(props.subscribeAuthority, props.isCurrent, props.isCurrent);
+  return current && props.open ? <Passphrase key={JSON.stringify([props.scopeKey, props.mode])} {...props} /> : null;
+}
+
+function Passphrase({open, mode, onClose, submit, onDone, onFailure, returnFocusRef, isCurrent}: BackupPassphraseDialogProps) {
   const [first, setFirst] = useState(''), [second, setSecond] = useState(''), [error, setError] = useState<'mismatch' | 'incorrect'>(), [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null), request = useRef<AbortController | undefined>(undefined);
   const erase = () => {setFirst('');setSecond('');setError(undefined);};
@@ -28,18 +36,18 @@ export function BackupPassphraseDialog({open, mode, onClose, submit, onDone, onF
   const bytes = new TextEncoder().encode(first).byteLength;
   const ready = bytes > 0 && bytes <= 1024 && (mode === 'restore' || bytes >= 12 && second.length > 0);
   const save = async () => {
-    if (!open || !ready || request.current) return;
+    if (!isCurrent() || !open || !ready || request.current) return;
     if (mode !== 'restore' && first !== second) {setError('mismatch');return;}
     const controller = request.current = new AbortController(), passphrase = first;
     erase();setBusy(true);
     try {
       const result = await submit(passphrase, controller.signal);
-      if (controller.signal.aborted || request.current !== controller) return;
+      if (controller.signal.aborted || request.current !== controller || !isCurrent()) return;
       if (result === 'wrong-passphrase' && mode === 'restore') setError('incorrect');
       else if (result === 'done') {onDone();onClose();}
       else {onClose();onFailure();}
     } catch {
-      if (!controller.signal.aborted && request.current === controller) {onClose();onFailure();}
+      if (!controller.signal.aborted && request.current === controller && isCurrent()) {onClose();onFailure();}
     } finally {
       if (request.current === controller) {request.current = undefined;setBusy(false);}
     }

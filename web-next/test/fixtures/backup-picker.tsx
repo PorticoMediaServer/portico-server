@@ -5,6 +5,7 @@ import type {LibraryContentApi} from '@core/library-content.ts';
 import {ServerFolderPicker} from '../../src/kit/settings/ServerFolderPicker';
 import {BackupList} from '../../src/kit/settings/BackupList';
 import {BackupConfirmationDialog} from '../../src/kit/settings/BackupConfirmationDialog';
+import {BackupPassphraseDialog} from '../../src/kit/settings/BackupPassphraseDialog';
 import {defaultI18n} from '@i18n';
 import {IconSprite} from '../../src/kit/Icon';
 import '../../src/kit/tokens.css';
@@ -12,12 +13,13 @@ import '../../src/kit/fonts.css';
 import '../../src/bootstrap.css';
 
 const folder = '/mnt/media/Backups';
-const proof = {requests: [] as {path: string;aborted: boolean}[], choices: [] as readonly string[][], closes: 0, released: 0, restoreOffers: [] as string[], deleteOffers: [] as string[], confirmations: [] as {id: string;aborted: boolean}[], failures: 0};
+const proof = {requests: [] as {path: string;aborted: boolean}[], choices: [] as readonly string[][], closes: 0, released: 0, restoreOffers: [] as string[], deleteOffers: [] as string[], confirmations: [] as {id: string;aborted: boolean}[], passphrases: [] as {aborted: boolean}[], completed: 0, failures: 0};
 let release: (() => void) | undefined;
 let complete: (() => void) | undefined;
+let completePassphrase: ((result: 'done' | 'wrong-passphrase') => void) | undefined;
 let current = true;const listeners = new Set<() => void>();
 const authority = {isCurrent: () => current, subscribeAuthority: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};}};
-Object.assign(window, {backupPickerProof: proof, releaseBackupPage: () => {release?.();release = undefined;}, completeBackupConfirmation: () => {complete?.();complete = undefined;}, retireBackupAuthority: () => {current = false;for (const listener of listeners) listener();}});
+Object.assign(window, {backupPickerProof: proof, releaseBackupPage: () => {release?.();release = undefined;}, completeBackupConfirmation: () => {complete?.();complete = undefined;}, completeBackupPassphrase: (result: 'done' | 'wrong-passphrase') => {completePassphrase?.(result);completePassphrase = undefined;}, retireBackupAuthority: () => {current = false;for (const listener of listeners) listener();}});
 function Fixture() {
   const [open, setOpen] = useState(true), [identity, setIdentity] = useState(0);
   const params = new URLSearchParams(location.search), purpose = params.get('purpose') === 'folder' ? 'folder' as const : 'backup' as const;
@@ -32,6 +34,9 @@ function Fixture() {
     return {result: {path: current, parent: current ? current.slice(0, current.lastIndexOf('/')) || '/' : '', separator: '/', platform: 'linux', writable: false, writableChecked: false, suggestions: [], truncated: false,
       roots: [{path: '/mnt/media/Backups', name: 'Backups', kind: 'directory', description: ''}], entries, nextCursor: !frame && current === folder && !query.has('cursor') ? 'actual-cursor' : ''}} as T;
   }}), [identity]);
+  if (params.has('passphrase')) return <><IconSprite /><BackupPassphraseDialog open={open} mode={params.get('passphrase') === 'restore' ? 'restore' : 'protect'} scopeKey="controlled-passphrase" {...authority}
+    onClose={() => {setOpen(false);proof.closes++;}} onDone={() => {proof.completed++;}} onFailure={() => {proof.failures++;}}
+    submit={(_passphrase, signal) => {const seen = {aborted: signal.aborted};proof.passphrases.push(seen);signal.addEventListener('abort', () => {seen.aborted = true;}, {once: true});return new Promise(resolve => {completePassphrase = resolve;});}} /></>;
   if (params.has('confirm')) return <><IconSprite /><BackupConfirmationDialog open={open} onClose={() => {setOpen(false);proof.closes++;}} mode={params.get('confirm') === 'restore' ? 'restore' : 'delete'} scopeKey="controlled-confirmation" {...authority} format={defaultI18n}
     backup={{id: 'actual-target', createdAt: '2026-10-14T09:47:00-03:00', kind: 'pre-restore', schemaVersion: 40, serverVersion: '1.4.0', bytes: 16*1024*1024, path: '/not-displayed/backup.db'}}
     submit={(backup, signal) => {const seen = {id: backup.id, aborted: signal.aborted};proof.confirmations.push(seen);signal.addEventListener('abort', () => {seen.aborted = true;}, {once: true});return new Promise<void>(resolve => {complete = resolve;});}} onFailure={() => {proof.failures++;}} /></>;

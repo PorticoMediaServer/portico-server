@@ -34,7 +34,7 @@ async function waitFor(expression) {
 const click = (text, scope = 'document') => evaluate(`(() => {const button=[...${scope}.querySelectorAll('button')].find(button=>button.textContent.trim()===${JSON.stringify(text)});if(!button||button.disabled)throw Error('Missing enabled button');button.click();})()`);
 const proof = () => evaluate('structuredClone(window.backupPickerProof)');
 async function check(name, run) {await run();results.push({name, pass: true});}
-async function fill(value) {await evaluate(`(() => {const input=document.querySelector('[role=dialog] input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`);await pause(20);}
+async function fill(value, index = 0) {await evaluate(`(() => {const input=document.querySelectorAll('[role=dialog] input')[${index}];Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`);await pause(20);}
 try {
   server = await createServer({root: path.join(root, 'web-next'), configFile: path.join(root, 'web-next/vite.config.ts'), cacheDir: path.join(scratch, 'vite'), server: {host: '127.0.0.1', port: 0, strictPort: false, watch: {ignored: ['**/.backup-controls-*/**']}}});
   await server.listen();const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
@@ -81,6 +81,20 @@ try {
   await navigate('?confirm=restore');await waitFor("!![...document.querySelectorAll('button')].find(b=>b.textContent==='Restore backup')");
   await check('restore confirmation retains original command until completion and aborts on retirement', async () => {
     assert.equal(await evaluate('document.activeElement.textContent'), 'Cancel');await click('Restore backup');assert.equal((await proof()).confirmations.length, 1);await evaluate('retireBackupAuthority()');await waitFor("!document.querySelector('[role=dialog]')");assert.equal((await proof()).confirmations[0].aborted, true);await evaluate('completeBackupConfirmation()');assert.equal((await proof()).closes, 0);
+  });
+  await navigate('?passphrase=protect');await waitFor("document.querySelectorAll('[role=dialog] input').length===2");
+  await check('passphrase fields clear before submit and authority retirement aborts without late callbacks', async () => {
+    await fill('controlled test phrase');await fill('controlled test phrase', 1);await click('Protect backups');
+    assert.equal((await proof()).passphrases.length, 1);assert.deepEqual(await evaluate("[...document.querySelectorAll('[role=dialog] input')].map(input=>input.value)"), ['', '']);
+    await evaluate('retireBackupAuthority()');await waitFor("!document.querySelector('[role=dialog]')");assert.equal((await proof()).passphrases[0].aborted, true);
+    await evaluate("completeBackupPassphrase('done')");await pause(30);const state = await proof();assert.equal(state.completed, 0);assert.equal(state.closes, 0);assert.equal(state.failures, 0);
+  });
+  await navigate('?passphrase=restore');await waitFor("document.querySelectorAll('[role=dialog] input').length===1");
+  await check('wrong passphrase stays empty for retry and cancellation retires the next request', async () => {
+    await fill('controlled test phrase');await click('Restore');await evaluate("completeBackupPassphrase('wrong-passphrase')");
+    await waitFor("document.querySelector('[role=dialog]').textContent.includes('That passphrase doesn’t open this backup.')");assert.equal(await evaluate("document.querySelector('[role=dialog] input').value"), '');
+    await fill('another test phrase');await click('Restore');assert.equal((await proof()).passphrases.length, 2);await click('Cancel');await waitFor("!document.querySelector('[role=dialog]')");assert.equal((await proof()).passphrases[1].aborted, true);
+    await evaluate("completeBackupPassphrase('done')");await pause(30);assert.equal((await proof()).completed, 0);
   });
   assert.deepEqual(exceptions, []);console.log(JSON.stringify({browser: version.Browser, kind: 'Controlled component/parser behavior only; no live backup or UI/frame acceptance', results}, null, 2));
 } finally {

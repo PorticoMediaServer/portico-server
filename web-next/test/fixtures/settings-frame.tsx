@@ -77,8 +77,9 @@ Object.assign(window, {settingsFrame: {authority: '69f2d45a972ff9ec1bd8743c76018
 function PassphraseFixture({mode}: {mode: 'protect' | 'change' | 'restore'}) {
   const [open, setOpen] = useState(true);
   const proof = useRef({calls: 0, completed: 0, failed: 0, aborted: 0, resolve: (_result: 'done' | 'wrong-passphrase') => {}}).current;
+  const authority = useRef({current: true, listeners: new Set<() => void>()}).current;
   Object.assign(window, {settingsPassphraseProof: proof});
-  return <BackupPassphraseDialog open={open} mode={mode} onClose={() => setOpen(false)} onDone={() => {proof.completed++;}} onFailure={() => {proof.failed++;}}
+  return <BackupPassphraseDialog open={open} mode={mode} scopeKey="controlled-passphrase" isCurrent={() => authority.current} subscribeAuthority={listener => {authority.listeners.add(listener);return () => {authority.listeners.delete(listener);};}} onClose={() => setOpen(false)} onDone={() => {proof.completed++;}} onFailure={() => {proof.failed++;}}
     submit={async (_passphrase, signal) => {proof.calls++;return new Promise(resolve => {proof.resolve = resolve;signal.addEventListener('abort', () => {proof.aborted++;}, {once: true});});}} />;
 }
 const dialog = parameters.get('dialog');
