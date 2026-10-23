@@ -16,6 +16,8 @@ import (
 )
 
 type ToolchainFacts struct {
+	inventoryCacheable       bool
+	DolbyVisionDualLayerJoin bool `json:"-"`
 	// Only a bundle's qualified packet conversion may enable this fact. A BSF
 	// name, stock dovi_rpu options or a generic device probe is insufficient.
 	// It remains false until the libdovi-backed mode-2 fixture gate is wired.
@@ -36,7 +38,6 @@ type ToolchainFacts struct {
 
 var installedToolchain atomic.Pointer[ToolchainFacts]
 var toolchainCache sync.Map
-var toolchainRuntimeCache sync.Map
 
 // ConfigureToolchain installs the probed toolchain and reports, in the owner's
 // diagnostics, whether it converts Dolby Vision Profile 5 with its own colors.
@@ -133,14 +134,14 @@ func probeToolchainInventory(ctx context.Context, ffmpeg string, runner toolchai
 	if err != nil {
 		return ToolchainFacts{}, err
 	}
-	identity, err := ffmpegIdentity(path)
+	identity, cacheable, err := inventoryIdentity(ctx, path)
 	if err != nil {
 		return ToolchainFacts{}, err
 	}
-	if cached, ok := toolchainCache.Load(identity); ok {
+	if cached, ok := toolchainCache.Load(identity); cacheable && ok {
 		return cached.(ToolchainFacts), nil
 	}
-	out := ToolchainFacts{Identity: identity}
+	out := ToolchainFacts{Identity: identity, inventoryCacheable: cacheable}
 	for _, kind := range []string{"version", "encoders", "decoders", "filters", "muxers", "hwaccels", "bsfs"} {
 		run, cancel := context.WithTimeout(ctx, 5*time.Second)
 		raw, err := runner(run, mediaexec.Job{Executable: path, Args: []string{"-hide_banner", "-" + kind}})
@@ -175,10 +176,18 @@ func probeToolchainInventory(ctx context.Context, ffmpeg string, runner toolchai
 	if out.Version == "" || len(out.Encoders) == 0 || len(out.Muxers) == 0 {
 		return ToolchainFacts{}, errors.New("incomplete toolchain probe")
 	}
-	if current, err := ffmpegIdentity(path); err != nil || current != identity {
+	if err := ctx.Err(); err != nil {
+		return ToolchainFacts{}, err
+	}
+	if current, complete, err := inventoryIdentity(ctx, path); err != nil || current != identity || complete != cacheable {
 		return ToolchainFacts{}, errors.New("FFmpeg changed during inventory qualification")
 	}
-	toolchainCache.Store(identity, out)
+	if err := ctx.Err(); err != nil {
+		return ToolchainFacts{}, err
+	}
+	if cacheable {
+		toolchainCache.Store(identity, out)
+	}
 	return out, nil
 }
 
@@ -194,9 +203,6 @@ func probeToolchainRuntime(ctx context.Context, ffmpeg string, runner toolchainP
 	out, err := probeToolchainInventory(ctx, ffmpeg, runner)
 	if err != nil {
 		return ToolchainFacts{}, err
-	}
-	if cached, ok := toolchainRuntimeCache.Load(out.Identity); ok {
-		return cached.(ToolchainFacts), nil
 	}
 	path, err := exec.LookPath(ffmpeg)
 	if err != nil {
@@ -220,11 +226,13 @@ func probeToolchainRuntime(ctx context.Context, ffmpeg string, runner toolchainP
 	if err := ctx.Err(); err != nil {
 		return ToolchainFacts{}, err
 	}
-	if current, err := ffmpegIdentity(path); err != nil || current != identity {
+	if current, complete, err := inventoryIdentity(ctx, path); err != nil || current != identity || complete != out.inventoryCacheable {
 		return ToolchainFacts{}, errors.New("FFmpeg changed during runtime qualification")
 	}
-	toolchainRuntimeCache.Store(identity, out)
-	toolchainCache.Store(identity, out)
+	// ICDs, dynamically loaded driver plugins and device permissions can change
+	// without changing FFmpeg's ELF closure. An explicit runtime/reprobe call
+	// must run these bounded jobs again; never put their grants in the trusted
+	// inventory cache, which promises no GPU qualification.
 	return out, nil
 }
 func (f *ToolchainFacts) MissingRequired() []string {

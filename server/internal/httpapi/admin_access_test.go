@@ -850,7 +850,7 @@ func TestPorticoProfilesRequireMainPINAndRetainRealWaitTimes(t *testing.T) {
 	if _, e := s.EditDirectProfile(ctx, f.member, "member-profile", identity.DirectProfileEdit{ExpectedRevision: 1, PIN: &pin}); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := f.deps.DB.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('member','acc_private_fixture')`); e != nil {
+	if _, e := f.deps.DB.Exec(`UPDATE accounts SET password_hash=X''; UPDATE identity_state SET sign_in_kind='portico'; INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('member','acc_private_fixture')`); e != nil {
 		t.Fatal(e)
 	}
 	login, e := s.PorticoSignIn(ctx, identity.PorticoIdentity{AccountID: "acc_private_fixture", Username: "member"})

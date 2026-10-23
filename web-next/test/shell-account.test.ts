@@ -46,9 +46,9 @@ function identity(username?: string, profileName = 'Evening profile'): ShellIden
     capabilities:{manageAccount:true,managePeople:true,manageServer:true,manageSignIn:true},canManageProfiles: true, accountFacts: [{id: 'server', text: 'Study server', role: 'context'}],
     libraries: [], liveAvailable: false, unread: 2, showNotificationDot: true};
 }
-function render(value: ShellIdentity, signOut = () => {}) {
+function render(value: ShellIdentity, signOut = () => {}, feedback?: () => void) {
   captured.length = 0;
-  renderToStaticMarkup(createElement(Shell, {identity: value, OwnerActivity: () => null, dockVisible: false, onSignOut: signOut, children: null}));
+  renderToStaticMarkup(createElement(Shell, {identity: value, OwnerActivity: () => null, dockVisible: false, onSignOut: signOut, onFeedback: feedback, children: null}));
   assert.equal(captured.length, 1);
   return captured[0];
 }
@@ -86,4 +86,12 @@ test('non-main profile cannot receive Manage or Add actions from the actual Shel
  const source=identity('owner');const menu=render({...source,primaryProfile:false,canManageProfiles:false,capabilities:{manageAccount:false,managePeople:false,manageServer:false,manageSignIn:false}});
  assert.equal(menu.actions.manageProfiles,undefined);assert.equal(menu.actions.addProfile,undefined);assert.equal(menu.serverAction,undefined);
  assert.equal(menu.signOutLabel,'Sign out of Study server');
+});
+
+test('feedback uses the supplied dialog action and never navigates off the current page', () => {
+  assert.equal(render(identity('actual-user')).actions.feedback, undefined);
+  let opened = 0;
+  const menu = render(identity('actual-user'), () => {}, () => {opened++;});
+  const before = navigated.length;menu.actions.feedback?.();
+  assert.equal(opened, 1);assert.equal(navigated.length, before);
 });

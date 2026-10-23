@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/storagepaths"
@@ -22,6 +24,12 @@ import (
 // This executable is both the real supervised native helper and its synthetic
 // rclone child. No provider, FUSE mount or credential is needed by these tests.
 func TestMain(m *testing.M) {
+	if len(os.Args) == 2 && os.Args[1] == "--portico-storage-helper" {
+		if err := storage.Helper(os.Stdin, os.Stdout); err != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	if len(os.Args) == 2 && os.Args[1] == "--portico-rclone-native" {
 		if err := mounts.NativeHelper(os.Stdin, os.Stdout); err != nil {
 			os.Exit(1)
@@ -29,8 +37,11 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	if len(os.Args) == 2 && os.Args[1] == "version" {
-		fmt.Println("rclone vfixture")
+		fmt.Println("rclone v1.75.2")
 		os.Exit(0)
+	}
+	if len(os.Args) > 3 && os.Args[1] == "serve" && os.Args[2] == "webdav" {
+		os.Exit(runInventoryServeFixture())
 	}
 	if len(os.Args) > 2 && os.Args[1] == "lsjson" {
 		for _, arg := range os.Args {
@@ -84,6 +95,124 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// The controlled native test child implements only the production loopback
+// serve/metadata contract. It supplies no provider or actor authority proof.
+func runInventoryServeFixture() int {
+	_, control, ok := strings.Cut(os.Args[3], ":")
+	if !ok {
+		return 2
+	}
+	flag := func(name string) string {
+		for i, arg := range os.Args {
+			if arg == name && i+1 < len(os.Args) {
+				return os.Args[i+1]
+			}
+		}
+		return ""
+	}
+	response := func(w http.ResponseWriter, path string, directory bool) {
+		fmt.Fprintf(w, `<d:response><d:href>/%s</d:href><d:propstat><d:prop>`, path)
+		if directory {
+			fmt.Fprint(w, `<d:resourcetype><d:collection/></d:resourcetype>`)
+		} else {
+			fmt.Fprint(w, `<d:getcontentlength>1</d:getcontentlength><d:getetag>"fixture"</d:getetag><d:getlastmodified>Thu, 01 Jan 2026 00:00:00 GMT</d:getlastmodified>`)
+		}
+		fmt.Fprint(w, `</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>`)
+	}
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, password, auth := r.BasicAuth()
+		if !auth || user != os.Getenv("RCLONE_USER") || password != os.Getenv("RCLONE_PASS") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if r.Method != "PROPFIND" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(207)
+		fmt.Fprint(w, `<d:multistatus xmlns:d="DAV:">`)
+		if r.Header.Get("Depth") != "1" {
+			response(w, strings.TrimPrefix(r.URL.Path, "/"), r.URL.Path == "/")
+			fmt.Fprint(w, `</d:multistatus>`)
+			return
+		}
+		file, err := os.OpenFile(filepath.Join(control, "starts"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			return
+		}
+		fmt.Fprintln(file, "start")
+		file.Close()
+		response(w, "", true)
+		for i := 0; i < 128; i++ {
+			response(w, fmt.Sprintf("entry-%04d", i), false)
+		}
+		w.(http.Flusher).Flush()
+		deadline := time.Now().Add(40 * time.Second)
+		for {
+			if _, err := os.Stat(filepath.Join(control, "release")); err == nil {
+				break
+			}
+			if r.Context().Err() != nil || time.Now().After(deadline) {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		for i := 128; i < 130; i++ {
+			response(w, fmt.Sprintf("entry-%04d", i), false)
+		}
+		fmt.Fprint(w, `</d:multistatus>`)
+		if mode, _ := os.ReadFile(filepath.Join(control, "mode")); string(mode) == "bad-tail" {
+			fmt.Fprint(w, " trailing-invalid-data")
+		}
+	})
+	controlHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, password, auth := r.BasicAuth()
+		if !auth || user != os.Getenv("RCLONE_RC_USER") || password != os.Getenv("RCLONE_RC_PASS") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/operations/fsinfo":
+			fmt.Fprint(w, `{"Name":"fixture","Features":{"SlowHash":true}}`)
+		case "/operations/list":
+			fmt.Fprint(w, `{"list":[`)
+			for i := 0; i < 130; i++ {
+				if i != 0 {
+					fmt.Fprint(w, ",")
+				}
+				fmt.Fprintf(w, `{"Path":"entry-%04d","Size":1,"ModTime":"2026-01-01T00:00:00Z","ID":"entry-%04d"}`, i, i)
+			}
+			fmt.Fprint(w, `]}`)
+		case "/operations/stat":
+			var input struct{ Remote string }
+			if json.NewDecoder(r.Body).Decode(&input) != nil {
+				w.WriteHeader(400)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{"item": map[string]any{"Path": input.Remote, "Size": 1, "ModTime": "2026-01-01T00:00:00Z", "ID": input.Remote}})
+		default:
+			w.WriteHeader(404)
+		}
+	})
+	controlListener, err := net.Listen("tcp4", flag("--rc-addr"))
+	if err != nil {
+		return 3
+	}
+	defer controlListener.Close()
+	go http.Serve(controlListener, controlHandler)
+	listener, err := net.Listen("tcp4", flag("--addr"))
+	if err != nil {
+		return 3
+	}
+	defer listener.Close()
+	if http.Serve(listener, handler) != nil {
+		return 3
+	}
+	return 0
+}
+
 type nativeFixture struct {
 	s                      *Service
 	db                     *sql.DB
@@ -118,14 +247,27 @@ func newNativeFixture(t *testing.T) nativeFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	life, cancel := context.WithCancel(context.Background())
+	if err = s.startReadRuntime(life); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		s.stopNativeListings()
+		cancel()
+		s.stopServeProcesses()
 		deadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(deadline) {
 			s.listings.Lock()
 			n := len(s.nativeListings)
 			s.listings.Unlock()
 			if n == 0 {
+				s.serveMu.Lock()
+				physical := len(s.serveLeases)
+				s.serveMu.Unlock()
+				if physical != 0 {
+					time.Sleep(10 * time.Millisecond)
+					continue
+				}
 				return
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -145,6 +287,9 @@ func newNativeFixture(t *testing.T) nativeFixture {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO inventory_runs(job_id,source_id,source_generation,root_incarnation,root_identity,policy_revision,phase) SELECT ?,id,generation,incarnation,root_identity,1,'inventory' FROM library_sources WHERE id=?`, job, lib.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.CheckScan(context.Background(), job, mount.MountPath); err != nil {
 		t.Fatal(err)
 	}
 	return nativeFixture{s, db, mount.MountPath, mount.ID, control, job}
@@ -242,6 +387,21 @@ func TestNativeListingRetainsProgressAcrossCancelledRequests(t *testing.T) {
 	p, err := f.s.ListPage(context.Background(), f.job, f.root, pending.Next)
 	if err != nil || p.Pending || p.Complete || len(p.Entries) != 128 {
 		t.Fatal("first complete-snapshot page", len(p.Entries), err)
+	}
+	if f.count(t, `SELECT COUNT(*) FROM remote_scan_observations`) != 0 {
+		t.Fatal("private listing metadata escaped before catalogue publication")
+	}
+	tx, err = f.db.Begin()
+	if err == nil {
+		err = f.s.CommitPage(context.Background(), tx, p)
+	}
+	if err == nil {
+		err = tx.Commit()
+	} else if tx != nil {
+		tx.Rollback()
+	}
+	if err != nil || f.count(t, `SELECT COUNT(*) FROM remote_scan_observations`) != 128 {
+		t.Fatal("page did not publish exactly its normalized file facts", err)
 	}
 	last, err := f.s.ListPage(context.Background(), f.job, f.root, p.Next)
 	if err != nil || last.Pending || !last.Complete || len(last.Entries) != 2 {

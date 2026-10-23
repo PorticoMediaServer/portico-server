@@ -9,6 +9,27 @@ import (
 	"testing"
 )
 
+func TestAccountMoveOwnerAuthorizationPrecedesBodyAndRevision(t *testing.T) {
+	f := administrationFixtureNew(t)
+	for _, path := range []string{
+		"/v1/admin/sign-in/move/preview", "/v1/admin/sign-in/move/confirm",
+		"/v1/admin/sign-in/move/unknown/cancel", "/v1/admin/sign-in/move/unknown/finish",
+		"/v1/admin/sign-in/move/codes",
+	} {
+		for _, token := range []string{f.admin, f.member} {
+			for _, body := range []string{`{}`, `{`, `{"expectedRevision":0}`} {
+				if w := f.call("POST", path, token, body); w.Code != 403 {
+					t.Fatalf("non-owner reached body/revision processing on %s: status=%d", path, w.Code)
+				}
+			}
+		}
+	}
+	var count int
+	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM identity_moves`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("refused request changed moves: count=%d error=%v", count, err)
+	}
+}
+
 func TestAccountMovePublicHTTPCodeAndOwnerReadOnly(t *testing.T) {
 	f := administrationFixtureNew(t)
 	ctx := context.Background()
