@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/persistence"
 	"testing"

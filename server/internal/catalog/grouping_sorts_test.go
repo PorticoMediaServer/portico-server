@@ -237,8 +237,10 @@ func TestGroupingKindSortsFollowSourceEdits(t *testing.T) {
 func TestGroupingCursorSurvivesRemovedAnchorAndFencesSeed(t *testing.T) {
 	c := catalogtest.Open(t)
 	library := c.Library("m", "Movies", "movie", "/m")
+	ids := map[string]int64{}
 	for i := 0; i < 7; i++ {
 		item := c.Movie(library, fmt.Sprintf("/m/%d.mkv", i), fmt.Sprintf("Movie %d", i), 2000)
+		ids[item.Public] = item.ID
 		c.Fields(item.ID, map[string]any{"release_date": fmt.Sprintf("2020-01-%02d", i+1)})
 	}
 	c.Drain()
@@ -249,7 +251,7 @@ func TestGroupingCursorSurvivesRemovedAnchorAndFencesSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.Exec(`DELETE FROM catalog_entities WHERE public_id=pid_blob(?)`, first.Entries[1].ID)
+	c.Delete(ids[first.Entries[1].ID])
 	c.Drain()
 	r.Cursor = first.PageInfo.NextCursor
 	if _, err := s.BrowseEntities(v, r); !errors.Is(err, ErrStaleContinuation) {
