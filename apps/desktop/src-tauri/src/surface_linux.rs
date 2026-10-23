@@ -128,7 +128,11 @@ pub fn bounds(webview:&tauri::webview::PlatformWebview,bounds:crate::boundary::S
 
 /// Called on GTK's thread while the native client is retained by the close worker.
 pub fn retire(webview:&tauri::webview::PlatformWebview)->Result<()>{
-    let overlay=webview.inner().parent().ok_or(Error::Unsupported)?.downcast::<gtk::Overlay>().map_err(|_|Error::Unsupported)?;
+    let parent=webview.inner().parent().ok_or(Error::Unsupported)?;
+    // Failed library/engine initialization leaves Wry's original box untouched.
+    // There is no native context to retire in that case; closing is still clean.
+    if parent.is::<gtk::Box>(){return Ok(())}
+    let overlay=parent.downcast::<gtk::Overlay>().map_err(|_|Error::Unsupported)?;
     let fixed=overlay.child().ok_or(Error::Unsupported)?.downcast::<gtk::Fixed>().map_err(|_|Error::Unsupported)?;
     if let Some(area)=fixed.children().into_iter().find(|w|w.widget_name()=="portico-native-video"){
         area.unrealize();fixed.remove(&area);

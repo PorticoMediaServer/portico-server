@@ -13,7 +13,7 @@ docker image inspect "$image" --format '{{.Id}} {{json .RepoDigests}} {{json .Co
 # archive is writable, with the runner uid so its final cleanup can remove every file.
 mkdir -p "$TMPDIR/native-work/home"
 scope="${1:-engine}"
-case "$scope" in shell|engine) ;; *) exit 64 ;; esac
+case "$scope" in shell|startup|engine) ;; *) exit 64 ;; esac
 docker run --rm --network=host --user "$(id -u):$(id -g)" --label portico=desktop-r29 --cpus=2 --memory=3g --memory-swap=3g \
   --env HOME=/work/home --env CARGO_HOME=/work/cargo --env RUSTUP_TOOLCHAIN=1.99.0 \
   --env "PORTICO_NATIVE_CHECK=$scope" \
@@ -37,5 +37,14 @@ else
   cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --lib mpv::local_source_tests -- --ignored --test-threads=1
   cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --lib shell::tests -- --ignored --test-threads=1
   cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --bin portico-desktop
+  if [ "$PORTICO_NATIVE_CHECK" = startup ]; then
+    # Deliberately absent engine: the app must preserve native identity/host startup,
+    # fail capability publication closed and retire an unattached WebView cleanly.
+    export PORTICO_SPIKE_DATA=/work/startup-data PORTICO_SPIKE_REPORT=/work/startup-report.json PORTICO_SPIKE_CLOSE=1
+    export PORTICO_MPV_LIBRARY=/work/no-native-library.so
+    export LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
+    timeout 45 xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- /work/cargo-target/debug/portico-desktop
+    python3 apps/desktop/test/native-startup.py
+  fi
 fi
 '
