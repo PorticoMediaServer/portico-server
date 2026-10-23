@@ -95,7 +95,7 @@ Before personal progress or clock comparisons, require positive agreement betwee
 
 ### Embedded arm64 APK
 
-Use a clean exact native MAIN checkout and a dependency seed with its identical native lockfile:
+Use a clean exact native MAIN checkout. Omit `--seed` for the normal exact-lockfile npm install; an optional dependency seed must have its identical native lockfile:
 
 ```sh
 python3 scripts/build-review-apk.py --repo /path/to/clean-native-main --seed /path/to/matching/apps/native/node_modules --engine /path/to/retained/media-engine/out/android --scratch /home/justin/projects/Portico/.scratch/release-r40 --artifacts /home/justin/projects/Portico/.artifacts/release-r40/native-COMMIT

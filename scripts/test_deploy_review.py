@@ -92,6 +92,18 @@ class ReviewDeployment(unittest.TestCase):
             with self.assertRaises(ValueError):
                 build.public_root(pem)
 
+    def test_dependency_seed_with_other_lock_is_refused_before_copy(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project, donor = root / 'project', root / 'donor'
+            project.mkdir(); donor.mkdir()
+            (project / 'package-lock.json').write_text('current lock')
+            (donor / 'package-lock.json').write_text('older lock')
+            with patch.object(apk.subprocess, 'run') as run:
+                with self.assertRaises(ValueError):
+                    apk.prepare_dependencies(project, donor / 'node_modules')
+                run.assert_not_called()
+
     def make_apk(self, path, extra=(), omit=()):
         files = {'assets/index.android.bundle': b'x' * 2048,
                  'assets/media-engine/THIRD-PARTY-NOTICES.txt': b'notices',
