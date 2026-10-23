@@ -108,7 +108,7 @@ func (h *RouteIdentityHandler) SignRegisteredSignInPrepare(parent context.Contex
 		if name == "" {
 			name = "Portico"
 		}
-		if !utf8.ValidString(name) || len(name) > 120 || strings.TrimSpace(name) == "" || strings.IndexFunc(name, unicode.IsControl) >= 0 {
+		if !utf8.ValidString(name) || len(name) > 120 || strings.TrimSpace(name) == "" || strings.IndexFunc(name, func(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) >= 0 {
 			return ErrInvalid
 		}
 		key, e := h.keys.read(id.KeyIncarnation)
