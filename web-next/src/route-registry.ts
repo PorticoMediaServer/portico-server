@@ -1,5 +1,6 @@
 import type {ComponentType} from 'react';
 import type {ShellPlaybackBinding} from './shell/Playback';
+import {accountReturnPath} from './route-registry-return';
 
 /** Stable destinations. Screen owners supply their own component in *.route.tsx. */
 export const webScreenPaths = Object.freeze({
@@ -54,5 +55,6 @@ export function createWebScreenRegistry(modules: Readonly<Record<string, WebScre
   });
 }
 export function webScreenIdForRoute(routeId: string): WebScreenId | undefined {
+  if (routeId === accountReturnPath) return 'signIn';
   return (Object.keys(webScreenPaths) as WebScreenId[]).find(id => webScreenPaths[id] === routeId);
 }
