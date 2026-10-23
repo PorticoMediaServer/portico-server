@@ -3406,11 +3406,15 @@ music_match_observations.provider_error
 music_match_observations.query_digest
 music_match_observations.strong_signals
 music_sonic_embeddings.dimensions
+music_sonic_embeddings.entity_id
 music_sonic_embeddings.model_id
 music_sonic_embeddings.model_sha256
 music_sonic_embeddings.model_version
 music_sonic_embeddings.result_id
+music_sonic_embeddings.source_end_us
+music_sonic_embeddings.source_start_us
 music_sonic_embeddings.vector
+music_sonic_tags.entity_id
 music_sonic_tags.result_id
 music_sonic_tags.score
 music_sonic_tags.tag_index
