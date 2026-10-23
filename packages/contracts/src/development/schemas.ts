@@ -125,9 +125,6 @@ export const schemas = {
       "custodyPending": {
         "type": "boolean"
       },
-      "deviceApprovalPending": {
-        "type": "boolean"
-      },
       "deviceId": {
         "type": "string"
       },

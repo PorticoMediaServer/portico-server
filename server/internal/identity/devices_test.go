@@ -21,9 +21,6 @@ func TestDeviceRegistrationRecordsThePeerNotTheClaim(t *testing.T) {
 	if device.IP != "203.0.113.7" {
 		t.Fatalf("peer address %q: the port must not be stored", device.IP)
 	}
-	if device.ApprovalState != "approved" || device.Trusted {
-		t.Fatalf("a device under the default policy: %+v", device)
-	}
 	// A nonsense peer is recorded as nothing rather than as itself: this column is
 	// shown to people, so it holds an address or it holds nothing.
 	second, e := s.RegisterDevice(ctx, login.AccountToken, registration(Token()), "not-an-address")
@@ -55,68 +52,6 @@ func TestDeviceRegistrationRecordsThePeerNotTheClaim(t *testing.T) {
 		if _, e = s.RegisterDevice(ctx, login.AccountToken, invalid, ""); !errors.Is(e, ErrDeviceInput) {
 			t.Errorf("%s: want ErrDeviceInput, got %v", name, e)
 		}
-	}
-}
-
-func TestOwnerApprovalHoldsANewDeviceAndDenyingItSignsItOut(t *testing.T) {
-	ctx := context.Background()
-	s, owner, _, login := memberWithSession(t)
-	db := s.db
-	if e := s.SetDeviceApprovalPolicy(DeviceApprovalOwner); e != nil {
-		t.Fatal(e)
-	}
-	installation := Token()
-	device, e := s.RegisterDevice(ctx, login.AccountToken, registration(installation), "198.51.100.4:9")
-	if !errors.Is(e, ErrDevicePending) {
-		t.Fatalf("a member's new device was admitted under owner approval: %v", e)
-	}
-	if device.ApprovalState != "pending" {
-		t.Fatalf("state %q", device.ApprovalState)
-	}
-	// A pending device may not bind a viewing family, which is what makes the
-	// policy mean anything: without this it would be a label, not a gate.
-	selected, e := s.SelectDirectProfile(ctx, login.AccountToken, login.Account.PrimaryProfileID, DirectSelection{})
-	if e != nil {
-		t.Fatal(e)
-	}
-	if e = s.BindDeviceFamily(ctx, login.AccountToken, installation, selected.Session.SessionFamilyID); !errors.Is(e, ErrDevicePending) {
-		t.Fatalf("a pending device bound a session: %v", e)
-	}
-	// The member cannot approve their own device; the owner can.
-	if _, e = s.ApproveDevice(ctx, login.AccountToken, device.ID, true); !errors.Is(e, ErrForbidden) {
-		t.Fatalf("a member approved their own device: %v", e)
-	}
-	approved, e := s.ApproveDevice(ctx, owner.AccountToken, device.ID, true)
-	if e != nil || approved.ApprovalState != "approved" {
-		t.Fatalf("approval: %+v %v", approved, e)
-	}
-	approvedCtx, e := WithIssuingDevice(ctx, registration(installation), "198.51.100.4:9")
-	if e != nil {
-		t.Fatal(e)
-	}
-	approvedLogin, e := s.DirectLoginFrom(approvedCtx, "member", "Testing2!", true)
-	if e != nil || approvedLogin.Session == nil {
-		t.Fatal("approved device could not sign in", e)
-	}
-	// Denying the device must also end the session it already holds, or turning
-	// the policy on would leave the very device the owner objects to signed in.
-	if _, e = s.ApproveDevice(ctx, owner.AccountToken, device.ID, false); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = s.Authenticate(approvedLogin.Session.AccessToken); !errors.Is(e, ErrUnauthorized) {
-		t.Fatalf("a denied device kept its session: %v", e)
-	}
-	var deniedReason string
-	if e = db.QueryRow(`SELECT revoked_reason FROM authorization_session_families WHERE id=?`, approvedLogin.Session.SessionFamilyID).Scan(&deniedReason); e != nil || deniedReason != string(RevokedDeviceDisapproved) {
-		t.Fatalf("device denial reason %q: %v", deniedReason, e)
-	}
-	if _, e = s.Authenticate(selected.Session.AccessToken); e != nil {
-		t.Fatal("another device lost its session", e)
-	}
-	// The owner's own new device is never held: the owner is the one who approves.
-	ownDevice, e := s.RegisterDevice(ctx, owner.AccountToken, registration(Token()), "198.51.100.4:9")
-	if e != nil || ownDevice.ApprovalState != "approved" {
-		t.Fatalf("the owner's new device under the policy: %+v %v", ownDevice, e)
 	}
 }
 
@@ -375,7 +310,7 @@ func TestTopShelfTokenIsBoundAndIsNotASession(t *testing.T) {
 		t.Fatal("a Top Shelf token authenticated as an account session")
 	}
 	// Denying the device takes the feed away without a separate sweep.
-	if _, e = s.ApproveDevice(ctx, login.AccountToken, device.ID, false); e != nil {
+	if e = s.ForgetDevice(ctx, login.AccountToken, device.ID); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = s.TopShelfGrant(ctx, grant.Token); !errors.Is(e, ErrTopShelfToken) {
@@ -387,48 +322,3 @@ func TestTopShelfTokenIsBoundAndIsNotASession(t *testing.T) {
 // and under owner approval each one waits. However often such a client tries,
 // an account keeps only the newest few waiting records; an approved one, or
 // one that already holds a sign-in, is never removed by this.
-func TestUnnamedWaitingDevicesAreBoundedPerAccount(t *testing.T) {
-	ctx := context.Background()
-	s, owner, _, _ := memberWithSession(t)
-	if e := s.SetDeviceApprovalPolicy(DeviceApprovalOwner); e != nil {
-		t.Fatal(e)
-	}
-	waiting := func() (ids []string) {
-		rows, e := s.db.Query(`SELECT d.id FROM identity_devices d JOIN accounts a ON a.id=d.account_id WHERE a.username='member' AND d.approval_state='pending' AND d.installation_id LIKE 'unnamed-%'`)
-		if e != nil {
-			t.Fatal(e)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id string
-			if e = rows.Scan(&id); e != nil {
-				t.Fatal(e)
-			}
-			ids = append(ids, id)
-		}
-		return ids
-	}
-	if out, e := s.DirectLoginFrom(ctx, "member", "Testing2!", true); e != nil || !out.DeviceApprovalPending {
-		t.Fatalf("an unnamed installation was admitted under owner approval: %+v %v", out, e)
-	}
-	first := waiting()
-	if len(first) != 1 {
-		t.Fatalf("waiting unnamed records after one sign-in: %d", len(first))
-	}
-	// The owner approves the first one: it is no longer waiting, and stays.
-	if _, e := s.ApproveDevice(ctx, owner.AccountToken, first[0], true); e != nil {
-		t.Fatal(e)
-	}
-	for i := 0; i < 9; i++ {
-		if out, e := s.DirectLoginFrom(ctx, "member", "Testing2!", true); e != nil || !out.DeviceApprovalPending {
-			t.Fatalf("attempt %d: %+v %v", i, out, e)
-		}
-	}
-	if n := len(waiting()); n != unnamedWaitingKept {
-		t.Fatalf("waiting unnamed records after ten sign-ins: %d, want %d", n, unnamedWaitingKept)
-	}
-	var approved int
-	if e := s.db.QueryRow(`SELECT count(*) FROM identity_devices WHERE id=? AND approval_state='approved'`, first[0]).Scan(&approved); e != nil || approved != 1 {
-		t.Fatalf("the approved unnamed device was removed: %d %v", approved, e)
-	}
-}

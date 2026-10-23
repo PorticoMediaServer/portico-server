@@ -231,7 +231,7 @@ func newLoadFixture(t *testing.T, tier performanceTier) *loadFixture {
 	restriction := fixture.Restriction(built)
 	for index := 0; index < tier.concurrentViewers; index++ {
 		account, profile := identity.Token(), identity.Token()
-		if _, err = db.Exec(`INSERT INTO accounts VALUES(?,?,x'00',?,1)`, account, account, profile); err != nil {
+		if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`, account, account, profile); err != nil {
 			t.Fatal(err)
 		}
 		// The schema installs a membership and a primary profile alongside an

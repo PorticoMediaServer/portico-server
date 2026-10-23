@@ -25,6 +25,7 @@ func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]an
 		"ContentEntry":         reflect.TypeFor[catalog.ContentEntry](),
 		"Category":             reflect.TypeFor[catalog.Category](),
 		"FilesystemPage":       reflect.TypeFor[administration.FilesystemPage](),
+		"MoveCollisionDetails": reflect.TypeFor[MoveCollisionDetails](),
 	}
 	wire := map[reflect.Type]map[string]any{}
 	for name, typ := range named {

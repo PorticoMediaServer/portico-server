@@ -4,7 +4,10 @@ export const MAX_READER_RANGE_BYTES = 16 * 1024 * 1024;
 export function validateSource(source: ReaderSource): void {
   if (!source.id || !source.revision || !Number.isSafeInteger(source.size) || source.size <= 0)
     throw new ReaderError('invalid_source');
+  if (source.read !== undefined && (typeof source.read !== 'function' || source.sequential !== undefined)) throw new ReaderError('invalid_source');
+  if (source.sequential !== undefined && (!source.sequential || typeof source.sequential.open !== 'function')) throw new ReaderError('invalid_source');
 }
+
 export async function readRange(source: ReaderSource, range: ReaderRange, signal: AbortSignal): Promise<Uint8Array> {
   throwIfAborted(signal); validateSource(source);
   const {start, endExclusive} = range;

@@ -70,9 +70,9 @@ type Credential struct {
 	CreatedAt  string `json:"createdAt"`
 	ExpiresAt  string `json:"expiresAt,omitempty"`
 	LastUsedAt string `json:"lastUsedAt,omitempty"`
-	// State is active, awaiting_approval, expired, revoked or ended. "ended"
+	// State is active, expired, revoked or ended. "ended"
 	// means it stopped working without being revoked by hand; EndedReason says
-	// why: member_disabled, profile_deleted, not_approved or unavailable. A
+	// why: member_disabled, profile_deleted or unavailable. A
 	// password change or "sign out everywhere" does not end a credential.
 	State       string           `json:"state"`
 	EndedReason string           `json:"endedReason,omitempty"`
@@ -129,7 +129,7 @@ func NormalizeScopes(requested []string) ([]string, bool) {
 }
 
 const credentialColumns = `c.id,c.kind,c.name,c.scopes,c.hint,c.created_ms,c.expires_ms,c.revoked_ms,c.ended_reason,c.account_id,c.profile_id,
- COALESCE(u.last_used_ms,0),COALESCE(f.revoked,1),COALESCE(f.revoked_reason,''),COALESCE(d.approval_state,''),
+ COALESCE(u.last_used_ms,0),COALESCE(f.revoked,1),COALESCE(f.revoked_reason,''),
  CASE WHEN a.epoch IS NOT NULL AND a.epoch=f.epoch THEN 1 ELSE 0 END,COALESCE(a.username,''),COALESCE(p.name,''),
  COALESCE(m.disabled,1),COALESCE(p.deleted,1)`
 
@@ -143,11 +143,11 @@ const credentialJoins = ` FROM api_credentials c
 
 func (s *Store) credentialRow(row interface{ Scan(...any) error }) (Credential, error) {
 	var c Credential
-	var scopes, reason, ended, approval string
+	var scopes, reason, ended string
 	var created, expires, revoked, used int64
 	var familyRevoked, epochCurrent, disabled, deleted int
 	if err := row.Scan(&c.ID, &c.Kind, &c.Name, &scopes, &c.Hint, &created, &expires, &revoked, &ended, &c.Member.AccountID, &c.Member.ProfileID,
-		&used, &familyRevoked, &reason, &approval, &epochCurrent, &c.Member.Username, &c.Member.Profile, &disabled, &deleted); err != nil {
+		&used, &familyRevoked, &reason, &epochCurrent, &c.Member.Username, &c.Member.Profile, &disabled, &deleted); err != nil {
 		return c, err
 	}
 	c.Scopes = strings.Split(scopes, ",")
@@ -173,14 +173,10 @@ func (s *Store) credentialRow(row interface{ Scan(...any) error }) (Credential, 
 		c.State, c.EndedReason = "ended", "member_disabled"
 	case deleted != 0:
 		c.State, c.EndedReason = "ended", "profile_deleted"
-	case approval == "denied":
-		c.State, c.EndedReason = "ended", "not_approved"
-	case familyRevoked != 0 || epochCurrent == 0 || approval == "":
+	case familyRevoked != 0 || epochCurrent == 0:
 		// Not expected: the schema keeps a live credential's family alive. If it
 		// happens the credential does not work, and the list must say so.
 		c.State, c.EndedReason = "ended", "unavailable"
-	case approval == "pending":
-		c.State = "awaiting_approval"
 	default:
 		c.State = "active"
 	}
@@ -193,6 +189,8 @@ func (s *Store) credentialTx(ctx context.Context, tx *sql.Tx, id string) (Creden
 
 // CreateCredential issues a key or token for maker, the caller's own live
 // principal. issuer creates the session family behind it in this transaction.
+var ErrAccessTokensOff = errors.New("Access tokens are turned off for this account.")
+
 func (s *Store) CreateCredential(ctx context.Context, auth Authorize, issuer *identity.Service, maker identity.Principal, kind string, q CredentialRequest) (out IssuedCredential, err error) {
 	if issuer == nil || (kind != identity.CredentialKindKey && kind != identity.CredentialKindToken) {
 		return out, identity.ErrUnauthorized
@@ -224,6 +222,16 @@ func (s *Store) CreateCredential(ctx context.Context, auth Authorize, issuer *id
 		return out, invalid(fields...)
 	}
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		if kind == identity.CredentialKindToken {
+			var permitted bool
+			if e := tx.QueryRowContext(ctx, `SELECT access_tokens=1 AND disabled=0 FROM direct_memberships WHERE account_id=?`, maker.AccountID).Scan(&permitted); e != nil {
+				return e
+			}
+			if !permitted {
+				return ErrAccessTokensOff
+			}
+		}
+
 		scope := "api-credential:" + kind + ":" + maker.AccountID
 		body, want, e := receipt(tx, scope, q.OperationID, q)
 		if e != nil {
