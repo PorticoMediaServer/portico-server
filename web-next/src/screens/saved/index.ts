@@ -4,5 +4,7 @@ export type {SavedDownloadsScope, SavedDownloadsPort, SavedDownloadsSnapshot, Sa
 export {sameSavedDownloadsScope} from './downloads-port.ts';
 export {SavedScreen} from './Saved';
 export type {SavedBindings, SavedEffects, SavedPresentation, SavedSelection} from './Saved';
+export {savedPresentation} from './presentation.ts';
+export type {SavedPresentationInput} from './presentation.ts';
 export {LocalDownloads, ServerDownloads} from './Downloads';
 export type {SavedDownloadEffects} from './Downloads';
