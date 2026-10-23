@@ -104,7 +104,10 @@ test('provider creation keeps the drawn ready step and refuses Continue after a 
   const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize();
   await flow.finishProvider('harbourview', 'Alex');
   assert.equal(flow.getSnapshot().mode, 'ready'); assert.equal(p.completed(), 0);
+  assert.deepEqual(flow.readyAccount(), {name: 'Alex', username: 'harbourview'});
+  assert.equal(Object.hasOwn(flow.getSnapshot(), 'session'), false);
   session = {...session, familyId: 'another-family'};
+  assert.equal(flow.readyAccount(), undefined);
   await flow.continue();
   assert.equal(p.completed(), 0); assert.equal((flow.getSnapshot().error as ApiError).code, 'account_changed');
   flow.dispose();

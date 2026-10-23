@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type FormEvent} from 'react';
 import {passwordStrength} from '@core/password-strength.ts';
 import {AuthCodeBoxes, AuthLinks, AuthPasswordField} from '../kit/accounts';
-import {HostedError, ServicesActions, ServicesAuthStage, ServicesBackAction, ServicesDivider, ServicesHeading, ServicesHint, ServicesInvitationCredentials, ServicesLabel, ServicesLead, ServicesNotice, ServicesPair, ServicesProviderButton, ServicesProviderContext, ServicesQuiet, ServicesRegistrationLead, ServicesStateIcon, ServicesStrength, ServicesTerms, ServicesVerificationCode} from '../kit/accounts/ServicesAuth';
+import {HostedError, ServicesActions, ServicesAuthStage, ServicesBackAction, ServicesDivider, ServicesHeading, ServicesHint, ServicesInvitationCredentials, ServicesLabel, ServicesLead, ServicesNotice, ServicesPair, ServicesProviderAccount, ServicesProviderButton, ServicesProviderContext, ServicesProviderReturnHint, ServicesQuiet, ServicesRegistrationLead, ServicesStateIcon, ServicesStrength, ServicesTerms, ServicesVerificationCode} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {ServicesAuthFlow} from './auth-flow';
 import type {ServicesAccount} from './session';
@@ -13,6 +13,9 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', e
   const {t} = useMemo(servicesI18n, []), complete = useRef(onSignedIn); complete.current = onSignedIn;
   const flow = useMemo(() => new ServicesAuthFlow(account, () => complete.current(), initialMode), [account, initialMode]);
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
+  // Follow family replacement without copying a second session into the form.
+  useSyncExternalStore(account.service.subscribe, account.service.getSnapshot);
+  const readyAccount = flow.readyAccount();
   const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [email, setEmail] = useState(''), [name, setName] = useState(''), [code, setCode] = useState('');
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
@@ -90,7 +93,8 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', e
         <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || username.trim().length < 3}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions>
       </form><AuthLinks><button type="button" disabled={busy} onClick={() => void flow.cancelProvider()}><ServicesBackAction>{t('action.cancel')}</ServicesBackAction></button></AuthLinks><ServicesTerms provider={state.provider} />
     </>}
-    {mode === 'ready' && <ServicesActions><Button variant="primary" loading={busy} onClick={() => void flow.continue()}>{t('action.continue')}</Button></ServicesActions>}
+    {mode === 'ready' && <>{readyAccount && state.provider && <ServicesProviderAccount {...readyAccount} provider={state.provider} />}
+      <ServicesActions><Button variant="primary" loading={busy} disabled={!readyAccount} onClick={() => void flow.continue()}>{t('action.continue')}</Button></ServicesActions><ServicesProviderReturnHint /></>}
   </>;
   return invitation && mode === 'signin' ? <ServicesInvitationCredentials>{content}</ServicesInvitationCredentials> : embedded ? content : <ServicesAuthStage legal={mode !== 'create' && mode !== 'provider' && mode !== 'verify'} variant={mode === 'provider' ? 'providerOnboarding' : mode === 'create' ? 'signup' : mode === 'verify' ? 'reset' : mode === 'ready' ? 'state' : 'auth'}>{content}</ServicesAuthStage>;
 }
