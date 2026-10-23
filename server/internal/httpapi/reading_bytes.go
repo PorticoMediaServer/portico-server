@@ -66,7 +66,7 @@ func (d Dependencies) readingService() *reading.Service {
 
 func readingFailure(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, reading.ErrChanged), errors.Is(err, storage.ErrObservedSourceLost):
+	case errors.Is(err, reading.ErrChanged), errors.Is(err, reading.ErrConflict), errors.Is(err, storage.ErrObservedSourceLost):
 		policyError(w, "revision_mismatch")
 	case errors.Is(err, reading.ErrUnavailable):
 		policyError(w, "not_found")
@@ -106,12 +106,18 @@ func (d Dependencies) openReadingBytes(w http.ResponseWriter, r *http.Request) (
 		policyError(w, "revision_mismatch")
 		return nil, false
 	}
-	f, err := d.readingService().OpenSession(r.Context(), p, r.URL.Query().Get("sessionId"))
+	sessionID := r.PathValue("sessionId")
+	if sessionID == "" {
+		sessionID = r.URL.Query().Get("sessionId")
+	}
+	f, err := d.readingService().OpenSession(r.Context(), p, sessionID)
 	if err != nil {
 		readingFailure(w, err)
 		return nil, false
 	}
-	if f.ItemID != r.PathValue("id") || f.SourceID != r.URL.Query().Get("sourceId") || f.Revision != match[1:len(match)-1] {
+	// Public routes identify the captured session. The earlier private handler
+	// seam also names an item and source, which must agree when supplied.
+	if (r.PathValue("id") != "" && f.ItemID != r.PathValue("id")) || (r.URL.Query().Has("sourceId") && f.SourceID != r.URL.Query().Get("sourceId")) || f.Revision != match[1:len(match)-1] {
 		f.Close()
 		policyError(w, "revision_mismatch")
 		return nil, false
@@ -221,8 +227,12 @@ func (d Dependencies) serveReadingAsset(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	found := false
+	path := r.PathValue("asset")
+	if path == "" {
+		path = r.URL.Query().Get("path")
+	}
 	for _, resource := range e.Resources {
-		if resource.Path == r.PathValue("asset") {
+		if resource.Path == path {
 			found = true
 			break
 		}
@@ -231,7 +241,7 @@ func (d Dependencies) serveReadingAsset(w http.ResponseWriter, r *http.Request) 
 		readingFailure(w, reading.ErrInvalid)
 		return
 	}
-	b, mime, err := e.Asset(r.Context(), r.PathValue("asset"))
+	b, mime, err := e.Asset(r.Context(), path)
 	if err != nil {
 		readingFailure(w, f.StopAndRecheck(err))
 		return
@@ -249,7 +259,11 @@ func (d Dependencies) serveReadingPage(w http.ResponseWriter, r *http.Request) {
 		policyError(w, "not_found")
 		return
 	}
-	index, err := strconv.Atoi(r.PathValue("page"))
+	pageIndex := r.PathValue("pageIndex")
+	if pageIndex == "" {
+		pageIndex = r.PathValue("page")
+	}
+	index, err := strconv.Atoi(pageIndex)
 	if err != nil || index < 0 {
 		readingFailure(w, reading.ErrInvalid)
 		return

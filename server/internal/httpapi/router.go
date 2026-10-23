@@ -874,6 +874,7 @@ func New(d Dependencies) http.Handler {
 	d.mountRoutes(mux)
 	d.bundledRcloneRoutes(mux)
 	d.remoteSourceRoutes(mux)
+	d.readingRoutes(mux)
 	d.episodeRoutes(mux)
 	d.playbackChapterRoutes(mux)
 	d.playbackOfferRoutes(mux)
