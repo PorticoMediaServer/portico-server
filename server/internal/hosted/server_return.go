@@ -76,9 +76,12 @@ func (s *Service) ExchangeRegisteredReturn(ctx context.Context, q RegisteredRetu
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	response, e := client.Do(req)
 	if e != nil {
-		return identity.PorticoIdentity{}, identity.ErrUnauthorized
+		return identity.PorticoIdentity{}, ErrServicesUnavailable
 	}
 	defer response.Body.Close()
+	if response.StatusCode >= 500 || response.StatusCode == http.StatusTooManyRequests || response.StatusCode == http.StatusRequestTimeout {
+		return identity.PorticoIdentity{}, ErrServicesUnavailable
+	}
 	if response.StatusCode != 200 {
 		return identity.PorticoIdentity{}, identity.ErrUnauthorized
 	}

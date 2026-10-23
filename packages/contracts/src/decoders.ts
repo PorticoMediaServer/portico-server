@@ -456,6 +456,7 @@ export function decodePostAuthMovePorticoResponse(input: unknown): types.PostAut
 export function decodePostAuthOwnerResetRequestResponse(input: unknown): types.PostAuthOwnerResetRequestResponse { return decode("PostAuthOwnerResetRequestResponse", input) as types.PostAuthOwnerResetRequestResponse; }
 export function decodePostAuthOwnerResetVerifyResponse(input: unknown): types.PostAuthOwnerResetVerifyResponse { return decode("PostAuthOwnerResetVerifyResponse", input) as types.PostAuthOwnerResetVerifyResponse; }
 export function decodePostAuthPorticoReturnExchangeResponse(input: unknown): types.PostAuthPorticoReturnExchangeResponse { return decode("PostAuthPorticoReturnExchangeResponse", input) as types.PostAuthPorticoReturnExchangeResponse; }
+export function decodePostAuthPorticoReturnPrepareResponse(input: unknown): types.PostAuthPorticoReturnPrepareResponse { return decode("PostAuthPorticoReturnPrepareResponse", input) as types.PostAuthPorticoReturnPrepareResponse; }
 export function decodePostAuthRefreshResponse(input: unknown): types.PostAuthRefreshResponse { return decode("PostAuthRefreshResponse", input) as types.PostAuthRefreshResponse; }
 export function decodePostAuthRegisterResponse(input: unknown): types.PostAuthRegisterResponse { return decode("PostAuthRegisterResponse", input) as types.PostAuthRegisterResponse; }
 export function decodePostAuthRememberedAccountsResponse(input: unknown): types.PostAuthRememberedAccountsResponse { return decode("PostAuthRememberedAccountsResponse", input) as types.PostAuthRememberedAccountsResponse; }
