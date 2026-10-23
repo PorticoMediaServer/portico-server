@@ -1,8 +1,9 @@
 import {invoke} from '@tauri-apps/api/core';
+import type {EqualizerSettings} from '../../../web-next/src/platform/playback/audio/equalizer.ts';
+export type {EqualizerSettings} from '../../../web-next/src/platform/playback/audio/equalizer.ts';
 
 // No output/account/source identifier: Settings and the player's future shortcut use this
 // single app-local native preference. Shared controls follow music-plus.html at 812dacac.
-export type EqualizerSettings = Readonly<{enabled: boolean; preampDb: number; bandsDb: readonly [number,number,number,number,number,number,number,number,number,number]}>;
 export type EqualizerSnapshot = Readonly<{revision: number; settings: EqualizerSettings; applied: boolean}>;
 
 function snapshot(value: unknown): EqualizerSnapshot {
