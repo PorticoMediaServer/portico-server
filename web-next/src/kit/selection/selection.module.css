@@ -23,29 +23,11 @@
 button.circle { cursor: pointer; }
 button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
 .circle:disabled, .circle[data-disabled="true"] { cursor: default; opacity: .5; }
-.holdFeedback { position: absolute; display: block; pointer-events: none; width: 62px; height: 62px; }
-.holdTouch {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(237,245,250,.34), rgba(237,245,250,.16) 62%, rgba(237,245,250,.04));
-  box-shadow: 0 0 0 2px rgba(237,245,250,.35);
-}
-.holdRing { position: absolute; inset: -13px; color: var(--color-accent-strong); transform: rotate(-70deg); }
-.holdTip {
-  position: absolute;
-  top: calc(100% + 22px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 7px 12px;
-  border-radius: 9px;
-  font-size: 12.5px;
-  font-weight: 700;
-  white-space: nowrap;
-  color: var(--color-text);
-  background: var(--color-raised-bright);
-  box-shadow: 0 10px 24px -6px rgba(0,0,0,.75), 0 0 0 1px rgba(237,245,250,.12);
-}
+/* Q6/tablet9; motion2.16: 500 ms sink, snap lift, 180 ms menu/dim. */
+.holdFeedback { transform: scale(var(--hold-scale, 1)); }
+@media (prefers-reduced-motion: reduce) { .holdFeedback { transform: none; } }
+:global([data-reduce-motion="true"]) .holdFeedback { transform: none; }
+
 @media (max-width: 1023px) {
   .circle { --selection-default-size: 24px; background: rgba(7,16,24,.42); }
   .circle:not([data-selecting="true"]):not([data-selected="true"]) { display: none; }

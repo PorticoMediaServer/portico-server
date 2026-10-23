@@ -77,18 +77,16 @@ test('a card-owned circle contributes no nested activation or focus target', () 
   assert.doesNotMatch(html, /tabindex=|role=|aria-pressed=/);
 });
 
-test('inactive feedback paints nothing and unknown progress paints no arc', () => {
-  assert.equal(renderToStaticMarkup(createElement(SelectionHoldFeedback, {active: false, progress: .5})), '');
-  const html = renderToStaticMarkup(createElement(SelectionHoldFeedback, {active: true, progress: null}));
-  assert.match(html, /Keep holding to select/);
-  assert.doesNotMatch(html, /<circle|<svg|progressbar/);
-});
-
-test('active feedback paints only the supplied fraction and uses the exact catalogue hint', () => {
-  const html = renderToStaticMarkup(createElement(SelectionHoldFeedback, {active: true, progress: .25}));
-  assert.match(html, /stroke-dashoffset="0.75"/);
-  assert.match(html, /Keep holding to select/);
-  assert.doesNotMatch(html, /animate|duration/);
+test('Q6 hold feedback sinks and lifts the actual item without a hint or new focus target', () => {
+  const item = createElement('button', {type: 'button', className: 'original', style: {width: 150}}, 'Title');
+  const render = (active: boolean, progress: number | null) => renderToStaticMarkup(createElement(SelectionHoldFeedback, {active, progress, children: item}));
+  assert.match(render(true, 0), /--hold-scale:0.98/);
+  assert.match(render(true, 1), /--hold-scale:1.05/);
+  assert.match(render(false, null), /--hold-scale:1/);
+  const html = render(true, 0);
+  assert.equal((html.match(/<button/g) ?? []).length, 1);
+  assert.match(html, /original/); assert.match(html, /width:150px/);
+  assert.doesNotMatch(html, /Keep holding|<circle|<svg|role="status"|progressbar/);
 });
 
 test('actual circle activation respects cancellation, stops parent activation and reports current controlled state', () => {

@@ -1,6 +1,7 @@
-import type {CSSProperties} from 'react';
-import {selectionText} from './copy';
-import {holdProgress} from './interaction';
+import {cloneElement, useLayoutEffect, useRef, type CSSProperties, type ReactElement, type Ref} from 'react';
+import {motion, easings, springs} from '@design';
+import {springFrames} from '../overlays/model';
+import {useReducedMotion} from '../overlays/shared';
 import styles from './selection.module.css';
 
 export type SelectionHoldFeedbackProps = Readonly<{
@@ -8,18 +9,24 @@ export type SelectionHoldFeedbackProps = Readonly<{
   progress: number | null;
   className?: string;
   style?: CSSProperties;
+  children?: ReactElement<{className?: string; style?: CSSProperties; ref?: Ref<HTMLElement>}>;
 }>;
 
 /** A renderer for the card's actual hold state; it owns no gesture, timer, haptic or selection. */
-export function SelectionHoldFeedback({active, progress, className, style}: SelectionHoldFeedbackProps) {
-  if (!active) return null;
-  const fraction = holdProgress(progress);
-  return <span className={[styles.holdFeedback, className].filter(Boolean).join(' ')} style={style} role="status">
-    <span className={styles.holdTouch} aria-hidden="true">
-      {fraction !== null && <svg className={styles.holdRing} viewBox="0 0 88 88" width={88} height={88} aria-hidden="true">
-        <circle cx={44} cy={44} r={40} pathLength={1} fill="none" stroke="currentColor" strokeWidth={3} strokeDasharray="1" strokeDashoffset={1 - fraction} />
-      </svg>}
-    </span>
-    <span className={styles.holdTip}>{selectionText('next.selection.keepHolding')}</span>
-  </span>;
+export function SelectionHoldFeedback({active, progress, className, style, children}: SelectionHoldFeedbackProps) {
+  // Q6/tablet9 and motion2.16: only the item sinks/lifts; there is no selection hint.
+  const element = useRef<HTMLElement | null>(null), previous = useRef(1);
+  const reduce = useReducedMotion(element), target = active ? progress === 1 ? 1.05 : .98 : 1;
+  useLayoutEffect(() => {
+    const node = element.current;
+    if (!node || reduce || !node.animate) {previous.current = target; return;}
+    const frames = target === 1.05 ? springFrames(previous.current, target, 0, springs.snap) : [previous.current, target];
+    const animation = node.animate(frames.map(scale => ({transform: `scale(${scale})`})), {duration: target === 1.05 ? 500 : motion.quick, easing: target === 1.05 ? 'linear' : easings.out});
+    previous.current = target;
+    return () => {previous.current = new DOMMatrixReadOnly(getComputedStyle(node).transform).a; animation.cancel();};
+  }, [target, reduce]);
+  if (!children) return null;
+  return cloneElement(children, {className: [children.props.className, styles.holdFeedback, className].filter(Boolean).join(' '),
+    ref: node => {element.current = node; const ref = children.props.ref; if (typeof ref === 'function') return ref(node); if (ref) ref.current = node;},
+    style: {...children.props.style, ...style, '--hold-scale': target} as CSSProperties});
 }

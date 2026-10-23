@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {activateCard, boundedProgress} from '../../src/kit/cards/interaction.ts';
+import {activateCard, boundedProgress, holdCard} from '../../src/kit/cards/interaction.ts';
 import type {CardSelection, CardSelectionIntent} from '../../src/kit/cards/types.ts';
 
 test('normal activation navigates without using a separate playback identity', () => {
@@ -39,4 +39,14 @@ test('unknown and invalid progress cannot invent a resume state', () => {
   assert.equal(boundedProgress(-.5), 0);
   assert.equal(boundedProgress(2), 1);
   assert.equal(boundedProgress(.42), .42);
+});
+
+
+test('Q6 touch holds open More outside selection and toggle within it', () => {
+  const calls: string[] = [];
+  const selection: CardSelection = {active: false, checked: false, onToggle: () => calls.push('toggle'), onExit() {}};
+  holdCard(() => calls.push('more'), selection);
+  holdCard(() => calls.push('more'), {...selection, active: true});
+  holdCard(undefined, selection);
+  assert.deepEqual(calls, ['more', 'toggle']);
 });
