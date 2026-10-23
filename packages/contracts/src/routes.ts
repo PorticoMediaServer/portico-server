@@ -1494,7 +1494,12 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "cursor",
-      "limit"
+      "limit",
+      "q",
+      "role",
+      "status",
+      "sort",
+      "direction"
     ],
     "errors": [
       "invalid_request",
@@ -8829,32 +8834,6 @@ export const routes = [
     "admission": "admin"
   },
   {
-    "id": "list_member_access_tokens",
-    "method": "GET",
-    "path": "/v1/admin/access-tokens",
-    "summary": "List the personal access tokens members have made",
-    "access": "owner",
-    "requires": "session",
-    "lane": "default",
-    "cost": "page_sized",
-    "bodyLimit": 0,
-    "query": [
-      "cursor",
-      "limit",
-      "accountId"
-    ],
-    "errors": [
-      "unauthorized",
-      "not_permitted",
-      "session_required",
-      "invalid_request",
-      "administration_unavailable",
-      "internal"
-    ],
-    "status": 200,
-    "admission": "admin"
-  },
-  {
     "id": "list_missing_titles",
     "method": "GET",
     "path": "/v1/admin/missing-titles",
@@ -9444,6 +9423,28 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_admin_access_members_bulk",
+    "method": "POST",
+    "path": "/v1/admin/access/members/bulk",
+    "summary": "Change selected people in one transaction",
+    "access": "admin_scope",
+    "adminScope": "members",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "page_sized",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -14452,28 +14453,6 @@ export const routes = [
     "admission": "security-fence"
   },
   {
-    "id": "revoke_member_access_token",
-    "method": "DELETE",
-    "path": "/v1/admin/access-tokens/{id}",
-    "summary": "Revoke a member's personal access token",
-    "access": "owner",
-    "requires": "session",
-    "lane": "security",
-    "cost": "constant",
-    "bodyLimit": 0,
-    "errors": [
-      "unauthorized",
-      "not_permitted",
-      "session_required",
-      "invalid_request",
-      "not_found",
-      "administration_unavailable",
-      "internal"
-    ],
-    "status": 200,
-    "admission": "security-fence"
-  },
-  {
     "id": "revoke_profile_downloads",
     "method": "POST",
     "path": "/v1/admin/downloads/revoke",
@@ -17548,7 +17527,6 @@ export const routePaths = {
   "list_live_source_channels": "/v1/admin/live/sources/{id}/channels",
   "list_live_source_groups": "/v1/admin/live/sources/{id}/groups",
   "list_live_sources": "/v1/admin/live-sources",
-  "list_member_access_tokens": "/v1/admin/access-tokens",
   "list_missing_titles": "/v1/admin/missing-titles",
   "list_playback_failure_memory": "/v1/admin/playback/route-failures",
   "list_queue_entries": "/v1/queues/{id}/entries",
@@ -17577,6 +17555,7 @@ export const routePaths = {
   "post_admin_access_invitation_link": "/v1/admin/access/invitations/{id}/link",
   "post_admin_access_invitations": "/v1/admin/access/invitations",
   "post_admin_access_invitations_id_revoke": "/v1/admin/access/invitations/{id}/revoke",
+  "post_admin_access_members_bulk": "/v1/admin/access/members/bulk",
   "post_admin_background_pause": "/v1/admin/maintenance/background-pause",
   "post_admin_backups": "/v1/admin/backups",
   "post_admin_backups_restore": "/v1/admin/backups/restore",
@@ -17802,7 +17781,6 @@ export const routePaths = {
   "revoke_access_token": "/v1/me/access-tokens/{id}",
   "revoke_api_key": "/v1/admin/api-keys/{id}",
   "revoke_download_receipts": "/v1/downloads/receipts/revoke",
-  "revoke_member_access_token": "/v1/admin/access-tokens/{id}",
   "revoke_profile_downloads": "/v1/admin/downloads/revoke",
   "save_live_source": "/v1/admin/live-sources",
   "save_queue_as_playlist": "/v1/queues/{id}:save-as-playlist",

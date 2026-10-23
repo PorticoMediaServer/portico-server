@@ -33,6 +33,8 @@ account_portico_links.account_id
 account_portico_links.consent
 account_portico_links.hosted_account_id
 account_portico_links.unindexed
+accounts.display_name
+accounts.email
 accounts.epoch
 accounts.id
 accounts.password_hash
@@ -1685,6 +1687,7 @@ detail_jobs.status
 diagnostics_debug_window.expires_ms
 diagnostics_debug_window.opened_by
 diagnostics_debug_window.singleton
+direct_memberships.access_tokens
 direct_memberships.account_id
 direct_memberships.allowed_libraries
 direct_memberships.disabled
@@ -1692,6 +1695,7 @@ direct_memberships.disabled_ms
 direct_memberships.disabled_reason
 direct_memberships.joined_ms
 direct_memberships.joined_via
+direct_memberships.max_profiles
 direct_memberships.notes
 direct_memberships.revision
 direct_memberships.role
@@ -2073,6 +2077,12 @@ identity_factor_challenges.account_id
 identity_factor_challenges.attempts
 identity_factor_challenges.expires_at
 identity_factor_challenges.token_hash
+identity_move_waiting.account_id
+identity_move_waiting.created_ms
+identity_move_waiting.move_id
+identity_move_waiting.old_password_hash
+identity_move_waiting.old_password_until_ms
+identity_move_waiting.state
 identity_recovery_codes.account_id
 identity_recovery_codes.code_hash
 identity_recovery_codes.used
@@ -4937,4 +4947,5 @@ webhooks.name
 webhooks.revision
 webhooks.secret
 webhooks.updated_ms
-webhooks.url`
+webhooks.url
+`
