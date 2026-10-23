@@ -125,7 +125,7 @@ func enrichAdminFacts(ctx context.Context, tx *sql.Tx, s *Service, items []Admin
 					a.Delivery = &AdminDelivery{Streams: delivery.Streams, VideoHeight: delivery.TargetDisplayHeight, VideoBitrateBps: delivery.TargetVideoBitrateBPS, AudioBitrateBps: delivery.TargetAudioBitrateBPS, AudioChannels: delivery.AudioChannels}
 					if a.Media != nil {
 						for _, stage := range delivery.Hardware.Stages {
-							if stage.Operation == "encode" {
+							if stage.Operation == "encode" && (stage.Execution == "hardware" || stage.Execution == "software") {
 								hardware := stage.Execution == "hardware"
 								a.Media.VideoHardware = &hardware
 							}

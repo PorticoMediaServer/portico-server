@@ -8,7 +8,7 @@ test('Dashboard analytics use account IDs, page bounds and exact kind totals',()
  assert.throws(()=>parseDashboardPeople({items:[{...row,watchedMs:12345}],nextCursor:''}));
  assert.throws(()=>parseDashboardPeople({items:Array(101).fill(row),nextCursor:''}));
  assert.throws(()=>parseDashboardPeople({items:[row,row],nextCursor:''}));
- assert.throws(()=>parseDashboardPeople({items:[{...row,kinds:[{kind:'audiobooks',plays:2,watchedMs:12000}]}],nextCursor:''}));
+ assert.equal(parseDashboardPeople({items:[{...row,kinds:[{kind:'audiobooks',plays:1,watchedMs:6000},{kind:'live',plays:1,watchedMs:6000}]}],nextCursor:''}).items[0].kinds.length,2);
  assert.equal(parseDashboardPeople({items:[{...row,kinds:[{kind:'other',plays:2,watchedMs:12000}]}],nextCursor:''}).items[0].kinds[0].kind,'other');
 });
 test('history preserves actual empty points, partial endpoints and music count units',()=>{
