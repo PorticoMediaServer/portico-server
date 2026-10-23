@@ -17,17 +17,17 @@ const report = {id: 'report', cursor: '1', revision: 1, status: 'open', kind: 'p
 const deferred = <T,>() => {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};};
 function fixture() {
   const calls: {path: string; body?: unknown; signal?: AbortSignal}[] = [];
-  let caps = capabilities, current = true, fail = false, duplicate = false, pending: Promise<unknown> | undefined;
+  let caps = capabilities, current = true, fail = false, duplicate = false, pending: Promise<unknown> | undefined, capPending: Promise<unknown> | undefined;
   const api = {request: async <T,>(path: string, _method?: string, body?: unknown, signal?: AbortSignal): Promise<T> => {
     calls.push({path, body, signal});
-    if (path === '/v1/feedback/capabilities') return {data: caps} as T;
+    if (path === '/v1/feedback/capabilities') return capPending ? await capPending as T : {data: caps} as T;
     if (pending) return await pending as T;
     if (fail) throw new TypeError('Failed to fetch');
     return {data: {report, duplicate, created: !duplicate}} as T;
   }};
   const controller = new ViewerFeedback(api, viewer, () => current, () => 'actual-operation');
   return {controller, calls, setCaps: (value: typeof capabilities) => {caps = value;}, fail: (value: boolean) => {fail = value;},
-    duplicate: () => {duplicate = true;}, retire: () => {current = false; controller.dispose();}, pending: (value: Promise<unknown>) => {pending = value;}};
+    duplicate: () => {duplicate = true;}, retire: () => {current = false; controller.dispose();}, pending: (value: Promise<unknown>) => {pending = value;}, capPending: (value?: Promise<unknown>) => {capPending = value;}};
 }
 async function ready(controller: ViewerFeedback) {
   if (controller.getSnapshot().service.phase !== 'loading') return;
@@ -52,6 +52,15 @@ test('server-denied capability never advertises a page or fabricates a permitted
   f.controller.initialize(); await ready(f.controller);
   assert.equal(f.controller.available(), false); assert.equal(f.controller.open(), false);
   assert.equal(f.controller.getSnapshot().service.capabilities?.submitBlockedReason, 'Actual server refusal.'); f.retire();
+});
+test('closing a capability refresh preserves the last confirmed permission and cannot strand the real action', async () => {
+  const f = fixture(), pending = deferred<unknown>(); f.controller.initialize(); await ready(f.controller);
+  f.capPending(pending.promise); f.controller.open();
+  assert.equal(f.controller.getSnapshot().service.phase, 'loading');
+  f.controller.close(); assert.equal(f.controller.available(), true);
+  pending.resolve({data: {...capabilities, canSubmit: false}}); await Promise.resolve(); await Promise.resolve();
+  assert.equal(f.controller.available(), true, 'a canceled old answer cannot overwrite the confirmed permission');
+  f.capPending(); assert.equal(f.controller.open(), true); await ready(f.controller); f.retire();
 });
 test('general feedback starts on first real kind/category and receives no playback context', async () => {
   const f = fixture(); f.controller.initialize(); await ready(f.controller); f.controller.open(); await ready(f.controller);
@@ -100,6 +109,13 @@ test('mandatory diagnostics stay checked and duplicate response uses the actual 
   f.controller.open(p.target); await ready(f.controller); f.controller.change({attachDiagnostics: false, message: 'A duplicate actual report.'});
   assert.equal(f.controller.getSnapshot().draft.attachDiagnostics, true); f.duplicate(); await f.controller.submit();
   assert.equal(f.controller.getSnapshot().service.result?.duplicate, true); f.retire();
+});
+test('changing kind preselects its genuine first category and unknown option values cannot enter the draft', async () => {
+  const f = fixture(); f.controller.initialize(); await ready(f.controller); f.controller.open(); await ready(f.controller);
+  f.controller.change({kind: 'playback'}); assert.equal(f.controller.getSnapshot().draft.category, 'buffering');
+  const before = f.controller.getSnapshot().draft;
+  f.controller.change({category: 'not-offered'}); assert.equal(f.controller.getSnapshot().draft, before);
+  f.controller.change({kind: 'not-offered'}); assert.equal(f.controller.getSnapshot().draft, before); f.retire();
 });
 test('singleton action bridge installs only the live host and old cleanup cannot remove a successor', async () => {
   const first = fixture(), second = fixture(); let changes = 0; const off = subscribeFeedback(() => {changes++;});

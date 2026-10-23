@@ -63,7 +63,7 @@ export class ViewerFeedback {
         const kind = (target?.playback ? capabilities.kinds.find(value => value.categories.some(category => category.wantsPlaybackSession)) : undefined) ?? capabilities.kinds[0];
         if (kind) draft = {...draft, kind: kind.id, category: kind.categories[0]?.id ?? ''};
       }
-      this.publish({...this.state, service: next, draft, canSubmit: capabilities?.canSubmit === true});
+      this.publish({...this.state, service: next, draft, canSubmit: capabilities ? capabilities.canSubmit : next.phase === 'loading' && this.state.canSubmit});
     });
     if (target?.playback) {
       this.offPlayback = target.playback.subscribe(() => {if (!current()) this.close();});
