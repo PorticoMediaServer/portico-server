@@ -25,6 +25,7 @@ import {homeContractsMessages} from './home-contracts.ts';
 import {selectionMessages} from './selection.ts';
 import {selectionNativeMessages} from './selection-native.ts';
 import {homeNativeMessages} from './home-native.ts';
+import {dashboardMessages} from './dashboard.ts';
 import {settingsMessages} from './settings.ts';
 import {settingsSpecMessages} from './settings-spec.ts';
 
@@ -56,6 +57,7 @@ export const nextMessages = {
   ...selectionMessages,
   ...selectionNativeMessages,
   ...homeNativeMessages,
+  ...dashboardMessages,
   ...settingsMessages,
   ...settingsSpecMessages,
 } as const satisfies Record<`next.${string}`, string>;
