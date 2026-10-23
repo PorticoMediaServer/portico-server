@@ -635,7 +635,7 @@ func parseProbe(raw []byte) (probed, error) {
 	return parseProbeMode(raw, false)
 }
 
-func parseProbeMode(raw []byte, durationlessFLAC bool) (probed, error) {
+func parseProbeMode(raw []byte, measuredAudio bool) (probed, error) {
 	var doc struct {
 		Format struct {
 			FormatName string `json:"format_name"`
@@ -666,7 +666,7 @@ func parseProbeMode(raw []byte, durationlessFLAC bool) (probed, error) {
 		return p, ErrOutput
 	}
 	p.Duration, _ = strconv.ParseFloat(doc.Format.Duration, 64)
-	if math.IsNaN(p.Duration) || math.IsInf(p.Duration, 0) || p.Duration < 0 || p.Duration == 0 && !durationlessFLAC {
+	if math.IsNaN(p.Duration) || math.IsInf(p.Duration, 0) || p.Duration < 0 || p.Duration == 0 && !measuredAudio {
 		return p, ErrOutput
 	}
 	p.Container = doc.Format.FormatName
@@ -711,6 +711,12 @@ func parseProbeMode(raw []byte, durationlessFLAC bool) (probed, error) {
 				p.Range = assets.DynamicRangeOf(s.ColorTransfer, 0)
 			}
 		case "audio":
+			switch s.CodecName {
+			case "musepack7":
+				s.CodecName = "mpc7"
+			case "musepack8":
+				s.CodecName = "mpc8"
+			}
 			p.AudioTracks++
 			if p.AudioTracks == 1 {
 				p.AudioSampleRate, _ = strconv.Atoi(s.SampleRate)
@@ -731,7 +737,8 @@ func parseProbeMode(raw []byte, durationlessFLAC bool) (probed, error) {
 			p.OtherStreams++
 		}
 	}
-	if p.Duration == 0 && (p.Container != "flac" || p.AudioCodec != "flac" || p.AudioTracks != 1 || p.VideoStreams != 0 || p.OtherStreams != 0) {
+	measurable := p.Container == "flac" && p.AudioCodec == "flac" || p.Container == "mpc" && p.AudioCodec == "mpc7" || p.Container == "mpc8" && p.AudioCodec == "mpc8"
+	if p.Duration == 0 && (!measurable || p.AudioTracks != 1 || p.VideoStreams != 0 || p.OtherStreams != 0) {
 		return p, ErrOutput
 	}
 	return p, nil

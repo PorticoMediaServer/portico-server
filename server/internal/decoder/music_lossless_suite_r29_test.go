@@ -53,7 +53,7 @@ func TestMusicLosslessFormatsR29(t *testing.T) {
 	}
 }
 
-func exerciseMusicFormat(t *testing.T, ff, probe, path, codec string, rate int, lossless bool) {
+func exerciseMusicFormat(t *testing.T, ff, probe, path, codec string, rate int, lossless bool, expectedFrames ...int64) {
 	t.Helper()
 	file, e := os.Open(path)
 	if e != nil {
@@ -73,8 +73,14 @@ func exerciseMusicFormat(t *testing.T, ff, probe, path, codec string, rate int, 
 		t.Fatal(e)
 	}
 	facts, e := audiofacts.Parse(bytes.NewReader(raw))
+	if e == nil {
+		facts, e = audiofacts.CompleteCodecHeaders(facts, source[:min(len(source), 1<<20)])
+	}
 	if e != nil || facts.Codec != codec || facts.SampleRate != rate {
 		t.Fatal(facts, e)
+	}
+	if len(expectedFrames) != 0 && facts.DurationFrames != expectedFrames[0] {
+		t.Fatal("audible frames differ from fixture construction", facts.DurationFrames, expectedFrames[0])
 	}
 	depth := 16
 	if lossless && facts.BitDepth > 16 {
@@ -126,6 +132,7 @@ func TestMusicExternalAPEAndMPCFormatsR29(t *testing.T) {
 	var fixtures []struct {
 		Codec, Path, SHA256, Rights string
 		SampleRate                  int
+		Frames                      int64
 	}
 	if json.Unmarshal(raw, &fixtures) != nil || len(fixtures) > 8 {
 		t.Fatal("invalid private fixture manifest")
@@ -154,7 +161,10 @@ func TestMusicExternalAPEAndMPCFormatsR29(t *testing.T) {
 			if e != nil || hex.EncodeToString(h.Sum(nil)) != f.SHA256 {
 				t.Fatal("fixture checksum mismatch", e)
 			}
-			exerciseMusicFormat(t, ff, probe, f.Path, f.Codec, f.SampleRate, f.Codec == "ape")
+			if f.Frames <= 0 {
+				t.Fatal("fixture construction frame count missing")
+			}
+			exerciseMusicFormat(t, ff, probe, f.Path, f.Codec, f.SampleRate, f.Codec == "ape", f.Frames)
 		})
 		seen[f.Codec] = true
 	}

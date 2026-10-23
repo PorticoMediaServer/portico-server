@@ -46,7 +46,8 @@ func (s *Service) probe(ctx context.Context, w work, custody *attemptCustody, p 
 		return probed{}, e
 	}
 	observed, err := parseProbeMode(raw, true)
-	if err != nil || observed.Duration > 0 {
+	musepack := observed.AudioCodec == "mpc7" || observed.AudioCodec == "mpc8"
+	if err != nil || observed.Duration > 0 && !musepack {
 		return observed, err
 	}
 	var measured audiofacts.Facts
@@ -61,6 +62,25 @@ func (s *Service) probe(ctx context.Context, w work, custody *attemptCustody, p 
 	}
 	if err != nil {
 		return probed{}, err
+	}
+	if musepack {
+		var prefix []byte
+		if p.file != nil {
+			var info os.FileInfo
+			info, err = p.file.Stat()
+			if err == nil {
+				prefix = make([]byte, min(info.Size(), int64(1<<20)))
+				_, err = p.file.ReadAt(prefix, 0)
+			}
+		} else {
+			prefix, err = p.bridge.HeaderPrefix(ctx)
+		}
+		if err == nil {
+			measured, err = audiofacts.CompleteCodecHeaders(measured, prefix)
+		}
+		if err != nil {
+			return probed{}, err
+		}
 	}
 	return measuredMusicProbe(observed, measured)
 }
