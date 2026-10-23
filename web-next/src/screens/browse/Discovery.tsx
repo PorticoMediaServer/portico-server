@@ -1,4 +1,4 @@
-import {useEffect, useSyncExternalStore, type ReactNode} from 'react';
+import {useEffect, useRef, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentService, ContentEntry, ContentRoute, ContentSection} from '@core/library-content.ts';
 import {serverTextLabel} from '@core/presentation/server-text.ts';
@@ -21,7 +21,11 @@ export type DiscoveryBindings = Readonly<{
 export function LibraryDiscoveryScreen({service, route, header, empty, artwork, env, appearance, reducedMotion, actions, registerWindow, selectionToolbar, onSeeAll}: DiscoveryBindings) {
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), width = useShellWidth();
   const routeKey = JSON.stringify(route);
-  useEffect(() => {void service.select(route);}, [service, route, routeKey]);
+  const selected = useRef<Readonly<{service: LibraryContentService; key: string}> | undefined>(undefined);
+  useEffect(() => {
+    if (selected.current?.service === service && selected.current.key === routeKey) return;
+    selected.current = {service, key: routeKey};void service.select(route);
+  }, [service, route, routeKey]);
   if (!snapshot.projection && snapshot.phase === 'error') return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: () => {void service.retry();}}}/>;
   return <>{header}{selectionToolbar}{!snapshot.projection ? <HomeSkeleton elapsedMs={300} window={{width, height: window.innerHeight, scrollTop: window.scrollY}}/> :

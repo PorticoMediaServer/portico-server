@@ -18,12 +18,14 @@ export type BrowseItemActions = Readonly<{
   selection?: CardSelection;
 }>;
 export type BrowseEntryCardProps = Readonly<{entry: ContentEntry; actions: BrowseItemActions; artwork: ShellArtwork; env: TextEnvironment;
-  width: number; family?: string; order: number; group: string; visible: boolean; backdrops: boolean}>;
+  width: number; family?: string; mixed?: boolean; order: number; group: string; visible: boolean; backdrops: boolean}>;
 /** Display fields never stand in for a navigation target or a permission offer. */
-export function BrowseEntryCard({entry, actions, artwork, env, width, family, order, group, visible, backdrops}: BrowseEntryCardProps) {
+export function BrowseEntryCard({entry, actions, artwork, env, width, family, mixed, order, group, visible, backdrops}: BrowseEntryCardProps) {
   const shape = shapeFor(entry.kind, 'grid');
   const ordinary = cardText({...homeCardSubject(entry), itemCount: ['collection', 'category', 'playlist'].includes(entry.kind) ? entry.count : undefined, albumCount: entry.albumCount, songCount: entry.kind === 'album' || entry.kind === 'disc' ? entry.count : undefined, countIsLowerBound: entry.countIsLowerBound}, 'ordinary', env);
-  const model = entry.kind === 'collection' && family === 'movie' ? {...ordinary, caption: entry.count === undefined ? [] : [{id: 'films', role: 'supplement' as const, text: defaultI18n.t(entry.countIsLowerBound ? 'next.browse.filmCountAtLeast' : 'next.browse.filmCount', {count: entry.count})}], detail: entry.yearMin !== undefined && entry.yearMax !== undefined ? [{id: 'years', role: 'supplement' as const, text: env.t('next.kit.range', {start: String(entry.yearMin), end: String(entry.yearMax)})}] : []} : ordinary;
+  const kind = entry.kind === 'movie' ? 'next.browse.kind.movie' : entry.kind === 'show' && family === 'anime' ? 'next.browse.kind.anime' : entry.kind === 'show' && family === 'tv' ? 'next.browse.kind.show' : undefined;
+  const model = entry.kind === 'collection' && family === 'movie' ? {...ordinary, caption: entry.count === undefined ? [] : [{id: 'films', role: 'supplement' as const, text: defaultI18n.t(entry.countIsLowerBound ? 'next.browse.filmCountAtLeast' : 'next.browse.filmCount', {count: entry.count})}], detail: entry.yearMin !== undefined && entry.yearMax !== undefined ? [{id: 'years', role: 'supplement' as const, text: env.t('next.kit.range', {start: String(entry.yearMin), end: String(entry.yearMax)})}] : []} :
+    mixed && kind ? {...ordinary, caption: [...(entry.year !== undefined ? [{id: 'year', role: 'supplement' as const, text: String(entry.year)}] : []), {id: 'kind', role: 'supplement' as const, text: defaultI18n.t(kind)}]} : ordinary;
   const props = {model, context: 'grid' as const, visible, watched: entry.watched, isNew: entry.new,
     onNavigate: actions.onOpen, onPlay: actions.onPlay, onMore: actions.onMore, moreExpanded: actions.moreExpanded,
     onNotInterested: actions.onNotInterested, selection: actions.selection, style: {'--cards-width': `${width}px`} as CSSProperties,

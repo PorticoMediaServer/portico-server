@@ -3,6 +3,7 @@ import {defaultI18n} from '@i18n';
 import {timelineFacts, type TextEnvironment} from '@portico/client-core/kit-model';
 import {durationText} from '@core/presentation/kit-model/text.ts';
 import type {BrowseSortSelection} from '@core/browse.ts';
+import type {ContentEntry} from '@core/library-content.ts';
 import {AlphabetRail, WindowedGrid, type WindowedGridHandle} from '../../kit/layout';
 import {Skeleton, StateView} from '../../kit/states';
 import {Artwork, GeneratedArt} from '../../kit/artwork';
@@ -18,6 +19,8 @@ export type BrowseResultsProps = Readonly<{
   controller: BrowseController; label: string; view: 'grid' | 'list'; cardWidth: number; shape: 'poster' | 'square' | 'collection';
   artwork: ShellArtwork; env: TextEnvironment; reducedMotion: boolean; backdrops: boolean;
   actions: (member: BrowseMember, index: number) => BrowseItemActions;
+  /** The actual selected viewer's library list supplies family for mixed rows. */
+  familyForEntry?: (entry: ContentEntry) => string | undefined;
   onVisibleRange?: (first: number, last: number) => void;
   onSort: (sort: BrowseSortSelection) => void;
   empty?: ReactNode;
@@ -34,17 +37,18 @@ export function BrowseResults(props: BrowseResultsProps) {
   const [size, setSize] = useState({width: 0, height: 600}), [visible, setVisible] = useState({first: -1, last: -1});
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const snapshot = useSyncExternalStore(controller.collection.subscribe, controller.collection.getSnapshot, controller.collection.getSnapshot);
+  const failed = snapshot.status === 'error';
   useLayoutEffect(() => {
     const element = root.current; if (!element) return;
     const read = () => {const bounds = element.getBoundingClientRect();setSize({width: element.clientWidth, height: Math.max(280, window.innerHeight - bounds.top)});};
     const observer = new ResizeObserver(read); observer.observe(element); window.addEventListener('resize', read);read();
     return () => {observer.disconnect();window.removeEventListener('resize', read);};
-  }, []);
+  }, [failed]);
   const range = useCallback((first: number, last: number) => {setVisible(before => before.first === first && before.last === last ? before : {first, last});onVisibleRange?.(first, last);}, [onVisibleRange]);
   const anchors = Object.entries(snapshot.positionIndex ?? {}).map(([key, index]) => ({key, index}));
   const list = view === 'list', ratio = shape === 'poster' ? 2 / 3 : shape === 'collection' ? 1.9 : 1;
   const height = cardWidth / ratio + (shape === 'collection' ? 0 : 58);
-  if (snapshot.status === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/>;
+  if (failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/>;
   return <div className={styles.results} ref={root} data-view={view}>
     {list && <div className={styles.listHead} role="row">{columns.map(column => {
       const offered = state.capabilities?.sorts.find(sort => sort.id === column.id);
@@ -56,7 +60,7 @@ export function BrowseResults(props: BrowseResultsProps) {
       cardWidth={list ? Math.max(1, size.width) : cardWidth} rowHeight={list ? 70 : height} gap={list ? 0 : 20} rowGap={list ? 0 : 30} reducedMotion={props.reducedMotion}
       onVisibleRange={range} renderPlaceholder={() => <Skeleton height={list ? 54 : cardWidth / ratio} width={list ? '100%' : cardWidth}/>}
       renderItem={(member, context) => list ? <BrowseListRow {...props} member={member} index={context.index}/> : <BrowseEntryCard entry={member.entry} actions={props.actions(member, context.index)} artwork={props.artwork} env={props.env}
-        width={cardWidth} family={state.capabilities?.library.kind} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />}
+        width={cardWidth} family={props.familyForEntry?.(member.entry) ?? state.capabilities?.library.kind} mixed={controller.source.libraryId === '*'} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />}
     {state.sort?.field === 'title' && anchors.length > 0 && <AlphabetRail anchors={anchors} visibleRange={visible} onJump={anchor => grid.current?.scrollToIndex(anchor.index)} className={styles.rail}/>}
   </div>;
 }

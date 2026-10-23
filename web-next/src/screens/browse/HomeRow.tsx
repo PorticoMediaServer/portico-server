@@ -20,6 +20,6 @@ export function HomeRowScreen({row, browse, onBack, onPlay, onShuffle}: HomeRowB
       {row.why && <p>{serverTextLabel(defaultI18n, row.why)}</p>}
       <div className={styles.homeRowActions}><Button variant="primary" size="hero" icon="i-play" onClick={onPlay}>{defaultI18n.t('action.play')}</Button><Button variant="glass" size="hero" icon="i-shuffle" onClick={onShuffle}>{defaultI18n.t('title.shuffle')}</Button></div>
     </header>
-    <LibraryBrowse {...browse}/>
+    <LibraryBrowse {...browse} showSaveView={false}/>
   </section>;
 }

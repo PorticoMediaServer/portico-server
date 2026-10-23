@@ -32,8 +32,10 @@ export type LibraryBindings = Readonly<{
   libraryMenu: ReactNode;
   /** Required real selection bar and per-entry capabilities from the selected viewer. */
   selection: Readonly<{toolbar?: ReactNode; actions: (member: BrowseMember, index: number) => BrowseItemActions; registerWindow: (first: number, last: number) => void}>;
+  familyForEntry?: Parameters<typeof BrowseResults>[0]['familyForEntry'];
   onSaveView: () => void;
   canSaveView: boolean;
+  showSaveView?: boolean;
   artwork: ShellArtwork;
   env: TextEnvironment;
   reducedMotion: boolean;
@@ -86,11 +88,11 @@ export function LibraryBrowse(bindings: LibraryBindings) {
       onReshuffle={() => sort({...model.sort, seed: crypto.getRandomValues(new Uint32Array(1))[0]})}
       view={{value: appearance.view, onValueChange: view => bindings.onAppearanceChange({view})}}
       cardSize={!compact ? {value: appearance.cardSize, options: (['small', 'medium', 'large'] as const).map(value => ({value, label: t(`next.browse.${value}`)})), onValueChange: value => {if (value === 'small' || value === 'medium' || value === 'large') bindings.onAppearanceChange({cardSize: value});}} : undefined}
-      actions={<BrowseScopeChips controller={controller} reportError={reportError}/>} save={{canSave: bindings.canSaveView, onSave: bindings.onSaveView}} applied={chips}
+      actions={<BrowseScopeChips controller={controller} reportError={reportError}/>} save={bindings.showSaveView === false ? undefined : {canSave: bindings.canSaveView, onSave: bindings.onSaveView}} applied={chips}
       onRemoveFilter={id => setPredicates(state.predicates.filter(node => node !== model.applied[Number(id)]))} onClearFilters={() => setPredicates([])} selection={selection.toolbar}/>
     <BrowseResults controller={controller} label={library.name} view={appearance.view} cardWidth={appearance.cardWidth} shape={shape} artwork={bindings.artwork} env={env} backdrops={appearance.backdrops}
-      reducedMotion={bindings.reducedMotion} actions={selection.actions} onVisibleRange={selection.registerWindow} onSort={sort}
+      reducedMotion={bindings.reducedMotion} actions={selection.actions} familyForEntry={bindings.familyForEntry} onVisibleRange={selection.registerWindow} onSort={sort}
       empty={state.predicates.length ? <FilteredEmpty onClear={() => setPredicates([])}/> : bindings.empty}/>
-    <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} open={filtersOpen} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>
+    <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} open={filtersOpen} resultCount={resultCount} canSaveView={bindings.canSaveView} onSaveView={bindings.onSaveView} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>
   </>;
 }
