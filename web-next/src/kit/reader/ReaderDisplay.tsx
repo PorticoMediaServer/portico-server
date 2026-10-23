@@ -128,6 +128,8 @@ export function ReaderDisplaySidePanel({label, open, onOpenChange, anchorRef, ..
   const isTop = useOverlayKeys(open, onOpenChange, true);
   const current = useRef({onOpenChange, isTop}); current.current = {onOpenChange, isTop};
   const ref = useCallback((element: HTMLElement | null) => { panel.current = element; motionRef(element); }, [motionRef]);
+  // The trigger can attach after this panel's layout effect in the same commit.
+  const restoreOpener = useCallback((fallback: HTMLElement | null) => focusElement(anchorRef.current ?? fallback), [anchorRef]);
   useLayoutEffect(() => {
     if (!open) return;
     const surface = panel.current, opener = anchorRef.current, owner = surface?.ownerDocument;
@@ -143,9 +145,9 @@ export function ReaderDisplaySidePanel({label, open, onOpenChange, anchorRef, ..
     owner.addEventListener('click', dismiss, true);
     return () => {
       owner.removeEventListener('click', dismiss, true);
-      if (!outside.current && (owner.activeElement === owner.body || surface.contains(owner.activeElement))) focusElement(anchorRef.current ?? opener);
+      if (!outside.current && (owner.activeElement === owner.body || surface.contains(owner.activeElement))) restoreOpener(opener);
     };
-  }, [open, anchorRef]);
+  }, [open, anchorRef, restoreOpener]);
   if (!present) return null;
   return <aside ref={ref} className={styles.sidePanel} role="region" aria-label={label} tabIndex={-1} data-reader-panel
     data-state={open ? 'open' : 'closed'} inert={!open} aria-hidden={!open}>
