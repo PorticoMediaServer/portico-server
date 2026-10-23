@@ -1,0 +1,54 @@
+{
+  "patchSha256": "203def9de6d9fe1b359f5c42e3c14984ea8f69316a2447ffb181a583e03856b8",
+  "cSha256": "e55459f2397592f4a9363e4b5abc06dc30a7af0aaa23445c4a25b4e0c097ad7d",
+  "hSha256": "e334781d9d89e238a03c721e08a587d10ce79535df551b415950c98554345b3f",
+  "fixtureManifestSha256": "6e5e331ddd4a7e99f7f09db63ec8b6427fb182e74dd82afcd24e07ca21d193e1",
+  "fixtures": 17,
+  "bytes": 800596,
+  "repeatMembersIdentical": 17,
+  "schema": 1,
+  "source": {
+    "ffmpegCommit": "253db2a7b0a8045c54ce68ce33d7f601229b1822",
+    "upstreamPatches": 100,
+    "firstPostPatch": "portico-dovi-profile.patch",
+    "firstPostPatchSha256": "4f7907150fcbd6eb21e1847c0bf2f90d0cddc4999c92f9a0102c5d00aca6b180",
+    "joinPatch": "portico-dovi-join.patch"
+  },
+  "license": {
+    "newFFmpegCode": "LGPL-2.1-or-later",
+    "libdovi": "MIT; same portico-libdovi-source.json C ABI"
+  },
+  "feature": {
+    "ffmpegOption": "merge_dovi",
+    "type": "boolean",
+    "default": false,
+    "conditional": "CONFIG_LIBDOVI",
+    "privateToolchainFact": "DolbyVisionDualLayerJoin",
+    "factDefault": false,
+    "owner": "Hardware",
+    "raiseOnly": "exact canonical bundle option plus real dual-PID fixture gate"
+  },
+  "gate": {
+    "testSource": "tests/dovi-join-packets.c",
+    "fixtures": "fixtures/video/dovi-dual-pid",
+    "script": "scripts/qualify-dovi-join.py",
+    "positive": 6,
+    "refused": 10,
+    "unjoined": 1,
+    "packetsPerPositive": 24,
+    "asanUbsan": "owned join C object only; all17 cases passed"
+  },
+  "limits": {
+    "accessUnitBytes": 8388608,
+    "pendingParserInputBytesEach": 8388608,
+    "queuedAccessUnitsEach": 32,
+    "queuedPacketBytesTotal": 33554432
+  },
+  "gaps": [
+    "canonical target bundle and physical playback",
+    "disc helper PMT/PID publication and runtime source composition",
+    "remote root/read-session composition",
+    "material PMT reconfiguration beyond identical-content version updates",
+    "mastered FEL residual imagery and reconstruction"
+  ]
+}
