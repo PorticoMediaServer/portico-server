@@ -53,9 +53,9 @@ func attachReadingTx(ctx context.Context, tx *sql.Tx, library, libraryKind, asse
 	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	var item int64
 	err = tx.QueryRowContext(ctx, `SELECT p.item_id FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id WHERE p.asset_id=? AND e.library_id=? AND e.kind=?`, assetID, handle, int(kind)).Scan(&item)
-	created := false
+	newPublication := err == sql.ErrNoRows
 	if err == sql.ErrNoRows {
-		item, created, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: kind, Key: "reading:" + kindName + ":" + compactcatalog.ItemKey(root, path, 0), Title: name, Added: catalogedNow()})
+		item, _, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: kind, Key: "reading:" + kindName + ":" + compactcatalog.ItemKey(root, path, 0), Title: name, Added: catalogedNow()})
 	}
 	if err != nil {
 		return 0, err
@@ -66,7 +66,7 @@ func attachReadingTx(ctx context.Context, tx *sql.Tx, library, libraryKind, asse
 	if _, err = tx.ExecContext(ctx, `INSERT INTO reading_publications(item_id,asset_id,format) VALUES(?,?,?) ON CONFLICT(item_id,asset_id) DO UPDATE SET format=excluded.format`, item, assetID, format); err != nil {
 		return 0, err
 	}
-	if created {
+	if newPublication {
 		err = restoreRetainedTx(ctx, tx, item)
 	}
 	return item, err
