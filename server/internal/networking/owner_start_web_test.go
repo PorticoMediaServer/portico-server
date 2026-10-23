@@ -270,8 +270,8 @@ func TestOwnerWebPendingFollowsAtomicCaptureAndFencesLateRevocation(t *testing.T
 	case <-time.After(3 * time.Second):
 		t.Fatal("typed expired capture without watch was stranded")
 	}
-	var phase, move string
-	if err = db.QueryRow(`SELECT c.phase,m.stage FROM identity_owner_completions c JOIN identity_moves m ON m.id=c.move_id`).Scan(&phase, &move); err != nil || phase != "cancelled" || move != "cancelled" || calls != 3 {
-		t.Fatal("no-watch expiry retained move or contacted Hosted", err, phase, move, calls)
+	var phase, moveStage string
+	if err = db.QueryRow(`SELECT c.phase,m.stage FROM identity_owner_completions c JOIN identity_moves m ON m.id=c.move_id`).Scan(&phase, &moveStage); err != nil || phase != "cancelled" || moveStage != "cancelled" || calls != 3 {
+		t.Fatal("no-watch expiry retained move or contacted Hosted", err, phase, moveStage, calls)
 	}
 }
