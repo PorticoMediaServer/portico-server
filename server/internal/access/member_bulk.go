@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/streamlimits"
 )
 
 type MemberBulkTarget struct {
@@ -13,12 +14,13 @@ type MemberBulkTarget struct {
 	ExpectedLimitsRevision int64  `json:"expectedLimitsRevision"`
 }
 type MemberAccessPatch struct {
-	AllowedLibraries *[]string `json:"allowedLibraries,omitempty"`
-	MaxStreams       *int      `json:"maxStreams,omitempty"`
-	AllowRemote      *bool     `json:"allowRemote,omitempty"`
-	MaxContentRating *string   `json:"maxContentRating,omitempty"`
-	AccessTokens     *bool     `json:"accessTokens,omitempty"`
-	MaxProfiles      *int      `json:"maxProfiles,omitempty"`
+	AllowedLibraries *[]string          `json:"allowedLibraries,omitempty"`
+	MaxStreams       *int               `json:"maxStreams,omitempty"`
+	MaxStreamsMode   *streamlimits.Mode `json:"maxStreamsMode,omitempty"`
+	AllowRemote      *bool              `json:"allowRemote,omitempty"`
+	MaxContentRating *string            `json:"maxContentRating,omitempty"`
+	AccessTokens     *bool              `json:"accessTokens,omitempty"`
+	MaxProfiles      *int               `json:"maxProfiles,omitempty"`
 }
 type MemberBulkRequest struct {
 	OperationID string             `json:"operationId"`
@@ -45,7 +47,7 @@ func (s *Store) BulkMembers(ctx context.Context, auth Authorize, issuer *identit
 	}
 	seen := map[string]bool{}
 	for _, t := range q.Targets {
-		if !validID(t.AccountID) || seen[t.AccountID] || t.ExpectedRevision < 1 {
+		if !validID(t.AccountID) || seen[t.AccountID] || t.ExpectedRevision < 1 || q.Action == "access" && t.ExpectedLimitsRevision < 1 {
 			return out, invalid("targets")
 		}
 		seen[t.AccountID] = true
@@ -96,6 +98,12 @@ func (s *Store) BulkMembers(ctx context.Context, auth Authorize, issuer *identit
 				if p.AllowedLibraries != nil && !bulkLibraries(*p.AllowedLibraries) {
 					return invalid("access.allowedLibraries")
 				}
+				if p.MaxStreamsMode != nil {
+					doc.Limits.MaxStreamsMode = *p.MaxStreamsMode
+					if *p.MaxStreamsMode != streamlimits.Limit {
+						doc.Limits.MaxStreams = 0
+					}
+				}
 				if p.MaxStreams != nil {
 					doc.Limits.MaxStreams = *p.MaxStreams
 				}
@@ -135,7 +143,13 @@ func (s *Store) BulkMembers(ctx context.Context, auth Authorize, issuer *identit
 				}
 			case "access":
 				d := docs[i]
-				raw, _ := json.Marshal(d.Limits)
+				raw, e := limitsBody(d.Limits)
+				if e != nil {
+					return e
+				}
+				if e = streamlimits.WriteTx(ctx, tx, t.AccountID, d.Limits.MaxStreamsMode, d.Limits.MaxStreams); e != nil {
+					return e
+				}
 				if _, e = tx.ExecContext(ctx, `INSERT INTO access_limits(account_id,revision,updated_ms,body) VALUES(?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET revision=excluded.revision,updated_ms=excluded.updated_ms,body=excluded.body`, t.AccountID, d.Revision+1, s.now(), string(raw)); e != nil {
 					return e
 				}

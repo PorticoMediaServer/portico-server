@@ -150,6 +150,7 @@ func (s *Service) verifySecondFactorTx(ctx context.Context, tx *sql.Tx, account,
 
 // TwoFactor reports the account's current factor state.
 func (s *Service) TwoFactor(ctx context.Context, bearer string) (TwoFactorState, error) {
+	ctx = factorSetupContext(ctx)
 	gated, e := dbwork.BeginSnapshot(ctx, s.db)
 	if e != nil {
 		return TwoFactorState{}, e
@@ -176,6 +177,7 @@ func (s *Service) TwoFactor(ctx context.Context, bearer string) (TwoFactorState,
 // EnrolTwoFactor starts enrolment. The factor is not in force until VerifyTwoFactor
 // accepts a code from it, so a mistyped secret cannot lock the account holder out.
 func (s *Service) EnrolTwoFactor(ctx context.Context, bearer, password string) (TwoFactorEnrolment, error) {
+	ctx = factorSetupContext(ctx)
 	proof, e := s.proveCurrentPassword(ctx, bearer, password)
 	if e != nil {
 		return TwoFactorEnrolment{}, e
@@ -230,6 +232,7 @@ func (s *Service) EnrolTwoFactor(ctx context.Context, bearer, password string) (
 
 // VerifyTwoFactor puts a pending enrolment into force.
 func (s *Service) VerifyTwoFactor(ctx context.Context, bearer, password, code string) (TwoFactorState, error) {
+	ctx = factorSetupContext(ctx)
 	proof, e := s.proveCurrentPassword(ctx, bearer, password)
 	if e != nil {
 		return TwoFactorState{}, e
@@ -292,6 +295,11 @@ func (s *Service) DisableTwoFactor(ctx context.Context, bearer, password, code s
 	c, e := s.checkCurrentPasswordProofTx(ctx, tx, bearer, proof)
 	if e != nil {
 		return e
+	}
+	if required, e := requiresFactorTx(ctx, tx, c.account.ID); e != nil {
+		return e
+	} else if required {
+		return ErrForbidden
 	}
 	var exists bool
 	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_account_factors WHERE account_id=?)`, c.account.ID).Scan(&exists); e != nil {

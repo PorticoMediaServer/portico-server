@@ -583,6 +583,7 @@ table access_invitations
 table access_limits
 table access_receipts
 table account_portico_links
+table account_stream_limits
 table accounts
 table admin_channel_logos
 table admin_channel_numbers
@@ -915,11 +916,13 @@ table identity_move_codes
 table identity_move_link_tickets
 table identity_move_waiting
 table identity_moves
+table identity_owner_completions
 table identity_recovery_codes
 table identity_refresh_credentials
 table identity_refresh_predecessors
 table identity_refresh_receipts
 table identity_service_outbox
+table identity_sign_in_policy
 table identity_state
 table identity_unknown_attempts
 table inventory_analysis_queue
@@ -1179,6 +1182,9 @@ table playlist_shares
 table policy
 table portico_admitted_families
 table portico_factor_challenges
+table preference_list_items
+table preference_scopes
+table preference_values
 table prepared_media_jobs
 table prepared_media_session_pins
 table prepared_media_source_revisions

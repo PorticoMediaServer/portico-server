@@ -7535,6 +7535,29 @@ export const routes = [
     "admission": "security-fence"
   },
   {
+    "id": "get_sign_in_policy",
+    "method": "GET",
+    "path": "/v1/admin/sign-in/policy",
+    "summary": "Read the server sign-in policy",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_required",
+      "revision_mismatch",
+      "factor_setup_required",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "get_sign_in_settings",
     "method": "GET",
     "path": "/v1/admin/sign-in",
@@ -9519,6 +9542,29 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "patch_sign_in_policy",
+    "method": "PATCH",
+    "path": "/v1/admin/sign-in/policy",
+    "summary": "Change the server sign-in policy",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_required",
+      "revision_mismatch",
+      "factor_setup_required",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
     "id": "post_access_invitations_accept",
     "method": "POST",
     "path": "/v1/access/invitations/accept",
@@ -9533,6 +9579,9 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "sign_in_kind_local",
+      "sign_in_kind_portico",
+      "factor_setup_required",
       "internal"
     ],
     "status": 201,
@@ -17918,6 +17967,7 @@ export const routePaths = {
   "get_shows_id_seasons": "/v1/shows/{id}/seasons",
   "get_shows_screen_metadata": "/v1/shows/{id}/metadata/screen",
   "get_sign_in_move": "/v1/admin/sign-in/move",
+  "get_sign_in_policy": "/v1/admin/sign-in/policy",
   "get_sign_in_settings": "/v1/admin/sign-in",
   "get_storage_mounts": "/v1/storage/mounts",
   "get_storage_operations_id": "/v1/storage/operations/{id}",
@@ -17990,6 +18040,7 @@ export const routePaths = {
   "patch_playlists_id": "/v1/playlists/{id}",
   "patch_preferences": "/v1/preferences",
   "patch_saved_resources_id": "/v1/saved-resources/{id}",
+  "patch_sign_in_policy": "/v1/admin/sign-in/policy",
   "post_access_invitations_accept": "/v1/access/invitations/accept",
   "post_admin_access_invitation_link": "/v1/admin/access/invitations/{id}/link",
   "post_admin_access_invitations": "/v1/admin/access/invitations",

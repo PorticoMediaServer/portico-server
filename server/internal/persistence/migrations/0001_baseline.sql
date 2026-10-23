@@ -3067,7 +3067,7 @@ CREATE TABLE identity_credential_attempts(
 ) STRICT;
 CREATE TABLE authorization_family_grants(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
- grant_kind TEXT NOT NULL CHECK(grant_kind='cast_target')
+ grant_kind TEXT NOT NULL CHECK(grant_kind IN('cast_target','owner_claim_completion'))
 ) STRICT;
 CREATE TABLE direct_profile_pin_attempts(
  profile_id TEXT NOT NULL REFERENCES direct_profiles(id) ON DELETE CASCADE,
@@ -7879,6 +7879,24 @@ CREATE TRIGGER identity_access_tokens_insert BEFORE INSERT ON api_credentials WH
 
 CREATE TABLE identity_moves(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,owner_revision INTEGER NOT NULL,from_kind TEXT NOT NULL CHECK(from_kind IN('portico','local')),to_kind TEXT NOT NULL CHECK(to_kind IN('portico','local')),start_over INTEGER NOT NULL CHECK(start_over IN(0,1)),stage TEXT NOT NULL CHECK(stage IN('preview','moving_to_portico','moving_to_local','complete','cancelled')),revision INTEGER NOT NULL CHECK(revision>0),people INTEGER NOT NULL,devices INTEGER NOT NULL,profiles INTEGER NOT NULL,server_name TEXT NOT NULL,created_ms INTEGER NOT NULL,confirmed_ms INTEGER NOT NULL DEFAULT 0,confirmation TEXT NOT NULL DEFAULT '',invitations INTEGER NOT NULL DEFAULT 0,owner_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(owner_confirmed IN(0,1)),CHECK(from_kind<>to_kind)) STRICT;
 CREATE UNIQUE INDEX identity_one_move ON identity_moves((1)) WHERE stage NOT IN('complete','cancelled');
+CREATE TABLE identity_owner_completions(
+ operation_id TEXT PRIMARY KEY REFERENCES networking_claim_intents(operation_id),
+ move_id TEXT NOT NULL REFERENCES identity_moves(id),
+ family_id TEXT NOT NULL UNIQUE REFERENCES authorization_session_families(id) ON DELETE CASCADE,
+ token_hash TEXT NOT NULL,token_generation INTEGER NOT NULL CHECK(token_generation>0),
+ owner_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+ owner_profile_id TEXT NOT NULL REFERENCES direct_profiles(id),owner_epoch INTEGER NOT NULL CHECK(owner_epoch>0),
+ phase TEXT NOT NULL CHECK(phase IN('prepared','installed','consumed','completed','cancelled','expired','superseded')),
+ claim_hash TEXT NOT NULL CHECK(length(claim_hash)=43),claim_payload BLOB NOT NULL,
+ claim_signature BLOB NOT NULL CHECK(length(claim_signature)=64),start_payload BLOB NOT NULL,
+ start_signature BLOB NOT NULL CHECK(length(start_signature)=64),state_hash TEXT NOT NULL,
+ code_challenge TEXT NOT NULL CHECK(length(code_challenge)=43),installation_id TEXT NOT NULL,server_challenge_hash TEXT NOT NULL,
+ created_ms INTEGER NOT NULL,expires_ms INTEGER NOT NULL CHECK(expires_ms>created_ms),
+ installed_ms INTEGER NOT NULL DEFAULT 0,completed_ms INTEGER NOT NULL DEFAULT 0,consumed_ms INTEGER NOT NULL DEFAULT 0,
+ attempt_id TEXT NOT NULL DEFAULT '',transaction_id TEXT NOT NULL DEFAULT '',move_revision INTEGER NOT NULL CHECK(move_revision>0),
+ registration_id TEXT NOT NULL DEFAULT '',registration_origin TEXT NOT NULL DEFAULT '',
+ route_generation INTEGER NOT NULL DEFAULT 0 CHECK(route_generation>=0)
+) STRICT;
 CREATE TABLE identity_move_link_tickets(token_hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,installation_id TEXT NOT NULL,epoch INTEGER NOT NULL,expires_ms INTEGER NOT NULL,UNIQUE(account_id,installation_id)) STRICT;
 CREATE TABLE identity_move_codes(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,move_id TEXT NOT NULL REFERENCES identity_moves(id),code_hash TEXT NOT NULL UNIQUE,expires_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE identity_service_outbox(notice_id TEXT PRIMARY KEY,operation_id TEXT NOT NULL,server_id TEXT NOT NULL,claim_generation TEXT NOT NULL,credential_generation TEXT NOT NULL,payload BLOB NOT NULL,signature BLOB NOT NULL,created_ms INTEGER NOT NULL,delivered_ms INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,next_ms INTEGER NOT NULL DEFAULT 0) STRICT;
@@ -7887,3 +7905,52 @@ INSERT INTO identity_managed_route(singleton) VALUES(1);
 CREATE TRIGGER identity_kind_no_delete BEFORE DELETE ON identity_state BEGIN SELECT RAISE(ABORT,'identity_state_required');END;
 CREATE TRIGGER identity_kind_insert_local_fence BEFORE INSERT ON identity_state WHEN NEW.sign_in_kind='local' AND EXISTS(SELECT 1 FROM account_portico_links) BEGIN SELECT RAISE(ABORT,'sign_in_kind_local');END;
 CREATE TRIGGER identity_kind_insert_portico_fence BEFORE INSERT ON identity_state WHEN NEW.sign_in_kind='portico' AND EXISTS(SELECT 1 FROM accounts WHERE length(password_hash)>0) BEGIN SELECT RAISE(ABORT,'sign_in_kind_portico');END;
+
+CREATE TABLE identity_sign_in_policy(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>=1),
+ stay_signed_in_days INTEGER NOT NULL DEFAULT 90 CHECK(stay_signed_in_days IN(7,30,90,365)),
+ pin_remember_days INTEGER NOT NULL DEFAULT 30 CHECK(pin_remember_days IN(0,7,30,90)),
+ password_attempts TEXT NOT NULL DEFAULT 'standard' CHECK(password_attempts IN('relaxed','standard','strict')),
+ pin_attempts TEXT NOT NULL DEFAULT 'standard' CHECK(pin_attempts IN('relaxed','standard','strict')),
+ password_min_length INTEGER NOT NULL DEFAULT 8 CHECK(password_min_length IN(8,10,12,16)),
+ member_reset_code_minutes INTEGER NOT NULL DEFAULT 60 CHECK(member_reset_code_minutes IN(15,60,1440)),
+ require_two_step TEXT NOT NULL DEFAULT 'nobody' CHECK(require_two_step IN('nobody','administrators','everyone')),
+ remember_accounts INTEGER NOT NULL DEFAULT 1 CHECK(remember_accounts IN(0,1)),
+ ended_sessions_days INTEGER NOT NULL DEFAULT 90 CHECK(ended_sessions_days IN(30,90,365)), updated_ms INTEGER NOT NULL DEFAULT 0
+) STRICT;
+INSERT INTO identity_sign_in_policy(singleton) VALUES(1);
+
+CREATE TABLE preference_scopes(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
+ scope TEXT NOT NULL CHECK(scope IN('profile-server','profile-device-class','profile-device')),
+ device_key TEXT NOT NULL,
+ revision INTEGER NOT NULL CHECK(revision>=1), updated_ms INTEGER NOT NULL,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key),
+ CHECK((scope='profile-server' AND device_key='') OR (scope='profile-device-class' AND device_key IN('web','mobile','tablet','television')) OR (scope='profile-device' AND length(device_key)>0))
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE preference_values(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL, scope TEXT NOT NULL, device_key TEXT NOT NULL,
+ key TEXT NOT NULL, kind TEXT NOT NULL, bool_value INTEGER, number_value REAL, text_value TEXT,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key,key),
+ FOREIGN KEY(authority,account_id,profile_id,scope,device_key) REFERENCES preference_scopes ON DELETE CASCADE,
+ CHECK((kind='boolean' AND bool_value IS NOT NULL AND bool_value IN(0,1) AND number_value IS NULL AND text_value IS NULL)
+ OR (kind IN('integer','number') AND bool_value IS NULL AND number_value IS NOT NULL AND text_value IS NULL AND (kind='number' OR number_value=CAST(number_value AS INTEGER)))
+ OR (kind IN('string','locale') AND bool_value IS NULL AND number_value IS NULL AND text_value IS NOT NULL)
+ OR (kind IN('string-list','languageList') AND bool_value IS NULL AND number_value IS NULL AND text_value IS NULL))
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE preference_list_items(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL, scope TEXT NOT NULL, device_key TEXT NOT NULL,
+ key TEXT NOT NULL, position INTEGER NOT NULL CHECK(position>=0 AND position<64), value TEXT NOT NULL,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key,key,position),
+ UNIQUE(authority,account_id,profile_id,scope,device_key,key,value),
+ FOREIGN KEY(authority,account_id,profile_id,scope,device_key,key) REFERENCES preference_values ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE account_stream_limits(
+ account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+ mode TEXT NOT NULL CHECK(mode IN('inherit','unlimited','limit')),
+ stream_limit INTEGER,
+ CHECK((mode='limit' AND stream_limit IS NOT NULL AND stream_limit BETWEEN 1 AND 1000) OR (mode IN('inherit','unlimited') AND stream_limit IS NULL))
+) STRICT;

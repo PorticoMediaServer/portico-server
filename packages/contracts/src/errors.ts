@@ -229,6 +229,12 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "factor_setup_required",
+    "status": 403,
+    "message": "Set up two-step verification to finish signing in.",
+    "retry": "never"
+  },
+  {
     "code": "feature_restricted",
     "status": 403,
     "message": "This feature is not permitted for this profile.",

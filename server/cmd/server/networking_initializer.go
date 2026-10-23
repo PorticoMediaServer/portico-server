@@ -148,8 +148,6 @@ func initializeCurrentClaimControl(db *sql.DB, state string, id *identity.Servic
 	}); e != nil {
 		return nil, e
 	}
-	// An approval still pending when the server stopped is waited on again.
-	handler.ResumeWebClaims(context.Background(), httpapi.NetworkingClaimResume(id))
 	return handler, nil
 }
 

@@ -76,7 +76,17 @@ func OpenEPUB(ctx context.Context, r io.ReaderAt, size int64) (*EPUB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if a.files["META-INF/encryption.xml"] != nil || a.files["META-INF/rights.xml"] != nil {
+	return openEPUBArchive(ctx, a)
+}
+func OpenSequentialEPUB(ctx context.Context, source SequentialSource) (*EPUB, error) {
+	a, err := openSequentialArchive(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	return openEPUBArchive(ctx, a)
+}
+func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
+	if a.files["META-INF/rights.xml"] != nil {
 		return nil, ErrInvalid
 	}
 	mime, err := a.read(ctx, "mimetype", 64)
@@ -97,12 +107,18 @@ func OpenEPUB(ctx context.Context, r io.ReaderAt, size int64) (*EPUB, error) {
 		return nil, err
 	}
 	var p packageXML
-	if err = decodeXML(b, &p); err != nil || len(p.Manifest) == 0 || len(p.Manifest) > MaxEntries || len(p.Spine.Items) == 0 {
+	if err = decodeXML(b, &p); err != nil || len(p.Manifest) == 0 || len(p.Spine.Items) == 0 {
 		return nil, ErrInvalid
 	}
-	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language, Direction: "ltr"}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
-	if p.Spine.Direction == "rtl" {
-		e.Metadata.Direction = "rtl"
+	if len(p.Manifest) > MaxEntries || len(p.Spine.Items) > MaxEntries {
+		return nil, ErrLimit
+	}
+	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
+	if len(e.Metadata.Title) > 4096 || len(e.Metadata.Author) > 4096 || len(e.Metadata.Language) > 64 {
+		return nil, ErrLimit
+	}
+	if p.Spine.Direction == "rtl" || p.Spine.Direction == "ltr" {
+		e.Metadata.Direction = p.Spine.Direction
 	}
 	ids := map[string]string{}
 	for _, item := range p.Manifest {
@@ -128,6 +144,16 @@ func OpenEPUB(ctx context.Context, r io.ReaderAt, size int64) (*EPUB, error) {
 			return nil, ErrInvalid
 		}
 		e.Spine = append(e.Spine, name)
+	}
+	if a.files["META-INF/encryption.xml"] != nil {
+		b, err = a.read(ctx, "META-INF/encryption.xml", 256<<10)
+		if err != nil {
+			return nil, err
+		}
+		if err = validateFontObfuscation(b, e.allowed); err != nil {
+			return nil, err
+		}
+		e.allowed["META-INF/encryption.xml"] = "application/xml"
 	}
 	for name, mime := range e.allowed {
 		e.Resources = append(e.Resources, Resource{name, mime, int64(a.files[name].UncompressedSize64)})
@@ -157,24 +183,18 @@ func (e *EPUB) Asset(ctx context.Context, name string) ([]byte, string, error) {
 	case "application/xhtml+xml":
 		err = validateXHTML(name, b, e.allowed)
 	case "text/css":
-		err = validateCSS(b)
+		err = validateCSS(name, b, e.allowed)
 	case "image/jpeg", "image/png", "image/webp":
-		_, err = inspectImage(b)
+		var info Image
+		info, err = inspectImage(b)
+		if err == nil && info.MIME != mime {
+			err = ErrInvalid
+		}
 	}
 	if err != nil {
 		return nil, "", err
 	}
 	return b, mime, nil
-}
-
-func validateCSS(b []byte) error {
-	// External/imported and escaped CSS references cannot survive into a blob
-	// document. Embedded fonts/images remain available through owned resources.
-	s := strings.ToLower(string(b))
-	if strings.ContainsAny(s, "\\@<") || strings.Contains(s, "url") || strings.Contains(s, "expression") || strings.Contains(s, "behavior") || strings.Contains(s, "-moz-binding") {
-		return ErrInvalid
-	}
-	return nil
 }
 
 var htmlTags = strings.Fields("html head title meta link body div span p br hr h1 h2 h3 h4 h5 h6 a img picture source figure figcaption section article aside header footer main nav address blockquote q cite abbr em strong i b u s small sub sup mark ruby rt rp time pre code kbd samp var ol ul li dl dt dd table caption colgroup col thead tbody tfoot tr th td style")
@@ -187,6 +207,7 @@ func validateXHTML(base string, b []byte, assets map[string]string) error {
 	d := xml.NewDecoder(bytes.NewReader(b))
 	depth := 0
 	inStyle := false
+	var style []byte
 	for {
 		token, err := d.Token()
 		if err == io.EOF {
@@ -201,20 +222,22 @@ func validateXHTML(base string, b []byte, assets map[string]string) error {
 		switch t := token.(type) {
 		case xml.StartElement:
 			depth++
-			if depth > 128 || !allowed[strings.ToLower(t.Name.Local)] || (t.Name.Space != "" && t.Name.Space != "http://www.w3.org/1999/xhtml") {
+			tag := strings.ToLower(t.Name.Local)
+			if inStyle || depth > 128 || !allowed[tag] || (t.Name.Space != "" && t.Name.Space != "http://www.w3.org/1999/xhtml") {
 				return ErrInvalid
 			}
-			if t.Name.Local == "style" {
+			if tag == "style" {
 				inStyle = true
+				style = style[:0]
 			}
 			for _, a := range t.Attr {
 				name := strings.ToLower(a.Name.Local)
 				value := strings.TrimSpace(a.Value)
-				if strings.HasPrefix(name, "on") || name == "srcdoc" || name == "srcset" || name == "http-equiv" || name == "ping" || name == "action" || name == "formaction" || name == "background" {
+				if strings.HasPrefix(name, "on") || name == "base" || name == "srcdoc" || name == "srcset" || name == "http-equiv" || name == "ping" || name == "action" || name == "formaction" || name == "background" {
 					return ErrInvalid
 				}
 				if name == "style" {
-					if err := validateCSS([]byte(value)); err != nil {
+					if err := validateCSS(base, []byte(value), assets); err != nil {
 						return err
 					}
 				}
@@ -232,14 +255,15 @@ func validateXHTML(base string, b []byte, assets map[string]string) error {
 			}
 		case xml.EndElement:
 			depth--
-			if t.Name.Local == "style" {
+			if strings.EqualFold(t.Name.Local, "style") {
+				if err := validateCSS(base, style, assets); err != nil {
+					return err
+				}
 				inStyle = false
 			}
 		case xml.CharData:
 			if inStyle {
-				if err := validateCSS(t); err != nil {
-					return err
-				}
+				style = append(style, t...)
 			}
 		case xml.Directive:
 			if strings.TrimSpace(strings.ToLower(string(t))) != "doctype html" {
