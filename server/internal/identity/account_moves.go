@@ -245,6 +245,16 @@ func (s *Service) confirmMoveTx(ctx context.Context, tx *sql.Tx, c directCaller,
 	return v, nil
 }
 func (s *Service) prepareMoveMembersTx(ctx context.Context, tx *sql.Tx, c directCaller, v AccountMove) error {
+	return s.prepareMoveMembersKeepingFamilyTx(ctx, tx, c, v, "")
+}
+
+// The sole nonempty keepFamily caller is the guarded owner-claim installation
+// hook. Keeping that family does not keep owner rights: the caller must narrow
+// it in this same transaction before publishing the installed claim.
+func (s *Service) prepareMoveMembersKeepingFamilyTx(ctx context.Context, tx *sql.Tx, c directCaller, v AccountMove, keepFamily string) error {
+	if keepFamily != "" && (keepFamily != c.familyID || c.account.Role != TierOwner || v.To != SignInPortico) {
+		return ErrForbidden
+	}
 	rows, e := tx.QueryContext(ctx, `SELECT id FROM accounts WHERE id<>? ORDER BY id`, c.account.ID)
 	if e != nil {
 		return e
@@ -281,7 +291,7 @@ func (s *Service) prepareMoveMembersTx(ctx context.Context, tx *sql.Tx, c direct
 			}
 		}
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE accounts SET password_hash=X'',epoch=epoch+1`); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE accounts SET password_hash=X'',epoch=epoch+CASE WHEN id=? AND ?<>'' THEN 0 ELSE 1 END`, c.account.ID, keepFamily); e != nil {
 		return e
 	}
 	for _, query := range []string{`DELETE FROM identity_account_factors`, `DELETE FROM identity_recovery_codes`, `DELETE FROM identity_factor_challenges`, `DELETE FROM member_password_resets`, `DELETE FROM identity_move_codes`, `DELETE FROM identity_move_link_tickets`, `UPDATE access_invitations SET state='revoked',revision=revision+1 WHERE state='pending'`, `UPDATE quick_connect_v1 SET status='cancelled',grant_cipher=NULL,user_hash=NULL WHERE status IN('pending','approved')`} {
@@ -289,7 +299,11 @@ func (s *Service) prepareMoveMembersTx(ctx context.Context, tx *sql.Tx, c direct
 			return e
 		}
 	}
-	return s.revokeCredentialsWithReasonTx(ctx, tx, c.account.ID, RevokedExplicitSignout)
+	if keepFamily == "" {
+		return s.revokeCredentialsWithReasonTx(ctx, tx, c.account.ID, RevokedExplicitSignout)
+	}
+	_, e = s.revokeWhereTx(ctx, tx, RevokedExplicitSignout, `authority='local' AND account_id=? AND id<>?`, c.account.ID, keepFamily)
+	return e
 }
 func (s *Service) ConfirmLocalMove(ctx context.Context, bearer string, q MoveConfirmRequest) (out DirectSignIn, err error) {
 	if !directPassword(q.Password) {

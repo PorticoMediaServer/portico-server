@@ -1,0 +1,10 @@
+//! The native file/receipt boundary can be checked without loading a window,
+//! WebView, audio route or libmpv. These are the same modules used by the app.
+#[path = "../../src/boundary.rs"]
+pub mod boundary;
+#[path = "../../src/download_receipt.rs"]
+pub mod download_receipt;
+#[path = "../../src/download_store.rs"]
+pub mod download_store;
+#[path = "../../src/download_commands.rs"]
+pub mod download_commands;

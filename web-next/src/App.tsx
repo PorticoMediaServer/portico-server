@@ -1,6 +1,8 @@
 import {RouterProvider} from '@tanstack/react-router';
 import {useEffect, useSyncExternalStore} from 'react';
 import {IconSprite} from './kit/Icon';
+import {WebScreenProvider, webScreens} from './route-registry-view';
+import type {ShellAssemblyContext} from './shell/bootstrap';
 import {router} from './router';
 import {ShellBindingsProvider, type ShellBindings} from './shell/bindings';
 import {bindShellRouteMotion} from './shell/route-motion';
@@ -13,9 +15,10 @@ export function App({binding, bootstrap}: {binding?: ShellBindings; bootstrap?: 
 function RestoredApp({bootstrap}: {bootstrap: ShellBootstrap}) {
   const snapshot = useSyncExternalStore(bootstrap.subscribe, bootstrap.getSnapshot, bootstrap.getSnapshot);
   useEffect(() => { void bootstrap.start(); return () => bootstrap.dispose(); }, [bootstrap]);
-  return <ShellBootstrapState value={{snapshot, retry: bootstrap.start}}><BoundApp binding={snapshot.binding} /></ShellBootstrapState>;
+  return <ShellBootstrapState value={{snapshot, retry: bootstrap.start}}><BoundApp binding={snapshot.binding} context={snapshot.context} bootstrap={bootstrap} /></ShellBootstrapState>;
 }
-function BoundApp({binding}: {binding?: ShellBindings}) {
+function BoundApp({binding, context, bootstrap}: {binding?: ShellBindings; context?: ShellAssemblyContext; bootstrap?: ShellBootstrap}) {
   useEffect(() => bindShellRouteMotion(router), []);
-  return <><IconSprite /><ShellBindingsProvider value={binding}><RouterProvider router={router} /></ShellBindingsProvider><PlaybackHost binding={binding?.playback} /></>;
+  const MediaHost = webScreens.get('player')?.playbackHost ?? PlaybackHost;
+  return <WebScreenProvider value={{binding, context, bootstrap}}><IconSprite /><ShellBindingsProvider value={binding}><RouterProvider router={router} /></ShellBindingsProvider><MediaHost binding={binding?.playback} /></WebScreenProvider>;
 }
