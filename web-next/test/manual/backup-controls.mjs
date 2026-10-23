@@ -2,7 +2,7 @@
 // Run from the repository root in an isolated remote job after the declared install.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdir, mkdtemp, readFile, rm} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {createServer} from 'vite';
 
@@ -49,6 +49,26 @@ try {
   const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, {method: 'PUT'})).json();page = await connect(target.webSocketDebuggerUrl);
   await page.send('Page.enable');await page.send('Runtime.enable');await page.send('Emulation.setDeviceMetricsOverride', {width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false});
   const navigate = async query => {const url = `${origin}/test/backup-picker.html${query}`;await page.send('Page.navigate', {url});await waitFor(`location.href===${JSON.stringify(url)} && !!window.backupPickerProof`);};
+  if (process.env.BACKUP_CAPTURE_ONLY === '1') {
+    const output = process.env.PORTICO_RUNNER_OUTPUT;assert.ok(output, 'Runner output directory is required');const captures = [];
+    const capture = async (name, selector) => {
+      await evaluate('document.fonts.ready.then(()=>true)');await pause(250);
+      const state = await evaluate(`(() => {const element=document.querySelector(${JSON.stringify(selector)});if(!element)throw Error('Capture target absent');const r=element.getBoundingClientRect(),s=getComputedStyle(element);return {rect:{x:r.x,y:r.y,width:r.width,height:r.height},text:element.textContent,font:s.fontFamily,background:s.background,fonts:[...document.fonts].map(f=>({family:f.family,status:f.status})),viewport:[innerWidth,innerHeight],clientWidth:document.documentElement.clientWidth};})()`);
+      const {x,y,width,height} = state.rect, clip = {x: Math.floor(x),y: Math.floor(y),width: Math.ceil(x+width)-Math.floor(x),height: Math.ceil(y+height)-Math.floor(y),scale: 1};
+      const screenshot = await page.send('Page.captureScreenshot', {format: 'jpeg',quality: 95,captureBeyondViewport: true,clip});await writeFile(path.join(output, name), Buffer.from(screenshot.data, 'base64'));captures.push({name,...state,clip});
+    };
+    await navigate('?frame=13');await waitFor("document.querySelectorAll('[aria-pressed]').length===2");
+    await evaluate("[...document.querySelectorAll('[aria-pressed]')].find(b=>b.textContent.includes('2026-10-21')).click()");await capture('backup-picker-build.jpg', '[role=dialog]');
+    await navigate('?list=1');await waitFor("!![...document.querySelectorAll('button')].find(b=>b.textContent==='Restore this backup')");await capture('backup-list-build.jpg', '#root > div');
+    for (const [query,name] of [['?confirm=delete','backup-delete-build.jpg'],['?confirm=restore','backup-restore-build.jpg'],['?passphrase=protect','backup-protect-build.jpg'],['?passphrase=restore','backup-protected-restore-build.jpg']]) {
+      await navigate(query);await waitFor("!!document.querySelector('[role=dialog]')");await capture(name, '[role=dialog]');
+    }
+    if (process.env.BACKUP_REFERENCE_ORIGIN) {
+      const reference = new URL(process.env.BACKUP_REFERENCE_ORIGIN);assert.equal(reference.protocol, 'http:');assert.equal(reference.hostname, '127.0.0.1');
+      await page.send('Page.navigate', {url: `${reference.origin}/owner-server.html?only=13`});await waitFor("!!document.querySelector('#f13 .stg > div:nth-child(2) .tile')");await capture('backup-picker-frame.jpg', '#f13 .stg > div:nth-child(2) .tile');
+    }
+    const report = {browser:version.Browser,kind:'Unscaled actual controlled component JPEGs; no live API, protected Settings parent or UI acceptance',captures};await writeFile(path.join(output,'backup-captures.log'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
+  } else {
   await navigate('');await waitFor("!!document.querySelector('[aria-pressed]')");
   await check('bounded actual filesystem request and offered file eligibility', async () => {
     const state = await evaluate("({requests:backupPickerProof.requests,labels:[...document.querySelectorAll('[aria-pressed]')].map(b=>({text:b.textContent,disabled:b.disabled})),body:document.querySelector('[role=dialog]').textContent})");
@@ -98,6 +118,7 @@ try {
     await evaluate("completeBackupPassphrase('done')");await pause(30);assert.equal((await proof()).completed, 0);
   });
   assert.deepEqual(exceptions, []);console.log(JSON.stringify({browser: version.Browser, kind: 'Controlled component/parser behavior only; no live backup or UI/frame acceptance', results}, null, 2));
+  }
 } finally {
   page?.close();try {await browser?.send('Browser.close');} catch {}browser?.close();
   if (child?.pid && child.exitCode === null && child.signalCode === null) {
