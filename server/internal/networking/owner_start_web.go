@@ -50,10 +50,14 @@ func (h *ClaimHandler) beginOwnerWebClaim(ctx context.Context, v Intent, address
 		return out, err
 	}
 	var claimPayload, claimSignature, startPayload, startSignature []byte
-	err := h.store.db.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature FROM identity_owner_completions WHERE operation_id=?`, v.OperationID).Scan(&claimPayload, &claimSignature, &startPayload, &startSignature)
+	var phase string
+	err := h.store.db.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature,phase FROM identity_owner_completions WHERE operation_id=?`, v.OperationID).Scan(&claimPayload, &claimSignature, &startPayload, &startSignature, &phase)
 	var start claimweb.OwnerStart
 	var original claimweb.Request
 	if err == nil {
+		if phase != "prepared" {
+			return out, ErrStale
+		}
 		out.Signed = claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(claimPayload), Signature: base64.RawURLEncoding.EncodeToString(claimSignature)}
 		proof := claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(startPayload), Signature: base64.RawURLEncoding.EncodeToString(startSignature)}
 		original, start, err = claimweb.VerifyOwnerStart(out.Signed, proof, transport.origin, time.Now())
