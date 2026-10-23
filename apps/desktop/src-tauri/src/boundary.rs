@@ -35,7 +35,7 @@ pub fn local_origin(label: &str, value: &str, development: bool) -> Result<()> {
     Ok(())
 }
 
-/// Only direct, server-issued capabilities enter libmpv. HLS is deliberately rejected until a
+/// Only progressive, server-issued capabilities enter libmpv. HLS is deliberately rejected until a
 /// same-origin segment broker exists: a hostile playlist otherwise opens arbitrary network URLs.
 /// No file, disc, pipe, lavfi, edl, script or arbitrary FFmpeg protocol is an IPC input.
 pub fn media_url(value: &str) -> Result<Url> {
@@ -62,7 +62,7 @@ pub struct Source {
 impl Source {
     pub fn validate(&self) -> Result<()> {
         media_url(&self.url)?;
-        if self.generation == 0 || self.generation > 9_007_199_254_740_991 || self.mode != "direct"
+        if self.generation == 0 || self.generation > 9_007_199_254_740_991 || !matches!(self.mode.as_str(),"direct"|"stream")
             || !self.start_position_ms.is_finite() || !(0.0..=1e12).contains(&self.start_position_ms) {
             return Err(Error::InvalidSource);
         }
@@ -79,6 +79,7 @@ pub enum Command {
     Seek { generation: u64, milliseconds: f64 },
     Rate { generation: u64, rate: f64 },
     FrameStep { generation:u64, direction:i8 },
+    Processing { generation:u64, gain:f64 },
     Volume { generation: u64, volume: f64, muted: bool },
     Stop { generation: u64 },
 }
@@ -121,5 +122,7 @@ mod tests {
         for v in ["file:///etc/passwd", "edl://a", "https://u:p@server/v1/a", "https://server/v1/a#x", "https://server/v1/%2e%2e/private", "https://server/v1/a.m3u8", "https://server/private", "--script=/tmp/a"] { assert!(media_url(v).is_err(), "{v}"); }
         assert!(serde_json::from_str::<Command>(r#"{"action":"command","args":["run","sh"]}"#).is_err());
         assert!(serde_json::from_str::<Command>(r#"{"action":"play","generation":1,"path":"/tmp/a"}"#).is_err());
+        let mut source=Source{url:"https://server.test/v1/media/opaque".into(),generation:1,mode:"stream".into(),start_position_ms:0.0,autoplay:true};
+        assert!(source.validate().is_ok());source.mode="playlist".into();assert_eq!(source.validate(),Err(Error::InvalidSource));
     }
 }

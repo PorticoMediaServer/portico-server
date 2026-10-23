@@ -78,6 +78,7 @@
 .prompts > * { pointer-events: auto; }
 .top, .bottom, .center, .shade { opacity: 1; transition: opacity var(--motion-standard) var(--ease-out); }
 .watch[data-controls-visible='false'] .top, .watch[data-controls-visible='false'] .bottom, .watch[data-controls-visible='false'] .center, .watch[data-controls-visible='false'] .shade { opacity: 0; visibility: hidden; pointer-events: none; }
+:global(body:has([data-watch-screen]:not([hidden]))) { overflow: hidden; }
 .watch[data-scrubbing='true'] .controls { visibility: hidden; pointer-events: none; }
 .watch[data-mode='portrait'] { --watch-picture-top: env(safe-area-inset-top, 0px); --watch-picture-height: calc(100vw * 9 / 16); }
 .watch[data-mode='portrait'] .pictureSlot, .watch[data-mode='portrait'] .chrome { top: var(--watch-picture-top); bottom: auto; height: var(--watch-picture-height); }
