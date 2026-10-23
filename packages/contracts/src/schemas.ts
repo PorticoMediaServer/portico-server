@@ -135281,6 +135281,133 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetSignInSettingsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSignInSettingsResponse": {
+    "properties": {
+      "move": {
+        "nullable": true,
+        "properties": {
+          "devices": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "from": {
+            "enum": [
+              "portico",
+              "local"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invitations": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "ownAddressRequired": {
+            "type": "boolean"
+          },
+          "people": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "profiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "serverName": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "startOver": {
+            "type": "boolean"
+          },
+          "to": {
+            "enum": [
+              "portico",
+              "local"
+            ],
+            "type": "string"
+          },
+          "waiting": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "from",
+          "to",
+          "startOver",
+          "stage",
+          "revision",
+          "people",
+          "invitations",
+          "profiles",
+          "waiting",
+          "serverName",
+          "ownAddressRequired"
+        ],
+        "type": "object"
+      },
+      "owner": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "username",
+          "displayName"
+        ],
+        "type": "object"
+      },
+      "signIn": {
+        "enum": [
+          "portico",
+          "local"
+        ],
+        "type": "string"
+      },
+      "webPath": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "signIn",
+      "owner",
+      "move",
+      "webPath"
+    ],
+    "type": "object"
+  },
   "GetStorageMountsRequest": {
     "properties": {},
     "required": [],
@@ -151923,6 +152050,12 @@ export const schemas = {
       "installationId": {
         "type": "string"
       },
+      "moveCode": {
+        "type": "string"
+      },
+      "moveTicket": {
+        "type": "string"
+      },
       "purpose": {
         "type": "string"
       },
@@ -151952,8 +152085,7 @@ export const schemas = {
       "registrationId",
       "serverChallenge",
       "installationId",
-      "purpose",
-      "expectedRevision"
+      "purpose"
     ],
     "type": "object"
   },
