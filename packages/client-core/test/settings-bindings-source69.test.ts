@@ -72,11 +72,11 @@ test('watched threshold keeps inheritance distinct from explicit95 and refuses u
 test('inherited threshold requires genuine integer policy and effective facts',()=>{
  const mapped=binding('playback.playedThresholdPercent'),key=mapped.key;
  for(const effective of ['95',true,74,101,95.5]){
-  const preferences=snapshot();preferences.effective[key]=effective as PreferenceValue;
+  const current=snapshot(),preferences={...current,effective:{...current.effective,[key]:effective}};
   assert.equal(readSettingsBinding(mapped,{preferences}),undefined);
  }
  for(const change of [{type:'boolean',default:true},{default:74},{default:95.5}]){
-  const preferences=snapshot();Object.assign(preferences.registry.fields.find(f=>f.key===key)!,change);
+  const current=snapshot(),preferences={...current,registry:{...current.registry,fields:current.registry.fields.map(field=>field.key===key?{...field,...change}:field)}} as PreferenceSnapshot;
   assert.equal(readSettingsBinding(mapped,{preferences}),undefined);
   if(change.type)assert.throws(()=>settingsBindingPatch(mapped,'server',{preferences}));
  }
