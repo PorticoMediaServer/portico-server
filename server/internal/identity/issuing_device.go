@@ -8,13 +8,10 @@ import (
 
 type issuingDeviceKey struct{}
 
-// vouchedDeviceKey marks an issuance for a device that a signed-in, approved
-// device has vouched for (a Cast target it paired). Such a device does not
-// wait for the owner's approval; what it is issued is narrow by construction.
+// vouchedDeviceKey marks a paired Cast target. Its playback grant is narrow.
 type vouchedDeviceKey struct{}
 
-// WithVouchedDevice marks ctx so the device registered by the next issuance
-// is approved on the word of the session that paired it.
+// WithVouchedDevice records that the pairing session vouched for the target.
 func WithVouchedDevice(ctx context.Context) context.Context {
 	return context.WithValue(ctx, vouchedDeviceKey{}, true)
 }
@@ -26,7 +23,7 @@ type issuingDevice struct {
 }
 
 // WithIssuingDevice carries a client's installation claim to the one
-// transaction that checks approval and creates its authorization family.
+// transaction that binds the device and creates its authorization family.
 // The installation ID is a random client secret, never an IP fingerprint.
 func WithIssuingDevice(ctx context.Context, registration DeviceRegistration, peer string) (context.Context, error) {
 	if !registration.valid() {
@@ -48,9 +45,6 @@ func (s *Service) issuingDeviceTx(ctx context.Context, tx *sql.Tx, authority, ac
 		if err != nil {
 			return Device{}, err
 		}
-		if device.ApprovalState != "approved" {
-			return Device{}, ErrDevicePending
-		}
 		return device, nil
 	}
 	q := claim.registration
@@ -59,12 +53,9 @@ func (s *Service) issuingDeviceTx(ctx context.Context, tx *sql.Tx, authority, ac
 		// A sign-in that names no installation (another client, a script; Cast
 		// pairing and internal callers) still gets an individually revocable
 		// device record, under an installation id the server makes and
-		// returns. Each such sign-in makes a new one, so the ones left waiting
-		// for approval are bounded per account: only the newest few are kept.
+		// returns. Each such sign-in remains independently revocable.
 		q = DeviceRegistration{InstallationID: unnamedInstallationPrefix + Token(), Name: "Portico device", Platform: "unknown", App: "portico"}
-		if err := pruneUnnamedWaitingTx(ctx, tx, caller); err != nil {
-			return Device{}, err
-		}
+
 	}
 	if !q.valid() {
 		return Device{}, ErrDeviceInput
@@ -82,18 +73,3 @@ func (s *Service) issuingDeviceTx(ctx context.Context, tx *sql.Tx, authority, ac
 // unnamedInstallationPrefix marks an installation id the server made for a
 // sign-in that did not name one.
 const unnamedInstallationPrefix = "unnamed-"
-
-// unnamedWaitingKept is how many waiting records of server-named
-// installations an account keeps; older ones go before a new one is made.
-const unnamedWaitingKept = 4
-
-// pruneUnnamedWaitingTx removes an account's oldest waiting records of
-// server-named installations beyond the newest few. A waiting device has no
-// sign-in yet (no session family or refresh credential points at it), so
-// removing one ends nothing; it only stops the list growing.
-func pruneUnnamedWaitingTx(ctx context.Context, tx *sql.Tx, c deviceCaller) error {
-	_, err := tx.ExecContext(ctx, `DELETE FROM identity_devices WHERE id IN (SELECT d.id FROM identity_devices d WHERE d.authority=? AND d.account_id=? AND d.approval_state='pending' AND substr(d.installation_id,1,?)=?
- AND NOT EXISTS(SELECT 1 FROM identity_device_families f WHERE f.device_id=d.id) AND NOT EXISTS(SELECT 1 FROM identity_refresh_credentials r WHERE r.device_id=d.id)
- ORDER BY d.first_seen DESC,d.id DESC LIMIT -1 OFFSET ?)`, c.authority, c.account, len(unnamedInstallationPrefix), unnamedInstallationPrefix, unnamedWaitingKept-1)
-	return err
-}

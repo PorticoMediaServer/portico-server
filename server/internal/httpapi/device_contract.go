@@ -13,17 +13,13 @@ type DevicesDocument struct {
 	Items []identity.Device `json:"items"`
 }
 
-type DeviceApprovalRequest struct {
-	Approved bool `json:"approved"`
-}
-
 type DeviceBindingRequest struct {
 	InstallationID  string `json:"installationId"`
 	SessionFamilyID string `json:"sessionFamilyId"`
 }
 
 func registerDeviceRoutes(registry *apikit.Registry, d Dependencies) error {
-	if err := apikit.Register(registry, apikit.Route[identity.DeviceRegistration, identity.Device]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "post_device", Method: "POST", Path: "/v1/devices", Summary: "Register or refresh this account's device", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 201, Errors: []string{"unauthorized", "device_approval_pending", "device_denied", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body identity.DeviceRegistration) (identity.Device, error) {
+	if err := apikit.Register(registry, apikit.Route[identity.DeviceRegistration, identity.Device]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "post_device", Method: "POST", Path: "/v1/devices", Summary: "Register or refresh this account's device", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 201, Errors: []string{"unauthorized", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body identity.DeviceRegistration) (identity.Device, error) {
 		out, err := d.Identity.RegisterDevice(ctx, directBearer(r), body, d.signInPeer(r))
 		return out, foundationAuthErrorOrNil(err)
 	}}); err != nil {
@@ -52,13 +48,7 @@ func registerDeviceRoutes(registry *apikit.Registry, d Dependencies) error {
 	}}); err != nil {
 		return err
 	}
-	if err := apikit.Register(registry, apikit.Route[DeviceApprovalRequest, identity.Device]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "post_device_approval", Method: "POST", Path: "/v1/devices/{id}/approval", Summary: "Approve or deny a pending device", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body DeviceApprovalRequest) (identity.Device, error) {
-		out, err := d.Identity.ApproveDevice(ctx, directBearer(r), r.PathValue("id"), body.Approved)
-		return out, foundationAuthErrorOrNil(err)
-	}}); err != nil {
-		return err
-	}
-	if err := apikit.Register(registry, apikit.Route[DeviceBindingRequest, struct{}]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "post_device_session_binding", Method: "POST", Path: "/v1/devices/{id}/sessions/bind", Summary: "Verify a session's existing device binding", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 204, Errors: []string{"unauthorized", "device_approval_pending", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body DeviceBindingRequest) (struct{}, error) {
+	if err := apikit.Register(registry, apikit.Route[DeviceBindingRequest, struct{}]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "post_device_session_binding", Method: "POST", Path: "/v1/devices/{id}/sessions/bind", Summary: "Verify a session's existing device binding", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 204, Errors: []string{"unauthorized", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body DeviceBindingRequest) (struct{}, error) {
 		err := d.Identity.BindDeviceFamilyForDevice(ctx, directBearer(r), r.PathValue("id"), body.InstallationID, body.SessionFamilyID)
 		return struct{}{}, foundationAuthErrorOrNil(err)
 	}}); err != nil {

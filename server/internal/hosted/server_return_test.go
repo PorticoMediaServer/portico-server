@@ -90,7 +90,7 @@ func TestRegisteredReturnActualHostedProducerConsumer(t *testing.T) {
 	if e != nil {
 		t.Fatal("actual signed producer rejected", e)
 	}
-	if who.AccountID != "strict-owner" || who.Username == "" || who.DisplayName != "" || who.Return == nil || who.Return.Purpose != "setup" {
+	if who.AccountID != "strict-owner" || who.Username == "" || who.DisplayName == "" || who.Return == nil || who.Return.Purpose != "setup" {
 		t.Fatal("authority/privacy projection")
 	}
 	out, e := f.id.CompleteAccountSetup(ctx, pendingSetupID, secret, who)

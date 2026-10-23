@@ -67,7 +67,7 @@ export const dependsOn = Object.freeze({
  * `accessTokens` and `togetherGroups`, which are a profile's own and heard by that profile.
  */
 export type ServerList =
-  | 'apiKeys' | 'memberTokens' | 'accessTokens' | 'webhooks' | 'members' | 'invitations' | 'devices'
+  | 'apiKeys' | 'accessTokens' | 'webhooks' | 'members' | 'invitations' | 'devices'
   | 'clientReports' | 'feedback' | 'downloads' | 'remoteSources' | 'liveSources' | 'tuners'
   | 'recordingGroups' | 'recordingStorage' | 'libraryChannels' | 'playbackProblems'
   /** The Watch Together rooms this profile is in (heard by the profile). */

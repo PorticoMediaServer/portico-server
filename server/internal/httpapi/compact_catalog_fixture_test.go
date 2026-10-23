@@ -434,7 +434,7 @@ func tl6SupportFixture(t *testing.T) (Dependencies, identity.Envelope, identity.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','PRIVATE-OWNER',x'00','profile',1),('member','PRIVATE-MEMBER',x'00','member-profile',1)`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','PRIVATE-OWNER',x'00','profile',1),('member','PRIVATE-MEMBER',x'00','member-profile',1)`); err != nil {
 		t.Fatal(err)
 	}
 	c := catalogtest.New(t, db)
@@ -470,7 +470,7 @@ func tl6NotificationFixture(t *testing.T) (Dependencies, *http.ServeMux, identit
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1),('member','member',x'00','member-profile',1)`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1),('member','member',x'00','member-profile',1)`); err != nil {
 		t.Fatal(err)
 	}
 	owner, err := id.Issue("owner", "owner-profile", "local", "owner", 1)
