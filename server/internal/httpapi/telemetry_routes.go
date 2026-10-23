@@ -28,6 +28,9 @@ func (d Dependencies) telemetryRoutes(mux *http.ServeMux) {
 		return
 	}
 	service := &telemetryService{d: d, capacity: d.capacityComposer()}
+	if d.TelemetryContext != nil {
+		service.collector()
+	}
 	if d.Measurements != nil {
 		// The resources panel shows the collector's last sample. It reads what the
 		// collector already has and never starts one, so a panel read stays cheap.
@@ -186,9 +189,13 @@ const attentionCache = 30 * time.Second
 // so a server nobody is watching runs no reporters at all.
 func (s *telemetryService) collector() *telemetry.Collector {
 	s.start.Do(func() {
-		s.collected = telemetry.New(telemetry.Options{Sampler: telemetry.HostSampler(s.d.stateDirectory()), DB: s.d.DB})
+		s.collected = telemetry.New(telemetry.Options{Sampler: dashboardSampler{host: telemetry.HostSampler(s.d.stateDirectory()), d: s.d}, DB: s.d.DB})
 		s.running.Store(true)
-		supervise.Supervise(context.Background(), "telemetry.collector", s.collected.Run)
+		ctx := s.d.TelemetryContext
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		supervise.Supervise(ctx, "telemetry.collector", s.collected.Run)
 	})
 	return s.collected
 }

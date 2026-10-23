@@ -62,7 +62,7 @@ func percent(v float64) float64 {
 
 // MetricNames is the published order of the series a client can chart. It is
 // also the key set of Sample.Metrics and of the status map on a reading.
-var MetricNames = []string{"cpu", "memory", "diskRead", "diskWrite", "netIn", "netOut", "gpuUsage", "gpuMemory", "gpuEncoder"}
+var MetricNames = []string{"cpu", "memory", "diskRead", "diskWrite", "netIn", "netOut", "gpuUsage", "gpuMemory", "gpuEncoder", "processCPU", "processMemory", "homeMbps", "awayMbps", "hardwareConversions", "softwareConversions"}
 
 // Sample is one observation of every published metric, plus the absolute memory
 // figures a percentage alone cannot convey.

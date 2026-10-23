@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/subtitles"
+	"portico.local/server/internal/telemetry"
 )
 
 // Options is `GET /v1/items/{itemId}/playback-options` (spec §4.1).
@@ -79,6 +80,8 @@ type VideoStream struct {
 	BitrateKbps int     `json:"bitrateKbps,omitempty"`
 }
 type AudioStream struct {
+	BitDepth       int    `json:"bitDepth,omitempty"`
+	SampleRate     int    `json:"sampleRate,omitempty"`
 	ID             string `json:"id"`
 	Codec          string `json:"codec"`
 	Channels       int    `json:"channels,omitempty"`
@@ -162,6 +165,7 @@ type MarkerFunc func(ctx context.Context, tx *sql.Tx, p identity.Principal, item
 // Service is the v1 resource layer over the existing delivery machinery. One
 // per router: it owns the event hub and the lease sweeper.
 type Service struct {
+	Traffic   *telemetry.Traffic
 	DB        *sql.DB
 	Playback  *playback.Service
 	Subtitles *subtitles.Service
@@ -432,6 +436,7 @@ func (s *Service) streams(ctx context.Context, tx *sql.Tx, asset string, v *Vers
 			FrameRate   float64 `json:"frameRate"`
 			BitRate     int     `json:"bitRate"`
 			ObjectAudio string  `json:"objectAudio"`
+			SampleRate  int     `json:"sampleRate"`
 		}
 		_ = json.Unmarshal([]byte(detail), &facts)
 		lower := strings.ToLower(title)
@@ -439,7 +444,7 @@ func (s *Service) streams(ctx context.Context, tx *sql.Tx, asset string, v *Vers
 		case "video":
 			v.Video = append(v.Video, VideoStream{ID: streamID("v", index), Codec: codec, Profile: strings.ToLower(facts.Profile), Level: facts.Level, BitDepth: facts.BitDepth, Width: facts.Width, Height: facts.Height, Fps: facts.FrameRate, HDR: hdrName(transfer, detail), BitrateKbps: facts.BitRate / 1000})
 		case "audio":
-			v.Audio = append(v.Audio, AudioStream{ID: streamID("a", index), Codec: codec, Channels: channels, Layout: layout, Atmos: facts.ObjectAudio == "atmos", Language: language, Title: title, Default: isDefault, Commentary: strings.Contains(lower, "commentary"), VisualImpaired: strings.Contains(lower, "descriptive") || strings.Contains(lower, "audio description")})
+			v.Audio = append(v.Audio, AudioStream{BitDepth: facts.BitDepth, SampleRate: facts.SampleRate, ID: streamID("a", index), Codec: codec, Channels: channels, Layout: layout, Atmos: facts.ObjectAudio == "atmos", Language: language, Title: title, Default: isDefault, Commentary: strings.Contains(lower, "commentary"), VisualImpaired: strings.Contains(lower, "descriptive") || strings.Contains(lower, "audio description")})
 		case "subtitle":
 			if s.Subtitles == nil {
 				v.Subtitles = append(v.Subtitles, SubStream{ID: streamID("s", index), Format: codec, Source: "embedded", Language: language, Title: title, Forced: forced, SDH: strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing"), Default: isDefault})

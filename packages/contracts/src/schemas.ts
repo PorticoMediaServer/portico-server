@@ -16325,6 +16325,12 @@ export const schemas = {
                     "artist": {
                       "type": "string"
                     },
+                    "author": {
+                      "type": "string"
+                    },
+                    "bookTitle": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -18127,6 +18133,180 @@ export const schemas = {
     "required": [
       "scope",
       "data"
+    ],
+    "type": "object"
+  },
+  "GetAdminDashboardStatusRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminDashboardStatusResponse": {
+    "properties": {
+      "alerts": {
+        "items": {
+          "properties": {
+            "action": {
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            "code": {
+              "type": "string"
+            },
+            "count": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "major": {
+              "type": "boolean"
+            },
+            "params": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "severity": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "severity",
+            "params",
+            "action",
+            "major"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "observedAt": {
+        "type": "string"
+      },
+      "scans": {
+        "items": {
+          "properties": {
+            "analyzed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "current": {
+              "type": "string"
+            },
+            "discovered": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "libraryName": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "total": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "libraryId",
+            "libraryName",
+            "kind",
+            "discovered",
+            "analyzed",
+            "phase"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "tasks": {
+        "properties": {
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "libraryName": {
+                  "type": "string"
+                },
+                "phase": {
+                  "type": "string"
+                },
+                "processed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "total": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "state",
+                "phase"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "items"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "observedAt",
+      "alerts",
+      "scans",
+      "tasks"
     ],
     "type": "object"
   },
@@ -23540,6 +23720,237 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminPlayHistoryDashboardRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminPlayHistoryDashboardResponse": {
+    "properties": {
+      "buckets": {
+        "items": {
+          "properties": {
+            "end": {
+              "type": "string"
+            },
+            "kinds": {
+              "items": {
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "plays": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "watchedMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "plays",
+                  "watchedMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "partial": {
+              "type": "boolean"
+            },
+            "start": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "start",
+            "end",
+            "partial",
+            "kinds"
+          ],
+          "type": "object"
+        },
+        "maxItems": 1201,
+        "type": "array"
+      },
+      "busiestTimes": {
+        "items": {
+          "items": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxItems": 24,
+          "minItems": 24,
+          "type": "array"
+        },
+        "maxItems": 7,
+        "minItems": 7,
+        "type": "array"
+      },
+      "from": {
+        "type": "string"
+      },
+      "period": {
+        "type": "string"
+      },
+      "quietestStartHour": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
+      },
+      "timeZone": {
+        "type": "string"
+      },
+      "top": {
+        "items": {
+          "properties": {
+            "backdropRevision": {
+              "type": "string"
+            },
+            "countUnit": {
+              "type": "string"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "people": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "plays": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "posterRevision": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "itemId",
+            "title",
+            "plays",
+            "people",
+            "countUnit"
+          ],
+          "type": "object"
+        },
+        "maxItems": 6,
+        "type": "array"
+      },
+      "topKind": {
+        "type": "string"
+      },
+      "until": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "period",
+      "from",
+      "until",
+      "timeZone",
+      "buckets",
+      "busiestTimes",
+      "quietestStartHour",
+      "top",
+      "topKind"
+    ],
+    "type": "object"
+  },
+  "GetAdminPlayHistoryPeopleRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminPlayHistoryPeopleResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "kinds": {
+              "items": {
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "plays": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "watchedMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "plays",
+                  "watchedMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "plays": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "profiles": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "username": {
+              "type": "string"
+            },
+            "watchedMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "accountId",
+            "username",
+            "profiles",
+            "plays",
+            "watchedMs",
+            "kinds"
+          ],
+          "type": "object"
+        },
+        "maxItems": 100,
+        "type": "array"
+      },
+      "nextCursor": {
+        "maxLength": 512,
+        "type": "string"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
   "GetAdminPlayHistoryRequest": {
     "properties": {},
     "required": [],
@@ -23581,6 +23992,9 @@ export const schemas = {
             "libraryId": {
               "type": "string"
             },
+            "location": {
+              "type": "string"
+            },
             "parentTitle": {
               "type": "string"
             },
@@ -23608,9 +24022,16 @@ export const schemas = {
             },
             "user": {
               "type": "string"
+            },
+            "watchedMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
           },
           "required": [
+            "watchedMs",
+            "location",
             "id",
             "user",
             "accountId",
@@ -110769,6 +111190,11 @@ export const schemas = {
                   "atmos": {
                     "type": "boolean"
                   },
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "channels": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -110791,6 +111217,11 @@ export const schemas = {
                   },
                   "layout": {
                     "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "title": {
                     "type": "string"
@@ -139084,6 +139515,12 @@ export const schemas = {
       "items": {
         "items": {
           "properties": {
+            "address": {
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
             "bandwidthKbps": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -139110,6 +139547,10 @@ export const schemas = {
                 "name"
               ],
               "type": "object"
+            },
+            "currentBitrateKbps": {
+              "nullable": true,
+              "type": "number"
             },
             "decision": {
               "properties": {
@@ -139195,6 +139636,60 @@ export const schemas = {
               "required": [],
               "type": "object"
             },
+            "delivery": {
+              "properties": {
+                "audioBitrateBps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "audioChannels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "streams": {
+                  "items": {
+                    "properties": {
+                      "action": {
+                        "type": "string"
+                      },
+                      "inputCodec": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "outputCodec": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "inputCodec",
+                      "outputCodec",
+                      "action"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "videoBitrateBps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "videoHeight": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "streams"
+              ],
+              "type": "object"
+            },
             "device": {
               "properties": {
                 "id": {
@@ -139258,6 +139753,12 @@ export const schemas = {
                 "artist": {
                   "type": "string"
                 },
+                "author": {
+                  "type": "string"
+                },
+                "bookTitle": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -139303,7 +139804,144 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "live": {
+              "type": "boolean"
+            },
             "location": {
+              "type": "string"
+            },
+            "media": {
+              "properties": {
+                "audio": {
+                  "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "commentary": {
+                      "type": "boolean"
+                    },
+                    "default": {
+                      "type": "boolean"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    },
+                    "layout": {
+                      "type": "string"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "visualImpaired": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "codec",
+                    "atmos",
+                    "default",
+                    "commentary",
+                    "visualImpaired"
+                  ],
+                  "type": "object"
+                },
+                "subtitles": {
+                  "properties": {
+                    "format": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "format"
+                  ],
+                  "type": "object"
+                },
+                "video": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "bitrateKbps": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "fps": {
+                      "type": "number"
+                    },
+                    "hdr": {
+                      "type": "string"
+                    },
+                    "height": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "level": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "profile": {
+                      "type": "string"
+                    },
+                    "width": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "codec"
+                  ],
+                  "type": "object"
+                },
+                "videoHardware": {
+                  "type": "boolean"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "platform": {
               "type": "string"
             },
             "positionMs": {
@@ -139379,6 +140017,11 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "rateWindowMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "startedAt": {
               "type": "string"
             },
@@ -139428,6 +140071,9 @@ export const schemas = {
             }
           },
           "required": [
+            "currentBitrateKbps",
+            "rateWindowMs",
+            "live",
             "id",
             "protocol",
             "user",

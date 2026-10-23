@@ -1179,7 +1179,7 @@ func run() (runErr error) {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
 	var transport *cappedListener
-	handler := httpapi.New(httpapi.Dependencies{RcloneProgram: &rcloneStatus, CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
+	handler := httpapi.New(httpapi.Dependencies{TelemetryContext: ctx, RcloneProgram: &rcloneStatus, CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
 		held, _ := transport.Held()
 		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
 	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
