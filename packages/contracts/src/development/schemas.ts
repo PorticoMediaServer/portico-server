@@ -275,6 +275,9 @@ export const schemas = {
           "authorizationHorizon"
         ],
         "type": "object"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [

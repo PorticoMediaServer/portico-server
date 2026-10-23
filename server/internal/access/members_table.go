@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"portico.local/server/internal/streamlimits"
 	"strings"
 	"time"
 )
@@ -15,23 +16,26 @@ import (
 // MemberRow is the table projection. Private notes and full permission/profile
 // documents belong to the panel and are never search or sort inputs here.
 type MemberRow struct {
-	AccountID        string   `json:"accountId"`
-	Username         string   `json:"username"`
-	Email            string   `json:"email,omitempty"`
-	Role             string   `json:"role"`
-	Revision         int64    `json:"revision"`
-	LimitsRevision   int64    `json:"limitsRevision"`
-	Disabled         bool     `json:"disabled"`
-	Status           string   `json:"status"`
-	HasMoveCode      bool     `json:"hasMoveCode"`
-	AllowedLibraries []string `json:"allowedLibraries"`
-	LibraryNames     []string `json:"libraryNames"`
-	MaxStreams       int      `json:"maxStreams"`
-	ProfileCount     int      `json:"profileCount"`
-	ProfileNames     []string `json:"profileNames"`
-	LastActiveAt     string   `json:"lastActiveAt,omitempty"`
-	LiveState        string   `json:"liveState"`
-	Notes            *string  `json:"-"`
+	AccountID           string            `json:"accountId"`
+	Username            string            `json:"username"`
+	Email               string            `json:"email,omitempty"`
+	Role                string            `json:"role"`
+	Revision            int64             `json:"revision"`
+	LimitsRevision      int64             `json:"limitsRevision"`
+	Disabled            bool              `json:"disabled"`
+	Status              string            `json:"status"`
+	HasMoveCode         bool              `json:"hasMoveCode"`
+	AllowedLibraries    []string          `json:"allowedLibraries"`
+	LibraryNames        []string          `json:"libraryNames"`
+	MaxStreams          int               `json:"maxStreams"`
+	MaxStreamsMode      streamlimits.Mode `json:"maxStreamsMode"`
+	ServerMaxStreams    *int              `json:"serverMaxStreams"`
+	EffectiveMaxStreams *int              `json:"effectiveMaxStreams"`
+	ProfileCount        int               `json:"profileCount"`
+	ProfileNames        []string          `json:"profileNames"`
+	LastActiveAt        string            `json:"lastActiveAt,omitempty"`
+	LiveState           string            `json:"liveState"`
+	Notes               *string           `json:"-"`
 }
 type memberTableCursor struct {
 	Query string `json:"q"`
@@ -153,7 +157,7 @@ func (s *Store) Members(ctx context.Context, auth Authorize, q MemberQuery) (out
 			pageArgs = append(pageArgs, cursor.Value, cursor.ID)
 		}
 		pageArgs = append(pageArgs, limit+1)
-		query := `SELECT EXISTS(SELECT 1 FROM identity_move_codes c JOIN identity_move_waiting w ON w.account_id=c.account_id WHERE c.account_id=a.id AND c.expires_ms>unixepoch('subsec')*1000 AND w.state='waiting'),a.id,a.username,a.email,m.role,m.revision,COALESCE(l.revision,1),m.disabled,` + status + `,m.allowed_libraries,COALESCE(json_extract(l.body,'$.maxStreams'),0),` + profiles + `,(SELECT json_group_array(name) FROM (SELECT name FROM direct_profiles WHERE account_id=a.id AND deleted=0 ORDER BY is_primary DESC,position,id)),` + last + `,CASE WHEN ` + live + ` THEN 'playing' ELSE 'idle' END,(SELECT json_group_array(name) FROM (SELECT name FROM libraries WHERE json_array_length(m.allowed_libraries)=0 OR id IN(SELECT value FROM json_each(m.allowed_libraries)) ORDER BY name,id)),` + sortExpr + ` FROM accounts a JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN access_limits l ON l.account_id=a.id WHERE ` + pred + ` ORDER BY ` + sortExpr + ` ` + q.Direction + `,a.id ` + q.Direction + ` LIMIT ?`
+		query := `SELECT EXISTS(SELECT 1 FROM identity_move_codes c JOIN identity_move_waiting w ON w.account_id=c.account_id WHERE c.account_id=a.id AND c.expires_ms>unixepoch('subsec')*1000 AND w.state='waiting'),a.id,a.username,a.email,m.role,m.revision,COALESCE(l.revision,1),m.disabled,` + status + `,m.allowed_libraries,COALESCE(sl.stream_limit,0),COALESCE(sl.mode,'inherit'),stream_policy.per_account_cap,` + profiles + `,(SELECT json_group_array(name) FROM (SELECT name FROM direct_profiles WHERE account_id=a.id AND deleted=0 ORDER BY is_primary DESC,position,id)),` + last + `,CASE WHEN ` + live + ` THEN 'playing' ELSE 'idle' END,(SELECT json_group_array(name) FROM (SELECT name FROM libraries WHERE json_array_length(m.allowed_libraries)=0 OR id IN(SELECT value FROM json_each(m.allowed_libraries)) ORDER BY name,id)),` + sortExpr + ` FROM accounts a JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN access_limits l ON l.account_id=a.id LEFT JOIN account_stream_limits sl ON sl.account_id=a.id JOIN playback_owner_policy stream_policy ON stream_policy.singleton=1 WHERE ` + pred + ` ORDER BY ` + sortExpr + ` ` + q.Direction + `,a.id ` + q.Direction + ` LIMIT ?`
 		rows, e := tx.QueryContext(ctx, query, pageArgs...)
 		if e != nil {
 			return e
@@ -163,9 +167,14 @@ func (s *Store) Members(ctx context.Context, auth Authorize, q MemberQuery) (out
 		for rows.Next() {
 			var row MemberRow
 			var libs, names, libraryNames, key string
-			if e = rows.Scan(&row.HasMoveCode, &row.AccountID, &row.Username, &row.Email, &row.Role, &row.Revision, &row.LimitsRevision, &row.Disabled, &row.Status, &libs, &row.MaxStreams, &row.ProfileCount, &names, &row.LastActiveAt, &row.LiveState, &libraryNames, &key); e != nil {
+			if e = rows.Scan(&row.HasMoveCode, &row.AccountID, &row.Username, &row.Email, &row.Role, &row.Revision, &row.LimitsRevision, &row.Disabled, &row.Status, &libs, &row.MaxStreams, &row.MaxStreamsMode, &row.ServerMaxStreams, &row.ProfileCount, &names, &row.LastActiveAt, &row.LiveState, &libraryNames, &key); e != nil {
 				return e
 			}
+			var person *int
+			if row.MaxStreamsMode == streamlimits.Limit {
+				person = &row.MaxStreams
+			}
+			row.EffectiveMaxStreams = streamlimits.Effective(person, row.ServerMaxStreams)
 			if e = json.Unmarshal([]byte(libs), &row.AllowedLibraries); e != nil {
 				return e
 			}

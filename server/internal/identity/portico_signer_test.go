@@ -7,8 +7,18 @@ import (
 	"testing"
 )
 
+// selectPorticoFixture models a password-free Portico database, including
+// upgraded installations retaining confirmed factors. No guard is disabled.
+func selectPorticoFixture(t *testing.T, s *Service) {
+	t.Helper()
+	if _, err := s.db.Exec(`UPDATE accounts SET password_hash=X'';UPDATE identity_state SET sign_in_kind='portico'`); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func linkedMember(t *testing.T, s *Service, local, hosted string) {
 	t.Helper()
+	selectPorticoFixture(t, s)
 	if _, err := s.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,x'',?)`, local, local, local+"-profile"); err != nil {
 		t.Fatal(err)
 	}
@@ -37,39 +47,22 @@ func revokeKey(t *testing.T, s *Service, key string) int {
 	return n
 }
 
-// A television signed in by a code that a Portico-admitted session approved
-// is admitted by the same signing key, and ends with it.
-func TestATelevisionApprovedByAPorticoSessionEndsWithItsSigningKey(t *testing.T) {
+// A television admitted by the Portico device-authorization identity assertion
+// records that signer and ends with it, alongside the same account's phone.
+func TestAPorticoTelevisionSessionEndsWithItsSigningKey(t *testing.T) {
 	ctx := context.Background()
 	s, _, _ := directFixture(t)
 	linkedMember(t, s, "linked", "acc_linked")
-	in, err := s.PorticoSignIn(ctx, PorticoIdentity{AccountID: "acc_linked", SignerKeyID: "key-a"})
+	in, err := s.PorticoSignIn(ctx, PorticoIdentity{AccountID: "acc_linked", Username: "linked", SignerKeyID: "key-a"})
 	if err != nil || in.Session == nil {
 		t.Fatalf("%+v %v", in, err)
 	}
-	approver, err := s.Authenticate(in.Session.AccessToken)
-	if err != nil {
-		t.Fatal(err)
-	}
 	tv := onDevice(t, memberTV, "Living room")
-	code, err := s.StartQuick(tv, QuickStart{RequestID: "00000000-0000-4000-8000-000000000009", DeviceName: "Living room", Platform: "tvos", AppVersion: "1.0"}, true)
-	if err != nil {
-		t.Fatal(err)
+	admittedTV, err := s.PorticoSignIn(tv, PorticoIdentity{AccountID: "acc_linked", Username: "linked", SignerKeyID: "key-a"})
+	if err != nil || admittedTV.Session == nil {
+		t.Fatalf("television identity admission: %+v %v", admittedTV, err)
 	}
-	preview, err := s.ReviewQuick(ctx, code.UserCode)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = s.DecideQuick(ctx, approver, preview.RequestID, code.UserCode, "approve"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.db.Exec(`UPDATE quick_connect_v1 SET next_poll=0`); err != nil {
-		t.Fatal(err)
-	}
-	television, err := s.PollQuick(tv, code.DeviceCode)
-	if err != nil {
-		t.Fatal(err)
-	}
+	television := *admittedTV.Session
 	var signer string
 	if err = s.db.QueryRow(`SELECT signer_key_id FROM portico_admitted_families WHERE family_id=?`, television.SessionFamilyID).Scan(&signer); err != nil || signer != "key-a" {
 		t.Fatalf("the television's session records signing key %q: %v", signer, err)
@@ -95,7 +88,7 @@ func TestATelevisionApprovedByAPorticoSessionEndsWithItsSigningKey(t *testing.T)
 	}
 	// A session whose signing key was never recorded is not swept up by an
 	// empty key id.
-	plain, err := s.PorticoSignIn(ctx, PorticoIdentity{AccountID: "acc_linked"})
+	plain, err := s.PorticoSignIn(ctx, PorticoIdentity{AccountID: "acc_linked", Username: "linked"})
 	if err != nil || plain.Session == nil {
 		t.Fatal(err)
 	}
@@ -104,33 +97,32 @@ func TestATelevisionApprovedByAPorticoSessionEndsWithItsSigningKey(t *testing.T)
 	}
 }
 
-// "Does this server sign people in with Portico Accounts" is whether its claim
-// is installed, and nothing else.
-func TestHostedAttachmentIsWhetherTheClaimIsInstalled(t *testing.T) {
+// The explicit selected authority, rather than an incidental claim read,
+// determines the method offered by sign-in and invitation screens.
+func TestHostedSignInMethodUsesSelectedKind(t *testing.T) {
 	s, _, _ := directFixture(t)
 	if s.Hosted() {
-		t.Fatal("a server with no claim reports Portico Account sign-in")
+		t.Fatal("Local server reports Portico sign-in")
 	}
-	installed := false
 	s.SetupClaimReadyTx = func(_ context.Context, tx *sql.Tx) (bool, error) {
 		if tx == nil {
-			t.Fatal("the claim was read outside a transaction")
+			t.Fatal("claim read outside transaction")
 		}
-		return installed, nil
+		return true, nil
 	}
 	if s.Hosted() {
-		t.Fatal("a server whose claim is not installed reports Portico Account sign-in")
+		t.Fatal("installed claim silently changed selected Local kind")
 	}
-	installed = true
+	selectPorticoFixture(t, s)
 	if !s.Hosted() {
-		t.Fatal("a claimed server does not report Portico Account sign-in")
+		t.Fatal("Portico selected kind does not report Portico sign-in")
 	}
 	capabilities, err := s.Capabilities(context.Background())
 	if err != nil || !capabilities.HostedAttach {
 		t.Fatalf("capabilities: %+v %v", capabilities, err)
 	}
-	s.SetupClaimReadyTx = func(context.Context, *sql.Tx) (bool, error) { return true, errors.New("unreadable") }
-	if s.Hosted() {
-		t.Fatal("an unreadable claim was reported as installed")
+	s.SetupClaimReadyTx = func(context.Context, *sql.Tx) (bool, error) { return false, errors.New("unreadable") }
+	if !s.Hosted() {
+		t.Fatal("claim observation replaced canonical selected kind")
 	}
 }
