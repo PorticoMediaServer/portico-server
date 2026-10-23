@@ -13,6 +13,7 @@ import type {I18n, MessageId} from '../../i18n/src/index.ts';
  * It is not a viewer's own History (`personal-saved`), which they may pause and clear.
  */
 export type PlayHistoryEntry = Readonly<{
+  watchedMs?:number;location?:string;
   id: string;
   user: string;
   /** Named only for a profile other than the account's first. */
@@ -36,9 +37,9 @@ export type PlayHistoryEntry = Readonly<{
 }>;
 export type PlayHistoryPage = Readonly<{entries: readonly PlayHistoryEntry[]; /** Plays matching the filters; first page only. */ total?: number; nextCursor: string}>;
 
-export const PLAY_HISTORY_PERIODS = ['all', '24h', '7d', '30d', '90d'] as const;
+export const PLAY_HISTORY_PERIODS = ['all', '24h', '7d', '30d', '90d', '1y'] as const;
 export type PlayHistoryPeriod = (typeof PLAY_HISTORY_PERIODS)[number];
-export type PlayHistoryFilters = Readonly<{accountId?: string; libraryId?: string; period: PlayHistoryPeriod}>;
+export type PlayHistoryFilters = Readonly<{accountId?: string; libraryId?: string;media?:string;search?:string;sort?:string;direction?:'asc'|'desc'; period: PlayHistoryPeriod}>;
 export const PLAY_HISTORY_PAGE = 100;
 
 export interface PlayHistoryApi {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}
@@ -62,7 +63,8 @@ export function parsePlayHistory(value: unknown): PlayHistoryPage {
     if (!object(raw) || !text(raw.id, 64) || !raw.id || !text(raw.user) || !text(raw.accountId, 256) || !text(raw.kind, 64) || !text(raw.title) || !text(raw.libraryId, 256)) invalid();
     if (!text(raw.startedAt, 64) || !Number.isFinite(Date.parse(raw.startedAt)) || !amount(raw.positionSeconds) || !amount(raw.durationSeconds) || typeof raw.completed !== 'boolean') invalid();
     const entry: {-readonly [K in keyof PlayHistoryEntry]: PlayHistoryEntry[K]} = {
-      id: raw.id, user: raw.user, accountId: raw.accountId, kind: raw.kind, title: raw.title, libraryId: raw.libraryId,
+      ...(whole(raw.watchedMs)?{watchedMs:raw.watchedMs}:{}),...(text(raw.location,32)?{location:raw.location}:{}),
+ id: raw.id, user: raw.user, accountId: raw.accountId, kind: raw.kind, title: raw.title, libraryId: raw.libraryId,
       startedAt: raw.startedAt, positionSeconds: raw.positionSeconds, durationSeconds: raw.durationSeconds, completed: raw.completed,
     };
     for (const field of ['profile', 'parentTitle', 'itemId', 'device', 'platform'] as const) {
@@ -84,6 +86,7 @@ export function parsePlayHistory(value: unknown): PlayHistoryPage {
 
 export async function fetchPlayHistory(api: PlayHistoryApi, filters: PlayHistoryFilters, cursor = '', signal?: AbortSignal): Promise<PlayHistoryPage> {
   const query = new URLSearchParams({limit: String(PLAY_HISTORY_PAGE)});
+  if(filters.media)query.set('media',filters.media);if(filters.search)query.set('q',filters.search);if(filters.sort)query.set('sort',filters.sort);if(filters.direction)query.set('direction',filters.direction);
   if (filters.accountId) query.set('accountId', filters.accountId);
   if (filters.libraryId) query.set('libraryId', filters.libraryId);
   if (filters.period !== 'all') query.set('period', filters.period);

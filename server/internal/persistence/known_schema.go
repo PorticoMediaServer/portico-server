@@ -467,6 +467,7 @@ index play_history_account
 index play_history_library
 index play_history_listen_profile
 index play_history_recent
+index play_history_time_hour
 index playback_admin_retention
 index playback_channel_sessions_live
 index playback_origin_associations_asset
@@ -1111,6 +1112,7 @@ table personal_snapshots
 table personal_watched_intents
 table play_counts
 table play_history
+table play_history_time
 table playback_admin_operations
 table playback_artifacts
 table playback_audio_plans
@@ -2563,8 +2565,7 @@ view catalog_related_facets_serving
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context
-`
+view listening_book_context`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

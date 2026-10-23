@@ -3,6 +3,8 @@ package telemetry
 import (
 	"context"
 	"database/sql"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,7 +42,14 @@ func openTelemetryDatabase(t *testing.T) *sql.DB {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { db.Close() })
-	if _, e = db.Exec(`CREATE TABLE telemetry_rollups(minute_ms INTEGER PRIMARY KEY,body TEXT NOT NULL)`); e != nil {
+	raw, e := os.ReadFile("../persistence/migrations/0001_baseline.sql")
+	if e != nil {
+		t.Fatal(e)
+	}
+	schema := string(raw)
+	a := strings.Index(schema, "CREATE TABLE telemetry_rollups(")
+	b := strings.Index(schema[a:], ";") + a + 1
+	if _, e = db.Exec(schema[a:b]); e != nil {
 		t.Fatal(e)
 	}
 	return db
@@ -124,7 +133,7 @@ func TestHistorySurvivesRestartAndIsPrunedToADay(t *testing.T) {
 	now := func() time.Time { return clock }
 	first := New(Options{Sampler: &fakeSampler{gpu: true}, DB: db, Now: now})
 	// A stale row from two days ago must not come back, and must be deleted.
-	if _, e := db.Exec(`INSERT INTO telemetry_rollups VALUES(?,'{"metrics":{}}')`, clock.Add(-48*time.Hour).UnixMilli()); e != nil {
+	if _, e := db.Exec(`INSERT INTO telemetry_rollups VALUES(60000,?,'cpu',1,1,'available','')`, clock.Add(-48*time.Hour).UnixMilli()); e != nil {
 		t.Fatal(e)
 	}
 	first.Restore(context.Background())
@@ -135,14 +144,14 @@ func TestHistorySurvivesRestartAndIsPrunedToADay(t *testing.T) {
 	first.persist(context.Background(), true)
 
 	var rows int
-	if e := db.QueryRow(`SELECT count(*) FROM telemetry_rollups`).Scan(&rows); e != nil {
+	if e := db.QueryRow(`SELECT count(DISTINCT bucket_ms) FROM telemetry_rollups WHERE resolution_ms=60000`).Scan(&rows); e != nil {
 		t.Fatal(e)
 	}
 	if rows == 0 {
 		t.Fatal("closed minutes must be persisted")
 	}
 	var stale int
-	if e := db.QueryRow(`SELECT count(*) FROM telemetry_rollups WHERE minute_ms<?`, clock.Add(-24*time.Hour).UnixMilli()).Scan(&stale); e != nil {
+	if e := db.QueryRow(`SELECT count(*) FROM telemetry_rollups WHERE resolution_ms=60000 AND bucket_ms<?`, clock.Add(-24*time.Hour).UnixMilli()).Scan(&stale); e != nil {
 		t.Fatal(e)
 	}
 	if stale != 0 {
@@ -193,6 +202,56 @@ func TestActivityDaySeriesUsesAtMostSixtyRealPoints(t *testing.T) {
 	for n, p := range points {
 		if p.V != float64((p.T-points[0].T)/time.Minute.Milliseconds()+1) || n > 0 && p.T <= points[n-1].T {
 			t.Fatal("invented/interpolated point", p)
+		}
+	}
+}
+
+func TestDashboardLongRangesRestoreNormalizedRollupsWithoutInventingGaps(t *testing.T) {
+	db := openTelemetryDatabase(t)
+	clock := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	c := New(Options{Sampler: &fakeSampler{gpu: true}, DB: db, Now: func() time.Time { return clock }})
+	for n := 0; n < 410; n++ {
+		c.Collect(context.Background())
+		clock = clock.Add(24 * time.Hour)
+	}
+	c.persist(context.Background(), true)
+	restored := New(Options{Sampler: &fakeSampler{}, DB: db, Now: func() time.Time { return clock }})
+	restored.Restore(context.Background())
+	for _, window := range []string{"12h", "24h", "7d", "30d", "90d", "1y", "all"} {
+		out, ok := restored.Read(window)
+		if !ok || len(out.Series["cpu"]) > 70 {
+			t.Fatal(window, out)
+		}
+		if window == "all" && len(out.Series["cpu"]) < 50 {
+			t.Fatal("weekly history lost after restart", len(out.Series["cpu"]))
+		}
+		if len(out.Series["processCPU"]) != 0 {
+			t.Fatal("missing process history fabricated")
+		}
+	}
+	var count int
+	if e := db.QueryRow(`SELECT count(*) FROM telemetry_rollups WHERE resolution_ms=86400000`).Scan(&count); e != nil || count > 401*len(MetricNames) {
+		t.Fatal(count, e)
+	}
+	if e := db.QueryRow(`SELECT count(*) FROM telemetry_rollups WHERE resolution_ms=60000`).Scan(&count); e != nil || count > len(MetricNames) {
+		t.Fatal("minute retention", count, e)
+	}
+}
+
+func TestLiveRetainsSixtyMeasuredTwoSecondPoints(t *testing.T) {
+	clock := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	c := New(Options{Sampler: &fakeSampler{}, Now: func() time.Time { return clock }})
+	for n := 0; n < 120; n++ {
+		c.Collect(context.Background())
+		clock = clock.Add(2 * time.Second)
+	}
+	out, ok := c.Read("live")
+	if !ok || len(out.Series["cpu"]) != 60 {
+		t.Fatal(out)
+	}
+	for n, p := range out.Series["cpu"] {
+		if n > 0 && p.T-out.Series["cpu"][n-1].T != 2000 {
+			t.Fatal("live cadence", p)
 		}
 	}
 }

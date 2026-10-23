@@ -2791,9 +2791,15 @@ CREATE TABLE item_extras(
 CREATE INDEX item_extras_owner ON item_extras(owner_id,kind,item_id);
 CREATE TABLE personal_batch_receipts(profile_id TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,response TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(profile_id,operation_id)) STRICT;
 CREATE TABLE telemetry_rollups(
- minute_ms INTEGER PRIMARY KEY CHECK(minute_ms>0),
- body TEXT NOT NULL
-) STRICT;
+ resolution_ms INTEGER NOT NULL,
+ bucket_ms INTEGER NOT NULL,
+ metric TEXT NOT NULL,
+ samples INTEGER NOT NULL CHECK(samples>0),
+ total REAL NOT NULL,
+ status TEXT NOT NULL CHECK(status IN('available','limited')),
+ detail TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(resolution_ms,bucket_ms,metric)
+) STRICT, WITHOUT ROWID;
 CREATE TABLE social_groups(
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -3450,6 +3456,7 @@ CREATE TABLE playback_v1_sessions(
  last_seq INTEGER NOT NULL DEFAULT 0,
  audio_track_id TEXT NOT NULL DEFAULT '',
  subtitle_track_id TEXT NOT NULL DEFAULT '',
+ upload_limited INTEGER NOT NULL DEFAULT 0 CHECK(upload_limited IN(0,1)),
  bandwidth_kbps INTEGER NOT NULL DEFAULT 0,
  location TEXT NOT NULL DEFAULT 'local',
  lease_expires_ms INTEGER NOT NULL,
@@ -6896,8 +6903,19 @@ CREATE TABLE play_history(
  updated_ms INTEGER NOT NULL,
  position_ms INTEGER NOT NULL DEFAULT 0,
  duration_ms INTEGER NOT NULL DEFAULT 0,
+ watched_ms INTEGER NOT NULL DEFAULT 0 CHECK(watched_ms>=0),
+ last_position_ms INTEGER NOT NULL DEFAULT 0,
+ last_state TEXT NOT NULL DEFAULT 'playing',
+ location TEXT NOT NULL DEFAULT '',
  completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN(0,1)), converted INTEGER NOT NULL DEFAULT 0 CHECK(converted IN(0,1))) STRICT;
 
+CREATE TABLE play_history_time(
+ history_id INTEGER NOT NULL REFERENCES play_history(id) ON DELETE CASCADE,
+ hour_ms INTEGER NOT NULL,
+ watched_ms INTEGER NOT NULL CHECK(watched_ms>=0),
+ PRIMARY KEY(history_id,hour_ms)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX play_history_time_hour ON play_history_time(hour_ms,history_id);
 CREATE INDEX play_history_recent ON play_history(started_ms DESC,id DESC);
 
 CREATE INDEX play_history_listen_profile ON play_history(authority,account_id,profile_id,started_ms DESC,id DESC);

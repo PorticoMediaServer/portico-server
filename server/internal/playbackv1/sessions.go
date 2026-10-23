@@ -224,6 +224,7 @@ type PresentationSubtitle struct {
 // Caller is who is asking: the admitted principal, its device, and admission's
 // clamps (spec §5.3).
 type Caller struct {
+	UploadLimited *bool
 	// TransportClass is the actual normalized client link declaration, independent of Remote.
 	TransportClass string
 	Principal      identity.Principal
@@ -1120,6 +1121,12 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		if _, err := tx.ExecContext(ctx, `INSERT INTO playback_v1_sessions(`+rowColumns+`) `+rowValues,
 			r.id, r.device, r.account, r.profile, r.authority, r.startKey, r.startDigest, r.kind, r.role, r.state, r.item, r.version, r.channel, r.queueID, r.entryID, r.transfer, r.group, r.request, r.media, r.presentation, r.audioTrack, r.subtitleTrack, r.location, r.endReason, r.message, r.partIndex, r.revision, r.generation, r.mediaGeneration, r.startPosition, r.position, r.lastSeq, r.bandwidth, r.lease, r.created, r.updated, r.ended, r.pausedSince); err != nil {
 			return err
+		}
+
+		if c.UploadLimited != nil {
+			if _, e := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET upload_limited=? WHERE id=?`, *c.UploadLimited, r.id); e != nil {
+				return e
+			}
 		}
 		if err := s.Playback.PublishPresentationTx(ctx, tx, c.Principal, media.ID, view.StartPositionMs, replacing, false); err != nil {
 			return err

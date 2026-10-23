@@ -965,6 +965,7 @@ export const enUS = {
   'server.plays.period.7d': 'Last 7 days',
   'server.plays.period.30d': 'Last 30 days',
   'server.plays.period.90d': 'Last 90 days',
+  'server.plays.period.1y': 'Last year',
   'server.plays.filterUser': 'User',
   'server.plays.filterLibrary': 'Library',
   'server.plays.filterPeriod': 'Time',

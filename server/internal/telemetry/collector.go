@@ -3,7 +3,7 @@ package telemetry
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"math"
 	"portico.local/server/internal/dbwork"
 	"sort"
 	"sync"
@@ -25,7 +25,7 @@ const (
 	DetailSamples  = 300
 	RollupInterval = time.Minute
 	RollupSamples  = 24 * 60
-	persistEvery   = time.Hour
+	persistEvery   = time.Minute
 	sampleBudget   = 1500 * time.Millisecond
 )
 
@@ -167,10 +167,24 @@ func (c *Collector) Latest() Sample {
 }
 
 // Windows are the only accepted values of the window query parameter.
-var Windows = []string{"10m", "1h", "24h"}
+var Windows = []string{"live", "12h", "24h", "7d", "30d", "90d", "1y", "all", "10m", "1h"}
 
 func windowSpan(window string) (time.Duration, bool) {
 	switch window {
+	case "live":
+		return 2 * time.Minute, true
+	case "12h":
+		return 12 * time.Hour, true
+	case "7d":
+		return 7 * 24 * time.Hour, true
+	case "30d":
+		return 30 * 24 * time.Hour, true
+	case "90d":
+		return 90 * 24 * time.Hour, true
+	case "1y":
+		return 365 * 24 * time.Hour, true
+	case "all":
+		return 100 * 365 * 24 * time.Hour, true
 	case "10m":
 		return 10 * time.Minute, true
 	case "1h":
@@ -192,8 +206,8 @@ func (c *Collector) Read(window string) (Reading, bool) {
 	now := c.now().UnixMilli()
 	out := Reading{Window: window, Series: map[string][]Point{}, Status: map[string]Metric{}, ObservedAt: now}
 	c.mu.Lock()
-	source := c.detail
-	if window != "10m" {
+	source := append([]Sample{}, c.detail...)
+	if window != "10m" && window != "live" {
 		source = append(append([]Sample{}, c.rollups...), average(c.minute, c.minuteStamp))
 	}
 	latest := newSample(now)
@@ -202,6 +216,17 @@ func (c *Collector) Read(window string) (Reading, bool) {
 	}
 	c.mu.Unlock()
 	from := now - span.Milliseconds()
+	if c.db != nil && window != "live" && window != "10m" && window != "1h" {
+		if stored, err := c.readStored(context.Background(), window, from, now); err == nil {
+			for name, points := range stored {
+				out.Series[name] = points
+			}
+			for _, name := range MetricNames {
+				out.Status[name] = latest.Metrics[name]
+			}
+			return out, true
+		}
+	}
 	for _, name := range MetricNames {
 		points := []Point{}
 		for _, s := range source {
@@ -212,10 +237,20 @@ func (c *Collector) Read(window string) (Reading, bool) {
 				points = append(points, Point{T: s.At, V: m.Value})
 			}
 		}
-		if window == "24h" && len(points) > 60 {
-			selected := make([]Point, 60)
+		cap := 70
+		if window == "24h" || window == "live" {
+			cap = 60
+		}
+		if window == "10m" {
+			cap = DetailSamples
+		}
+		if window == "1h" {
+			cap = 60
+		}
+		if len(points) > cap {
+			selected := make([]Point, cap)
 			for n := range selected {
-				selected[n] = points[n*(len(points)-1)/59]
+				selected[n] = points[n*(len(points)-1)/(cap-1)]
 			}
 			points = selected
 		}
@@ -225,48 +260,48 @@ func (c *Collector) Read(window string) (Reading, bool) {
 	return out, true
 }
 
-// Restore loads persisted rollups so charts survive a restart. Rows outside the
-// retained day are dropped on the way in and deleted on the next write.
+// Stored minute/hour/day/week facts have fixed retention, no serialized graph.
+// Long reads group at the database into at most 70 buckets per metric.
+var resolutions = []struct{ step, keep int64 }{
+	{60000, 24 * 60 * 60000}, {3600000, 90 * 24 * 3600000},
+	{86400000, 400 * 86400000}, {7 * 86400000, 5200 * 7 * 86400000},
+}
+
 func (c *Collector) Restore(ctx context.Context) {
 	if c.db == nil {
 		return
 	}
-	cutoff := c.now().Add(-24 * time.Hour).UnixMilli()
-	rows, e := c.db.QueryContext(ctx, `SELECT minute_ms,body FROM telemetry_rollups WHERE minute_ms>=? ORDER BY minute_ms LIMIT ?`, cutoff, RollupSamples)
+	rows, e := c.db.QueryContext(ctx, `SELECT bucket_ms,metric,total/samples,status,detail FROM telemetry_rollups WHERE resolution_ms=60000 AND bucket_ms>=? ORDER BY bucket_ms,metric`, c.now().Add(-24*time.Hour).UnixMilli())
 	if e != nil {
 		return
 	}
 	defer rows.Close()
-	restored := []Sample{}
-	var newest int64
+	list := []Sample{}
 	for rows.Next() {
 		var at int64
-		var body string
-		if rows.Scan(&at, &body) != nil {
+		var name string
+		var m Metric
+		if rows.Scan(&at, &name, &m.Value, &m.Status, &m.Detail) != nil {
 			return
 		}
-		var s Sample
-		if json.Unmarshal([]byte(body), &s) != nil || s.Metrics == nil {
-			continue
+		if len(list) == 0 || list[len(list)-1].At != at {
+			list = append(list, newSample(at))
 		}
-		s.At = at
-		restored = append(restored, s)
-		newest = at
+		list[len(list)-1].Metrics[name] = m
 	}
 	if rows.Err() != nil {
 		return
 	}
 	c.mu.Lock()
-	c.rollups = append(restored, c.rollups...)
-	if len(c.rollups) > RollupSamples {
-		c.rollups = c.rollups[len(c.rollups)-RollupSamples:]
+	defer c.mu.Unlock()
+	c.rollups = list
+	if len(list) > 0 {
+		c.persisted = list[len(list)-1].At
 	}
-	c.persisted = newest
-	c.mu.Unlock()
 }
 
-// persist writes rollups the database has not seen yet and prunes the day. It
-// runs at most hourly, so the write is one small bounded batch.
+// Only closed minutes are committed. An interrupted minute stays a gap after a
+// restart; it is never represented as a complete minute or counted twice.
 func (c *Collector) persist(ctx context.Context, final bool) {
 	if c.db == nil {
 		return
@@ -279,44 +314,96 @@ func (c *Collector) persist(ctx context.Context, final bool) {
 			pending = append(pending, s)
 		}
 	}
-	if final && len(c.minute) > 0 {
-		pending = append(pending, average(c.minute, c.minuteStamp))
-	}
-	c.lastPersist = now
 	c.mu.Unlock()
-	if len(pending) == 0 {
-		return
-	}
 	gated, e := dbwork.Begin(ctx, c.db, dbwork.ClassMaintenance)
 	if e != nil {
 		return
 	}
-	tx := gated.Tx()
 	defer gated.Rollback()
-	written := int64(0)
+	tx := gated.Tx()
 	for _, s := range pending {
-		body, e := json.Marshal(s)
-		if e != nil {
-			continue
-		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO telemetry_rollups VALUES(?,?) ON CONFLICT(minute_ms) DO UPDATE SET body=excluded.body`, s.At, string(body)); e != nil {
-			return
-		}
-		if s.At > written {
-			written = s.At
+		for _, name := range MetricNames {
+			m := s.Metrics[name]
+			if !m.Known() || math.IsNaN(m.Value) || math.IsInf(m.Value, 0) {
+				continue
+			}
+			result, e := tx.ExecContext(ctx, `INSERT INTO telemetry_rollups(resolution_ms,bucket_ms,metric,samples,total,status,detail) VALUES(60000,?,?,1,?,?,?) ON CONFLICT DO NOTHING`, s.At, name, m.Value, m.Status, m.Detail)
+			if e != nil {
+				return
+			}
+			n, e := result.RowsAffected()
+			if e != nil {
+				return
+			}
+			if n == 0 {
+				continue
+			}
+			for _, r := range resolutions[1:] {
+				stamp := s.At - s.At%r.step
+				_, e = tx.ExecContext(ctx, `INSERT INTO telemetry_rollups(resolution_ms,bucket_ms,metric,samples,total,status,detail) VALUES(?,?,?,1,?,?,?) ON CONFLICT(resolution_ms,bucket_ms,metric) DO UPDATE SET samples=samples+1,total=total+excluded.total,status=CASE WHEN status='limited' OR excluded.status='limited' THEN 'limited' ELSE 'available' END,detail=excluded.detail`, r.step, stamp, name, m.Value, m.Status, m.Detail)
+				if e != nil {
+					return
+				}
+			}
 		}
 	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM telemetry_rollups WHERE minute_ms<?`, now-24*time.Hour.Milliseconds()); e != nil {
-		return
+	for _, r := range resolutions {
+		if _, e = tx.ExecContext(ctx, `DELETE FROM telemetry_rollups WHERE resolution_ms=? AND bucket_ms<?`, r.step, now-r.keep); e != nil {
+			return
+		}
 	}
 	if gated.Commit() != nil {
 		return
 	}
 	c.mu.Lock()
-	if written > c.persisted {
-		c.persisted = written
+	defer c.mu.Unlock()
+	c.lastPersist = now
+	if len(pending) > 0 {
+		c.persisted = pending[len(pending)-1].At
 	}
-	c.mu.Unlock()
+}
+
+func (c *Collector) readStored(ctx context.Context, window string, from, now int64) (map[string][]Point, error) {
+	step := int64(60000)
+	switch window {
+	case "7d", "30d", "90d":
+		step = 3600000
+	case "1y":
+		step = 86400000
+	case "all":
+		step = 7 * 86400000
+	}
+	if window == "all" {
+		var earliest sql.NullInt64
+		if e := c.db.QueryRowContext(ctx, `SELECT min(bucket_ms) FROM telemetry_rollups WHERE resolution_ms=?`, step).Scan(&earliest); e != nil {
+			return nil, e
+		}
+		if earliest.Valid {
+			from = max(from, earliest.Int64)
+		}
+	}
+	width := max(step, (now-from+69)/70)
+	// Stamp at the start of each aggregate; no interpolation or zero-filled gaps.
+	rows, e := c.db.QueryContext(ctx, `SELECT metric, min(bucket_ms),sum(total)/sum(samples) FROM telemetry_rollups WHERE resolution_ms=? AND bucket_ms>=? AND bucket_ms<=? GROUP BY metric,(bucket_ms-?)/? ORDER BY metric,min(bucket_ms)`, step, from, now, from, width)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := map[string][]Point{}
+	for _, name := range MetricNames {
+		out[name] = []Point{}
+	}
+	for rows.Next() {
+		var name string
+		var p Point
+		if e = rows.Scan(&name, &p.T, &p.V); e != nil {
+			return nil, e
+		}
+		if _, ok := out[name]; ok {
+			out[name] = append(out[name], p)
+		}
+	}
+	return out, rows.Err()
 }
 
 // Rollups is the retained one-minute history, oldest first. Tests assert bounds
