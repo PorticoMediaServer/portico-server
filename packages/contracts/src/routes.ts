@@ -1469,7 +1469,10 @@ export const routes = [
     "query": [
       "cursor",
       "limit",
-      "state"
+      "state",
+      "q",
+      "sort",
+      "direction"
     ],
     "errors": [
       "invalid_request",

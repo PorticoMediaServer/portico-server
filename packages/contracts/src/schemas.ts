@@ -15831,13 +15831,25 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "matchedCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "nextCursor": {
         "type": "string"
+      },
+      "totalCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
       "limit",
-      "items"
+      "items",
+      "totalCount",
+      "matchedCount"
     ],
     "type": "object"
   },
@@ -156681,6 +156693,21 @@ export const schemas = {
       "claimOperationId": {
         "type": "string"
       },
+      "context": {
+        "properties": {
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
       "expiresAt": {
         "type": "string"
       },
@@ -156728,7 +156755,8 @@ export const schemas = {
       "registration",
       "challenge",
       "expiresAt",
-      "proof"
+      "proof",
+      "context"
     ],
     "type": "object"
   },
