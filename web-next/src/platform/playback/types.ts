@@ -55,6 +55,7 @@ export type WebPlaybackPresentation = Readonly<{
   volume: number; muted: boolean; rate: number; policy: PolicyView | null;
 }>;
 export type WebPlaybackRuntimeSnapshot = Readonly<{
+  nativeVideoSurfaceActive: boolean;
   authority: WebPlaybackAuthority; sequence: number; playback: PlaybackSnapshot; dock: DockState;
   fence?: PlaybackFence; subject?: PlaybackSubject; presentation?: WebPlaybackPresentation;
   presentations: readonly WebPlaybackPresentation[];

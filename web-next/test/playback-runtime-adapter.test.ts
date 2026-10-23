@@ -1249,3 +1249,22 @@ test('platform factory owns media with browser renderer disabled and publishes i
   assert.equal(f.runtime.getSnapshot().playback.phase, 'ready');
   assert.ok(f.log.some(r => r.path.endsWith('/playback-options?versionId=v1')), 'factory media receives music instead of an idle browser slot');
 });
+
+
+test('native surface paint is false until the actual current video port reports a surface', async t => {
+  const {WebMediaPlayer} = await import('../src/platform/playback/web-media-player.ts');
+  let active = false;
+  const f = setup(t, {}, {createRender:null,subtitleSurface:false,createPlayer:(video,options)=>{
+    const player = new WebMediaPlayer(video,options);
+    Object.defineProperty(player,'nativeSurfaceActive',{get:()=>active});
+    return player;
+  }});
+  assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,false);
+  await f.runtime.play('movie'); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,false,'a factory alone grants no paint hole');
+  active=true; f.video.advance(10); await settle();
+  assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,true);
+  await f.runtime.play('song_surface'); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,false,'audio never gets a native video hole');
+  f.runtime.dispose(); assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,false);
+});
