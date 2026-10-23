@@ -33,7 +33,7 @@ if [ "$PORTICO_NATIVE_CHECK" = engine ]; then
   cargo test --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib -- --test-threads=1
   cargo test --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib mpv::local_source_tests -- --ignored --test-threads=1
 else
-  cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features shell --lib -- --test-threads=1
-  cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features shell --lib mpv::local_source_tests -- --ignored --test-threads=1
+  cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --lib -- --test-threads=1
+  cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --lib mpv::local_source_tests -- --ignored --test-threads=1
 fi
 '

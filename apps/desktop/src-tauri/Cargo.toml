@@ -21,6 +21,7 @@ path = "src/bin/engine-proof.rs"
 [features]
 default = []
 shell = ["dep:tauri", "dep:tauri-build", "dep:gtk", "dep:webkit2gtk"]
+custom-protocol = ["shell", "tauri/custom-protocol"]
 updater = ["shell", "dep:tauri-plugin-updater"]
 
 [dependencies]
