@@ -1,11 +1,11 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
 	"portico.local/server/internal/access"
+	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/identity"
 )
 
@@ -13,18 +13,25 @@ import (
 // is created only against an unspent member invitation, gets that
 // invitation's libraries, and the invitation is spent exactly once.
 func TestInviteOnlySignUpCreatesAnAccountAgainstAnInvitation(t *testing.T) {
-	f := memberLimitsFixture(t, 0)
-	f.id.RedeemInvitation = f.deps.Access.Access.RegistrationRedeemer()
-	if err := f.id.SetSelfRegistration(identity.SelfRegistrationInvite); err != nil {
+	f := administrationFixtureNew(t)
+	c := catalogtest.New(t, f.deps.DB)
+	c.Library("invite-movies", "Invited movies", "movie", t.TempDir())
+	c.Drain()
+	f.deps.Identity.RedeemInvitation = f.deps.Access.Access.RegistrationRedeemer()
+	if err := f.deps.Identity.SetSelfRegistration(identity.SelfRegistrationInvite); err != nil {
 		t.Fatal(err)
 	}
-	owner := identity.Principal{Viewer: f.owner.Viewer}
-	invite, err := f.deps.Access.Access.Invite(context.Background(), nil, owner, access.InvitationRequest{OperationID: "sign-up-invite-1", Role: identity.TierMember, AllowedLibraries: []string{f.library}})
-	if err != nil {
-		t.Fatal(err)
+	issued := f.call("POST", "/v1/admin/access/invitations", f.owner, `{"operationId":"sign-up-invite-1","role":"member","allowedLibraries":["invite-movies"]}`)
+	var invite access.Invitation
+	if err := json.Unmarshal(issued.Body.Bytes(), &invite); err != nil || issued.Code != 201 || invite.Code == "" {
+		t.Fatal("actual owner invitation", issued.Code, err)
 	}
 	register := func(username, code string) (int, string, identity.DirectSignIn) {
-		w := f.raw("POST", "/v1/auth/register", "", nil, map[string]string{"username": username, "password": "Testing1!", "invitationCode": code})
+		body, err := json.Marshal(map[string]string{"username": username, "password": "Testing1!", "invitationCode": code})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := f.call("POST", "/v1/auth/register", "", string(body))
 		var out identity.DirectSignIn
 		_ = json.Unmarshal(w.Body.Bytes(), &out)
 		return w.Code, v1Code(w), out
@@ -40,15 +47,17 @@ func TestInviteOnlySignUpCreatesAnAccountAgainstAnInvitation(t *testing.T) {
 		t.Fatalf("sign-up with a taken username: %d %s", code, name)
 	}
 	code, _, out := register("invited", invite.Code)
-	if code != 201 || out.Session == nil || out.Account.Role != identity.TierMember || len(out.Account.AllowedLibraries) != 1 || out.Account.AllowedLibraries[0] != f.library {
+	if code != 201 || out.Session == nil || out.Account.Role != identity.TierMember || len(out.Account.AllowedLibraries) != 1 || out.Account.AllowedLibraries[0] != "invite-movies" {
 		t.Fatalf("sign-up with the invitation: %d %+v", code, out.Account)
 	}
-	tokenWorks(t, f, out.Session.AccessToken, 200)
+	if w := f.call("GET", "/v1/me", out.Session.AccessToken, ""); w.Code != 200 {
+		t.Fatal("registered session", w.Code, w.Body)
+	}
 	if code, name, _ := register("second", invite.Code); code != 403 || name != "registration_invitation_required" {
 		t.Fatalf("the same invitation used twice: %d %s", code, name)
 	}
 	var accounts int
-	if err = f.db.QueryRow(`SELECT count(*) FROM accounts WHERE username IN('nocode','badcode','second')`).Scan(&accounts); err != nil || accounts != 0 {
+	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM accounts WHERE username IN('nocode','badcode','second')`).Scan(&accounts); err != nil || accounts != 0 {
 		t.Fatalf("a refused sign-up left %d accounts: %v", accounts, err)
 	}
 }

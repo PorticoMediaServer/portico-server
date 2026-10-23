@@ -210,6 +210,7 @@ CREATE TABLE reading_progress(
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
  CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_progress_publication ON reading_progress(item_id,asset_id);
+CREATE INDEX reading_progress_recent ON reading_progress(owner_key,observed_at DESC,item_id DESC,asset_id DESC);
 CREATE TABLE retained_reading_progress(
  state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
  source_id TEXT NOT NULL CHECK(length(source_id)>0),
@@ -8220,3 +8221,11 @@ CREATE TABLE library_sonic_settings(
  library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
  enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN(0,1)),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)
 ) STRICT;
+
+CREATE TABLE maintenance_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,backup_keep_count INTEGER NOT NULL DEFAULT 7 CHECK(backup_keep_count BETWEEN 1 AND 365),background_speed TEXT NOT NULL DEFAULT 'normal' CHECK(background_speed IN('gentle','normal','fast')),updated_ms INTEGER NOT NULL DEFAULT 0) STRICT;
+INSERT INTO maintenance_settings(singleton) VALUES(1);
+CREATE TABLE maintenance_retention(category TEXT PRIMARY KEY CHECK(category IN('trickplay','prepared','conversions','subtitles','downloads','logs')),days INTEGER NOT NULL CHECK(days BETWEEN 0 AND 3650)) STRICT;
+INSERT INTO maintenance_retention VALUES('trickplay',365),('prepared',90),('conversions',7),('subtitles',365),('downloads',30),('logs',30);
+INSERT INTO maintenance_windows(id,name,enabled,cadence,start_minute,duration_minutes,timezone) VALUES('heavy','Heavy background work',0,'nightly',60,300,'');
+INSERT INTO maintenance_window_days(window_id,day) VALUES('heavy','monday'),('heavy','tuesday'),('heavy','wednesday'),('heavy','thursday'),('heavy','friday'),('heavy','saturday'),('heavy','sunday');
+INSERT INTO maintenance_window_tasks(window_id,task) VALUES('heavy','analysis'),('heavy','trickplay');

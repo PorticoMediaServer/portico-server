@@ -30,7 +30,7 @@ func TestResetFileHTTPProducerContractsAndAuthority(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			f := administrationFixtureNew(t)
 			if mode == "portico" {
-				if _, e := f.deps.DB.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('owner','verified-owner');UPDATE accounts SET password_hash=X'' WHERE id='owner'`); e != nil {
+				if _, e := f.deps.DB.Exec(`UPDATE accounts SET password_hash=X'';UPDATE identity_state SET sign_in_kind='portico';INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('owner','verified-owner')`); e != nil {
 					t.Fatal(e)
 				}
 			}

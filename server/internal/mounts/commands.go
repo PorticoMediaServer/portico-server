@@ -189,7 +189,7 @@ func (s *Service) Command(ctx context.Context, actor, id string, c Command, auth
 			}
 			receipt = Receipt{c.OperationID, m.ID, m.ControlRevision, true, false, &m}
 			return s.record(tx, actor, hash, receipt)
-		})
+		}, authorize)
 		return receipt, e
 	}
 	if c.Setup != nil || c.CacheBytes != nil || c.CacheFloor != nil {
