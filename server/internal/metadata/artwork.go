@@ -120,7 +120,7 @@ func (s *Service) EntityArtworkVariant(ctx context.Context, t RepairTarget, role
 }
 
 func (s *Service) entityArtworkVariant(ctx context.Context, t RepairTarget, role, subject string, width int, version string, build bool) (*os.File, string, error) {
-	if width != ArtworkAmbientEdge && width != 400 && width != 800 && width != 1920 {
+	if width != ArtworkAmbientEdge && width != 400 && width != 800 && width != 1920 && width != 2560 {
 		return nil, "", ErrRepairInput
 	}
 
@@ -174,25 +174,27 @@ func (s *Service) entityArtworkVariant(ctx context.Context, t RepairTarget, role
 		return s.entityArtworkVariant(ctx, t, role, subject, width, version, false)
 	}
 	if err == nil {
-		var variantDigest, variantMime string
-		variantErr := tx.QueryRowContext(ctx, `SELECT o.digest,o.mime FROM artwork_variants v JOIN artwork_objects o ON o.digest=v.digest AND o.status='ready' WHERE v.source_digest=? AND v.width=?`, sourceDigest, width).Scan(&variantDigest, &variantMime)
-		if variantErr == nil {
-			digest, mime = variantDigest, variantMime
-		} else if !errors.Is(variantErr, sql.ErrNoRows) {
-			return nil, "", variantErr
-		} else {
-			var sourceWidth, sourceHeight int
-			if e := tx.QueryRowContext(ctx, `SELECT width,height FROM artwork_objects WHERE digest=? AND status='ready'`, sourceDigest).Scan(&sourceWidth, &sourceHeight); e != nil {
-				return nil, "", e
-			}
-			if sourceWidth > width || sourceHeight > width {
+		var sourceWidth, sourceHeight int
+		if e := tx.QueryRowContext(ctx, `SELECT width,height FROM artwork_objects WHERE digest=? AND status='ready'`, sourceDigest).Scan(&sourceWidth, &sourceHeight); e != nil {
+			return nil, "", e
+		}
+		// At or above the stored edge, serve the actual stored bytes even if
+		// an old width mapping happens to exist. Nothing is ever enlarged.
+		if max(sourceWidth, sourceHeight) > width {
+			var variantDigest, variantMime string
+			variantErr := tx.QueryRowContext(ctx, `SELECT o.digest,o.mime FROM artwork_variants v JOIN artwork_objects o ON o.digest=v.digest AND o.status='ready' WHERE v.source_digest=? AND v.width=? AND o.width<=? AND o.height<=?`, sourceDigest, width, width, width).Scan(&variantDigest, &variantMime)
+			if variantErr == nil {
+				digest, mime = variantDigest, variantMime
+			} else if !errors.Is(variantErr, sql.ErrNoRows) {
+				return nil, "", variantErr
+			} else {
 				if !build {
 					return nil, "", ErrArtworkPending
 				}
 				if e := gated.Commit(); e != nil {
 					return nil, "", e
 				}
-				if e := s.ensureArtworkVariant(ctx, sourceDigest, width, ""); e != nil {
+				if e := s.ensureArtworkVariant(ctx, sourceDigest, width, sourceDigest); e != nil {
 					return nil, "", e
 				}
 				return s.entityArtworkVariant(ctx, t, role, subject, width, version, false)

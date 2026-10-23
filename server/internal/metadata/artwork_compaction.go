@@ -122,11 +122,19 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	if err = recordArtworkObject(ctx, tx, installed, now); err != nil {
 		return err
 	}
+	var currentEdge int
+	if err = tx.QueryRowContext(ctx, `SELECT artwork_max_edge FROM metadata_runtime_settings WHERE singleton=1`).Scan(&currentEdge); err != nil {
+		return err
+	}
+	if currentEdge != artworkSize(ctx) {
+		return nil
+	}
 	// Closed registry: every relational reference and both undo snapshots must
 	// switch in the same transaction. Unknown future FK references fail closed.
 	for _, ref := range []struct{ table, column string }{
 		{"artwork_selections", "digest"}, {"artwork_selections", "thumbnail_digest"},
 		{"artwork_previews", "digest"}, {"artwork_uploads", "digest"}, {"artwork_uploads", "thumbnail_digest"},
+		{"artwork_variants", "digest"},
 	} {
 		suffix := ""
 		if ref.table == "artwork_selections" {

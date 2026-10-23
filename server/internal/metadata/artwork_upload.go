@@ -84,6 +84,13 @@ func (s *Service) UploadArtwork(ctx context.Context, t RepairTarget, role, subje
 	if err = authorize(tx); err != nil {
 		return RepairState{}, err
 	}
+	var currentEdge int
+	if err = tx.QueryRowContext(ctx, `SELECT artwork_max_edge FROM metadata_runtime_settings WHERE singleton=1`).Scan(&currentEdge); err != nil {
+		return RepairState{}, err
+	}
+	if currentEdge != artworkSize(ctx) {
+		return RepairState{}, ErrRepairConflict
+	}
 	before, ent, err := readRepairSnapshot(ctx, tx, t)
 	if err != nil {
 		return RepairState{}, err

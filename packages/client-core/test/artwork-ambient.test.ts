@@ -47,8 +47,8 @@ test('ambient source refuses external, malformed, non-artwork and candidate iden
 });
 
 test('foreground width policy retains all existing buckets and never selects ambient', () => {
-  assert.deepEqual(artworkSizeBuckets, [400, 800, 1920]);
-  for (const [pixels, expected] of [[1, 400], [32, 400], [64, 400], [400, 400], [500, 800], [1920, 1920]]) {
+  assert.deepEqual(artworkSizeBuckets, [400, 800, 1920, 2560]);
+  for (const [pixels, expected] of [[1, 400], [32, 400], [64, 400], [400, 400], [500, 800], [1920, 1920], [1921, 2560], [2560, 2560], [5000, 2560]]) {
     assert.equal(artworkWidthBucket(pixels, {tolerance: 1}), expected);
   }
 });

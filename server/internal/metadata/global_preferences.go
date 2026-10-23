@@ -63,6 +63,11 @@ func applyMetadataPreferencesTx(ctx context.Context, tx *sql.Tx, in MetadataSett
 			return err
 		}
 	}
+	if in.ArtworkMaxEdge != nil && *in.ArtworkMaxEdge != old.ArtworkMaxEdge {
+		if _, err = tx.ExecContext(ctx, `UPDATE metadata_artwork_size_sweep SET running=?,cursor_kind='',cursor_id=0,cursor_role='',cursor_subject='' WHERE singleton=1`, *in.ArtworkMaxEdge > old.ArtworkMaxEdge); err != nil {
+			return err
+		}
+	}
 	if in.AcoustIDKey != nil {
 		if _, err = tx.ExecContext(ctx, `UPDATE mb_jobs SET status='pending',revision=revision+1,generation=generation+1,lease='',lease_until='',next_attempt='',attempts=0,error='' WHERE kind='song' AND status IN('unresolved','unavailable','needs_selection') AND selected_id='' AND manual=0 AND EXISTS(SELECT 1 FROM music_match_observations o WHERE o.kind=mb_jobs.kind AND o.entity_id=mb_jobs.entity_id AND o.fingerprint_status IN('credential_required','provider_disabled','provider_unavailable'))`); err != nil {
 			return err
@@ -71,6 +76,11 @@ func applyMetadataPreferencesTx(ctx context.Context, tx *sql.Tx, in MetadataSett
 	if in.OnlineLookups != nil && *in.OnlineLookups != old.OnlineLookups {
 		if _, err = tx.ExecContext(ctx, `UPDATE screen_metadata_consent SET confirmed=?,revision=revision+1,confirmed_at=? WHERE singleton=1`, *in.OnlineLookups, now.UTC().Format(time.RFC3339)); err != nil {
 			return err
+		}
+		if *in.OnlineLookups {
+			if _, err = tx.ExecContext(ctx, `UPDATE metadata_artwork_size_requests SET next_attempt='' WHERE (kind,entity_id,role,subject) IN(SELECT kind,entity_id,role,subject FROM metadata_artwork_size_requests ORDER BY next_attempt,kind,entity_id,role,subject LIMIT 32)`); err != nil {
+				return err
+			}
 		}
 		// The existing consent revision fences screen work; wake parked work on either edge.
 		if _, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''`); err != nil {
@@ -105,11 +115,12 @@ func (s *Service) artworkSizeContext(ctx context.Context) (context.Context, erro
 	return withArtworkSize(ctx, edge), err
 }
 func artworkByteLimit(edge int) int {
-	if edge > artworkLargeEdge {
-		return artworkDisplayBytes * edge * edge / (artworkLargeEdge * artworkLargeEdge)
+	if edge == 2560 {
+		return 888_888
 	}
 	return artworkDisplayBytes
 }
+
 func (s *Service) artworkPreferences(ctx context.Context) (string, bool, error) {
 	var locale string
 	var photos bool
