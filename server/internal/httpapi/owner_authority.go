@@ -27,6 +27,9 @@ func (d Dependencies) ownerAuthorityTx(ctx context.Context, tx *sql.Tx, p identi
 	if _, err := d.Identity.SessionFamilyTx(ctx, tx, p); err != nil {
 		return err
 	}
+	if err := d.Identity.RequireMainProfileTx(ctx, tx, p); err != nil {
+		return err
+	}
 	switch p.Authority {
 	case "local":
 		return nil // SessionFamilyTx validates the live direct account/profile.

@@ -27,6 +27,9 @@ func familyFixture(t *testing.T) (*Service, *sql.DB, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local')`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','owner',X'00','profile',1)`); err != nil {
 		t.Fatal(err)
 	}
