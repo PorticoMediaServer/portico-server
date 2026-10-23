@@ -9,6 +9,7 @@ import {WebShellPlaybackRuntime} from '../src/platform/playback/runtime.ts';
 import {ByteCache} from '../src/platform/playback/audio/bytes.ts';
 import {PlayOnController, type WebCastPort} from '../src/platform/playback/play-on.ts';
 import {playbackPolicyNext} from '../src/platform/playback/policy.ts';
+import {watchBodyTarget, watchBodyKey} from '../src/screens/watch/body-target.ts';
 import {playbackVersionRows} from '../src/platform/playback/version-rows.ts';
 import {WebCastSender, type CastBrowser, type CastSession} from '../src/platform/cast/index.ts';
 import type {WebPlaybackSettings, WebPlaybackSource} from '../src/platform/playback/types.ts';
@@ -2031,4 +2032,19 @@ test('unsupported EQ renderer continues the same session and queue through ordin
   assert.equal(current.playback.audioEffects.rendering,false); assert.equal(current.playback.phase,'ready');
   assert.equal(f.runtime.audioEngineFacts(current.fence!),undefined);
   assert.equal(current.playback.error,undefined);
+});
+
+
+test('the retained Watch body uses only the actual current title and offered library, with stable identity across source replacement', async t => {
+  const f = setup(t);await f.runtime.play('movie', 0);await f.arrive();
+  const shown = f.runtime.getSnapshot(), target = watchBodyTarget(shown);
+  assert.deepEqual(target, {libraryId: 'library', itemId: 'movie', kind: 'movie'});
+  assert.equal(watchBodyTarget({...shown, offers: null}), undefined);
+  assert.equal(watchBodyTarget({...shown, offers: {...shown.offers!, scope: {...shown.offers!.scope, serverId: 'foreign'}}}), undefined);
+  assert.equal(watchBodyTarget({...shown, session: {...shown.session!, id: 'other-session'}}), undefined);
+  assert.equal(watchBodyTarget({...shown, offers: {...shown.offers!, current: {...shown.offers!.current!, generation: shown.offers!.current!.generation + 1}}}), undefined);
+  await f.runtime.play('movie', 20);await f.arrive();
+  assert.equal(watchBodyKey(watchBodyTarget(f.runtime.getSnapshot())!), watchBodyKey(target!));
+  await f.runtime.play('different', 0);await f.arrive();
+  assert.notEqual(watchBodyKey(watchBodyTarget(f.runtime.getSnapshot())!), watchBodyKey(target!));
 });

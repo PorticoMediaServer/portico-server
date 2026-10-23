@@ -4,7 +4,8 @@ import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {WatchTitleBody, type WatchMyList} from '../detail';
 import {WatchPlayback} from './WatchPlayback';
 import type {WatchBindings} from './types';
-import {WatchBodyOwner, watchBodyTarget, watchBodyKey, type RetainedWatchBody} from './RetainedBody';
+import {WatchBodyOwner, type RetainedWatchBody} from './RetainedBody';
+import {watchBodyTarget, watchBodyKey} from './body-target';
 
 const noSubscribe = () => () => {};
 const noSnapshot = () => undefined;
