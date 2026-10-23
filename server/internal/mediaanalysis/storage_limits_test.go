@@ -18,7 +18,7 @@ func TestOwnerAnalysisStorageLimitsApplyAtCheckpoints(t *testing.T) {
 	if service.cacheLimit(ctx) != 32<<30 {
 		t.Fatal("unset columns changed default")
 	}
-	_, err = db.Exec(`UPDATE server_settings SET "analysisStorageGiB"=64,"analysisStageStorageMiB"=1024 WHERE singleton=1`)
+	_, err = db.Exec(`INSERT INTO server_settings(singleton,"analysisStorageGiB","analysisStageStorageMiB") VALUES(1,64,1024) ON CONFLICT(singleton) DO UPDATE SET "analysisStorageGiB"=64,"analysisStageStorageMiB"=1024`)
 	if err != nil {
 		t.Fatal(err)
 	}

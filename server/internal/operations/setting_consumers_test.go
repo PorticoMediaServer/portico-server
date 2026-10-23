@@ -150,7 +150,7 @@ var settingConsumers = map[string]settingConsumer{
 	"operations.Settings.conversionMode":                                     {"internal/playback/delivery_settings.go", "ConversionMode", "Resolve actual owner audio/video conversion policy"},
 	"operations.Settings.outputFormat":                                       {"internal/playback/delivery_plan.go", "OutputFormat", "Restrict actual conversion outputs"},
 	"operations.Settings.downloadMaxQuality":                                 {"internal/downloads/delivery_policy.go", "DownloadMaxQuality", "Clamp actual download admission and preparation"},
-	"operations.Settings.musicAwayQuality":                                   {"internal/httpapi/delivery_settings_adapter.go", "MusicAwayQuality", "Supply actual remote music owner ceiling"},
+	"operations.Settings.musicAwayQuality":                                   {"internal/httpapi/telemetry_routes.go", "MusicAwayQuality", "Supply actual remote music owner ceiling"},
 	"operations.Settings.ownAddressEnabled":                                  {"cmd/server/main.go", "OwnAddressEnabled", "Gate the owner's independent certificate source"},
 	"operations.Settings.trustedProxies":                                     {"internal/httpapi/request_locality.go", "TrustedProxies", "Classify home connections and forwarded client addresses"},
 	"operations.Settings.updates.feedUrl":                                    {"cmd/server/main.go", "UpdateFeedURL", "Check the selected release feed and channel"},

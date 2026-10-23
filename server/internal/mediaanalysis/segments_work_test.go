@@ -206,7 +206,7 @@ func TestSegmentWorkerFindsASeasonsIntroAndCreditsAndRespectsTheOwner(t *testing
 	}
 	// The owner turns detection off for the server: nothing new is queued
 	// and viewers keep only what the owner made or approved.
-	f.c.Exec(`UPDATE server_settings SET "library.segmentDetection"='off' WHERE singleton=1`)
+	f.c.Exec(`INSERT INTO server_settings(singleton,"library.segmentDetection") VALUES(1,'off') ON CONFLICT(singleton) DO UPDATE SET "library.segmentDetection"='off'`)
 	f.episode("s1e6", 1, 6, 20)
 	f.settle()
 	var queued int

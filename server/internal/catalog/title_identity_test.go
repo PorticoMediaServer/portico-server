@@ -491,7 +491,7 @@ func TestTheOwnersRuleDecidesWhenMissingTitlesGo(t *testing.T) {
 	s := New(c.DB)
 	ctx := context.Background()
 	rule := func(mode string, days int) {
-		c.Exec(`UPDATE server_settings SET "library.missingTitles"=?,"library.missingTitlesDays"=? WHERE singleton=1`, mode, days)
+		c.Exec(`INSERT INTO server_settings(singleton,"library.missingTitles","library.missingTitlesDays") VALUES(1,?,?) ON CONFLICT(singleton) DO UPDATE SET "library.missingTitles"=excluded."library.missingTitles","library.missingTitlesDays"=excluded."library.missingTitlesDays"`, mode, days)
 	}
 	rule("never", 30)
 	if out, err := s.EmptyMissingDue(ctx); err != nil || out.Titles != 0 || out.Files != 0 {

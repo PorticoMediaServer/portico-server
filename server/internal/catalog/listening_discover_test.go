@@ -125,7 +125,7 @@ func TestListeningSimilarRequiresThreeActualSharingListeners(t *testing.T) {
 	candidate := c.Album(n["artist"], "Played alongside", 2021)
 	song := c.Song(candidate, 1, "/music/alongside.mp3", "Alongside")
 	c.Drain()
-	c.Exec(`UPDATE server_settings SET "home.communityActivityEnabled"=1 WHERE singleton=1`)
+	c.Exec(`INSERT INTO server_settings(singleton,"home.communityActivityEnabled") VALUES(1,1) ON CONFLICT(singleton) DO UPDATE SET "home.communityActivityEnabled"=1`)
 	c.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1)`)
 	shareFixtureProfiles(t, c.DB)
 	c.Exec(`UPDATE direct_memberships SET role='member',allowed_libraries='["music"]' WHERE account_id IN('a','b','c')`)
