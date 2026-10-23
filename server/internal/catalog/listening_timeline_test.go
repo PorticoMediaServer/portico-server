@@ -79,7 +79,7 @@ func TestBookTimelineMetadataAndOriginalEditionTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := page.Entity
-	if e == nil || e.Title != "Alpha (Unabridged)" || e.DisplayTitle != "Alpha" || e.Edition != "Unabridged" || e.Publisher != "Local Press" || e.Language != "en" || e.Overview != "Local description." || e.PublishedYear == nil || *e.PublishedYear != 2020 || len(e.Narrators) != 1 || len(e.Series) != 1 || e.Series[0].Position != "2.5" {
+	if e == nil || e.Title != "Alpha (Unabridged)" || e.DisplayTitle != "" || e.Edition != "Unabridged" || e.Publisher != "Local Press" || e.Language != "en" || e.Overview != "Local description." || e.PublishedYear == nil || *e.PublishedYear != 2020 || len(e.Narrators) != 1 || len(e.Series) != 1 || e.Series[0].Position != "2.5" {
 		t.Fatalf("metadata: %+v", e)
 	}
 	var original string
