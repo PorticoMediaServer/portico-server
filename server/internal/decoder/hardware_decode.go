@@ -113,7 +113,11 @@ func (d *HardwareDetector) probeDecodeCodecs(ctx context.Context, executable str
 			decode = append(decode, spec.device(device)...)
 		}
 		decode = append(decode, hardwareDecodeArgs(backend)...)
-		decode = append(decode, "-f", cell.mux, "-i", file, "-frames:v", "2", "-threads", "1", "-vf", "hwdownload,format="+hardwareDownloadFormat(cell.depth), "-an", "-sn", "-f", "null", "-")
+		demux := cell.mux
+		if cell.codec == "mpeg2" {
+			demux = "mpegvideo" // Raw MPEG-2 has a different demuxer/muxer name.
+		}
+		decode = append(decode, "-f", demux, "-i", file, "-frames:v", "2", "-threads", "1", "-vf", "hwdownload,format="+hardwareDownloadFormat(cell.depth), "-an", "-sn", "-f", "null", "-")
 		bounded, cancel = context.WithTimeout(ctx, timeout)
 		out[key] = d.runInput(bounded, executable, decode, []string{file}) == nil
 		cancel()

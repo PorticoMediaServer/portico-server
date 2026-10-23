@@ -108,6 +108,9 @@ func TestHardwareDecodeProbeCannotPassWithSoftwareFrames(t *testing.T) {
 			return os.WriteFile(file, []byte("controlled encoded fixture"), 0600)
 		}
 		attempts++
+		if strings.HasPrefix(filepath.Base(argValue(args, "-i")), "mpeg2-") && argValue(args, "-f") != "mpegvideo" {
+			t.Fatal("MPEG-2 muxer name was mistaken for its demuxer", args)
+		}
 		if argValue(args, "-hwaccel_output_format") != "vaapi" || !strings.HasPrefix(argValue(args, "-vf"), "hwdownload,format=") {
 			t.Fatal("decoder software fallback could satisfy probe", args)
 		}
