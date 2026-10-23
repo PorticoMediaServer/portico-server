@@ -64,6 +64,18 @@ test('dialog display keeps real container and source-local channel names without
   assert.equal(selectionMemberDisplay(channel).title, f.channel);
   assert.throws(() => selectionMemberDisplay({item: {kind: 'movie', id: 'private-id'}} as HomeSelectionMember), /display-required/);
 });
+test('selection headings preserve stored display titles and fallback titles verbatim, including editions and suffixes', () => {
+  for (const entry of [
+    {id: 'movie', kind: 'movie', title: 'The Hunger Games', displayTitle: 'The Hunger Games: Special Edition'},
+    {id: 'book', kind: 'book', title: 'A Book: Unabridged'},
+    {id: 'spaced', kind: 'movie', title: 'Fallback', displayTitle: '  Director’s Cut: Part II  '},
+    {id: 'empty', kind: 'movie', title: 'Fallback', displayTitle: ''},
+  ] as const) {
+    const member = {item: {kind: entry.kind, id: entry.id}, entry: {...entry, posterUrl: 'actual-poster'}} as unknown as HomeSelectionMember;
+    assert.deepEqual(selectionMemberDisplay(member), {id: entry.id, title: 'displayTitle' in entry ? entry.displayTitle : entry.title, posterUrl: 'actual-poster'});
+    assert.equal(member.entry?.title, entry.title);
+  }
+});
 test('actual retry receipts replace the prior failed status without counting a successful title twice', () => {
   const receipts: BulkReceipt[] = [
     {operationId: 'first', updated: 1, failed: 1, results: [{kind: 'item', id: 'one', ok: true}, {kind: 'item', id: 'two', ok: false, code: 'revision_mismatch'}]},

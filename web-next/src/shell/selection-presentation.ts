@@ -21,7 +21,7 @@ export function editorValues(preview: BulkMetadataPreview): Readonly<Record<stri
 }
 /** Dialog labels come only from the controller's bounded, fenced source members. */
 export function selectionMemberDisplay(member: HomeSelectionMember) {
-  if (member.entry) return {id: member.entry.id, title: member.entry.title, posterUrl: member.entry.posterUrl};
+  if (member.entry) return {id: member.entry.id, title: member.entry.displayTitle ?? member.entry.title, posterUrl: member.entry.posterUrl};
   if (member.collection) return {id: member.collection.collection.id, title: member.collection.collection.name, posterUrl: member.collection.members[0]?.posterUrl};
   if (member.channel) return {id: JSON.stringify([member.channel.channel.sourceId, member.channel.channel.id]), title: member.channel.channel.name, posterUrl: member.channel.channel.logoPath};
   throw new Error('home-selection-display-required');
