@@ -6,7 +6,7 @@ import {createMemoryHistory} from '@tanstack/react-router';
 import {App} from '../../src/App';
 import {router} from '../../src/router';
 import type {ShellBindings} from '../../src/shell/bindings';
-import type {SettingsBindings} from '../../src/screens/settings/Settings';
+import type {SettingsBindings, SettingsPageSnapshot} from '../../src/screens/settings/Settings';
 import {settingsRowIndex, type SettingsValue} from '../../../packages/client-core/src/presentation/settings-spec';
 import {TopBarActivity} from '../../src/kit/shell';
 import {BackupPassphraseDialog, SettingsAction, SettingsGroup, SettingsTable, type TableQuery} from '../../src/kit/settings';
@@ -29,7 +29,7 @@ const walk = (holder: any) => {
 const visit = (row: any) => {originals.set(row.id, row);for (const child of row.children ?? []) visit(child);};
 for (const section of approved.sections) walk(section);
 const changed = new Set<() => void>(), values = new Map<string, SettingsValue>();
-let snapshot = Object.freeze({loading: false});
+let snapshot: SettingsPageSnapshot = Object.freeze({loading: false, ...(parameters.get('state') === 'failed' ? {error: new Error('fixture_load_failure')} : {})}), loads = 0;
 const notify = () => {snapshot = Object.freeze({...snapshot});for (const listener of changed) listener();};
 function OwnerActivity() {
   const [open, setOpen] = useState(false);
@@ -63,7 +63,7 @@ const settings: SettingsBindings = {
   change: (row, value) => {values.set(row.id, value);notify();}, reset: row => {values.delete(row.id);notify();},
   special: row => {const c = originals.get(row.id)?.control;return c?.type === 'action' || c?.type === 'link' ? <SettingsAction appearance={c.style}>{c.label}</SettingsAction> : null;},
   section: (context, _openPanel, renderRows) => context.section.id === 'people' ? <><PeopleTable />{renderRows({groups: context.section.groups?.slice(1), advanced: context.section.advanced})}</> : undefined,
-  load: async () => {},
+  load: async () => {if (parameters.get('state') === 'failed' && ++loads > 1) {snapshot = Object.freeze({loading: false});notify();}},
   openHome: () => {void router.navigate({to: '/'});},
 };
 const viewer = {serverId: 'frame-server', authority: 'local', accountId: 'frame-account', profileId: 'frame-profile', role: 'owner'};

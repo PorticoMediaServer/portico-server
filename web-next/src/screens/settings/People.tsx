@@ -7,7 +7,7 @@ import {SettingsAction, SettingsGroup, SettingsHours, SettingsSelectionList, Set
 import {Button} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays/Dialog';
 import {SettingsRow as Row} from '../../kit/shell/SettingsSurfaces';
-import {StateView} from '../../kit/states';
+import {SettingsPageFailure} from '../../kit/settings';
 
 const t = defaultI18n.t, section = settingsSpec.find(section => section.scope === 'server' && section.id === 'people')!;
 const table = section.groups![0].rows[0].control, personSpec = section.panels!.person;
@@ -135,7 +135,7 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
   };
   return <>
     <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="small" variant="primary" icon="i-plus" iconSize={20} onClick={event => bindings.invite(event.currentTarget)}>{t(table.addLabel!)}</Button>}>
-    {error && !page && !personId ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRefresh(value => value + 1)}} secondary={{id: 'home', label: t('next.states.goHome'), onPress: bindings.openHome}} /> : <SettingsTable ref={tableRef} height={table.height}
+    {error && !page && !personId ? <SettingsPageFailure retry={() => setRefresh(value => value + 1)} home={bindings.openHome} /> : <SettingsTable ref={tableRef} height={table.height}
       label={t(section.title)} rows={(page?.items ?? []).map(row => ({id: row.accountId, label: row.username, selectable: row.accountId !== bindings.actor.accountId && managesTier(bindings.actor.role, row.role), cells: {
         person: {title: row.username, meta: row.email, avatar: Array.from(row.username)[0]?.toLocaleUpperCase()},
         role: {title: t(row.role === 'owner' ? 'next.shell.owner' : row.role === 'admin' ? 'next.shell.administrator' : 'next.settings.member'), tone: row.role === 'owner' ? 'ok' : row.role === 'admin' ? 'accent' : 'quiet'},

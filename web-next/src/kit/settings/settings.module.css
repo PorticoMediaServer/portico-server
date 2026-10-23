@@ -161,6 +161,7 @@
 .stringList li, .stringList form { display: flex; align-items: center; gap: 12px; }
 .stringList li > span, .stringList form > div { flex: 1; }
 .workspace { position: relative; isolation: isolate; display: grid; grid-template-columns: 296px minmax(0, 1fr); gap: 64px; padding: 112px var(--shell-gutter, 64px) 88px; min-height: 100dvh; color: var(--color-text); }
+.pageFailure { height: calc(100dvh - 304px); min-height: 560px; background: none; }
 .master, .detail { position: relative; min-width: 0; }
 .detail { z-index: 1; }
 .pageHeading { display: flex; align-items: flex-end; gap: 18px; margin: 0; }

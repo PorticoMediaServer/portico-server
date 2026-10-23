@@ -2,8 +2,7 @@ import {useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 
 import {defaultI18n} from '@i18n';
 import {settingsRowIndex, settingsSpec, type SettingsHolder, type SettingsRow, type SettingsSection, type SettingsValue} from '@core/presentation/settings-spec.ts';
 import {SettingsNav, type SettingsSearchGroup} from '../../kit/shell/SettingsSurfaces';
-import {SettingsPageHeading, SettingsPanel, SettingsRows, SettingsWorkspace, searchSettings, settingsRoute, type SettingPresentation, type SettingsRoute, type SettingsPanelProps} from '../../kit/settings';
-import {StateView} from '../../kit/states';
+import {SettingsPageFailure, SettingsPageHeading, SettingsPanel, SettingsRows, SettingsWorkspace, searchSettings, settingsRoute, type SettingPresentation, type SettingsRoute, type SettingsPanelProps} from '../../kit/settings';
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {settingsIconName} from '../../kit/settings/icons';
 import {ServerHeader, type ServerAudience} from '../../kit/shell/ServerIdentity';
@@ -100,7 +99,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
   return <SettingsWorkspace scope={selected.scope} navigation={navigation} compactPage={compactPage} onBack={() => setCompactPage(false)}>
     {selected.scope === 'server' && bindings.role !== 'member' && (bindings.role === 'owner' ? <ServerHeader serverName={bindings.serverName} viewerRole="owner" audience={audience} health={bindings.serverHealth?.()} facts={bindings.serverFacts()} /> : <ServerHeader serverName={bindings.serverName} viewerRole="administrator" audience="administrators" health={bindings.serverHealth?.()} facts={bindings.serverFacts()} />)}
     <SettingsPageHeading title={t(section.title)} saveState={snapshot.saveState} />
-    {fact ? <ConfigurationFact fact={fact} /> : snapshot.error ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {void bindings.load(section);}}} secondary={{id: 'home', label: t('next.states.goHome'), onPress: bindings.openHome}} /> : snapshot.loading ? <p role="status">{t('next.settings.loading')}</p> : bindings.section?.(context, openPanel, holder => rows(holder, context)) ?? rows(section, context)}
+    {fact ? <ConfigurationFact fact={fact} /> : snapshot.error ? <SettingsPageFailure retry={() => {void bindings.load(section);}} home={bindings.openHome} /> : snapshot.loading ? <p role="status">{t('next.settings.loading')}</p> : bindings.section?.(context, openPanel, holder => rows(holder, context)) ?? rows(section, context)}
     {panel && panelSpec && <SettingsPanel open onClose={() => setPanel(undefined)} audience={t(audience === 'owner' ? 'next.shell.editorAudience.owner' : 'next.shell.serverVisibility.ownerShared')} title={panelState?.title ?? (panelSpec.title ? t(panelSpec.title) : t(section.title))} description={panelState?.description} create={panelState?.create} returnFocusRef={opener}
       saveState={snapshot.saveState} tabs={panelSpec.tabs?.map(tab => ({id: tab.id, title: t(tab.title), content: rows(tab, {...panelContext, tabId: tab.id})}))} selectedTab={panel.tab} onTabChange={value => setPanel(current => current && {...current, tab: value})}>
       {rows(tab ?? panelSpec, panelContext)}
