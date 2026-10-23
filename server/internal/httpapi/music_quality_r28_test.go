@@ -13,7 +13,7 @@ func TestMusicQualityR28HTTPSourceAndSession(t *testing.T) {
 		t.Helper()
 		var out playbackv1.Options
 		f.call("GET", "/v1/items/"+f.items[0]+"/playback-options", headers, nil, 200, &out)
-		if out.Preferred == nil || out.Preferred.Quality != want || len(out.Qualities) != 6 {
+		if out.Preferred == nil || out.Preferred.Quality != want || len(out.Qualities) != 4 {
 			t.Fatal(out)
 		}
 	}

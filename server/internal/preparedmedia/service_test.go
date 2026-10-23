@@ -384,7 +384,7 @@ func TestPreparedWholeSealedRecordingEndAndMultipartAdmission(t *testing.T) {
 func TestPreparedRecipesUseCanonicalVersionedIdentity(t *testing.T) {
 	for _, current := range Profiles() {
 		r := recipeFor(current)
-		if current.Kind == "audio" {
+		if strings.HasPrefix(current.ID, "music-") {
 			quality, codec, ok := MusicProfile(current.ID)
 			if !ok || !strings.HasSuffix(current.ID, "-v1") || !r.AudioOnly || r.MusicQuality != quality || r.MusicCodec != codec {
 				t.Fatal("invalid immutable music recipe", current.ID)

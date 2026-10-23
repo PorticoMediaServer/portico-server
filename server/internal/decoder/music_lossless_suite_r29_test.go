@@ -117,13 +117,14 @@ func exerciseMusicFormat(t *testing.T, ff, probe, path, codec string, rate int, 
 	t.Logf("%s %dHz %dbit %dch source sha256=%x -> FLAC %dbit, %d audible frames", codec, facts.SampleRate, facts.BitDepth, facts.Channels, sum, depth, facts.DurationFrames)
 }
 
-// The fixture manifest is explicitly external: private APE/MPC recordings must
-// not enter Git. Missing fixtures are a named verification gap, never a decoder
-// or licensing success. Generated/public fixtures need their own checked rights.
-func TestMusicExternalAPEAndMPCFormatsR29(t *testing.T) {
+// The bundled inputs are procedural tones with construction counts and tool
+// provenance. Optional external recordings stay outside Git and require an
+// explicit absolute-path/hash/rights manifest.
+func TestMusicAPEAndMusepackFormatsR29(t *testing.T) {
 	manifest := os.Getenv("PORTICO_MUSIC_FORMAT_FIXTURES")
+	bundled := manifest == ""
 	if manifest == "" {
-		t.Skip("APE, MPC7 and MPC8 actual decode fixtures not supplied; verification remains outstanding")
+		manifest = filepath.Join("testdata", "music-formats-r29", "manifest.json")
 	}
 	raw, e := os.ReadFile(manifest)
 	if e != nil {
@@ -139,14 +140,20 @@ func TestMusicExternalAPEAndMPCFormatsR29(t *testing.T) {
 	}
 	ff, e := exec.LookPath("ffmpeg")
 	if e != nil {
-		t.Fatal(e)
+		t.Skip("ffmpeg unavailable: actual format decode not verified")
 	}
 	probe, e := exec.LookPath("ffprobe")
 	if e != nil {
-		t.Fatal(e)
+		t.Skip("ffprobe unavailable: actual format measurement not verified")
 	}
 	seen := map[string]bool{}
 	for _, f := range fixtures {
+		if bundled {
+			f.Path, e = filepath.Abs(filepath.Join(filepath.Dir(manifest), f.Path))
+			if e != nil {
+				t.Fatal(e)
+			}
+		}
 		if f.Codec != "ape" && f.Codec != "mpc7" && f.Codec != "mpc8" || !filepath.IsAbs(f.Path) || len(f.SHA256) != 64 || f.Rights != "private-user-supplied" && f.Rights != "verified-free-fixture" {
 			t.Fatal("fixture provenance incomplete")
 		}
