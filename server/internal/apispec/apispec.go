@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -32,11 +33,8 @@ var (
 // Documents returns the generated contract used by the server registry.
 func Documents() ([]Document, error) {
 	loadOnce.Do(func() {
-		dir, err := apiDirectory()
-		if err != nil {
-			loadErr = err
-			return
-		}
+		_, here, _, _ := runtime.Caller(0)
+		dir := filepath.Join(filepath.Dir(here), "..", "..", "api")
 		files := []string{filepath.Join(dir, "portico.openapi.json")}
 		for _, file := range files {
 			raw, err := os.ReadFile(file)
@@ -54,27 +52,6 @@ func Documents() ([]Document, error) {
 		}
 	})
 	return loaded, loadErr
-}
-
-// Tests run in their package directory. Locate the module's API directory
-// without relying on compiled source paths, which -trimpath makes relative.
-func apiDirectory() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return filepath.Join(dir, "api"), nil
-		} else if !os.IsNotExist(err) {
-			return "", err
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("API module directory not found")
-		}
-		dir = parent
-	}
 }
 
 // normalize turns YAML's map[any]any (from integer keys such as status codes)
