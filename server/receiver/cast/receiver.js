@@ -215,10 +215,10 @@
   // CAF routes PlayerManager's own calls through the same interceptors as the
   // media channel. Only these exact engine-created objects may bypass sender
   // gates; an external JSON request cannot reproduce their private identity.
-  var localRequests = new WeakSet();
+  var localRequests = new WeakSet(), localRequestId = 0;
   function loadMedia(request) { localRequests.add(request); return manager.load(request); }
   function mediaCommand(type, fields) {
-    var request=Object.assign({type:type},fields);
+    var request=Object.assign({type:type,requestId:++localRequestId},fields);
     localRequests.add(request);manager.sendLocalMediaRequest(request);
   }
 
@@ -923,7 +923,7 @@
     // The title is over whether or not its last report gets through: the TV must not stay on a
     // finished title, still reporting, with nobody connected to stop it.
     manager.addEventListener(events.MEDIA_FINISHED,function(event){
-      if(event&&event.endedReason&&event.endedReason!=='FINISHED')return;
+      if(!event||event.endedReason!==cast.framework.events.EndedReason.END_OF_STREAM)return;
       var owner=playback;
       if(!owner)return;
       serial(async function(){
