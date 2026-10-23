@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {completeDirectSignInChallenge, directSignIn, parseDirectSignIn} from '../src/profile-management.ts';
+import {completeDirectSignInChallenge, directSignIn, directSignInContinuation, parseDirectSignIn} from '../src/profile-management.ts';
 
 // The exact documented direct sign-in shapes (`DirectSignIn` and `Envelope`). No accountToken/accountExpiresAt; one device-bound
 // session that names its device and installation.
@@ -60,4 +60,22 @@ test('two-step sign-in returns a challenge, finished with a code', async () => {
 
 test('retired device approval response is rejected without creating a holding state', () => {
   assert.throws(() => parseDirectSignIn({deviceApprovalPending: true, deviceId: 'dev', installationId: 'inst'}), {code: 'invalid_response'});
+});
+
+test('required factor setup stays a restricted account continuation with no envelope authority added',()=>{
+ const raw={...snapshot([profile('p1')]),canManage:false,capabilities:{manageAccount:false,managePeople:false,manageServer:false,manageSignIn:false},twoStepSetupRequired:true,session:session('account')};
+ const result=parseDirectSignIn(raw);
+ assert.equal(result.kind,'signed-in');if(result.kind!=='signed-in')return;
+ assert.equal(result.snapshot.twoStepSetupRequired,true);
+ assert.equal(result.accountScoped,true);
+ assert.equal(directSignInContinuation(result),'two-step-setup');
+ assert.equal('twoStepSetupRequired' in result.session,false,'the existing Envelope remains unchanged');
+ assert.throws(()=>parseDirectSignIn({...raw,session:session('owner')}));
+ assert.throws(()=>parseDirectSignIn({...raw,canManage:true,capabilities:snapshot([]).capabilities}));
+ for(const flag of ['true',1,null])assert.throws(()=>parseDirectSignIn({...raw,twoStepSetupRequired:flag}));
+ const password=parseDirectSignIn({...raw,passwordChangeRequired:true});
+ assert.equal(directSignInContinuation(password),'password-change','password recovery precedes required setup');
+ const ordinary=parseDirectSignIn({...raw,twoStepSetupRequired:false});
+ assert.equal(directSignInContinuation(ordinary),'profile-selection');
+ assert.equal(directSignInContinuation(parseDirectSignIn({challenge:{token:'c'.repeat(43),expiresAt:'2099-01-01T00:00:00Z'}})),'challenge');
 });

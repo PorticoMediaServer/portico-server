@@ -7,3 +7,5 @@
 .surface:not([data-docked]) { pointer-events: auto; }
 :global(::view-transition-group(playback)) { animation: none; }
 .dock:fullscreen { inset: 0; width: 100%; height: 100%; }
+.remote { position: absolute; left: 0; right: 0; bottom: 0; z-index: calc(var(--layer-player) + 2); }
+.localDock[data-covered='true'] { visibility: hidden; pointer-events: none; }

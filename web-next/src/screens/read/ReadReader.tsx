@@ -1,0 +1,37 @@
+import {useCallback, useSyncExternalStore, type ReactNode} from 'react';
+import {readerErrorCode, type ReaderController, type ReaderSnapshot} from '@portico/reader-core';
+import {ReaderChrome, type ReaderChromeProps} from './ReaderChrome';
+import {ReaderSurface, type ReaderSurfaceProps} from './ReaderSurface';
+import styles from '../../kit/reader/surface.module.css';
+
+export type ReaderChromePresentation = Omit<ReaderChromeProps,
+  'title' | 'subtitle' | 'progression' | 'pageTurnsEnabled' | 'onBack' | 'onTurn' | 'onSeek' | 'subscribeSurfaceInput' | 'children' | 'fixedPage' | 'textSelectionActive'>;
+export type ReadReaderProps<P extends object> = ReaderSurfaceProps<P> & Readonly<{
+  /** Source/profile data is formatted by the real localized adapter, never a fixture here. */
+  presentation: (snapshot: ReaderSnapshot<P>) => ReaderChromePresentation;
+  /** Approved shared loading/error states; raw engine messages are never displayed. */
+  state?: (snapshot: ReaderSnapshot<P>) => ReactNode;
+  onBack: () => void;
+}>;
+
+/** The checked main controller is the single state and navigation owner for all formats. */
+export function ReadReader<P extends object>({controller, source, format, initialLocation, metadata, authority, reportError, presentation, state, onBack}: ReadReaderProps<P>) {
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  const chrome = presentation(snapshot);
+  const navigate = useCallback((target: Parameters<ReaderController<P>['navigate']>[0]) => {
+    if (!authority.isCurrent() || controller.getSnapshot().status !== 'ready') return;
+    void controller.navigate(target).catch(error => { if (authority.isCurrent()) reportError(readerErrorCode(error)); });
+  }, [authority, controller, reportError]);
+  const turn = useCallback((kind: 'next' | 'previous') => {
+    if (controller.getSnapshot().canTurnAtFit) navigate({kind});
+  }, [controller, navigate]);
+  const seek = useCallback((value: number) => navigate({kind: 'progression', value}), [navigate]);
+  return <ReaderChrome {...chrome} title={metadata ? metadata.title : snapshot.metadata?.title} subtitle={metadata ? metadata.author : snapshot.metadata?.author}
+    progression={snapshot.location?.progression} pageTurnsEnabled={snapshot.status === 'ready' && snapshot.canTurnAtFit}
+    fixedPage={format !== 'epub'} holdOpen={chrome.holdOpen || snapshot.selection !== null}
+    textSelectionActive={snapshot.selection !== null}
+    subscribeSurfaceInput={controller.subscribeSurfaceInput} onTurn={turn} onSeek={seek} onBack={onBack}>
+    <ReaderSurface controller={controller} source={source} format={format} initialLocation={initialLocation} metadata={metadata} authority={authority} reportError={reportError} />
+    {snapshot.status !== 'ready' && state && <div className={styles.state}>{state(snapshot)}</div>}
+  </ReaderChrome>;
+}
