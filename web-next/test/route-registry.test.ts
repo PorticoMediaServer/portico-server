@@ -33,3 +33,26 @@ test('Read and Person preserve actual opaque ids through dedicated destinations'
   assert.equal(webScreenIdForRoute('/read/$itemId'), 'read');
   assert.equal(webScreenIdForRoute('/person/$personId'), 'person');
 });
+
+
+test('a screen owns its query schema; fallback validators keep unregistered routes unchanged', () => {
+  const fallback = (raw: Record<string, unknown>) => typeof raw.resourceId === 'string' ? {resourceId: raw.resourceId} : {};
+  const absent = createWebScreenRegistry({});
+  assert.deepEqual(absent.validateSearch('saved', {resourceId: 'actual', unknown: 'discarded'}, fallback), {resourceId: 'actual'});
+  assert.deepEqual(absent.validateSearch('live', {channelId: 'not-forwarded'}), {});
+  let received: unknown;
+  const registry = createWebScreenRegistry({'saved': {default: defineWebScreen({id: 'saved', component: Screen, validateSearch: raw => {received = raw;return {view: 'history', sort: 'recent', resourceId: raw.resourceId};}})}});
+  const raw = {view: 'history', resourceId: 'actual', credential: 'discarded'};
+  assert.deepEqual(registry.validateSearch('saved', raw, fallback), {view: 'history', sort: 'recent', resourceId: 'actual'});
+  assert.equal(received, raw);
+});
+test('a rejecting or malformed screen parser never falls back to unvalidated navigation state', () => {
+  let fallbacks = 0;
+  const registry = createWebScreenRegistry({'live': {default: {id: 'live', component: Screen, validateSearch: () => {throw new Error('invalid-channel');}}}});
+  assert.throws(() => registry.validateSearch('live', {channelId: 'invalid'}, () => {fallbacks++;return {sourceId: 'inferred'};}), /invalid-channel/);
+  assert.equal(fallbacks, 0);
+  for (const result of [null, [], 'raw']) {
+    const bad = createWebScreenRegistry({'saved': {default: {id: 'saved', component: Screen, validateSearch: (() => result) as never}}});
+    assert.throws(() => bad.validateSearch('saved', {}), /invalid-web-search-result/);
+  }
+});
