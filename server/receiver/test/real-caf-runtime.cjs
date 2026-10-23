@@ -3,7 +3,7 @@
 // media events, clocks, controls and completion are real. No physical device claim.
 const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process');
 const assert = require('node:assert/strict'), crypto = require('node:crypto');
-const {chromium} = require('/home/justin/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const {chromium} = require(process.env.PORTICO_PLAYWRIGHT_MODULE || 'playwright');
 const arg = (name, fallback) => {const i = process.argv.indexOf(name); return i < 0 ? fallback : process.argv[i + 1];};
 const root = cp.execFileSync('git', ['rev-parse', '--show-toplevel'], {encoding:'utf8'}).trim();
 const ref = arg('--source-ref', 'origin/main');
@@ -100,6 +100,8 @@ const session = (itemId, queue) => ({id:`fixture-session-${++serial}`,revision:'
     report.runtime=await page.evaluate(()=>window.__cafRuntime);assert(report.runtime.events.some(e=>e.type==='LOADED_DATA'));assert(report.runtime.events.some(e=>e.type==='MEDIA_FINISHED'&&e.endedReason==='END_OF_STREAM'));
     assert(report.resources.some(x=>x.url==='https://ajax.googleapis.com/ajax/libs/shaka-player/4.15.56/shaka-player.compiled.js'&&x.status===200));
     assert(!report.runtime.violations.some(x=>x.blockedURI.includes('ajax.googleapis.com')));
+    assert(!report.runtime.wire.some(x=>x.direction==='out'&&JSON.stringify(x.body).includes('/v1/media/')),'private media URLs must not appear in CAF/custom status');
+    assert.equal(report.pageErrors.length,0,'real SDK page errors must remain visible failures');
     await page.evaluate(()=>window.__nativeCommand({type:'stop'}));report.status=diagnosticEmptyStyle?'passed-diagnostic-engine-playback':'passed-engine-playback';
   } catch(e){report.status='failed';report.failure=e.stack;process.exitCode=1;}
   finally {if(browser){try{const p=browser.pages()[0];report.final=await p.evaluate(()=>({runtime:window.__cafRuntime,sample:window.__mediaSample?.(),cueStyles:[...document.querySelectorAll('#cue-style')].map(e=>({tag:e.tagName,text:e.textContent,sheet:!!e.sheet,rules:e.sheet?.cssRules.length}))}));}catch{}await browser.close();}fs.mkdirSync(path.dirname(output),{recursive:true});fs.writeFileSync(output,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({status:report.status,readiness:report.readiness,playing:report.playing,progressiveNext:report.progressiveNext,failure:report.failure}));}
