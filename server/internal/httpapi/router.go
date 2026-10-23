@@ -300,6 +300,10 @@ func failure(w http.ResponseWriter, e error) {
 		write(w, 403, map[string]any{"error": map[string]any{"code": code, "message": e.Error(), "retryable": false}})
 		return
 	}
+	if errors.Is(e, hosted.ErrServicesUnavailable) {
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "portico_services_unavailable"})
+		return
+	}
 	status, code := 500, "internal"
 	if requestinput.Is(e) {
 		status, code = 400, "invalid_request"

@@ -30,13 +30,13 @@ function fakeIndexedDB() {
 }
 
 type Vault = {read(): Promise<unknown>; change(update: (current: any) => unknown): Promise<void>};
-async function vault(t: import('node:test').TestContext) {
+async function vault(t: import('node:test').TestContext, encryptedOnly = false) {
   const db = fakeIndexedDB();
   const had = ['indexedDB', 'navigator'].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const);
   Object.defineProperty(globalThis, 'indexedDB', {configurable: true, value: db.indexedDB});
   Object.defineProperty(globalThis, 'navigator', {configurable: true, value: {locks: {request: (_name: string, a: unknown, b?: unknown) => (typeof a === 'function' ? a : b as () => unknown)()}}});
   t.after(() => { for (const [name, descriptor] of had) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete (globalThis as Record<string, unknown>)[name]; } });
-  return {db, store: new BrowserProtectedStore('portico.test.vault')};
+  return {db, store: new BrowserProtectedStore('portico.test.vault', 192000, encryptedOnly)};
 }
 const record = (token: string) => ({version: '1', token});
 const refresh = (store: Vault) => {
@@ -126,4 +126,24 @@ test('without browser encryption (a page on plain HTTP) a change reads, decides 
   await store.change(current => { seen = current; return record('two'); });
   assert.equal(seen, undefined);
   assert.deepEqual(await store.read(), record('two'));
+});
+
+test('encrypted-only pending vault refuses a plaintext record without consuming it', async t => {
+  const {db, store} = await vault(t, true);
+  const old = {version: 2, plain: JSON.stringify({pending: 'specimen'})};
+  db.data.set('selected', old);
+  await assert.rejects(store.read(), savedConnectionDamaged);
+  assert.equal(db.data.get('selected'), old);
+  await store.change(() => ({pending: 'fresh'}));
+  assert.equal((db.data.get('selected') as {version: number}).version, 1);
+  assert.deepEqual(await store.read(), {pending: 'fresh'});
+});
+test('encrypted-only pending vault cannot downgrade to HTTP plaintext storage', async t => {
+  const {db, store} = await vault(t, true);
+  const before = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  Object.defineProperty(globalThis, 'crypto', {configurable: true, value: {getRandomValues() {throw new Error('No cryptographic work is allowed.');}}});
+  t.after(() => {if (before) Object.defineProperty(globalThis, 'crypto', before);});
+  await assert.rejects(async () => store.read(), {code: 'secure_context_required'});
+  await assert.rejects(async () => store.change(() => ({pending: 'never-written'})), {code: 'secure_context_required'});
+  assert.equal(db.data.size, 0);
 });

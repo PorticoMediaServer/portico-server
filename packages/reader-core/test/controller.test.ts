@@ -119,6 +119,30 @@ test('settings updates during initial apply queue behind that apply',async()=>{
   const updating=f.controller.updatePreferences({theme:'light',textSize:3,twoPages:false});
   pending.resolve();await Promise.all([opening,updating]);assert.equal(peak,1);assert.equal(f.seen.at(-1)?.theme,'light');await f.controller.close();
 });
+test('authoritative catalogue omission never revives embedded file identity',async()=>{
+  const f=fixture();Object.defineProperty(f.document,'metadata',{value:{title:'Embedded title',author:'Embedded author',language:'en',pageCount:40,direction:'rtl'}});
+  await f.controller.open({source,format:'epub',container,metadata:{title:'Owner catalogue title'}});
+  const metadata=f.controller.getSnapshot().metadata;
+  assert.equal(metadata?.title,'Owner catalogue title');assert.equal(metadata?.author,undefined);assert.equal(metadata?.language,undefined);
+  assert.equal(f.mount.metadata,metadata);
+  assert.equal(metadata?.pageCount,40);assert.equal(metadata?.direction,'rtl');await f.controller.close();
+});
+test('previews use one current document, own bytes, enforce bounds and discard late cancelled results',async()=>{
+  const f=fixture(),pending=deferred<import('../src/ports.ts').ReaderPageImage>();let signal!:AbortSignal,calls=0;
+  Object.defineProperty(f.document,'metadata',{value:{pageCount:2}});
+  const bytes=new Uint8Array([1,2,3]);
+  f.document.page=async(index,options)=>{calls++;assert.equal(index,1);assert.equal(options.width,120);signal=options.signal;return calls===1?{mime:'image/png',bytes,width:120,height:180}:pending.promise;};
+  await f.controller.open({source,format:'epub',container});
+  const options={width:120,signal:new AbortController().signal};
+  const image=await f.controller.page(1,options);assert.notEqual(image.bytes,bytes);bytes[0]=9;assert.equal(image.bytes[0],1);
+  await assert.rejects(f.controller.page(2,options),{code:'invalid_location'});
+  await assert.rejects(f.controller.page(0,{...options,width:2049}),{code:'limit_exceeded'});assert.equal(calls,1);
+  const preview=f.controller.page(1,options);const rejected=assert.rejects(preview,{code:'aborted'});
+  await f.controller.close();assert.ok(signal.aborted);await rejected;
+  pending.resolve({mime:'image/png',bytes,width:120,height:180});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.controller.getSnapshot().status,'closed');assert.equal(f.docsDisposed,1);
+  await assert.rejects(f.controller.page(1,options),{code:'closed'});
+});
 test('gesture activity publishes changed measured zoom before forwarding and preserves no-op snapshot identity',async()=>{
   const f=fixture();let scale=1,fit:'page'|'width'|undefined='page',canTurn=true,publications=0,inputs=0;
   f.view.getZoom=()=>({scale,...(fit?{fit}:{})});f.view.canTurnAtFit=()=>canTurn;

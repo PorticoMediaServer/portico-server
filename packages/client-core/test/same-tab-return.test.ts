@@ -27,11 +27,12 @@ test('a member return prepares genuine key proof/PKCE without sending the server
   calls++;const payload=new TextEncoder().encode(JSON.stringify({kind:'portico.challenge-proof',version:'1',serverId,publicKey:key,fingerprint,challenge:'challenge_A',nonce:body.nonce,installationId:'i'.repeat(43)}));
   return {challenge:'challenge_A',proof:{payload:routeBase64(payload),signature:routeBase64(new Uint8Array(await crypto.subtle.sign('Ed25519',pair.privateKey,payload)))}};
  }};
- const input={purpose:'sign-in' as const,claimOperationId:'',registrationId:'ret_'+'r'.repeat(43),installationId:'i'.repeat(43),moveTicket:secret};
+ // The installed operation identifies the route tuple; it grants no owner outcome.
+ const input={purpose:'sign-in' as const,claimOperationId:'installed_operation',registrationId:'ret_'+'r'.repeat(43),installationId:'i'.repeat(43),moveTicket:secret};
  const start=await prepareSameTabReturn(api as never,store,input);
- assert.equal(calls,1);assert.equal(start.purpose,'sign-in');assert.equal(start.claimOperationId,'');assert.equal(saved?.moveTicket,secret);
+ assert.equal(calls,1);assert.equal(start.purpose,'sign-in');assert.equal(start.claimOperationId,'installed_operation');assert.equal(saved?.moveTicket,secret);
  assert.equal(JSON.stringify(start).includes(secret),false);assert.equal('verifier' in start,false);assert.equal('moveTicket' in start,false);assert.equal(start.codeChallenge.length,43);
- for(const patch of [{claimOperationId:'owner_claim'},{purpose:'switch' as const},{moveCode:secret}])await assert.rejects(prepareSameTabReturn(api as never,store,{...input,...patch}));
+ for(const patch of [{claimOperationId:'invalid operation!'},{purpose:'switch' as const},{moveCode:secret}])await assert.rejects(prepareSameTabReturn(api as never,store,{...input,...patch}));
  assert.equal(calls,1);
 });
 test('member exchange sends its once-only proof only to the captured server and retires a late grant after cancellation',async()=>{
