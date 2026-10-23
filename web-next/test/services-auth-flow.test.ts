@@ -72,13 +72,25 @@ test('disposing a pending bootstrap prevents late state publication or automatic
 
 test('canceling provider onboarding cancels the actual browser-bound transaction without adopting a session', async () => {
   const p = port();
-  p.value.client.transaction = async () => ({transactionId: 'current', provider: 'apple', mode: 'login', status: 'onboarding', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: true, needsUsername: true, mfaRequired: false, suggestedName: 'Actual callback name'});
+  p.value.client.transaction = async () => ({transactionId: 'current', provider: 'apple', mode: 'login', status: 'onboarding', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: true, needsUsername: true, mfaRequired: false, suggestedName: 'Actual callback name', verifiedEmail: 'actual@privaterelay.appleid.com'});
   const flow = new ServicesAuthFlow(p.value, p.done);
   await flow.initialize(); assert.equal(flow.getSnapshot().mode, 'provider');
+  assert.equal(flow.getSnapshot().verifiedEmail, 'actual@privaterelay.appleid.com');
   await flow.cancelProvider();
   assert.deepEqual(p.calls[0].slice(0, 3), ['/v1/identity/cancel', 'POST', undefined]);
   assert.equal(flow.getSnapshot().mode, 'signin'); assert.equal(flow.getSnapshot().suggestedName, undefined);
+  assert.equal(flow.getSnapshot().verifiedEmail, undefined);
   assert.equal(p.authenticated(), 0); assert.equal(p.completed(), 0); flow.dispose();
+});
+
+test('provider onboarding never substitutes an existing account contact or invents a callback name', async () => {
+  const p = port();
+  p.value.client.transaction = async () => ({transactionId: 'current', provider: 'google', mode: 'login', status: 'onboarding', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: true, needsUsername: true, mfaRequired: false});
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize();
+  assert.equal(flow.getSnapshot().provider, 'google');
+  assert.equal(flow.getSnapshot().verifiedEmail, undefined);
+  assert.equal(flow.getSnapshot().suggestedName, undefined);
+  assert.equal(p.authenticated(), 0); flow.dispose();
 });
 
 test('provider creation keeps the drawn ready step and refuses Continue after a family change', async () => {
@@ -92,7 +104,10 @@ test('provider creation keeps the drawn ready step and refuses Continue after a 
   const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize();
   await flow.finishProvider('harbourview', 'Alex');
   assert.equal(flow.getSnapshot().mode, 'ready'); assert.equal(p.completed(), 0);
+  assert.deepEqual(flow.readyAccount(), {name: 'Alex', username: 'harbourview'});
+  assert.equal(Object.hasOwn(flow.getSnapshot(), 'session'), false);
   session = {...session, familyId: 'another-family'};
+  assert.equal(flow.readyAccount(), undefined);
   await flow.continue();
   assert.equal(p.completed(), 0); assert.equal((flow.getSnapshot().error as ApiError).code, 'account_changed');
   flow.dispose();

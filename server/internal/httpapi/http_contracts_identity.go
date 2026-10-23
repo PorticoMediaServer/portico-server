@@ -71,11 +71,7 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:201
-	if err := apikit.RegisterHTTP[struct {
-		CurrentPassword string "json:\"currentPassword\""
-		NewPassword     string "json:\"newPassword\""
-		Code            string "json:\"code\""
-	}, struct{}](registry, apikit.Metadata{ID: "post_direct_password", Method: "POST", Path: "/v1/direct/password", Summary: "Run account password", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[identity.DirectPasswordChange, struct{}](registry, apikit.Metadata{ID: "post_direct_password", Method: "POST", Path: "/v1/direct/password", Summary: "Run account password", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:217

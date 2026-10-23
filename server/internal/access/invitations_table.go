@@ -21,10 +21,17 @@ type invitationTableCursor struct {
 	ID      string `json:"id"`
 }
 
+// InvitationTablePage is the existing People list's counted projection. Counts
+// are computed with the page before LIMIT, never from a partial client page.
+type InvitationTablePage struct {
+	InvitationPage
+	TotalCount   int64 `json:"totalCount"`
+	MatchedCount int64 `json:"matchedCount"`
+}
+
 // InvitationTable supplies the existing invitation list's table projection.
 // Counts, visible search, ordering and the page share one reauthorized read.
-// Its count results are separate until the contracts steward adds the canonical
-// response fields; this repository does not publish a second list endpoint.
+// The existing HTTP list projects these counts with the same page.
 func (s *Store) InvitationTable(ctx context.Context, auth Authorize, actor identity.Principal, q InvitationQuery, search, sort, direction string) (out InvitationPage, total, matched int64, err error) {
 	limit, err := pageLimit(q.Limit)
 	if err != nil {

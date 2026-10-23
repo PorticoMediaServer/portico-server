@@ -12,6 +12,7 @@ import {castPlayerMessages} from './cast-player.ts';
 import {mediaMessages} from './media.ts';
 import {homeMessages} from './home.ts';
 import {savedMessages} from './saved.ts';
+import {liveMessages} from './live.ts';
 import {controlsNativeMessages} from './controls-native.ts';
 import {overlaysNativeMessages} from './overlays-native.ts';
 import {artworkNativeMessages} from './artwork-native.ts';
@@ -26,8 +27,10 @@ import {homeContractsMessages} from './home-contracts.ts';
 import {selectionMessages} from './selection.ts';
 import {selectionNativeMessages} from './selection-native.ts';
 import {homeNativeMessages} from './home-native.ts';
+import {dashboardMessages} from './dashboard.ts';
 import {settingsMessages} from './settings.ts';
 import {settingsSpecMessages} from './settings-spec.ts';
+import {readerMessages} from './reader.ts';
 
 export const nextMessages = {
   ...platformMessages,
@@ -44,6 +47,7 @@ export const nextMessages = {
   ...mediaMessages,
   ...homeMessages,
   ...savedMessages,
+  ...liveMessages,
   ...controlsNativeMessages,
   ...overlaysNativeMessages,
   ...artworkNativeMessages,
@@ -58,8 +62,10 @@ export const nextMessages = {
   ...selectionMessages,
   ...selectionNativeMessages,
   ...homeNativeMessages,
+  ...dashboardMessages,
   ...settingsMessages,
   ...settingsSpecMessages,
+  ...readerMessages,
 } as const satisfies Record<`next.${string}`, string>;
 
 export type NextMessageId = keyof typeof nextMessages;

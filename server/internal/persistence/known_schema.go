@@ -431,6 +431,7 @@ index metadata_tags_facet
 index metadata_tags_name
 index metadata_work_expiry
 index mount_operations_retention
+index music_sonic_embeddings_entity
 index music_sonic_embeddings_model
 index music_virtual_tracks_entity
 index networking_certificates_scope
@@ -523,6 +524,7 @@ index queues_v1_idle
 index queues_v1_owner
 index quick_connect_expiry_v1
 index reading_progress_publication
+index reading_progress_recent
 index rec_profile_signals_positive_recent
 index rec_profile_signals_recent
 index rec_profile_signals_work
@@ -1024,7 +1026,9 @@ table lyric_resources
 table lyric_revisions
 table lyric_selections
 table maintenance_policy
+table maintenance_retention
 table maintenance_retention_rows
+table maintenance_settings
 table maintenance_table_bounds
 table maintenance_window_days
 table maintenance_window_tasks

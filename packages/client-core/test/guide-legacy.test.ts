@@ -3,10 +3,22 @@ import assert from 'node:assert/strict';
 import {parseChannelGuide} from '../src/channel-guide.ts';
 import {GuideWindowStore, HOUR_MS, legacyChannel, legacyChannelSources, legacyGuideSource, legacyGuideState, legacyProgram, legacyProgramme, layoutRow, pxPerMsFor, type GuideChannelRow} from '../src/guide/index.ts';
 import {demoChannels, demoPrograms} from '../src/guide/testing/fixture.ts';
+import {legacyChannelRow} from '../src/guide/legacy-source.ts';
 
 const settle = async () => { for (let i = 0; i < 30; i++) await new Promise(setImmediate); };
 const SERVER = 'srv';
 const NOW = Date.parse('2026-09-22T19:20:00Z');
+
+test('a captured channel search reaches directory, named programmes and neighbor reads', async () => {
+  const {api, requests} = legacyApi(), stop = new AbortController();
+  const source = legacyGuideSource(api, SERVER, {kind: 'live-source', sourceId: 'antenna', timezone: 'UTC', search: 'Summit'});
+  const page = await source.channels(0, 1, stop.signal);
+  await source.programs([page.items[0]!.id], NOW, NOW + HOUR_MS, stop.signal);
+  await source.neighbor?.(page.items[0]!, 1, stop.signal);
+  assert.ok(requests.some(path => path.startsWith('/v1/guide/channels?')));
+  assert.ok(requests.some(path => path.startsWith('/v1/guide?')));
+  assert.ok(requests.every(path => new URL(path, 'https://example.test').searchParams.get('search') === 'Summit'));
+});
 
 /** Current directory, source summaries and named programme windows over the demo fixture. */
 function legacyApi(opts: {library?: boolean; failKind?: string; refreshState?: string} = {}) {
@@ -99,6 +111,18 @@ test('guide adapter: rows and programs carry their /v1/guide objects and descrip
   const forged: GuideChannelRow = {...items[0]!, native: {...native}};
   assert.equal(legacyChannel(forged), undefined);
   assert.equal(legacyProgramme({...first, native: {}}), undefined);
+});
+
+test('guide adapter preserves the authorized mark exactly and leaves absent marks absent', async () => {
+  const {api} = legacyApi();
+  const page = await legacyGuideSource(api, SERVER, {kind: 'live-source', sourceId: 'antenna', timezone: 'UTC'})
+    .channels(0, 1, new AbortController().signal);
+  const channel = legacyChannel(page.items[0]!)!;
+  assert.equal(page.items[0]!.mark, undefined);
+  const mark = {text: 'Q', seed: 'actual-source/channel-seed'};
+  const marked = legacyChannelRow({...channel, mark});
+  assert.deepEqual(marked.mark, mark);
+  assert.equal(legacyChannel(marked)?.mark, mark);
 });
 
 test('guide adapter: All channels joins live sources and Library Channels, ordered, and survives one kind failing', async () => {

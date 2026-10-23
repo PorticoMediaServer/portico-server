@@ -1,24 +1,32 @@
 import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {ServerSignInProbe, parseServerSignIn, type ServerSignIn} from '@core/sign-in.ts';
-import {directSignIn, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
+import {directSignIn, directSignInContinuation, shouldRetireAccountSession, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
 import {inspectDirectServer, connectPairedServer, connectPairedPorticoServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
-import {assertFirstContactIdentity, RouteError, type ServerPin} from '@core/route-identity.ts';
+import {assertFirstContactIdentity, RouteError, sameServerPin, type ServerPin} from '@core/route-identity.ts';
 import {knownServerRoutes, type AppSessionStore} from '@core/app-sessions.ts';
 import {acceptPorticoInvitation, type HostedRequestApi} from '@core/portico-servers.ts';
 import type {JoinLink} from '@core/join-link.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {requestOwnerResetFile, verifyOwnerResetFile, verifyMemberResetCode, changeResetPassword, type ResetFileLocation} from '@core/account-reset.ts';
 import {MemberAccountMoveClient, type MoveCodePreview} from '@core/account-move.ts';
-import {CodedError} from '@core/server-messages.ts';
+import {IdentityClient, type TwoFactorEnrolment} from '@core/identity-client.ts';
+import {CodedError, unreadableServerResponse} from '@core/server-messages.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {decodePreviewInvitationResponse, decodePostAccessInvitationsAcceptResponse} from '../../../packages/contracts/src/decoders.ts';
 import type {PreviewInvitationResponse} from '../../../packages/contracts/src/types.ts';
-import {browserAppSessions, browserConnectionEnvironment, restoreBrowserConnection} from './server-connections';
+import {browserAppSessions, browserConnectionEnvironment, restoreBrowserConnection, observeBrowserSessionChanges} from './server-connections';
 import {browserAppSessionActions, type BrowserAppSessionActions} from './app-sessions';
 import {browserServerDisplay} from './server-display';
+import {BrowserProfileRecovery} from './profile-recovery';
+import {createBrowserRegisteredSignIn, type BrowserRegisteredSignIn} from './registered-sign-in';
+import type {CapturedPorticoReturn} from './portico-return-dispatch';
+import {buildHostedSignInStartURL} from '@core/hosted-sign-in-start.ts';
+
+type RegisteredController=Pick<BrowserRegisteredSignIn,'prepare'|'finish'|'completeChallenge'|'cancel'>;
+type RegisteredCompletion=Awaited<ReturnType<RegisteredController['finish']>>;
 
 export type AccountEntryState = Readonly<{
- phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined'|'move-code'|'move-local'|'move-portico';
+ phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined'|'move-code'|'move-local'|'move-portico'|'two-step-setup';
  server?:ServerSignIn; origin?:string; pin?:ServerPin; snapshot?:DirectSnapshot;
  invitation?:PreviewInvitationResponse; joined?:Readonly<{origin:string;signIn:'local'|'portico'}>;
  movePreview?:MoveCodePreview;
@@ -33,6 +41,8 @@ type EntryPorts = Readonly<{
  retire?:(api:HttpLocalApi,session:LocalSession)=>Promise<void>;
  temporary?:(source:HttpLocalApi,session:LocalSession)=>HttpLocalApi;
  invitationDestination?:'adopt'|'server-origin';
+ observeSelection?:(changed:()=>void)=>()=>void;
+ registered?:()=>Readonly<{controller:RegisteredController;installationId:()=>string}>;
  rememberName?:(api:HttpLocalApi,name:string)=>void;
 }>;
 
@@ -41,17 +51,58 @@ type EntryPorts = Readonly<{
 export class BrowserAccountEntry {
  private state:AccountEntryState=Object.freeze({phase:'welcome'});
  private readonly listeners=new Set<()=>void>();
+ private readonly retiredListeners=new Set<()=>void>();private offSelection?:()=>void;
  private epoch=0;private controller?:AbortController;private api?:HttpLocalApi;private session?:LocalSession;
  private challenge?:Extract<DirectSignIn,{kind:'challenge'}>;private challengeRevision?:number;private disposed=false;
+ private registered?:RegisteredController;private registeredChallenge?:RegisteredController;
  private invitationCode?:string;private joinedAccountId?:string;private joinedUsername?:string;
  private moveProof?:Readonly<{code:string;revision:number;preview:MoveCodePreview}>;
  readonly probe:ServerSignInProbe;
  constructor(private readonly ports:EntryPorts,probe=new ServerSignInProbe()){this.probe=probe;}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
- private publish(value:AccountEntryState){if(this.disposed)return;this.state=Object.freeze(value);for(const fn of this.listeners)fn();}
+ private publish(value:AccountEntryState){if(this.disposed)return;this.state=Object.freeze(value);for(const fn of this.listeners){try{fn();}catch{ /* One view cannot undo a committed credential or block other subscribers. */ }}}
+ subscribeAuthorityRetired=(listener:()=>void)=>{this.retiredListeners.add(listener);return()=>{this.retiredListeners.delete(listener);};};
+ private retired(){for(const listener of this.retiredListeners){try{listener();}catch{ /* Clear every other secret-bearing view too. */ }}}
+ private stopAuthorityWatch(){const off=this.offSelection;this.offSelection=undefined;try{off?.();}catch{ /* Retirement must still clear the captured authority. */ }}
  private operation(){this.controller?.abort();const epoch=++this.epoch,controller=this.controller=new AbortController();return {signal:controller.signal,current:()=>!this.disposed&&epoch===this.epoch&&!controller.signal.aborted};}
- private release(){this.api?.getRouteConnection()?.dispose();this.api=undefined;this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;this.moveProof=undefined;}
+ private release(){
+  this.stopAuthorityWatch();const api=this.api,registered=this.registered,hadAuthority=!!this.session||!!this.challenge||!!registered;
+  this.api=undefined;this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;this.moveProof=undefined;this.registered=undefined;this.registeredChallenge=undefined;
+  if(registered)void registered.cancel().catch(()=>{});
+  if(hadAuthority)this.retired();api?.getRouteConnection()?.dispose();
+ }
+ /** Read canonical selection after credential-free change hints. The private
+  * captured grant defines this lifetime; no family id is added to public state. */
+ private watchAuthority(){
+  this.stopAuthorityWatch();
+  const observe=this.ports.observeSelection,api=this.api,session=this.session,challenge=this.challenge??this.registeredChallenge,revision=this.challengeRevision,pin=api?.getRouteConnection()?.pin,kind=this.state.server?.signIn;
+  if(!observe||!api||!pin||!session&&!challenge)return;
+  let stopped=false,reading=false,changes=0;
+  const current=()=>!stopped&&!this.disposed&&this.api===api&&(session?!!this.session: (this.challenge??this.registeredChallenge)===challenge);
+  const check=async()=>{
+   ++changes;if(reading)return;reading=true;
+   try{while(current()){
+    const expected=changes;
+    if(session){
+     const selected=await this.ports.store.selected();if(!current())return;
+     const saved=selected?.connection.session;
+     if(!selected||selected.signIn!==kind||!sameServerPin(selected.connection.pin,pin)||!saved||saved.sessionFamilyId!==session.sessionFamilyId||(['serverId','authority','accountId','profileId','role'] as const).some(key=>saved.viewer[key]!==session.viewer[key])){this.cancel();return;}
+     // A rotation is the same private lifetime, with its actual saved bearer.
+     if(this.session?.accessToken!==saved.accessToken){this.session=saved;api.setAccessToken(saved.accessToken);}
+    }else{
+     const selected=await this.ports.store.read();if(!current())return;
+     if(selected.revision!==revision){this.cancel();return;}
+    }
+    if(expected===changes)return;
+   }}catch(error){if(current()){this.cancel();this.publish({phase:'welcome',error});}}
+   finally{reading=false;}
+  };
+  let off:()=>void;
+  try{off=observe(()=>{void check();});}catch(error){this.cancel();this.publish({phase:'welcome',error});return;}
+  if(!current()){stopped=true;off();return;}
+  this.offSelection=()=>{stopped=true;off();};void check();
+ }
  cancel(){++this.epoch;this.controller?.abort();this.probe.cancel();this.release();this.invitationCode=undefined;this.joinedAccountId=undefined;this.joinedUsername=undefined;this.publish({phase:'welcome'});}
  address(){this.cancel();this.publish({phase:'address'});}
  async inspect(address:string,linkId?:string){
@@ -87,7 +138,8 @@ export class BrowserAccountEntry {
   await cleanup.request(routePath('delete_sessions_current'),'DELETE',undefined,AbortSignal.timeout(5000)).catch(()=>{});
  }
  private async accept(result:DirectSignIn,api:HttpLocalApi,revision:number,op:ReturnType<BrowserAccountEntry['operation']>,hosted?:RememberedServer['hosted']){
-  if(result.kind==='challenge'){if(op.current()){this.challenge=result;this.challengeRevision=revision;this.publish({...this.state,phase:'challenge',busy:false});}return;}
+  if(result.kind==='challenge'){if(op.current()){this.challenge=result;this.challengeRevision=revision;this.watchAuthority();this.publish({...this.state,phase:'challenge',busy:false});}return;}
+  this.stopAuthorityWatch();
   try{
    if(!op.current())throw new Error('Sign-in was cancelled.');
    if(!this.state.server||result.snapshot.serverId!==this.state.server.id)throw new Error('The server identity changed.');
@@ -97,13 +149,23 @@ export class BrowserAccountEntry {
     if(op.current())this.publish({...this.state,phase:'joined',joined:{origin:this.state.origin!,signIn:this.state.server.signIn},busy:false,error:undefined});
     this.invitationCode=undefined;return;
    }
+   const previous=await this.ports.store.selected(),pin=api.getRouteConnection()?.pin;
+   if(!op.current())throw new CodedError('cancelled','The server selection changed.');
    api.setAccessToken(result.session.accessToken);
    const env={...this.ports.environment(result.snapshot.serverId),storage:this.ports.store.connectionStorage(result.snapshot.serverId,{signIn:this.state.server.signIn,hostedAccount:hosted,expectedRevision:revision})};
    await this.ports.remember(api,result.session,env,hosted,op.current);
    if(!op.current())return;
+   const installed=await this.ports.store.selected();
+   if(!op.current())return;
+   if(!pin||!installed||!sameServerPin(installed.connection.pin,pin)||installed.connection.session.sessionFamilyId!==result.session.sessionFamilyId||installed.connection.session.viewer.accountId!==result.snapshot.account.id)throw new CodedError('cancelled','The server selection changed.');
    this.session=result.session;
-   this.publish({...this.state,snapshot:result.snapshot,busy:false,error:undefined,phase:result.passwordChangeRequired?'password-change':result.accountScoped?'profiles':'ready'});
-  }catch(error){await this.retire(api,result.session);if(op.current())api.setAccessToken('');throw error;}
+   // Cleanup is for this exact superseded account grant only. It never runs
+   // before durable admission, and never revokes the current or a peer family.
+   if(previous?.signIn===installed.signIn&&previous.connection.session.viewer.role==='account'&&previous.connection.session.viewer.authority===result.session.viewer.authority&&previous.connection.session.viewer.accountId===result.snapshot.account.id&&sameServerPin(previous.connection.pin,pin)&&shouldRetireAccountSession(previous.connection.session,result.session))void this.retire(api,previous.connection.session).catch(()=>{});
+   const continuation=directSignInContinuation(result);
+   this.publish({...this.state,snapshot:result.snapshot,busy:false,error:undefined,phase:continuation==='viewer'?'ready':continuation==='profile-selection'?'profiles':continuation});
+   this.watchAuthority();
+  }catch(error){await this.retire(api,result.session);if(op.current()){api.setAccessToken('');this.watchAuthority();}throw error;}
  }
  /** The link code is not posted until the kind, private-key proof, link id and
   * all remembered ownership of this origin have passed the normal entry guard. */
@@ -237,7 +299,97 @@ export class BrowserAccountEntry {
   }catch(error){if(op.current())this.publish({...state,busy:false,error});}
   finally{if(restricted)await this.retire(api,restricted.session);}
  }
+ /** Factor setup keeps the existing restricted account family. Passwords,
+  * secrets and recovery codes stay in the caller's ephemeral form, never state/storage. */
+ private requiredFactorAttempt(){
+  const state=this.state,api=this.api,session=this.session;
+  if(state.phase!=='two-step-setup'||state.server?.signIn!=='local'||!state.snapshot?.twoStepSetupRequired||state.busy||!api||!session||session.viewer.role!=='account')return;
+  const op=this.operation(),snapshot=state.snapshot;
+  const assertCurrent=async()=>{
+   const selected=await this.ports.store.selected(),saved=selected?.connection.session;
+   if(!op.current()||this.api!==api||this.session!==session||this.state.snapshot!==snapshot||selected?.connection.pin.serverId!==snapshot.serverId||saved?.sessionFamilyId!==session.sessionFamilyId||saved.viewer.accountId!==snapshot.account.id||saved.viewer.profileId!==session.viewer.profileId||saved.viewer.role!=='account')throw new CodedError('cancelled','The server selection changed.');
+  };
+  const guarded={request:async<T,>(path:string,method?:string,body?:unknown,signal?:AbortSignal)=>{
+   await assertCurrent();op.signal.throwIfAborted();
+   const result=await api.request<T>(path,method,body,signal?AbortSignal.any([op.signal,signal]):op.signal);
+   await assertCurrent();return result;
+  }};
+  const client=new IdentityClient(guarded);
+  this.publish({...state,busy:true,error:undefined});
+  return {state,op,client,readSnapshot:async()=>parseDirectSnapshot(await guarded.request(routePath('get_direct_account'),'GET'),{authority:'local',serverId:snapshot.serverId,accountId:snapshot.account.id})};
+ }
+ async beginRequiredTwoStep(password:string):Promise<TwoFactorEnrolment|undefined>{
+  if(!password)return;
+  const attempt=this.requiredFactorAttempt();if(!attempt)return;
+  const {state,op,client}=attempt;
+  try{const enrolment=await client.enrolTwoFactor(password);if(!op.current())return;this.publish({...state,busy:false,error:undefined});return enrolment;}
+  catch(error){if(op.current())this.publish({...state,busy:false,error});}
+ }
+ async confirmRequiredTwoStep(password:string,code:string):Promise<boolean>{
+  if(!password||!code.trim())return false;
+  const attempt=this.requiredFactorAttempt();if(!attempt)return false;
+  const {state,op,client,readSnapshot}=attempt;
+  try{
+   const factor=await client.verifyTwoFactor(password,code.trim());
+   if(!factor.enabled||factor.pendingEnrolment)throw new CodedError('invalid_response',unreadableServerResponse);
+   const snapshot=await readSnapshot();
+   if(snapshot.twoStepSetupRequired)throw new CodedError('invalid_response',unreadableServerResponse);
+   this.publish({...state,snapshot,phase:'profiles',busy:false,error:undefined});return true;
+  }catch(error){if(op.current())this.publish({...state,busy:false,error});return false;}
+ }
+ /** Only the canonical registered controller stores/exchanges a browser return.
+  * Its signed-in result is ALREADY durably admitted; never call accept again. */
+ private async discardRegistered(api:HttpLocalApi,session:LocalSession){
+  try{await this.ports.store.signOutServer(session.viewer.serverId,session.sessionFamilyId);}
+  finally{try{await this.retire(api,session);}finally{api.getRouteConnection()?.dispose();}}
+ }
+ private async registeredCompletion(completion:RegisteredCompletion,controller:RegisteredController,op:ReturnType<BrowserAccountEntry['operation']>){
+  const {api,result}=completion,pin=api.getRouteConnection()?.pin;
+  if(!op.current()){
+   if(result.kind==='signed-in')await this.discardRegistered(api,result.session);else api.getRouteConnection()?.dispose();return;
+  }
+  this.api=api;
+  if(!pin)throw new CodedError('invalid_return',unreadableServerResponse);
+  if(result.kind==='signed-in'){
+   const selected=await this.ports.store.selected(),saved=selected?.connection.session;
+   if(!op.current()){await this.discardRegistered(api,result.session);return;}
+   if(selected?.signIn!=='portico'||!sameServerPin(selected.connection.pin,pin)||!saved||saved.sessionFamilyId!==result.session.sessionFamilyId||
+     result.snapshot.serverId!==pin.serverId||result.snapshot.account.id!==saved.viewer.accountId||(['serverId','authority','accountId','profileId','role'] as const).some(key=>saved.viewer[key]!==result.session.viewer[key])){await this.discardRegistered(api,result.session);throw new CodedError('cancelled','The server selection changed.');}
+   this.api=api;this.session=result.session;
+   await this.restoreProfiles({pin,session:result.session});return;
+  }
+  const [server,selection]=await Promise.all([api.request(routePath('get_system'),'GET',undefined,op.signal).then(parseServerSignIn),this.ports.store.read()]);
+  if(!op.current()){api.getRouteConnection()?.dispose();return;}
+  if(server.id!==pin.serverId||server.signIn!=='portico')throw new CodedError('invalid_return',unreadableServerResponse);
+  this.api=api;this.registeredChallenge=controller;this.challengeRevision=selection.revision;
+  this.publish({phase:'challenge',server,origin:api.baseUrl,pin,busy:false});this.watchAuthority();
+ }
+ async preparePorticoSignIn(hostedOrigin:string):Promise<string|undefined>{
+  const state=this.state,api=this.api;
+  if(state.phase!=='portico'||state.server?.signIn!=='portico'||state.invitation||state.busy||!api||!state.origin||!this.ports.registered)return;
+  const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  try{
+   const previous=this.registered;this.registered=undefined;if(previous)await previous.cancel();if(!op.current())return;
+   const flow=this.ports.registered();this.registered=flow.controller;
+   const url=await flow.controller.prepare(api,state.origin,hostedOrigin,flow.installationId());
+   if(!op.current())return;this.publish({...state,busy:false,error:undefined});return url;
+  }catch(error){if(op.current())this.publish({...state,busy:false,error});}
+ }
+ async finishPorticoReturn(captured:CapturedPorticoReturn){
+  this.cancel();const op=this.operation();this.publish({phase:'checking',busy:true});
+  try{
+   if(!this.ports.registered)throw new CodedError('invalid_return',unreadableServerResponse);
+   const {controller}=this.ports.registered();this.registered=controller;
+   await this.registeredCompletion(await controller.finish(captured),controller,op);
+  }catch(error){if(op.current()){this.release();this.publish({phase:'welcome',error});}}
+ }
  async completeChallenge(code:string){
+  const registered=this.registeredChallenge;
+  if(registered&&this.state.phase==='challenge'&&!this.state.busy){
+   const state=this.state,op=this.operation();this.stopAuthorityWatch();this.publish({...state,busy:true,error:undefined});
+   try{await this.registeredCompletion(await registered.completeChallenge(code),registered,op);}
+   catch(error){if(op.current()){this.publish({...state,busy:false,error});this.watchAuthority();}}return;
+  }
   const state=this.state,api=this.api,challenge=this.challenge,revision=this.challengeRevision;if(state.phase!=='challenge'||!api||!challenge||revision===undefined)return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
   try{if((await this.ports.store.read()).revision!==revision)throw new CodedError('cancelled','The server selection changed. Start this sign-in again.');if(!op.current())return;await this.accept(await completeDirectSignInChallenge(api,challenge.token,code,op.signal),api,revision,op);}
@@ -245,14 +397,17 @@ export class BrowserAccountEntry {
  }
  async changePassword(currentPassword:string,newPassword:string){
   const state=this.state,api=this.api,session=this.session;if(state.phase!=='password-change'||!api||!session)return;
-  const op=this.operation();this.publish({...state,busy:true,error:undefined});
-  try{await changeRequiredPassword(api,currentPassword,newPassword,op.signal);await this.ports.actions.signOutServer(session);if(op.current())this.publish({...state,phase:'password',snapshot:undefined,busy:false,error:undefined});}
-  catch(error){if(op.current())this.publish({...state,busy:false,error});}
+  const op=this.operation();this.stopAuthorityWatch();this.publish({...state,busy:true,error:undefined});
+  try{await changeRequiredPassword(api,currentPassword,newPassword,op.signal);await this.ports.actions.signOutServer(session);if(op.current()){this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;this.retired();api.setAccessToken('');this.publish({...state,phase:'password',snapshot:undefined,busy:false,error:undefined});}}
+  catch(error){if(op.current()){this.publish({...state,busy:false,error});this.watchAuthority();}}
  }
- async loadProfiles(){
+ async loadProfiles(){return this.restoreProfiles();}
+ private async restoreProfiles(expected?:Readonly<{pin:ServerPin;session:LocalSession}>){
   this.cancel();const op=this.operation();this.publish({phase:'profiles',busy:true});
   try{
    const entry=await this.ports.store.selected();if(!entry)throw new Error('Choose a server first.');
+   const matches=(saved:typeof entry|undefined)=>!expected||!!saved&&saved.signIn==='portico'&&sameServerPin(saved.connection.pin,expected.pin)&&saved.connection.session.sessionFamilyId===expected.session.sessionFamilyId&&(['serverId','authority','accountId','profileId','role'] as const).every(key=>saved.connection.session.viewer[key]===expected.session.viewer[key]);
+   if(!matches(entry))throw new CodedError('cancelled','The server selection changed.');
    const restored=await this.ports.restore(entry.connection.session);
    if(!op.current()){restored?.api.getRouteConnection()?.dispose();return;}if(!restored)throw new Error('This server sign-in has ended.');
    this.api=restored.api;this.session=restored.session;
@@ -261,16 +416,26 @@ export class BrowserAccountEntry {
     restored.api.request(routePath('get_direct_account'),'GET',undefined,op.signal).then(raw=>parseDirectSnapshot(raw,{authority:'local',accountId:restored.session.viewer.accountId,serverId:entry.connection.pin.serverId})),
    ]);
    if(!op.current())return;if(server.id!==entry.connection.pin.serverId||server.signIn!==entry.signIn)throw new Error('The server sign-in changed.');
-   this.publish({phase:'profiles',server,snapshot,busy:false});
+   if(expected&&!matches(await this.ports.store.selected()))throw new CodedError('cancelled','The server selection changed.');
+   if(!op.current())return;
+   this.publish({phase:snapshot.twoStepSetupRequired?'two-step-setup':'profiles',server,origin:restored.api.baseUrl,pin:entry.connection.pin,snapshot,busy:false});
+   this.watchAuthority();
   }catch(error){if(op.current()){this.release();this.publish({phase:'profiles',error});}}
  }
- async chooseProfile(profileId:string,pin=''){
-  const state=this.state,api=this.api,session=this.session;if(state.phase!=='profiles'||!state.snapshot||!api||!session)return;
-  const op=this.operation();this.publish({...state,busy:true,error:undefined});
-  try{await this.ports.actions.switchProfile(api,session,profileId,pin,op.signal,op.current);if(op.current())this.publish({...state,phase:'ready',busy:false});}
-  catch(error){if(op.current())this.publish({...state,busy:false,error});}
+ async chooseProfile(profileId:string,pin='',remember=false){
+  const state=this.state,api=this.api,session=this.session;if(state.phase!=='profiles'||!state.snapshot||state.snapshot.twoStepSetupRequired||!api||!session)return;
+  const op=this.operation();this.stopAuthorityWatch();this.publish({...state,busy:true,error:undefined});
+  try{const chosen=await this.ports.actions.switchProfile(api,session,profileId,pin,op.signal,op.current,remember);if(op.current()){this.session=chosen;this.challenge=undefined;this.challengeRevision=undefined;this.retired();if(op.current()){this.publish({...state,phase:'ready',busy:false});this.watchAuthority();}}}
+  catch(error){if(op.current()){this.publish({...state,busy:false,error});this.watchAuthority();}}
+ }
+ profileRecovery(profileId:string){
+  const api=this.api,state=this.state,snapshot=state.snapshot,session=this.session,epoch=this.epoch;
+  if(state.phase!=='profiles'||state.busy||!api||!snapshot||snapshot.twoStepSetupRequired||!state.server||!session)throw new Error('Choose a current server profile first.');
+  return new BrowserProfileRecovery(api,snapshot,profileId,state.server.signIn,
+   ()=>!this.disposed&&this.epoch===epoch&&this.api===api&&this.state.phase==='profiles'&&this.state.snapshot===snapshot&&this.session?.sessionFamilyId===session.sessionFamilyId,
+   grant=>this.temporary(api,grant));
  }
 
- dispose(){this.cancel();this.disposed=true;this.probe.dispose();this.listeners.clear();}
+ dispose(){this.cancel();this.disposed=true;this.probe.dispose();this.listeners.clear();this.retiredListeners.clear();}
 }
-export function createBrowserAccountEntry(options:Pick<EntryPorts,'invitationDestination'>={}){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,rememberName:(api,name)=>browserServerDisplay().remember(api,name),...options});}
+export function createBrowserAccountEntry(options:Pick<EntryPorts,'invitationDestination'>={}){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,observeSelection:observeBrowserSessionChanges,registered:()=>createBrowserRegisteredSignIn(buildHostedSignInStartURL),rememberName:(api,name)=>browserServerDisplay().remember(api,name),...options});}

@@ -41,7 +41,7 @@ export function ProfileAvatarFace({initial, art = 'blue', size = 34, appearance 
 export type AccountMenuActions = Readonly<{
   manageProfiles?: () => void; addProfile?: () => void; switchProfile: (profile: ProfileIdentity) => void;
   switchServer: () => void; settings: () => void; notifications?: () => void; watchTogether: () => void; downloads?: () => void;
-  feedback: () => void; help: () => void; signOut: () => void; signOutPorticoAccount?: () => void;
+  feedback?: () => void; help: () => void; signOut: () => void; signOutPorticoAccount?: () => void;
 }>;
 export type AccountMenuProps = Readonly<{
   open: boolean; onOpenChange: OverlayChange; trigger: ReactElement; current: ProfileIdentity;
@@ -65,7 +65,7 @@ export function AccountMenu({open, onOpenChange, trigger, current, primary, acco
     <MenuSeparator />
     <MenuItem className={styles.menuAction} icon="i-together" onSelect={actions.watchTogether}>{t('next.shell.watchTogether')}</MenuItem>
     {actions.downloads && <MenuItem className={styles.menuAction} icon="i-download" onSelect={actions.downloads}>{t('next.shell.downloads')}</MenuItem>}
-    <MenuItem className={styles.menuAction} icon="i-flag" onSelect={actions.feedback}>{t('next.shell.feedback')}</MenuItem>
+    {actions.feedback && <MenuItem className={styles.menuAction} icon="i-flag" onSelect={actions.feedback}>{t('next.shell.feedback')}</MenuItem>}
     <MenuItem className={styles.menuAction} icon="i-help" onSelect={actions.help}>{t('next.shell.help')}<Icon name="i-ext" size={16} className={styles.external} /></MenuItem>
     <MenuSeparator /><MenuItem className={styles.menuAction} icon="i-out" onSelect={actions.signOut}>{signOutLabel??t('next.shell.signOut')}</MenuItem>
     {actions.signOutPorticoAccount && <MenuItem className={styles.menuAction} icon="i-out" onSelect={actions.signOutPorticoAccount}>{t('accounts.signOut.portico')}</MenuItem>}
@@ -75,15 +75,16 @@ export function AccountMenu({open, onOpenChange, trigger, current, primary, acco
 export type NotificationSubject = Readonly<{kind: 'artwork'; source: ArtworkSource; position?: string}> | Readonly<{kind: 'device'; icon: IconName; warning?: boolean}> | Readonly<{kind: 'channel'; monogram: string; tint: string}>;
 export type NotificationItemProps = Readonly<{
   title: string; body: string; when: readonly FactPart[]; unread: boolean; archived?: boolean;
-  subject: NotificationSubject; actions: readonly {id: string; label: string; onAction: () => void}[];
+  /** Missing typed subject facts omit the thumbnail; an item id alone is not artwork. */
+  subject?: NotificationSubject; actions: readonly {id: string; label: string; disabled?: boolean; onAction: () => void}[];
   onMarkRead: () => void; onArchive: () => void; onMoveToInbox: () => void; layout?: 'desktop' | 'phone'; t?: ShellTranslate;
 }>;
 export function NotificationItem({title, body, when, unread, archived = false, subject, actions, onMarkRead, onArchive, onMoveToInbox, layout = 'desktop', t = tDefault}: NotificationItemProps) {
-  return <article className={styles.notice} data-unread={unread || undefined} data-layout={layout}>
-    <span className={styles.subject} data-kind={subject.kind} data-warning={subject.kind === 'device' && subject.warning || undefined} style={subject.kind === 'channel' ? {'--subject-tint': subject.tint} as CSSProperties : undefined}>
+  return <article className={styles.notice} data-unread={unread || undefined} data-layout={layout} data-no-subject={!subject || undefined}>
+    {subject && <span className={styles.subject} data-kind={subject.kind} data-warning={subject.kind === 'device' && subject.warning || undefined} style={subject.kind === 'channel' ? {'--subject-tint': subject.tint} as CSSProperties : undefined}>
       {subject.kind === 'artwork' ? <Artwork source={subject.source} alt="" position={subject.position ?? 'center 20%'} width="100%" height="100%" /> : subject.kind === 'device' ? <Icon name={subject.icon} size={layout === 'phone' ? 18 : 24} /> : subject.monogram}
-    </span>
-    <div><b>{title}</b><p>{body}</p><div className={styles.when}>{when.map(fact => <span key={fact.id}>{fact.text}</span>)}</div><div className={styles.noticeActions}>{actions.map(action => <button type="button" key={action.id} onClick={action.onAction}>{action.label}</button>)}</div></div>
+    </span>}
+    <div><b>{title}</b><p>{body}</p><div className={styles.when}>{when.map(fact => <span key={fact.id}>{fact.text}</span>)}</div><div className={styles.noticeActions}>{actions.map(action => <button type="button" key={action.id} disabled={action.disabled} onClick={action.onAction}>{action.label}</button>)}</div></div>
     <div className={styles.noticeTools}>{unread && <button type="button" aria-label={t('next.shell.markRead')} onClick={onMarkRead}><Icon name="i-check" size={18} /></button>}<button type="button" aria-label={t(archived ? 'next.shell.moveToInbox' : 'next.shell.archive')} onClick={archived ? onMoveToInbox : onArchive}><Icon name={archived ? 'i-undo' : 'i-archive'} size={18} /></button></div>
   </article>;
 }

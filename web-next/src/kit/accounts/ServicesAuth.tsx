@@ -5,10 +5,11 @@ import {passwordStrength} from '@core/password-strength.ts';
 import {presentError} from '@core/presentation/errors.ts';
 import {Icon, type IconName} from '../Icon';
 import {AuthStage} from './AuthStage';
+import {ProfileAvatarFace} from '../shell/AccountSurfaces';
 import styles from './services-auth.module.css';
 
 const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
-export function ServicesAuthStage({children, variant = 'auth', legal = variant !== 'signup'}: {children: ReactNode; variant?: 'auth' | 'signup' | 'reset' | 'state' | 'device' | 'deviceReview' | 'deviceSignIn'; legal?: boolean}) {
+export function ServicesAuthStage({children, variant = 'auth', legal = variant !== 'signup' && variant !== 'providerOnboarding'}: {children: ReactNode; variant?: 'auth' | 'signup' | 'providerOnboarding' | 'reset' | 'state' | 'device' | 'deviceReview' | 'deviceSignIn'; legal?: boolean}) {
   return <AuthStage service legal={legal} shape={variant === 'state' ? 'round' : 'side'} layout={variant === 'state' ? 'center' : 'column'}
     className={styles.stage} contentClassName={[styles.content, styles[variant]].join(' ')}>{children}</AuthStage>;
 }
@@ -46,12 +47,25 @@ export function ServicesStateIcon({tone = 'success', icon = 'i-check', size = 34
 export function ServicesProviderButton({provider, children, disabled, onClick}: {provider: IdentityProvider; children: ReactNode; disabled?: boolean; onClick: () => void}) {
   return <button type="button" className={styles.provider} data-provider={provider} disabled={disabled} onClick={onClick}><Icon name={provider === 'apple' ? 'i-apple' : 'i-google'} size={20} />{children}</button>;
 }
+export function ServicesProviderContext({provider, email}: {provider: IdentityProvider; email?: string}) {
+  return <span className={[styles.codeChip, styles.providerContext].join(' ')}><Icon name={provider === 'apple' ? 'i-apple' : 'i-google'} size={18} />
+    <span>{t('services.provider.heading', {provider: t(provider === 'apple' ? 'accounts.provider.apple' : 'accounts.provider.google')})}{email && <b>{email}</b>}</span>
+  </span>;
+}
+export function ServicesBackAction({children}: {children: ReactNode}) { return <span className={styles.backAction}><Icon name="i-left" size={18} />{children}</span>; }
+export function ServicesInvitationCredentials({children}: {children: ReactNode}) { return <div className={styles.invitationCredentials}>{children}</div>; }
+export function ServicesProviderAccount({name, username, provider}: {name: string; username: string; provider: IdentityProvider}) {
+  return <div className={styles.providerAccount}><ProfileAvatarFace initial={Array.from(name)[0]?.toLocaleUpperCase() ?? ''} size={48} />
+    <span><b>{name}</b><small>{username}<i aria-hidden="true" />{t('services.provider.signedIn', {provider: t(provider === 'apple' ? 'accounts.provider.apple' : 'accounts.provider.google')})}</small></span>
+  </div>;
+}
+export function ServicesProviderReturnHint() { return <p className={styles.providerReturnHint}>{t('services.provider.returnHint')}</p>; }
 export function ServicesDivider({children}: {children: ReactNode}) { return <div className={styles.divider}>{children}</div>; }
 export function ServicesPair({children}: {children: ReactNode}) { return <div className={styles.pair}>{children}</div>; }
 export function ServicesHint({children}: {children: ReactNode}) { return <p className={styles.hint}>{children}</p>; }
-export function ServicesTerms() {
+export function ServicesTerms({provider}: {provider?: IdentityProvider} = {}) {
   const message = t('services.signup.agreement', {terms: '{terms}', privacy: '{privacy}'});
-  return <p className={styles.terms}>{parseMessage(message).map((part, index) => part.kind === 'text' ? <Fragment key={index}>{part.value}</Fragment> : part.kind === 'arg' && part.name === 'terms' ? <a key={index} href="https://getportico.tv/terms">{t('services.signup.terms')}</a> : part.kind === 'arg' && part.name === 'privacy' ? <a key={index} href="https://getportico.tv/privacy">{t('services.signup.privacy')}</a> : null)}</p>;
+  return <p className={styles.terms}>{provider && <>{t('services.provider.privacy', {provider: t(provider === 'apple' ? 'accounts.provider.apple' : 'accounts.provider.google')})}{' '}</>}{parseMessage(message).map((part, index) => part.kind === 'text' ? <Fragment key={index}>{part.value}</Fragment> : part.kind === 'arg' && part.name === 'terms' ? <a key={index} href="https://getportico.tv/terms">{t('services.signup.terms')}</a> : part.kind === 'arg' && part.name === 'privacy' ? <a key={index} href="https://getportico.tv/privacy">{t('services.signup.privacy')}</a> : null)}</p>;
 }
 export function ServicesFacts({items}: {items: readonly {id: string; label: ReactNode; value: ReactNode}[]}) {
   return <dl className={styles.facts}>{items.map(item => <div key={item.id}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>;

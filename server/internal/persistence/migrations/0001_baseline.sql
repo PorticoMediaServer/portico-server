@@ -210,6 +210,7 @@ CREATE TABLE reading_progress(
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
  CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_progress_publication ON reading_progress(item_id,asset_id);
+CREATE INDEX reading_progress_recent ON reading_progress(owner_key,observed_at DESC,item_id DESC,asset_id DESC);
 CREATE TABLE retained_reading_progress(
  state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
  source_id TEXT NOT NULL CHECK(length(source_id)>0),
@@ -3433,7 +3434,7 @@ CREATE TABLE dvr_cleanup_work(recording_id TEXT PRIMARY KEY REFERENCES dvr_recor
 CREATE TABLE dvr_storage_policy(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,
  retention_days INTEGER NOT NULL,episode_limit INTEGER NOT NULL,floor_bytes INTEGER NOT NULL,cap_bytes INTEGER NOT NULL) STRICT;
 CREATE TABLE remote_sources(
- id TEXT PRIMARY KEY,kind TEXT NOT NULL,name TEXT NOT NULL,root TEXT NOT NULL UNIQUE,
+ id TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN('rclone','webdav','sftp','smb')),name TEXT NOT NULL,root TEXT NOT NULL UNIQUE,
  generation INTEGER NOT NULL DEFAULT 1,config BLOB,state TEXT NOT NULL DEFAULT 'ready',error_code TEXT NOT NULL DEFAULT '',
  range_support TEXT NOT NULL DEFAULT 'unknown',origin TEXT NOT NULL DEFAULT '',insecure INTEGER NOT NULL DEFAULT 0,
  credential_present INTEGER NOT NULL DEFAULT 0,mount_id TEXT NOT NULL DEFAULT '',removed INTEGER NOT NULL DEFAULT 0) STRICT;
@@ -8151,7 +8152,18 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "conversionMode" TEXT CHECK("conversionMode" IN('all','sound','never')),
  "outputFormat" TEXT CHECK("outputFormat" IN('auto','h264')),
  "downloadMaxQuality" TEXT,
- "musicAwayQuality" TEXT NOT NULL DEFAULT 'original' CHECK("musicAwayQuality" IN('original','cd-quality','320','96'))) STRICT;
+ "musicAwayQuality" TEXT NOT NULL DEFAULT 'original' CHECK("musicAwayQuality" IN('original','cd-quality','320','96')),
+ "webhookRetries" TEXT NOT NULL DEFAULT 'long' CHECK("webhookRetries" IN('long','short','none')),
+ "webhookTimeoutSeconds" INTEGER NOT NULL DEFAULT 15 CHECK("webhookTimeoutSeconds" BETWEEN 5 AND 60),
+ "webhookQueueSize" INTEGER NOT NULL DEFAULT 1000 CHECK("webhookQueueSize" BETWEEN 100 AND 5000),
+ "webhookLogSize" INTEGER NOT NULL DEFAULT 200 CHECK("webhookLogSize" BETWEEN 50 AND 1000),
+ "webhookHTTPSOnly" INTEGER NOT NULL DEFAULT 0 CHECK("webhookHTTPSOnly" IN(0,1)),
+ "credentialMaxDays" INTEGER NOT NULL DEFAULT 0 CHECK("credentialMaxDays" BETWEEN 0 AND 365),
+ "memberTokenScope" TEXT NOT NULL DEFAULT 'same' CHECK("memberTokenScope" IN('same','play','read')),
+ "tokensPerMember" INTEGER NOT NULL DEFAULT 25 CHECK("tokensPerMember" BETWEEN 5 AND 50),
+ "apiKeysMax" INTEGER NOT NULL DEFAULT 100 CHECK("apiKeysMax" BETWEEN 10 AND 250),
+ "keyInAddress" INTEGER NOT NULL DEFAULT 1 CHECK("keyInAddress" IN(0,1)),
+ "assistantsEnabled" INTEGER NOT NULL DEFAULT 1 CHECK("assistantsEnabled" IN(0,1))) STRICT;
 
 CREATE TABLE server_setting_lists(setting TEXT NOT NULL,position INTEGER NOT NULL CHECK(position>=0),value TEXT NOT NULL,PRIMARY KEY(setting,position)) WITHOUT ROWID, STRICT;
 
@@ -8191,17 +8203,29 @@ CREATE TABLE music_virtual_tracks(
 CREATE INDEX music_virtual_tracks_entity ON music_virtual_tracks(entity_id);
 
 CREATE TABLE music_sonic_embeddings(
- result_id TEXT PRIMARY KEY REFERENCES analysis_results(id) ON DELETE CASCADE,
+ result_id TEXT NOT NULL REFERENCES analysis_results(id) ON DELETE CASCADE,
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ source_start_us INTEGER NOT NULL CHECK(source_start_us>=0),source_end_us INTEGER NOT NULL CHECK(source_end_us>source_start_us),
  model_id TEXT NOT NULL,model_version TEXT NOT NULL,model_sha256 TEXT NOT NULL,
- dimensions INTEGER NOT NULL CHECK(dimensions=200),vector BLOB NOT NULL CHECK(length(vector)=800)
+ dimensions INTEGER NOT NULL CHECK(dimensions=200),vector BLOB NOT NULL CHECK(length(vector)=800),PRIMARY KEY(result_id,entity_id)
 ) STRICT;
-CREATE INDEX music_sonic_embeddings_model ON music_sonic_embeddings(model_id,model_version,model_sha256,result_id);
+CREATE INDEX music_sonic_embeddings_model ON music_sonic_embeddings(model_id,model_version,model_sha256,result_id,entity_id);
+CREATE INDEX music_sonic_embeddings_entity ON music_sonic_embeddings(entity_id,result_id);
 CREATE TABLE music_sonic_tags(
- result_id TEXT NOT NULL REFERENCES music_sonic_embeddings(result_id) ON DELETE CASCADE,
+ result_id TEXT NOT NULL,entity_id INTEGER NOT NULL,
  tag_index INTEGER NOT NULL CHECK(tag_index BETWEEN 0 AND 49),score REAL NOT NULL CHECK(score BETWEEN 0 AND 1),
- PRIMARY KEY(result_id,tag_index)
+ PRIMARY KEY(result_id,entity_id,tag_index),
+ FOREIGN KEY(result_id,entity_id) REFERENCES music_sonic_embeddings(result_id,entity_id) ON DELETE CASCADE
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE library_sonic_settings(
  library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
  enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN(0,1)),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)
 ) STRICT;
+
+CREATE TABLE maintenance_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,backup_keep_count INTEGER NOT NULL DEFAULT 7 CHECK(backup_keep_count BETWEEN 1 AND 365),background_speed TEXT NOT NULL DEFAULT 'normal' CHECK(background_speed IN('gentle','normal','fast')),updated_ms INTEGER NOT NULL DEFAULT 0) STRICT;
+INSERT INTO maintenance_settings(singleton) VALUES(1);
+CREATE TABLE maintenance_retention(category TEXT PRIMARY KEY CHECK(category IN('trickplay','prepared','conversions','subtitles','downloads','logs')),days INTEGER NOT NULL CHECK(days BETWEEN 0 AND 3650)) STRICT;
+INSERT INTO maintenance_retention VALUES('trickplay',365),('prepared',90),('conversions',7),('subtitles',365),('downloads',30),('logs',30);
+INSERT INTO maintenance_windows(id,name,enabled,cadence,start_minute,duration_minutes,timezone) VALUES('heavy','Heavy background work',0,'nightly',60,300,'');
+INSERT INTO maintenance_window_days(window_id,day) VALUES('heavy','monday'),('heavy','tuesday'),('heavy','wednesday'),('heavy','thursday'),('heavy','friday'),('heavy','saturday'),('heavy','sunday');
+INSERT INTO maintenance_window_tasks(window_id,task) VALUES('heavy','analysis'),('heavy','trickplay');

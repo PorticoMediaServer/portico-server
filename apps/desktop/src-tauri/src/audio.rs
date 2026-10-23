@@ -43,7 +43,7 @@ pub struct AudioFacts {
     pub bit_exact_capture_verified: bool,
     pub equalizer_enabled: bool,
     pub eq_applied: bool,
-    /// Native leveling is not integrated; never promote a requested profile setting.
+    /// True only for the actual current PCM route and observed labelled filter.
     pub leveling_applied: bool,
     /// The signal-path UI must use the approved i18n text "EQ on, not bit-perfect".
     /// This fact cannot be promoted to a physical output/capture claim.

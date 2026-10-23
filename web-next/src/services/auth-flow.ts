@@ -1,9 +1,9 @@
 import {AccountAttemptIds, MFARequiredError, type IdentityOptions, type IdentityProvider, type IdentityTransaction, type MFAChallenge, type Registration} from '@core/hosted-security.ts';
 import {routeBody, routePath} from '../../../packages/contracts/src/hosted/routes.ts';
-import {accountIdentity, currentAccountWork, type AccountIdentity, type ServicesAccount} from './session';
+import {accountIdentity, currentAccountWork, sameAccount, type AccountIdentity, type ServicesAccount} from './session';
 
 export type AuthMode = 'signin' | 'create' | 'verify' | 'forgot' | 'sent' | 'factor' | 'recovery' | 'provider' | 'ready';
-export type AuthSnapshot = Readonly<{mode: AuthMode; options?: IdentityOptions; registration?: Registration; provider?: IdentityProvider; suggestedName?: string; busy: boolean; retryAt: number; resends: number; error?: unknown}>;
+export type AuthSnapshot = Readonly<{mode: AuthMode; options?: IdentityOptions; registration?: Registration; provider?: IdentityProvider; suggestedName?: string; verifiedEmail?: string; busy: boolean; retryAt: number; resends: number; error?: unknown}>;
 /** Local form controller. The singleton CredentialSessionService owns every account session. */
 export class ServicesAuthFlow {
   private state: AuthSnapshot;
@@ -20,6 +20,13 @@ export class ServicesAuthFlow {
     this.state = {mode, busy: false, retryAt: 0, resends: 0};
   }
   getSnapshot = () => this.state;
+  /** Presentation reads the canonical session only while its accepted family is current. */
+  readyAccount() {
+    if (this.state.mode !== 'ready' || !this.readyIdentity) return;
+    const session = this.account.service.getSnapshot().session;
+    if (!session?.familyId || !sameAccount(this.readyIdentity, accountIdentity(session))) return;
+    return {name: session.account.displayName, username: session.account.username};
+  }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(value: Partial<AuthSnapshot>) { if (this.disposed) return; this.state = {...this.state, ...value}; for (const listener of this.listeners) listener(); }
   dispose() { this.disposed = true; this.operation?.abort(); this.listeners.clear(); this.challenge = undefined; this.transaction = undefined; this.ids.clear(); }
@@ -38,7 +45,7 @@ export class ServicesAuthFlow {
       if (transaction.status === 'fulfilled' && transaction.value?.mode === 'login') {
         const tx = transaction.value;
         if (tx.needsUsername && tx.contactVerified && tx.status !== 'failed') {
-          this.transaction = tx; this.publish({mode: 'provider', provider: tx.provider, suggestedName: tx.suggestedName}); return;
+          this.transaction = tx; this.publish({mode: 'provider', provider: tx.provider, suggestedName: tx.suggestedName, verifiedEmail: tx.verifiedEmail}); return;
         }
         if (tx.status === 'verified' && !tx.needsUsername) {
           await this.authenticate(inner => this.account.client.complete(tx.transactionId, {}, AbortSignal.any([inner, signal]))); return;
@@ -81,7 +88,7 @@ export class ServicesAuthFlow {
       await this.account.client.request(routePath('identity_cancel'), 'POST', undefined, signal);
       if (!signal.aborted) {
         this.transaction = undefined; this.ids.clear('provider');
-        this.publish({mode: 'signin', provider: undefined, suggestedName: undefined});
+        this.publish({mode: 'signin', provider: undefined, suggestedName: undefined, verifiedEmail: undefined});
       }
     });
   }

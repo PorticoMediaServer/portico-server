@@ -14,6 +14,24 @@ registerHooks({load(url, context, next) {
 }});
 const {CircleArt, CoverMosaic} = await import('../../src/kit/artwork/CircleArt.tsx');
 const {ProfileFace, ProfilePicker} = await import('../../src/kit/artwork/ProfilePicker.tsx');
+const {ChannelMark} = await import('../../src/kit/artwork/ChannelMark.tsx');
+
+test('ChannelMark uses only the actual seed tint while retaining text and its logo layer', () => {
+  const runtime = createArtworkRuntime({scopeKey: 'channel-mark', load: async () => { throw new Error('SSR must not request images'); }, classify: () => ({retryable: false})});
+  const mark = {sourceId: 'other-source', id: 'other-id', text: 'N24', seed: 'source:northwind-news-24'};
+  const source = runtime.source({url: '/actual-logo', cacheKey: 'logo'});
+  try {
+    const plain = renderToStaticMarkup(createElement(ChannelMark, {mark}));
+    assert.match(plain, /--channel-tint:#28665d/);
+    assert.match(plain, />N24</);
+    assert.doesNotMatch(plain, /channelLogo/);
+    const logo = renderToStaticMarkup(createElement(ChannelMark, {mark, source, alt: 'Actual channel'}));
+    assert.match(logo, /--channel-tint:#28665d/);
+    assert.match(logo, /channelLogo/);
+    assert.match(logo, /aria-label="Actual channel"/);
+    assert.equal(mark.seed, 'source:northwind-news-24');
+  } finally {runtime.dispose();}
+});
 
 test('the actual mosaic bounds cover count and preserves fallback, shape and caller clipping geometry', () => {
   const runtime = createArtworkRuntime({scopeKey: 'renderer-test', load: async () => { throw new Error('SSR must not request images'); }, classify: () => ({retryable: false})});

@@ -12,6 +12,29 @@ function payload(start: number, total = 50_000, revision = 'revision-one') {
  entries: Array.from({length: Math.min(60, total - start)}, (_, n) => ({id: `movie-${start + n}`, kind: 'movie', title: `Movie ${start + n}`, libraryId: 'lib', navigation: {view: 'item'}})),
  pageInfo: {start, total, totalIsLowerBound: false, revision, hasMore: start + 60 < total, nextCursor: ''}, positionIndex: [{key: 'Z', index: 49_980}]};
 }
+test('linked predicates and all server sorts survive paging and filter edits', async () => {
+ const predicate = {field: 'watched', operator: 'equals' as const, value: false};
+ const sort = [{field: 'title', direction: 'asc' as const}, {field: 'year', direction: 'desc' as const}];
+ const scoped = {...caps, fields: [{id: 'watched', labelKey: 'watched', type: 'boolean', operators: ['equals'], controlHint: 'toggle', applicableKinds: ['movie']}],
+  sorts: [...caps.sorts, {id: 'year', labelKey: 'sort.year', directions: ['asc', 'desc'], defaultDirection: 'desc', applicableKinds: ['movie']}]};
+ const queries: unknown[] = [];
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  if (path.includes('capabilities')) return scoped as T;
+  const request = body as {range: {start: number}; sort: unknown; query: unknown};queries.push(request);
+  return {...payload(request.range.start, 1), applied: {query: request.query, sort: request.sort, seek: null}} as T;
+ }}, {libraryId: 'lib', pivot: 'movies', predicates: [predicate], sorts: sort}, () => true);
+ try {
+  await controller.load();await settle();
+  assert.deepEqual(controller.query().query, predicate);
+  assert.deepEqual(controller.query().sort, sort);
+  controller.setQuery([]);await settle();
+  assert.deepEqual(controller.query().sort, sort);
+  assert.equal(controller.query().query, undefined);
+  controller.setQuery([], {field: 'year', direction: 'asc'});await settle();
+  assert.deepEqual(controller.query().sort, [{field: 'year', direction: 'asc'}]);
+  assert.ok(queries.length <= 3);
+ } finally {controller.dispose();}
+});
 test('sparse distant windows never scan intermediate pages and later ranges carry the actual revision', async () => {
  const requests: {start: number; revision?: string}[] = [];
  const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
@@ -81,5 +104,26 @@ test('Home display pages, facet queries and batch counts keep the immutable sour
   assert.equal(page.homeRowDisplay, 'continue');assert.deepEqual(page.query, membership);
   const facet = requests.find(r => r.path.includes('facets'))!;assert.deepEqual(JSON.parse(new URL(facet.path,'https://local.invalid').searchParams.get('query')!), membership);
   const count = requests.find(r => r.path.includes('counts'))!.body as {queries: {query: unknown}[]};assert.deepEqual(count.queries[0].query, membership);
+ } finally {controller.dispose();}
+});
+test('type counts are one server batch with exact lower bounds, never sums of library facets', async () => {
+ const membership = {field: 'homeRow', operator: 'equals' as const, value: 'continue'};
+ const type = {field: 'library', operator: 'in' as const, value: ['one', 'two']};
+ const scoped = {...caps, fields: [
+  {id: 'homeRow', labelKey: 'homeRow', type: 'identity-set', operators: ['equals'], controlHint: 'text', applicableKinds: ['movie']},
+  {id: 'library', labelKey: 'library', type: 'enum', operators: ['in'], controlHint: 'facet-multi-select', applicableKinds: ['movie']}],
+  sorts: [...caps.sorts, {id: 'groupOrder', labelKey: 'sort.groupOrder', directions: ['asc'], defaultDirection: 'asc', requiresGroup: true, applicableKinds: ['movie']}]};
+ const counts: unknown[] = [];
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  if (path.includes('capabilities')) return scoped as T;
+  if (path.includes('counts')) {counts.push(body);return {counts: [{id: 'all', total: 10_007, totalIsLowerBound: false, revision: 'actual'}, {id: 'movie', total: 10_000, totalIsLowerBound: true, revision: 'actual'}]} as T;}
+  return payload((body as {range: {start: number}}).range.start, 80) as T;
+ }}, {libraryId: '*', pivot: 'movies', base: [membership], sort: {field: 'groupOrder', direction: 'asc'}}, () => true);
+ try {
+  await controller.load();await settle();
+  const result = await controller.counts([{id: 'all', predicates: []}, {id: 'movie', predicates: [type]}], new AbortController().signal);
+  assert.equal(counts.length, 1);
+  assert.deepEqual((counts[0] as {queries: unknown}).queries, [{id: 'all', query: membership}, {id: 'movie', query: {all: [membership, type]}}]);
+  assert.deepEqual(result.map(count => [count.total, count.totalIsLowerBound]), [[10_007, false], [10_000, true]]);
  } finally {controller.dispose();}
 });

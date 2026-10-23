@@ -1,5 +1,5 @@
-// Package remotesources binds native adapters to the baseline storage interface.
-// It owns adapter configuration, private listing continuations and acquisitions;
+// Package remotesources binds remote sources to the baseline storage interface.
+// It owns source configuration, private listing continuations and acquisitions;
 // library identity, scan scheduling, reconciliation and playback authority remain
 // with their existing owners.
 package remotesources
@@ -24,29 +24,36 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
 )
 
 type Source struct {
-	ID                string `json:"id"`
-	Kind              string `json:"kind"`
-	Name              string `json:"name"`
-	RootPath          string `json:"rootPath"`
-	Generation        int64  `json:"generation"`
-	State             string `json:"state"`
-	ErrorCode         string `json:"errorCode,omitempty"`
-	RangeSupport      string `json:"rangeSupport"`
-	Origin            string `json:"origin,omitempty"`
-	InsecureLocal     bool   `json:"insecureLocal"`
-	CredentialPresent bool   `json:"credentialPresent"`
-	MountID           string `json:"mountId,omitempty"`
+	ID                string     `json:"id"`
+	Kind              SourceKind `json:"kind"`
+	Name              string     `json:"name"`
+	RootPath          string     `json:"rootPath"`
+	Generation        int64      `json:"generation"`
+	State             string     `json:"state"`
+	ErrorCode         string     `json:"errorCode,omitempty"`
+	RangeSupport      string     `json:"rangeSupport"`
+	Origin            string     `json:"origin,omitempty"`
+	InsecureLocal     bool       `json:"insecureLocal"`
+	CredentialPresent bool       `json:"credentialPresent"`
+	MountID           string     `json:"mountId,omitempty"`
 }
 type Service struct {
 	db                  *sql.DB
 	mounts              *mounts.Service
 	private             string
 	commands            sync.Mutex
+	serveMu             sync.Mutex
+	serveLeases         map[string]*sourceProcessLease
+	readLeases          map[string]map[int64]*SourceReadLease
+	serveClosed         bool
+	serveLife           context.Context
+	readLeaseSequence   atomic.Int64
 	mu                  sync.Mutex
 	active              map[string]map[string]activeRead
 	bindings            atomic.Value
@@ -88,6 +95,7 @@ func New(db *sql.DB, state string, managed *mounts.Service) (*Service, error) {
 	}
 	managed.NativeBusy = s.PlaybackActive
 	managed.NativeInvalidated = s.invalidate
+	managed.NativeSourceCandidate = s.nativeSourceCandidate
 	// No acquisition survives a server process. Remove only our private spool names.
 	if files, e := os.ReadDir(private); e == nil {
 		for _, file := range files {
@@ -115,7 +123,7 @@ func (s *Service) RefreshMounts(ctx context.Context) error {
 			return err
 		}
 	}
-	if _, err = tx.Exec(`UPDATE remote_sources SET removed=1,state='removed' WHERE kind='rclone' AND NOT EXISTS(SELECT 1 FROM managed_mounts m WHERE m.id=remote_sources.mount_id)`); err != nil {
+	if _, err = tx.Exec(`UPDATE remote_sources SET removed=1,state='removed' WHERE kind IN('rclone','sftp','smb') AND NOT EXISTS(SELECT 1 FROM managed_mounts m WHERE m.id=remote_sources.mount_id)`); err != nil {
 		return err
 	}
 	if err = gated.Commit(); err != nil {
@@ -175,6 +183,9 @@ func (s *Service) List(ctx context.Context) ([]Source, error) {
 		if err = rows.Scan(&x.ID, &x.Kind, &x.Name, &x.RootPath, &x.Generation, &x.State, &x.ErrorCode, &x.RangeSupport, &x.Origin, &x.InsecureLocal, &x.CredentialPresent, &x.MountID); err != nil {
 			return nil, err
 		}
+		if x.ErrorCode == "" && s.sourcePacerBackoff(x.ID, strconv.FormatInt(x.Generation, 10)) {
+			x.State, x.ErrorCode = "rate_limited", "rate_limited"
+		}
 		out = append(out, x)
 	}
 	return out, rows.Err()
@@ -207,7 +218,7 @@ func (s *Service) dav(ctx context.Context, id string) (*remotemedia.DAV, string,
 	return d, strconv.FormatInt(generation, 10), mapError(err)
 }
 func (s *Service) generation(ctx context.Context, b binding) (string, error) {
-	if b.Kind == "rclone" {
+	if managedSourceKind(b.Kind) {
 		n, err := s.mounts.Native(ctx, b.ID)
 		if err != nil {
 			return "", err
@@ -233,11 +244,15 @@ func (s *Service) check(ctx context.Context, b binding, generation string) error
 }
 func mapError(err error) error {
 	switch {
+	case errors.Is(err, rcloneprogram.ErrServeProgram):
+		return storage.ErrRemoteBinary
 	case err == nil:
 		return nil
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return err
 	case errors.Is(err, mediasource.ErrSourceChanged):
+		return storage.ErrRemoteChanged
+	case errors.Is(err, remotemedia.ErrObservationChanged):
 		return storage.ErrRemoteChanged
 	case errors.Is(err, remotemedia.ErrDenied):
 		return storage.ErrRemoteCredentials
@@ -254,6 +269,15 @@ func mapError(err error) error {
 	}
 }
 func ErrorCode(err error) string {
+	var response *remotemedia.ResponseFailure
+	if errors.As(err, &response) {
+		if response.Kind == "throttled" {
+			return "rate_limited"
+		}
+		if response.Kind == "quota" {
+			return "quota_exceeded"
+		}
+	}
 	switch {
 	case errors.Is(err, storage.ErrRemoteChanged), errors.Is(err, mediasource.ErrSourceChanged):
 		return "source_changed"
@@ -270,7 +294,7 @@ func ErrorCode(err error) string {
 	case errors.Is(err, storage.ErrRemoteLimit):
 		return "budget_exceeded"
 	case errors.Is(err, storage.ErrBusy), errors.Is(err, remotemedia.ErrBusy):
-		return "rate_limited"
+		return "capacity_busy"
 	case errors.Is(err, context.Canceled):
 		return "cancelled"
 	default:
@@ -278,6 +302,11 @@ func ErrorCode(err error) string {
 	}
 }
 func (s *Service) health(b binding, generation string, err error) {
+	// Scheduling/capacity contention is not an asynchronous provider report.
+	// Leave the last actual source health intact instead of claiming throttling.
+	if errors.Is(err, storage.ErrBusy) || errors.Is(err, remotemedia.ErrBusy) {
+		return
+	}
 	code, state := "", "healthy"
 	if err != nil {
 		code = ErrorCode(err)
@@ -289,7 +318,7 @@ func (s *Service) health(b binding, generation string, err error) {
 	if errors.Is(err, context.Canceled) {
 		return
 	}
-	_, _ = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `UPDATE remote_sources SET state=?,error_code=? WHERE id=? AND CASE WHEN kind='rclone' THEN (SELECT CAST(m.generation AS TEXT) FROM mount_backend_configs m WHERE m.mount_id=remote_sources.mount_id) ELSE CAST(generation AS TEXT) END=? AND removed=0`, state, code, b.ID, generation)
+	_, _ = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `UPDATE remote_sources SET state=?,error_code=? WHERE id=? AND CASE WHEN kind IN('rclone','sftp','smb') THEN (SELECT CAST(m.generation AS TEXT) FROM mount_backend_configs m WHERE m.mount_id=remote_sources.mount_id) ELSE CAST(generation AS TEXT) END=? AND removed=0`, state, code, b.ID, generation)
 }
 func davSnapshot(e remotemedia.DAVEntry, root string) storage.Snapshot {
 	modified := int64(0)
@@ -312,34 +341,7 @@ func (s *Service) Stat(ctx context.Context, path string) (storage.Snapshot, erro
 	if !ok || b.Removed {
 		return storage.Snapshot{}, storage.ErrRemoteOffline
 	}
-	var value storage.Snapshot
-	var generation string
-	var err error
-	if b.Kind == "rclone" {
-		var n *mounts.NativeBackend
-		n, err = s.mounts.Native(ctx, b.ID)
-		if err == nil {
-			generation = n.Generation()
-			var e mounts.NativeEntry
-			e, err = n.Stat(ctx, relative)
-			value = e.Snapshot(b.Root, relative)
-		}
-	} else {
-		var d *remotemedia.DAV
-		d, generation, err = s.dav(ctx, b.ID)
-		if err == nil {
-			var e remotemedia.DAVEntry
-			e, err = d.Stat(ctx, relative)
-			value = davSnapshot(e, b.Root)
-		}
-	}
-	err = mapError(err)
-	if err == nil {
-		err = s.check(ctx, b, generation)
-	}
-	value = inventorySnapshot(b, generation, value)
-	s.health(b, generation, err)
-	return value, err
+	return s.statSourceMetadata(ctx, b, relative)
 }
 func (s *Service) InspectRoot(ctx context.Context, path string) (storage.Snapshot, error) {
 	v, err := s.Stat(ctx, path)
@@ -353,15 +355,25 @@ func (s *Service) InspectRoot(ctx context.Context, path string) (storage.Snapsho
 }
 func (s *Service) PlaybackActive(id string) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	for _, r := range s.active[id] {
 		if r.lane == "playback" {
+			s.mu.Unlock()
+			return true
+		}
+	}
+	s.mu.Unlock()
+	s.serveMu.Lock()
+	defer s.serveMu.Unlock()
+	for _, lease := range s.readLeases[id] {
+		if lease.binding.Purpose == SourceReading || lease.binding.Purpose == SourcePlayback {
 			return true
 		}
 	}
 	return false
 }
 func (s *Service) invalidate(id string) {
+	s.stopServeProcess(id)
+	s.stopReadLeases(id, storage.ErrRemoteChanged, nil)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.active[id] {
@@ -374,6 +386,10 @@ func (s *Service) invalidate(id string) {
 // woken by commits rather than by a thirty-second clock that issued three delete
 // transactions on an idle server forever. The safety tick is the backstop.
 func (s *Service) Run(ctx context.Context) {
+	if s.startReadRuntime(ctx) != nil {
+		return
+	}
+	defer s.stopServeProcesses()
 	defer s.stopNativeListings()
 	defer func() {
 		s.mu.Lock()
