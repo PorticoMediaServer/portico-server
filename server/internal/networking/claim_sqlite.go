@@ -573,6 +573,9 @@ func (s *SQLiteStore) Install(ctx context.Context, expected Intent, result Resul
 	if e != nil {
 		return Intent{}, e
 	}
+	if _, e = tx.ExecContext(ctx, `DELETE FROM networking_claim_cancellations WHERE operation_id=?`, v.OperationID); e != nil {
+		return Intent{}, e
+	}
 	if s.installed != nil {
 		if e = s.installed(ctx, tx, next.Intent); e != nil {
 			return Intent{}, e
@@ -693,7 +696,8 @@ func (s *SQLiteStore) BeginCancel(ctx context.Context, b Binding, item Cancellat
 		old, e := s.cancellationTx(ctx, tx, v.Intent)
 		return v.Intent, old, e
 	}
-	if id.server != b.ServerID || !bytes.Equal(id.key, b.PublicKey) || id.generation != b.LocalGeneration || !id.active.Valid || id.active.String != b.OperationID {
+	firstSwitch := v.Purpose == "switch" && v.CurrentOwnerAccountID == "" && id.pending.Valid && id.pending.String == b.OperationID && !id.active.Valid && !id.installed.Valid
+	if id.server != b.ServerID || !bytes.Equal(id.key, b.PublicKey) || id.generation != b.LocalGeneration || (!firstSwitch && (!id.active.Valid || id.active.String != b.OperationID)) {
 		return Intent{}, Cancellation{}, ErrStale
 	}
 	if item.ClaimGeneration != "" && item.ClaimGeneration != v.ClaimGeneration {
@@ -709,7 +713,7 @@ func (s *SQLiteStore) BeginCancel(ctx context.Context, b Binding, item Cancellat
 		mode = "committed"
 	}
 	now := s.now().UTC().Format(time.RFC3339Nano)
-	_, e = tx.ExecContext(ctx, `INSERT INTO networking_claim_cancellations(operation_id,request_id,mode,claim_generation,payload,signature,state,created_at) VALUES(?,?,?,?,?,?,'pending',?)`, v.OperationID, item.RequestID, mode, item.ClaimGeneration, item.Proof.Payload, item.Proof.Signature, now)
+	_, e = tx.ExecContext(ctx, `INSERT INTO networking_claim_cancellations(operation_id,request_id,mode,claim_generation,payload,signature,state,created_at) VALUES(?,?,?,?,?,?,'pending',?) ON CONFLICT(operation_id) DO NOTHING`, v.OperationID, item.RequestID, mode, item.ClaimGeneration, item.Proof.Payload, item.Proof.Signature, now)
 	if e != nil {
 		return Intent{}, Cancellation{}, e
 	}
@@ -872,7 +876,8 @@ func (s *SQLiteStore) WithdrawReplacement(ctx context.Context, expected Intent) 
 	if v.Stage != Prepared && v.Stage != Approved {
 		return Intent{}, false, nil
 	}
-	if !id.installed.Valid || !id.active.Valid || id.active.String != id.installed.String {
+	firstSwitch := v.Purpose == "switch" && v.CurrentOwnerAccountID == "" && !id.installed.Valid && !id.active.Valid
+	if !firstSwitch && (!id.installed.Valid || !id.active.Valid || id.active.String != id.installed.String) {
 		return Intent{}, true, ErrStale
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE networking_claim_intents SET stage='cancelled',revision=revision+1,owner_change_reserved=0 WHERE operation_id=?`, v.OperationID); e != nil {
