@@ -1,13 +1,15 @@
 import {firstOfEach, keepReadable} from './tolerant.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import type {Library} from './index.ts';
+import {parseLibraryMediaCapabilities} from './read-prerequisites.ts';
 
 /**
  * The viewer's libraries (`GET /v1/libraries`). The answer has to carry a list. A library without
  * an id or a name is left out alone and a repeated one keeps its first appearance, so one bad row
  * never empties the rail. A kind this app does not know is kept as it is and shown as a plain
  * library; a missing one reads as no kind. Anything else the server sends with a row is carried
- * through untouched.
+ * through untouched, except media capabilities, which are validated before any
+ * consumer can use them to offer reading or include a library on TV.
  */
 export function parseLibraryList(raw: unknown): {items: Library[]} {
   const items = (raw as {items?: unknown} | null)?.items;
@@ -15,7 +17,9 @@ export function parseLibraryList(raw: unknown): {items: Library[]} {
   const readable = keepReadable('libraries', 'items', items, row => {
     const r = row as Record<string, unknown> | null;
     if (!r || typeof r !== 'object' || Array.isArray(r) || typeof r.id !== 'string' || !r.id || typeof r.name !== 'string' || !r.name) return undefined;
-    return (typeof r.kind === 'string' ? r : {...r, kind: ''}) as Library;
+    const {capabilities: rawCapabilities, ...fields} = r;
+    const capabilities = parseLibraryMediaCapabilities(rawCapabilities);
+    return {...fields, kind: typeof r.kind === 'string' ? r.kind : '', ...(capabilities ? {capabilities} : {})} as Library;
   });
   return {items: firstOfEach('libraries', 'items', readable, row => row.id)};
 }

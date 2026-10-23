@@ -1,5 +1,6 @@
 import {unreadableServerResponse} from './server-messages.ts';
 import {routePath} from '../../contracts/src/routes.ts';
+import {parseLibraryMediaCapabilities, type LibraryMediaCapabilities} from './read-prerequisites.ts';
 /** Browse engine contract. The server owns the vocabulary, the query grammar and
  * every count; this module only parses what it publishes and refuses to send a
  * query the published capabilities cannot execute. No client-side filtering,
@@ -36,7 +37,7 @@ export type BrowsePivotCapability=Readonly<{id:string;labelKey:string;entityKind
 export type BrowsePaging='keyset'|'offset';
 export type BrowseQuickFilter=Readonly<{id:string;labelKey:string;query:BrowseNode}>;
 export type BrowseQueryLimits=Readonly<{maximumDepth:number;maximumClauses:number;maximumBytes:number;maximumSorts:number;defaultLimit:number;maximumLimit:number;cursorTtlMs:number}>;
-export type BrowseLibraryScope=Readonly<{id:string;name:string;kind:string;defaultView:string;pinned:boolean}>;
+export type BrowseLibraryScope=Readonly<{id:string;name:string;kind:string;defaultView:string;pinned:boolean;capabilities?:LibraryMediaCapabilities}>;
 export type BrowseSurfaceCapability=Readonly<{id:string;endpoint:string;membershipField?:string;sorts:readonly string[];filters:readonly string[];paging:BrowsePaging}>;
 export type BrowseCapabilities=Readonly<{surfaces?:readonly BrowseSurfaceCapability[];library:BrowseLibraryScope;pivots:readonly BrowsePivotCapability[];resolvedPivot:BrowsePivotCapability|null;fields:readonly BrowseFieldCapability[];sorts:readonly BrowseSortCapability[];quickFilters:readonly BrowseQuickFilter[];queryLimits:BrowseQueryLimits}>;
 export type BrowsePositionAnchor=Readonly<{key:string;index:number}>;
@@ -181,8 +182,9 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
  // The fields and sorts describe the resolved pivot, so it must be one this app could read.
  const resolved=raw.resolvedPivot===undefined||raw.resolvedPivot===null?null:pivot(raw.resolvedPivot);
  if(resolved&&!pivots.some(p=>p.id===resolved.id))bad();
+ const capabilities=across?undefined:parseLibraryMediaCapabilities(library.capabilities);
  return freeze({
-  library:{id:across?acrossLibraries:library.id as string,name:(library.name??'') as string,kind:across?'':library.kind as string,defaultView:(library.defaultView??'') as string,pinned:library.pinned===true},
+  library:{id:across?acrossLibraries:library.id as string,name:(library.name??'') as string,kind:across?'':library.kind as string,defaultView:(library.defaultView??'') as string,pinned:library.pinned===true,...(capabilities?{capabilities}:{})},
   surfaces:keepReadable('browse','surfaces',rows(raw.surfaces??[],32),v=>{
    if(!obj(v)||!id(v.id)||!str(v.endpoint,256)||(v.paging!=='keyset'&&v.paging!=='offset'))bad();
    return {id:v.id,endpoint:v.endpoint,paging:v.paging as BrowsePaging,sorts:known('surface.sorts',v.sorts,64),filters:known('surface.filters',v.filters,128),...(v.membershipField===undefined?{}:{membershipField:id(v.membershipField)?v.membershipField:bad()})};

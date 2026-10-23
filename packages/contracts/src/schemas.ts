@@ -28346,6 +28346,33 @@ export const schemas = {
       "libraries": {
         "items": {
           "properties": {
+            "capabilities": {
+              "properties": {
+                "cardShape": {
+                  "enum": [
+                    "poster",
+                    "square",
+                    "portrait"
+                  ],
+                  "type": "string"
+                },
+                "reading": {
+                  "enum": [
+                    false
+                  ],
+                  "type": "boolean"
+                },
+                "tv": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "tv",
+                "reading",
+                "cardShape"
+              ],
+              "type": "object"
+            },
             "defaultView": {
               "type": "string"
             },
@@ -28756,6 +28783,33 @@ export const schemas = {
       },
       "library": {
         "properties": {
+          "capabilities": {
+            "properties": {
+              "cardShape": {
+                "enum": [
+                  "poster",
+                  "square",
+                  "portrait"
+                ],
+                "type": "string"
+              },
+              "reading": {
+                "enum": [
+                  false
+                ],
+                "type": "boolean"
+              },
+              "tv": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "tv",
+              "reading",
+              "cardShape"
+            ],
+            "type": "object"
+          },
           "defaultView": {
             "type": "string"
           },
@@ -98950,6 +99004,33 @@ export const schemas = {
       },
       "library": {
         "properties": {
+          "capabilities": {
+            "properties": {
+              "cardShape": {
+                "enum": [
+                  "poster",
+                  "square",
+                  "portrait"
+                ],
+                "type": "string"
+              },
+              "reading": {
+                "enum": [
+                  false
+                ],
+                "type": "boolean"
+              },
+              "tv": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "tv",
+              "reading",
+              "cardShape"
+            ],
+            "type": "object"
+          },
           "defaultView": {
             "type": "string"
           },
@@ -103273,6 +103354,33 @@ export const schemas = {
     "properties": {
       "library": {
         "properties": {
+          "capabilities": {
+            "properties": {
+              "cardShape": {
+                "enum": [
+                  "poster",
+                  "square",
+                  "portrait"
+                ],
+                "type": "string"
+              },
+              "reading": {
+                "enum": [
+                  false
+                ],
+                "type": "boolean"
+              },
+              "tv": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "tv",
+              "reading",
+              "cardShape"
+            ],
+            "type": "object"
+          },
           "defaultView": {
             "type": "string"
           },
@@ -110843,6 +110951,33 @@ export const schemas = {
       "items": {
         "items": {
           "properties": {
+            "capabilities": {
+              "properties": {
+                "cardShape": {
+                  "enum": [
+                    "poster",
+                    "square",
+                    "portrait"
+                  ],
+                  "type": "string"
+                },
+                "reading": {
+                  "enum": [
+                    false
+                  ],
+                  "type": "boolean"
+                },
+                "tv": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "tv",
+                "reading",
+                "cardShape"
+              ],
+              "type": "object"
+            },
             "defaultView": {
               "type": "string"
             },
@@ -174438,6 +174573,33 @@ export const schemas = {
   },
   "PostLibrariesResponse": {
     "properties": {
+      "capabilities": {
+        "properties": {
+          "cardShape": {
+            "enum": [
+              "poster",
+              "square",
+              "portrait"
+            ],
+            "type": "string"
+          },
+          "reading": {
+            "enum": [
+              false
+            ],
+            "type": "boolean"
+          },
+          "tv": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tv",
+          "reading",
+          "cardShape"
+        ],
+        "type": "object"
+      },
       "defaultView": {
         "type": "string"
       },

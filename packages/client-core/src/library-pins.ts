@@ -1,6 +1,7 @@
 import {routePath,encodedRoutePath} from '../../contracts/src/routes.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable} from './tolerant.ts';
+import {parseLibraryMediaCapabilities,type LibraryMediaCapabilities} from './read-prerequisites.ts';
 /** Pinned libraries and pinned-resource order. The arrangement is server state:
  * clients read it, send a replacement with the revision they saw, and re-read.
  * Nothing here re-orders locally or remembers a pin the server did not confirm. */
@@ -12,7 +13,7 @@ export type PinOrderEntry=Readonly<{kind:PinnedResourceKind;id:string}>;
 export type PinnedResource=Readonly<PinOrderEntry&{name:string;pinRevision:number}>;
 export type PinOrder=Readonly<{serverId:string;viewerFence:string;revision:number;order:readonly PinnedResource[]}>;
 export type LibraryNavigationPins=Readonly<{pinnedLibraryIds:readonly string[];revision:number}>;
-export type PinnedLibrary=Readonly<{id:string;name:string;kind:string;defaultView:string;pinned:boolean}>;
+export type PinnedLibrary=Readonly<{id:string;name:string;kind:string;defaultView:string;pinned:boolean;capabilities?:LibraryMediaCapabilities}>;
 
 const obj=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const str=(v:unknown,max=4096):v is string=>typeof v==='string'&&v.length<=max&&!/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v);
@@ -49,7 +50,8 @@ export function parsePinnedLibraries(raw:unknown):readonly PinnedLibrary[]{
  if(!obj(raw))bad();
  const items=firstOfEach('library-pins','items',keepReadable('library-pins','items',rows(raw.items,2048),v=>{
   if(!obj(v)||!id(v.id)||!str(v.name,512)||!id(v.kind)||!str(v.defaultView,64)||typeof v.pinned!=='boolean')bad();
-  return {id:v.id,name:v.name,kind:v.kind,defaultView:v.defaultView,pinned:v.pinned};
+  const capabilities=parseLibraryMediaCapabilities(v.capabilities);
+  return {id:v.id,name:v.name,kind:v.kind,defaultView:v.defaultView,pinned:v.pinned,...(capabilities?{capabilities}:{})};
  }),item=>item.id);
  if(items.some((item,index)=>item.pinned&&index>0&&!items[index-1].pinned))bad();
  return freeze(items);

@@ -1,5 +1,6 @@
 import {routePath} from '../../contracts/src/routes.ts';
 import type {RouteResponse} from '../../contracts/src/routes.ts';
+import {parseLibraryMediaCapabilities,type LibraryMediaCapabilities} from './read-prerequisites.ts';
 export type LibrarySummary=Readonly<{counts:readonly Readonly<{kind:string;count:number;atLeast:boolean}>[];coverUrls:readonly string[];latestArtwork:string;firstScan:boolean;empty:boolean;emptyKnown:boolean}>;
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const text=(v:unknown):v is string=>typeof v==='string'&&v.length<=8192&&!/[\x00-\x1f\x7f]/.test(v);
@@ -13,8 +14,8 @@ export function parseLibrarySummary(raw:unknown):LibrarySummary{
 }
 /** A single viewer-scoped read for library counts and artwork. This holds no
  * persistent cache and never reads administration settings or scan progress. */
-export async function readLibrarySummaries(api:{request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>},signal?:AbortSignal):Promise<readonly Readonly<{id:string;name:string;kind:string;summary:LibrarySummary}>[]>{
+export async function readLibrarySummaries(api:{request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>},signal?:AbortSignal):Promise<readonly Readonly<{id:string;name:string;kind:string;summary:LibrarySummary;capabilities?:LibraryMediaCapabilities}>[]>{
  const raw=await api.request<RouteResponse<'get_libraries'>>(routePath('get_libraries'),'GET',undefined,signal);
  if(!object(raw)||!Array.isArray(raw.items)||raw.items.length>2048)invalid();
- return Object.freeze(raw.items.map(row=>{if(!object(row)||!text(row.id)||!text(row.name)||!text(row.kind))invalid();return Object.freeze({id:row.id,name:row.name,kind:row.kind,summary:parseLibrarySummary(row.summary)});}));
+ return Object.freeze(raw.items.map(row=>{if(!object(row)||!text(row.id)||!text(row.name)||!text(row.kind))invalid();const capabilities=parseLibraryMediaCapabilities(row.capabilities);return Object.freeze({id:row.id,name:row.name,kind:row.kind,summary:parseLibrarySummary(row.summary),...(capabilities?{capabilities}:{})});}));
 }
