@@ -118,7 +118,6 @@ func (s *Service) captureSessionState(p identity.Principal, f *Source) (*Session
 	if err != nil {
 		return nil, err
 	}
-	item := f.ItemID
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 	if s.sessionsClosed {
@@ -134,9 +133,6 @@ func (s *Service) captureSessionState(p identity.Principal, f *Source) (*Session
 			old.close()
 			delete(s.sessions, id)
 			continue
-		}
-		if old.actor == p.Hash && old.selection.ItemID == item && old.selection.SourceID == f.SourceID && old.selection.Revision == f.Revision && old.touch() {
-			return old, nil
 		}
 		if old.owner == owner {
 			count++

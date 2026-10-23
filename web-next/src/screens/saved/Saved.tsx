@@ -44,7 +44,7 @@ export type SavedEffects = SavedDownloadEffects & Readonly<{
   openMore?: (service: SavedService, sectionId: string, entry: SavedEntry, anchor: HTMLElement) => void;
   selectRoute(route: SavedScreenRoute): void;
   /** Present only when the playback owner supports this complete server resource. */
-  playResource?: (target: Readonly<{kind: 'playlist' | 'collection' | 'view'; id: string; shuffle: boolean}>) => Promise<void>;
+  playResource?: (target: Readonly<{kind: 'playlist' | 'collection' | 'view'; id: string; shuffle: boolean}>, signal: AbortSignal) => Promise<void>;
 }>;
 export type SavedBindings = Readonly<{
   runtime: SavedRuntime;
