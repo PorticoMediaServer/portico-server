@@ -515,6 +515,7 @@ index queue_v1_snapshots_queue
 index queues_v1_idle
 index queues_v1_owner
 index quick_connect_expiry_v1
+index reading_progress_publication
 index rec_profile_signals_positive_recent
 index rec_profile_signals_recent
 index rec_profile_signals_work
@@ -1200,6 +1201,8 @@ table queue_v1_segments
 table queue_v1_snapshots
 table queues_v1
 table quick_connect_v1
+table reading_progress
+table reading_publications
 table rec_data_revision
 table rec_profile_jobs
 table rec_profile_revisions
@@ -1220,6 +1223,7 @@ table remote_sources
 table reset_file_sessions
 table restriction_outbox
 table restrictions
+table retained_reading_progress
 table retained_title_identities
 table retained_title_state
 table retained_title_state_counts
