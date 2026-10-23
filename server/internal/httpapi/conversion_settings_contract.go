@@ -58,6 +58,9 @@ func (c *ConsoleSettingsChange) UnmarshalJSON(raw []byte) error {
 	for i := 0; i < fields.NumField(); i++ {
 		field := fields.Field(i)
 		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if name == "-" {
+			continue
+		}
 		known[name] = true
 		value, ok := values[name]
 		if !ok || field.Type.Kind() != reflect.Pointer && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
