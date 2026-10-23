@@ -2,7 +2,7 @@ import {invoke} from '@tauri-apps/api/core';
 
 export type NativeObservation = Readonly<{generation: number; state: 'idle' | 'loading' | 'playing' | 'paused' | 'buffering' | 'ended' | 'error'; positionMs: number; rate: number; volume: number; muted: boolean; droppedFrames: number; nativeSurfaceActive: boolean;eqApplied:boolean;levelingApplied:boolean}>;
 export type SurfaceBounds = Readonly<{x: number; y: number; width: number; height: number}>;
-export type NativeCommand = {action: string; generation?: number; source?: {url: string; generation: number; mode: string; startPositionMs: number; autoplay: boolean}; milliseconds?: number; rate?: number; volume?: number; muted?: boolean};
+export type NativeCommand = {action: string; generation?: number; source?: {url: string; generation: number; mode: string; startPositionMs: number; autoplay: boolean}; milliseconds?: number; direction?:-1|1; rate?: number; volume?: number; muted?: boolean};
 export interface Bridge {command(value: NativeCommand): Promise<void>; observe(): Promise<NativeObservation>; surface?(bounds: SurfaceBounds, generation: number): Promise<void>}
 export function observation(value: unknown): NativeObservation {
   if (!value || typeof value !== 'object') throw new Error('engine_failure');

@@ -20,6 +20,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   private processing?:Readonly<{generation:number;eqApplied:boolean;levelingApplied:boolean}>;
   private hole?: NativeHole;
   private seeking = false;
+  private frameStepping = false;
   private ticker?: ReturnType<typeof setInterval>;
   private readonly volumeChanged = () => this.send({action: 'volume', volume: this.video.volume, muted: this.video.muted});
   private readonly video: VideoLike;
@@ -38,7 +39,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   /** Extra structural port until the canonical checked factory hook lands. Facts belong to
    * this presentation generation, never to a stored preference or the previous song. */
   get audioProcessing() { return this.processing; }
-  get settling() { return this.seeking || this.reading.state === 'loading'; }
+  get settling() { return this.seeking || this.frameStepping || this.reading.state === 'loading'; }
   private emit(event: PlayerEvent) { for (const listener of [...this.listeners]) listener(event); }
   private fail(epoch: number) {
     if (this.disposed || epoch !== this.epoch || !this.source) return;
@@ -56,7 +57,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   }
   load(source: PlayerSource) {
     if (this.disposed) return;
-    const epoch = ++this.epoch; this.source = source; this.seeking = false;
+    const epoch = ++this.epoch; this.source = source; this.seeking = false;this.frameStepping=false;
     this.surfaceActive = false;this.processing=undefined;
     this.nativeGeneration = ++nextNativeGeneration;
     if(!this.hole&&typeof HTMLVideoElement!=='undefined'&&this.video instanceof HTMLVideoElement)this.hole=new NativeHole(this.video,bounds=>this.bridge.surface?.(bounds,this.nativeGeneration)??Promise.reject(new Error('unsupported')),()=>this.surfaceActive);
@@ -69,6 +70,21 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   pause() { this.send({action: 'pause'}); }
   seek(positionMs: number) { if (Number.isFinite(positionMs) && positionMs >= 0) { this.seeking = true; this.send({action: 'seek', milliseconds: positionMs}); } }
   setRate(rate: number) { if (Number.isFinite(rate) && rate >= .25 && rate <= 4) { this.reading = {...this.reading, rate}; this.send({action: 'rate', rate}); } }
+  /** Fixed native decoder commands only. The web runtime supplies its actual paused
+   * fence once that optional hook is on MAIN; this adapter independently fences it. */
+  stepFrame(direction:-1|1,generation:number):Promise<void> {
+    const epoch=this.epoch,native=this.nativeGeneration;
+    const current=()=>!this.disposed&&this.epoch===epoch&&this.source?.generation===generation&&this.nativeGeneration===native;
+    if(!current()||this.reading.state!=='paused'||this.settling||![-1,1].includes(direction))return Promise.reject(new Error('invalid_command'));
+    this.frameStepping=true;
+    const task=this.serial.then(async()=>{
+      if(!current()||this.reading.state!=='paused')throw new Error('stale_generation');
+      await this.bridge.command({action:'frameStep',direction,generation:native});
+      if(!current())throw new Error('stale_generation');
+    });
+    this.serial=task.catch(()=>{});
+    return task.then(()=>this.tick()).finally(()=>{if(current())this.frameStepping=false;});
+  }
   selectSidecarSubtitle(trackId: string | null) {
     // Embedded libass/bitmap rendering is native. Extracted sidecars require a constrained broker;
     // do not tell the controller an unavailable sidecar is visible.
@@ -99,7 +115,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   }
   unload() {
     if (this.source) this.send({action: 'stop'});
-    ++this.epoch; this.source = undefined; this.seeking = false; this.surfaceActive = false;this.processing=undefined;
+    ++this.epoch; this.source = undefined; this.seeking = false;this.frameStepping=false; this.surfaceActive = false;this.processing=undefined;
     this.hole?.dispose();this.hole=undefined;
     this.reading = {generation: 0, state: 'idle', positionMs: 0, rate: this.reading.rate};
   }

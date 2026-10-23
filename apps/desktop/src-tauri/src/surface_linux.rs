@@ -19,6 +19,7 @@ pub fn proof()->serde_json::Value{serde_json::json!({"renderCalls":RENDER_CALLS.
 type Create=unsafe extern "C" fn(*mut *mut c_void,*mut c_void,*mut Param)->c_int;
 type Render=unsafe extern "C" fn(*mut c_void,*mut Param)->c_int;
 #[repr(C)]struct FrameInfo{flags:u64,target_time:i64}
+type Update=unsafe extern "C" fn(*mut c_void)->u64;
 type GetInfo=unsafe extern "C" fn(*mut c_void,Param)->c_int;
 type Free=unsafe extern "C" fn(*mut c_void);
 type GetProc=unsafe extern "C" fn(*const c_char)->*mut c_void;
@@ -77,6 +78,7 @@ pub fn attach(webview:&tauri::webview::PlatformWebview,api:Arc<Api>,output:&Audi
             if !p.is_null(){let get:unsafe extern "C" fn(u32)->*const c_char=std::mem::transmute(p);let name=get(0x1F01);if !name.is_null(){let _=RENDERER.set(std::ffi::CStr::from_ptr(name).to_string_lossy().into_owned());}}
             let scale=area.scale_factor();let mut target=Fbo{id,width:area.allocated_width()*scale,height:area.allocated_height()*scale,format:0};let mut flip=1;
             let mut params=[Param{kind:3,data:(&mut target as *mut Fbo).cast()},Param{kind:4,data:(&mut flip as *mut i32).cast()},Param{kind:0,data:ptr::null_mut()}];
+            if let Ok(update)=ctx.engine.api.symbol::<Update>(b"mpv_render_context_update\0"){let _=update(ctx.raw);}
             let generation=ctx.engine.render_generation();
             let mut info=FrameInfo{flags:0,target_time:0};
             let actual_frame=ctx.engine.api.symbol::<GetInfo>(b"mpv_render_context_get_info\0").map(|get| get(ctx.raw,Param{kind:11,data:(&mut info as *mut FrameInfo).cast()})>=0 && info.flags&1!=0 && info.flags&2==0).unwrap_or(false);

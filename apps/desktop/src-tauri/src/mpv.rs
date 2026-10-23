@@ -124,6 +124,13 @@ impl Mpv {
                  engine.option("d3d11-output-mode","composition")?;engine.option("d3d11-output-csp","auto")?;}
             }
         }
+        #[cfg(debug_assertions)]
+        if std::env::var_os("PORTICO_SPIKE_MEDIA").is_some(){
+            if let Some(report)=std::env::var_os("PORTICO_SPIKE_REPORT"){
+                let path=std::path::PathBuf::from(report).with_extension("mpv.log");
+                if let Some(path)=path.to_str(){engine.option("log-file",path)?;}
+            }
+        }
         let initialized=unsafe {(engine.api.initialize)(handle)};crate::spike::record("initialize",initialized);status(initialized)?;
         Ok(engine)
     }
@@ -131,7 +138,7 @@ impl Mpv {
         // mpv compiles these switches out with their corresponding script engines.
         // Only OPTION_NOT_FOUND means the forbidden feature itself is unavailable;
         // every other failure still closes initialization.
-        for key in ["load-scripts","ytdl","osc"] {
+        for key in ["load-scripts","ytdl","osc","load-stats-overlay","load-console","load-auto-profiles","load-select","load-positioning","load-commands","load-context-menu"] {
             let code=unsafe{(self.api.option)(self.handle,c(key)?.as_ptr(),c("no")?.as_ptr())};
             if code != -5 {status(code)?;}
         }
@@ -284,7 +291,7 @@ impl Mpv {
                 self.load(&source)?;*generation=source.generation;self.current_generation.store(*generation,Ordering::Release);Ok(())
             }
             other => {
-                let g=match &other {Command::Play{generation}|Command::Pause{generation}|Command::Seek{generation,..}|Command::Rate{generation,..}|Command::Volume{generation,..}|Command::Stop{generation}=>*generation,_=>unreachable!()};
+                let g=match &other {Command::Play{generation}|Command::Pause{generation}|Command::Seek{generation,..}|Command::Rate{generation,..}|Command::FrameStep{generation,..}|Command::Volume{generation,..}|Command::Stop{generation}=>*generation,_=>unreachable!()};
                 if *generation==0 || *generation!=g {return Err(Error::StaleGeneration);}
                 match other {
                     Command::Play{..} if self.equalizer_chain_known.load(Ordering::Acquire)=>{
@@ -293,6 +300,14 @@ impl Mpv {
                     },
                     Command::Play{..}=>Err(Error::EngineFailure),Command::Pause{..}=>{self.pending_autoplay.store(false,Ordering::Release);self.set("pause","yes")},
                     Command::Seek{milliseconds,..} if milliseconds.is_finite()&&(0.0..=1e12).contains(&milliseconds)=>self.command(&["seek",&(milliseconds/1000.0).to_string(),"absolute+exact"]),
+                    Command::FrameStep{direction,..} if matches!(direction,-1|1)=>{
+                        self.drain();
+                        if !self.loaded.load(Ordering::Acquire)||self.starting.load(Ordering::Acquire)
+                            ||self.restarted_generation.load(Ordering::Acquire)!=g
+                            ||self.failed.load(Ordering::Acquire)||!self.flag("pause")||self.flag("paused-for-cache")
+                            ||self.flag("eof-reached")||self.number("width").unwrap_or(0.0)<=0.0{return Err(Error::InvalidCommand)}
+                        self.command(&[if direction==1{"frame-step"}else{"frame-back-step"}])
+                    },
                     Command::Rate{rate,..} if rate.is_finite()&&(0.25..=4.0).contains(&rate)=>self.set("speed",&rate.to_string()),
                     Command::Volume{volume,muted,..} if volume.is_finite()&&(0.0..=1.0).contains(&volume)=>{self.set("volume",&(volume*100.0).to_string())?;self.set("mute",if muted{"yes"}else{"no"})},
                     Command::Stop{..}=>{self.command(&["stop"])?;*generation=0;self.current_generation.store(0,Ordering::Release);self.clear_file_facts();self.starting.store(false,Ordering::Release);self.equalizer_applied.store(false,Ordering::Release);self.equalizer_route_pending.store(false,Ordering::Release);Ok(())},
@@ -304,7 +319,7 @@ impl Mpv {
     fn load(&self,source:&Source)->Result<()> {
         self.pending_autoplay.store(source.autoplay,Ordering::Release);self.starting.store(true,Ordering::Release);
         self.set("pause","yes")?;
-        self.load_node(&source.url,&[("start",(source.start_position_ms/1000.0).to_string())])
+        self.load_node(&source.url,&[("start",(source.start_position_ms/1000.0).to_string()),("demuxer-lavf-o","protocol_whitelist=[http,https,tcp,tls,crypto],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpeg,mpegts,ogg,wav,wv]".into())])
     }
     /// Only the native download store can resolve this path. Fixed per-file options keep
     /// local demuxers from following a playlist/network reference and do not alter the
@@ -341,9 +356,12 @@ impl Mpv {
             self.native_window.store(window,Ordering::Release);
             if self.loaded.load(Ordering::Acquire)&&self.restarted_generation.load(Ordering::Acquire)==generation&&self.property("video-frame-info/interlaced").is_some(){self.frame_drawn(generation);}
         }
-        let state=if generation==0{"idle"}else if self.failed.load(Ordering::Acquire){"error"}else if self.flag("eof-reached"){"ended"}else if self.starting.load(Ordering::Acquire)||!self.loaded.load(Ordering::Acquire)||self.flag("idle-active"){"loading"}
+        let state=if generation==0{"idle"}else if self.failed.load(Ordering::Acquire){"error"}else if self.starting.load(Ordering::Acquire)||!self.loaded.load(Ordering::Acquire){"loading"}else if self.flag("eof-reached"){"ended"}else if self.flag("idle-active"){"loading"}
             else if self.flag("paused-for-cache"){"buffering"}else if self.flag("pause"){"paused"}else{"playing"};
-        Observation{generation,state:state.into(),position_ms:self.number("time-pos").unwrap_or(0.0).max(0.0)*1000.0,
+        // A load command changes the generation before mpv has retired the previous
+        // file. Its time-pos/eof properties belong to that old file until FILE_LOADED.
+        let current_file=self.loaded.load(Ordering::Acquire)&&!matches!(state,"idle"|"loading"|"error");
+        Observation{generation,state:state.into(),position_ms:if current_file{self.number("time-pos").unwrap_or(0.0).max(0.0)*1000.0}else{0.0},
             rate:self.number("speed").unwrap_or(1.0),volume:self.number("volume").unwrap_or(100.0)/100.0,
             muted:self.flag("mute"),dropped_frames:self.number("frame-drop-count").unwrap_or(0.0) as u64,
             native_surface_active:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.surface_ready.load(Ordering::Acquire)&&self.geometry_ready.load(Ordering::Acquire)&&self.frame_drawn.load(Ordering::Acquire)==generation&&self.loaded.load(Ordering::Acquire)&&self.number("width").unwrap_or(0.0)>0.0,
@@ -440,7 +458,14 @@ mod local_source_tests {
         let second_entry=engine.expected_entry.load(Ordering::Acquire);assert!(second_entry>first_entry);
         assert_eq!(engine.frame_drawn.load(Ordering::Acquire),0);
         let until=std::time::Instant::now()+std::time::Duration::from_secs(5);
-        while std::time::Instant::now()<until{let observation=engine.observation();if observation.position_ms>10.0{break}std::thread::sleep(std::time::Duration::from_millis(10));}
+        let mut reloaded=false;
+        while std::time::Instant::now()<until{
+            let observation=engine.observation();
+            if observation.state=="loading"{assert_eq!(observation.position_ms,0.0);}
+            if observation.state=="playing"&&observation.position_ms>10.0{reloaded=true;break}
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(reloaded,"second same-file native entry never advanced");
         assert_eq!(engine.started_entry.load(Ordering::Acquire),second_entry);
         assert_eq!(engine.observation().generation,2);
         let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();listener.set_nonblocking(true).unwrap();
@@ -463,4 +488,75 @@ mod local_source_tests {
         let observation=engine.observation();assert_eq!(observation.generation,0);assert!(!observation.native_surface_active);
 
     }
+    #[test]
+    #[ignore="requires an explicit native libmpv library and owned variable-frame-rate video"]
+    fn paused_frame_steps_follow_native_vfr_frames_and_refuse_other_states(){
+        let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native library required");
+        let fixture=std::env::var_os("PORTICO_TEST_VIDEO_FIXTURE").expect("owned VFR fixture required");
+        let engine=Mpv::new(Api::open(Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
+        engine.load_local(Path::new(&fixture),1,0.0,false).unwrap();
+        let wait=|after:Option<f64>,back:bool|{
+            let until=std::time::Instant::now()+std::time::Duration::from_secs(5);
+            loop{
+                let value=engine.observation();assert_ne!(value.state,"error");
+                if value.state=="paused"&&engine.restarted_generation.load(Ordering::Acquire)==1&&after.is_none_or(|a|if back{value.position_ms<a-1.0}else{value.position_ms>a+1.0}){return value.position_ms}
+                assert!(std::time::Instant::now()<until,"native frame observation never completed: {value:?}");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        };
+        let start=wait(None,false);
+        assert_eq!(engine.execute(Command::FrameStep{generation:2,direction:1}),Err(Error::StaleGeneration));
+        assert_eq!(engine.execute(Command::FrameStep{generation:1,direction:0}),Err(Error::InvalidCommand));
+        engine.execute(Command::FrameStep{generation:1,direction:1}).unwrap();let one=wait(Some(start),false);
+        engine.execute(Command::FrameStep{generation:1,direction:1}).unwrap();let two=wait(Some(one),false);
+        // This fixture's actual PTS are 0,100,400,500,1100,1700ms. A constant fps guess
+        // cannot satisfy both observed intervals. The engine commands name no position.
+        assert!((one-100.0).abs()<2.0,"first observed frame {one}");
+        assert!((two-400.0).abs()<2.0,"second observed VFR frame {two}");
+        engine.execute(Command::FrameStep{generation:1,direction:-1}).unwrap();let back=wait(Some(two),true);
+        assert!((back-one).abs()<2.0,"back step returned {back}, expected actual prior frame {one}");
+        engine.execute(Command::Play{generation:1}).unwrap();
+        assert_eq!(engine.execute(Command::FrameStep{generation:1,direction:1}),Err(Error::InvalidCommand));
+        engine.retire().unwrap();
+    }
+
+    #[test]
+    #[ignore="requires explicit native libmpv and owned PCM; opens only ephemeral loopback HTTP"]
+    fn native_http_progressive_plays_but_manifest_contents_never_open_another_resource(){
+        use std::io::{Read,Write};
+        let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native library required");
+        let fixture=std::env::var_os("PORTICO_TEST_PCM_FIXTURE").expect("owned fixture required");
+        let pcm=std::fs::read(fixture).unwrap();
+        let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();listener.set_nonblocking(true).unwrap();
+        let port=listener.local_addr().unwrap().port();
+        let done=Arc::new(AtomicBool::new(false));let stopping=done.clone();
+        let escaped=Arc::new(AtomicBool::new(false));let escape=escaped.clone();
+        let server=std::thread::spawn(move||{
+            while !stopping.load(Ordering::Acquire){
+                let (mut stream,_)=match listener.accept(){Ok(s)=>s,Err(e) if e.kind()==std::io::ErrorKind::WouldBlock=>{std::thread::sleep(std::time::Duration::from_millis(5));continue},Err(_)=>break};
+                stream.set_read_timeout(Some(std::time::Duration::from_secs(1))).unwrap();stream.set_write_timeout(Some(std::time::Duration::from_secs(1))).unwrap();
+                let mut request=[0u8;8192];let n=stream.read(&mut request).unwrap_or(0);let request=String::from_utf8_lossy(&request[..n]);
+                let manifest=format!("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nhttp://127.0.0.1:{port}/escape\n#EXT-X-ENDLIST\n");
+                let (mime,body)=if request.starts_with("GET /v1/media "){("audio/wav",pcm.as_slice())}else if request.starts_with("GET /v1/manifest "){("application/vnd.apple.mpegurl",manifest.as_bytes())}else{escape.store(true,Ordering::Release);("text/plain",b"denied".as_slice())};
+                let header=format!("HTTP/1.1 200 OK\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",body.len());
+                let _=stream.write_all(header.as_bytes());let _=stream.write_all(body);
+            }
+        });
+        let engine=Mpv::new(Api::open(Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
+        let run=||{
+            let source=|path:&str,generation|Source{url:format!("http://127.0.0.1:{port}/v1/{path}"),generation,mode:"direct".into(),start_position_ms:0.0,autoplay:true};
+            engine.execute(Command::Load{source:source("media",1)}).unwrap();
+            let until=std::time::Instant::now()+std::time::Duration::from_secs(5);let mut advanced=false;
+            while std::time::Instant::now()<until{let value=engine.observation();if value.position_ms>10.0{advanced=true;break}assert_ne!(value.state,"error");std::thread::sleep(std::time::Duration::from_millis(10));}
+            assert!(advanced,"native progressive HTTP did not play");
+            engine.execute(Command::Load{source:source("manifest",2)}).unwrap();
+            let until=std::time::Instant::now()+std::time::Duration::from_secs(2);
+            while std::time::Instant::now()<until{let _=engine.observation();assert!(!escaped.load(Ordering::Acquire),"native manifest escaped to a second resource");std::thread::sleep(std::time::Duration::from_millis(10));}
+            assert!(!matches!(engine.observation().state.as_str(),"playing"|"buffering"));
+            engine.retire().unwrap();
+        };
+        let result=std::panic::catch_unwind(std::panic::AssertUnwindSafe(run));
+        done.store(true,Ordering::Release);server.join().unwrap();if let Err(error)=result{std::panic::resume_unwind(error)}
+    }
+
 }

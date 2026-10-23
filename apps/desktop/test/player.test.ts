@@ -9,10 +9,11 @@ function harness() {
   const commands: NativeCommand[] = [], handlers = new Map<string,()=>void>();
   let reading: NativeObservation = {generation:0,state:'paused',positionMs:0,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false,eqApplied:false,levelingApplied:false};
   let answer: (()=>Promise<NativeObservation>) | undefined;
-  const bridge: Bridge = {async command(command) {commands.push(command); if (command.source) reading={...reading,generation:command.source.generation};},observe:()=>answer?.() ?? Promise.resolve(reading)};
+  let commandEffect:((command:NativeCommand)=>Promise<void>)|undefined;
+  const bridge: Bridge = {async command(command) {commands.push(command); if (command.source) reading={...reading,generation:command.source.generation};await commandEffect?.(command);},observe:()=>answer?.() ?? Promise.resolve(reading)};
   const video = {volume:1,muted:false,pause(){},load(){},removeAttribute(){},addEventListener(k:string,fn:()=>void){handlers.set(k,fn);},removeEventListener(k:string){handlers.delete(k);}} as unknown as VideoLike;
   const player = new DesktopMediaPlayer(video,{resolveUrl:path=>'https://server.test'+path},bridge,false);
-  return {player,commands,handlers,setReading:(x:Partial<NativeObservation>)=>{reading={...reading,...x};},setAnswer:(x:()=>Promise<NativeObservation>)=>{answer=x;}};
+  return {player,commands,handlers,setCommand:(effect:NonNullable<typeof commandEffect>)=>{commandEffect=effect;},setReading:(x:Partial<NativeObservation>)=>{reading={...reading,...x};},setAnswer:(x:()=>Promise<NativeObservation>)=>{answer=x;}};
 }
 test('real port forwards only projection and translates private native generations',async()=>{
   const h=harness();h.player.load({...source,sessionId:'session-private',itemId:'private-item'});await h.player.tick();
@@ -60,4 +61,20 @@ test('processing uses current native facts and clears across tracks and ended',a
  assert.deepEqual(h.player.audioProcessing,{generation:2,eqApplied:false,levelingApplied:false});
  h.setReading({state:'ended',eqApplied:true});await h.player.tick();assert.equal(h.player.audioProcessing,undefined);
  h.player.dispose();assert.equal(h.player.audioProcessing,undefined);
+});
+
+test('frame step uses paused real generation and observation; no seek arithmetic or stale completion',async()=>{
+ const h=harness();h.player.load({...source,generation:77});await h.player.tick();
+ const native=h.commands[0].source!.generation;
+ h.setCommand(async command=>{if(command.action==='frameStep')h.setReading({positionMs:317,state:'paused'});});
+ await h.player.stepFrame(1,77);
+ assert.deepEqual(h.commands.at(-1),{action:'frameStep',direction:1,generation:native});
+ assert.equal(h.player.observe().positionMs,317);assert.equal(h.commands.some(v=>v.action==='seek'),false);
+ h.setReading({state:'playing'});await h.player.tick();const count=h.commands.length;
+ await assert.rejects(h.player.stepFrame(-1,77),/invalid_command/);assert.equal(h.commands.length,count);
+ h.setReading({state:'paused'});await h.player.tick();
+ let release!:()=>void;h.setCommand(async command=>{if(command.action==='frameStep')await new Promise<void>(resolve=>{release=resolve});});
+ const pending=h.player.stepFrame(-1,77);await new Promise(resolve=>setImmediate(resolve));
+ h.player.load({...source,generation:78});release();await assert.rejects(pending,/stale_generation/);
+ assert.equal(h.player.observe().generation,78);assert.equal(h.player.observe().positionMs,0);h.player.dispose();
 });

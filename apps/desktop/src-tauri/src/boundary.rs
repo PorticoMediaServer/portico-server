@@ -78,6 +78,7 @@ pub enum Command {
     Pause { generation: u64 },
     Seek { generation: u64, milliseconds: f64 },
     Rate { generation: u64, rate: f64 },
+    FrameStep { generation:u64, direction:i8 },
     Volume { generation: u64, volume: f64, muted: bool },
     Stop { generation: u64 },
 }
