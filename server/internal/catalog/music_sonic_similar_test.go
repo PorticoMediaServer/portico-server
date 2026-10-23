@@ -112,3 +112,34 @@ func TestMusicSonicMeansUseOnlyCurrentProfilePermittedSongs(t *testing.T) {
 		t.Fatal("seed outside profile admitted", err)
 	}
 }
+
+func TestMusicSonicSimilarRanksExactCosineAndReportsGenreFallback(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("music", "Music", "music", "/music")
+	seed := c.Album(c.Artist(lib, "Seed artist"), "Seed", 2026)
+	near := c.Album(c.Artist(lib, "Near artist"), "Near", 2026)
+	far := c.Album(c.Artist(lib, "Far artist"), "Far", 2026)
+	one := c.Song(seed, 1, "/music/seed.flac", "Seed song")
+	two := c.Song(near, 1, "/music/near.flac", "Near song")
+	three := c.Song(far, 1, "/music/far.flac", "Far song")
+	sonicStoredFixture(t, c, one, 1, 0)
+	sonicStoredFixture(t, c, two, .9, .1)
+	sonicStoredFixture(t, c, three, 0, 1)
+	c.Drain()
+	s := New(c.DB)
+	viewer := Viewer{Profile: "local:account:profile", Libraries: []string{"music"}}
+	got, err := s.ListeningSimilarBySound(viewer, seed.Public, 12)
+	if err != nil || !got.BySound || len(got.Items.Entries) != 2 || got.Items.Entries[0].ID != near.Public || got.Items.Entries[1].ID != far.Public {
+		t.Fatalf("exact cosine rank: %+v %v", got, err)
+	}
+	for _, item := range got.Items.Entries {
+		if item.Playback != nil {
+			t.Fatal("browse result minted playback", item)
+		}
+	}
+	c.Exec(`INSERT INTO library_sonic_settings(library_id,enabled,revision) VALUES('music',0,1)`)
+	got, err = s.ListeningSimilarBySound(viewer, seed.Public, 12)
+	if err != nil || got.BySound {
+		t.Fatal("off claimed sound rather than existing genre/co-listening", got, err)
+	}
+}
