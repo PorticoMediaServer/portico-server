@@ -136,13 +136,6 @@ PYLICENSE
     python3 "$ROOT/scripts/build-linux-ffmpeg.py" --work "$WORK" --source "$SOURCE" "${compile_options[@]}"
     fi
     INPUT="$WORK/linux-output"
-    if [[ "$PHASE" == working ]]; then
-      "$INPUT/bin/ffmpeg" -version
-      "$INPUT/bin/ffprobe" -version
-      echo "Working source-built tools: $INPUT/bin"
-      echo 'Repeat and full bundle qualification remain; this is not a release bundle.'
-      exit 0
-    fi
     if [[ "$PHASE" == compile ]]; then
       echo "Repeated source compilation finished; bundle packaging and runtime qualification remain: $INPUT"
       exit 0
@@ -207,7 +200,10 @@ if [[ "$TARGET" == linux-x64 ]]; then
   cp -a "$LANE_SCRATCH/libdovi/sources" "$WORK/provenance/libdovi/sources"
   cp "$WORK/libdovi/"{vendor-source.tar.xz,vendor-lock.json,fetch.sh,build.sh,contract.json,expected.json,compiler-and-licenses.json} "$WORK/provenance/libdovi/"
   cp -a "$WORK/libdovi/license-supplements" "$WORK/provenance/libdovi/"
-  cp "$INPUT/libdovi-build.json" "$INPUT/dovi-profile-build.json" "$INPUT/dovi-video-build.json" "$WORK/provenance/libdovi/"
+  cp "$INPUT/libdovi-build.json" "$WORK/provenance/libdovi/"
+  if [[ "$PHASE" != working ]]; then
+    cp "$INPUT/dovi-profile-build.json" "$INPUT/dovi-video-build.json" "$WORK/provenance/libdovi/"
+  fi
   cp -a "$ROOT/third_party/ffmpeg/tests" "$WORK/provenance/contract/"
   cp "$ROOT/third_party/ffmpeg/portico-dovi-profile.patch" "$WORK/provenance/contract/"
   cp "$ROOT/third_party/ffmpeg/portico-dovi-join.patch" "$WORK/provenance/contract/"
@@ -215,7 +211,19 @@ if [[ "$TARGET" == linux-x64 ]]; then
 fi
 # Include dependency sources and exact recipe, excluding only output binaries and git metadata.
 tar -C "$WORK" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner --exclude=recipe/.git --exclude=recipe/workspace --exclude=recipe/artifacts --exclude=recipe/.cache/images -I 'xz -T1' -cf "$WORK/corresponding-source.tar.xz" recipe provenance
-python3 "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$INPUT" "$TARGET" "$WORK/bundle" "$WORK/corresponding-source.tar.xz"
-"$ROOT/scripts/verify-ffmpeg-bundle.sh" "$WORK/bundle"
-tar -C "$WORK/bundle" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -I 'xz -T1' -cf "$WORK/portico-ffmpeg-$TARGET.tar.xz" .
-echo "$WORK/portico-ffmpeg-$TARGET.tar.xz"
+normalize_options=()
+archive_name="portico-ffmpeg-$TARGET.tar.xz"
+if [[ "$PHASE" == working ]]; then
+  normalize_options+=(--working)
+  archive_name="portico-ffmpeg-$TARGET-working.tar.xz"
+fi
+python3 "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$INPUT" "$TARGET" "$WORK/bundle" "$WORK/corresponding-source.tar.xz" "${normalize_options[@]}"
+if [[ "$PHASE" == working ]]; then
+  "$WORK/bundle/bin/ffmpeg" -version
+  "$WORK/bundle/bin/ffprobe" -version
+  echo 'First working source bundle; repeat and full target qualification remain.'
+else
+  "$ROOT/scripts/verify-ffmpeg-bundle.sh" "$WORK/bundle"
+fi
+tar -C "$WORK/bundle" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -I 'xz -T1' -cf "$WORK/$archive_name" .
+echo "$WORK/$archive_name"

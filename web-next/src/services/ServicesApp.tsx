@@ -1,0 +1,99 @@
+import {useEffect, useState, useSyncExternalStore} from 'react';
+import {createRootRouteWithContext, createRoute, createRouter, Outlet, RouterProvider} from '@tanstack/react-router';
+import type {JoinLink} from '@core/join-link.ts';
+import {IconSprite} from '../kit/Icon';
+import {StateView} from '../kit/states';
+import {ServicesAuthStage, ServicesActions, ServicesHeading, ServicesNotice} from '../kit/accounts/ServicesAuth';
+import {Button} from '../kit/controls';
+import {servicesAccount, type ServicesAccount} from './session';
+import {ServicesBootstrap} from './bootstrap';
+import {captureServicesLink, scrubUnsupportedServicesFragment, servicesLinkStore, type LinkCapture} from './intake';
+import {servicesI18n} from './i18n';
+import {ServicesAuthForm} from './AuthForm';
+import {DevicePage} from './DevicePage';
+import {ResetPage, VerifyPage} from './LinkPages';
+import {AccountPage} from './AccountPage';
+
+type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink};
+const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
+const home = createRoute({getParentRoute: () => root, path: '/', component: HomeRoute});
+const workspace = createRoute({getParentRoute: () => root, path: '/account', component: AccountRoute,
+  validateSearch: (value: Record<string, unknown>) => {
+    const transaction = typeof value.identityTransaction === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(value.identityTransaction) ? value.identityTransaction : undefined;
+    return {tab: transaction ? 'security' : value.tab === 'security' || value.tab === 'servers' || value.tab === 'notifications' ? value.tab : 'devices', ...(transaction ? {identityTransaction: transaction} : {})};
+  }});
+const device = createRoute({getParentRoute: () => root, path: '/device', component: DeviceRoute});
+const reset = createRoute({getParentRoute: () => root, path: '/reset', component: ResetRoute});
+const verify = createRoute({getParentRoute: () => root, path: '/verify-email', component: VerifyRoute});
+// Owner continuation has no public browser handler in the consumed MAIN contract. A missing or
+// unrecognized claim is the drawn invalid-link state; it never starts an ordinary sign-in return.
+const claim = createRoute({getParentRoute: () => root, path: '/claim', component: ClaimStart});
+type ServicesRouter = ReturnType<typeof makeRouter>;
+function makeRouter(context: Context) {
+  return createRouter({routeTree: root.addChildren([home, workspace, device, reset, verify, claim]), context});
+}
+// This router's types stay local. The server app remains the only global TanStack Register.
+export function ServicesApp({capture, invalidContinuation, join}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink} = {}) {
+  const [value] = useState(() => {
+    const captured = capture ?? captureServicesLink(location, history);
+    const invalid = invalidContinuation ?? scrubUnsupportedServicesFragment(location, history);
+    const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, captured);
+    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalid, join})};
+  });
+  useEffect(() => { void value.bootstrap.start(); return () => value.bootstrap.dispose(); }, [value]);
+  return <><IconSprite /><RouterProvider router={value.router} /></>;
+}
+function ServicesRoot() {
+  const {bootstrap, invalidContinuation} = root.useRouteContext<ServicesRouter>();
+  const state = useSyncExternalStore(bootstrap.subscribe, bootstrap.getSnapshot);
+  const {t} = servicesI18n();
+  if (state.phase === 'restoring') return <ServicesAuthStage><></></ServicesAuthStage>;
+  if (state.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void bootstrap.start(); }}} />;
+  if (invalidContinuation) return <InvalidLink />;
+  return <Outlet />;
+}
+function useAccount() {
+  const {account} = root.useRouteContext<ServicesRouter>();
+  const state = useSyncExternalStore(account.service.subscribe, account.service.getSnapshot);
+  return {account, session: state.session};
+}
+function HomeRoute() {
+  const {account, session} = useAccount();
+  const [authenticating, setAuthenticating] = useState(() => !session);
+  useEffect(() => { if (!session) setAuthenticating(true); }, [session]);
+  // Explicit recovery/create links do not resume a different transaction from the cookie.
+  const mode = new URLSearchParams(location.search).get('mode');
+  if (!session || authenticating) return <ServicesAuthForm account={account} initialMode={mode === 'forgot' || mode === 'create' ? mode : 'signin'} onSignedIn={() => setAuthenticating(false)} />;
+  return <AccountPage account={account} session={session} section="servers" />;
+}
+function AccountRoute() {
+  const {account, session} = useAccount(), {tab} = workspace.useSearch<ServicesRouter>();
+  const [authenticating, setAuthenticating] = useState(() => !session);
+  useEffect(() => { if (!session) setAuthenticating(true); }, [session]);
+  if (!session || authenticating) return <ServicesAuthForm account={account} onSignedIn={() => setAuthenticating(false)} />;
+  return <AccountPage account={account} session={session} section={tab as 'devices' | 'security' | 'servers' | 'notifications'} />;
+}
+function DeviceRoute() {
+  const {account, bootstrap} = root.useRouteContext<ServicesRouter>(), link = bootstrap.getSnapshot().link;
+  return <DevicePage account={account} initialCode={link?.kind === 'device' ? link.value : undefined} />;
+}
+function ResetRoute() {
+  const {account, bootstrap} = root.useRouteContext<ServicesRouter>(), link = bootstrap.getSnapshot().link;
+  return <ResetPage account={account} token={link?.kind === 'reset' ? link.value : undefined} />;
+}
+function VerifyRoute() {
+  const {account, bootstrap} = root.useRouteContext<ServicesRouter>(), link = bootstrap.getSnapshot().link;
+  return <VerifyPage account={account} token={link?.kind === 'verify-email' ? link.value : undefined} />;
+}
+function InvalidLink() {
+  const {t} = servicesI18n();
+  return <ServicesAuthStage variant="reset"><ServicesHeading>{t('auth.welcomeHome')}</ServicesHeading><ServicesNotice>{t('web.link.invalid')}</ServicesNotice>
+    <ServicesActions><Button onClick={() => location.assign('/')}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
+}
+export {InvalidLink as ServicesInvalidLink};
+function ClaimStart() {
+  const {t} = servicesI18n();
+  return <ServicesAuthStage variant="reset"><ServicesHeading>{t('web.claim.titleGeneric')}</ServicesHeading><ServicesNotice tone="info">{t('web.claim.openFromServer')}</ServicesNotice>
+    <ServicesActions><Button onClick={() => location.assign('/')}>{t('web.claim.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
+}

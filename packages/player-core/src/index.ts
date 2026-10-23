@@ -1,5 +1,6 @@
 /** Shared headless playback state. Engines, transport, storage and renderers are supplied by apps. */
 export * from './identity.ts';
+export * from './local-playback-identity.ts';
 export * from './queues.ts';
 export * from './queue-model.ts';
 export * from './segment-markers.ts';

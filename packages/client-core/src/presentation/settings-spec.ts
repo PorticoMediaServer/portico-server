@@ -2,6 +2,8 @@ import type {MessageId} from '../../../i18n/src/index.ts';
 
 /** Approved Settings structure. Runtime facts and mutations come from checked bindings. */
 export const settingsDesignRevision = '14a9a192975eb2b659be1f2c99fa52791f128f84';
+export type SettingsPlatform = 'web' | 'phone' | 'tv' | 'desktop';
+export type SettingsOperatingSystem = 'android' | 'ios' | 'ipados' | 'tvos' | 'androidtv' | 'firetv' | 'roku' | 'webos' | 'tizen' | 'windows' | 'macos' | 'linux' | 'browser';
 export type SettingsValue = string | number | boolean | null | readonly SettingsValue[] | Readonly<{[key: string]: SettingsValue}>;
 export type SettingsAction = Readonly<{label: MessageId; style?: 'glass' | 'primary' | 'danger'; confirm?: MessageId; remove?: boolean; panel?: string}>;
 export type SettingsOption = Readonly<{value: string | number | boolean; label: MessageId; hint?: MessageId; sets?: Readonly<Record<string, SettingsValue>>; locked?: boolean}>;
@@ -18,12 +20,12 @@ export type SettingsControl = Readonly<{
  sort?: Readonly<{by: string; dir: 'asc' | 'desc'}>; select?: Readonly<{bulk: readonly SettingsAction[]}>; rowAction?: SettingsAction; rowActions?: readonly SettingsAction[]; height?: number;
 }>;
 export type SettingsRow = Readonly<{id: string; label: MessageId; help?: MessageId; control: SettingsControl; children?: readonly SettingsRow[];
- scope?: 'server' | 'account' | 'profile' | 'device'; key?: string; platforms?: readonly string[]; shapes?: readonly string[]; audience?: string;
- enableWhen?: Readonly<{id: string; in: readonly SettingsValue[]}>; noChanged?: boolean}>;
-export type SettingsGroup = Readonly<{title?: MessageId; platforms?: readonly string[]; rows: readonly SettingsRow[]}>;
+ scope?: 'server' | 'account' | 'profile' | 'device'; key?: string; platforms?: readonly SettingsPlatform[]; os?: readonly SettingsOperatingSystem[]; shapes?: readonly string[]; audience?: string;
+ enableWhen?: Readonly<{id: string; in?: readonly SettingsValue[]; notIn?: readonly SettingsValue[]}>; noChanged?: boolean}>;
+export type SettingsGroup = Readonly<{title?: MessageId; platforms?: readonly SettingsPlatform[]; rows: readonly SettingsRow[]}>;
 export type SettingsHolder = Readonly<{groups?: readonly SettingsGroup[]; advanced?: Readonly<{groups?: readonly SettingsGroup[]}>}>;
 export type SettingsPanel = SettingsHolder & Readonly<{title?: MessageId; newTitle?: MessageId; searchName?: MessageId; tabs?: readonly (SettingsHolder & Readonly<{id: string; title: MessageId}>)[]; footer?: Readonly<{primary: MessageId; secondary?: MessageId}>}>;
-export type SettingsSection = SettingsHolder & Readonly<{scope: 'account' | 'server'; id: string; title: MessageId; navGroup: string; icon: string; kind: string; platforms?: readonly string[]; panels?: Readonly<Record<string, SettingsPanel>>; configOnly: readonly Readonly<{key: string; label: MessageId}>[]}>;
+export type SettingsSection = SettingsHolder & Readonly<{scope: 'account' | 'server'; id: string; title: MessageId; navGroup: string; icon: string; kind: string; platforms?: readonly SettingsPlatform[]; panels?: Readonly<Record<string, SettingsPanel>>; configOnly: readonly Readonly<{key: string; label: MessageId}>[]}>;
 
 export const settingsSpec: readonly SettingsSection[] = [
   {
@@ -15556,17 +15558,17 @@ export const settingsSpec: readonly SettingsSection[] = [
   }
 ];
 
-export type SettingsRowLocation = Readonly<{section: SettingsSection; row: SettingsRow; group: SettingsGroup; advanced: boolean; panelId?: string; tabId?: string}>;
+export type SettingsRowLocation = Readonly<{section: SettingsSection; row: SettingsRow; group: SettingsGroup; advanced: boolean; ancestors: readonly SettingsRow[]; panelId?: string; tabId?: string}>;
 /** One index for rendering, links and search; panel rows never leak into page groups. */
 export function indexSettingsSpec(sections: readonly SettingsSection[] = settingsSpec): ReadonlyMap<string, SettingsRowLocation> {
  const result = new Map<string, SettingsRowLocation>();
  for (const section of sections) {
   const visit = (holder: SettingsHolder, panelId?: string, tabId?: string, advanced = false) => {
-   const rows = (items: readonly SettingsRow[], group: SettingsGroup, isAdvanced: boolean) => {
+   const rows = (items: readonly SettingsRow[], group: SettingsGroup, isAdvanced: boolean, ancestors: readonly SettingsRow[] = []) => {
     for (const row of items) {
      if (result.has(row.id)) throw new Error(`Duplicate Settings row: ${row.id}`);
-     result.set(row.id, {section, row, group, advanced: isAdvanced, ...(panelId ? {panelId} : {}), ...(tabId ? {tabId} : {})});
-     rows(row.children ?? [], group, isAdvanced);
+     result.set(row.id, {section, row, group, advanced: isAdvanced, ancestors, ...(panelId ? {panelId} : {}), ...(tabId ? {tabId} : {})});
+     rows(row.children ?? [], group, isAdvanced, [...ancestors, row]);
     }
    };
    for (const group of holder.groups ?? []) rows(group.rows, group, advanced);

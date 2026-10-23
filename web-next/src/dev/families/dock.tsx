@@ -64,7 +64,7 @@ function galleryCase(options: Options): ComponentType {
       model.start(active);
       if (variant === 'restored') { model.start(makePlayback('video', {}, 3)); model.close(fence('video', 3)); }
       if (options.remote) model.beginRemote({id: 'reference-remote', kind: options.remoteKind ?? 'cast', phase: options.remote, sequence: '1', playback: active, positionSeconds: layout === 'phone' ? 1420 : options.remote === 'stopped' ? 1872 : 845}, 0);
-      if (active.kind !== 'live' && (variant === 'ask' || variant === 'auto')) {
+      if (active.fence.kind === 'queue' && (variant === 'ask' || variant === 'auto')) {
         const policy = new PlaybackPolicy(); policy.begin(active.fence, [{id: 'reference-intro', kind: 'intro', startSeconds: 581, endSeconds: 641, automaticSafe: true}], 3186);
         const update = policy.update({fence: active.fence, nowMs: 0, positionSeconds: 605, durationSeconds: 3186, rate: 1, playing: true, expanded: false, ended: false, kind: 'episode', modes: {intro: variant === 'auto' ? 'auto' : 'ask'}, postPlay: null});
         for (const command of update?.commands ?? []) if (command.kind === 'seek') model.update({...active, positionSeconds: command.positionSeconds});

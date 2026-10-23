@@ -125,6 +125,9 @@ func loadDeliverySource(ctx context.Context, q sourceQuery, asset string) (Deliv
 		}
 		st.DecodeDetail(detail)
 		st.Detail.StreamBreadth = breadth[st.Index]
+		if observed := st.Detail.ObservedInterlaced(); observed != nil {
+			st.Detail.Interlaced = *observed
+		}
 		if st.Type == "audio" && st.Detail.AudioVariant == "" {
 			st.Detail.AudioVariant = assets.AudioVariant(st.Codec, st.Detail.Profile, st.Detail.ObjectAudio)
 		}
