@@ -64,6 +64,9 @@ type Stream struct {
 	DolbyVisionEnhancementLayer bool   `json:"dolbyVisionEnhancementLayer"`
 	// A false enhancement flag with Known=false is unobserved, not proof of BL.
 	DolbyVisionEnhancementKnown bool `json:"dolbyVisionEnhancementKnown"`
+	// Only an observed PMT dependency supplies this PID. STN EL membership
+	// alone never invents a relationship to a neighbouring or first video PID.
+	DolbyVisionBasePID *int `json:"dolbyVisionBasePid,omitempty"`
 }
 type Chapter struct {
 	StartMs int64 `json:"startMs"`
@@ -140,9 +143,25 @@ func DecodeProbe(raw []byte) (Probe, error) {
 			}
 			last = c.StartMs
 		}
+		basePIDs := make(map[[2]int]bool)
+		for _, stream := range t.Streams {
+			if stream.Kind == "video" && stream.Coding == 0x24 && !stream.DolbyVisionEnhancementLayer {
+				basePIDs[[2]int{stream.ClipSequence, stream.PID}] = true
+			}
+		}
 		for _, s := range t.Streams {
 			if s.ClipSequence < 0 || p.Kind == "bluray" && s.ClipSequence >= len(t.Clips) || s.PID < 0 || s.PID > 8191 || s.Coding < 0 || s.Coding > 255 || !isoLanguage.MatchString(s.Language) || (s.Kind != "video" && s.Kind != "audio" && s.Kind != "subtitle" && s.Kind != "interactive") || s.DolbyVisionEnhancementLayer && !s.DolbyVisionEnhancementKnown {
 				return p, ErrProtocol
+			}
+			if s.DolbyVisionBasePID != nil && (p.Kind != "bluray" || !s.DolbyVisionEnhancementLayer ||
+				!s.DolbyVisionEnhancementKnown || s.Kind != "video" || s.Coding != 0x24 ||
+				*s.DolbyVisionBasePID <= 31 || *s.DolbyVisionBasePID >= 8191 || *s.DolbyVisionBasePID == s.PID) {
+				return p, ErrProtocol
+			}
+			if s.DolbyVisionBasePID != nil {
+				if !basePIDs[[2]int{s.ClipSequence, *s.DolbyVisionBasePID}] {
+					return p, ErrProtocol
+				}
 			}
 		}
 	}

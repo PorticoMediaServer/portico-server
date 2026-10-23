@@ -2,6 +2,7 @@ package playbackv1
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -113,6 +114,16 @@ type SessionTotals struct {
 func (s *Service) AdminSessions(ctx context.Context, limit int, cursor string) (AdminSessionPage, error) {
 	return s.activitySessionPage(ctx, limit, cursor, false)
 }
+
+// A request composing authorized channel marks with these session rows borrows
+// its one read transaction. Standalone activity reads retain their normal bound.
+func activityRead(ctx context.Context, db *sql.DB) (*sql.Tx, func(), error) {
+	if tx := dbwork.Snapshot(ctx); tx != nil {
+		return tx, func() {}, nil
+	}
+	return dbwork.BeginRead(ctx, db)
+}
+
 func (s *Service) activitySessionPage(ctx context.Context, limit int, cursor string, popover bool) (AdminSessionPage, error) {
 	if limit == 0 {
 		limit = 10
@@ -133,7 +144,7 @@ func (s *Service) activitySessionPage(ctx context.Context, limit int, cursor str
 		}
 		afterPriority, afterCreated, afterID = p, n, parts[3]
 	}
-	tx, done, err := dbwork.BeginRead(ctx, s.DB)
+	tx, done, err := activityRead(ctx, s.DB)
 	if err != nil {
 		return AdminSessionPage{}, err
 	}

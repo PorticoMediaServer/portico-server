@@ -17,6 +17,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"portico.local/apikit/apierror"
 )
@@ -445,13 +447,12 @@ func matchRoute(pattern, path string) (map[string]string, int, bool) {
 				return nil, 0, false
 			}
 			id := strings.TrimSuffix(actual, suffix)
-			if id == "" || len(id) > 128 {
-				return nil, 0, false
+			valid := opaquePathID(id)
+			if pattern == "/v1/home/rows/{id}" && part == "{id}" {
+				valid = homeRowPathID(id)
 			}
-			for _, c := range id {
-				if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
-					return nil, 0, false
-				}
+			if !valid {
+				return nil, 0, false
 			}
 			values[part[1:end]] = id
 			score += len(suffix)
@@ -463,6 +464,51 @@ func matchRoute(pattern, path string) (map[string]string, int, bool) {
 		}
 	}
 	return values, score, true
+}
+
+func opaquePathID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, c := range id {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// Home publishes saved-view and recommendation keys, not only opaque IDs.
+// Keep this grammar at its one existing route; the handler still resolves the
+// exact published key under the current viewer and library authority.
+func homeRowPathID(id string) bool {
+	if !utf8.ValidString(id) || utf8.RuneCountInString(id) > 128 {
+		return false
+	}
+	if opaquePathID(id) {
+		return true
+	}
+	if tail, ok := strings.CutPrefix(id, "view:"); ok {
+		return opaquePathID(tail)
+	}
+	switch id {
+	case "for_you:franchise", "for_you:series", "for_you:rediscover", "for_you:short", "for_you:gems", "for_you:top":
+		return true
+	}
+	for _, prefix := range []string{"for_you:genre:", "for_you:person:", "for_you:tag:"} {
+		if tail, ok := strings.CutPrefix(id, prefix); ok {
+			if tail == "" || strings.TrimSpace(tail) != tail || tail == "." || tail == ".." {
+				return false
+			}
+			for _, c := range tail {
+				if !unicode.IsPrint(c) || strings.ContainsRune("/\\%?#", c) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return false
 }
 func (r *Registry) Freeze() { r.frozen = true }
 func validate(m Metadata) error {

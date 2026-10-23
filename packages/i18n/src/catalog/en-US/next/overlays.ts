@@ -34,6 +34,7 @@ export const overlaysMessages = {
   'next.overlays.collection': 'Add to collection…',
   'next.overlays.download': 'Download…',
   'next.overlays.differentVersion': 'Play a different version…',
+  'next.overlays.versionChooserTitle': 'Play a different version',
   'next.overlays.fileInfo': 'File info',
   'next.overlays.editMetadata': 'Edit metadata…',
   'next.overlays.editMetadataPhone': 'Edit metadata',
