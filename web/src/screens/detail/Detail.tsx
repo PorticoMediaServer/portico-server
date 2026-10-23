@@ -3,7 +3,7 @@ import {useBack} from '../../app/back';
 import {personHref} from '../../app/open';
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
-import type {DetailProjection} from '@core/detail.ts';
+import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import {dedupeNames, detailActions, formatDuration, relatedRowsForPage} from '@core/presentation/index.ts';
 import {GenreLinks} from './GenreLinks';
@@ -21,6 +21,8 @@ import {useNotInterested} from '../../app/not-interested-notice';
 import {withoutHidden} from '../../app/not-interested';
 import {repairTargetFor, useMetadataEditor} from '../../app/metadata-editor';
 import {useSession} from '../../app/session';
+import {useViewerScope} from '../../app/viewer-scope';
+import {readDetailFileInfo} from './file-info';
 import {usePlayerActions} from '../../player/PlayerContext';
 import {anchorOf, AnchoredMenu, Button, Card, Dialog, Icon, Inset, KeyValue, ListRow, Menu, Notice, Page, Section, Shelf, Text, TitleHero, type MenuAnchor, type MenuItem} from '../../ui';
 import {CollectionPicker, PlaylistPicker} from '../shared/EntryActions';
@@ -54,6 +56,7 @@ export function DetailScreen() {
   const navigate = useNavigate();
   const editor = useMetadataEditor();
   const {owner, session, api} = useSession();
+  const viewerScope = useViewerScope();
   const downloads = useDownloads();
   // WEB-DETAIL-01: a link without `?library=` resolves the library from the item, then continues.
   const [missing, setMissing] = useState<unknown>();
@@ -169,8 +172,24 @@ export function DetailScreen() {
   const [choice, setChoice] = useState<PlaybackChoice>({});
   const [splitting, setSplitting] = useState<{file: TitleFile; summary: string; folder?: 'album' | 'book'}>();
   const [deletingVersion, setDeletingVersion] = useState<{file: TitleFile; summary: string}>();
+  const [fileRead, setFileRead] = useState<{data: DetailProjection; value?: FileInfoProjection; error?: unknown}>();
+  const [fileAttempt, setFileAttempt] = useState(0);
+  const fileContext = useRef({data, api, viewerScope});
+  fileContext.current = {data, api, viewerScope};
+  useEffect(() => {
+    if (!data) return;
+    const controller = new AbortController();
+    const current = () => !controller.signal.aborted && fileContext.current.data === data && fileContext.current.api === api && fileContext.current.viewerScope === viewerScope;
+    setFileRead({data});
+    void readDetailFileInfo(api, viewerScope, data, controller.signal, current).then(value => {
+      if (current()) setFileRead({data, value});
+    }, error => { if (current()) setFileRead({data, error}); });
+    return () => controller.abort();
+  }, [data, api, viewerScope, fileAttempt]);
+  const fileInfo = fileRead?.data === data ? fileRead?.value : undefined;
+  const fileError = fileRead?.data === data ? fileRead?.error : undefined;
   // What tells one version from another in the Version control: its edition, and where two still read the same, a bit rate or size.
-  const versionFacts = useMemo(() => Object.fromEntries((data?.files ?? []).map(file => [file.id, {edition: file.edition, bitRate: file.bitRate, size: file.size}])), [data?.files]);
+  const versionFacts = useMemo(() => fileInfo ? Object.fromEntries(fileInfo.files.map(file => [file.id, {edition: file.edition, bitRate: file.bitRate, size: file.size}])) : undefined, [fileInfo]);
   useEffect(() => { setAllPeople(false); setChoice({}); setSplitting(undefined); }, [itemId]);
   // The detail carries the cast's first page and the key crew; the rest of
   // either group pages in as its row scrolls (nothing is cut off).
@@ -266,11 +285,12 @@ export function DetailScreen() {
           {/* Extras ride along with the title: trailers, featurettes, deleted scenes, each an ordinary playable item. */}
           {data?.extras?.map(group => <SectionView key={`extra:${group.type}`} section={{id: `extra:${group.type}`, type: 'rail', heading: {key: `extras.${group.type}`, fallback: group.label}, entries: group.items, totalCount: group.items.length, nextCursor: ''}} libraryId={item?.libraryId} />)}
           {/* Details and Files close the page (Spec — Page Content §0.3): the facts, then every version of the file. */}
-          {detailRows.length || data?.files?.length ? (
+          {detailRows.length || fileInfo?.files.length || fileError ? (
             <Section title={t('title.details')}>
               <div className={s.details}>
                 {detailRows.length ? <KeyValue rows={detailRows} /> : null}
-                {data?.files?.length ? <TitleFiles files={data.files} onSplit={owner && item && SPLITTABLE_KINDS.includes(item.kind) ? (file, summary) => setSplitting({file, summary}) : undefined} folderKind={item?.kind === 'audiobook_file' ? 'book' : 'album'} onSplitFolder={owner && item && FOLDER_SPLITTABLE_KINDS.includes(item.kind) ? (file, summary) => setSplitting({file, summary, folder: item.kind === 'audiobook_file' ? 'book' : 'album'}) : undefined} onDelete={owner && item ? (file, summary) => setDeletingVersion({file, summary}) : undefined} /> : null}
+                {fileError ? <ErrorNotice error={fileError} context="detail" retry={() => setFileAttempt(value => value + 1)} refresh={retry} /> : null}
+                {fileInfo?.files.length ? <TitleFiles files={fileInfo.files} onSplit={owner && fileInfo.manage?.split && item && SPLITTABLE_KINDS.includes(item.kind) ? (file, summary) => setSplitting({file, summary}) : undefined} folderKind={item?.kind === 'audiobook_file' ? 'book' : 'album'} onSplitFolder={owner && fileInfo.manage?.split && item && FOLDER_SPLITTABLE_KINDS.includes(item.kind) ? (file, summary) => setSplitting({file, summary, folder: item.kind === 'audiobook_file' ? 'book' : 'album'}) : undefined} onDelete={owner && fileInfo.manage?.delete && item ? (file, summary) => setDeletingVersion({file, summary}) : undefined} /> : null}
               </div>
             </Section>
           ) : null}

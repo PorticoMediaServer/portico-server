@@ -30,7 +30,7 @@ func (s *Service) PauseBackground(ctx context.Context, auth Authorize, change Ba
 			out = saved
 			return nil
 		}
-		settings, revision, err := readDocument(ctx, tx, maintenanceScope, DefaultMaintenanceSettings())
+		settings, revision, err := readMaintenanceSettings(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -47,7 +47,7 @@ func (s *Service) PauseBackground(ctx context.Context, auth Authorize, change Ba
 		}
 		stored := settings
 		stored.Windows = nil
-		if err = writeDocument(ctx, tx, maintenanceScope, revision+1, stored, s.milliseconds()); err != nil {
+		if err = writeMaintenanceSettings(ctx, tx, revision+1, stored, s.milliseconds()); err != nil {
 			return err
 		}
 		out = maintenanceDocument(Document[MaintenanceSettingsDocument]{Revision: revision + 1, Digest: digestOf(settings), Settings: settings})
@@ -78,7 +78,7 @@ func (s *Service) ApplyBackgroundPolicy(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	settings, _, err := readDocument(ctx, snapshot.Tx(), maintenanceScope, DefaultMaintenanceSettings())
+	settings, _, err := readMaintenanceSettings(ctx, snapshot.Tx())
 	if err != nil {
 		return
 	}

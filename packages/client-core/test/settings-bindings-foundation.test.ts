@@ -38,7 +38,7 @@ test('retired hardware controls have no Settings binding',()=>{
 });
 
 test('heavy window edits preserve the independent backup policy and exact day matrix',()=>{
- const backup={id:'backup',enabled:true,cadence:'nightly',days:['monday'],startMinute:180,durationMinutes:240,timezone:'',tasks:['backup']};
+ const backup={id:'nightly',enabled:true,cadence:'nightly',days:['monday'],startMinute:180,durationMinutes:240,timezone:'',tasks:['backup']};
  const heavy={id:'heavy',enabled:false,cadence:'nightly',days:['monday','tuesday','wednesday','thursday','friday','saturday','sunday'],startMinute:60,durationMinutes:300,timezone:'',tasks:['analysis','trickplay']};
  const sources={forms:{maintenance:{windows:[backup,heavy]}}};
  assert.equal(readSettingsBinding(settingsBinding('general.heavyWork')!,sources)?.current,'any');

@@ -350,7 +350,7 @@ func (s *Service) Run(ctx context.Context) {
 	// queued it asked the database three times a second for the life of the
 	// process; now it waits.
 	wake := workerloop.NewSignal()
-	unregister := dbwork.WakeOnTables(wake, "jobs", "inventory_*", "library_sources", "scan_policies", "maintenance_*", "console_documents")
+	unregister := dbwork.WakeOnTables(wake, "jobs", "inventory_*", "library_sources", "scan_policies", "maintenance_*", "server_settings", "console_settings_revision")
 	defer unregister()
 	// A quantum that moved its run forward asks for the next one itself, after
 	// giving way to any foreground work. The commit wake above is shared and
