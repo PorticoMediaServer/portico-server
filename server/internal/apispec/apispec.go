@@ -30,12 +30,42 @@ var (
 	loadErr  error
 )
 
+func documentFiles() ([]string, error) {
+	_, here, _, _ := runtime.Caller(0)
+	if filepath.IsAbs(here) {
+		return []string{filepath.Join(filepath.Dir(here), "..", "..", "api", "portico.openapi.json")}, nil
+	}
+	// -trimpath records module-relative filenames. Go tests run inside their
+	// source package, so locate the server module instead of treating that
+	// recorded filename as a filesystem path.
+	dir, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		if module, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil {
+			for _, line := range strings.Split(string(module), "\n") {
+				if strings.TrimSpace(line) == "module portico.local/server" {
+					return []string{filepath.Join(dir, "api", "portico.openapi.json")}, nil
+				}
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return nil, fmt.Errorf("cannot locate the server module containing the API document")
+		}
+		dir = parent
+	}
+}
+
 // Documents returns the generated contract used by the server registry.
 func Documents() ([]Document, error) {
 	loadOnce.Do(func() {
-		_, here, _, _ := runtime.Caller(0)
-		dir := filepath.Join(filepath.Dir(here), "..", "..", "api")
-		files := []string{filepath.Join(dir, "portico.openapi.json")}
+		files, err := documentFiles()
+		if err != nil {
+			loadErr = err
+			return
+		}
 		for _, file := range files {
 			raw, err := os.ReadFile(file)
 			if err != nil {
