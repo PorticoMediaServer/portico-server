@@ -136,6 +136,7 @@ cp COPYING.GPLv3 /ffbuild/prefix/COPYING.GPLv3
             shutil.copytree(build / 'prefix', output)
             shutil.copytree(deps / 'licenses', output / 'LICENSES/dependencies')
             shutil.copyfile(deps / 'dependency-inputs.json', output / 'dependency-inputs.json')
+            shutil.copyfile(deps / 'license-inventory.json', output / 'license-inventory.json')
             shutil.copyfile(deps / 'compiler.txt', output / 'compiler.txt')
         elif binaries != results[0]['binaries']:
             raise ValueError('Source-built executable bytes differ between repeat builds')

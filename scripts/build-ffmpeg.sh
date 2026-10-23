@@ -93,6 +93,10 @@ PYLICENSE
   python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$WORK/patched-source" "$TARGET"
   if [[ "$TARGET" == linux-x64 ]]; then
     python3 "$ROOT/scripts/build-linux-ffmpeg-deps.py" --recipe "$WORK/recipe" --work "$WORK/linux-deps"
+    docker run --rm --name portico-hardware-r29-licenses --label portico.lane=hardware-r29 \
+      --network none --cpus 1 --memory 512m --memory-swap 512m \
+      -v "$WORK/linux-deps:/dependencies" -v "$ROOT/scripts/collect-ffmpeg-licenses.py:/collect.py:ro" \
+      -e TMPDIR=/dependencies/tmp "$(readlock linuxSourceBuild compilerImage)" python3 /collect.py /dependencies
     if [[ "${PORTICO_FFMPEG_DEPS_ONLY:-0}" == 1 ]]; then
       echo "Dependency source build completed: $WORK/linux-deps"
       exit 0
@@ -132,13 +136,14 @@ if [[ "$TARGET" == linux-x64 ]]; then
   mkdir -p "$WORK/provenance/linux-dependencies"
   cp -al "$WORK/linux-deps/sources" "$WORK/provenance/linux-dependencies/sources"
   cp -a "$WORK/linux-deps/licenses" "$WORK/provenance/linux-dependencies/licenses"
-  cp "$WORK/linux-deps/"{dependency-inputs.json,stage-plan.json,prefix-files.json,compiler.txt} "$WORK/provenance/linux-dependencies/"
+  cp "$WORK/linux-deps/"{dependency-inputs.json,stage-plan.json,prefix-files.json,compiler.txt,license-inventory.json} "$WORK/provenance/linux-dependencies/"
   cp "$WORK/repeat-build.json" "$WORK/provenance/"
   cp "$WORK/linux-build-inputs.json" "$WORK/provenance/"
   cp -a "$INPUT/compiler-source" "$WORK/provenance/"
   cp "$INPUT/compiler-linked-inputs.json" "$WORK/provenance/"
   cp "$ROOT/scripts/build-linux-ffmpeg-deps.py" "$ROOT/scripts/build-linux-ffmpeg.py" "$WORK/provenance/scripts/"
   cp "$ROOT/scripts/capture-ffmpeg-compiler.py" "$WORK/provenance/scripts/"
+  cp "$ROOT/scripts/collect-ffmpeg-licenses.py" "$WORK/provenance/scripts/"
 fi
 # Include dependency sources and exact recipe, excluding only output binaries and git metadata.
 tar -C "$WORK" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner --exclude=recipe/.git --exclude=recipe/workspace --exclude=recipe/artifacts --exclude=recipe/.cache/images -I 'xz -T1' -cf "$WORK/corresponding-source.tar.xz" recipe provenance

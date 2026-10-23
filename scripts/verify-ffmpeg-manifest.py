@@ -9,6 +9,9 @@ def digest_file(path):
  with path.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
 for required in ['corresponding-source.tar.xz','NOTICE.md','sources.lock.json','requirements.v1.json','portico-disc-build.json','LICENSES/portico-disc.txt']:
  if required not in files:raise SystemExit('Missing provenance: '+required)
+if m['target']=='linux-x64':
+ for required in ['dependency-inputs.json','compiler.txt','compiler-linked-inputs.json','license-inventory.json']:
+  if required not in files:raise SystemExit('Missing Linux build provenance: '+required)
 if not any(x.startswith('LICENSES/') for x in files):raise SystemExit('Missing licenses')
 for name,digest in files.items():
  path=root/name
