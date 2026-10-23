@@ -32,6 +32,7 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'updates.channel':{form:'runtime',key:'updates.releaseChannel'},
  'streaming.allowConversion':{form:'runtime',key:'conversionMode'},
  'streaming.outputFormat':{form:'runtime',key:'outputFormat'},
+ 'streaming.musicAwayQuality':{form:'runtime',key:'musicAwayQuality',codec:'music-quality-choice'},
  'streaming.downloadQuality':{form:'runtime',key:'downloadMaxQuality',codec:'video-quality-choice'},
  'streaming.uploadSpeed':{form:'connectivity',key:'uploadCapacityKbps',scale:1000},
  'streaming.awayQuality':{form:'connectivity',key:'remoteBitrateLimitKbps',codec:'away-quality'},
