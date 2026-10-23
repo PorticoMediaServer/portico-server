@@ -62,7 +62,7 @@ func VerifyBundle(root string) error {
 	if targetOS == "" || targetArch == "" || m.Target != targetOS+"-"+targetArch {
 		return fmt.Errorf("bundle target %q does not match this host", m.Target)
 	}
-	required := []string{"corresponding-source.tar.xz", "NOTICE.md", "sources.lock.json", "requirements.v1.json", "bin/" + Name("ffmpeg"), "bin/" + Name("ffprobe")}
+	required := []string{"corresponding-source.tar.xz", "NOTICE.md", "sources.lock.json", "requirements.v1.json", "portico-disc-build.json", "LICENSES/portico-disc.txt", "bin/" + Name("ffmpeg"), "bin/" + Name("ffprobe"), "bin/" + Name("portico-disc")}
 	for _, name := range required {
 		if _, ok := m.Files[name]; !ok {
 			return fmt.Errorf("missing provenance or tool: %s", name)
@@ -125,7 +125,7 @@ func VerifyBundle(root string) error {
 	if count != len(m.Files) || !licensed {
 		return fmt.Errorf("bundle inventory or licenses incomplete")
 	}
-	return nil
+	return verifyDiscRecord(root, m)
 }
 func Name(tool string) string {
 	if runtime.GOOS == "windows" {
@@ -182,6 +182,14 @@ func Resolve(tool string) string {
 			return configured.ffmpeg
 		case "ffprobe":
 			return configured.ffprobe
+		case "portico-disc":
+			// Disc reads use the helper shipped with the selected toolchain.
+			// A missing companion must not select an unrelated PATH helper.
+			path, err := exec.LookPath(filepath.Join(filepath.Dir(configured.ffmpeg), Name(tool)))
+			if err != nil {
+				return "\x00selected media toolchain has no portico-disc: " + err.Error()
+			}
+			return path
 		}
 	}
 	if value := os.Getenv("PORTICO_" + strings.ToUpper(tool)); value != "" {
