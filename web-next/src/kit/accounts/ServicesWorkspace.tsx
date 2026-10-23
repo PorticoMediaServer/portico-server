@@ -132,8 +132,9 @@ function StartGlyph({kind, size = kind === 'paste' ? 20 : 22}: {kind: 'link' | '
 }
 
 /** connect26/31: controlled content only; invitation preview/session belongs to Apps. */
-export function ServicesStart({header, invitation, onInvitationChange, onJoin, onPaste, onDownload, onApps, onCopyDownload, onShareDownload, error, children}: {
+export function ServicesStart({header, invitation, onInvitationChange, onInvitationPaste, onJoin, onPaste, onDownload, onApps, onCopyDownload, onShareDownload, error, children}: {
   header: ReactNode; invitation: string; onInvitationChange: (value: string) => void; onJoin: () => void; onPaste: () => void;
+  onInvitationPaste?: (value: string) => void;
   onDownload: () => void; onApps: () => void; onCopyDownload: () => void; onShareDownload: () => void; error?: ReactNode; children?: ReactNode;
 }) {
   return <div className={styles.start}>{header}<div className={styles.startGlow} aria-hidden="true" />
@@ -142,6 +143,7 @@ export function ServicesStart({header, invitation, onInvitationChange, onJoin, o
         <div className={styles.startCardHeading}><span className={styles.startIcon}><StartGlyph kind="link" /></span><h2>{t('services.start.join')}</h2></div><p>{t('services.start.joinBody')}</p>
         <form className={styles.startJoinForm} onSubmit={event => { event.preventDefault(); onJoin(); }}>
           <TextField variant="auth" aria-label={t('services.start.invitation')} placeholder={t('services.start.invitation')} value={invitation} onChange={event => onInvitationChange(event.currentTarget.value)} autoCapitalize="off" autoComplete="off" spellCheck={false}
+            onPaste={event => { if (onInvitationPaste) { event.preventDefault(); onInvitationPaste(event.clipboardData.getData('text/plain')); } }}
             trailing={<button type="button" className={styles.paste} aria-label={t('services.start.paste')} onClick={onPaste}><StartGlyph kind="paste" /></button>} />
           <Button variant="primary" type="submit">{t('services.start.joinAction')}</Button>
         </form>{error}

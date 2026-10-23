@@ -107,3 +107,29 @@ test('an abandoned reconnect preserves the outstanding disposal fence for a thir
   assert.equal(f.controller.getSnapshot().status, 'ready');
   await third.close(); assert.equal(f.controller.getSnapshot().status, 'closed');
 });
+
+test('actual publication session cancellation closes a cached reader and releases a hidden-size wait', async t => {
+  const env = environment(t), f = fixture(), session = new AbortController();
+  const options = {controller: f.controller, source, format: 'epub' as const, authority: env.authority, reportError() {assert.fail('session retirement is silent');}};
+  const mounted = mountReaderSurface({...options, signal: session.signal, container: {clientWidth: 390, clientHeight: 844} as HTMLElement});
+  await mounted.ready; assert.equal(f.controller.getSnapshot().status, 'ready');
+  session.abort(); await mounted.close();
+  assert.equal(f.controller.getSnapshot().status, 'closed'); assert.equal(f.disposed, 1); assert.equal(env.listeners.size, 0);
+  const hidden = new AbortController();
+  const waiting = mountReaderSurface({...options, signal: hidden.signal, container: {clientWidth: 0, clientHeight: 0} as HTMLElement});
+  await tick(); hidden.abort(); await waiting.ready; await waiting.close();
+  assert.equal(f.mounted, 1); assert.equal(env.listeners.size, 0); assert.ok(env.observers.every(observer => observer.disconnected));
+  const aborted = mountReaderSurface({...options, signal: hidden.signal, container: {clientWidth: 390, clientHeight: 844} as HTMLElement});
+  await aborted.ready; await aborted.close(); assert.equal(f.mounted, 1);
+});
+
+test('an old publication signal cannot close a replacement mounted in the same controller', async t => {
+  const env = environment(t), f = fixture(), old = new AbortController();
+  const mounted = mountReaderSurface({controller: f.controller, source, format: 'epub', signal: old.signal, authority: env.authority,
+    container: {clientWidth: 390, clientHeight: 844} as HTMLElement, reportError() {assert.fail('replacement retirement is silent');}});
+  await mounted.ready;
+  await f.controller.open({source, format: 'epub', container: {} as HTMLElement, viewport: {width: 820, height: 1180}});
+  const replacement = f.controller.getSnapshot(); assert.equal(replacement.status, 'ready');
+  old.abort(); await mounted.close(); assert.strictEqual(f.controller.getSnapshot(), replacement);
+  assert.equal(env.listeners.size, 0); await f.controller.close();
+});

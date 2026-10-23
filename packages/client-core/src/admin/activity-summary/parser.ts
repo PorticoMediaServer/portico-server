@@ -149,8 +149,8 @@ function freshSession(item:ObjectValue,observedAt:string):void {
  if (item.transcode) {const stamp=Date.parse((item.transcode as {observedAt:string}).observedAt);if(stamp>at || at-stamp>5000)invalid();}
  if (item.problem==='buffering' && at-Date.parse(item.bufferingSince as string)<10000)invalid();
 }
-const sourceVideo=record({id,codec:label},{profile:label,level:count,bitDepth:count,width:count,height:count,fps:finite,hdr:label,bitrateKbps:count,chromaSubsampling:label,frameRateNumerator:count,frameRateDenominator:count,frameRateMode:label,dolbyVisionProfile:count,dolbyVisionCompatibility:count,dolbyVisionRpu:bool,dolbyVisionBaseLayer:bool,dolbyVisionEnhancementType:label,dolbyVisionCmVersion:label,hdr10Plus:bool,masterDisplay:text(1024),maxCll:text(128)});
-const sourceAudio=record({id,codec:label,atmos:bool,default:bool,commentary:bool,visualImpaired:bool},{channels:count,layout:label,language:label,title:words,bitDepth:count,sampleRate:count,variant:label,objectAudio:label,dtsx:bool});
+const sourceVideo=record({id,codec:label},{interlaced:bool,profile:label,level:count,bitDepth:count,width:count,height:count,fps:finite,hdr:label,bitrateKbps:count,chromaSubsampling:label,frameRateNumerator:count,frameRateDenominator:count,frameRateMode:label,dolbyVisionProfile:count,dolbyVisionCompatibility:count,dolbyVisionRpu:bool,dolbyVisionBaseLayer:bool,dolbyVisionEnhancementType:label,dolbyVisionCmVersion:label,hdr10Plus:bool,masterDisplay:text(1024),maxCll:text(128)});
+const sourceAudio=record({id,codec:label,atmos:bool,default:bool,commentary:bool,visualImpaired:bool},{profile:label,channels:count,layout:label,language:label,title:words,bitDepth:count,sampleRate:count,variant:label,objectAudio:label,dtsx:bool});
 const sourceSubtitles=record({id,format:label},{language:label});
 const media=record({},{video:sourceVideo,audio:sourceAudio,subtitles:sourceSubtitles,videoHardware:bool});
 const delivery=record({streams:list(record({kind:label,inputCodec:text(128),outputCodec:text(128),action:label}),4)},{videoHeight:count,videoBitrateBps:count,audioBitrateBps:count,audioChannels:count});

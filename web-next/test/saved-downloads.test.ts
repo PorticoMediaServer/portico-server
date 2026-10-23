@@ -2,10 +2,49 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SavedOperations} from '../src/screens/saved/operations.ts';
 import {sameSavedDownloadsScope, type SavedDownloadsScope, type SavedLocalDownload} from '../src/screens/saved/downloads-port.ts';
-import {diskFractions, localDownloadGroups, measuredPercent} from '../src/screens/saved/downloads-model.ts';
+import {diskFractions, localDownloadGroups, localGroupPercent, measuredPercent} from '../src/screens/saved/downloads-model.ts';
 import {createSavedRuntime} from '../src/screens/saved/runtime.ts';
+import {sameSavedRoute, savedViewKey} from '../src/screens/saved/route.ts';
+import {playlistRemovalUndo} from '../src/screens/saved/removal.ts';
+import type {SavedReceipt} from '@core/saved.ts';
+import {PersonalSavedService} from '@core/personal-saved.ts';
+import {personalEntriesWindow} from '../src/screens/saved/window.ts';
 
 const scope: SavedDownloadsScope = {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', sessionFamilyId: 'family'};
+test('Undo accepts only the committed current-viewer removal receipt for this exact occurrence', () => {
+  const expected = {serverId: 'server', viewerFence: 'viewer', playlistId: 'playlist', entryId: 'occurrence'};
+  const now = Date.parse('2026-10-23T12:00:00Z');
+  const receipt: SavedReceipt = {...expected, operationId: 'operation', revision: 4, deleted: false, undoToken: 'opaque-token', undoUntil: '2026-10-23T12:01:00Z'};
+  assert.deepEqual(playlistRemovalUndo(receipt, expected, 'Exact title', now), {token: 'opaque-token', until: now + 60_000, title: 'Exact title'});
+  for (const field of ['serverId', 'viewerFence', 'playlistId', 'entryId'] as const) assert.equal(playlistRemovalUndo({...receipt, [field]: 'different'}, expected, 'Exact title', now), undefined, field);
+  for (const changed of [{deleted: true}, {undoToken: undefined}, {undoUntil: 'invalid'}, {undoUntil: '2026-10-23T12:00:00Z'}]) assert.equal(playlistRemovalUndo({...receipt, ...changed}, expected, 'Exact title', now), undefined);
+  assert.equal(playlistRemovalUndo(null, expected, 'Exact title', now), undefined);
+});
+test('personal resource grid follows the real opaque cursor without turning a library count into resident entities', async () => {
+  const resource = {serverId: 'server', viewerFence: 'fence', id: 'collection', kind: 'collection', name: 'Collection', summary: '', visibility: 'private', revision: 1, role: 'owner', entryCount: 2000, actions: ['pin', 'update', 'delete', 'entries'], status: 'ready', invalidComponents: [], pinned: false, pinRevision: 0, shares: []};
+  const entry = (id: string) => ({id, hidden: false, media: {id, libraryId: 'library', kind: 'movie', title: id}});
+  let next!: (value: unknown) => void, calls = 0;
+  const service = new PersonalSavedService({async request<T>(path: string): Promise<T> {
+    calls++;
+    if (path.includes('cursor=opaque-next')) return await new Promise<unknown>(resolve => { next = resolve; }) as T;
+    return {resource, entries: [entry('one'), entry('two'), entry('three')], nextCursor: 'opaque-next'} as T;
+  }}, {serverId: 'server', viewerId: 'viewer'}, async () => '00000000-0000-4000-8000-000000000001');
+  const window = personalEntriesWindow(service);
+  try {
+    await service.select({view: 'resource', resourceId: 'collection'});
+    assert.equal(window.getSnapshot().total, 3);
+    assert.equal(window.getSnapshot().totalIsLowerBound, true);
+    assert.deepEqual(window.slotAt(3), {kind: 'placeholder', index: 3, key: 'placeholder:3'});
+    window.ensureRange(0, 2); window.ensureRange(0, 3);
+    assert.equal(calls, 1, 'scrolling the current page cannot silently replace it');
+    const advancing = service.next();
+    const published = new Promise<void>(resolve => { const off = service.subscribe(() => { if (!service.getSnapshot().loading) { off(); resolve(); } }); });
+    next({resource, entries: [entry('four')], nextCursor: 'opaque-later'}); await published; await advancing;
+    assert.deepEqual(window.residentItems().map(value => value.id), ['four']);
+    assert.equal(window.getSnapshot().total, 1); assert.equal(window.getSnapshot().totalIsLowerBound, true);
+    assert.equal(window.keyAt(0), 'four'); window.dispose(); window.ensureRange(0, 4); assert.equal(calls, 2);
+  } finally { window.dispose(); service.dispose(); }
+});
 test('every captured identity boundary distinguishes the binding', () => {
   assert.equal(sameSavedDownloadsScope(scope, {...scope}), true);
   for (const field of ['serverId', 'authority', 'accountId', 'profileId', 'sessionFamilyId'] as const) {
@@ -32,10 +71,39 @@ test('current native failures stay actionable; late failures are silent', async 
   await assert.rejects(operations.run(async () => { throw failure; }), error => error === failure);
   operations.dispose(); await operations.run(async () => { throw failure; });
 });
+test('route effect cleanup aborts the old callback even when the current view opens again', async () => {
+  let active = true, complete!: () => void, callbacks = 0, signal: AbortSignal | undefined;
+  const operations = new SavedOperations(() => active);
+  const pending = operations.run(value => { signal = value; return new Promise<void>(resolve => { complete = resolve; }); }, () => callbacks++);
+  active = false; operations.abortPending(); active = true; complete(); await pending;
+  assert.equal(signal?.aborted, true); assert.equal(callbacks, 0);
+  await operations.run(async () => {}, () => callbacks++);
+  assert.equal(callbacks, 1); operations.dispose();
+});
+test('Saved route guards compare the complete query independently of property order', () => {
+  const route = {view: 'watchlist', filter: 'unwatched', sort: 'title', direction: 'asc', shape: 'posters'} as const;
+  assert.equal(sameSavedRoute({view: 'watchlist', shape: 'posters', sort: 'title', direction: 'asc', filter: 'unwatched'}, route), true);
+  for (const other of [{...route, filter: 'all'} as const, {...route, direction: 'desc'} as const, {...route, shape: 'squares'} as const, {...route, sort: 'added'} as const]) assert.equal(sameSavedRoute(other, route), false);
+  assert.equal(sameSavedRoute({view: 'playlist', playlistId: 'old'}, {view: 'playlist', playlistId: 'new'}), false);
+  assert.equal(sameSavedRoute({view: 'history', period: '30d'}, {view: 'history', period: 'all'}), false);
+  assert.equal(sameSavedRoute({view: 'resource', resourceId: 'a'}, {view: 'resource', resourceId: 'b'}), false);
+  assert.equal(sameSavedRoute(null, route), false);
+});
+test('dialogs and native actions cannot retain UI state in a replacement captured viewer', () => {
+  const key = savedViewKey(scope, {view: 'downloads'});
+  assert.equal(savedViewKey({...scope}, {view: 'downloads'}), key);
+  for (const field of ['serverId', 'authority', 'accountId', 'profileId', 'sessionFamilyId'] as const) assert.notEqual(savedViewKey({...scope, [field]: field === 'authority' ? 'hosted' : 'other'}, {view: 'downloads'}), key, field);
+  assert.notEqual(savedViewKey(scope, {view: 'playlists'}), key);
+});
 test('storage bar uses actual OS total/free and all native Portico bytes', () => {
   assert.deepEqual(diskFractions({totalBytes: 1000, freeBytes: 400, usedBytes: 70}), {portico: 0.07, other: 0.53});
   for (const storage of [{totalBytes: 0, freeBytes: 0, usedBytes: 0}, {totalBytes: 100, freeBytes: 80, usedBytes: 30}, {totalBytes: 100, freeBytes: -1, usedBytes: 0}]) assert.equal(diskFractions(storage), undefined);
   assert.equal(measuredPercent(null), undefined); assert.equal(measuredPercent(NaN), undefined); assert.equal(measuredPercent(101), undefined); assert.equal(measuredPercent(0), 0);
+});
+test('native group progress requires exact consistent byte observations', () => {
+  assert.equal(localGroupPercent({bytes: 400, bytesDone: 100}), 25);
+  assert.equal(localGroupPercent({bytes: 400, bytesDone: 0}), 0);
+  for (const value of [{bytes: 0, bytesDone: 0}, {bytes: 400, bytesDone: 401}, {bytes: 400, bytesDone: -1}, {bytes: 400, bytesDone: 1.5}, {bytes: Number.MAX_SAFE_INTEGER + 1, bytesDone: 10}]) assert.equal(localGroupPercent(value), undefined);
 });
 test('local group identity survives duplicate show names; missing-server bytes remain visible', () => {
   const item = (id: string, parentId: string, onServer = true): SavedLocalDownload => ({id, revision: 1, preparationId: id, itemId: id, quality: 'original', state: 'ready', held: false, bytes: 100, bytesDone: 100, percent: 100, offlineAccess: 'valid', onServer, title: {kind: 'episode', title: id, year: 2026, durationSeconds: 1, parentId, parentTitle: 'Same show name', groupId: '', groupTitle: '', groupNumber: 1, number: 1, artist: '', onServer}});

@@ -4,6 +4,13 @@ import {catalogue, createI18n, enUS, formatMessage, messageArguments, parseMessa
 import {presentError} from '../src/presentation/index.ts';
 import {ApiError} from '../src/index.ts';
 
+test('ruling31 TV hand-off uses the genuine server name and exact bounded-state copy', () => {
+  const {t} = createI18n(resolveRegion(undefined, {locales: ['en-US']}));
+  assert.equal(t('next.auth.tv.requiredTwoStepBody', {server: 'Portico demo'}), 'Portico demo asks for two-step verification on this account. Turn it on from your phone or computer, then sign in again.');
+  assert.equal(t('next.auth.tv.requiredPasswordBody', {server: 'Portico demo'}), 'Portico demo asks for a new password on this account. Choose one from your phone or computer, then sign in again.');
+  assert.equal(t('next.auth.tv.handoffHint'), 'Scan the code with your phone, or go to this address on a computer.');
+});
+
 test('player panels retain the exact temporary-change and uninterrupted-listening frame copy', () => {
   const {t} = createI18n('en-US');
   assert.equal(t('player.opt.temporaryChanges'), 'Changes here last until you stop watching.');
@@ -204,4 +211,12 @@ test('Hosted-backed surfaces name the Portico Account, never "your server"', () 
 test('a picture height is a name, not an amount: 1080p, never 1,080p', () => {
   assert.equal(createI18n({locale: 'en-US'}).t('quality.height', {height: 1080}), '1080p');
   assert.equal(createI18n({locale: 'en-US'}).t('quality.height', {height: 2160}), '2160p');
+});
+
+
+test('credits cards preserve the published after-scene and automatic-countdown text', () => {
+  const {t} = createI18n('en-US');
+  assert.equal(t('player.upNext.startsAfterScene', {time: '1:28'}), 'Starts in 1:28, after the scene');
+  assert.equal(t('player.upNext.sceneAfterCredits'), "There's a scene after the credits. Skip credits takes you straight to it.");
+  assert.equal(t('player.upNext.playingIn', {seconds: 7}), 'Playing in 7s');
 });

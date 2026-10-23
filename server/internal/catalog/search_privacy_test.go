@@ -98,3 +98,33 @@ func TestSearchLiveTVPrivacyGuardsLeafLookup(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchChannelAnchorUsesActualActiveSourceMapping(t *testing.T) {
+	s, request := searchPrivacyCatalog(t)
+	request.Group, request.LiveTV, request.Limit = "live-tv", true, 20
+	out, err := s.Search(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Groups) != 1 || len(out.Groups[0].Items) != 2 {
+		t.Fatalf("active rows: %+v", out.Groups)
+	}
+	for _, item := range out.Groups[0].Items {
+		nav := item.Navigation
+		if nav == nil || nav.View != "channel" || nav.EntityID != item.ID || nav.ChannelID != item.ID || nav.SourceID != "active" || nav.Provenance != "live-source" {
+			t.Fatalf("channel mapping omitted or inferred: %+v", nav)
+		}
+	}
+	// A source replacement is read from its current published generation. The
+	// result must not retain the previous source's identity or obsolete rows.
+	if _, err = s.db.Exec(`UPDATE live_sources SET state='disabled' WHERE id='active'; UPDATE live_sources SET state='active' WHERE id='disabled'`); err != nil {
+		t.Fatal(err)
+	}
+	out, err = s.Search(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Groups) != 1 || len(out.Groups[0].Items) != 1 || out.Groups[0].Items[0].Navigation.SourceID != "disabled" || out.Groups[0].Items[0].ID != "disabled" {
+		t.Fatalf("stale source identity retained: %+v", out.Groups)
+	}
+}

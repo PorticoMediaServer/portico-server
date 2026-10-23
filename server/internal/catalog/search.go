@@ -1005,20 +1005,20 @@ func (s *Service) searchLiveGroup(ctx context.Context, r SearchRequest, g search
 		}
 	}
 	args = append(args, pageSize+1, offset)
-	rows, e := s.read().QueryContext(ctx, `SELECT v.channel_id,v.name,v.number,v.group_name,`+order+` ord`+where+ordering+` LIMIT ? OFFSET ?`, args...)
+	rows, e := s.read().QueryContext(ctx, `SELECT s.id,v.channel_id,v.name,v.number,v.group_name,`+order+` ord`+where+ordering+` LIMIT ? OFFSET ?`, args...)
 	if e != nil {
 		return e
 	}
 	entries := []ContentEntry{}
 	for rows.Next() {
-		var id, name, number, group string
+		var source, id, name, number, group string
 		var ord float64
-		if e = rows.Scan(&id, &name, &number, &group, &ord); e != nil {
+		if e = rows.Scan(&source, &id, &name, &number, &group, &ord); e != nil {
 			rows.Close()
 			return e
 		}
 		subtitle := strings.TrimSpace(strings.Trim(number+" · "+group, " ·"))
-		entries = append(entries, ContentEntry{ID: id, Kind: g.kind, Title: name, Subtitle: subtitle, Navigation: &ContentNavigation{View: g.view, EntityID: id}})
+		entries = append(entries, ContentEntry{ID: id, Kind: g.kind, Title: name, Subtitle: subtitle, Navigation: &ContentNavigation{View: g.view, EntityID: id, SourceID: source, ChannelID: id, Provenance: "live-source"}})
 	}
 	e = rows.Err()
 	rows.Close()

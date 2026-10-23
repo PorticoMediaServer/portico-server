@@ -1,0 +1,318 @@
+import {
+  routePath, errors, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
+  decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProgressResponse,
+  decodePutReadingSessionsSessionIdProgressResponse,
+  type GetReadingItemsResponse, type GetItemsItemIdReadingVersionsResponse,
+  type PostReadingSessionsRequest, type PostReadingSessionsResponse,
+  type GetReadingSessionsSessionIdProgressResponse,
+  type PutReadingSessionsSessionIdProgressRequest, type PutReadingSessionsSessionIdProgressResponse,
+} from '../../contracts/src/index.ts';
+import type {Viewer} from './index.ts';
+
+export type ReadingScope = Readonly<{viewer: Readonly<Viewer>; isCurrent: () => boolean; signal?: AbortSignal}>;
+type Immutable<T> = T extends readonly (infer V)[] ? readonly Immutable<V>[] : T extends object ? {readonly [K in keyof T]: Immutable<T[K]>} : T;
+export type ReadingManifest = Immutable<PostReadingSessionsResponse>;
+export type ReadingPage = Readonly<{index: number; name: string; bytes: Uint8Array; mime: 'image/jpeg' | 'image/png' | 'image/webp'}>;
+export type ReadingLocation = PutReadingSessionsSessionIdProgressRequest['location'];
+export type ReadingProgress = GetReadingSessionsSessionIdProgressResponse;
+export type ReadingSavedProgress = PutReadingSessionsSessionIdProgressResponse;
+
+/** Errors contain a machine code/status, never an origin URL or response body. */
+export class ReadingError extends Error {
+  readonly code: string;
+  readonly status?: number;
+  constructor(code: string, status?: number) { super(code); this.name = 'ReadingError'; this.code = code; this.status = status; }
+}
+type Sender = (path: string, init: RequestInit) => Promise<Response>;
+type Capture = Readonly<{send: Sender; isCurrent: () => boolean; subscribe: (retire: () => void) => () => void}>;
+const fail = (code: string): never => { throw new ReadingError(code); };
+const serverCodes = new Set<string>(errors.map(error => error.code));
+const cancellation = (signal: AbortSignal) => signal.reason instanceof ReadingError ? signal.reason : new ReadingError('cancelled');
+const integer = (n: number, low: number, high: number) => Number.isSafeInteger(n) && n >= low && n <= high;
+const id = (s: string) => typeof s === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(s);
+const revision = (s: string) => typeof s === 'string' && /^[0-9a-f]{64}$/.test(s);
+const format = (s: string) => s === 'epub' || s === 'pdf' || s === 'cbz';
+const mime = (s: string | null) => s?.split(';', 1)[0].trim().toLowerCase();
+const member = (s: string) => typeof s === 'string' && s.length > 0 && s.length <= 1024 && !/[\\\x00-\x1f\x7f?#]/.test(s) && !/^[a-z][a-z0-9+.-]*:/i.test(s) && s.split('/').every(p => p !== '' && p !== '.' && p !== '..');
+const frozen = <T>(value: T): T => {
+  if (typeof value === 'object' && value !== null && !Object.isFrozen(value)) { Object.values(value).forEach(frozen); Object.freeze(value); }
+  return value;
+};
+const query = (path: string, values: Readonly<Record<string, string | number | undefined>>) => {
+  const pairs = Object.entries(values).filter(([, v]) => v !== undefined).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(String(v)));
+  return path + (pairs.length ? '?' + pairs.join('&') : '');
+};
+
+// Local signal composition also works on iOS 15.1; no AbortSignal.any/timeout
+// dependency, global polyfill or platform-specific bridge is introduced.
+function operation(signals: readonly (AbortSignal | undefined)[]) {
+  const controller = new AbortController();
+  const abort = () => controller.abort(signals.find(signal => signal?.aborted)?.reason);
+  for (const signal of signals) { signal?.addEventListener('abort', abort, {once: true}); if (signal?.aborted) abort(); }
+  return {signal: controller.signal, release() { for (const signal of signals) signal?.removeEventListener('abort', abort); }};
+}
+function discard(response: Response) { try { void response.body?.cancel().catch(() => {}); } catch { /* already retired */ } }
+async function received(pending: Promise<Response>, signal: AbortSignal): Promise<Response> {
+  return new Promise<Response>((resolve, reject) => {
+    const abort = () => reject(cancellation(signal));
+    signal.addEventListener('abort', abort, {once: true});
+    if (signal.aborted) abort();
+    pending.then(response => {
+      signal.removeEventListener('abort', abort);
+      if (signal.aborted) { discard(response); reject(cancellation(signal)); }
+      else resolve(response);
+    }, error => { signal.removeEventListener('abort', abort); reject(error); });
+  });
+}
+
+/** Bounded streaming consumption; cancellation also works with a stalled body. */
+async function bytes(response: Response, max: number, signal: AbortSignal, check: () => void, exact?: number): Promise<Uint8Array> {
+  const declared = response.headers.get('Content-Length');
+  if (declared !== null && (!/^\d+$/.test(declared) || !integer(Number(declared), 0, max) || (exact !== undefined && Number(declared) !== exact))) {
+    await discard(response); return fail('response_size');
+  }
+  if (!response.body) { if (exact === 0) { check(); return new Uint8Array(); } return fail('stream_unsupported'); }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0, rejectAbort!: (e: ReadingError) => void;
+  const aborted = new Promise<never>((_, reject) => { rejectAbort = reject; });
+  void aborted.catch(() => {});
+  const abort = () => { void reader.cancel().catch(() => {}); rejectAbort(cancellation(signal)); };
+  signal.addEventListener('abort', abort, {once: true});
+  try {
+    if (signal.aborted) abort();
+    for (;;) {
+      check();
+      const next = await Promise.race([reader.read(), aborted]);
+      check();
+      if (next.done) break;
+      if (!(next.value instanceof Uint8Array) || total + next.value.byteLength > max) return fail('response_size');
+      total += next.value.byteLength; chunks.push(next.value.slice());
+    }
+    if ((declared !== null && total !== Number(declared)) || (exact !== undefined && total !== exact)) return fail('response_size');
+    const out = new Uint8Array(total); let offset = 0;
+    for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.byteLength; }
+    check(); return out;
+  } finally { signal.removeEventListener('abort', abort); void reader.cancel().catch(() => {}); try { reader.releaseLock(); } catch { /* stream already ended */ } }
+}
+
+function validateManifest(m: PostReadingSessionsResponse, request: PostReadingSessionsRequest) {
+  if (!id(m.sessionId) || m.itemId !== request.itemId || m.sourceId !== request.sourceId || !revision(m.revision) || !format(m.format) || !integer(m.size, 1, 2 ** 31)) fail('invalid_manifest');
+  if (m.metadata.direction !== undefined && !['ltr', 'rtl', 'vertical'].includes(m.metadata.direction)) fail('invalid_manifest');
+  const resources = m.resources ?? [], pages = m.pageNames ?? [], spine = m.spine ?? [];
+  if (resources.length > 4096 || pages.length > 4096 || spine.length > 4096) fail('invalid_manifest');
+  const paths = new Set<string>();
+  for (const entry of resources) {
+    if (!member(entry.path) || paths.has(entry.path) || !integer(entry.size, 0, 32 << 20) || !/^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/i.test(entry.mime)) fail('invalid_manifest');
+    paths.add(entry.path);
+  }
+  if (spine.some(path => !paths.has(path)) || pages.some(path => !member(path)) || new Set(pages).size !== pages.length) fail('invalid_manifest');
+  if (m.format === 'epub' ? resources.length === 0 || spine.length === 0 || pages.length !== 0 : m.format === 'cbz' ? pages.length === 0 || resources.length !== 0 || spine.length !== 0 : resources.length !== 0 || spine.length !== 0 || pages.length !== 0) fail('invalid_manifest');
+}
+
+function validateLocation(location: ReadingLocation, manifest: ReadingManifest, stale = false) {
+  if (location.format !== manifest.format || !Number.isFinite(location.progression) || location.progression < 0 || location.progression > 1) fail('invalid_location');
+  if (location.format === 'epub') {
+    if (location.pageIndex !== undefined || !location.cfi?.startsWith('epubcfi(/') || !location.cfi.endsWith(')') || new TextEncoder().encode(location.cfi).length > 4096 || /[\p{Cc}<>]/u.test(location.cfi)) fail('invalid_location');
+    if (location.section !== undefined && (!member(location.section) || (!stale && !manifest.spine?.includes(location.section)))) fail('invalid_location');
+  } else if (location.cfi !== undefined || location.section !== undefined || !integer(location.pageIndex ?? -1, 0, 2147483647) || (!stale && location.format === 'cbz' && location.pageIndex! >= manifest.pageNames!.length)) fail('invalid_location');
+}
+function validateProgress(value: ReadingProgress, manifest: ReadingManifest) {
+  const p = value.progress;
+  if (p !== null) {
+    if (p.sourceId !== manifest.sourceId || !revision(p.sourceRevision) || p.stale !== (p.sourceRevision !== manifest.revision) || !integer(p.revision, 1, Number.MAX_SAFE_INTEGER) || !integer(p.observedAt, 1, Number.MAX_SAFE_INTEGER)) fail('invalid_progress');
+    validateLocation(p.location, manifest, p.stale);
+  }
+}
+
+/** A selected-server/viewer capture. Construction performs no requests. */
+export class ReadingClient {
+  readonly viewer: Readonly<Viewer>;
+  readonly signal: AbortSignal;
+  #capture: Capture;
+  #scope: ReadingScope;
+  #life = new AbortController();
+  #sessions = new Set<ReadingSession>();
+  #unsubscribe = () => {};
+  #abort: () => void;
+  constructor(capture: Capture, scope: ReadingScope) {
+    this.#capture = Object.freeze({...capture}); this.viewer = Object.freeze({...scope.viewer}); this.#scope = Object.freeze({...scope, viewer: this.viewer}); this.signal = this.#life.signal;
+    this.#abort = () => this.dispose(scope.signal?.reason); this.#unsubscribe = capture.subscribe(this.#abort);
+    scope.signal?.addEventListener('abort', this.#abort, {once: true});
+    if (scope.signal?.aborted || !capture.isCurrent() || !scope.isCurrent()) this.dispose();
+    Object.freeze(this);
+  }
+  check(signal?: AbortSignal) {
+    if (!this.#capture.isCurrent() || !this.#scope.isCurrent()) this.dispose();
+    if (this.signal.aborted) throw cancellation(this.signal);
+    if (signal?.aborted) throw cancellation(signal);
+  }
+  dispose(reason: unknown = new ReadingError('cancelled')) {
+    if (this.signal.aborted) return;
+    this.#life.abort(reason); this.#unsubscribe(); this.#scope.signal?.removeEventListener('abort', this.#abort);
+    for (const session of this.#sessions) session.retire(); this.#sessions.clear();
+  }
+  forget(session: ReadingSession) { this.#sessions.delete(session); }
+  async response<T>(path: string, init: RequestInit, signal: AbortSignal | undefined, consume: (r: Response, signal: AbortSignal, check: () => void) => Promise<T>, sessionSignal?: AbortSignal): Promise<T> {
+    const op = operation([this.signal, sessionSignal, signal]);
+    const check = () => this.check(op.signal);
+    try {
+      check(); const response = await received(this.#capture.send(path, {...init, signal: op.signal}), op.signal);
+      try { check(); return await consume(response, op.signal, check); }
+      catch (error) { await discard(response); throw error; }
+    } catch (error) {
+      if (op.signal.aborted) throw cancellation(op.signal);
+      if (error instanceof ReadingError) throw error;
+      throw new ReadingError('network_error');
+    } finally { op.release(); }
+  }
+  async json<T>(path: string, method: string, body: unknown, signal: AbortSignal | undefined, decode: (value: unknown) => T, max: number, headers?: Record<string, string>, sessionSignal?: AbortSignal, sourceRevision?: (value: T) => string): Promise<T> {
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    if (payload !== undefined && new TextEncoder().encode(payload).length > 8192) fail('request_size');
+    return this.response(path, {method, headers: {...headers, Accept: 'application/json', ...(payload === undefined ? {} : {'Content-Type': 'application/json'})}, ...(payload === undefined ? {} : {body: payload})}, signal, async (r, active, check) => {
+      if (r.status !== 200) return this.error(r, active, check);
+      if (mime(r.headers.get('Content-Type')) !== 'application/json') return fail('invalid_response');
+      const raw = await bytes(r, max, active, check);
+      let value: T;
+      try { value = frozen(decode(JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(raw)))); }
+      catch { return fail('invalid_document'); }
+      const tag = sourceRevision ? '"' + sourceRevision(value) + '"' : headers?.['If-Match'];
+      if (tag !== undefined && r.headers.get('ETag') !== tag) fail('source_changed');
+      return value;
+    }, sessionSignal);
+  }
+  async error(response: Response, signal: AbortSignal, check: () => void): Promise<never> {
+    let code = 'request_failed';
+    if (mime(response.headers.get('Content-Type')) === 'application/json') {
+      try {
+        const raw = JSON.parse(new TextDecoder().decode(await bytes(response, 64 << 10, signal, check)));
+        if (typeof raw?.error?.code === 'string' && serverCodes.has(raw.error.code)) code = raw.error.code;
+      } catch (error) { check(); /* Never retain an untrusted error body. */ }
+    }
+    await discard(response); throw new ReadingError(code, response.status);
+  }
+  async list(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<GetReadingItemsResponse> {
+    if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^\d{1,20}$/.test(options.cursor))) fail('invalid_request');
+    const out = await this.json(query(routePath('get_reading_items'), options), 'GET', undefined, signal, decodeGetReadingItemsResponse, 256 << 10);
+    if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !format(row.format))) fail('invalid_document');
+    return out;
+  }
+  async versions(itemId: string, signal?: AbortSignal): Promise<GetItemsItemIdReadingVersionsResponse> {
+    if (!id(itemId)) fail('invalid_request');
+    const out = await this.json(routePath('get_items_itemId_reading_versions', {itemId}), 'GET', undefined, signal, decodeGetItemsItemIdReadingVersionsResponse, 64 << 10);
+    if (out.versions.length > 128 || out.versions.some(v => !id(v.sourceId) || !format(v.format) || !integer(v.size, 0, 2 ** 31))) fail('invalid_document');
+    return out;
+  }
+  async open(request: PostReadingSessionsRequest, signal?: AbortSignal): Promise<ReadingSession> {
+    if (!id(request.itemId) || !id(request.sourceId)) fail('invalid_request');
+    const captured = Object.freeze({itemId: request.itemId, sourceId: request.sourceId});
+    const manifest = await this.json(routePath('post_reading_sessions'), 'POST', captured, signal, decodePostReadingSessionsResponse, 8 << 20, undefined, undefined, m => m.revision);
+    validateManifest(manifest, captured); this.check(signal);
+    const session = new ReadingSession(this, manifest); this.#sessions.add(session); return session;
+  }
+}
+
+/** Native byte callbacks carry no credentials or origin URLs into an engine. */
+export class ReadingSession {
+  readonly manifest: ReadingManifest;
+  readonly signal: AbortSignal;
+  #client: ReadingClient;
+  #life = new AbortController();
+  #activeRanges = 0;
+  #retire: () => void;
+  constructor(client: ReadingClient, manifest: ReadingManifest) {
+    this.#client = client; this.manifest = frozen(manifest); this.signal = this.#life.signal;
+    this.#retire = () => this.retire(client.signal.reason); client.signal.addEventListener('abort', this.#retire, {once: true});
+    Object.freeze(this);
+  }
+  retire(reason: unknown = new ReadingError('cancelled')) { this.#life.abort(reason); this.#client.signal.removeEventListener('abort', this.#retire); this.#client.forget(this); }
+  #check = () => { this.#client.check(this.signal); };
+  #headers() { return {'If-Match': '"' + this.manifest.revision + '"'}; }
+  #etag(response: Response) { if (response.headers.get('ETag') !== '"' + this.manifest.revision + '"') fail('source_changed'); }
+  async #control<T>(run: () => Promise<T>, cas = false): Promise<T> {
+    this.#check();
+    try { return await run(); }
+    catch (error) {
+      if (error instanceof ReadingError && (['source_changed', 'invalid_document', 'invalid_progress'].includes(error.code) || [401, 403, 404].includes(error.status ?? 0) || (!cas && error.status === 412))) this.retire(error);
+      throw error;
+    }
+  }
+  async #binary<T>(path: string, init: RequestInit, signal: AbortSignal | undefined, consume: (r: Response, active: AbortSignal, check: () => void) => Promise<T>) {
+    this.#check();
+    try { return await this.#client.response(path, {...init, headers: {...this.#headers(), ...init.headers}}, signal, consume, this.signal); }
+    catch (error) {
+      if (error instanceof ReadingError && (['source_changed', 'response_size', 'invalid_response'].includes(error.code) || [401, 403, 404, 412].includes(error.status ?? 0))) this.retire(error);
+      throw error;
+    }
+  }
+  headPDF = async (signal?: AbortSignal): Promise<void> => {
+    if (this.manifest.format !== 'pdf') fail('invalid_format');
+    return this.#binary(routePath('head_reading_sessions_sessionId_source', {sessionId: this.manifest.sessionId}), {method: 'HEAD'}, signal, async (r, active, check) => {
+      if (r.status !== 200) return this.#client.error(r, active, check);
+      this.#etag(r);
+      if (r.headers.get('Content-Length') !== String(this.manifest.size) || r.headers.get('Accept-Ranges') !== 'bytes' || mime(r.headers.get('Content-Type')) !== 'application/pdf') fail('source_changed');
+      check(); await discard(r);
+    });
+  };
+  readRange = async (range: Readonly<{start: number; endExclusive: number}>, signal?: AbortSignal): Promise<Uint8Array> => {
+    if (this.manifest.format !== 'pdf') fail('invalid_format');
+    const {start, endExclusive} = range, length = endExclusive - start;
+    if (!integer(start, 0, this.manifest.size - 1) || !integer(endExclusive, start + 1, this.manifest.size) || length > 64 << 10) fail('invalid_range');
+    if (this.#activeRanges >= 2) fail('range_busy');
+    this.#activeRanges++;
+    try {
+      return await this.#binary(routePath('get_reading_sessions_sessionId_source', {sessionId: this.manifest.sessionId}), {method: 'GET', headers: {Range: `bytes=${start}-${endExclusive - 1}`}}, signal, async (r, active, check) => {
+        if (r.status !== 206) { if (r.status === 200) return fail('invalid_response'); return this.#client.error(r, active, check); }
+        this.#etag(r);
+        if (r.headers.get('Content-Range') !== `bytes ${start}-${endExclusive - 1}/${this.manifest.size}` || r.headers.get('Content-Length') !== String(length) || mime(r.headers.get('Content-Type')) !== 'application/pdf') fail('source_changed');
+        return bytes(r, length, active, check, length);
+      });
+    } finally { this.#activeRanges--; }
+  };
+  readAsset = async (path: string, signal?: AbortSignal): Promise<Uint8Array> => {
+    if (this.manifest.format !== 'epub') fail('invalid_format');
+    const entry = this.manifest.resources?.find(resource => resource.path === path) ?? fail('invalid_asset');
+    if (!member(path)) fail('invalid_asset');
+    return this.#binary(query(routePath('get_reading_sessions_sessionId_assets', {sessionId: this.manifest.sessionId}), {path}), {method: 'GET'}, signal, async (r, active, check) => {
+      if (r.status !== 200) return this.#client.error(r, active, check);
+      this.#etag(r);
+      if (mime(r.headers.get('Content-Type')) !== entry.mime.toLowerCase()) fail('invalid_response');
+      return bytes(r, entry.size, active, check, entry.size);
+    });
+  };
+  page = async (index: number, options: Readonly<{width: number; signal?: AbortSignal}>): Promise<ReadingPage> => {
+    if (this.manifest.format !== 'cbz') fail('invalid_format');
+    if (!integer(index, 0, this.manifest.pageNames!.length - 1) || !integer(options.width, 32, 2048)) fail('invalid_page');
+    return this.#binary(query(routePath('get_reading_sessions_sessionId_pages_pageIndex', {sessionId: this.manifest.sessionId, pageIndex: index}), {width: options.width}), {method: 'GET'}, options.signal, async (r, active, check) => {
+      if (r.status !== 200) return this.#client.error(r, active, check);
+      this.#etag(r); const observed = mime(r.headers.get('Content-Type'));
+      if (observed !== 'image/jpeg' && observed !== 'image/png' && observed !== 'image/webp') return fail('invalid_response');
+      const body = await bytes(r, 16 << 20, active, check);
+      return Object.freeze({index, name: this.manifest.pageNames![index], bytes: body, mime: observed});
+    });
+  };
+  progress = async (signal?: AbortSignal): Promise<ReadingProgress> => {
+    return this.#control(async () => {
+      const out = await this.#client.json(routePath('get_reading_sessions_sessionId_progress', {sessionId: this.manifest.sessionId}), 'GET', undefined, signal, decodeGetReadingSessionsSessionIdProgressResponse, 16 << 10, this.#headers(), this.signal);
+      validateProgress(out, this.manifest); return out;
+    });
+  };
+  saveProgress = async (request: PutReadingSessionsSessionIdProgressRequest, signal?: AbortSignal): Promise<ReadingSavedProgress> => {
+    this.#check(); const expectedRevision = request.expectedRevision, location = {...request.location};
+    if (!integer(expectedRevision, 0, Number.MAX_SAFE_INTEGER)) fail('invalid_revision'); validateLocation(location, this.manifest);
+    return this.#control(async () => {
+      const out = await this.#client.json(routePath('put_reading_sessions_sessionId_progress', {sessionId: this.manifest.sessionId}), 'PUT', {expectedRevision, location}, signal, decodePutReadingSessionsSessionIdProgressResponse, 16 << 10, this.#headers(), this.signal);
+      validateProgress(out, this.manifest);
+      if (out.saved && (out.progress === null || out.progress.stale || out.progress.revision !== expectedRevision + 1)) fail('invalid_progress');
+      return out;
+    }, true);
+  };
+  close = async (signal?: AbortSignal): Promise<void> => {
+    if (this.signal.aborted) return;
+    this.retire(); this.#client.check(signal);
+    return this.#client.response(routePath('delete_reading_sessions_sessionId', {sessionId: this.manifest.sessionId}), {method: 'DELETE'}, signal, async (r, active, check) => {
+      if (r.status !== 204) return this.#client.error(r, active, check);
+      check(); await discard(r);
+    });
+  };
+}

@@ -27,6 +27,16 @@ test('a second owner cannot silently overwrite a route or install a second media
   assert.equal(registry.get('player')?.playbackHost, Screen);
 });
 
+test('a screen registers its own retained host without installing another player host', () => {
+  const ReadHost = () => null;
+  const registry = createWebScreenRegistry({'read': {default: defineWebScreen({id: 'read', component: Screen, chrome: 'standalone', retainedHost: ReadHost})},
+    'player': {default: defineWebScreen({id: 'player', component: Screen, playbackHost: Screen})}});
+  assert.deepEqual(registry.retainedHosts(), [{id: 'read', component: ReadHost}]);
+  assert.equal(registry.get('player')?.playbackHost, Screen);
+  assert.deepEqual(createWebScreenRegistry({}).retainedHosts(), []);
+  assert.throws(() => defineWebScreen({id: 'player', component: Screen, retainedHost: Screen}), /already-has-playback-host/);
+});
+
 test('Read and Person preserve actual opaque ids through dedicated destinations', () => {
   assert.equal(webScreenPaths.read, '/read/$itemId');
   assert.equal(webScreenPaths.person, '/person/$personId');

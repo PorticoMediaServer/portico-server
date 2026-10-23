@@ -50,3 +50,20 @@ test('selected-source facts accept the checked normalized breadth DTO without re
  assert.throws(()=>parseDashboardSessionFacts({...raw,media:{video,audio:{...audio,url:'/private-grant'}}}));
  assert.throws(()=>parseDashboardSessionFacts({...raw,media:{video,audio:{...audio,visualImpaired:'yes'}}}));
 });
+
+test('source interlace preserves known false and true while unknown stays absent',()=>{
+ for(const interlaced of [undefined,false,true]) {
+  const video={id:'v0',codec:'h264',height:1080,...(interlaced===undefined?{}:{interlaced})};
+  const parsed=parseDashboardSessionFacts({media:{video}}).media as {video:typeof video};
+  assert.deepEqual(parsed.video,video);
+  assert.equal(Object.hasOwn(parsed.video,'interlaced'),interlaced!==undefined);
+ }
+ for(const interlaced of [null,0,1,'false','progressive']) assert.throws(()=>parseDashboardSessionFacts({media:{video:{id:'v0',codec:'h264',interlaced}}}));
+ assert.throws(()=>parseDashboardSessionFacts({media:{video:{id:'v0',codec:'h264',interlaced:false,url:'/private-grant'}}}));
+});
+
+test('DTS profile and explicit object facts survive the safe projection independently',()=>{
+ const audio={id:'a1',codec:'dts',profile:'DTS-HD MA',variant:'dtsx',objectAudio:'dtsx',dtsx:true,atmos:false,default:true,commentary:false,visualImpaired:false};
+ assert.deepEqual((parseDashboardSessionFacts({media:{audio}}).media as {audio:typeof audio}).audio,audio);
+ assert.throws(()=>parseDashboardSessionFacts({media:{audio:{...audio,profile:42}}}));
+});

@@ -6,6 +6,7 @@ export const browseMessages = {
   'next.browse.showCount': 'Show {count}',
   'next.browse.kind.movie': 'Movie',
   'next.browse.kind.show': 'TV show',
+  'next.browse.tvShows': 'TV shows',
   'next.browse.kind.anime': 'Anime',
   'next.browse.family': 'Browsing a library',
   'next.browse.libraryHeader': 'Library header',

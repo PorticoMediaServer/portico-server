@@ -1,4 +1,6 @@
 import {routeBody} from "../../contracts/src/routes.ts";
+import {ReadingClient, type ReadingScope} from './reading.ts';
+export * from './reading.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts";
 import {routePrefix, routePath, apiRoot, encodedRoutePath} from "../../contracts/src/routes.ts";
@@ -331,6 +333,22 @@ export class HttpLocalApi {
     if (this.routes && token) bindSessionRoute(token,this.routes);
     this.certificateSessionEpoch++;
     for (const listener of this.certificateSessionListeners) listener();
+  }
+  /** Captures this exact selected-server authority; reader callbacks never
+   * refresh, retry or substitute another viewer's token behind an open book. */
+  reading(scope: ReadingScope): ReadingClient {
+    const token = this.token, epoch = this.certificateSessionEpoch, fetcher = this.fetcher;
+    const isCurrent = () => this.token === token && this.certificateSessionEpoch === epoch;
+    return new ReadingClient({
+      isCurrent,
+      subscribe: retire => this.subscribeCertificateSession(retire),
+      send: (path, init) => {
+        if (!isCurrent() || !path.startsWith(apiRoot) || path.includes('#') || path.includes('\\')) return Promise.reject(new Error('cancelled'));
+        const headers = new Headers(init.headers);
+        headers.delete('Authorization'); if (token) headers.set('Authorization', 'Bearer ' + token);
+        return fetcher(this.baseUrl + path, {...init, headers, redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store'});
+      },
+    }, scope);
   }
   /** Fixed owner-certificate operations, selected-server credentials and bounded responses. */
   async requestCertificate<T>(action:CertificateAction,body:unknown,signal:AbortSignal):Promise<T>{
@@ -1139,6 +1157,7 @@ export class PlaybackService {
   async playChannel(reference:ChannelReference,options:ChannelStartOptions={}):Promise<void> {
     const state=options.state??'playing';
     if(state!=='playing'&&state!=='paused')throw new Error('invalid_channel_start_state');
+    if(options.signal?.aborted||options.isCurrent?.()===false)throw Object.assign(new Error('cancelled'),{name:'AbortError'});
     const oldVOD=this.snapshot.channel?undefined:this.snapshot.session?.id;
     this.leave();this.channelReference=reference;this.channelWantedState=state;
     const intentId=this.snapshot.intentId;
@@ -1150,11 +1169,11 @@ export class PlaybackService {
     if(oldVOD){try{await this.persist();await this.tryCleanup(oldVOD);}catch{
       if(this.snapshot.intentId===intentId)this.update({phase:'error',error:'The previous playback could not be stopped. Retry this channel when the server reconnects.'});return;
     }}
-    if(this.snapshot.intentId!==intentId||!this.snapshot.channel)return;
+    if(this.snapshot.intentId!==intentId||!this.snapshot.channel||options.signal?.aborted||options.isCurrent?.()===false)return;
     await this.channels.open(reference,{
       state:value=>{if(this.snapshot.intentId===intentId&&this.snapshot.channel)this.applyChannel(value);},
       error:(message,terminal)=>{if(this.snapshot.intentId!==intentId||!this.snapshot.channel)return;this.update({error:message,...(terminal?{phase:'error' as const,session:undefined,pendingSeek:undefined}:{} )});}
-    },{state});
+    },{...options,state});
   }
   /** Channels on v1 sessions (spec §18.6): the apps switch to this when the server offers them. */
   useChannelPlayback(control:ChannelPlayback){if(this.snapshot.channel)this.leave();this.channels=control;}
@@ -2125,3 +2144,6 @@ export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppS
 export {ServerSignInProbe, parseServerSignIn, signInLabelKey, serverSignInSettingsURL, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
 export * from './account-move.ts';
 export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} from './tv-consent.ts';
+
+export {videoPictureName, videoAudioFormatName, videoTrackName, videoTrackWords, formatVideoBytes} from './video-track-labels.ts';
+export type {VideoTrackWords, VideoTrackNameParts} from './video-track-labels.ts';

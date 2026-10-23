@@ -1,15 +1,15 @@
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type FormEvent} from 'react';
 import {passwordStrength} from '@core/password-strength.ts';
 import {AuthCodeBoxes, AuthLinks, AuthPasswordField} from '../kit/accounts';
-import {HostedError, ServicesActions, ServicesAuthStage, ServicesDivider, ServicesHeading, ServicesHint, ServicesLabel, ServicesLead, ServicesNotice, ServicesPair, ServicesProviderButton, ServicesQuiet, ServicesRegistrationLead, ServicesStateIcon, ServicesStrength, ServicesTerms, ServicesVerificationCode} from '../kit/accounts/ServicesAuth';
+import {HostedError, ServicesActions, ServicesAuthStage, ServicesBackAction, ServicesDivider, ServicesHeading, ServicesHint, ServicesInvitationCredentials, ServicesLabel, ServicesLead, ServicesNotice, ServicesPair, ServicesProviderButton, ServicesProviderContext, ServicesQuiet, ServicesRegistrationLead, ServicesStateIcon, ServicesStrength, ServicesTerms, ServicesVerificationCode} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {ServicesAuthFlow} from './auth-flow';
 import type {ServicesAccount} from './session';
 import {servicesI18n} from './i18n';
 import styles from './services.module.css';
 
-type Props = {account: ServicesAccount; onSignedIn: () => void; initialMode?: 'signin' | 'create' | 'forgot'; embedded?: boolean; heading?: ReactNode; lead?: ReactNode; before?: ReactNode};
-export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', embedded = false, heading, lead, before}: Props) {
+type Props = {account: ServicesAccount; onSignedIn: () => void; initialMode?: 'signin' | 'create' | 'forgot'; embedded?: boolean; invitation?: boolean; heading?: ReactNode; lead?: ReactNode; before?: ReactNode};
+export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', embedded = false, invitation = false, heading, lead, before}: Props) {
   const {t} = useMemo(servicesI18n, []), complete = useRef(onSignedIn); complete.current = onSignedIn;
   const flow = useMemo(() => new ServicesAuthFlow(account, () => complete.current(), initialMode), [account, initialMode]);
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
@@ -35,7 +35,8 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', e
   const content = <>
     {mode === 'verify' && <ServicesStateIcon tone="info" icon="i-mail" size={32} />}
     {mode === 'ready' && <ServicesStateIcon />}
-    <ServicesHeading singleLine>{title}</ServicesHeading>{mode === 'verify' && state.registration ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : <ServicesLead>{body}</ServicesLead>}
+    {mode === 'provider' && state.provider && <ServicesProviderContext provider={state.provider} email={state.verifiedEmail} />}
+    {!(invitation && mode === 'signin') && <><ServicesHeading singleLine>{title}</ServicesHeading>{mode === 'verify' && state.registration ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : <ServicesLead>{body}</ServicesLead>}</>}
     {mode === 'signin' && before}
     {(mode === 'signin' || mode === 'create') && providerButtons}
     {state.error ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : (state.error as {code?: string})?.code === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : <HostedError error={state.error} /> : null}
@@ -87,9 +88,9 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', e
         <TextField variant="auth" label={t('auth.username')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} description={t('services.provider.usernameHelp')} value={username} onChange={event => setUsername(event.currentTarget.value)} minLength={3} maxLength={32} required disabled={busy} />
         <TextField variant="auth" label={<ServicesLabel detail={t('field.optional')}>{t('auth.yourName')}</ServicesLabel>} name="name" autoComplete="name" value={name} onChange={event => setName(event.currentTarget.value)} disabled={busy} />
         <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || username.trim().length < 3}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions>
-      </form><AuthLinks><button type="button" disabled={busy} onClick={() => void flow.cancelProvider()}>{t('action.cancel')}</button></AuthLinks><ServicesTerms />
+      </form><AuthLinks><button type="button" disabled={busy} onClick={() => void flow.cancelProvider()}><ServicesBackAction>{t('action.cancel')}</ServicesBackAction></button></AuthLinks><ServicesTerms provider={state.provider} />
     </>}
     {mode === 'ready' && <ServicesActions><Button variant="primary" loading={busy} onClick={() => void flow.continue()}>{t('action.continue')}</Button></ServicesActions>}
   </>;
-  return embedded ? content : <ServicesAuthStage legal={mode !== 'create' && mode !== 'provider' && mode !== 'verify'} variant={mode === 'create' || mode === 'provider' ? 'signup' : mode === 'verify' ? 'reset' : mode === 'ready' ? 'state' : 'auth'}>{content}</ServicesAuthStage>;
+  return invitation && mode === 'signin' ? <ServicesInvitationCredentials>{content}</ServicesInvitationCredentials> : embedded ? content : <ServicesAuthStage legal={mode !== 'create' && mode !== 'provider' && mode !== 'verify'} variant={mode === 'provider' ? 'providerOnboarding' : mode === 'create' ? 'signup' : mode === 'verify' ? 'reset' : mode === 'ready' ? 'state' : 'auth'}>{content}</ServicesAuthStage>;
 }

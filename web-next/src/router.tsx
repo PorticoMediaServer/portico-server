@@ -1,7 +1,9 @@
-import {createRootRoute, createRoute, createRouter, lazyRouteComponent} from '@tanstack/react-router';
+import {createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect} from '@tanstack/react-router';
 import {WebScreenOutlet, webScreens} from './route-registry-view';
 import type {WebScreenId, WebScreenSearchValidator} from './route-registry';
+import {browserEntryDestination, profileSettingsAliasPath, profileSettingsDestination} from './route-registry-destination';
 import {gallerySearch} from './platform/gallery-search';
+import {accountReturnPath} from './route-registry-return';
 import {ShellRoot} from './shell/Root';
 import {useShellBindings} from './shell/bindings';
 import {HomeScreen} from './screens/home/Home';
@@ -29,12 +31,18 @@ export const profilesRoute = createRoute({getParentRoute: () => rootRoute, compo
 export const serversRoute = createRoute({getParentRoute: () => rootRoute, component: screen('servers'), path: '/servers', validateSearch: screenSearch('servers')});
 export const accountRoute = createRoute({getParentRoute: () => rootRoute, component: screen('account'), path: '/account', validateSearch: screenSearch('account')});
 export const signInRoute = createRoute({getParentRoute: () => rootRoute, component: screen('signIn'), path: '/sign-in', validateSearch: screenSearch('signIn')});
+export const accountReturnRoute = createRoute({getParentRoute: () => rootRoute, component: screen('signIn'), path: accountReturnPath, validateSearch: screenSearch('signIn')});
 export const togetherRoute = createRoute({getParentRoute: () => rootRoute, component: screen('together'), path: '/watch-together', validateSearch: screenSearch('together')});
 export const feedbackRoute = createRoute({getParentRoute: () => rootRoute, component: screen('feedback'), path: '/feedback', validateSearch: screenSearch('feedback')});
 export const helpRoute = createRoute({getParentRoute: () => rootRoute, component: screen('help'), path: '/help', validateSearch: screenSearch('help')});
 export const personRoute = createRoute({getParentRoute: () => rootRoute, component: screen('person'), path: '/person/$personId', validateSearch: screenSearch('person')});
 export const readRoute = createRoute({getParentRoute: () => rootRoute, component: screen('read'), path: '/read/$itemId', validateSearch: screenSearch('read')});
-const destinations = [homeRoute, searchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, signInRoute, togetherRoute, feedbackRoute, helpRoute, personRoute, readRoute];
+// §31 uses this existing public web address. It is navigation, never proof.
+export const profileSettingsAliasRoute = createRoute({getParentRoute: () => rootRoute, path: profileSettingsAliasPath, beforeLoad: () => {
+  browserEntryDestination.rememberProfileSettings();
+  throw redirect({...profileSettingsDestination, replace: true});
+}});
+const destinations = [homeRoute, searchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, signInRoute, accountReturnRoute, togetherRoute, feedbackRoute, helpRoute, personRoute, readRoute, profileSettingsAliasRoute];
 const devRoutes = import.meta.env.DEV ? [createRoute({
   getParentRoute: () => rootRoute, path: '/dev/kit', validateSearch: gallerySearch,
   component: lazyRouteComponent(() => import('./dev/KitGallery'), 'KitGallery'),

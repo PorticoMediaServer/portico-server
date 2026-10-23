@@ -34,6 +34,7 @@ export type WatchTrickplay = Readonly<{
 export type WatchSurfaces = Readonly<{
   available: readonly WatchPanel[];
   render: (context: WatchPanelContext) => ReactNode;
+  playOn?: Readonly<{active: boolean; open(anchor?: HTMLButtonElement): void; close(): void}>;
   together?: ReactNode;
   prompts?: ReactNode;
   notices?: ReactNode;
@@ -43,6 +44,8 @@ export type WatchSurfaces = Readonly<{
   trickplay?: WatchTrickplay;
   /** One retained title body owns its tab, season, paging and scroll, also when hidden. */
   body?: ReactNode;
+  /** Actual title/authority identity; layout and source generation never enter this key. */
+  bodyIdentity?: string;
   myList?: Readonly<{selected: boolean; pending?: boolean; toggle: () => void | Promise<void>}>;
   more?: readonly Readonly<{id: string; label: string; action: () => void | Promise<void>}>[];
 }>;

@@ -3,7 +3,7 @@ import {routeBody, routePath} from '../../../packages/contracts/src/hosted/route
 import {accountIdentity, currentAccountWork, type AccountIdentity, type ServicesAccount} from './session';
 
 export type AuthMode = 'signin' | 'create' | 'verify' | 'forgot' | 'sent' | 'factor' | 'recovery' | 'provider' | 'ready';
-export type AuthSnapshot = Readonly<{mode: AuthMode; options?: IdentityOptions; registration?: Registration; provider?: IdentityProvider; suggestedName?: string; busy: boolean; retryAt: number; resends: number; error?: unknown}>;
+export type AuthSnapshot = Readonly<{mode: AuthMode; options?: IdentityOptions; registration?: Registration; provider?: IdentityProvider; suggestedName?: string; verifiedEmail?: string; busy: boolean; retryAt: number; resends: number; error?: unknown}>;
 /** Local form controller. The singleton CredentialSessionService owns every account session. */
 export class ServicesAuthFlow {
   private state: AuthSnapshot;
@@ -38,7 +38,7 @@ export class ServicesAuthFlow {
       if (transaction.status === 'fulfilled' && transaction.value?.mode === 'login') {
         const tx = transaction.value;
         if (tx.needsUsername && tx.contactVerified && tx.status !== 'failed') {
-          this.transaction = tx; this.publish({mode: 'provider', provider: tx.provider, suggestedName: tx.suggestedName}); return;
+          this.transaction = tx; this.publish({mode: 'provider', provider: tx.provider, suggestedName: tx.suggestedName, verifiedEmail: tx.verifiedEmail}); return;
         }
         if (tx.status === 'verified' && !tx.needsUsername) {
           await this.authenticate(inner => this.account.client.complete(tx.transactionId, {}, AbortSignal.any([inner, signal]))); return;
@@ -81,7 +81,7 @@ export class ServicesAuthFlow {
       await this.account.client.request(routePath('identity_cancel'), 'POST', undefined, signal);
       if (!signal.aborted) {
         this.transaction = undefined; this.ids.clear('provider');
-        this.publish({mode: 'signin', provider: undefined, suggestedName: undefined});
+        this.publish({mode: 'signin', provider: undefined, suggestedName: undefined, verifiedEmail: undefined});
       }
     });
   }

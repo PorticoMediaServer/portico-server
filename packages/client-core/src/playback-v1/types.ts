@@ -36,8 +36,8 @@ export function url(v: unknown, what: string): string {
 }
 
 // ── Options (spec §4.1) ─────────────────────────────────────────────
-export type VideoStream = Readonly<{id: string; codec: string; profile?: string; bitDepth?: number; width?: number; height?: number; fps?: number; hdr?: string; bitrateKbps?: number}>;
-export type AudioStream = Readonly<{id: string; codec: string; channels?: number; layout?: string; atmos: boolean; language?: string; title?: string; default: boolean; commentary: boolean; visualImpaired: boolean}>;
+export type VideoStream = Readonly<{hdr10Plus?: boolean; interlaced?: boolean; id: string; codec: string; profile?: string; bitDepth?: number; width?: number; height?: number; fps?: number; hdr?: string; bitrateKbps?: number}>;
+export type AudioStream = Readonly<{profile?: string; variant?: string; objectAudio?: string; dtsx?: boolean; sampleRate?: number; bitDepth?: number; id: string; codec: string; channels?: number; layout?: string; atmos: boolean; language?: string; title?: string; default: boolean; commentary: boolean; visualImpaired: boolean}>;
 export type SubtitleStream = Readonly<{id: string; format: string; source: 'embedded' | 'sidecar' | 'downloaded' | 'other'; language?: string; title?: string; forced: boolean; sdh: boolean; default: boolean; deliveries?: readonly import('../subtitles.ts').SubtitleDelivery[]}>;
 export type VersionPart = Readonly<{id: string; index: number; durationMs: number; sizeBytes?: number}>;
 export type MediaVersion = Readonly<{id: string; label: string; edition?: string; container?: string; sizeBytes?: number; durationMs: number; bitrateKbps?: number; parts: readonly VersionPart[]; video: readonly VideoStream[]; audio: readonly AudioStream[]; subtitles: readonly SubtitleStream[]}>;
@@ -87,7 +87,10 @@ export function parseOptions(v: unknown): PlaybackOptions {
       sizeBytes: optNum(x.sizeBytes), durationMs: num(x.durationMs), bitrateKbps: optNum(x.bitrateKbps),
       parts: Object.freeze(arr(x.parts).filter(obj).map(p => Object.freeze({id: id(p.id, 'part id'), index: num(p.index), durationMs: num(p.durationMs), sizeBytes: optNum(p.sizeBytes)}))),
       video: Object.freeze(arr(x.video).filter(obj).map(s => Object.freeze({id: id(s.id, 'video id'), codec: str(s.codec), profile: typeof s.profile === 'string' ? s.profile : undefined, bitDepth: optNum(s.bitDepth), width: optNum(s.width), height: optNum(s.height), fps: optNum(s.fps), hdr: typeof s.hdr === 'string' ? s.hdr : undefined, bitrateKbps: optNum(s.bitrateKbps)}))),
-      audio: Object.freeze(arr(x.audio).filter(obj).map(s => Object.freeze({id: id(s.id, 'audio id'), codec: str(s.codec), channels: optNum(s.channels), layout: typeof s.layout === 'string' ? s.layout : undefined, atmos: bool(s.atmos), language: typeof s.language === 'string' ? s.language : undefined, title: typeof s.title === 'string' ? s.title : undefined, default: bool(s.default), commentary: bool(s.commentary), visualImpaired: bool(s.visualImpaired)}))),
+      audio: Object.freeze(arr(x.audio).filter(obj).map(s => Object.freeze({id: id(s.id, 'audio id'), codec: str(s.codec), channels: optNum(s.channels), layout: typeof s.layout === 'string' ? s.layout : undefined,
+        sampleRate: Number.isSafeInteger(s.sampleRate) && Number(s.sampleRate) > 0 ? s.sampleRate as number : undefined, bitDepth: Number.isSafeInteger(s.bitDepth) && Number(s.bitDepth) > 0 ? s.bitDepth as number : undefined,
+        variant: typeof s.variant === 'string' ? s.variant : undefined, objectAudio: typeof s.objectAudio === 'string' ? s.objectAudio : undefined, dtsx: typeof s.dtsx === 'boolean' ? s.dtsx : undefined,
+        atmos: bool(s.atmos), language: typeof s.language === 'string' ? s.language : undefined, title: typeof s.title === 'string' ? s.title : undefined, default: bool(s.default), commentary: bool(s.commentary), visualImpaired: bool(s.visualImpaired)}))),
       subtitles: Object.freeze(arr(x.subtitles).filter(obj).map(s => Object.freeze({id: id(s.id, 'subtitle id'), format: str(s.format), source: oneOf(s.source, ['embedded', 'sidecar', 'downloaded'] as const, 'other' as never), language: typeof s.language === 'string' ? s.language : undefined, title: typeof s.title === 'string' ? s.title : undefined, forced: bool(s.forced), sdh: bool(s.sdh), default: bool(s.default), ...(s.deliveries===undefined?{}:{deliveries:Object.freeze(arr(s.deliveries).map(validateSubtitleDelivery))})}))),
     });
   });
