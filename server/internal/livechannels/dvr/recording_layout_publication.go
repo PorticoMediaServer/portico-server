@@ -13,13 +13,18 @@ import (
 // prepareRecordingLayout composes the real settings values supplied by their
 // normalized reader. IO stays outside transactions; every reservation and
 // receipt transition rechecks the existing occurrence claim and authority.
-func (s *Store) prepareRecordingLayout(ctx context.Context, c *claim, result CaptureResult, showTemplate, movieTemplate string, revision int64) (CaptureResult, error) {
+func (s *Store) prepareRecordingLayout(ctx context.Context, c *claim, result CaptureResult) (CaptureResult, error) {
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassProtectedCapture)
 	if err != nil {
 		return result, err
 	}
 	tx := gated.Tx()
 	if err = s.currentClaimTx(ctx, tx, c); err != nil {
+		gated.Rollback()
+		return result, err
+	}
+	layout, err := ReadRecordingLayoutTx(ctx, tx)
+	if err != nil {
 		gated.Rollback()
 		return result, err
 	}
@@ -46,10 +51,10 @@ func (s *Store) prepareRecordingLayout(ctx context.Context, c *claim, result Cap
 			return result, ErrConflict
 		}
 	} else {
-		template := movieTemplate
+		template := layout.MovieTemplate
 		programme := c.request.Recording.Programme
 		if programme.Episode != nil || programme.SeriesID != "" {
-			template = showTemplate
+			template = layout.ShowTemplate
 		}
 		if template == "" {
 			gated.Rollback()
@@ -100,7 +105,7 @@ func (s *Store) prepareRecordingLayout(ctx context.Context, c *claim, result Cap
 		return result, ErrUnavailable
 	}
 	if !exists {
-		receipt, err = driver.PrepareRecordingLayout(ctx, c.request, result, relative, revision)
+		receipt, err = driver.PrepareRecordingLayout(ctx, c.request, result, relative, layout.Revision)
 		if err != nil {
 			return result, err
 		}
