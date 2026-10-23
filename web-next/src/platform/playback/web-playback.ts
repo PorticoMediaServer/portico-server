@@ -430,7 +430,7 @@ export class WebPlayback implements PlaybackAdapter {
     const now = this.current(e.observation);
     if (!now) return;
     const {service, snapshot} = now, o = e.observation, intent = snapshot.intentId, seconds = o.positionMs / 1000;
-    const processing = e.type !== 'error' ? this.slot.audioProcessing : undefined;
+    const processing = e.type !== 'error' && ['playing', 'paused', 'buffering'].includes(o.state) ? this.slot.audioProcessing : undefined;
     if (processing && snapshot.session) service.audioProcessingApplied({intentId: intent, sessionId: snapshot.session.id, generation: snapshot.session.generation}, {eqApplied: processing.eqApplied, levelingApplied: processing.levelingApplied});
     if (this.direct && !snapshot.channel && e.type !== 'error' && o.state !== 'idle' && o.state !== 'loading' && !this.slot.settling) this.controller.observe({state: o.state, positionMs: o.positionMs, rate: o.rate, volume: o.volume, muted: o.muted}, e.type);
     switch (e.type) {
