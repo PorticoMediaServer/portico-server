@@ -423,6 +423,15 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				beforeBaseline := gets.Load()
+				baseline, err := endpoint.ReadRange(ctx, "film.mkv", entry.ETag, int64(len(payload)), 456, 128, process.Check)
+				if err != nil || !bytes.Equal(baseline, payload[456:584]) {
+					t.Fatal("single-viewer origin baseline", baseline, err)
+				}
+				baselineGETs := gets.Load() - beforeBaseline
+				if baselineGETs < 1 {
+					t.Fatal("single-viewer baseline contacted no origin")
+				}
 				beforeShared, beforeGET := endpoint.CoalescedRanges(), gets.Load()
 				sharedReadBlocked.Store(true)
 				read := func() <-chan error {
@@ -456,9 +465,10 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				deadline.Stop()
 				sharedReadBlocked.Store(false)
 				unblockShared()
-				if a, b := <-leader, <-joiner; a != nil || b != nil || gets.Load() != beforeGET+1 {
-					t.Fatal("same-file viewers did not share one real origin GET", a, b, gets.Load(), beforeGET)
+				if a, b := <-leader, <-joiner; a != nil || b != nil || gets.Load()-beforeGET != baselineGETs {
+					t.Fatal("same-file viewers duplicated the admitted origin workload", a, b, gets.Load()-beforeGET, baselineGETs)
 				}
+				t.Logf("shared_range_joiners=%d single_reader_origin_gets=%d shared_reader_origin_gets=%d admitted_peak=%d", endpoint.CoalescedRanges()-beforeShared, baselineGETs, gets.Load()-beforeGET, process.OperationCounts().Peak)
 			}
 			for _, closedBeforeError := range []bool{false, true} {
 				failedReader := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
