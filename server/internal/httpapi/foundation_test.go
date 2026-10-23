@@ -260,9 +260,6 @@ func TestFoundationContractAndReplay(t *testing.T) {
 		if err := contract.Record("../../testdata/contracts/get-direct-registration-policy.json", "GetDirectRegistrationPolicyResponse", "GET", "/v1/direct/registration-policy", nil, registration, "owner"); err != nil {
 			t.Fatal(err)
 		}
-		if err := contract.Record("../../testdata/contracts/get-direct-account.json", "GetDirectAccountResponse", "GET", "/v1/direct", nil, direct, "owner"); err != nil {
-			t.Fatal(err)
-		}
 		if err := contract.Record("../../testdata/contracts/get-devices.json", "GetDevicesResponse", "GET", "/v1/devices", nil, devices, "viewer"); err != nil {
 			t.Fatal(err)
 		}
@@ -270,6 +267,11 @@ func TestFoundationContractAndReplay(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := contract.Record("../../testdata/contracts/get-admin-updates.json", "GetAdminUpdatesResponse", "GET", "/v1/admin/updates", nil, updates, "owner"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if value := os.Getenv("PORTICO_CONTRACT_UPDATE"); value == "1" || value == "get-direct-account" {
+		if err := contract.Record("../../testdata/contracts/get-direct-account.json", "GetDirectAccountResponse", "GET", "/v1/direct", nil, direct, "owner"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -576,7 +578,7 @@ func TestTypedPINRecoveryAndResetAuthorityAndContract(t *testing.T) {
 	if primary.Code != 200 {
 		t.Fatalf("primary PIN reset: %d %s", primary.Code, primary.Body.String())
 	}
-	if os.Getenv("PORTICO_CONTRACT_UPDATE") == "1" {
+	if value := os.Getenv("PORTICO_CONTRACT_UPDATE"); value == "1" || value == "post-direct-profile-pin-reset" {
 		if err := contract.Record("../../testdata/contracts/post-direct-profile-pin-reset.json", "PostDirectProfilePinResetResponse", "POST", "/v1/direct/profiles/profile/pin-reset", []byte(`{"pin":""}`), primary, "owner"); err != nil {
 			t.Fatal(err)
 		}

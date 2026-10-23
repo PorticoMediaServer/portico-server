@@ -27087,6 +27087,9 @@ export const schemas = {
                 },
                 "type": "object"
               },
+              "dolbyVisionProfile7To81": {
+                "type": "boolean"
+              },
               "encoders": {
                 "additionalProperties": {
                   "type": "boolean"
@@ -27125,6 +27128,7 @@ export const schemas = {
               }
             },
             "required": [
+              "dolbyVisionProfile7To81",
               "bitstreamFilters",
               "vulkanAvailable",
               "openclAvailable",

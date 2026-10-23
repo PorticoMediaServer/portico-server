@@ -29335,6 +29335,9 @@
                     },
                     "type": "object"
                   },
+                  "dolbyVisionProfile7To81": {
+                    "type": "boolean"
+                  },
                   "encoders": {
                     "additionalProperties": {
                       "type": "boolean"
@@ -29373,6 +29376,7 @@
                   }
                 },
                 "required": [
+                  "dolbyVisionProfile7To81",
                   "bitstreamFilters",
                   "vulkanAvailable",
                   "openclAvailable",
@@ -259869,6 +259873,9 @@
                               },
                               "type": "object"
                             },
+                            "dolbyVisionProfile7To81": {
+                              "type": "boolean"
+                            },
                             "encoders": {
                               "additionalProperties": {
                                 "type": "boolean"
@@ -259907,6 +259914,7 @@
                             }
                           },
                           "required": [
+                            "dolbyVisionProfile7To81",
                             "bitstreamFilters",
                             "vulkanAvailable",
                             "openclAvailable",
