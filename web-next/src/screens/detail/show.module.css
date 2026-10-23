@@ -41,7 +41,7 @@
 .tiles[data-layout=list] .episodeRow > button { grid-template-columns: 136px minmax(0,1fr); column-gap: 14px; }
 .tiles[data-layout=list] .episodeRow > button > :first-child { grid-row: 1; }
 .tiles[data-layout=list] .episodeRow > button > :nth-child(2) { align-self: center; }
-.tiles[data-layout=list] .episodeRow > button > :nth-child(2) > :first-child { font-size: var(--type-person-title-size); }
+.tiles[data-layout=list] .episodeRow > button > :nth-child(2) > :first-child { font-size: var(--type-episode-title-size); }
 .tiles[data-layout=list] .episodeRow > button > :nth-child(3) { grid-column: 1 / -1; margin-top: 9px; }
 
 }
