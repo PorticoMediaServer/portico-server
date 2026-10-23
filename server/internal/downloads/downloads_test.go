@@ -796,6 +796,7 @@ func TestACopyOnADeviceEndsWhenAccessIsWithdrawn(t *testing.T) {
 
 func TestOfflinePlaysFollowTheOrderingOfOnlinePlayback(t *testing.T) {
 	h := newHarness(t)
+	shareOfflineFixture(t, h)
 	ctx := context.Background()
 	updateCompactFixtureAssetByToken(t, h.db, h.asset, func(a *compactcatalog.Asset) { a.Duration = 3600 })
 	settleDownloadsProjection(t, h.db)
