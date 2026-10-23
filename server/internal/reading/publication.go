@@ -99,6 +99,7 @@ func (s *Service) List(ctx context.Context, p identity.Principal, library, curso
  EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1)
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
  JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=(SELECT min(candidate.asset_id) FROM reading_publications candidate WHERE candidate.item_id=e.id)
+ JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id
  WHERE e.kind IN(20,21) AND e.retired=0 AND cl.retired=0 AND lib.kind IN('book','comic')
  AND e.id>? AND (?='' OR cl.library_id=?) AND (` + filter + `) ORDER BY e.id LIMIT ?`
@@ -149,7 +150,7 @@ func (s *Service) Versions(ctx context.Context, p identity.Principal, item strin
 	if err = s.Authorize(ctx, tx, p, library, item); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.token,p.format,a.size,EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=p.item_id AND available.asset_id=a.token AND available.available=1) FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_assets a ON a.id=p.asset_id WHERE e.public_id=pid_blob(?) ORDER BY a.id LIMIT 129`, item)
+	rows, err := tx.QueryContext(ctx, `SELECT a.token,p.format,a.size,EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=p.item_id AND available.asset_id=a.token AND available.available=1) FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=link.asset_id WHERE e.public_id=pid_blob(?) ORDER BY a.id LIMIT 129`, item)
 	if err != nil {
 		return nil, err
 	}

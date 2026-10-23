@@ -86,9 +86,9 @@ func DeleteApprovedTitleTx(ctx context.Context, tx *sql.Tx, plan TitleDeletePlan
 // ErrTooManyMembers: the container holds more titles than one delete takes.
 var ErrTooManyMembers = errors.New("too many titles for one delete")
 
-// titleMembersSQL lists the playable titles a delete of ?1 covers: the title
-// itself when it plays, else everything that plays beneath it.
-const titleMembersSQL = `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 WHERE e.id=?1
+// titleMembersSQL lists the media titles a delete of ?1 covers. Reading is a
+// nonplayable publication and participates through its actual attachment.
+const titleMembersSQL = `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE e.id=?1 AND (k.playable=1 OR EXISTS(SELECT 1 FROM reading_publications p WHERE p.item_id=e.id))
  UNION SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=?1
  UNION SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_season WHERE season_id=?1
  UNION SELECT entity_id FROM catalog_songs INDEXED BY catalog_songs_album_order WHERE album_id=?1
