@@ -58,7 +58,7 @@ export function SettingsEntry() {
       const carried = route.section === 'history' ? historyContexts.get(context) : undefined;
       if (carried) historyContexts.delete(context);
       dashboard = createDashboardBindings({api: context.api, events: context.events, scope: {serverId: viewer.serverId, viewerId: options.viewerId},
-        context: carried ?? captureReportContext(shellLanguage(snapshot).region.timeZone), role, isCurrent: current, isMainProfile: () => current() && context.facts.identity.primaryProfile === true,
+        context: carried ?? captureReportContext(shellLanguage(snapshot).region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone), role, isCurrent: current, isMainProfile: () => current() && context.facts.identity.primaryProfile === true,
         artwork: (id, kind, revision) => revision ? context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind}) + '?' + new URLSearchParams({v: revision}), kind === 'backdrop' ? 800 : 400, kind === 'poster' ? 2 / 3 : kind === 'backdrop' ? 16 / 9 : 1) : undefined,
         effects: {openHome, openSettings, reportError, openHistory: report => {if (current()) {historyContexts.set(context, report);openSettings('history');}}}});
     }
