@@ -19,7 +19,18 @@ import (
 func fakeFFmpeg(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "ffmpeg")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+	data := []byte("#!/bin/sh\nexit 0\n")
+	if runtime.GOOS == "linux" {
+		native, err := exec.LookPath("true")
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err = os.ReadFile(native)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(path, data, 0700); err != nil {
 		t.Fatal(err)
 	}
 	return path

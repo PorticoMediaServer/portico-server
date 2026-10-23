@@ -3,6 +3,7 @@
 package mediatools
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -27,6 +28,15 @@ type manifest struct {
 // SHA-256 rules before any discovered executable is allowed to run. Symlinks
 // (including directory symlinks) are rejected, and metadata is bounded.
 func VerifyBundle(root string) error {
+	return VerifyBundleContext(context.Background(), root)
+}
+
+// VerifyBundleContext retains the same complete bundle policy while allowing
+// a lifecycle qualification to stop during a large source archive hash.
+func VerifyBundleContext(ctx context.Context, root string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return err
@@ -71,6 +81,9 @@ func VerifyBundle(root string) error {
 	licensed := false
 	count := 0
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -104,7 +117,7 @@ func VerifyBundle(root string) error {
 			return err
 		}
 		h := sha256.New()
-		_, err = io.Copy(h, f)
+		_, err = io.Copy(h, bundleContextReader{ctx, f})
 		closeErr := f.Close()
 		if err != nil {
 			return err
@@ -235,4 +248,16 @@ func ResolvePair() (string, string) {
 		}
 	}
 	return ffmpeg, Resolve("ffprobe")
+}
+
+type bundleContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r bundleContextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
 }
