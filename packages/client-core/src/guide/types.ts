@@ -1,3 +1,5 @@
+import type {GuideChannelMark} from '../channel-guide.ts';
+
 /**
  * The guide's shared data shapes (Spec — Channels and Guide §8.1). Times are UTC milliseconds;
  * the viewer's time zone is used only for labels and day starts (time.ts).
@@ -31,6 +33,7 @@ export type GuideChannelRow = Readonly<{
   name: string;
   group: string;
   logoUrl?: string;
+  mark?: GuideChannelMark;
   favorite: boolean;
   tuneAvailable: boolean;
   tuneUnavailableReason?: string;

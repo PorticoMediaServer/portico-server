@@ -24,14 +24,14 @@ func (d Dependencies) dashboardHistoryRoutes(mux *http.ServeMux) {
 			}
 			query := r.URL.Query()
 			if e := validateReportContext(query.Get("timeZone"), query.Get("until")); e != nil {
-				failure(w, e)
+				dashboardFailure(w, e)
 				return
 			}
 			limit := 12
 			if raw := query.Get("limit"); raw != "" {
 				n, e := strconv.Atoi(raw)
 				if e != nil || n < 1 || n > 100 {
-					failure(w, catalog.ErrCursor)
+					dashboardFailure(w, catalog.ErrCursor)
 					return
 				}
 				limit = n
@@ -49,7 +49,7 @@ func (d Dependencies) dashboardHistoryRoutes(mux *http.ServeMux) {
 				out, e = d.Catalog.DashboardHistory(r.Context(), q, query.Get("topKind"))
 			}
 			if e != nil {
-				failure(w, e)
+				dashboardFailure(w, e)
 				return
 			}
 			if _, e = d.owner(r); e != nil {

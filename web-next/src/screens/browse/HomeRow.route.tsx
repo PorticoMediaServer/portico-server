@@ -39,6 +39,7 @@ function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScre
     env: {t: defaultI18n.t, locale: defaultI18n.region.formatLocale}, reportError: context.effects.reportError,
     canSaveView: false, empty: undefined,
     familyForEntry: entry => context.identity?.libraries.find(library => library.id === entry.libraryId)?.kind,
+    scopeLibraries: context.identity?.libraries,
     selection: {actions: member => ({onOpen: () => context.effects.openEntry(member.entry),
       onPlay: member.entry.playback && member.entry.libraryId && member.entry.available !== false && !member.entry.missing ? () => {
         const entry = member.entry;
