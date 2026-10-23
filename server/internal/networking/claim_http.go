@@ -101,6 +101,11 @@ func (t *HTTPTransport) boundedControlRequest(ctx context.Context, method, path 
 	if _, e := claimAuthority(ctx); e != nil {
 		return e
 	}
+	if store, ok := t.credentials.(*SQLiteStore); ok {
+		if err := store.checkServiceRequest(ctx, path, in); err != nil {
+			return err
+		}
+	}
 	var body []byte
 	var e error
 	if in != nil {

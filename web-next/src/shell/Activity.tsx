@@ -18,7 +18,7 @@ export function createOwnerActivity(context: ShellAssemblyContext, time: TimeEnv
   const session = context.session();
   const value: ActivitySummarySource = {http: localV1Http(context.api), scope: {...session.viewer, sessionFamilyId: session.sessionFamilyId, authorizationEpoch: String(context.epoch)}};
   const source: ActivitySummarySourceStore = {
-    getSnapshot: () => !retired && context.isCurrent() ? value : null,
+    getSnapshot: () => !retired && context.isCurrent() && context.facts.identity.capabilities?.manageServer === true && session.viewer.role==='owner' ? value : null,
     subscribe: listener => { sourceListeners.add(listener); return () => { sourceListeners.delete(listener); }; },
   };
   function OwnerActivity({presentation = 'topbar', className}: OwnerActivityProps) {

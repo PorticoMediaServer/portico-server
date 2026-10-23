@@ -90,12 +90,6 @@ func foundationAuthError(err error) error {
 	if errors.Is(err, identity.ErrPasswordChangeRequired) {
 		return &apierror.Error{Code: "password_change_required"}
 	}
-	if errors.Is(err, identity.ErrDevicePending) {
-		return &apierror.Error{Code: "device_approval_pending"}
-	}
-	if errors.Is(err, identity.ErrDeviceDenied) {
-		return &apierror.Error{Code: "device_denied"}
-	}
 	if errors.Is(err, identity.ErrDirectInput) {
 		return &apierror.Error{Code: "invalid_request"}
 	}
@@ -423,7 +417,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, identity.ProfileRestrictions]{Metadata: apikit.Metadata{Admission: laneSecurityFence,
-		ID: "get_direct_profile_restrictions", Method: "GET", Path: "/v1/direct/profiles/{id}/restrictions", Summary: "Read a direct profile's content and feature restrictions", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "invalid_request", "internal"},
+		ID: "get_direct_profile_restrictions", Method: "GET", Path: "/v1/direct/profiles/{id}/restrictions", Summary: "Read a direct profile's content and feature restrictions", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "invalid_request", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (identity.ProfileRestrictions, error) {
 		if d.Identity == nil {
 			return identity.ProfileRestrictions{}, &apierror.Error{Code: "internal"}
@@ -438,7 +432,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[identity.ProfileRestrictionEdit, identity.ProfileRestrictions]{Metadata: apikit.Metadata{Admission: laneSecurityFence,
-		ID: "put_direct_profile_restrictions", Method: "PUT", Path: "/v1/direct/profiles/{id}/restrictions", Summary: "Replace a direct profile's restrictions", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 32768, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "invalid_request", "revision_mismatch", "internal"},
+		ID: "put_direct_profile_restrictions", Method: "PUT", Path: "/v1/direct/profiles/{id}/restrictions", Summary: "Replace a direct profile's restrictions", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 32768, Status: 200, Errors: []string{"unauthorized", "password_change_required", "not_permitted", "invalid_request", "revision_mismatch", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, edit identity.ProfileRestrictionEdit) (identity.ProfileRestrictions, error) {
 		if d.Identity == nil {
 			return identity.ProfileRestrictions{}, &apierror.Error{Code: "internal"}
@@ -453,7 +447,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, identity.PINRecoveryMethods]{Metadata: apikit.Metadata{Admission: laneSecurityFence,
-		ID: "get_direct_pin_recovery", Method: "GET", Path: "/v1/direct/pin-recovery", Summary: "Read available PIN reset confirmations", Access: apikit.Admin, Requires: apikit.ScopeSession, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "internal"},
+		ID: "get_direct_pin_recovery", Method: "GET", Path: "/v1/direct/pin-recovery", Summary: "Read available PIN reset confirmations", Access: apikit.Admin, Requires: apikit.ScopeSession, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "not_permitted", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (identity.PINRecoveryMethods, error) {
 		if d.Identity == nil {
 			return identity.PINRecoveryMethods{}, &apierror.Error{Code: "internal"}
@@ -468,7 +462,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, ProfileAvatarsDocument]{Metadata: apikit.Metadata{Admission: laneAuth,
-		ID: "get_direct_profile_avatars", Method: "GET", Path: "/v1/direct/profiles/avatars", Summary: "List this direct account's profile pictures", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "internal"},
+		ID: "get_direct_profile_avatars", Method: "GET", Path: "/v1/direct/profiles/avatars", Summary: "List this direct account's profile pictures", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ProfileAvatarsDocument, error) {
 		if d.Identity == nil {
 			return ProfileAvatarsDocument{}, &apierror.Error{Code: "internal"}
@@ -488,7 +482,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[DirectPINResetRequest, identity.DirectSnapshot]{Metadata: apikit.Metadata{Admission: laneSecurityFence,
-		ID: "post_direct_profile_pin_reset", Method: "POST", Path: "/v1/direct/profiles/{id}/pin-reset", Summary: "Clear or replace a direct profile PIN", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "invalid_request", "request_in_progress", "internal"},
+		ID: "post_direct_profile_pin_reset", Method: "POST", Path: "/v1/direct/profiles/{id}/pin-reset", Summary: "Clear or replace a direct profile PIN", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "password_change_required", "not_permitted", "invalid_request", "request_in_progress", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body DirectPINResetRequest) (identity.DirectSnapshot, error) {
 		if d.Identity == nil {
 			return identity.DirectSnapshot{}, &apierror.Error{Code: "internal"}
@@ -503,7 +497,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, DirectSessionsDocument]{Metadata: apikit.Metadata{Admission: laneAuth,
-		ID: "get_direct_sessions", Method: "GET", Path: "/v1/direct/sessions", Summary: "Read this direct account's active and recently signed-out sessions", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "internal"},
+		ID: "get_direct_sessions", Method: "GET", Path: "/v1/direct/sessions", Summary: "Read this direct account's active and recently signed-out sessions", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "password_change_required", "not_permitted", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (DirectSessionsDocument, error) {
 		if d.Identity == nil {
 			return DirectSessionsDocument{}, &apierror.Error{Code: "internal"}
@@ -518,7 +512,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Admission: laneSecurityFence,
-		ID: "delete_direct_session", Method: "DELETE", Path: "/v1/direct/sessions/{id}", Summary: "Sign out one direct-account session", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "invalid_request", "internal"},
+		ID: "delete_direct_session", Method: "DELETE", Path: "/v1/direct/sessions/{id}", Summary: "Sign out one direct-account session", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "password_change_required", "not_permitted", "invalid_request", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
 		if d.Identity == nil {
 			return struct{}{}, &apierror.Error{Code: "internal"}
@@ -536,7 +530,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Admission: laneAuth,
-		ID: "post_direct_sign_out_everywhere", Method: "POST", Path: "/v1/direct/sessions/sign-out-everywhere", Summary: "Sign this direct account out of every device", Access: apikit.Admin, Requires: apikit.ScopeSession, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "internal"},
+		ID: "post_direct_sign_out_everywhere", Method: "POST", Path: "/v1/direct/sessions/sign-out-everywhere", Summary: "Sign this direct account out of every device", Access: apikit.Admin, Requires: apikit.ScopeSession, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "password_change_required", "not_permitted", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
 		if d.Identity == nil {
 			return struct{}{}, &apierror.Error{Code: "internal"}
@@ -550,7 +544,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, identity.DirectSnapshot]{Metadata: apikit.Metadata{Admission: laneDefault,
-		ID: "get_direct_account", Method: "GET", Path: "/v1/direct", Summary: "Read the current direct account and its profiles", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "internal"},
+		ID: "get_direct_account", Method: "GET", Path: "/v1/direct", Summary: "Read the current direct account and its profiles", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (identity.DirectSnapshot, error) {
 		if d.Identity == nil {
 			return identity.DirectSnapshot{}, &apierror.Error{Code: "internal"}

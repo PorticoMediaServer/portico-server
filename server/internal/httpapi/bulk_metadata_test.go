@@ -27,7 +27,7 @@ func TestBulkOwnerMetadataCommandsRestartAndReplay(t *testing.T) {
 				t.Fatal(e)
 			}
 			defer func() { db.Close() }()
-			if _, e = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','profile',1)`); e != nil {
+			if _, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','profile',1)`); e != nil {
 				t.Fatal(e)
 			}
 			catTest := catalogtest.New(t, db)
