@@ -92,6 +92,14 @@ print('Official locked rclone archive and executable verified; no owner state us
 PY
 export PORTICO_RCLONE_TEST_PROGRAM="$fixture_scratch/rclone"
 
+# Other owned package fixtures use the same locked executable inside this exact
+# cleanup scope, without copying a binary, dependency recipe or owner state.
+if test "${1:-}" = --exec; then
+    shift
+    if test "$#" = 0; then exit 2; fi
+    "$@"
+    exit 0
+fi
 if test "${PORTICO_CONTROLLER_ONLY_TEST:-}" = 1; then
     go test -json -tags=rcloneintegration -count=1 -timeout=180s "$@" \
         ./internal/remotesources -run '^TestSourceControllerRealSharedProcessAndScanPublication$'

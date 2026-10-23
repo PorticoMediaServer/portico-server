@@ -29,6 +29,7 @@ type sourceProcessLease struct {
 	cache              string
 	sequential         bool
 	networkFingerprint string
+	capabilities       backendCapabilities
 }
 
 func (s *Service) reserveSourceProcess(ctx context.Context, source, generation string, profileRevision int64) (*sourceProcessLease, error) {
