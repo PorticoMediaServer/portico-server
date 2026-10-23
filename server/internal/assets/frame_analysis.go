@@ -13,7 +13,7 @@ func analyzeFrames(raw []byte, d *StreamDetail) {
 	var doc struct {
 		Frames []struct {
 			Timestamp  string `json:"best_effort_timestamp_time"`
-			Interlaced int    `json:"interlaced_frame"`
+			Interlaced *int   `json:"interlaced_frame"`
 			Repeat     int    `json:"repeat_pict"`
 		} `json:"frames"`
 	}
@@ -24,9 +24,14 @@ func analyzeFrames(raw []byte, d *StreamDetail) {
 	steps := 0
 	variable := false
 	valid := true
+	allProgressive := true
+	interlaced := false
 	for i, f := range doc.Frames {
-		if f.Interlaced != 0 {
-			d.Interlaced = true
+		if f.Interlaced == nil || *f.Interlaced != 0 {
+			allProgressive = false
+		}
+		if f.Interlaced != nil && *f.Interlaced == 1 {
+			interlaced = true
 		}
 		timestamp, e := strconv.ParseFloat(f.Timestamp, 64)
 		if e != nil || math.IsNaN(timestamp) || math.IsInf(timestamp, 0) {
@@ -48,7 +53,14 @@ func analyzeFrames(raw []byte, d *StreamDetail) {
 		}
 		previous = timestamp
 	}
-	d.InterlaceAnalysis = "decoded_frames"
+	if interlaced {
+		d.Interlaced = true
+		d.InterlaceState = "interlaced"
+		d.InterlaceAnalysis = "decoded_frames"
+	} else if allProgressive && d.InterlaceState != "interlaced" && !d.Interlaced {
+		d.InterlaceState = "progressive"
+		d.InterlaceAnalysis = "decoded_frames"
+	}
 	if valid && steps >= 8 {
 		if variable {
 			d.FrameRateMode = "variable"

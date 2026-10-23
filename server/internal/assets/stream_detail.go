@@ -10,7 +10,7 @@ import (
 // StreamDetailVersion is bumped whenever inspect learns a new fact. Delivery
 // planning refreshes an asset whose stored detail is older, so a library scanned
 // before a fact existed gains it the first time the title is played.
-const StreamDetailVersion = 3
+const StreamDetailVersion = 4
 
 // Dynamic range families. They name what a display has to be able to do, not the
 // transfer function: Dolby Vision profile 8.1 is "dolby_vision" with an HDR10
@@ -213,8 +213,11 @@ func streamDetail(kind, codec string, width, height int, s probeStreamDetail) St
 			d.FrameRate = probeRate(s.RealFrameRate)
 		}
 		switch strings.ToLower(s.FieldOrder) {
+		case "progressive":
+			d.InterlaceState = "progressive"
 		case "tt", "bb", "tb", "bt":
 			d.Interlaced = true
+			d.InterlaceState = "interlaced"
 		}
 		if len(s.SampleAspect) <= 24 {
 			d.SampleAspectRatio = s.SampleAspect

@@ -16,6 +16,7 @@ type StreamBreadth struct {
 	FrameRateNumerator         int    `json:"frameRateNumerator,omitempty"`
 	FrameRateDenominator       int    `json:"frameRateDenominator,omitempty"`
 	FrameRateMode              string `json:"frameRateMode,omitempty"`
+	InterlaceState             string `json:"interlaceState,omitempty"`
 	InterlaceAnalysis          string `json:"interlaceAnalysis,omitempty"`
 	Telecine                   bool   `json:"telecine,omitempty"`
 	DolbyVisionRPU             bool   `json:"dolbyVisionRpu,omitempty"`
@@ -23,6 +24,18 @@ type StreamBreadth struct {
 	DolbyVisionMetadataKnown   bool   `json:"dolbyVisionMetadataKnown,omitempty"`
 	DolbyVisionEnhancementType string `json:"dolbyVisionEnhancementType,omitempty"`
 	DolbyVisionCMVersion       string `json:"dolbyVisionCmVersion,omitempty"`
+}
+
+// InterlacedFact preserves the difference between an explicitly progressive
+// stream and a stream whose interlace state has not been observed.
+func (b StreamBreadth) InterlacedFact() *bool {
+	switch b.InterlaceState {
+	case "progressive", "interlaced":
+		value := b.InterlaceState == "interlaced"
+		return &value
+	default:
+		return nil
+	}
 }
 
 // AudioVariant names the bitstream, not the decoder family. The distinction is
