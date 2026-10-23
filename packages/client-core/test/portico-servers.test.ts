@@ -98,7 +98,7 @@ async function serverIdentity(){
 }
 const me=await serverIdentity(),impostor=await serverIdentity();
 
-const signIn={authority:'local',serverId:me.id,account:{id:'acc-local',username:'member',primaryProfileId:'p1',role:'member',revision:1,disabled:false,allowedLibraries:[],hostedAccountId:'acc_hosted'},profiles:[{id:'p1',name:'Member',primary:true,position:0,art:'blue',revision:1,pinRevision:1,pinRequired:false}],canManage:true,
+const signIn={authority:'local',serverId:me.id,account:{id:'acc-local',username:'member',primaryProfileId:'p1',role:'member',revision:1,disabled:false,allowedLibraries:[],hostedAccountId:'acc_hosted'},profiles:[{id:'p1',name:'Member',primary:true,position:0,art:'blue',revision:1,pinRevision:1,pinRequired:false}],canManage:true, capabilities: {manageAccount:true,managePeople:false,manageServer:false,manageSignIn:false},
  session:{accessToken:'a'.repeat(43),refreshToken:'r'.repeat(43),deviceId:'d',installationId:'i'.repeat(22),expiresAt:'2099-01-01T00:00:00Z',viewer:{accountId:'acc-local',profileId:'p1',serverId:me.id,authority:'local',role:'member'},sessionFamilyId:'f',tokenGeneration:'1',authorizationHorizon:'2099-01-01T00:00:00Z'}};
 
 const challenge='k'.repeat(32);

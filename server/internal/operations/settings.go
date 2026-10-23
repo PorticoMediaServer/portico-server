@@ -131,9 +131,7 @@ func Registry() []Field {
 		field("customCertificateDomain", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener and route publication", "The domain the custom certificate serves. It is published to members as an access URL on the remote access port."),
 		field("lanDiscoveryEnabled", "connectivity", "boolean", true, nil, nil, nil, "hot", "LAN discovery advertisement", "Advertise this server on the local network with mDNS/Bonjour. The connectivity status report says whether this host can."),
 		field("dlnaEnabled", "connectivity", "boolean", false, nil, nil, nil, "hot", "DLNA server", "Let DLNA players on the home networks browse and play every library without signing in. Off by default; never offered outside the home networks."),
-		field("deviceApprovalRequired", "access", "boolean", false, nil, nil, nil, "next-operation", "identity device registration", "Hold each new device until the owner or an administrator approves it. The owner's own devices are never held. Devices already in use stay approved."),
 		field("apiRequestsPerMinute", "access", "integer", 0, bounded(0), bounded(100000), nil, "hot", "API key and access token admission", "How many requests one API key or personal access token may make each minute. 0 uses the default of 600."),
-		field("blockMemberAccessTokens", "access", "boolean", false, nil, nil, nil, "next-operation", "personal access token creation", "Stop members creating personal access tokens. Tokens that already exist keep working until they are revoked."),
 		field("logLevel", "diagnostics", "enumeration", "info", nil, nil, LogLevels, "hot", "servicelog.Recorder", "How much detail the message log keeps. A debug window raises this temporarily without changing the saved value."),
 		field("logRetention", "diagnostics", "log-retention-list", []LogRetention{}, nil, nil, LogCategories, "hot", "servicelog.Recorder and ClientLogStore prune", "Days of message log and client report history to keep per category. A category with no entry keeps its bounded history."),
 	}
@@ -183,7 +181,6 @@ type Settings struct {
 	APIRequestsPerMinute int `json:"apiRequestsPerMinute"`
 	// BlockMemberAccessTokens stops members making personal access tokens. It is
 	// phrased as the exception so that the zero value is the default: allowed.
-	BlockMemberAccessTokens bool `json:"blockMemberAccessTokens"`
 	// Aggregated server-wide play counts stay off until an owner opts in.
 	CommunityActivityEnabled bool `json:"home.communityActivityEnabled"`
 	// Update reporting and the default trash retention are owner administration
@@ -226,7 +223,6 @@ type Settings struct {
 	CustomCertificatePath       string         `json:"customCertificatePath"`
 	CustomCertificateKeyPath    string         `json:"customCertificateKeyPath"`
 	CustomCertificateDomain     string         `json:"customCertificateDomain"`
-	DeviceApprovalRequired      bool           `json:"deviceApprovalRequired"`
 	LogLevel                    string         `json:"logLevel"`
 	LogRetention                []LogRetention `json:"logRetention"`
 }
@@ -286,14 +282,6 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 	if e = tx.QueryRow(`SELECT transcoding_enabled,per_account_cap,server_cap FROM playback_owner_policy WHERE singleton=1`).Scan(&v.TranscodingEnabled, &v.PerAccountCap, &v.ServerCap); e != nil {
 		return SettingsDocument{}, e
 	}
-	// Device approval is the identity service's own value, read on every
-	// device registration. The switch here shows and sets that value.
-	var approval string
-	e = tx.QueryRow(`SELECT value FROM configuration WHERE key=?`, identity.DeviceApprovalSettingKey).Scan(&approval)
-	if e != nil && !errors.Is(e, sql.ErrNoRows) {
-		return SettingsDocument{}, e
-	}
-	v.DeviceApprovalRequired = approval == identity.DeviceApprovalOwner
 	b, _ := json.Marshal(v)
 	effective, pending := effectiveMediaSettings(v)
 	return SettingsDocument{Revision: revision, Digest: Hash(string(b)), Requested: v, Effective: effective, ActiveRevision: revision, RestartFields: pending, RegistryRevision: RegistryRevision}, nil
@@ -505,13 +493,6 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 			return err
 		}
 		if _, err = tx.Exec(`INSERT INTO configuration VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, c.Values.Name); err != nil {
-			return err
-		}
-		approval := identity.DeviceApprovalAuto
-		if c.Values.DeviceApprovalRequired {
-			approval = identity.DeviceApprovalOwner
-		}
-		if _, err = tx.Exec(`INSERT INTO configuration VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, identity.DeviceApprovalSettingKey, approval); err != nil {
 			return err
 		}
 		if _, err = tx.Exec(`UPDATE playback_owner_policy SET revision=revision+1,transcoding_enabled=?,per_account_cap=?,server_cap=? WHERE singleton=1`, c.Values.TranscodingEnabled, c.Values.PerAccountCap, c.Values.ServerCap); err != nil {

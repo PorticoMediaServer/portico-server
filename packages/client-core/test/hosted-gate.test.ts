@@ -44,7 +44,7 @@ test('identical automatic requests share one flight, and origins share one gate'
  assert.notEqual(hostedGate('https://account.example'),hostedGate('https://other.example'));
 });
 
-const session=(refreshInDays:number,token='one'):HostedSession=>({accessToken:'access-'+token,refreshToken:'refresh-'+token,familyId:'family',expiresAt:new Date(Date.now()+3600000).toISOString(),refreshExpiresAt:new Date(Date.now()+refreshInDays*86400000).toISOString(),account:{id:'account',username:'u',displayName:'U'},profiles:[{id:'p',name:'P'}]} as HostedSession);
+const session=(refreshInDays:number,token='one'):HostedSession=>({accessToken:'access-'+token,refreshToken:'refresh-'+token,familyId:'family',expiresAt:new Date(Date.now()+3600000).toISOString(),refreshExpiresAt:new Date(Date.now()+refreshInDays*86400000).toISOString(),account:{id:'account',username:'u',displayName:'U'}} as HostedSession);
 function store(){let value:CredentialRecord|undefined;return{load:async()=>structuredClone(value),save:async(v:CredentialRecord)=>{value=structuredClone(v);}};}
 
 test('keep-alive renews a sign-in only once a third of its window is used, and defers to the circuit',async()=>{

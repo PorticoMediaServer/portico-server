@@ -32,7 +32,7 @@ func TestEventsLibraryScanRespectsRestrictions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('res-acc','res-acc',x'00','res-prof',1)`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('res-acc','res-acc',x'00','res-prof',1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO direct_memberships(account_id,role,allowed_libraries,revision,disabled) VALUES('res-acc','member','["lib-a","lib-b"]',1,0)
