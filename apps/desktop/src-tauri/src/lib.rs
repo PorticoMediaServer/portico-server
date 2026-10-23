@@ -11,3 +11,5 @@ mod spike;
 pub mod shell;
 #[cfg(feature = "shell")]
 pub mod window;
+#[cfg(feature = "shell")]
+pub mod network;

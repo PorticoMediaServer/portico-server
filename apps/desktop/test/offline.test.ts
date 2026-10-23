@@ -20,12 +20,15 @@ const receipt={receiptId:'receipt',keyId:'key',algorithm:'ed25519',payload:Buffe
 async function harness(){
   let current=true,cost:'unmetered'|'metered'|'unknown'='unmetered';
   let row={id,revision:0,preparationId:'prep',itemId:'item',quality:'original',sha256:artifact.sha256,bytes:artifact.bytes,bytesDone:0,state:'queued',held:false,addedMs:1,receiptExpiresMs:null,title:{...titleFields,durationMs:durationSeconds*1000}};
+  const costListeners=new Set<()=>void>();
   const operations:Record<string,unknown>[]=[],requests:{path:string;body:unknown}[]=[];
   let afterAppend:(()=>void)|undefined,receiptResult:unknown={results:[{preparationId:'prep',receiptId:'receipt',outcome:'issued',code:'',receipt,titleOnServer:true}]};
   const native:NativeDownloadsBridge={async bind(){return lease},async release(){},async command(_,op){
     operations.push({...op});
     switch(op.action){
       case 'enroll':return {kind:'entry',value:{...row}};
+      case 'list':return {kind:'page',value:{items:[{...row}],nextCursor:null}};
+      case 'entry':return {kind:'entry',value:{...row}};
       case 'rules':return {kind:'rules',value:{revision:0,rules:{removeWatched:false,nextEpisode:false,unmeteredOnly:true,limitBytes:0}}};
       case 'append':assert.equal(op.offset,row.bytesDone);assert.equal(op.expectedRevision,row.revision);assert.ok((op.bytes as number[]).length<=262144);row={...row,revision:row.revision+1,bytesDone:row.bytesDone+(op.bytes as number[]).length,state:'downloading'};afterAppend?.();return {kind:'entry',value:{...row}};
       case 'seal':assert.equal(row.bytesDone,row.bytes);row={...row,revision:row.revision+1,state:'ready'};return {kind:'entry',value:{...row}};
@@ -38,12 +41,12 @@ async function harness(){
   let apiReply:((path:string,body:unknown)=>unknown)|undefined;
   const api:DownloadsApi={async request<T>(path:string,_method?:string,body?:unknown):Promise<T>{
     requests.push({path,body});
-    if(apiReply)return apiReply(path,body) as T;
+    if(apiReply){const reply=apiReply(path,body);if(reply!==undefined)return reply as T;}
     return (path.endsWith('receipt-keys')?{keys:[{id:'key',algorithm:'ed25519',publicKey:Buffer.alloc(32).toString('base64url'),createdAt:'2026-10-23T10:00:00Z'}]}:receiptResult) as T;
   }};
   let giveGrant=async()=>grant,fetcher:typeof fetch=async()=>new Response(new Uint8Array(artifact.bytes),{headers:{'content-length':String(artifact.bytes)}});
-  const coordinator=new DesktopOfflineCoordinator({store,downloads:{grant:()=>giveGrant(),async bundle(){return bundle}},api,resolvePublishedPath:path=>'https://actual.test'+path,serverOrigin:'https://actual.test',fetcher:(...args)=>fetcher(...args),networkCost:()=>cost});
-  return {store,coordinator,operations,requests,row:()=>row,setRow:(patch:Partial<typeof row>)=>{row={...row,...patch}},setCost:(value:typeof cost)=>{cost=value},retire:()=>{current=false},setGrant:(fn:typeof giveGrant)=>{giveGrant=fn},setFetcher:(fn:typeof fetcher)=>{fetcher=fn},setAfterAppend:(fn:()=>void)=>{afterAppend=fn},setReceipt:(value:unknown)=>{receiptResult=value},setApi:(fn:NonNullable<typeof apiReply>)=>{apiReply=fn},dispose(){coordinator.dispose();store.dispose();}};
+  const coordinator=new DesktopOfflineCoordinator({store,downloads:{grant:()=>giveGrant(),async bundle(){return bundle}},api,resolvePublishedPath:path=>'https://actual.test'+path,serverOrigin:'https://actual.test',fetcher:(...args)=>fetcher(...args),networkCost:()=>cost,subscribeNetworkCost:listener=>{costListeners.add(listener);return()=>{costListeners.delete(listener)}}});
+  return {store,coordinator,operations,requests,row:()=>row,setRow:(patch:Partial<typeof row>)=>{row={...row,...patch}},setCost:(value:typeof cost)=>{cost=value;for(const listener of [...costListeners])listener();},retire:()=>{current=false},setGrant:(fn:typeof giveGrant)=>{giveGrant=fn},setFetcher:(fn:typeof fetcher)=>{fetcher=fn},setAfterAppend:(fn:()=>void)=>{afterAppend=fn},setReceipt:(value:unknown)=>{receiptResult=value},setApi:(fn:NonNullable<typeof apiReply>)=>{apiReply=fn},dispose(){coordinator.dispose();store.dispose();}};
 }
 
 test('stream transfer uses bounded committed writes, native seal then signed-receipt envelope',async()=>{
@@ -104,4 +107,39 @@ test('real HTTP response stream is cancelled on dispose; no receipt follows the 
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const address=server.address();assert.ok(address&&typeof address==='object');
   h.setFetcher(async(_url,init)=>fetch(`http://127.0.0.1:${address.port}/actual`,init));h.setAfterAppend(()=>h.coordinator.dispose());
   try{await assert.rejects(h.coordinator.saveReadyPreparation(preparation,new AbortController().signal),{name:'AbortError'});await closed;assert.equal(h.operations.some(v=>v.action==='seal'||v.action==='receipt'),false);}finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));h.dispose();}
+});
+
+test('same artifact across revision-only READY callbacks shares one genuine transfer',async()=>{
+ const h=await harness();let release!:(grant:DownloadGrant)=>void;h.setGrant(()=>new Promise(resolve=>{release=resolve}));
+ try{
+  const first=h.coordinator.saveReadyPreparation(preparation,new AbortController().signal);
+  await new Promise(resolve=>setImmediate(resolve));
+  const second=h.coordinator.saveReadyPreparation({...preparation,revision:99},new AbortController().signal);
+  release(grant);await Promise.all([first,second]);
+  assert.equal(h.operations.filter(v=>v.action==='enroll').length,1);assert.equal(h.operations.filter(v=>v.action==='seal').length,1);
+ }finally{h.dispose();}
+});
+
+test('queue wake uses persisted complete identity and exact current preparation; held and metered stay untouched',async()=>{
+ for(const held of [false,true]){const h=await harness();try{
+  h.setRow({held,bytesDone:2,state:held?'paused':'queued'});
+  h.setApi(path=>path==='/v1/downloads/preparations/prep'?preparation:undefined);
+  h.setFetcher(async(_url,init)=>{assert.deepEqual(init?.headers,{Range:'bytes=2-','If-Range':`"sha256-${artifact.sha256}"`});return new Response(new Uint8Array(artifact.bytes-2),{status:206,headers:{'content-range':`bytes 2-${artifact.bytes-1}/${artifact.bytes}`}});});
+  await h.coordinator.resumeQueued(new AbortController().signal);
+  assert.equal(h.row().state,held?'paused':'ready');assert.equal(h.requests.some(v=>v.path==='/v1/downloads/preparations/prep'),!held);
+ }finally{h.dispose();}}
+ const h=await harness();try{h.setCost('metered');await h.coordinator.resumeQueued(new AbortController().signal);assert.equal(h.requests.length,0);}finally{h.dispose();}
+});
+
+test('queue wake refuses a different captured profile before grant or enrollment',async()=>{
+ const h=await harness();h.setApi(path=>path==='/v1/downloads/preparations/prep'?{...preparation,profileId:'other'}:undefined);
+ try{await assert.rejects(h.coordinator.resumeQueued(new AbortController().signal),/download_verification_failed/);assert.equal(h.operations.some(v=>v.action==='enroll'||v.action==='append'),false);}finally{h.dispose();}
+});
+
+test('real HTTP transfer aborts on metered observation and acknowledges only durable queued progress',async()=>{
+ const h=await harness();let disconnected!:()=>void;const closed=new Promise<void>(resolve=>{disconnected=resolve});
+ const server=createServer((_,res)=>{res.writeHead(200,{'Content-Length':String(artifact.bytes)});res.write(Buffer.alloc(1024));res.on('close',disconnected);});
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const address=server.address();assert.ok(address&&typeof address==='object');
+ h.setFetcher(async(_url,init)=>fetch(`http://127.0.0.1:${address.port}/actual`,init));h.setAfterAppend(()=>h.setCost('metered'));
+ try{await h.coordinator.saveReadyPreparation(preparation,new AbortController().signal);await closed;assert.equal(h.row().state,'queued');assert.ok(h.row().bytesDone>0);assert.equal(h.operations.some(v=>v.action==='seal'||v.action==='receipt'),false);}finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));h.dispose();}
 });

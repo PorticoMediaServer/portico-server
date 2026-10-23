@@ -19,6 +19,11 @@ fn caller(window:&WebviewWindow)->Result<()> {
     if window.state::<ShutdownState>().0.load(Ordering::Acquire)!=0{return Err(Error::EngineUnavailable)}
     boundary::local_origin(window.label(),window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str(),cfg!(debug_assertions))
 }
+#[tauri::command]
+async fn desktop_network_cost(window:WebviewWindow)->Result<crate::network::NetworkCost>{
+    caller(&window)?;
+    tauri::async_runtime::spawn_blocking(crate::network::current).await.map_err(|_|Error::EngineUnavailable)
+}
 fn request_shutdown(app:&tauri::AppHandle){
     if app.state::<ShutdownState>().0.compare_exchange(0,1,Ordering::AcqRel,Ordering::Acquire).is_err(){return}
     let app=app.clone();
@@ -41,7 +46,7 @@ fn request_shutdown(app:&tauri::AppHandle){
         }
         if let Some(window)=app.get_webview_window("main"){
             let (send,receive)=std::sync::mpsc::sync_channel(1);
-            if window.with_webview(move|webview|{let _=send.send(surface::retire(&webview));}).is_ok(){
+            if window.with_webview(move|webview|{crate::network::stop();let _=send.send(surface::retire(&webview));}).is_ok(){
                 clean&=receive.recv_timeout(std::time::Duration::from_secs(5)).is_ok_and(|r|r.is_ok());
             }else{clean=false;}
         }
@@ -250,7 +255,7 @@ pub fn run() {
         .on_window_event(|window,event|{
             if window.label()=="main"{if let tauri::WindowEvent::CloseRequested{api,..}=event{api.prevent_close();request_shutdown(window.app_handle());}}
         })
-        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_downloads_retire])
+        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_downloads_retire])
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");
@@ -276,6 +281,7 @@ pub fn run() {
                     }
                 });
             let main=main.build()?;
+            crate::network::start();
             #[cfg(debug_assertions)]
             if std::env::var_os("PORTICO_SPIKE_CLOSE").is_some(){
                 let window=main.clone();

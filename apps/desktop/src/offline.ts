@@ -1,5 +1,5 @@
 import {routePath} from '../../../packages/contracts/src/routes.ts';
-import {parseDeferredProgressReceipt,parseReceiptKeys,parseReceiptOutcomes,parseRevocationPage,type DownloadArtifact,type DownloadGrant,type DownloadPreparation,type DownloadBundle} from '../../../packages/client-core/src/downloads.ts';
+import {parseDownloadPreparation,parseDeferredProgressReceipt,parseReceiptKeys,parseReceiptOutcomes,parseRevocationPage,type DownloadArtifact,type DownloadGrant,type DownloadPreparation,type DownloadBundle} from '../../../packages/client-core/src/downloads.ts';
 import type {DownloadsApi,DownloadsService} from '../../../packages/client-core/src/downloads-service.ts';
 import {downloadFailure,type DesktopDownloadStore,type LocalDownload} from './downloads.ts';
 
@@ -13,6 +13,8 @@ export type DesktopOfflineTransport=Readonly<{
   fetcher:typeof fetch;
   /** Actual OS observation; unknown must not be treated as unmetered. */
   networkCost:()=> 'unmetered'|'metered'|'unknown';
+  /** Actual native-cost producer; no preparation observer lives here. */
+  subscribeNetworkCost?:(listener:()=>void)=>()=>void;
 }>;
 const chunkLimit=262144,artworkLimit=4194304;
 function failed(code='download_verification_failed'):never{throw new Error(code);}
@@ -44,7 +46,8 @@ function mediaResponse(response:Response,entry:LocalDownload):void{
 /** Transfers bytes into the one native store; it never owns a preparation list or UI state. */
 export class DesktopOfflineCoordinator{
   private readonly lifetime=new AbortController();
-  private readonly active=new Set<string>();
+  private readonly active=new Map<string,Readonly<{artifact:string;task:Promise<void>}>>();
+  private pumping=false;
   private readonly origin:string;
   private readonly transport:DesktopOfflineTransport;
   constructor(transport:DesktopOfflineTransport){
@@ -66,13 +69,57 @@ export class DesktopOfflineCoordinator{
 
   readonly saveReadyPreparation=async(preparation:DownloadPreparation,signal:AbortSignal):Promise<void>=>{
     this.guard(signal);
-    if(this.active.has(preparation.id))failed('downloads_conflict');
     if(preparation.profileId!==this.transport.store.scope.profileId||preparation.state!=='ready'||preparation.artifact.estimated||!preparation.artifact.bytes||!/^[a-f0-9]{64}$/.test(preparation.artifact.sha256))failed('download_not_ready');
-    this.active.add(preparation.id);
+    const artifact=JSON.stringify([preparation.artifact.kind,preparation.artifact.ref,preparation.artifact.sha256,preparation.artifact.bytes]);
+    const previous=this.active.get(preparation.id);
+    if(previous){
+      if(previous.artifact!==artifact)failed('downloads_conflict');
+      // A later observer shares the genuine operation without gaining cancellation
+      // authority over the first owner's request. Viewer retirement aborts both.
+      await this.wait(previous.task,signal);this.guard(signal);return;
+    }
+    const task=this.transfer(preparation,signal);
+    this.active.set(preparation.id,{artifact,task});
+    try{await task;}finally{if(this.active.get(preparation.id)?.task===task)this.active.delete(preparation.id);}
+  };
+  private wait(task:Promise<void>,signal:AbortSignal):Promise<void>{
+    return new Promise((resolve,reject)=>{
+      const abort=()=>{signal.removeEventListener('abort',abort);reject(new DOMException('Aborted','AbortError'));};
+      signal.addEventListener('abort',abort,{once:true});
+      if(signal.aborted){abort();return;}
+      task.then(()=>{signal.removeEventListener('abort',abort);resolve();},error=>{signal.removeEventListener('abort',abort);reject(error);});
+    });
+  }
+  /** Wake only already-persisted work. The Saved owner alone observes newly READY
+   * server rows. Complete native pagination never turns into a second preparation list. */
+  async resumeQueued(signal:AbortSignal):Promise<void>{
+    this.guard(signal);if(this.pumping)return;this.pumping=true;
+    try{
+      const rules=await this.transport.store.rules(signal);this.guard(signal);
+      if(!this.allowed(rules.rules.unmeteredOnly))return;
+      let cursor:Awaited<ReturnType<DesktopDownloadStore['list']>>['nextCursor']=null;
+      do{
+        const page=await this.transport.store.list(cursor,signal);this.guard(signal);
+        for(const entry of page.items){
+          if(entry.held||this.active.has(entry.preparationId)||!(['queued','downloading'].includes(entry.state)||entry.state==='ready'&&entry.receiptExpiresMs===null))continue;
+          if(!this.allowed(rules.rules.unmeteredOnly))return;
+          const preparation=parseDownloadPreparation(await this.transport.api.request(routePath('get_download_preparation',{id:entry.preparationId}),'GET',undefined,signal));this.guard(signal);
+          if(preparation.id!==entry.preparationId||preparation.profileId!==this.transport.store.scope.profileId||preparation.itemId!==entry.itemId||preparation.quality!==entry.quality)failed('download_verification_failed');
+          if(preparation.state!=='ready')continue;
+          if(preparation.artifact.sha256!==entry.sha256||preparation.artifact.bytes!==entry.bytes)failed('download_verification_failed');
+          await this.saveReadyPreparation(preparation,signal);
+        }
+        cursor=page.nextCursor;
+      }while(cursor!==null);
+    }finally{this.pumping=false;}
+  }
+  private async transfer(preparation:DownloadPreparation,signal:AbortSignal):Promise<void>{
+    this.guard(signal);
     const controller=new AbortController();
     const abort=()=>controller.abort();
     signal.addEventListener('abort',abort,{once:true});this.lifetime.signal.addEventListener('abort',abort,{once:true});
     const current=controller.signal;
+    let costPaused=false,offCost:(()=>void)|undefined;
     let entry:LocalDownload|undefined,renewTimer:ReturnType<typeof setTimeout>|undefined,renewal:Promise<void>|undefined,renewError:unknown;
     try{
       const bundle=checkedBundle(await this.transport.downloads.bundle(preparation,current),preparation);this.guard(current);
@@ -81,6 +128,10 @@ export class DesktopOfflineCoordinator{
       const rules=await this.transport.store.rules(current);
       // A queued copy is genuine persisted work. No bytes start on an unknown/metered route.
       if(!this.allowed(rules.rules.unmeteredOnly))return;
+      if(rules.rules.unmeteredOnly&&this.transport.subscribeNetworkCost){
+        offCost=this.transport.subscribeNetworkCost(()=>{if(!this.allowed(true)){costPaused=true;controller.abort();}});
+        if(!this.allowed(true))return;
+      }
       let grant=checkedGrant(await this.transport.downloads.grant(preparation),preparation);this.guard(current);
       let renewing=true;
       const schedule=()=>{
@@ -105,7 +156,7 @@ export class DesktopOfflineCoordinator{
               try{
                 while(true){
                   this.guard(current);
-                  if(!this.allowed(rules.rules.unmeteredOnly))failed('download_not_ready');
+                  if(!this.allowed(rules.rules.unmeteredOnly)){costPaused=true;controller.abort();throw new DOMException('Aborted','AbortError');}
                   const {done,value}=await reader.read();this.guard(current);if(done)break;
                   if(value.byteLength>entry.bytes-entry.bytesDone)failed();
                   for(let offset=0;offset<value.byteLength;offset+=chunkLimit){
@@ -133,15 +184,18 @@ export class DesktopOfflineCoordinator{
     }catch(error){
       if(entry&&entry.state==='downloading'){
         // Return only our unchanged partial transfer to queued, never undo a concurrent Pause.
-        try{this.transport.store.assertCurrent();await this.transport.store.hold(entry,false);}catch{}
+        try{this.transport.store.assertCurrent();entry=await this.transport.store.hold(entry,false);}catch{
+          if(costPaused){const actual=await this.transport.store.entry(entry.id,signal);if(actual.state==='downloading'&&!actual.held)failed('downloads_conflict');}
+        }
       }
+      if(costPaused){this.guard(signal);return;}
       if(renewError)throw downloadFailure(renewError);
       this.guard(current);throw downloadFailure(error);
     }finally{
-      controller.abort();if(renewTimer)clearTimeout(renewTimer);
-      signal.removeEventListener('abort',abort);this.lifetime.signal.removeEventListener('abort',abort);this.active.delete(preparation.id);
+      controller.abort();offCost?.();if(renewTimer)clearTimeout(renewTimer);
+      signal.removeEventListener('abort',abort);this.lifetime.signal.removeEventListener('abort',abort);
     }
-  };
+  }
   private async artwork(entry:LocalDownload,bundle:DownloadBundle,grant:DownloadGrant,signal:AbortSignal):Promise<LocalDownload>{
     const supported=bundle.artwork.filter(v=>['image/jpeg','image/png','image/webp'].includes(v.contentType));
     const picture=supported.find(v=>v.role==='poster')??supported[0];
