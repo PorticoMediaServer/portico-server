@@ -32,7 +32,8 @@ func TestHardwareDecodeUsesSourceCellInsteadOfOutput(t *testing.T) {
 			t.Fatal("output H264 or another source depth granted unmeasured decode", source, graph, err)
 		}
 	}
-	request.SourceVideoCodec, request.SourceBitDepth, request.MaxFrameRate = "hevc", 10, 24
+	request.SourceVideoCodec, request.SourceBitDepth = "hevc", 10
+	target.FrameRate = 24 // A supplied target owns the output geometry/rate.
 	graph, err = BuildConversion(request)
 	filter := argValue(graph.Video, "-vf")
 	if err != nil || !strings.HasPrefix(filter, "hwdownload,format=p010le,fps=") || strings.Index(filter, "hwupload") < strings.Index(filter, "fps=") || argValue(graph.Input, "-hwaccel") != "vaapi" {
