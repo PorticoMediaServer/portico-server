@@ -3067,7 +3067,7 @@ CREATE TABLE identity_credential_attempts(
 ) STRICT;
 CREATE TABLE authorization_family_grants(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
- grant_kind TEXT NOT NULL CHECK(grant_kind='cast_target')
+ grant_kind TEXT NOT NULL CHECK(grant_kind IN('cast_target','owner_claim_completion'))
 ) STRICT;
 CREATE TABLE direct_profile_pin_attempts(
  profile_id TEXT NOT NULL REFERENCES direct_profiles(id) ON DELETE CASCADE,
@@ -7879,6 +7879,24 @@ CREATE TRIGGER identity_access_tokens_insert BEFORE INSERT ON api_credentials WH
 
 CREATE TABLE identity_moves(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,owner_revision INTEGER NOT NULL,from_kind TEXT NOT NULL CHECK(from_kind IN('portico','local')),to_kind TEXT NOT NULL CHECK(to_kind IN('portico','local')),start_over INTEGER NOT NULL CHECK(start_over IN(0,1)),stage TEXT NOT NULL CHECK(stage IN('preview','moving_to_portico','moving_to_local','complete','cancelled')),revision INTEGER NOT NULL CHECK(revision>0),people INTEGER NOT NULL,devices INTEGER NOT NULL,profiles INTEGER NOT NULL,server_name TEXT NOT NULL,created_ms INTEGER NOT NULL,confirmed_ms INTEGER NOT NULL DEFAULT 0,confirmation TEXT NOT NULL DEFAULT '',invitations INTEGER NOT NULL DEFAULT 0,owner_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(owner_confirmed IN(0,1)),CHECK(from_kind<>to_kind)) STRICT;
 CREATE UNIQUE INDEX identity_one_move ON identity_moves((1)) WHERE stage NOT IN('complete','cancelled');
+CREATE TABLE identity_owner_completions(
+ operation_id TEXT PRIMARY KEY REFERENCES networking_claim_intents(operation_id),
+ move_id TEXT NOT NULL REFERENCES identity_moves(id),
+ family_id TEXT NOT NULL UNIQUE REFERENCES authorization_session_families(id) ON DELETE CASCADE,
+ token_hash TEXT NOT NULL,token_generation INTEGER NOT NULL CHECK(token_generation>0),
+ owner_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+ owner_profile_id TEXT NOT NULL REFERENCES direct_profiles(id),owner_epoch INTEGER NOT NULL CHECK(owner_epoch>0),
+ phase TEXT NOT NULL CHECK(phase IN('prepared','installed','consumed','completed','cancelled','expired','superseded')),
+ claim_hash TEXT NOT NULL CHECK(length(claim_hash)=43),claim_payload BLOB NOT NULL,
+ claim_signature BLOB NOT NULL CHECK(length(claim_signature)=64),start_payload BLOB NOT NULL,
+ start_signature BLOB NOT NULL CHECK(length(start_signature)=64),state_hash TEXT NOT NULL,
+ code_challenge TEXT NOT NULL CHECK(length(code_challenge)=43),installation_id TEXT NOT NULL,server_challenge_hash TEXT NOT NULL,
+ created_ms INTEGER NOT NULL,expires_ms INTEGER NOT NULL CHECK(expires_ms>created_ms),
+ installed_ms INTEGER NOT NULL DEFAULT 0,completed_ms INTEGER NOT NULL DEFAULT 0,consumed_ms INTEGER NOT NULL DEFAULT 0,
+ attempt_id TEXT NOT NULL DEFAULT '',transaction_id TEXT NOT NULL DEFAULT '',move_revision INTEGER NOT NULL CHECK(move_revision>0),
+ registration_id TEXT NOT NULL DEFAULT '',registration_origin TEXT NOT NULL DEFAULT '',
+ route_generation INTEGER NOT NULL DEFAULT 0 CHECK(route_generation>=0)
+) STRICT;
 CREATE TABLE identity_move_link_tickets(token_hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,installation_id TEXT NOT NULL,epoch INTEGER NOT NULL,expires_ms INTEGER NOT NULL,UNIQUE(account_id,installation_id)) STRICT;
 CREATE TABLE identity_move_codes(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,move_id TEXT NOT NULL REFERENCES identity_moves(id),code_hash TEXT NOT NULL UNIQUE,expires_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE identity_service_outbox(notice_id TEXT PRIMARY KEY,operation_id TEXT NOT NULL,server_id TEXT NOT NULL,claim_generation TEXT NOT NULL,credential_generation TEXT NOT NULL,payload BLOB NOT NULL,signature BLOB NOT NULL,created_ms INTEGER NOT NULL,delivered_ms INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,next_ms INTEGER NOT NULL DEFAULT 0) STRICT;
