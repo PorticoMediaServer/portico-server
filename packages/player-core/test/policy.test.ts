@@ -3,6 +3,19 @@ import {PlaybackPolicy,parseSegmentMarkers,parseQueuePostPlay} from '../src/inde
 import {fence,channelFence,frame,intro,credits,post} from './fixtures.ts';
 const player=(markers:unknown=[intro,credits])=>{const p=new PlaybackPolicy();p.begin(fence,markers,1400);return p;};
 
+test('a rendered marker mismatch cannot dismiss another overlapping active marker',()=>{
+ const earlier={...credits,id:'earlier-outro',kind:'outro' as const,startSeconds:1290,endSeconds:1380};
+ const p=player([earlier,credits]);
+ p.update(frame({positionSeconds:1320}));
+ assert.equal(p.skip(fence,credits.id),null);
+ const unchanged=p.skip(fence,earlier.id);
+ assert.equal(unchanged?.kind,'seek');assert.equal(unchanged?.kind==='seek'&&unchanged.markerId,earlier.id);
+ const next=p.skip(fence,credits.id);
+ assert.equal(next?.kind,'seek');assert.equal(next?.kind==='seek'&&next.markerId,credits.id);
+ const legacy=player([earlier,credits]);legacy.update(frame({positionSeconds:1320}));
+ assert.equal(legacy.skip(fence)?.kind,'seek');
+});
+
 test('catalogue segment and Up next policy rejects live domains without replacing its queue binding',()=>{
  const p=player();assert.throws(()=>p.begin(channelFence as never,[intro],1400));
  assert.equal(p.update(frame({fence:channelFence as never})),null);assert.equal(p.skip(channelFence as never),null);
