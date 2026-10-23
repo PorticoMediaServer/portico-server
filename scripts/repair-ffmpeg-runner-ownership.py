@@ -23,7 +23,7 @@ def restore_job_ownership(job_root, image):
     job_root = validate_owned_job_path(job_root)
     if not job_root.exists():
         return
-    subprocess.run(['docker', 'run', '--rm', '--name', 'portico-hardware-r29-owner-repair',
+    subprocess.run(['docker', 'run', '--rm', '--pull', 'never', '--name', 'portico-hardware-r29-owner-repair',
         '--label', 'portico.lane=hardware-r29', '--network', 'none', '--user', '0',
         '--cpus', '0.5', '--memory', '128m', '--memory-swap', '128m',
         '-v', str(job_root) + ':/job', image, 'bash', '-c',

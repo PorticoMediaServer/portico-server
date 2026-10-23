@@ -12,6 +12,10 @@ spec = importlib.util.spec_from_file_location('ffmpeg_runner_build',
     Path(__file__).with_name('run-ffmpeg-runner-build.py'))
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
+owner_spec = importlib.util.spec_from_file_location('ffmpeg_runner_owner',
+    Path(__file__).with_name('repair-ffmpeg-runner-ownership.py'))
+owner = importlib.util.module_from_spec(owner_spec)
+owner_spec.loader.exec_module(owner)
 
 
 class DiagnosticsTests(unittest.TestCase):
@@ -74,6 +78,13 @@ class DiagnosticsTests(unittest.TestCase):
         (self.work / 'repeat-build.json').write_bytes(b' ' * ((2 << 20) + 1))
         self.assertEqual(self.collected()['reports']['repeat-build.json']['state'], 'refused')
 
+    def test_linked_scratch_ancestor_is_refused(self):
+        outside = self.job / 'synthetic-other-scratch'
+        (self.job / '.scratch').rename(outside)
+        (self.job / '.scratch').symlink_to(outside, target_is_directory=True)
+        record = self.collected()
+        self.assertTrue(all(r['state'] == 'refused' for r in record['reports'].values()))
+
     def test_non_text_report_is_refused(self):
         (self.work / 'repeat-build.json').write_bytes(b'\xff\xfe')
         self.assertEqual(self.collected()['reports']['repeat-build.json']['state'], 'refused')
@@ -107,6 +118,16 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertTrue(record['canonicalBuildCommandSucceeded'])
         self.assertEqual(record['reports']['repeat-build.json']['state'], 'produced')
         self.assertEqual(sorted(p.name for p in self.output.iterdir()), ['hardware-qualification.log'])
+
+    def test_stop_cleanup_cannot_download_an_image(self):
+        owned_job = self.job / 'jobs/hardware-r29/aaaaaaaaaaaa-12345678'
+        owned_job.mkdir(parents=True)
+        with patch.object(owner.subprocess, 'run') as command:
+            owner.restore_job_ownership(owned_job, 'exact-retained-compiler-image')
+        command.assert_called_once()
+        arguments = command.call_args.args[0]
+        self.assertEqual(arguments[arguments.index('--pull') + 1], 'never')
+        self.assertEqual(arguments[arguments.index('--network') + 1], 'none')
 
 
 if __name__ == '__main__':

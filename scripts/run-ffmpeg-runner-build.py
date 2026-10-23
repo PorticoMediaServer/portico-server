@@ -23,11 +23,11 @@ QUALIFICATION_REPORTS = (
 )
 
 
-def qualification_report(work, name):
+def qualification_report(job_root, name):
     """Read one fixed text report without following directory or file links."""
-    directory = os.open(work, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    directory = os.open(job_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        parts = Path(name).parts
+        parts = ('.scratch', 'hardware-r29', 'ffmpeg-build', 'linux-x64', *Path(name).parts)
         for part in parts[:-1]:
             child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
                             dir_fd=directory)
@@ -71,11 +71,10 @@ def collect_qualification_reports(job_root, source_commit, build_succeeded, fail
     if (output.is_symlink() or output.resolve(strict=True) != job_root / 'outputs' or
             not output.is_dir()):
         raise ValueError('Qualification diagnostics must use this runner job output directory')
-    work = job_root / '.scratch/hardware-r29/ffmpeg-build/linux-x64'
     reports = {}
     for name in QUALIFICATION_REPORTS:
         try:
-            reports[name] = qualification_report(work, name)
+            reports[name] = qualification_report(job_root, name)
         except FileNotFoundError:
             reports[name] = {'state': 'not-produced'}
         except (OSError, ValueError) as error:
