@@ -10,7 +10,11 @@
   var promptIdentity = '', promptDuration = 0;
   var OVERLAY_VISIBLE_MS = 5000;
   function t(key, params) { return window.porticoCastText ? window.porticoCastText.t('cast.receiver.' + key, params) : ''; }
-  function visible(id, on) { $(id).hidden = !on; }
+  function visible(id, on) {
+    var node = $(id);
+    // SVG does not reflect HTMLElement.hidden; the attribute governs both.
+    if (on) node.removeAttribute('hidden'); else node.setAttribute('hidden', '');
+  }
   function text(id, value) { $(id).textContent = typeof value === 'string' ? value : ''; }
   function line(id, value) { text(id, value); visible(id, !!value); }
   function state(value) {
