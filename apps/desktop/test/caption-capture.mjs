@@ -72,6 +72,7 @@ try{
    for(const [key,code,virtual] of [['Enter','Enter',13],[' ','Space',32]]){
     await send('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:virtual,...(key===' '?{text:' ',unmodifiedText:' '}: {})});
     await send('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:virtual});
+    await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
    }
    const actions=await evaluate('window.__captionFixture.actions');
    keyboard={actions,focused:await evaluate(`document.activeElement?.tagName`),passed:JSON.stringify(actions)===JSON.stringify(['toggleMaximize','toggleMaximize'])};
