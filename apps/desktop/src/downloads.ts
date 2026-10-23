@@ -106,6 +106,7 @@ export class DesktopDownloadStore {
   private readonly isCurrent:()=>boolean;
   private readonly bridge:NativeDownloadsBridge;
   private currentPreparation?:PreparedLocalQueue;
+  private readonly listeners=new Set<()=>void>();
   private readonly preparations=new WeakMap<PreparedLocalQueue,{lease:string;retired:boolean}>();
   private constructor(scope:DownloadScope,isCurrent:()=>boolean,bridge:NativeDownloadsBridge){this.scope=checkScope(scope);this.isCurrent=isCurrent;this.bridge=bridge;}
   static async bind(scope:DownloadScope,isCurrent:()=>boolean,bridge:NativeDownloadsBridge=nativeDownloadsBridge,signal?:AbortSignal):Promise<DesktopDownloadStore>{
@@ -115,6 +116,7 @@ export class DesktopDownloadStore {
   }
   private guard(signal?:AbortSignal){if(this.disposed||!this.isCurrent()||signal?.aborted)aborted();}
   assertCurrent(signal?:AbortSignal):void{this.guard(signal);}
+  subscribe(listener:()=>void):()=>void{this.guard();this.listeners.add(listener);return()=>{this.listeners.delete(listener);};}
   async prepareLocalQueue(input:LocalSelection,signal:AbortSignal):Promise<PreparedLocalQueue>{
     this.guard(signal);
     const selection=input.kind==='entry'?{kind:'entry',entryId:digest(input.entryId),expectedRevision:integer(input.expectedRevision)}:
@@ -194,7 +196,10 @@ export class DesktopDownloadStore {
     try{
       const raw=await this.bridge.command(this.lease,operation);this.guard(signal);
       const reply=object(raw);if(reply.kind!==kind)return invalid();
-      return parse(reply.value);
+      const value=parse(reply.value);
+      if(['setRules','enroll','append','seal','hold','retry','remove','groupAction','removeOtherProfiles','receipt','revoke','serverPresence','saveArtwork'].includes(String(operation.action)))for(const listener of [...this.listeners]){try{listener();}catch{/* A view cannot invalidate a committed native acknowledgement. */}}
+      this.guard(signal);
+      return value;
     }catch(error){this.guard(signal);throw downloadFailure(error);}
   }
   list(cursor:DownloadCursor|null=null,signal?:AbortSignal){return this.request({action:'list',cursor,limit:100},'page',page,signal);}
@@ -249,7 +254,7 @@ export class DesktopDownloadStore {
     return Object.freeze(value.map(raw=>{const v=object(raw);return Object.freeze({playId:id(v.playId),itemId:id(v.itemId),positionMs:integer(v.positionMs),ended:boolean(v.ended),observedMs:integer(v.observedMs)});}));
   },signal);}
   acknowledgePlay(play:Pick<PendingPlay,'playId'|'observedMs'>,signal?:AbortSignal){return this.request({action:'acknowledgePlay',playId:id(play.playId),observedMs:integer(play.observedMs)},'done',()=>undefined,signal);}
-  dispose(){if(this.disposed)return;this.disposed=true;const lease=this.lease;this.lease='';
+  dispose(){if(this.disposed)return;this.disposed=true;this.listeners.clear();const lease=this.lease;this.lease='';
     if(!lease)return;
     if(this.currentPreparation)void this.releaseLocalQueue(this.currentPreparation).catch(()=>{}).then(()=>this.bridge.release(lease)).catch(()=>{});
     else void this.bridge.release(lease).catch(()=>{});

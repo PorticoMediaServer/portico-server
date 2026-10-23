@@ -177,7 +177,7 @@ type planInputs struct {
 // records every input. Sessions (legacy and v1) and the v1 plan preview share it,
 // which is what makes "the same request and profile always produce the same plan"
 // true across them.
-func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, aid, container, video, audio string, duration float64, remote, catalogued bool, explicitAudio *int, v1 *V1Choice) (planInputs, error) {
+func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, aid, container, video, audio string, duration float64, remote, catalogued bool, explicitAudio *int, v1 *V1Choice) (planInputs, error) {
 	cfg := deliveryConfiguration(s.deliverySettings)
 	edge := DeliveryContextFrom(ctx)
 	values := s.viewerPreferences(tx, p, edge)
@@ -197,6 +197,13 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	}
 	target := v1.target(policy, cfg)
 	input := DeliveryInput{SourceID: aid, Container: container, VideoCodec: video, AudioCodec: audio, Duration: duration, Height: sourceHeight, ColorTransfer: transfer, ColorPrimaries: primaries, Remote: remote, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: ownerTranscoding, Hardware: hardware}
+	// The caller authorized this public title in this transaction. The
+	// catalogue's accepted publication is the sole original-language source.
+	originalLanguage, err := publishedOriginalLanguageTx(ctx, tx, item)
+	if err != nil {
+		return planInputs{}, err
+	}
+	input.OriginalLanguage = originalLanguage
 	input.Engine, input.SubtitleKind, input.SubtitleBesideStream, input.CarriedAudioLanguage = v1.Engine, v1.SubtitleKind, v1.SubtitleBesideStream, v1.CarriedAudioLanguage
 	if e := s.completeDeliveryInputTx(ctx, tx, p, &input, values, catalogued, explicitAudio); e != nil {
 		return planInputs{}, e
@@ -370,7 +377,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		}
 	}
 	explicitAudio := v1.AudioStream
-	inputs, e := s.planInputsTx(ctx, tx, p, aid, container, video, audio, duration, mode == "remote", derivative == nil && mode != "remote", explicitAudio, v1)
+	inputs, e := s.planInputsTx(ctx, tx, p, item, aid, container, video, audio, duration, mode == "remote", derivative == nil && mode != "remote", explicitAudio, v1)
 	if e != nil {
 		return Session{}, e
 	}
