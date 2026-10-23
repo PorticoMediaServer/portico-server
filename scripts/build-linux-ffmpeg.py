@@ -44,7 +44,7 @@ def main():
     if 'FF_CONFIGURE' not in options:
         raise ValueError('Generated dependency configure flags missing')
     common = ['--enable-gpl', '--enable-version3', '--disable-nonfree', '--disable-libfdk-aac',
-              '--disable-debug', '--disable-doc', '--disable-ffplay', '--enable-libdav1d',
+              '--disable-autodetect', '--disable-debug', '--disable-doc', '--disable-ffplay', '--enable-libdav1d',
               '--enable-libsvtav1', '--enable-libx264', '--enable-libx265', '--enable-libzimg',
               '--enable-libdovi', '--enable-libass', '--enable-fontconfig', '--enable-libfreetype', '--enable-libfribidi',
               '--enable-libharfbuzz', '--enable-libsoxr', '--enable-libbluray', '--enable-libdvdnav',

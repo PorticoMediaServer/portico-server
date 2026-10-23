@@ -163,6 +163,7 @@ if [[ "$TARGET" == linux-x64 ]]; then
   mkdir -p "$WORK/provenance/libdovi"
   cp -a "$LANE_SCRATCH/libdovi/sources" "$WORK/provenance/libdovi/sources"
   cp "$WORK/libdovi/"{vendor-source.tar.xz,vendor-lock.json,fetch.sh,build.sh,contract.json,expected.json,compiler-and-licenses.json} "$WORK/provenance/libdovi/"
+  cp -a "$WORK/libdovi/license-supplements" "$WORK/provenance/libdovi/"
   cp "$INPUT/libdovi-build.json" "$INPUT/dovi-profile-build.json" "$WORK/provenance/libdovi/"
   cp -a "$ROOT/third_party/ffmpeg/tests" "$WORK/provenance/contract/"
   cp "$ROOT/third_party/ffmpeg/portico-dovi-profile.patch" "$WORK/provenance/contract/"

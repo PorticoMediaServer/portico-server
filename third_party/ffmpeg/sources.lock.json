@@ -453,7 +453,8 @@
   },
   "requiredConfigure": [
     "--enable-gpl",
-    "--enable-version3"
+    "--enable-version3",
+    "--disable-autodetect"
   ],
   "prohibitedConfigure": [
     "--enable-nonfree",
@@ -546,6 +547,10 @@
     "cargoLocks": {
       "Cargo.lock": "fea5d041ff24b753a293f107fc0abcc32208f76d15e860c63c83cd60a2d7eea8",
       "dolby_vision/Cargo.lock": "b5c27d3199fcf7a49aea1f5ec864f9fea65613e9473ad1e86cb1ffb2d47c7033"
+    },
+    "licenseSupplements": {
+      "path": "third_party/ffmpeg/licenses/cargo-supplements/manifest.json",
+      "sha256": "2d019d8aa9b7c965e9e3f53ee98cabaab93169dc2430ab6b6b2c8aa6fcacc620"
     }
   },
   "testFixtures": {

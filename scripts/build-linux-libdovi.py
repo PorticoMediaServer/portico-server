@@ -38,6 +38,15 @@ def main():
         raise ValueError('libdovi must stay in the lane scratch directory')
     lock = json.loads((root / 'third_party/ffmpeg/sources.lock.json').read_text())
     source = lock['libdovi']
+    supplement_file = root / source['licenseSupplements']['path']
+    if digest(supplement_file) != source['licenseSupplements']['sha256']:
+        raise ValueError('Cargo license supplement manifest changed')
+    supplements = json.loads(supplement_file.read_text())
+    for module in supplements['modules'].values():
+        for notice in module['files']:
+            path = (supplement_file.parent / notice['path']).resolve(strict=True)
+            if not path.is_relative_to(supplement_file.parent) or digest(path) != notice['sha256']:
+                raise ValueError('Cargo upstream license supplement changed: ' + notice['path'])
     contract_file = root / source['contract']
     if digest(contract_file) != source['contractSHA256']:
         raise ValueError('libdovi qualified source contract changed')
@@ -51,6 +60,7 @@ def main():
     stage.mkdir(exist_ok=True)
     expected = {'sourceSHA256': source['sha256'], 'sourceCommit': source['commit'],
                 'contractSHA256': source['contractSHA256'], 'cargoLocks': source['cargoLocks'],
+                'licenseSupplementsSHA256': source['licenseSupplements']['sha256'],
                 'compilerImage': lock['linuxSourceBuild']['compilerImage'],
                 'builderSHA256': digest(Path(__file__))}
     record_file = prefix / 'libdovi-build.json'
@@ -102,6 +112,7 @@ def main():
         (stage / name).mkdir(exist_ok=True)
     (stage / 'contract.json').write_text(contract_file.read_text())
     (stage / 'expected.json').write_text(json.dumps(expected))
+    shutil.copytree(supplement_file.parent, stage / 'license-supplements', dirs_exist_ok=True)
     frozen_builder = stage / 'builder.py'
     shutil.copyfile(Path(__file__), frozen_builder)
     if digest(frozen_builder) != expected['builderSHA256']:
@@ -183,6 +194,11 @@ def inside():
     import tomllib
     stage, prefix = Path('/dovi'), Path('/opt/ffbuild')
     contract = json.loads((stage / 'contract.json').read_text())
+    expected = json.loads((stage / 'expected.json').read_text())
+    supplement_file = stage / 'license-supplements/manifest.json'
+    if digest(supplement_file) != expected['licenseSupplementsSHA256']:
+        raise ValueError('Frozen Cargo license supplements changed')
+    supplements = json.loads(supplement_file.read_text())['modules']
     version = subprocess.check_output(['pkg-config', '--modversion', 'dovi'], text=True).strip()
     if version != contract['source']['crateVersion']:
         raise ValueError('libdovi pkg-config version mismatch: ' + version)
@@ -213,10 +229,42 @@ def inside():
             shutil.copyfile(source_notice, target)
             if not any(item['path'] == str(target.relative_to(prefix)) for item in paths):
                 paths.append({'path': str(target.relative_to(prefix)), 'sha256': digest(source_notice)})
+        supplement = None
+        if not paths:
+            supplement = supplements.get(metadata['name'] + '-' + metadata['version'])
+            if (not supplement or supplement['name'] != metadata['name'] or
+                    supplement['version'] != metadata['version'] or supplement['license'] != metadata.get('license') or
+                    supplement['crateCargoSHA256'] != digest(directory / 'Cargo.toml')):
+                raise ValueError('Actual crate license text/declaration missing: ' + metadata['name'])
+            for notice in supplement['files']:
+                source_notice = (supplement_file.parent / notice['path']).resolve(strict=True)
+                if (not source_notice.is_relative_to(supplement_file.parent) or
+                        digest(source_notice) != notice['sha256']):
+                    raise ValueError('Frozen upstream license text changed')
+                target = notices / directory.name / notice['path']
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source_notice, target)
+                paths.append({'path': str(target.relative_to(prefix)), 'sha256': digest(source_notice),
+                              'upstreamURL': notice['url'], 'upstreamCommit': notice['upstreamCommit']})
+            # Preserve the exact authors/declaration and all actual source
+            # copyright notices without rewriting the checksum-locked vendor.
+            target = notices / directory.name / 'Cargo.toml'
+            shutil.copyfile(directory / 'Cargo.toml', target)
+            paths.append({'path': str(target.relative_to(prefix)), 'sha256': digest(target)})
+            witness = supplement.get('sourceNotice')
+            if witness:
+                source_notice = directory / witness['path']
+                if digest(source_notice) != witness['sha256']:
+                    raise ValueError('Original crate source notice changed')
+                target = notices / directory.name / 'SOURCE-NOTICE.txt'
+                target.write_text('\n'.join(source_notice.read_text().splitlines()[:witness['firstLines']]) + '\n')
+                paths.append({'path': str(target.relative_to(prefix)), 'sha256': digest(target),
+                              'originalSourceSHA256': witness['sha256'], 'sourcePath': witness['path']})
         if not paths or not (metadata.get('license') or declared_file):
             raise ValueError('Actual crate license text/declaration missing: ' + metadata['name'])
         modules.append({'name': metadata['name'], 'version': metadata['version'],
                         'license': metadata.get('license'), 'licenseFile': metadata.get('license-file'),
+                        'upstreamLicenseSupplement': supplement,
                         'notices': paths})
     sysroot = Path(subprocess.check_output(['rustc', '--print', 'sysroot'], text=True).strip())
     rust_licenses = sysroot / 'share/doc/rust'
