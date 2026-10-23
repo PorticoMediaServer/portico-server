@@ -10,7 +10,7 @@ import {FilterBuilder, type BrowseLabels, type FilterFieldChange, type FilterFie
 import type {BrowseController} from './controller';
 import styles from './browse.module.css';
 
-export type BrowseFiltersProps = Readonly<{controller: BrowseController; model: BrowseToolbarModel; labels: BrowseLabels; compact: boolean; open: boolean; resultCount?: string; canSaveView: boolean; onSaveView: () => void; onClose: () => void; reportError: (error: unknown) => void}>;
+export type BrowseFiltersProps = Readonly<{controller: BrowseController; model: BrowseToolbarModel; labels: BrowseLabels; compact: boolean; open: boolean; resultCount?: string; canSaveView: boolean; onSaveView?: () => void; onClose: () => void; reportError: (error: unknown) => void}>;
 const t = defaultI18n.t;
 const valueLabel = (value: string) => {const key = `filter.value.${value}`;return defaultI18n.has(key) ? t(key) : value;};
 const simple = (nodes: readonly BrowseNode[]) => nodes.flatMap(node => 'field' in node ? [node] : []);
@@ -87,7 +87,7 @@ export function BrowseFilters({controller, model, labels, compact, open, resultC
   const footer = <><Button variant="glass" size="hero" onClick={() => controller.setQuery([])}>{t('next.browse.clearAll')}</Button><Button variant="primary" size="hero" onClick={onClose}>{t('action.done')}</Button></>;
   return compact ? <BottomSheet open={open} onOpenChange={opened => {if (!opened) onClose();}} showCloseButton={false} detent={1}
     headerClassName={styles.phoneFilterHeader} title={<span className={styles.filterTitle}>{t('next.browse.filters')}<Button variant="text" size="small" onClick={() => controller.setQuery([])}>{t('next.browse.clearAll')}</Button></span>}
-    footerClassName={styles.filterFooter} footer={<><Button variant="glass" size="hero" disabled={!canSaveView} onClick={onSaveView}>{t('next.browse.saveView')}</Button><Button variant="primary" size="hero" disabled={!resultCount} aria-label={resultCount ? undefined : t('next.browse.filters')} onClick={onClose}>{resultCount ? t('next.browse.showCount', {count: resultCount}) : <Skeleton width={116} height={20}/>}</Button></>}>{body}</BottomSheet> :
+    footerClassName={styles.filterFooter} footer={<>{onSaveView && <Button variant="glass" size="hero" disabled={!canSaveView} onClick={onSaveView}>{t('next.browse.saveView')}</Button>}<Button variant="primary" size="hero" disabled={!resultCount} aria-label={resultCount ? undefined : t('next.browse.filters')} onClick={onClose}>{resultCount ? t('next.browse.showCount', {count: resultCount}) : <Skeleton width={116} height={20}/>}</Button></>}>{body}</BottomSheet> :
     <Dialog responsive={false} open={open} onOpenChange={opened => {if (!opened) onClose();}} title={t('next.browse.filters')} placement="right" width={520}
       headerClassName={styles.filterHeader} bodyClassName={styles.filterBody} footerClassName={styles.filterFooter}
       description={resultCount ? <span className={styles.filterCount}><b>{resultCount}</b> {t('next.browse.match')}</span> : undefined} footer={footer}>{body}</Dialog>;

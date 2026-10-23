@@ -1,0 +1,88 @@
+import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useParams, useSearch} from '@tanstack/react-router';
+import {defaultI18n} from '@i18n';
+import type {Library} from '@core/index.ts';
+import {LibraryContentService, type ContentEntry, type ContentRoute, type ContentView} from '@core/library-content.ts';
+import {libraryTabs} from '@core/presentation/library-tabs.ts';
+import type {SavedDefinition} from '@core/personal-saved.ts';
+import {defineWebScreen} from '../../route-registry';
+import {useProtectedWebScreenContext} from '../../route-registry-view';
+import {router} from '../../router';
+import {StateView} from '../../kit/states';
+import {useShellWidth} from '../../shell/viewport';
+import {ShowScreen} from '../detail/Show';
+import {createShowBindings} from '../detail/show-bindings';
+import type {ScreenContext} from '../detail/context';
+import {screenLifetime} from '../detail/context';
+import {BrowseController} from './controller';
+import {LibraryIdentity, LibraryScreen, type LibraryBindings} from './Library';
+import {LibraryDiscoveryScreen} from './Discovery';
+import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
+import {useScreenAppearance} from './screen-preferences';
+import {parseLibraryScreenSearch, type LibraryScreenSearch} from './route-search';
+import {SaveView} from './SaveView';
+
+const t = defaultI18n.t;
+function LibraryShow({context, libraryId, search}: {context: ScreenContext; libraryId: string; search: LibraryScreenSearch}) {
+  const binding = useMemo(() => createShowBindings(context), [context]);
+  useEffect(() => () => binding.dispose(), [binding]);
+  return <ShowScreen binding={binding} target={{libraryId, ...(search.view === 'season' ? {seasonId: search.entityId} : {showId: search.entityId})}}/>;
+}
+function BoundLibrary({captured, library, search}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch}) {
+  const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
+  const tabs = libraryTabs(library.kind), requested = tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
+  const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
+  const pivot = search.pivot ?? requested?.pivot;
+  const browse = !!pivot && !search.entityId && !search.category && !search.q && view !== 'discover';
+  const sourceKey = JSON.stringify({libraryId: library.id, pivot, query: search.query, sort: search.sort});
+  const resources = useMemo(() => {
+    const life = screenLifetime(context), source: ConstructorParameters<typeof BrowseController>[1] = JSON.parse(sourceKey);
+    const controller = new BrowseController(life.api, {libraryId: source.libraryId, pivot: source.pivot ?? '',
+      predicates: search.query ? [search.query] : undefined, sorts: search.sort ?? (requested?.defaultSort ? [requested.defaultSort] : undefined)}, life.current);
+    const service = new LibraryContentService({api: life.api, scope: context.scope});
+    return {life, controller, service};
+  }, [context, sourceKey]);
+  useEffect(() => () => {resources.life.dispose();resources.controller.dispose();resources.service.dispose();}, [resources]);
+  const state = useSyncExternalStore(resources.controller.subscribe, resources.controller.getSnapshot, resources.controller.getSnapshot);
+  const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
+  const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium'), [saving, setSaving] = useState<SavedDefinition>();
+  const navigate = (value: LibraryScreenSearch, id = library.id) => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: id}, search: value}).catch(context.effects.reportError);};
+  const actions = (entry: ContentEntry) => ({onOpen: () => context.effects.openEntry(entry),
+    onPlay: entry.playback && entry.libraryId && entry.available !== false && !entry.missing ? () => {
+      void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, resources.life.signal()).catch(context.effects.reportError);
+    } : undefined});
+  const appearanceBase = {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 190) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size};
+  const header = {library, libraries: context.identity?.libraries ?? [], pivot: requested?.id ?? 'discover', tabs: tabs.map(tab => ({value: tab.id, label: t(tab.label)})),
+    appearance: appearanceBase, preferences: appearance, libraryViewOverride: choice?.defaultView === appearance.libraryView ? choice.view : undefined,
+    artwork: context.artwork, libraryMenu: undefined,
+    onLibrary: (id: string) => navigate({}, id), onLibraries: () => {void router.navigate({to: '/libraries'}).catch(context.effects.reportError);},
+    onPivot: (id: string) => {const tab = tabs.find(tab => tab.id === id);if (!tab) return;
+      if (tab.shows === 'playlists') {void router.navigate({to: '/saved', search: {view: 'playlists'}}).catch(context.effects.reportError);return;}
+      navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {}), ...(tab.defaultSort ? {sort: [tab.defaultSort]} : {})});}};
+  const empty = <StateView title={t('library.emptyLibrary')} body={t('library.emptyLibraryBody')}/>;
+  const save = () => {
+    if (!state.sort || !resources.life.current()) return;
+    const query = resources.controller.query();
+    setSaving({libraryId: library.id, pivot: resources.controller.source.pivot, query: query.query ?? null,
+      sort: query.sort ?? [], presentation: header.libraryViewOverride ?? appearance.libraryView});
+  };
+  const bindings: LibraryBindings = {...header, controller: resources.controller,
+    env: {t, locale: defaultI18n.region.formatLocale}, reducedMotion: appearance.reducedMotion, owner: context.identity?.viewer.role === 'owner',
+    reportError: context.effects.reportError, empty, canSaveView: !!state.sort, onSaveView: save,
+    selection: {actions: member => actions(member.entry)},
+    onAppearanceChange: change => {if (!resources.life.current()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);}};
+  const contentRoute: ContentRoute = {libraryId: library.id, view, ...(search.entityId ? {entityId: search.entityId} : {}), ...(search.category ? {category: search.category} : {}), ...(search.q ? {q: search.q} : {})};
+  return <>{view === 'show' || view === 'season' ? <LibraryShow context={context} libraryId={library.id} search={search}/>
+    : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} header={<LibraryIdentity {...header}/>} empty={empty}
+      appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}
+      actions={(_section, entry) => actions(entry)} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}/>}
+    {saving && <SaveView context={context} definition={saving} onClose={() => setSaving(undefined)}/>}</>;
+}
+function LibraryRouteScreen() {
+  const captured = useProtectedWebScreenContext(), {libraryId} = useParams({from: '/library/$libraryId'});
+  const search = parseLibraryScreenSearch(useSearch({from: '/library/$libraryId'}));
+  const library = captured?.context.facts.identity.libraries.find(library => library.id === libraryId);
+  return !captured ? null : library ? <BoundLibrary key={libraryId} captured={captured} library={library} search={search}/>
+    : <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
+}
+export default defineWebScreen({id: 'library', component: LibraryRouteScreen, validateSearch: parseLibraryScreenSearch});
