@@ -1,3 +1,4 @@
+import {useOverlayPortalTarget} from './portal-target';
 import {useCallback, useId, useLayoutEffect, useRef} from 'react';
 import {createPortal} from 'react-dom';
 import {defaultI18n} from '@i18n';
@@ -10,6 +11,7 @@ export type SidePanelProps = OverlaySurfaceProps & {topInset?: number; width?: n
 
 /** A separate non-modal region: no inert siblings, scroll lock, scrim, or focus loop. */
 export function SidePanel({open, onOpenChange, title, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, topInset = 76, width = 520, closeOnOutsidePress = false}: SidePanelProps) {
+  const portalTarget = useOverlayPortalTarget();
   const id = useId(), panel = useRef<HTMLElement | null>(null), opener = useRef<HTMLElement | null>(null), outside = useRef(false);
   const motionRef = useSurfaceMotion(open, 'panel'), present = usePresence(open, 160);
   const isTop = useOverlayKeys(open, onOpenChange, true);
@@ -31,7 +33,7 @@ export function SidePanel({open, onOpenChange, title, children, description, foo
       if (!outside.current && (document.activeElement === document.body || surface?.contains(document.activeElement))) focusElement(returnTarget);
     };
   }, [open]);
-  if (!present || typeof document === 'undefined') return null;
+  if (!present || !portalTarget) return null;
   return createPortal(<aside ref={ref} className={classes(styles.sidePanel, className)} role="region" tabIndex={-1}
     aria-label={accessibilityLabel} aria-labelledby={accessibilityLabel ? undefined : `${id}-title`} aria-describedby={description === undefined ? undefined : `${id}-description`}
     data-state={open ? 'open' : 'closed'} data-testid={testID} style={{'--overlay-top': `${topInset}px`, '--overlay-width': `${width}px`} as OverlayStyle}>
@@ -39,5 +41,5 @@ export function SidePanel({open, onOpenChange, title, children, description, foo
       <Button variant="icon" size="small" iconOnly icon="i-x" iconSize={22} aria-label={defaultI18n.t('next.overlays.close')} className={styles.panelClose} onClick={() => onOpenChange(false, 'close-button')} /></header>
     <div className={styles.panelBody}>{children}</div>
     {footer !== undefined && <footer className={styles.panelFooter}>{footer}</footer>}
-  </aside>, document.body);
+  </aside>, portalTarget);
 }

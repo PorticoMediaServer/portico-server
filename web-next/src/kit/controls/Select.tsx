@@ -1,3 +1,4 @@
+import {useOverlayPortalTarget} from '../overlays/portal-target';
 import {Fragment, forwardRef, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type CSSProperties, type RefObject, type RefCallback} from 'react';
 import {Select as SelectPrimitive} from 'radix-ui';
 import {defaultI18n} from '@i18n';
@@ -52,6 +53,7 @@ function tabFrom(trigger: HTMLElement, direction: number) {
 }
 
 const ChoiceSelect = forwardRef<HTMLButtonElement, ChoiceSelectProps>(function ChoiceSelect({options, value, defaultValue, onValueChange, open, defaultOpen, onOpenChange, label, description, error, disabled, required, name, form, id, placeholder, selectedLabel, sheetTitle, className, containerClassName, style, rich, 'aria-label': accessibleLabel, 'aria-labelledby': labelledBy, 'aria-describedby': describedBy}, ref) {
+  const portalTarget = useOverlayPortalTarget();
   const generated = useId();
   const phone = useSyncExternalStore(subscribePhone, phoneSnapshot, desktopSnapshot);
   const [localValue, setLocalValue] = useState(defaultValue ?? '');
@@ -113,7 +115,7 @@ const ChoiceSelect = forwardRef<HTMLButtonElement, ChoiceSelectProps>(function C
         <span className={styles.selectValue}><SelectPrimitive.Value placeholder={placeholder}>{selectedLabel}</SelectPrimitive.Value></span>
         <SelectPrimitive.Icon><Icon name="i-down" size={18} /></SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
-      <SelectPrimitive.Portal><div className={styles.selectPortal}>
+      <SelectPrimitive.Portal container={portalTarget}><div className={styles.selectPortal}>
         <SelectPrimitive.Content ref={setMenu} position="popper" align="end" sideOffset={6} collisionPadding={8} className={styles.selectMenu} data-rich={rich || undefined} data-stacked-hints={rich && menuFit.stacked || undefined} style={rich ? {width: menuFit.width} : undefined}
           onKeyDown={event => {
             if (event.key !== 'Tab') return;

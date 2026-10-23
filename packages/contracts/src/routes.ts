@@ -1111,6 +1111,32 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "delete_reading_sessions_sessionId",
+    "method": "DELETE",
+    "path": "/v1/reading/sessions/{sessionId}",
+    "summary": "Close this caller's reading session",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "noResponseBody": true,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "delete_saved_resources_id",
     "method": "DELETE",
     "path": "/v1/saved-resources/{id}",
@@ -5381,6 +5407,31 @@ export const routes = [
     "admission": "media"
   },
   {
+    "id": "get_items_itemId_reading_versions",
+    "method": "GET",
+    "path": "/v1/items/{itemId}/reading/versions",
+    "summary": "List a reading publication's actual versions",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_items_screen_metadata",
     "method": "GET",
     "path": "/v1/items/{id}/metadata/screen",
@@ -7084,6 +7135,169 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "get_reading_items",
+    "method": "GET",
+    "path": "/v1/reading/items",
+    "summary": "List visible reading publications",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "libraryId",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_reading_sessions_sessionId_assets",
+    "method": "GET",
+    "path": "/v1/reading/sessions/{sessionId}/assets",
+    "summary": "Read one enumerated original EPUB asset",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "path"
+    ],
+    "headers": [
+      "If-Match",
+      "If-None-Match"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "responseStatuses": [
+      304
+    ],
+    "http": true,
+    "admission": "media-body"
+  },
+  {
+    "id": "get_reading_sessions_sessionId_pages_pageIndex",
+    "method": "GET",
+    "path": "/v1/reading/sessions/{sessionId}/pages/{pageIndex}",
+    "summary": "Read one bounded comic page image",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "width"
+    ],
+    "headers": [
+      "If-Match",
+      "If-None-Match"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "responseStatuses": [
+      304
+    ],
+    "http": true,
+    "admission": "media-body"
+  },
+  {
+    "id": "get_reading_sessions_sessionId_progress",
+    "method": "GET",
+    "path": "/v1/reading/sessions/{sessionId}/progress",
+    "summary": "Read the selected publication's saved location",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "headers": [
+      "If-Match"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_reading_sessions_sessionId_source",
+    "method": "GET",
+    "path": "/v1/reading/sessions/{sessionId}/source",
+    "summary": "Read the selected PDF's exact byte range",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "headers": [
+      "If-Match",
+      "Range"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 206,
+    "responseContentType": "application/pdf",
+    "responseStatuses": [
+      416
+    ],
+    "http": true,
+    "admission": "media-body"
+  },
+  {
     "id": "get_remote_playback_controls",
     "method": "GET",
     "path": "/v1/playback/controls",
@@ -8464,6 +8678,39 @@ export const routes = [
     ],
     "status": 200,
     "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media-body"
+  },
+  {
+    "id": "head_reading_sessions_sessionId_source",
+    "method": "HEAD",
+    "path": "/v1/reading/sessions/{sessionId}/source",
+    "summary": "Read the selected PDF's exact byte range",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "headers": [
+      "If-Match",
+      "Range"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/pdf",
+    "responseStatuses": [
+      416
+    ],
     "http": true,
     "admission": "media-body"
   },
@@ -12389,6 +12636,9 @@ export const routes = [
     "lane": "security",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "X-Portico-Installation-Id"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -12736,6 +12986,31 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "default"
+  },
+  {
+    "id": "post_reading_sessions",
+    "method": "POST",
+    "path": "/v1/reading/sessions",
+    "summary": "Open an authorized reading publication",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "post_saved_resources",
@@ -14384,6 +14659,34 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "default"
+  },
+  {
+    "id": "put_reading_sessions_sessionId_progress",
+    "method": "PUT",
+    "path": "/v1/reading/sessions/{sessionId}/progress",
+    "summary": "Save the selected publication's location with compare and swap",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 8192,
+    "headers": [
+      "If-Match"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "put_saved_pins_kind_id",
@@ -17690,6 +17993,7 @@ export const routePaths = {
   "delete_playlists_id_entries_entryId": "/v1/playlists/{id}/entries/{entryId}",
   "delete_playlists_id_shares": "/v1/playlists/{id}/shares",
   "delete_queue": "/v1/queues/{id}",
+  "delete_reading_sessions_sessionId": "/v1/reading/sessions/{sessionId}",
   "delete_saved_resources_id": "/v1/saved-resources/{id}",
   "delete_saved_resources_id_shares": "/v1/saved-resources/{id}/shares",
   "delete_search_history": "/v1/search/history",
@@ -17876,6 +18180,7 @@ export const routePaths = {
   "get_items_id_source_availability": "/v1/items/{id}/source-availability",
   "get_items_id_trickplay": "/v1/items/{id}/trickplay",
   "get_items_id_trickplay_set_thumbnails_vtt": "/v1/items/{id}/trickplay/{set}/thumbnails.vtt",
+  "get_items_itemId_reading_versions": "/v1/items/{itemId}/reading/versions",
   "get_items_screen_metadata": "/v1/items/{id}/metadata/screen",
   "get_job": "/v1/jobs/{id}",
   "get_job_failures": "/v1/jobs/{id}/failures",
@@ -17948,6 +18253,11 @@ export const routePaths = {
   "get_queue_window": "/v1/queues/{id}/window",
   "get_rating_systems": "/v1/rating-systems",
   "get_readiness": "/v1/readiness",
+  "get_reading_items": "/v1/reading/items",
+  "get_reading_sessions_sessionId_assets": "/v1/reading/sessions/{sessionId}/assets",
+  "get_reading_sessions_sessionId_pages_pageIndex": "/v1/reading/sessions/{sessionId}/pages/{pageIndex}",
+  "get_reading_sessions_sessionId_progress": "/v1/reading/sessions/{sessionId}/progress",
+  "get_reading_sessions_sessionId_source": "/v1/reading/sessions/{sessionId}/source",
   "get_remote_playback_controls": "/v1/playback/controls",
   "get_saved_content": "/v1/content",
   "get_saved_pins_order": "/v1/saved-pins/order",
@@ -17998,6 +18308,7 @@ export const routePaths = {
   "get_webhook": "/v1/admin/webhooks/{id}",
   "head_download_artifact": "/v1/downloads/artifacts/{grant}",
   "head_media_grant_audio": "/v1/media/{grant}/audio",
+  "head_reading_sessions_sessionId_source": "/v1/reading/sessions/{sessionId}/source",
   "head_v1_media_subtitles_grant_resource_revision_fonts_font": "/v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}",
   "head_v1_media_subtitles_grant_resource_revision_original_ass": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ass",
   "head_v1_media_subtitles_grant_resource_revision_original_idx": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.idx",
@@ -18188,6 +18499,7 @@ export const routePaths = {
   "post_quick_connect_decision": "/v1/quick-connect/decision",
   "post_quick_connect_review": "/v1/quick-connect/review",
   "post_quick_connect_token": "/v1/quick-connect/token",
+  "post_reading_sessions": "/v1/reading/sessions",
   "post_saved_resources": "/v1/saved-resources",
   "post_setup_account_complete": "/v1/setup/account/complete",
   "post_setup_finish": "/v1/setup/finish",
@@ -18258,6 +18570,7 @@ export const routePaths = {
   "put_me_library_navigation": "/v1/me/library-navigation",
   "put_metadata_settings": "/v1/admin/metadata/settings",
   "put_playlists_id_shares": "/v1/playlists/{id}/shares",
+  "put_reading_sessions_sessionId_progress": "/v1/reading/sessions/{sessionId}/progress",
   "put_saved_pins_kind_id": "/v1/saved-pins/{kind}/{id}",
   "put_saved_pins_order": "/v1/saved-pins/order",
   "put_saved_resources_id_entries": "/v1/saved-resources/{id}/entries",

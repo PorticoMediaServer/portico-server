@@ -4,8 +4,9 @@ import type {ReaderAdapter, ReaderDocument, ReaderFormat, ReaderLocation, Reader
 import {ReaderError, readerErrorCode, throwIfAborted} from './errors.ts';
 import {validateSource} from './source.ts';
 import {validateViewport} from './layout.ts';
+import {abortScope} from './abort.ts';
 
-type Session<P extends object> = {abort: AbortController; document?: ReaderDocument<P>; view?: ReaderView<P>; tail: Promise<void>};
+type Session<P extends object> = {abort: AbortController; detachAuthority?:()=>void; document?: ReaderDocument<P>; view?: ReaderView<P>; tail: Promise<void>};
 const empty = Object.freeze([]);
 function copy<P extends object>(value: P): Readonly<P> { return Object.freeze({...value}); }
 export function validateLocation(location: ReaderLocation, format: ReaderFormat): void {
@@ -61,7 +62,9 @@ export class ReaderController<P extends object> {
   }
   /** Canonical consumers may refresh their projection for each new book. */
   protected preferencesAtOpen(): Readonly<P> { return this.base; }
-  async open(options: Readonly<{source: ReaderSource; format: ReaderFormat; container: HTMLElement; location?: ReaderLocation; viewport?: ReaderViewport; metadata?: ReaderMetadata}>): Promise<void> {
+  async open(options: Readonly<{source: ReaderSource; format: ReaderFormat; container: HTMLElement; location?: ReaderLocation; viewport?: ReaderViewport; metadata?: ReaderMetadata;
+    /** Retire cached pages, DOM and engine work with the authorised session. */
+    signal?:AbortSignal}>): Promise<void> {
     const lifecycleVersion = ++this.lifecycleVersion;
     // Invalidate before waiting for disposal, so simultaneous opens cannot adopt
     // a stale document/view. A late adapter result is disposed in its own turn.
@@ -73,6 +76,13 @@ export class ReaderController<P extends object> {
     this.overrides = {};
     this.publish({status: 'opening', zoom: null, canTurnAtFit: true, format: options.format, sourceId: options.source.id, sourceRevision: options.source.revision, metadata: undefined,
       toc: empty, location: null, selection: null, error: undefined, preferences: this.base, overriddenKeys: empty});
+    if(options.signal) {
+      const authority=options.signal;
+      const retire=()=>{if(this.session===session)void this.close().catch(()=>{});};
+      session.detachAuthority=()=>authority.removeEventListener('abort',retire);
+      authority.addEventListener('abort',retire,{once:true});
+      if(authority.aborted)retire();
+    }
     try {
       await this.disposeSession(previous);
       if (!this.current(session)) return;
@@ -137,6 +147,7 @@ export class ReaderController<P extends object> {
   }
   private async disposeSession(session?: Session<P>) {
     if (!session) return;
+    session.detachAuthority?.();
     session.abort.abort();
     // A view error must not prevent its document/ZIP/blob disposal.
     try { await session.view?.dispose(); }
@@ -208,27 +219,29 @@ export class ReaderController<P extends object> {
       throw new ReaderError('invalid_location');
     if (!Number.isSafeInteger(options.width) || options.width < 32 || options.width > 2048) throw new ReaderError('limit_exceeded');
     if (!document.page) throw new ReaderError('unsupported_operation');
-    const signal = AbortSignal.any([options.signal, session.abort.signal]);throwIfAborted(signal);
+    const scope = abortScope([options.signal, session.abort.signal]), signal=scope.signal;
     let abort!: () => void;
     const stopped = new Promise<never>((_,reject)=>{
       abort=()=>reject(new ReaderError('aborted'));signal.addEventListener('abort',abort,{once:true});
     });
     try {
+      throwIfAborted(signal);
       const image = await Promise.race([document.page(index,{width:options.width,signal}),stopped]);
       throwIfAborted(signal);if (!this.current(session)) throw new ReaderError('aborted');
       if (!['image/jpeg','image/png','image/webp'].includes(image.mime) || !(image.bytes instanceof Uint8Array)
         || !image.bytes.length || image.bytes.length > 16*1024*1024 || !Number.isSafeInteger(image.width) || image.width < 1
         || !Number.isSafeInteger(image.height) || image.height < 1) throw new ReaderError('invalid_book');
       return Object.freeze({...image,bytes:image.bytes.slice()});
-    } finally {signal.removeEventListener('abort',abort);}
+    } finally {signal.removeEventListener('abort',abort);scope.dispose();}
   }
   async *search(query: string, options: ReaderSearchOptions): AsyncIterable<ReaderSearchResult> {
     const session = this.session;
     if (!session?.document || !this.current(session)) throw new ReaderError('closed');
     if (!query.trim() || query.length > 1024 || !Number.isSafeInteger(options.limit) || options.limit < 1 || options.limit > 500)
       throw new ReaderError('limit_exceeded');
-    const signal = AbortSignal.any([options.signal, session.abort.signal]);
+    const scope = abortScope([options.signal, session.abort.signal]), signal=scope.signal;
     let count = 0;
+    try {
     for await (const result of session.document.search(query, {...options, signal})) {
       throwIfAborted(signal);
       if (!this.current(session)) throw new ReaderError('aborted');
@@ -236,6 +249,7 @@ export class ReaderController<P extends object> {
       yield Object.freeze({...result, location: copy(result.location)});
       if (++count >= options.limit) return;
     }
+    } finally {scope.dispose();}
   }
 }
 function freezeToc(items: readonly import('./ports.ts').ReaderTocItem[]): readonly import('./ports.ts').ReaderTocItem[] {

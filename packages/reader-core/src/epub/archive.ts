@@ -2,6 +2,7 @@ import {Reader, ZipReader, type Entry, type FileEntry} from '@zip.js/zip.js';
 import type {ReaderSource} from '../ports.ts';
 import {readRange} from '../source.ts';
 import {ReaderError, throwIfAborted} from '../errors.ts';
+import {abortScope} from '../abort.ts';
 
 export type EpubAsset = Readonly<{path: string; size: number; mime?: string}>;
 export interface EpubAssets {
@@ -40,8 +41,8 @@ async function checkDirectory(source: ReaderSource, signal: AbortSignal) {
   throw new ReaderError('invalid_book');
 }
 export async function openEpubArchive(source: ReaderSource, parent: AbortSignal): Promise<EpubAssets> {
-  const abort = new AbortController(), signal = AbortSignal.any([parent, abort.signal]);
-  await checkDirectory(source, signal);
+  const abort = new AbortController(), scope=abortScope([parent, abort.signal]), signal=scope.signal;
+  try{await checkDirectory(source, signal);}catch(error){scope.dispose();throw error;}
   const reader=new RangeReader(source,signal);
   const zip = new ZipReader(reader, {useWebWorkers: false, checkCrc32: true, strictness: 'strict'});
   const entries = new Map<string, FileEntry>(); let total = 0;
@@ -65,7 +66,8 @@ export async function openEpubArchive(source: ReaderSource, parent: AbortSignal)
         throwIfAborted(signal); throwIfAborted(callerSignal);
         const entry = entries.get(safeArchivePath(path)); if (!entry) return new Uint8Array();
         const reading = tail.then(async () => {
-          const readSignal = AbortSignal.any([signal, callerSignal]); throwIfAborted(readSignal);
+          const task=abortScope([signal, callerSignal]),readSignal=task.signal;
+          try {throwIfAborted(readSignal);
           const chunks: Uint8Array[] = []; let size = 0;
           const sink = new WritableStream<Uint8Array>({write(chunk) {
             throwIfAborted(readSignal); size += chunk.length;
@@ -79,12 +81,13 @@ export async function openEpubArchive(source: ReaderSource, parent: AbortSignal)
           if (size !== entry.uncompressedSize) throw new ReaderError('invalid_book');
           const bytes = new Uint8Array(size); let at=0; for(const chunk of chunks) {bytes.set(chunk,at); at+=chunk.length;}
           return bytes;
+          }finally{task.dispose();}
         });
         tail = reading.catch(() => {}); return reading;
       },
-      async dispose() {abort.abort(); await tail.catch(() => {}); entries.clear(); await zip.close();}
+      async dispose() {abort.abort();scope.dispose(); await tail.catch(() => {}); entries.clear(); await zip.close();}
     };
     if (new TextDecoder().decode(await assets.read('mimetype', signal)) !== 'application/epub+zip') throw new ReaderError('invalid_book');
     return assets;
-  } catch (error) {abort.abort(); await zip.close(); throw error;}
+  } catch (error) {abort.abort();scope.dispose(); await zip.close(); throw error;}
 }
