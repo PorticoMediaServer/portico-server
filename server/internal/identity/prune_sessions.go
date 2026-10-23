@@ -61,17 +61,20 @@ func (s *Service) PruneSessionHistory(ctx context.Context) (int64, error) {
 	return total, nil
 }
 
-// EndedSessionRetention is how long the record of a session that has ended is
-// kept. It is what lets a person see when and why a device was signed out;
-// after this long it is only growth.
+// EndedSessionRetention is the default retention. The normalized sign-in
+// policy supplies the current value to the bounded maintenance consumer.
 const EndedSessionRetention = 90 * 24 * time.Hour
 
 // PruneEndedSessions removes the records of sessions that ended (were signed
-// out, or lapsed unused) longer ago than EndedSessionRetention, a bounded
+// out, or lapsed unused) longer ago than the current retention, a bounded
 // batch at a time. A live session is never touched, whatever its age: a
 // device that keeps renewing keeps its session.
 func (s *Service) PruneEndedSessions(ctx context.Context) (int64, error) {
-	cutoff := time.Now().Add(-EndedSessionRetention).UTC().Format(time.RFC3339)
+	policy, e := readSignInPolicy(ctx, s.db)
+	if e != nil {
+		return 0, e
+	}
+	cutoff := time.Now().Add(-time.Duration(policy.Values.EndedSessionsDays) * 24 * time.Hour).UTC().Format(time.RFC3339)
 	const ended = `SELECT id FROM authorization_session_families WHERE (revoked=1 AND revoked_at<>'' AND revoked_at<=?1) OR authorization_horizon<=?1 LIMIT 64`
 	var due bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(`+ended+`)`, cutoff).Scan(&due); err != nil || !due {
@@ -80,6 +83,11 @@ func (s *Service) PruneEndedSessions(ctx context.Context) (int64, error) {
 	var removed int64
 	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
 		removed = 0
+		policy, e := ReadSignInPolicyTx(ctx, tx)
+		if e != nil {
+			return e
+		}
+		cutoff = time.Now().Add(-time.Duration(policy.Values.EndedSessionsDays) * 24 * time.Hour).UTC().Format(time.RFC3339)
 		rows, err := tx.QueryContext(ctx, ended, cutoff)
 		if err != nil {
 			return err

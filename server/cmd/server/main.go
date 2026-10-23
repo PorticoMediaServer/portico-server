@@ -1183,7 +1183,7 @@ func run() (runErr error) {
 	apiDependencies := httpapi.Dependencies{TelemetryContext: ctx, RcloneProgram: &rcloneStatus, CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
 		held, _ := transport.Held()
 		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
-	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
+	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, LocalHTTPURL: networking.LoopbackHTTPURL(listener.Addr()), Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
 		control.NotifySettingsChanged(ctx)
 		deliverySettings.Refresh(ctx)
 		claimHandler.Remote().Wake()
@@ -1206,6 +1206,11 @@ func run() (runErr error) {
 	// only the router can resolve for a request seen outside the mux.
 	measurements.Pattern = httpapi.RoutePattern
 	doneRouter(nil)
+	if claimHandler != nil {
+		supervise.Supervise(ctx, "networking.claim.web-recovery", func(ctx context.Context) {
+			claimHandler.RunWebClaimRecovery(ctx, httpapi.NetworkingClaimResume(ident))
+		})
+	}
 	supervise.Supervise(ctx, "cmd.api-events", events.Run)
 	supervise.Supervise(ctx, "cmd.scan-events", func(ctx context.Context) { scanevents.Run(ctx, db, cat.InventoryStatus, scanner) })
 	// The outermost wrapper: a handler panic is counted and attributed here, and

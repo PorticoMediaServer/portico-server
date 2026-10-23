@@ -12,7 +12,7 @@ import (
 func TestAccountMovePublicHTTPCodeAndOwnerReadOnly(t *testing.T) {
 	f := administrationFixtureNew(t)
 	ctx := context.Background()
-	if _, e := f.deps.DB.Exec(`UPDATE accounts SET password_hash=X'';INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'portico');INSERT INTO account_portico_links(account_id,hosted_account_id) SELECT id,'acc_'||id FROM accounts`); e != nil {
+	if _, e := f.deps.DB.Exec(`UPDATE accounts SET password_hash=X'';UPDATE identity_state SET sign_in_kind='portico';INSERT INTO account_portico_links(account_id,hosted_account_id) SELECT id,'acc_'||id FROM accounts`); e != nil {
 		t.Fatal(e)
 	}
 	c, e := identity.WithIssuingDevice(ctx, identity.DeviceRegistration{InstallationID: identity.Token(), Name: "Browser", Platform: "web", App: "portico"}, "192.0.2.1")
@@ -46,6 +46,9 @@ func TestAccountMovePublicHTTPCodeAndOwnerReadOnly(t *testing.T) {
 	var codes identity.MoveCodes
 	if e = json.Unmarshal(codeReply.Body.Bytes(), &codes); e != nil || codeReply.Code != 200 || len(codes.Items) != 1 {
 		t.Fatalf("codes %d %s %v", codeReply.Code, codeReply.Body, e)
+	}
+	if codes.Items[0].ServerID != f.deps.Identity.ID() {
+		t.Fatal("Local move link lost canonical identity")
 	}
 	code := codes.Items[0].Code
 	preview := f.call("POST", "/v1/auth/move/code", "", `{"code":"`+code+`"}`)

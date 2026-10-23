@@ -248,6 +248,9 @@ func (d *Discovery) snapshot(ctx context.Context, port int, addresses []netip.Ad
 		srv = append(srv, dnsName(s.host)...)
 		s.records = append(s.records, discoveryRecord{s.instance, 33, srv, true})
 		var txt []byte
+		// fp identifies this identity key, never a TLS certificate. Discovery
+		// alone grants no trust: the client must verify a fresh v2 route proof
+		// from this key binding the leaf observed on that same connection.
 		for _, v := range []string{"v=1", "id=" + id.ServerID, "fp=" + base64.RawURLEncoding.EncodeToString(digest[:]), "port=" + strconv.Itoa(port), "path=/", "name=" + name} {
 			txt = append(txt, byte(len(v)))
 			txt = append(txt, v...)
