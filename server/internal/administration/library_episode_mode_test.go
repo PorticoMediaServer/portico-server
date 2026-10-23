@@ -72,6 +72,16 @@ func TestLibrarySettingsSavePreservesEpisodeMode(t *testing.T) {
 					t.Fatalf("unrelated save removed registered operation %q: %+v", op, policy)
 				}
 			}
+			// Also retain the actual registered set, so later Complete-tier
+			// additions fail here if the full-save mapping drops them.
+			if len(policy.Operations) != len(before.Operations) {
+				t.Fatalf("full save changed operation count: before=%v after=%v", before.Operations, policy.Operations)
+			}
+			for _, op := range before.Operations {
+				if !policy.Allows(op) {
+					t.Fatalf("full save lost registered operation %q", op)
+				}
+			}
 			if policy.Tier != "custom" || policy.Revision != before.Revision+1 {
 				t.Fatalf("full save scan revision: before=%+v, after=%+v", before, policy)
 			}
