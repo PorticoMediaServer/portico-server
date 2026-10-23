@@ -17,6 +17,8 @@ func TestSingleOfferAndStaleSessionProgress(t *testing.T) {
 	id, item, _ := catalogFixture(t, db, "lib", "/test", compactcatalog.Movie, "item", "Film", compactcatalog.Asset{Path: "/test/file.mp4", Size: 1, ModifiedNS: 1, Container: "mp4", VideoCodec: "h264", AudioCodec: "aac", Width: 1920, Height: 1080, Duration: 100})
 	s := New(db)
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
+	insertFixtureAccount(t, db, p.AccountID, p.ProfileID)
+	insertFixtureSession(t, db, p.Hash, p.AccountID, p.ProfileID, p.Role, "2999-01-01T00:00:00Z")
 	a, e := s.Create(p, item, "automatic", "one")
 	if e != nil || a.Mode != "direct" {
 		t.Fatalf("single offer %+v %v", a, e)
@@ -72,6 +74,12 @@ func TestSingleOfferAndStaleSessionProgress(t *testing.T) {
 	if e = s.Cleanup(); e != nil {
 		t.Fatal(e)
 	}
+	// Renewal keeps this controller's family. A bare unrelated token must not
+	// replay another device's receipt merely because the profile matches.
+	if _, e = db.Exec(`UPDATE authorization_session_families SET current_generation=2 WHERE id='fixture-family-session';
+ INSERT INTO authorization_family_tokens(token_hash,family_id,generation,expires_at) VALUES('new-login-session','fixture-family-session',2,'2999-01-01T00:00:00Z')`); e != nil {
+		t.Fatal(e)
+	}
 	p.Hash = "new-login-session"
 	replayed, e := s.Create(p, item, "automatic", "two")
 	if e != nil || replayed.ID != b.ID || replayed.State != "stopped" {
@@ -95,6 +103,7 @@ func TestSharedEpisodeBoundaryAndIndependentWholeSourceProgress(t *testing.T) {
 	}
 	s := New(db)
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
+	insertFixtureAccount(t, db, p.AccountID, p.ProfileID)
 	first, err := s.Create(p, ep1, "automatic", "first")
 	if err != nil || first.SourceBoundary != "unknown_multi_episode" || first.Duration != 120 {
 		t.Fatal(first, err)

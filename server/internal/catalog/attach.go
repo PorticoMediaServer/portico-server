@@ -77,11 +77,12 @@ func AttachMovieTx(ctx context.Context, tx *sql.Tx, f MovieFile) (int64, error) 
 
 // TrackFile is a music track or audiobook part with what it was read as.
 type TrackFile struct {
-	Library int64               // catalog_libraries.id
-	Kind    compactcatalog.Kind // Track or Part
-	Asset   int64
-	Path    string
-	Title   string
+	CueOrdinal int
+	Library    int64               // catalog_libraries.id
+	Kind       compactcatalog.Kind // Track or Part
+	Asset      int64
+	Path       string
+	Title      string
 
 	// TagKey is the track's identity from its tags (compactcatalog.TrackKey),
 	// or "" while tags have not been read or do not say enough.
@@ -97,7 +98,7 @@ func AttachTrackTx(ctx context.Context, tx *sql.Tx, f TrackFile) (int64, error) 
 	if err != nil {
 		return 0, err
 	}
-	claim := compactcatalog.TitleClaim{Library: f.Library, Kind: f.Kind, Provider: f.Provider, Title: f.Title, Added: catalogedNow(), Locator: compactcatalog.ItemKey(root, f.Path, 0)}
+	claim := compactcatalog.TitleClaim{Library: f.Library, Kind: f.Kind, Provider: f.Provider, Title: f.Title, Added: catalogedNow(), Locator: compactcatalog.ItemKey(root, f.Path, f.CueOrdinal)}
 	if f.TagKey != "" {
 		claim.Keys = []string{f.TagKey}
 	}

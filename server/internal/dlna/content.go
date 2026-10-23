@@ -37,6 +37,7 @@ type resource struct {
 	size                           int64
 	duration                       float64
 	width, height                  int
+	sampleRate, bitDepth, channels int
 }
 
 // Catalogue kinds (catalog_kinds) the tree shows.
@@ -81,7 +82,7 @@ const entitySelect = `SELECT ` + entityColumns
 
 const entityColumns = `e.id,pid(e.public_id),e.kind,e.title,e.year,COALESCE(pid(p.public_id),''),COALESCE(p.title,''),COALESCE(gp.title,''),
  COALESCE(song.track_number,part.part_number,episode.number,0),
- COALESCE(a.token,''),COALESCE(a.container,''),COALESCE(a.video_codec,''),COALESCE(a.audio_codec,''),COALESCE(a.width,0),COALESCE(a.height,0),COALESCE(a.duration,0),COALESCE(a.size,0),
+ COALESCE(a.token,''),COALESCE(a.container,''),COALESCE(a.video_codec,''),COALESCE(a.audio_codec,''),COALESCE(a.width,0),COALESCE(a.height,0),COALESCE(a.duration,0),COALESCE(a.size,0),COALESCE(mf.sample_rate,0),COALESCE(mf.bit_depth,0),COALESCE(mf.channels,0),
  CASE WHEN k.container=1 THEN (SELECT COUNT(*) FROM catalog_entities c WHERE c.parent_id=e.id AND c.retired=0) ELSE 0 END`
 
 const entityFrom = ` FROM catalog_entities e
@@ -95,6 +96,7 @@ const entityFrom = ` FROM catalog_entities e
  LEFT JOIN catalog_seasons season ON season.entity_id=e.id
  LEFT JOIN catalog_assets a ON a.id=(SELECT x.id FROM catalog_asset_links l JOIN catalog_assets x ON x.id=l.asset_id
   WHERE l.entity_id=e.id AND l.part_index=0 AND l.available=1 AND x.available=1 AND x.container!='strm' ORDER BY l.asset_id LIMIT 1)
+ LEFT JOIN music_technical_facts mf ON mf.asset_id=a.token AND mf.size=a.size AND mf.modified_ns=a.modified_ns
  WHERE e.retired=0 AND e.kind BETWEEN 1 AND 9 AND (k.playable=0 OR a.id IS NOT NULL)
  AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=e.id)`
 
@@ -112,7 +114,7 @@ func scanEntity(rows interface{ Scan(...any) error }) (object, int64, int, error
 	var parentTitle, grandparentTitle string
 	var r resource
 	err := rows.Scan(&id, &o.id, &kind, &o.title, &o.year, &o.parent, &parentTitle, &grandparentTitle, &o.track,
-		&r.token, &r.container, &r.video, &r.audio, &r.width, &r.height, &r.duration, &r.size, &o.children)
+		&r.token, &r.container, &r.video, &r.audio, &r.width, &r.height, &r.duration, &r.size, &r.sampleRate, &r.bitDepth, &r.channels, &o.children)
 	if err != nil {
 		return o, 0, 0, err
 	}

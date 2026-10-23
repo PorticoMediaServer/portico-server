@@ -6,7 +6,7 @@ export type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource, PlayerSt
 export {ServerClock, driftCorrection, timelinePosition, type ClockEstimate, type ClockSample, type DriftCorrection} from './clock.ts';
 export {GenerationGate} from './generation.ts';
 export {TimelineReporter, type FailureKind, type MarkerType, type TimelineReport, type TimelineReporterOptions, type TimelineSend, type TimelineSnapshot, type TimelineState} from './timeline.ts';
-export {connectionTooSlow, qualityLadder, qualityOptionRequest, qualityOptionSelected, requestInForce, sameQuality, savedQualities, savedQualityRequest, type QualityId, type QualityInForce, type QualityOption, type QualityRequest, type SavedQuality} from './quality.ts';
+export {connectionTooSlow, musicQualityLadder, savedMusicQualities, savedMusicQualityRequest, type SavedMusicQuality, qualityLadder, qualityOptionRequest, qualityOptionSelected, requestInForce, sameQuality, savedQualities, savedQualityRequest, type QualityId, type QualityInForce, type QualityOption, type QualityRequest, type SavedQuality} from './quality.ts';
 export {PlaybackApiError, call, header, idempotencyKey, type RetryClass, type V1Http, type V1Request, type V1Response} from './http.ts';
 export {ShufflePermutation} from './shuffle.ts';
 export {ContractError, consecutiveOnAlbum, parseAdminSession, parseDevice, parseEntry, parseEvent, parseOptions, parsePage, parseQueue, parseSession, parseSessionEnd, type AdminSession, type AudioStream, type Chapter, type ControllableDevice, type Decision, type Marker, type MediaVersion, type PlanStream, type PlaybackOptions, type PlaybackPlan, type Presentation, type QueueEntry, type QueueHeader, type QueueSegment, type QueueBrowseSelector, type Selector, type ServerEvent, type Session, type SessionEnd, type SessionKind, type StreamAction, type SubtitleStream, type Trickplay, type VersionPart, type VideoStream} from './types.ts';
@@ -24,4 +24,4 @@ export {sessionEndMessage} from '../session-end.ts';
 export {audioGainLinear, audioSeconds, audioTrimWindow, parseAudioRenderV2, playableAudio, type AudioDecodeCapability, type AudioGain, type AudioRenderMode, type AudioRenderV2, type AudioTrim, type Normalization, type PlayableAudioRender} from './audio-render.ts';
 export {V1ChannelControl, serverSupportsV1Channels, channelView, parseChannelSession, v1ChannelId, type ChannelPlayback, type ChannelStartOptions, type ChannelView, type ChannelViewSink, type V1ChannelOptions} from './channel-control.ts';
 
-export {qualityPresentation, qualityLimitKbps, qualityLimit} from './quality-presentation.ts';
+export {musicQualityPresentation, qualityPresentation, qualityLimitKbps, qualityLimit} from './quality-presentation.ts';
