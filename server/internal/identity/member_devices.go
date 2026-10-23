@@ -218,8 +218,14 @@ func (s *Service) SignOutMemberDevices(ctx context.Context, actor Principal, acc
 		if e != nil {
 			return e
 		}
+		if !validFamilyID(account) || device != "" && !validFamilyID(device) {
+			return ErrDeviceInput
+		}
 		var role string
 		if e = tx.QueryRowContext(ctx, `SELECT role FROM direct_memberships WHERE account_id=?`, account).Scan(&role); e != nil {
+			if errors.Is(e, sql.ErrNoRows) {
+				return ErrDeviceUnknown
+			}
 			return e
 		}
 		if !managesDevicesOf(live, account, role) {
