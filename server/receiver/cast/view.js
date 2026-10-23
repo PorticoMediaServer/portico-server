@@ -7,7 +7,9 @@
   var $ = function (id) { return document.getElementById(id); };
   var ui = $('ui'), metadata = null, image = '', lastIdentity = '', lastState = '';
   var overlayTimer = null, takeoverTimer = null;
+  var promptIdentity = '', promptDuration = 0;
   var OVERLAY_VISIBLE_MS = 5000;
+  function t(key, params) { return window.porticoCastText ? window.porticoCastText.t('cast.receiver.' + key, params) : ''; }
   function visible(id, on) { $(id).hidden = !on; }
   function text(id, value) { $(id).textContent = typeof value === 'string' ? value : ''; }
   function line(id, value) { text(id, value); visible(id, !!value); }
@@ -26,7 +28,7 @@
     node.className = loading ? (isEpisode ? 'epl2' : 'sub') : 'epl';
     if (isEpisode) {
       if (Number.isSafeInteger(meta.season) && meta.season >= 0 && Number.isSafeInteger(meta.episode) && meta.episode >= 0) {
-        var code = document.createElement('span'); code.textContent = 'S' + meta.season + ' E' + meta.episode; node.appendChild(code);
+        var code = document.createElement('span'); code.textContent = t('episodeLabel', {season: meta.season, episode: meta.episode}); node.appendChild(code);
         var gap = document.createElement('i'); gap.className = 'gap'; node.appendChild(gap);
       }
       if (meta.title) { var title = document.createElement('b'); title.textContent = meta.title; node.appendChild(title); }
@@ -41,7 +43,10 @@
   function artwork(prefix, url, square) {
     var art = $(prefix + '-art'), ambient = $(prefix + '-ambient'), tile = $(prefix + '-art-tile');
     // The engine resolves protected artwork with its own bearer. This port never fetches it.
-    if (url) { art.src = url; ambient.src = url; } else { art.removeAttribute('src'); ambient.removeAttribute('src'); }
+    if (url) {
+      if (art.getAttribute('src') !== url) art.src = url;
+      if (ambient.getAttribute('src') !== url) ambient.src = url;
+    } else { art.removeAttribute('src'); ambient.removeAttribute('src'); }
     art.hidden = !url; ambient.hidden = !url;
     visible(prefix + '-shade', !!url); visible(prefix + '-glyph', !url);
     tile.classList.toggle('none', !url); tile.classList.toggle('sq', !!square);
@@ -93,41 +98,46 @@
     $('progress-fill').style.width = knownAt && knownDuration && duration > 0 ? Math.min(100, at / duration * 100) + '%' : '0%';
     visible('state-pill', playingState !== 'playing'); visible('state-pause', playingState === 'paused'); visible('state-buffering', playingState === 'buffering');
     $('state-pill').classList.toggle('buf', playingState === 'buffering');
-    text('state-label', playingState === 'paused' ? 'Paused' : playingState === 'buffering' ? 'Buffering' : '');
+    text('state-label', playingState === 'paused' ? t('paused') : playingState === 'buffering' ? t('buffering') : '');
     if (changed || observation.revealOverlay === true) reveal(audio, playingState);
     lastIdentity = nextIdentity; lastState = playingState;
   }
-  var errors = {
-    unavailable: ['This title isn’t available right now', 'It may have been removed, or your access may have changed.'],
-    busy: ['Your server is busy right now', 'Try again in a moment from your phone or computer.'],
-    unreachable: ['This TV can’t reach your server', 'Check that your server is on and that this TV is on the same network, then try again.'],
-    decode: ['This title couldn’t play on this TV', 'Try again from your phone or computer, or choose a lower quality.'],
-    generic: ['This title couldn’t play on this TV', 'Try again from your phone or computer.']
-  };
   function error(kind) {
-    var copy = errors[kind] || errors.generic;
-    state('error'); takeover(null); notice(''); text('error-title', copy[0]); text('error-body', copy[1]);
+    if (['unavailable', 'busy', 'unreachable', 'decode', 'generic'].indexOf(kind) === -1) kind = 'generic';
+    state('error'); takeover(null); notice(''); text('error-title', t('error.' + kind + '.title')); text('error-body', t('error.' + kind + '.body'));
   }
   function takeover(prompt) {
     clearInterval(takeoverTimer); takeoverTimer = null; visible('takeover', !!prompt);
-    if (!prompt) { text('takeover-title', ''); text('takeover-body', ''); return; }
-    text('takeover-title', (prompt.requester || 'Someone') + ' wants to play on this TV');
-    text('takeover-body', prompt.controllerPresent ? 'Waiting for the person watching now to allow it.' : 'Switching in a few seconds.');
+    if (!prompt) { promptIdentity = ''; promptDuration = 0; text('takeover-title', ''); text('takeover-body', ''); return; }
+    text('takeover-title', t('takeover.title', {requester: prompt.requester || t('someone')}));
+    text('takeover-body', t(prompt.controllerPresent ? 'takeover.present' : 'takeover.absent'));
     visible('takeover-keys', prompt.remoteKeysAvailable === true);
     var duration = Number.isFinite(prompt.timeoutMs) && prompt.timeoutMs > 0 ? prompt.timeoutMs : 0;
+    var nextPromptIdentity = JSON.stringify([prompt.requester, prompt.controllerPresent]);
+    // Key-observation updates carry the authority's remaining deadline. Keep the
+    // full visual denominator; a capability update must not refill the line.
+    if (nextPromptIdentity !== promptIdentity || duration >= promptDuration) promptDuration = duration;
+    promptIdentity = nextPromptIdentity;
     var started = Date.now();
-    function drain() { var left = duration ? Math.max(0, 1 - (Date.now() - started) / duration) : 0; $('takeover-remaining').style.width = left * 100 + '%'; }
+    function drain() { var left = promptDuration ? Math.max(0, (duration - (Date.now() - started)) / promptDuration) : 0; $('takeover-remaining').style.width = left * 100 + '%'; }
     drain(); if (duration) takeoverTimer = setInterval(drain, 100);
   }
   function notice(message) {
     // Binding listening ruling b4: transient recovery is silent. Only drawn actionable failures.
-    var allowed = message === 'That seek couldn’t be made.' || message === 'Stop couldn’t be confirmed.';
+    var allowed = !!message && (message === t('notice.seekFailed') || message === t('notice.stopFailed'));
     visible('notice', allowed); text('notice-message', allowed ? message : '');
   }
   function pairingStatus(message, tone) { text('status', message); if (tone) $('status').dataset.tone = tone; else delete $('status').dataset.tone; }
   function browserPair(show) { visible('browser-pair', show === true); }
   function splash() { state('splash'); }
   function fit() { ui.style.setProperty('--receiver-scale', Math.min(window.innerWidth / 1920, window.innerHeight / 1080)); }
+  document.querySelectorAll('[data-text]').forEach(function (node) { node.textContent = t(node.dataset.text); });
+  $('browser-pair').setAttribute('aria-label', t('pair.label'));
+  var marker = '\uFDD0', hint = t('idle.hint', {playOn: marker});
+  hint.split(marker).forEach(function (part, index) {
+    if (index) { var emphasis = document.createElement('b'); emphasis.textContent = t('idle.playOn'); $('idle-hint').appendChild(emphasis); }
+    $('idle-hint').appendChild(document.createTextNode(part));
+  });
   window.addEventListener('resize', fit); fit();
   window.addEventListener('pagehide', function () { clearTimeout(overlayTimer); clearInterval(takeoverTimer); });
   window.porticoCastView = Object.freeze({idle: idle, loading: loading, artwork: showArtwork, preparing: preparing, playing: playing, takeover: takeover, notice: notice, error: error, pairingStatus: pairingStatus, browserPair: browserPair, splash: splash});

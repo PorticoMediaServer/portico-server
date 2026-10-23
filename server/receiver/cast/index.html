@@ -20,10 +20,10 @@
   </defs></svg>
   <section id="splash" class="screen atmosphere" aria-live="polite">
     <div class="gen round"></div><img class="wm" src="assets/portico-wordmark-mono-white.svg" alt="Portico">
-    <div class="mid"><h1>Ready to play from Portico</h1><p>On your phone or computer, open Portico, choose <b>Play on</b>, and pick this TV.</p>
-      <form id="browser-pair" class="bp" aria-label="Pairing code" hidden>
-        <label for="code-input">Pairing code</label>
-        <div class="row"><input class="code" id="code-input" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="btn play" id="pair" type="submit">Connect</button></div>
+    <div class="mid"><h1 data-text="idle.title"></h1><p id="idle-hint"></p>
+      <form id="browser-pair" class="bp" hidden>
+        <label for="code-input" data-text="pair.label"></label>
+        <div class="row"><input class="code" id="code-input" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="btn play" id="pair" type="submit" data-text="pair.connect"></button></div>
         <p class="stat" id="status" role="status"></p>
       </form>
     </div>
@@ -32,21 +32,22 @@
     <div class="gen"></div><img class="amb" id="loading-ambient" alt="" hidden><div class="shade" id="loading-shade" hidden></div>
     <div class="ldrow">
       <div class="art none" id="loading-art-tile"><img id="loading-art" alt="" hidden><svg id="loading-glyph" width="200" height="200" aria-hidden="true"><use href="#i-tv"/></svg></div>
-      <div class="tx"><p class="st"><i aria-hidden="true"></i><span id="loading-eyebrow">Getting ready</span></p><h1 id="loading-title"></h1><p class="sub" id="loading-subtitle" hidden></p><p class="sub2" id="loading-album" hidden></p><p class="wait" id="loading-wait" hidden>Your server is still preparing this for the TV.</p></div>
+      <div class="tx"><p class="st"><i aria-hidden="true"></i><span id="loading-eyebrow" data-text="gettingReady"></span></p><h1 id="loading-title"></h1><p class="sub" id="loading-subtitle" hidden></p><p class="sub2" id="loading-album" hidden></p><p class="wait" id="loading-wait" data-text="preparingLong" hidden></p></div>
     </div>
   </section>
   <section id="playback-splash" class="screen atmosphere"><div class="gen round"></div><img class="splash" src="assets/portico-wordmark-mono-white.svg" alt="Portico"></section>
   <section id="playing" class="screen" data-audio="false">
     <div class="audio-only gen"></div><img class="audio-only amb" id="playing-ambient" alt="" hidden><div class="audio-only shade" id="playing-shade" hidden></div>
-    <div class="audio-only ldrow"><div class="art sq none" id="playing-art-tile"><img id="playing-art" alt="" hidden><svg id="playing-glyph" width="200" height="200" aria-hidden="true"><use href="#i-music"/></svg></div><div class="tx"><p class="st"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><span>Now playing</span></p><h1 id="audio-title"></h1><p class="sub" id="audio-artist" hidden></p><p class="sub2" id="audio-album" hidden></p></div></div>
+    <div class="audio-only ldrow"><div class="art sq none" id="playing-art-tile"><img id="playing-art" alt="" hidden><svg id="playing-glyph" width="200" height="200" aria-hidden="true"><use href="#i-music"/></svg></div><div class="tx"><p class="st"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><span data-text="nowPlaying"></span></p><h1 id="audio-title"></h1><p class="sub" id="audio-artist" hidden></p><p class="sub2" id="audio-album" hidden></p></div></div>
     <span class="audio-only sym"><img src="assets/portico-wordmark-mono-white.svg" alt="Portico"></span>
     <div class="video-only" id="video-overlay"><div class="veil"></div><div class="sh-t"></div><div class="sh-b"></div><div class="ptop"><div class="pid"><h1 id="playing-title"></h1><p class="epl" id="playing-subtitle" hidden></p></div></div><span class="sym"><img src="assets/portico-wordmark-mono-white.svg" alt="Portico"></span></div>
     <div class="pbot" id="playing-progress"><div class="sb" id="progress-track" hidden><div class="trk2"><i id="progress-fill"></i></div></div><div class="under"><span class="l" id="time-played" hidden></span><span class="state" id="state-pill" hidden><svg id="state-pause" width="22" height="22" aria-hidden="true"><use href="#i-pause"/></svg><i id="state-buffering" aria-hidden="true" hidden></i><span id="state-label"></span></span><span class="r" id="time-left" hidden></span></div></div>
   </section>
   <section id="error" class="screen atmosphere" role="alert"><div class="gen round"></div><img class="wm" src="assets/portico-wordmark-mono-white.svg" alt="Portico"><div class="ec"><div class="mk" aria-hidden="true">!</div><h1 id="error-title"></h1><p id="error-body"></p></div></section>
-  <div class="tko" id="takeover" role="alert" hidden><span class="ic"><svg width="44" height="44" aria-hidden="true"><use href="#i-cast"/></svg></span><div><h2 id="takeover-title"></h2><p id="takeover-body"></p><div class="keys" id="takeover-keys" hidden><span class="hint"><span class="key-cap">OK</span>Allow</span><span class="hint"><span class="key-cap">Back</span>Don’t allow</span></div></div><span class="left" aria-hidden="true"><b id="takeover-remaining"></b></span></div>
+  <div class="tko" id="takeover" role="alert" hidden><span class="ic"><svg width="44" height="44" aria-hidden="true"><use href="#i-cast"/></svg></span><div><h2 id="takeover-title"></h2><p id="takeover-body"></p><div class="keys" id="takeover-keys" hidden><span class="hint"><span class="key-cap" data-text="key.ok"></span><span data-text="allow"></span></span><span class="hint"><span class="key-cap" data-text="key.back"></span><span data-text="deny"></span></span></div></div><span class="left" aria-hidden="true"><b id="takeover-remaining"></b></span></div>
   <div class="nt warn" id="notice" role="status" data-tone="warning" hidden><span class="ni" aria-hidden="true">!</span><span id="notice-message"></span></div>
 </div>
+<script src="receiver-text.js"></script>
 <script src="view.js"></script>
 <script src="receiver.js"></script>
 </body>
