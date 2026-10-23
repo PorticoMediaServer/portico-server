@@ -12,6 +12,7 @@ export type ReadingDisplayCopy = Readonly<{
   margins: ChoiceCopy<ReadingPreferences['margins']>;
   alignment: ChoiceCopy<ReadingPreferences['alignment']>;
   layout: ChoiceCopy<ReadingPreferences['layout']>;
+  columns?: ChoiceCopy<'auto' | 'one'>;
   note: ReaderDisplayControlsProps['copy'];
   twoPages?: Readonly<{label: string; description?: string}>;
 }>;
@@ -51,6 +52,7 @@ export function readingDisplayControls({controller, authority, copy, scale, phon
       {id: 'alignment', ...choice(copy.alignment, ['left', 'justified'], preferences.alignment, alignment => change({alignment}))},
       {id: 'layout', ...choice(copy.layout, ['pages', 'scroll'], preferences.layout, layout => change({layout})),
         options: [{value: 'pages', label: copy.layout.options.pages, icon: 'i-page'}, {value: 'scroll', label: copy.layout.options.scroll, icon: 'i-vscroll'}]},
+      ...(copy.columns ? [{id: 'columns', ...choice(copy.columns, ['auto', 'one'], preferences.twoPages ? 'auto' : 'one', value => change({twoPages: value === 'auto'}))}] : []),
     ],
     twoPages: copy.twoPages ? {...copy.twoPages, checked: preferences.twoPages, onChange: twoPages => change({twoPages})} : undefined,
     copy: copy.note,
