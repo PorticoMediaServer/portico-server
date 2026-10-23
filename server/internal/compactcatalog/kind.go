@@ -28,14 +28,17 @@ const (
 	Extra
 	Disc
 	Author
+
+	Ebook Kind = 20
+	Comic Kind = 21
 )
 
-var kindNames = [...]string{"", "movie", "show", "season", "episode", "artist", "album", "song", "book", "audiobook_file", "collection", "extra", "disc", "author"}
+var kindNames = [...]string{"", "movie", "show", "season", "episode", "artist", "album", "song", "book", "audiobook_file", "collection", "extra", "disc", "author", Ebook: "ebook", Comic: "comic"}
 
 // ParseKind maps a shipped kind's name to its number.
 func ParseKind(name string) (Kind, error) {
-	for k := Movie; k <= Author; k++ {
-		if kindNames[k] == name {
+	for k := Movie; int(k) < len(kindNames); k++ {
+		if kindNames[k] != "" && kindNames[k] == name {
 			return k, nil
 		}
 	}
@@ -43,7 +46,7 @@ func ParseKind(name string) (Kind, error) {
 }
 
 func (k Kind) Name() (string, error) {
-	if k < Movie || k > Author {
+	if k < Movie || int(k) >= len(kindNames) || kindNames[k] == "" {
 		return "", fmt.Errorf("unknown catalogue kind %d", k)
 	}
 	return kindNames[k], nil

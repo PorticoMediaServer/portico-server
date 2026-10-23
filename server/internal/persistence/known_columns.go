@@ -7,7 +7,8 @@ package persistence
 // It exists so a database can be asked whether it still has the columns this
 // build's statements name, without anything to compare it against but the
 // build itself.
-const knownSchemaColumns = `access_invitations.accepted_ms
+const knownSchemaColumns = `
+access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
 access_invitations.bound_username
@@ -33,6 +34,8 @@ account_portico_links.account_id
 account_portico_links.consent
 account_portico_links.hosted_account_id
 account_portico_links.unindexed
+accounts.display_name
+accounts.email
 accounts.epoch
 accounts.id
 accounts.password_hash
@@ -1685,6 +1688,7 @@ detail_jobs.status
 diagnostics_debug_window.expires_ms
 diagnostics_debug_window.opened_by
 diagnostics_debug_window.singleton
+direct_memberships.access_tokens
 direct_memberships.account_id
 direct_memberships.allowed_libraries
 direct_memberships.disabled
@@ -1692,6 +1696,7 @@ direct_memberships.disabled_ms
 direct_memberships.disabled_reason
 direct_memberships.joined_ms
 direct_memberships.joined_via
+direct_memberships.max_profiles
 direct_memberships.notes
 direct_memberships.revision
 direct_memberships.role
@@ -2056,7 +2061,6 @@ identity_device_families.family_id
 identity_devices.account_id
 identity_devices.app
 identity_devices.app_version
-identity_devices.approval_state
 identity_devices.authority
 identity_devices.first_seen
 identity_devices.id
@@ -2068,11 +2072,46 @@ identity_devices.name
 identity_devices.platform
 identity_devices.remember_account
 identity_devices.revision
-identity_devices.trusted
 identity_factor_challenges.account_id
 identity_factor_challenges.attempts
 identity_factor_challenges.expires_at
 identity_factor_challenges.token_hash
+identity_managed_route.enabled
+identity_managed_route.problem
+identity_managed_route.revision
+identity_managed_route.singleton
+identity_move_codes.account_id
+identity_move_codes.code_hash
+identity_move_codes.expires_ms
+identity_move_codes.move_id
+identity_move_link_tickets.account_id
+identity_move_link_tickets.epoch
+identity_move_link_tickets.expires_ms
+identity_move_link_tickets.installation_id
+identity_move_link_tickets.token_hash
+identity_move_waiting.account_id
+identity_move_waiting.created_ms
+identity_move_waiting.move_id
+identity_move_waiting.old_password_hash
+identity_move_waiting.old_password_until_ms
+identity_move_waiting.state
+identity_moves.confirmation
+identity_moves.confirmed_ms
+identity_moves.created_ms
+identity_moves.devices
+identity_moves.from_kind
+identity_moves.id
+identity_moves.invitations
+identity_moves.owner_confirmed
+identity_moves.owner_id
+identity_moves.owner_revision
+identity_moves.people
+identity_moves.profiles
+identity_moves.revision
+identity_moves.server_name
+identity_moves.stage
+identity_moves.start_over
+identity_moves.to_kind
 identity_recovery_codes.account_id
 identity_recovery_codes.code_hash
 identity_recovery_codes.used
@@ -2088,6 +2127,17 @@ identity_refresh_receipts.expires_at
 identity_refresh_receipts.family_id
 identity_refresh_receipts.predecessor_hash
 identity_refresh_receipts.request_id
+identity_service_outbox.attempts
+identity_service_outbox.claim_generation
+identity_service_outbox.created_ms
+identity_service_outbox.credential_generation
+identity_service_outbox.delivered_ms
+identity_service_outbox.next_ms
+identity_service_outbox.notice_id
+identity_service_outbox.operation_id
+identity_service_outbox.payload
+identity_service_outbox.server_id
+identity_service_outbox.signature
 identity_state.revision
 identity_state.sign_in_kind
 identity_state.singleton
@@ -2345,6 +2395,7 @@ library_network_policy.revision
 library_revisions.library_id
 library_revisions.order_revision
 library_revisions.revision
+library_scan_policies.episode_thumbnail_mode
 library_scan_policies.library_id
 library_scan_policies.operations_json
 library_scan_policies.revision
@@ -4166,6 +4217,20 @@ quick_connect_v1.secret_hash
 quick_connect_v1.status
 quick_connect_v1.token_hash
 quick_connect_v1.user_hash
+reading_progress.asset_id
+reading_progress.cfi
+reading_progress.format
+reading_progress.item_id
+reading_progress.observed_at
+reading_progress.owner_key
+reading_progress.page_index
+reading_progress.progression
+reading_progress.revision
+reading_progress.section
+reading_progress.source_revision
+reading_publications.asset_id
+reading_publications.format
+reading_publications.item_id
 rec_data_revision.id
 rec_data_revision.revision
 rec_profile_jobs.profile_id
@@ -4258,6 +4323,16 @@ restrictions.allowed_libraries
 restrictions.profile_id
 restrictions.revision
 restrictions.revoked
+retained_reading_progress.cfi
+retained_reading_progress.format
+retained_reading_progress.observed_at
+retained_reading_progress.page_index
+retained_reading_progress.progression
+retained_reading_progress.revision
+retained_reading_progress.section
+retained_reading_progress.source_id
+retained_reading_progress.source_revision
+retained_reading_progress.state_id
 retained_title_identities.identity
 retained_title_identities.profile_id
 retained_title_identities.state_id
@@ -4951,4 +5026,5 @@ webhooks.name
 webhooks.revision
 webhooks.secret
 webhooks.updated_ms
-webhooks.url`
+webhooks.url
+`

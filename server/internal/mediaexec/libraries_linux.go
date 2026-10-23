@@ -15,6 +15,11 @@ import (
 // ResolveLibraries reads ELF metadata without executing ldd or a shell. Only
 // exact owner-trusted executables/dependencies are mounted into the sandbox.
 func ResolveLibraries(ffmpeg, ffprobe string, extra []string) ([]string, error) {
+	key := strings.Join(append([]string{ffmpeg, ffprobe}, extra...), "\x00")
+	if cached := cachedLibraryClosure(key); cached != nil {
+		return cached, nil
+	}
+	watch := libraryWatch{}
 	allowed := map[string]bool{}
 	seen := map[string]bool{}
 	defaults := []string{"/lib/x86_64-linux-gnu", "/usr/lib/x86_64-linux-gnu", "/lib/aarch64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/lib64", "/usr/lib64", "/lib", "/usr/lib", "/usr/local/lib"}
@@ -22,6 +27,7 @@ func ResolveLibraries(ffmpeg, ffprobe string, extra []string) ([]string, error) 
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 			return "", ErrInvalidJob
 		}
+		watch.record(path)
 		real, e := filepath.EvalSymlinks(path)
 		if e != nil {
 			return "", e
@@ -30,6 +36,7 @@ func ResolveLibraries(ffmpeg, ffprobe string, extra []string) ([]string, error) 
 		if e != nil || !info.Mode().IsRegular() {
 			return "", ErrInvalidJob
 		}
+		watch.record(real)
 		allowed[path] = true
 		allowed[real] = true
 		if len(allowed) > maxLibraryFiles {
@@ -97,6 +104,9 @@ func ResolveLibraries(ffmpeg, ffprobe string, extra []string) ([]string, error) 
 			}
 			if target == "" {
 				for _, base := range append(append([]string{}, paths...), defaults...) {
+					// A newly installed higher-priority library must invalidate
+					// a cached choice, including a previously absent directory.
+					watch.record(base)
 					p := filepath.Join(base, name)
 					if i, e := os.Stat(p); e == nil && i.Mode().IsRegular() {
 						target = p
@@ -125,5 +135,8 @@ func ResolveLibraries(ffmpeg, ffprobe string, extra []string) ([]string, error) 
 		}
 	}
 	sort.Strings(out)
+	if watch.unchanged() {
+		rememberLibraryClosure(key, out, watch)
+	}
 	return out, nil
 }

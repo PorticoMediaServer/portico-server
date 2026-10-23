@@ -3,6 +3,7 @@ import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts
 import {randomId} from './random-id.ts';
 import { hostedGate, type HostedGate } from "./hosted-gate.ts";
 import { CodedError } from "./server-messages.ts";
+import {parseAccountSession} from './hosted-security.ts';
 import {
   ApiError,
   HttpLocalApi,
@@ -48,12 +49,12 @@ export class HttpCredentialApi implements CredentialApi {
     return session.refreshToken;
   }
   refresh(refreshToken: string, requestId: string, signal?: AbortSignal) {
-    return this.gate.run("interactive", () => this.http.request<HostedSession>(
+    return this.gate.run("interactive", () => this.http.request<unknown>(
       hostedRoutePath("session_refresh"),
       "POST",
       hostedRouteBody("session_refresh", { refreshToken, requestId }),
       signal
-    ));
+    ).then(value=>parseAccountSession(value,'native')));
   }
   revoke(refreshToken: string, signal?: AbortSignal) {
     return this.gate.run("interactive", () => this.http.request<void>(
@@ -270,47 +271,6 @@ export class CredentialSessionService<Authority = string> {
     await this.retryInside();
   }
   async updateContext(context:CredentialContext){const generation=this.generation;await this.ready;return this.coordinator.runExclusive(async()=>{await this.reload(false);if(generation!==this.generation||!this.record.active)return;this.record.active={...this.record.active,context};await this.persist();if(generation===this.generation)this.publish()});}
-  /** Refresh display metadata without replacing account authority or selection. */
-  async refreshProfiles(
-    expected: { accountId: string; familyId: string },
-    load: (session: Omit<HostedSession, "refreshToken">, signal: AbortSignal) => Promise<{ accountId: string; profiles: readonly { id: string; name: string }[] }>,
-  ): Promise<void> {
-    const generation = this.generation;
-    await this.ready;
-    await this.coordinator.runExclusive(async () => {
-      await this.reload(false);
-      const current = () => {
-        const active = this.record.active;
-        if (generation !== this.generation || !active || active.session.account.id !== expected.accountId || active.session.familyId !== expected.familyId)
-          throw new Error("Your Portico Account changed. Refresh your profiles.");
-        return active;
-      };
-      let active = current();
-      if (!active.session.accessToken || active.pendingRequestId || Date.parse(active.session.expiresAt) <= Date.now() + 60000) {
-        await this.rotate(generation);
-        active = current();
-      }
-      const result = await this.bounded(signal => load(this.publicSession(active.session), signal));
-      active = current();
-      if (!result || result.accountId !== expected.accountId || !Array.isArray(result.profiles) || result.profiles.length > 100)
-        throw new Error("The profile response is invalid.");
-      const ids = new Set<string>();
-      const profiles = result.profiles.map(profile => {
-        if (!profile || typeof profile.id !== "string" || !profile.id || profile.id.length > 256 || /[\x00-\x1f\x7f]/.test(profile.id) || ids.has(profile.id) || typeof profile.name !== "string" || !profile.name.trim() || new TextEncoder().encode(profile.name).length > 120 || /[\x00-\x1f\x7f]/.test(profile.name))
-          throw new Error("The profile response is invalid.");
-        ids.add(profile.id);
-        return { id: profile.id, name: profile.name };
-      });
-      this.record.active = { ...active, session: { ...active.session, profiles } };
-      try { await this.persist(); }
-      catch (error) {
-        if (generation === this.generation) this.record.active = active;
-        throw error;
-      }
-      current();
-      this.publish();
-    });
-  }
   async accessSession(forceRefresh=false):Promise<Omit<HostedSession,"refreshToken">>{
     await this.ready;
     if(this.flight?.generation===this.generation)return this.flight.promise;

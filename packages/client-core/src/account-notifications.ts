@@ -9,7 +9,7 @@ import {routePath as hostedRoutePath, encodedRoutePath as hostedEncodedRoutePath
  * - `GET /v1/account/notifications[?cursor=]` → `{items, unread, nextCursor?}` (newest first, 50 a page)
  * - `GET /v1/account/notifications/{id}`
  * - `POST /v1/account/notifications/read` `{ids}` or `{all: true}`
- * - `GET|PUT /v1/account/notification-preferences` `{serverOffline, storageNearlyFull, invitationAccepted}`
+ * - `GET|PUT /v1/account/notification-preferences` `{serverOffline}`
  * - export: `POST /v1/account/export` → `{id, state, expiresAt}`, then `GET /v1/account/exports/{id}`
  *   until `ready` (or the `account_export_ready` item), then `POST /v1/account/exports/{id}/download`.
  */
@@ -33,7 +33,7 @@ export type AccountNotification = Readonly<{
   detail: Readonly<Record<string, string>>;
 }>;
 export type AccountNotificationPage = Readonly<{items: readonly AccountNotification[]; unread: number; nextCursor?: string}>;
-export type NotificationPreferences = Readonly<{serverOffline: boolean; storageNearlyFull: boolean; invitationAccepted: boolean}>;
+export type NotificationPreferences = Readonly<{serverOffline: boolean}>;
 export type AccountExportJob = Readonly<{id: string; state: 'pending' | 'ready'; expiresAt: string}>;
 
 type Request = <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>;
@@ -68,8 +68,8 @@ export function parseAccountNotificationPage(v: unknown): AccountNotificationPag
 }
 
 export function parseNotificationPreferences(v: unknown): NotificationPreferences {
-  if (!obj(v) || typeof v.serverOffline !== 'boolean' || typeof v.storageNearlyFull !== 'boolean' || typeof v.invitationAccepted !== 'boolean') bad();
-  return Object.freeze({serverOffline: v.serverOffline, storageNearlyFull: v.storageNearlyFull, invitationAccepted: v.invitationAccepted});
+  if (!obj(v) || typeof v.serverOffline !== 'boolean' || Object.keys(v).some(key=>key!=='serverOffline')) bad();
+  return Object.freeze({serverOffline: v.serverOffline});
 }
 
 export function parseAccountExportJob(v: unknown): AccountExportJob {
@@ -94,7 +94,7 @@ export class AccountNotificationsClient {
     return parseNotificationPreferences(await this.request(hostedRoutePath("account_notification_preferences_get"), 'GET', undefined, signal));
   }
   async savePreferences(p: NotificationPreferences): Promise<NotificationPreferences> {
-    return parseNotificationPreferences(await this.request(hostedRoutePath("account_notification_preferences_set"), 'PUT', hostedRouteBody("account_notification_preferences_set", {serverOffline: p.serverOffline, storageNearlyFull: p.storageNearlyFull, invitationAccepted: p.invitationAccepted})));
+    return parseNotificationPreferences(await this.request(hostedRoutePath("account_notification_preferences_set"), 'PUT', hostedRouteBody("account_notification_preferences_set", {serverOffline: p.serverOffline})));
   }
   /** Starts (or rejoins) the account's export with the signed-in session (BE-hosted cc222bf: `{operationId}`, 16–128 characters, no proof). Idempotent per operation id. */
   async requestExport(operationId: string): Promise<AccountExportJob> {

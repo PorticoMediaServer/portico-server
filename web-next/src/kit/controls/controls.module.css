@@ -171,7 +171,7 @@
 .select[aria-invalid="true"] {box-shadow: inset 0 0 0 1.5px var(--color-danger);}
 .selectPortal {position: fixed; inset: 0; z-index: var(--layer-menu); pointer-events: none;}
 .selectMenu {pointer-events: auto; z-index: var(--layer-menu); min-width: var(--radix-select-trigger-width); max-width: calc(100vw - 16px); max-height: var(--radix-select-content-available-height); padding: 6px; border-radius: 14px; color: var(--color-text); background: color-mix(in srgb, var(--color-raised-high) 97%, transparent); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: 0 30px 70px -18px color-mix(in srgb, var(--color-shadow) 90%, transparent), 0 0 0 1px color-mix(in srgb, var(--color-text) 12%, transparent); animation: menuIn var(--motion-standard) var(--ease-out); transform-origin: var(--radix-select-content-transform-origin); font-family: var(--font); line-height: normal;}
-.selectMenu[data-rich] {width: 304px;}
+.selectMenu[data-rich] {min-width: min(264px, calc(100vw - 16px)); max-width: min(480px, calc(100vw - 16px));}
 .selectMenu[data-state="closed"] {animation: menuOut var(--motion-quick) var(--ease-in); pointer-events: none;}
 .selectViewport {padding: 0;}
 .formSelect {position: absolute; width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;}
@@ -189,6 +189,10 @@
 .optionName > span:first-child {overflow: hidden; text-overflow: ellipsis;}
 .defaultTag {font-size: 11.5px; font-weight: 700; border-radius: 6px; margin-left: 8px; padding: 2px 7px; background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--color-text-secondary);}
 .optionDescription {max-width: 155px; text-align: right; font-size: 13px; font-weight: 600; color: var(--color-text-tertiary);}
+.selectMenu[data-rich] .optionDescription {max-width: none; white-space: nowrap;}
+.selectMenu[data-stacked-hints] .option {grid-template-columns: 20px minmax(0, 1fr); row-gap: 3px;}
+.selectMenu[data-stacked-hints] .optionDescription {grid-column: 2; text-align: left; white-space: normal; line-height: 1.4;}
+.defaultTag {flex: none;}
 .optionSeparator {height: 1px; margin: 4px 10px; background: color-mix(in srgb, var(--color-text) 8%, transparent);}
 .scrollButton {height: 24px; display: flex; justify-content: center; align-items: center;}
 @keyframes menuIn {from {opacity: 0; transform: translateY(4px) scale(.98);} to {opacity: 1; transform: none;}}

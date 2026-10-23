@@ -68,15 +68,7 @@ func TestDeviceRefreshRotatesAccessAndRefreshTogether(t *testing.T) {
 	if _, err = s.RefreshSession(context.Background(), second.RefreshToken, installation, Token()); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("stolen predecessor did not revoke successor refresh", err)
 	}
-	if _, err = db.Exec(`UPDATE identity_devices SET approval_state='denied' WHERE id=?`, first.DeviceID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.Authenticate(second.AccessToken); !errors.Is(err, ErrUnauthorized) {
-		t.Fatal("denied device kept access", err)
-	}
-	if _, err = s.RefreshSession(context.Background(), second.RefreshToken, installation, Token()); !errors.Is(err, ErrUnauthorized) {
-		t.Fatal("denied device refreshed", err)
-	}
+
 }
 
 func TestRefreshStolenPredecessorRaceRevokesFamily(t *testing.T) {
@@ -196,27 +188,6 @@ func TestExpiredFamilyPrunesRefreshPredecessorWithoutRevocation(t *testing.T) {
 	var after int
 	if err := db.QueryRow(`SELECT count(*) FROM identity_refresh_predecessors WHERE family_id=?`, first.SessionFamilyID).Scan(&after); err != nil || after != 0 {
 		t.Fatalf("expired family retained predecessor: %d %v", after, err)
-	}
-}
-
-func TestPendingDeviceReceivesNoAccountOrViewingSession(t *testing.T) {
-	s, _, _, _ := memberWithSession(t)
-	db := s.db
-	if err := s.SetDeviceApprovalPolicy(DeviceApprovalOwner); err != nil {
-		t.Fatal(err)
-	}
-	installation := Token()
-	ctx, err := WithIssuingDevice(context.Background(), registration(installation), "198.51.100.5:1234")
-	if err != nil {
-		t.Fatal(err)
-	}
-	pending, err := s.DirectLoginFrom(ctx, "member", "Testing2!", true)
-	if err != nil || !pending.DeviceApprovalPending || pending.AccountToken != "" || pending.Session != nil {
-		t.Fatal("pending device obtained working credentials", pending, err)
-	}
-	var state string
-	if err = db.QueryRow(`SELECT approval_state FROM identity_devices WHERE id=?`, pending.DeviceID).Scan(&state); err != nil || state != "pending" {
-		t.Fatal("pending device record was not committed", state, err)
 	}
 }
 

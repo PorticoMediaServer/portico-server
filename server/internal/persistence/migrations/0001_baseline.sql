@@ -11,7 +11,8 @@ INSERT INTO catalog_kinds VALUES
  (1,'movie',1,0,1,1,0),(2,'show',0,1,1,1,0),(3,'season',0,1,0,1,0),(4,'episode',1,0,1,1,0),
  (5,'artist',0,1,1,1,1),(6,'album',0,1,1,1,1),(7,'song',1,0,1,1,1),(8,'book',0,1,1,1,1),
  (9,'audiobook_file',1,0,0,1,1),(10,'collection',0,1,1,1,0),(11,'extra',1,0,0,1,0),
- (12,'disc',0,1,0,0,1),(13,'author',0,1,1,1,1);
+ (12,'disc',0,1,0,0,1),(13,'author',0,1,1,1,1),
+ (20,'ebook',0,0,1,1,0),(21,'comic',0,0,1,1,0);
 CREATE TABLE catalog_libraries(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  library_id TEXT NOT NULL UNIQUE REFERENCES libraries(id) ON DELETE CASCADE,
@@ -187,6 +188,41 @@ CREATE TABLE retained_title_identities(
  state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
  PRIMARY KEY(identity,profile_id)) WITHOUT ROWID, STRICT;
 CREATE INDEX retained_title_identities_state ON retained_title_identities(state_id);
+CREATE TABLE reading_publications(
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ asset_id INTEGER NOT NULL UNIQUE REFERENCES catalog_assets(id) ON DELETE CASCADE,
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ PRIMARY KEY(item_id,asset_id),
+ FOREIGN KEY(item_id,asset_id) REFERENCES catalog_asset_links(entity_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE TABLE reading_progress(
+ owner_key TEXT NOT NULL,
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=8192),
+ section TEXT CHECK(section IS NULL OR length(section)<=4096),
+ page_index INTEGER,
+ progression REAL NOT NULL CHECK(progression>=0 AND progression<=1),
+ revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
+ observed_at INTEGER NOT NULL CHECK(observed_at BETWEEN 0 AND 9007199254740991),
+ PRIMARY KEY(owner_key,item_id,asset_id),
+ FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
+ CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_progress_publication ON reading_progress(item_id,asset_id);
+CREATE TABLE retained_reading_progress(
+ state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
+ source_id TEXT NOT NULL CHECK(length(source_id)>0),
+ source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=8192),
+ section TEXT CHECK(section IS NULL OR length(section)<=4096),
+ page_index INTEGER,
+ progression REAL NOT NULL CHECK(progression>=0 AND progression<=1),
+ revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
+ observed_at INTEGER NOT NULL CHECK(observed_at BETWEEN 0 AND 9007199254740991),
+ PRIMARY KEY(state_id,source_id),
+ CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
 CREATE TABLE catalog_shows(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  local_key TEXT NOT NULL,
@@ -1409,7 +1445,7 @@ CREATE TRIGGER compact_visibility_blocks_rating_move AFTER UPDATE OF class_id,ge
  UPDATE compact_visibility_blocks SET total=1024 WHERE (class_id,generation,library_id,kind,ordering,sort_value,entity_id)=(SELECT class_id,generation,library_id,kind,ordering,sort_value,entity_id FROM compact_visibility_blocks INDEXED BY compact_visibility_blocks_full WHERE class_id=NEW.class_id AND generation=NEW.generation AND library_id=NEW.library_id AND kind=NEW.kind AND ordering=4 AND total>2048 LIMIT 1);
 END;
 CREATE TABLE configuration(key TEXT PRIMARY KEY,value TEXT NOT NULL) STRICT;
-CREATE TABLE accounts(id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,password_hash BLOB NOT NULL,profile_id TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1) STRICT;
+CREATE TABLE accounts(id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,email TEXT NOT NULL DEFAULT '',display_name TEXT NOT NULL DEFAULT '',password_hash BLOB NOT NULL,profile_id TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE TABLE libraries(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,root TEXT NOT NULL UNIQUE, position INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE metadata_jobs(item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE provider_evidence(item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,provider TEXT NOT NULL,provider_id INTEGER NOT NULL,payload TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(item_id,provider)) STRICT;
@@ -1879,7 +1915,7 @@ CREATE TABLE authorization_session_families(
  current_generation INTEGER NOT NULL CHECK(current_generation>0),
  revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1))
 , revoked_reason TEXT NOT NULL DEFAULT ''
- CHECK(revoked_reason IN ('','refresh_reuse','explicit_signout','admin_revoke','membership_removed','device_disapproved','password_change','signing_key_revoked','restored')), revoked_at TEXT NOT NULL DEFAULT '') STRICT;
+ CHECK(revoked_reason IN ('','refresh_reuse','explicit_signout','admin_revoke','membership_removed','password_change','signing_key_revoked','restored')), revoked_at TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE authorization_family_tokens(
  token_hash TEXT PRIMARY KEY,
  family_id TEXT NOT NULL REFERENCES authorization_session_families(id),
@@ -2014,7 +2050,8 @@ CREATE TABLE library_sources (
 CREATE TABLE library_scan_policies (
  library_id TEXT PRIMARY KEY REFERENCES libraries(id), revision INTEGER NOT NULL DEFAULT 1,
  tier TEXT NOT NULL DEFAULT 'basic' CHECK(tier IN('file_list_only','basic','complete','custom')),
- operations_json TEXT NOT NULL DEFAULT '["probe","local_metadata","subtitles"]'
+ operations_json TEXT NOT NULL DEFAULT '["probe","local_metadata","subtitles"]',
+ episode_thumbnail_mode TEXT NOT NULL DEFAULT 'off' CHECK(episode_thumbnail_mode IN('provider_then_made','provider','off'))
 , trickplay_interval_seconds INTEGER NOT NULL DEFAULT 0, trickplay_tile_width INTEGER NOT NULL DEFAULT 0, trickplay_max_tiles INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE source_strm_analysis(library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,enabled INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE TABLE inventory_policy_pending (
@@ -2530,8 +2567,6 @@ CREATE TABLE identity_devices(
  installation_id TEXT NOT NULL, name TEXT NOT NULL, platform TEXT NOT NULL,
  app TEXT NOT NULL, app_version TEXT NOT NULL, ip TEXT NOT NULL DEFAULT '',
  first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
- trusted INTEGER NOT NULL DEFAULT 0 CHECK(trusted IN(0,1)),
- approval_state TEXT NOT NULL DEFAULT 'approved' CHECK(approval_state IN('approved','pending','denied')),
  last_profile_id TEXT NOT NULL DEFAULT '',
  remember_account INTEGER NOT NULL DEFAULT 1 CHECK(remember_account IN(0,1)),
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
@@ -2916,10 +2951,11 @@ CREATE TABLE dvr_defaults(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revis
 CREATE TABLE direct_memberships(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  role TEXT NOT NULL CHECK(role IN('owner','admin','member')),
+ access_tokens INTEGER NOT NULL DEFAULT 1 CHECK(access_tokens IN(0,1)),max_profiles INTEGER NOT NULL DEFAULT 8 CHECK(max_profiles BETWEEN 1 AND 8),
  allowed_libraries TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(allowed_libraries)),
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), disabled INTEGER NOT NULL DEFAULT 0 CHECK(disabled IN(0,1)),
  disabled_ms INTEGER NOT NULL DEFAULT 0 CHECK(disabled_ms>=0),
- disabled_reason TEXT NOT NULL DEFAULT '' CHECK(disabled_reason IN('','owner','left')),
+ disabled_reason TEXT NOT NULL DEFAULT '' CHECK(disabled_reason IN('','owner','left','did_not_move')),
  notes TEXT CHECK(notes IS NULL OR length(notes)<=500),
  joined_via TEXT NOT NULL DEFAULT '', joined_ms INTEGER NOT NULL DEFAULT 0 CHECK(joined_ms>=0)
 ) STRICT;
@@ -4021,8 +4057,7 @@ CREATE VIEW inventory_library_availability AS
  FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id GROUP BY s.library_id,o.asset_id;
 CREATE VIEW authorization_access AS
  SELECT t.token_hash AS hash,f.account_id,f.profile_id,f.authority,f.role,f.epoch,t.expires_at,
- CASE WHEN f.revoked=1 OR t.retired=1 OR t.generation<>f.current_generation
-    OR d.approval_state<>'approved' THEN 1 ELSE 0 END AS revoked
+ CASE WHEN f.revoked=1 OR t.retired=1 OR t.generation<>f.current_generation THEN 1 ELSE 0 END AS revoked
  FROM authorization_family_tokens t
  JOIN authorization_session_families f ON f.id=t.family_id
  JOIN identity_device_families binding ON binding.family_id=f.id
@@ -4503,7 +4538,7 @@ CREATE TRIGGER inventory_policy_handoff AFTER UPDATE OF revision ON library_scan
 END;
 CREATE TRIGGER inventory_library_create AFTER INSERT ON libraries BEGIN
  INSERT INTO library_sources(id,library_id,name,configured_root,root) VALUES(NEW.id,NEW.id,NEW.name,NEW.root,NEW.root);
- INSERT INTO library_scan_policies(library_id) VALUES(NEW.id);
+ INSERT INTO library_scan_policies(library_id,episode_thumbnail_mode) VALUES(NEW.id,CASE WHEN NEW.kind IN('tv','anime') THEN 'provider_then_made' ELSE 'off' END);
 END;
 CREATE TRIGGER inventory_source_configuration AFTER UPDATE OF name,root,configured_root,classification,follow_symlinks,interval_seconds,enabled,root_identity,identity_confirmed ON library_sources BEGIN
  UPDATE library_configuration SET revision=revision+1 WHERE library_id=NEW.library_id;
@@ -4603,7 +4638,7 @@ CREATE TRIGGER audio_genre_projection_reset AFTER UPDATE OF revision ON audio_me
  UPDATE audio_genre_projection SET policy_revision=NEW.revision,cursor='',completed_at='' WHERE library_id=NEW.library_id;
  INSERT OR IGNORE INTO audio_genre_projection(library_id,policy_revision) VALUES(NEW.library_id,NEW.revision);END;
 CREATE TRIGGER direct_profile_capacity BEFORE INSERT ON direct_profiles
- WHEN NEW.deleted=0 AND (SELECT count(*) FROM direct_profiles WHERE account_id=NEW.account_id AND deleted=0)>=8
+ WHEN NEW.deleted=0 AND (SELECT count(*) FROM direct_profiles WHERE account_id=NEW.account_id AND deleted=0)>=(SELECT max_profiles FROM direct_memberships WHERE account_id=NEW.account_id)
  BEGIN SELECT RAISE(ABORT,'profile_capacity'); END;
 CREATE TRIGGER identity_restrictions_revision AFTER UPDATE ON profile_restrictions
  WHEN NEW.revision=OLD.revision BEGIN
@@ -7442,12 +7477,6 @@ CREATE TRIGGER api_credentials_api_keys_list_update AFTER UPDATE ON api_credenti
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','apiKeys',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER api_credentials_api_keys_list_delete AFTER DELETE ON api_credentials WHEN OLD.kind='key' BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','apiKeys',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
-CREATE TRIGGER api_credentials_member_tokens_list_insert AFTER INSERT ON api_credentials WHEN NEW.kind='token' BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','memberTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
-CREATE TRIGGER api_credentials_member_tokens_list_update AFTER UPDATE ON api_credentials WHEN NEW.kind='token' BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','memberTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
-CREATE TRIGGER api_credentials_member_tokens_list_delete AFTER DELETE ON api_credentials WHEN OLD.kind='token' BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','memberTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER api_credentials_access_tokens_list_insert AFTER INSERT ON api_credentials WHEN NEW.kind='token' BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:local:'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','accessTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER api_credentials_access_tokens_list_update AFTER UPDATE ON api_credentials WHEN NEW.kind='token' BEGIN
@@ -7492,7 +7521,7 @@ CREATE TRIGGER access_invitations_invitations_list_delete AFTER DELETE ON access
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','invitations',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER identity_devices_devices_list_insert AFTER INSERT ON identity_devices BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','devices',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
-CREATE TRIGGER identity_devices_devices_list_update AFTER UPDATE OF name,trusted,approval_state ON identity_devices BEGIN
+CREATE TRIGGER identity_devices_devices_list_update AFTER UPDATE OF name ON identity_devices BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','devices',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER identity_devices_devices_list_delete AFTER DELETE ON identity_devices BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','devices',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
@@ -7814,6 +7843,9 @@ CREATE TRIGGER owner_change_account_insert BEFORE INSERT ON accounts WHEN EXISTS
 CREATE TRIGGER owner_change_account_rename BEFORE UPDATE OF username ON accounts WHEN NEW.username<>OLD.username COLLATE NOCASE AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND approved_username=NEW.username COLLATE NOCASE) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
 CREATE TRIGGER owner_change_link_insert BEFORE INSERT ON account_portico_links WHEN EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
 CREATE TRIGGER owner_change_link_update BEFORE UPDATE OF hosted_account_id ON account_portico_links WHEN NEW.hosted_account_id<>OLD.hosted_account_id AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
+
+-- One identity authority per configured server. Before setup there is no row;
+-- setup defaults to Portico and installs its explicit choice before accounts.
 CREATE TABLE identity_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),sign_in_kind TEXT NOT NULL CHECK(sign_in_kind IN('portico','local')),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
 CREATE TRIGGER identity_local_no_portico_link BEFORE INSERT ON account_portico_links
  WHEN (SELECT sign_in_kind FROM identity_state WHERE singleton=1)='local'
@@ -7833,3 +7865,25 @@ CREATE TRIGGER identity_kind_local_fence BEFORE UPDATE OF sign_in_kind ON identi
 CREATE TRIGGER identity_kind_portico_fence BEFORE UPDATE OF sign_in_kind ON identity_state
  WHEN NEW.sign_in_kind='portico' AND EXISTS(SELECT 1 FROM accounts WHERE length(password_hash)>0)
  BEGIN SELECT RAISE(ABORT,'sign_in_kind_portico'); END;
+
+CREATE TABLE identity_move_waiting(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,move_id TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('waiting','linked','did_not_move')),old_password_hash BLOB,old_password_until_ms INTEGER NOT NULL DEFAULT 0,created_ms INTEGER NOT NULL) STRICT;
+CREATE INDEX accounts_people_username ON accounts(username COLLATE NOCASE,id);
+CREATE INDEX direct_memberships_people_role ON direct_memberships(role,disabled,account_id);
+CREATE INDEX identity_devices_people_activity ON identity_devices(account_id,authority,platform,last_seen DESC);
+
+CREATE TRIGGER identity_access_tokens_disabled AFTER UPDATE OF access_tokens ON direct_memberships WHEN NEW.access_tokens=0 AND OLD.access_tokens=1 BEGIN
+ UPDATE api_credentials SET revoked_ms=unixepoch('subsec')*1000,ended_reason='permission_removed' WHERE account_id=NEW.account_id AND kind='token' AND revoked_ms=0;
+ UPDATE authorization_session_families SET revoked=1,revoked_reason='membership_removed' WHERE id IN(SELECT family_id FROM api_credentials WHERE account_id=NEW.account_id AND kind='token') AND revoked=0;
+END;
+CREATE TRIGGER identity_access_tokens_insert BEFORE INSERT ON api_credentials WHEN NEW.kind='token' AND NOT EXISTS(SELECT 1 FROM direct_memberships WHERE account_id=NEW.account_id AND access_tokens=1 AND disabled=0) BEGIN SELECT RAISE(ABORT,'access_tokens_off');END;
+
+CREATE TABLE identity_moves(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,owner_revision INTEGER NOT NULL,from_kind TEXT NOT NULL CHECK(from_kind IN('portico','local')),to_kind TEXT NOT NULL CHECK(to_kind IN('portico','local')),start_over INTEGER NOT NULL CHECK(start_over IN(0,1)),stage TEXT NOT NULL CHECK(stage IN('preview','moving_to_portico','moving_to_local','complete','cancelled')),revision INTEGER NOT NULL CHECK(revision>0),people INTEGER NOT NULL,devices INTEGER NOT NULL,profiles INTEGER NOT NULL,server_name TEXT NOT NULL,created_ms INTEGER NOT NULL,confirmed_ms INTEGER NOT NULL DEFAULT 0,confirmation TEXT NOT NULL DEFAULT '',invitations INTEGER NOT NULL DEFAULT 0,owner_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(owner_confirmed IN(0,1)),CHECK(from_kind<>to_kind)) STRICT;
+CREATE UNIQUE INDEX identity_one_move ON identity_moves((1)) WHERE stage NOT IN('complete','cancelled');
+CREATE TABLE identity_move_link_tickets(token_hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,installation_id TEXT NOT NULL,epoch INTEGER NOT NULL,expires_ms INTEGER NOT NULL,UNIQUE(account_id,installation_id)) STRICT;
+CREATE TABLE identity_move_codes(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,move_id TEXT NOT NULL REFERENCES identity_moves(id),code_hash TEXT NOT NULL UNIQUE,expires_ms INTEGER NOT NULL) STRICT;
+CREATE TABLE identity_service_outbox(notice_id TEXT PRIMARY KEY,operation_id TEXT NOT NULL,server_id TEXT NOT NULL,claim_generation TEXT NOT NULL,credential_generation TEXT NOT NULL,payload BLOB NOT NULL,signature BLOB NOT NULL,created_ms INTEGER NOT NULL,delivered_ms INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,next_ms INTEGER NOT NULL DEFAULT 0) STRICT;
+CREATE TABLE identity_managed_route(singleton INTEGER PRIMARY KEY CHECK(singleton=1),enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN(0,1)),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),problem TEXT NOT NULL DEFAULT '') STRICT;
+INSERT INTO identity_managed_route(singleton) VALUES(1);
+CREATE TRIGGER identity_kind_no_delete BEFORE DELETE ON identity_state BEGIN SELECT RAISE(ABORT,'identity_state_required');END;
+CREATE TRIGGER identity_kind_insert_local_fence BEFORE INSERT ON identity_state WHEN NEW.sign_in_kind='local' AND EXISTS(SELECT 1 FROM account_portico_links) BEGIN SELECT RAISE(ABORT,'sign_in_kind_local');END;
+CREATE TRIGGER identity_kind_insert_portico_fence BEFORE INSERT ON identity_state WHEN NEW.sign_in_kind='portico' AND EXISTS(SELECT 1 FROM accounts WHERE length(password_hash)>0) BEGIN SELECT RAISE(ABORT,'sign_in_kind_portico');END;
