@@ -21,7 +21,7 @@ export type DirectAccount=Readonly<{id:string;username:string;primaryProfileId:s
  * (retiring it, its certificates) is not with it yet: after a transfer to it, or after a direct
  * owner. Ask the owner to accept it (`acceptPorticoCustody`). */
 export type ManagementCapabilities=Readonly<{manageAccount:boolean;managePeople:boolean;manageServer:boolean;manageSignIn:boolean}>;
-export type DirectSnapshot=Readonly<{capabilities:ManagementCapabilities;authority:'local';serverId:string;account:DirectAccount;profiles:readonly ManagedProfile[];canManage:boolean;custodyPending?:boolean}>;
+export type DirectSnapshot=Readonly<{capabilities:ManagementCapabilities;authority:'local';serverId:string;account:DirectAccount;profiles:readonly ManagedProfile[];canManage:boolean;custodyPending?:boolean;twoStepSetupRequired?:true}>;
 /**
  * C45 direct sign-in (Justin's account decisions). There is no separate account token any more:
  * - `signed-in`: one device-bound `session`. With several profiles or a PIN it has role `account`
@@ -32,6 +32,15 @@ export type DirectSnapshot=Readonly<{capabilities:ManagementCapabilities;authori
 export type DirectSignIn=
  Readonly<{kind:'signed-in';snapshot:DirectSnapshot;session:LocalSession;accountScoped:boolean;passwordChangeRequired:boolean;resetFileOwnerSession?:true}>
  |Readonly<{kind:'challenge';token:string;expiresAt:string}>;
+/** A required setup remains an account-scoped credential, never a viewer or
+ * management grant. Clients without factor setup retain their restricted
+ * sign-in and use their existing supported web journey. No role is inferred. */
+export function directSignInContinuation(result:DirectSignIn):'challenge'|'password-change'|'two-step-setup'|'profile-selection'|'viewer'{
+ if(result.kind==='challenge')return 'challenge';
+ if(result.passwordChangeRequired)return 'password-change';
+ if(result.snapshot.twoStepSetupRequired)return 'two-step-setup';
+ return result.accountScoped?'profile-selection':'viewer';
+}
 export type ProfileScope=Readonly<{authority:ProfileAuthority;accountId:string;serverId?:string}>;
 export type ProfileSelectionInput=Readonly<{pin?:string;installationId?:string;trust?:boolean;trustToken?:string}>;
 export type TrustedProfile=Readonly<{token:string;authority:ProfileAuthority;accountId:string;profileId:string;serverId:string;installationId:string;pinRevision:number;profileRevision:number;policyRevision?:number;membershipRevision?:number;trustRevision?:number;expiresAt:string}>;
@@ -61,13 +70,14 @@ export function parseManagedProfiles(raw:unknown,readable=false):readonly Manage
  return Object.freeze(result.sort((a,b)=>a.position-b.position||a.id.localeCompare(b.id)));
 }
 export function parseDirectSnapshot(raw:unknown,expected:Partial<ProfileScope>={},readableProfiles=false):DirectSnapshot{
- if(!obj(raw)||raw.authority!=='local'||!text(raw.serverId,128)||!obj(raw.account)||typeof raw.canManage!=='boolean'||(raw.custodyPending!==undefined&&typeof raw.custodyPending!=='boolean'))invalid();const a=raw.account;
+ if(!obj(raw)||raw.authority!=='local'||!text(raw.serverId,128)||!obj(raw.account)||typeof raw.canManage!=='boolean'||(raw.custodyPending!==undefined&&typeof raw.custodyPending!=='boolean')||(raw.twoStepSetupRequired!==undefined&&typeof raw.twoStepSetupRequired!=='boolean'))invalid();const a=raw.account;
  if(!text(a.id,128)||!text(a.username,64)||!text(a.primaryProfileId,128)||!['owner','admin','member'].includes(a.role as string)||(a.hostedAccountId!==undefined&&!text(a.hostedAccountId,128))||!revision(a.revision)||typeof a.disabled!=='boolean'||(expected.accountId&&a.id!==expected.accountId)||(expected.serverId&&raw.serverId!==expected.serverId)||(expected.authority&&expected.authority!=='local'))invalid();
  const c=raw.capabilities;
  if(!obj(c)||!['manageAccount','managePeople','manageServer','manageSignIn'].every(key=>typeof c[key]==='boolean')||c.manageAccount!==raw.canManage||c.manageSignIn===true&&a.role!=='owner'||(c.managePeople===true||c.manageServer===true)&&!['owner','admin'].includes(a.role as string)||c.manageAccount===false&&(c.managePeople===true||c.manageServer===true||c.manageSignIn===true))invalid();
  const capabilities:ManagementCapabilities=Object.freeze({manageAccount:c.manageAccount as boolean,managePeople:c.managePeople as boolean,manageServer:c.manageServer as boolean,manageSignIn:c.manageSignIn as boolean});
+ if(raw.twoStepSetupRequired===true&&Object.values(capabilities).some(Boolean))invalid();
  const profiles=parseManagedProfiles(raw.profiles,readableProfiles);if(!profiles.some(p=>p.primary&&p.id===a.primaryProfileId))invalid();
- return Object.freeze({authority:'local',serverId:raw.serverId,account:Object.freeze({id:a.id,username:a.username,primaryProfileId:a.primaryProfileId,role:a.role as DirectAccount['role'],revision:a.revision,disabled:a.disabled,allowedLibraries:ids(a.allowedLibraries),...(a.hostedAccountId===undefined?{}:{hostedAccountId:a.hostedAccountId as string})}),profiles,capabilities,canManage:raw.canManage,...(raw.custodyPending===true?{custodyPending:true}:{})});
+ return Object.freeze({authority:'local',serverId:raw.serverId,account:Object.freeze({id:a.id,username:a.username,primaryProfileId:a.primaryProfileId,role:a.role as DirectAccount['role'],revision:a.revision,disabled:a.disabled,allowedLibraries:ids(a.allowedLibraries),...(a.hostedAccountId===undefined?{}:{hostedAccountId:a.hostedAccountId as string})}),profiles,capabilities,canManage:raw.canManage,...(raw.custodyPending===true?{custodyPending:true}:{}),...(raw.twoStepSetupRequired===true?{twoStepSetupRequired:true as const}:{})});
 }
 export function parseDirectSignIn(raw:unknown):DirectSignIn{
  if(!obj(raw))invalid();
@@ -81,6 +91,7 @@ export function parseDirectSignIn(raw:unknown):DirectSignIn{
  const passwordChangeRequired=raw.passwordChangeRequired===true;
  const session=parseLocalSession(raw.session,{authority:'local',accountId:snapshot.account.id,serverId:snapshot.serverId,profileId:snapshot.account.primaryProfileId});
  const accountScoped=session.viewer.role==='account';
+ if(snapshot.twoStepSetupRequired&&!accountScoped)invalid();
  if(raw.resetFileOwnerSession!==undefined&&raw.resetFileOwnerSession!==true)invalid();
  const resetFileOwnerSession=raw.resetFileOwnerSession===true;
  if(resetFileOwnerSession&&(accountScoped||passwordChangeRequired||snapshot.account.role!=='owner'||session.viewer.role!=='owner'||session.refreshToken))invalid();
