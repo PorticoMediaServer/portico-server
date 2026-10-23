@@ -444,8 +444,9 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
      subtitle list has loaded nothing is said, and the profile's usual choice applies. */
   const castSubtitles = () => {
     const plan = subtitles.snapshot.plan;
-    if (!plan) return undefined;
-    return {subtitleTrackId: plan.mode === 'track' && !subtitles.snapshot.suppressed && plan.selected ? plan.selected.id : null};
+    const current = service.getSnapshot();
+    const queue = engine.playback.session(current.session?.id)?.queue;
+    return {...(queue ? {queue: {queueId: queue.queueId, entryId: queue.entryId}} : {}), ...(plan ? {subtitleTrackId: plan.mode === 'track' && !subtitles.snapshot.suppressed && plan.selected ? plan.selected.id : null} : {})};
   };
   /** Watch Together from the player: the title goes to the Together page, which plays it once the group has started. */
   function watchTogether() {
