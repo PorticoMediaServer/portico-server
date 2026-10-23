@@ -3,17 +3,46 @@ set -euo pipefail
 # Native macOS builds, or BtbN's container cross builds. Never publishes.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TARGET="${1:?usage: build-ffmpeg.sh TARGET [WORK_DIRECTORY]}"
-WORK="${2:-$ROOT/runtime/ffmpeg-build/$TARGET}"
+LANE_SCRATCH="${PORTICO_LANE_SCRATCH:?Set PORTICO_LANE_SCRATCH to the workspace .scratch/hardware-r29 directory}"
+[[ "$LANE_SCRATCH" == /*/.scratch/hardware-r29 ]] || { echo 'Use the lane scratch directory on disk' >&2; exit 1; }
+mkdir -p "$LANE_SCRATCH"
+LANE_SCRATCH="$(cd "$LANE_SCRATCH" && pwd -P)"
+case "$LANE_SCRATCH" in /tmp/*|/dev/shm/*) echo 'Lane scratch must be on disk' >&2; exit 1;; esac
+WORK="${2:-$LANE_SCRATCH/ffmpeg-build/$TARGET}"
+[[ "$WORK" == "$LANE_SCRATCH/"* ]] || { echo 'Build output must stay under the lane scratch directory' >&2; exit 1; }
 mkdir -p "$WORK"
-WORK="$(cd "$WORK" && pwd)"
+WORK="$(cd "$WORK" && pwd -P)"
+[[ "$WORK" == "$LANE_SCRATCH/"* ]] || { echo 'Build output must stay under the lane scratch directory' >&2; exit 1; }
+export TMPDIR="$LANE_SCRATCH/tmp" GOTMPDIR="$LANE_SCRATCH/go-tmp" XDG_CACHE_HOME="$LANE_SCRATCH/cache" PIP_CACHE_DIR="$LANE_SCRATCH/cache/pip"
+export GOCACHE="$HOME/.cache/go-build"
+mkdir -p "$TMPDIR" "$GOTMPDIR" "$XDG_CACHE_HOME" "$PIP_CACHE_DIR"
 readlock() { python3 -c 'import json,sys;v=json.load(open(sys.argv[1]));print(v[sys.argv[2]][sys.argv[3]])' "$ROOT/third_party/ffmpeg/sources.lock.json" "$1" "$2"; }
 VERSION="$(readlock ffmpeg version)"
+ARCHIVE="$WORK/jellyfin-ffmpeg-source.tar.gz"
 SOURCE="$WORK/ffmpeg-$VERSION.tar.xz"
-curl --fail --location --retry 3 "$(readlock ffmpeg source)" -o "$SOURCE"
-python3 - "$SOURCE" "$(readlock ffmpeg sha256)" <<'PY'
-import hashlib,pathlib,sys
-if hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest()!=sys.argv[2]:raise SystemExit('FFmpeg source checksum mismatch')
-PY
+export SOURCE_DATE_EPOCH="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["sourceDateEpoch"])' "$ROOT/third_party/ffmpeg/sources.lock.json")"
+# The helper is owned by the video source lane. A job must name its checked
+# source commit explicitly; an uncommitted or unrelated WIP file is not intake.
+DISC_SOURCE="$ROOT/third_party/portico-disc/portico-disc.c"
+if [[ "${PORTICO_FFMPEG_SOURCE_ONLY:-0}" != 1 && "${PORTICO_FFMPEG_DEPS_ONLY:-0}" != 1 ]]; then
+  [[ ${PORTICO_DISC_SOURCE_COMMIT:-} =~ ^[0-9a-f]{40}$ ]] || { echo 'Set PORTICO_DISC_SOURCE_COMMIT to the checked disc source commit' >&2; exit 1; }
+  git -C "$ROOT" merge-base --is-ancestor "$PORTICO_DISC_SOURCE_COMMIT" origin/main || { echo 'Disc input must be merged on main' >&2; exit 1; }
+  git -C "$ROOT" diff --quiet HEAD -- third_party/portico-disc/portico-disc.c
+  [[ -f "$DISC_SOURCE" && ! -L "$DISC_SOURCE" ]] || { echo 'Checked disc source is missing' >&2; exit 1; }
+  git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:third_party/portico-disc/portico-disc.c" > "$WORK/checked-portico-disc.c"
+  cmp "$WORK/checked-portico-disc.c" "$DISC_SOURCE"
+  git -C "$ROOT" diff --quiet HEAD -- third_party/portico-disc/LICENSE
+  git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:third_party/portico-disc/LICENSE" > "$WORK/checked-portico-disc.LICENSE"
+  cmp "$WORK/checked-portico-disc.LICENSE" "$ROOT/third_party/portico-disc/LICENSE"
+  [[ ${PORTICO_DISC_FIXTURES_SHA256:-} =~ ^[0-9a-f]{64}$ && -f ${PORTICO_DISC_FIXTURES:-} ]] || { echo 'Provide the checked disc fixture manifest and SHA256' >&2; exit 1; }
+fi
+if [[ ! -f "$ARCHIVE" ]]; then
+  curl --fail --location --retry 3 "$(readlock ffmpeg source)" -o "$ARCHIVE.new"
+  mv "$ARCHIVE.new" "$ARCHIVE"
+fi
+python3 "$ROOT/scripts/prepare-ffmpeg-source.py" "$WORK/patched-source" --archive "$ARCHIVE"
+python3 "$ROOT/scripts/archive-ffmpeg-source.py" "$WORK/patched-source" "$SOURCE" "$SOURCE_DATE_EPOCH"
+if [[ "${PORTICO_FFMPEG_SOURCE_ONLY:-0}" == 1 ]]; then echo "$SOURCE"; exit 0; fi
 case "$TARGET" in
  macos-arm64|macos-x64)
   [[ "$(uname -s)" == Darwin ]]
@@ -29,10 +58,13 @@ case "$TARGET" in
   python3 -m venv "$WORK/python"
   "$WORK/python/bin/pip" install --disable-pip-version-check 'meson==1.7.0' 'ninja==1.11.1.4' 'setuptools==75.8.0'
   export PATH="$WORK/python/bin:$PATH"
+  python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$WORK/patched-source" "$TARGET"
   # Seed the exact verified source consumed by the pinned recipe.
-  mkdir -p "$WORK/recipe/packages";cp "$SOURCE" "$WORK/recipe/packages/ffmpeg-$VERSION.tar.xz"
+  mkdir -p "$WORK/recipe/packages";python3 "$ROOT/scripts/archive-ffmpeg-source.py" "$WORK/patched-source" "$WORK/recipe/packages/FFmpeg-release-$VERSION.tar.gz" "$SOURCE_DATE_EPOCH"
   (cd "$WORK/recipe" && FFMPEG_VERSION="$VERSION" SKIPINSTALL=yes SKIPRAV1E=yes ./build-ffmpeg --build --enable-gpl)
   INPUT="$WORK/recipe/workspace"
+  python3 "$ROOT/scripts/build-portico-disc.py" --source "$WORK/checked-portico-disc.c" --source-commit "$PORTICO_DISC_SOURCE_COMMIT" --prefix "$INPUT" --output "$INPUT/bin/portico-disc" --metadata "$INPUT/portico-disc-build.json" --target "$TARGET"
+  cp "$WORK/checked-portico-disc.LICENSE" "$INPUT/portico-disc-LICENSE"
   mkdir -p "$INPUT/LICENSES"
   python3 - "$WORK/recipe/packages" "$INPUT/LICENSES" <<'PYLICENSE'
 import pathlib,shutil,sys
@@ -47,11 +79,29 @@ PYLICENSE
   git -C "$WORK/recipe" checkout --detach "$(readlock btbn commit)"
   # These generated recipe files are owned by this build. Restore only the
   # patched files so a resumed job cannot accumulate overlapping edits.
-  git -C "$WORK/recipe" restore --source="$(readlock btbn commit)" -- build.sh images/base-linux64/ct-ng-config images/base-linuxarm64/ct-ng-config
+  git -C "$WORK/recipe" restore --source="$(readlock btbn commit)" -- build.sh images/base-linux64/ct-ng-config images/base-linuxarm64/ct-ng-config scripts.d
   for patch in btbn-gnu-ncurses-mirror.patch btbn-verified-source.patch; do
     if git -C "$WORK/recipe" apply --check "$ROOT/third_party/ffmpeg/patches/$patch"; then git -C "$WORK/recipe" apply "$ROOT/third_party/ffmpeg/patches/$patch"; else git -C "$WORK/recipe" apply --reverse --check "$ROOT/third_party/ffmpeg/patches/$patch"; fi
   done
   if ! grep -q 'std::system_error in the Windows Graphics Capture' "$WORK/recipe/build.sh"; then "$ROOT/scripts/patch-btbn-winarm64-system-error.sh" "$WORK/recipe/build.sh"; fi
+  if [[ "${PORTICO_FFMPEG_DEPS_ONLY:-0}" != 1 ]]; then
+    mkdir -p "$WORK/recipe/portico-disc"
+    cp "$WORK/checked-portico-disc.c" "$WORK/recipe/portico-disc/portico-disc.c"
+    cp "$WORK/checked-portico-disc.LICENSE" "$WORK/recipe/portico-disc/LICENSE"
+    cp "$ROOT/scripts/build-portico-disc.py" "$WORK/recipe/portico-disc/build-portico-disc.py"
+  fi
+  python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$WORK/patched-source" "$TARGET"
+  if [[ "$TARGET" == linux-x64 ]]; then
+    python3 "$ROOT/scripts/build-linux-ffmpeg-deps.py" --recipe "$WORK/recipe" --work "$WORK/linux-deps"
+    if [[ "${PORTICO_FFMPEG_DEPS_ONLY:-0}" == 1 ]]; then
+      echo "Dependency source build completed: $WORK/linux-deps"
+      exit 0
+    fi
+    # The source-built binaries use the exact immutable dependency prefix.
+    python3 "$ROOT/scripts/build-linux-ffmpeg.py" --work "$WORK" --source "$SOURCE"
+    INPUT="$WORK/linux-output"
+  else
+    [[ "${PORTICO_FFMPEG_DEPS_ONLY:-0}" != 1 ]] || { echo 'Dependency-only phase currently supports linux-x64' >&2; exit 1; }
   cp "$SOURCE" "$WORK/recipe/portico-ffmpeg-source.tar.xz"
   (cd "$WORK/recipe" && export GIT_BRANCH_OVERRIDE="n$VERSION" && ./makeimage.sh "$native" gpl 8.1 && ./build.sh "$native" gpl 8.1)
   mkdir -p "$WORK/extracted"
@@ -62,17 +112,32 @@ if len(files)!=1:raise SystemExit('Expected exactly one build artifact')
 shutil.unpack_archive(str(files[0]),sys.argv[2])
 PY
   INPUT="$WORK/extracted"
+  fi
   ;;
  *) echo 'Unknown target' >&2;exit 2;;
 esac
 mkdir -p "$WORK/provenance"
 mkdir -p "$WORK/provenance/contract" "$WORK/provenance/scripts"
+mkdir -p "$WORK/provenance/portico-disc"
+cp "$WORK/checked-portico-disc.c" "$WORK/provenance/portico-disc/portico-disc.c"
+cp "$WORK/checked-portico-disc.LICENSE" "$WORK/provenance/portico-disc/LICENSE"
 cp "$ROOT/third_party/ffmpeg/"*.json "$ROOT/third_party/ffmpeg/NOTICE.md" "$WORK/provenance/contract/"
 cp -R "$ROOT/third_party/ffmpeg/patches" "$WORK/provenance/contract/"
-cp "$ROOT/scripts/build-ffmpeg.sh" "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$ROOT/scripts/patch-btbn-winarm64-system-error.sh" "$WORK/provenance/scripts/"
-cp "$SOURCE" "$WORK/provenance/"
+cp "$ROOT/scripts/build-ffmpeg.sh" "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$ROOT/scripts/patch-btbn-winarm64-system-error.sh" "$ROOT/scripts/prepare-ffmpeg-source.py" "$ROOT/scripts/archive-ffmpeg-source.py" "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/provenance/scripts/"
+cp "$ROOT/scripts/build-portico-disc.py" "$ROOT/scripts/build-macos-ffmpeg-extras.sh" "$WORK/provenance/scripts/"
+cp "$ROOT/scripts/verify-ffmpeg-bundle.sh" "$ROOT/scripts/verify-ffmpeg-manifest.py" "$ROOT/scripts/verify-ffmpeg-features.py" "$ROOT/scripts/verify-disc-bundle.py" "$WORK/provenance/scripts/"
+cp "$ARCHIVE" "$SOURCE" "$WORK/provenance/"
+if [[ "$TARGET" == linux-x64 ]]; then
+  mkdir -p "$WORK/provenance/linux-dependencies"
+  cp -al "$WORK/linux-deps/sources" "$WORK/provenance/linux-dependencies/sources"
+  cp -a "$WORK/linux-deps/licenses" "$WORK/provenance/linux-dependencies/licenses"
+  cp "$WORK/linux-deps/"{dependency-inputs.json,stage-plan.json,prefix-files.json,compiler.txt} "$WORK/provenance/linux-dependencies/"
+  cp "$WORK/repeat-build.json" "$WORK/provenance/"
+  cp "$ROOT/scripts/build-linux-ffmpeg-deps.py" "$ROOT/scripts/build-linux-ffmpeg.py" "$WORK/provenance/scripts/"
+fi
 # Include dependency sources and exact recipe, excluding only output binaries and git metadata.
-tar -C "$WORK" --exclude=recipe/.git --exclude=recipe/workspace --exclude=recipe/artifacts --exclude=recipe/.cache/images -cJf "$WORK/corresponding-source.tar.xz" recipe provenance
+tar -C "$WORK" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner --exclude=recipe/.git --exclude=recipe/workspace --exclude=recipe/artifacts --exclude=recipe/.cache/images -I 'xz -T1' -cf "$WORK/corresponding-source.tar.xz" recipe provenance
 python3 "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$INPUT" "$TARGET" "$WORK/bundle" "$WORK/corresponding-source.tar.xz"
-tar -C "$WORK/bundle" -cJf "$WORK/portico-ffmpeg-$TARGET.tar.xz" .
+"$ROOT/scripts/verify-ffmpeg-bundle.sh" "$WORK/bundle"
+tar -C "$WORK/bundle" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -I 'xz -T1' -cf "$WORK/portico-ffmpeg-$TARGET.tar.xz" .
 echo "$WORK/portico-ffmpeg-$TARGET.tar.xz"

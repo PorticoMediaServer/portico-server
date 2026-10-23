@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+"""Build the pinned Linux dependency closure serially, without OCI layer copies.
+
+The compiler image is an immutable build input, never an FFmpeg distribution.
+All linked media dependencies are built from the pinned source recipes. Sources,
+licences, exact input hashes and the installed prefix remain in the job directory.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+
+
+def digest(path):
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def atomic_json(path, value):
+    temporary = path.with_suffix(path.suffix + '.new')
+    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + '\n')
+    temporary.replace(path)
+
+
+def run(*argv, **kwargs):
+    return subprocess.run(argv, check=True, **kwargs)
+
+
+def prepare(recipe, config, jobs):
+    # The final stage names the complete required dependency closure. Native
+    # FFmpeg codecs remain enabled; unrelated optional third-party encoders are
+    # not dependencies of this bundle.
+    final = recipe / 'scripts.d/zz-final.sh'
+    text = final.read_text()
+    text = re.sub(r'ffbuild_depends\(\) \{.*?\n\}',
+                  'ffbuild_depends() {\n' + ''.join('    echo ' + x + '\n' for x in config['roots']) + '}',
+                  text, count=1, flags=re.S)
+    final.write_text(text)
+    for path in recipe.rglob('*.sh'):
+        if '.git' in path.parts:
+            continue
+        text = path.read_text()
+        text = text.replace('$(nproc)', str(jobs)).replace('xz -T0', 'xz -T1')
+        path.write_text(text)
+    run('bash', 'generate.sh', 'linux64', 'gpl', '8.1', cwd=recipe)
+    stages = []
+    for source in re.findall(r'RUN --mount=src=(scripts\.d/[^,]+),dst=/stage.sh', (recipe / 'Dockerfile').read_text()):
+        if source not in stages:
+            stages.append(source)
+    if not stages:
+        raise ValueError('Pinned recipe generated no dependency stages')
+    return stages
+
+
+def container(recipe, work, config, stages, jobs):
+    import shutil
+    image = config['compilerImage']
+    if not re.fullmatch(r'ghcr\.io/btbn/ffmpeg-builds/base-linux64@sha256:[0-9a-f]{64}', image):
+        raise ValueError('An immutable Linux compiler image is required')
+    for directory in ['sources', 'build', 'prefix', 'dest', 'tmp', 'licenses', 'receipts', 'extra']:
+        (work / directory).mkdir(parents=True, exist_ok=True)
+    run('docker', 'pull', image)
+    runner = work / 'dependency-runner.py'
+    shutil.copyfile(Path(__file__), runner)
+    script = work / 'dependencies.sh'
+    script.write_text('''#!/bin/bash
+set -euo pipefail
+cd /recipe
+source util/vars.sh linux64 gpl 8.1
+export SOURCE_DATE_EPOCH="''' + str(config['sourceDateEpoch']) + '''"
+export TMPDIR=/portico/tmp
+export CARGO_BUILD_JOBS=''' + str(jobs) + ''' CMAKE_BUILD_PARALLEL_LEVEL=''' + str(jobs) + '''
+export ACLOCAL_PATH=/opt/ffbuild/share/aclocal
+export ZERO_AR_DATE=1 LC_ALL=C.UTF-8 TZ=UTC
+export CFLAGS="$CFLAGS -ffile-prefix-map=/portico/build=/usr/src/portico"
+export CXXFLAGS="$CXXFLAGS -ffile-prefix-map=/portico/build=/usr/src/portico"
+gcc --version > /portico/compiler.txt
+"$CC" --version >> /portico/compiler.txt
+"$CXX" --version >> /portico/compiler.txt
+ld --version >> /portico/compiler.txt
+meson --version >> /portico/compiler.txt
+python3 /build-linux-ffmpeg-deps.py --inside
+''')
+    atomic_json(work / 'stage-plan.json', {
+        'stages': stages, 'compilerImage': image, 'jobs': jobs,
+        'recipeSHA256': {str(p.relative_to(recipe)): digest(p) for p in sorted(recipe.rglob('*.sh')) if '.git' not in p.parts},
+    })
+    # Writable paths are ordinary on-disk bind mounts. Docker's /tmp is never
+    # used for source/build scratch. A single container holds small native build
+    # tools (e.g. glslc) between dependency stages; exported before it exits.
+    run('docker', 'run', '--rm', '--name', 'portico-hardware-r29-linux-deps',
+        '--cpus', str(jobs), '--memory', '8g', '--memory-swap', '8g',
+        '--label', 'portico.lane=hardware-r29',
+        '-v', str(recipe) + ':/recipe:ro', '-v', str(work) + ':/portico',
+        '-v', str(work / 'prefix') + ':/opt/ffbuild',
+        '-v', str(work / 'dest') + ':/opt/ffdest',
+        '-v', str(runner) + ':/build-linux-ffmpeg-deps.py:ro',
+        '-e', 'TMPDIR=/portico/tmp', image, 'bash', '/portico/dependencies.sh')
+
+
+def inside():
+    import shutil
+    import tarfile
+    work = Path('/portico')
+    recipe = Path('/recipe')
+    os.environ['ACLOCAL_PATH'] = '/opt/ffbuild/share/aclocal'
+    plan = json.loads((work / 'stage-plan.json').read_text())
+    inputs = []
+    for source in plan['stages']:
+        name = Path(source).stem
+        raw = subprocess.check_output(['bash', '-c',
+            'source util/vars.sh linux64 gpl 8.1; source util/dl_functions.sh; '
+            'source "$1"; ffbuild_dockerdl', 'source-contract', source], cwd=recipe, text=True).rstrip('\n')
+        if not raw:
+            continue
+        contract = hashlib.sha256((raw + '\n').encode()).hexdigest()
+        archive = work / 'sources' / (name + '_' + contract + '.tar.xz')
+        receipt = work / 'receipts' / (name + '.json')
+        stage = work / 'build' / name
+        expected = {'script': source, 'scriptSHA256': digest(recipe / source),
+                    'downloadRecipeSHA256': contract, 'compilerImage': plan['compilerImage'],
+                    'runnerSHA256': digest(Path(__file__))}
+        if receipt.exists():
+            saved = json.loads(receipt.read_text())
+            if any(saved.get(k) != v for k, v in expected.items()) or not archive.is_file() or digest(archive) != saved['sourceArchiveSHA256']:
+                raise ValueError('Resume input changed for ' + name)
+            inputs.append(saved)
+            print('REUSE ' + name, flush=True)
+            continue
+        if stage.exists():
+            shutil.rmtree(stage)
+        stage.mkdir()
+        print('SOURCE ' + name, flush=True)
+        if not archive.exists():
+            # Download commands originate only in the exact public source
+            # recipe. Any submodule/dependency commits are retained in source.
+            run('bash', '-e', '-o', 'pipefail', '-c', raw, cwd=stage)
+            run('tar', '--sort=name', '--mtime=@' + os.environ['SOURCE_DATE_EPOCH'],
+                '--owner=0', '--group=0', '--numeric-owner', '-I', 'xz -T1',
+                '-cf', str(archive) + '.new', '.', cwd=stage)
+            Path(str(archive) + '.new').replace(archive)
+        else:
+            run('tar', '-xf', str(archive), '-C', str(stage))
+        # Collect actual licence files before build recipes edit the source.
+        licenses = {}
+        for path in sorted(stage.rglob('*')):
+            if not path.is_file() or path.is_symlink() or '.git' in path.parts:
+                continue
+            if path.name.lower().startswith(('license', 'licence', 'copying', 'copyright', 'notice')):
+                relative = path.relative_to(stage)
+                destination = work / 'licenses' / name / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(path, destination)
+                licenses[str(relative)] = digest(path)
+        if not licenses:
+            raise ValueError('No actual dependency licence found for ' + name)
+        print('BUILD ' + name, flush=True)
+        run('bash', '-e', '-o', 'pipefail', '-c', '''
+stage_source="$PWD"
+cd /recipe
+source /recipe/util/vars.sh linux64 gpl 8.1
+source /recipe/"$1"
+cd "$stage_source"
+case "$1" in
+  *libbluray.sh|*libdvdread.sh|*libdvdnav.sh|*libudfread.sh)
+    export GIT_DIR="$stage_source/.git" GIT_WORK_TREE="$stage_source";;
+esac
+export RAW_CFLAGS="$CFLAGS" RAW_CXXFLAGS="$CXXFLAGS" RAW_LDFLAGS="$LDFLAGS"
+export CFLAGS="$CFLAGS ${STAGE_CFLAGS:-}" CXXFLAGS="$CXXFLAGS ${STAGE_CXXFLAGS:-}"
+export LDFLAGS="$LDFLAGS ${STAGE_LDFLAGS:-}"
+ffbuild_dockerbuild
+''', 'dependency-build', source, cwd=stage)
+        # Each stage installs into the same static prefix. No OCI stage/cache
+        # duplication, and its compiler intermediates are removed immediately.
+        destination = Path(os.environ['FFBUILD_DESTPREFIX'])
+        if destination.exists():
+            run('cp', '-a', str(destination) + '/.', os.environ['FFBUILD_PREFIX'])
+            shutil.rmtree(destination)
+        if Path('/opt/glslc').is_file():
+            shutil.copyfile('/opt/glslc', '/usr/bin/glslc')
+            Path('/usr/bin/glslc').chmod(0o755)
+        record = {**expected, 'sourceArchive': archive.name, 'sourceArchiveSHA256': digest(archive),
+                  'licenses': licenses}
+        atomic_json(receipt, record)
+        inputs.append(record)
+        atomic_json(work / 'dependency-inputs.json', inputs)
+        shutil.rmtree(stage)
+        print('DONE ' + name, flush=True)
+    glslc = Path('/opt/glslc')
+    if glslc.is_file():
+        shutil.copyfile(glslc, work / 'extra/glslc')
+        (work / 'extra/glslc').chmod(0o755)
+    atomic_json(work / 'prefix-files.json', {
+        str(path.relative_to(work / 'prefix')): digest(path)
+        for path in sorted((work / 'prefix').rglob('*')) if path.is_file()
+    })
+    atomic_json(work / 'dependency-inputs.json', inputs)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--inside', action='store_true')
+    parser.add_argument('--recipe', type=Path)
+    parser.add_argument('--work', type=Path)
+    args = parser.parse_args()
+    if args.inside:
+        inside()
+        return
+    root = Path(__file__).resolve().parent.parent
+    lock = json.loads((root / 'third_party/ffmpeg/sources.lock.json').read_text())
+    config = {**lock['linuxSourceBuild'], 'sourceDateEpoch': lock['sourceDateEpoch']}
+    jobs = int(os.environ.get('PORTICO_BUILD_JOBS', '2'))
+    if jobs not in (1, 2):
+        raise ValueError('Use one or two compiler workers for this bounded recipe')
+    stages = prepare(args.recipe.resolve(), config, jobs)
+    container(args.recipe.resolve(), args.work.resolve(), config, stages, jobs)
+
+
+if __name__ == '__main__':
+    main()
