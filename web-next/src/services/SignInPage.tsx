@@ -21,11 +21,6 @@ export function RegisteredSignInPage({account, pending}: {account: ServicesAccou
     const timeout = setTimeout(() => {active.current?.abort(); setExpired(true);}, Math.max(0, Date.parse(pending.handoff.expiresAt) - Date.now()));
     return () => {clearTimeout(timeout); active.current?.abort();};
   }, [pending]);
-  if (expired || Date.parse(pending.handoff.expiresAt) <= Date.now()) return <ServicesInvalidLink />;
-  const back = <ServicesBackLink href={pending.handoff.registration.origin}>{t('services.return.back', {server: pending.serverName})}</ServicesBackLink>;
-  const lead = t('services.return.lead', {server: pending.serverName});
-  if (!session || authenticating) return <ServicesAuthForm account={account} heading={t('auth.welcomeHome')} lead={lead}
-    initialUsername={username} before={<HostedError error={error} />} after={back} onSignedIn={() => setAuthenticating(false)} />;
   const act = (work: (signal: AbortSignal) => Promise<void>) => {
     if (busy || active.current && !active.current.signal.aborted) return;
     const controller = new AbortController(); active.current = controller; setBusy(true); setError(undefined);
@@ -34,6 +29,15 @@ export function RegisteredSignInPage({account, pending}: {account: ServicesAccou
       if (!controller.signal.aborted) setBusy(false);
     });
   };
+  if (expired || Date.parse(pending.handoff.expiresAt) <= Date.now()) return <ServicesInvalidLink />;
+  const back = <ServicesBackLink href={pending.handoff.registration.origin}>{t('services.return.back', {server: pending.serverName})}</ServicesBackLink>;
+  const lead = t('services.return.lead', {server: pending.serverName});
+  if (!session || authenticating) return <ServicesAuthForm account={account} heading={t('auth.welcomeHome')} lead={lead}
+    initialUsername={username} before={<HostedError error={error} />} after={back} onSignedIn={gesture => {
+      setAuthenticating(false);
+      const current = account.service.getSnapshot().session;
+      if (gesture && current) act(signal => continueHostedSignIn(account, pending, accountIdentity(current), hostedSignInStore(), signal, value => location.assign(value)));
+    }} />;
   return <ServicesAuthStage><ServicesHeading>{t('auth.welcomeHome')}</ServicesHeading><ServicesLead>{lead}</ServicesLead>
     <HostedError error={error} /><ServicesSignedInAccount username={session.account.username} disabled={busy}
       onDifferent={() => act(async () => {await account.service.logoutIfCurrent(accountIdentity(session));})} />
