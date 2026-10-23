@@ -7,7 +7,7 @@ function text(raw: Record<string, unknown>, key: string, max = 256): string | un
 }
 /** A channel identity never implies a source or provenance. */
 export function parseLiveScreenSearch(raw: Record<string, unknown>): LiveScreenSearch {
-  const sourceId = text(raw, 'sourceId'), channelId = text(raw, 'channelId'), group = text(raw, 'group', 120), q = text(raw, 'q', 512);
+  const sourceId = text(raw, 'sourceId'), channelId = text(raw, 'channelId'), group = text(raw, 'group', 120), q = text(raw, 'q', 120);
   const view = (['guide', 'list'] as const).find(value => value === raw.view);
   const sort = (['number', 'name', 'favorites'] as const).find(value => value === raw.sort);
   const kind = (['all', 'live-source', 'library-channel'] as const).find(value => value === raw.kind);

@@ -30,3 +30,11 @@ export function WebScreenOutlet({id, fallback}: {id: WebScreenId; fallback?: Rea
   const {binding} = useWebScreenContext(), Screen = webScreens.get(id)?.component;
   return Screen ? <Screen key={binding?.scopeKey ?? 'signed-out'} /> : fallback;
 }
+
+/** Inside the router but outside changing shell/standalone chrome. A real
+ * authority replacement unmounts every retained lifetime with its captured scope. */
+export function WebRetainedScreenHosts() {
+  const current = useProtectedWebScreenContext();
+  if (!current) return null;
+  return webScreens.retainedHosts().map(({id, component: Host}) => <Host key={JSON.stringify([id, current.binding.scopeKey])} />);
+}

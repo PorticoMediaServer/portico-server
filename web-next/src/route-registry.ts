@@ -23,11 +23,15 @@ export type WebScreenDefinition = Readonly<{
   validateSearch?: WebScreenSearchValidator;
   /** The player module's one persistent media owner, mounted outside route outlets. */
   playbackHost?: ComponentType<{binding: ShellPlaybackBinding | undefined}>;
+  /** A screen-owned protected lifetime that may survive an auxiliary route.
+   * The component owns visibility and starts work only for its actual destination. */
+  retainedHost?: ComponentType;
 }>;
 export function defineWebScreen<T extends WebScreenDefinition>(definition: T): Readonly<T> {
   if (!Object.hasOwn(webScreenPaths, definition.id)) throw new Error('unknown-web-screen');
   if (definition.validateSearch !== undefined && typeof definition.validateSearch !== 'function') throw new Error('invalid-web-search-validator');
   if (definition.playbackHost && definition.id !== 'player') throw new Error('playback-host-must-belong-to-player');
+  if (definition.retainedHost && definition.id === 'player') throw new Error('player-already-has-playback-host');
   return Object.freeze({...definition});
 }
 export type WebScreenModule = Readonly<{default: WebScreenDefinition | readonly WebScreenDefinition[]}>;
@@ -44,6 +48,7 @@ export function createWebScreenRegistry(modules: Readonly<Record<string, WebScre
   }
   return Object.freeze({
     get: (id: WebScreenId) => definitions.get(id),
+    retainedHosts: () => [...definitions.values()].filter(value => value.retainedHost).map(value => ({id: value.id, component: value.retainedHost!})),
     validateSearch: (id: WebScreenId, raw: WebScreenSearch, fallback: WebScreenSearchValidator = () => ({})): WebScreenSearch => {
       const parsed = (definitions.get(id)?.validateSearch ?? fallback)(raw);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || ![Object.prototype, null].includes(Object.getPrototypeOf(parsed))) throw new Error('invalid-web-search-result');

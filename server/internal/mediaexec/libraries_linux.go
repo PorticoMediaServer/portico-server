@@ -108,6 +108,7 @@ func ResolveLibraries(ffmpeg, ffprobe string, extra []string) ([]string, error) 
 					// a cached choice, including a previously absent directory.
 					watch.record(base)
 					p := filepath.Join(base, name)
+					watch.record(p)
 					if i, e := os.Stat(p); e == nil && i.Mode().IsRegular() {
 						target = p
 						break

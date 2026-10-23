@@ -4,35 +4,53 @@ package mediaexec
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"sync"
+	"syscall"
 )
 
 // This memo saves repeated ELF parsing, not custody checks. Every hit stats the
 // exact executable/dependency aliases and searched directories again. Changes
 // force the original bounded resolver; it still decides every mounted path.
-type libraryWatch map[string]os.FileInfo
+type libraryNode struct {
+	entry    os.FileInfo
+	target   os.FileInfo
+	resolved string
+}
+
+type libraryWatch map[string]libraryNode
 
 func (w libraryWatch) record(path string) {
 	if _, exists := w[path]; exists {
 		return
 	}
-	info, _ := os.Stat(path)
-	// Permission and other errors also record nil. unchanged accepts nil only
-	// for a still-missing path, so an unobservable search directory is not cached.
-	w[path] = info
+	entry, _ := os.Lstat(path)
+	target, _ := os.Stat(path)
+	resolved, _ := filepath.EvalSymlinks(path)
+	w[path] = libraryNode{entry, target, resolved}
+}
+
+func sameLibraryInfo(previous, now os.FileInfo, err error) bool {
+	if previous == nil {
+		return os.IsNotExist(err)
+	}
+	if err != nil || !os.SameFile(previous, now) || previous.Mode() != now.Mode() || previous.Size() != now.Size() || !previous.ModTime().Equal(now.ModTime()) {
+		return false
+	}
+	before, okBefore := previous.Sys().(*syscall.Stat_t)
+	after, okAfter := now.Sys().(*syscall.Stat_t)
+	// ctime catches in-place changes followed by restoration of mtime/size.
+	return okBefore && okAfter && before.Ctim == after.Ctim
 }
 
 func (w libraryWatch) unchanged() bool {
 	for path, previous := range w {
-		now, err := os.Stat(path)
-		if previous == nil {
-			if !os.IsNotExist(err) {
-				return false
-			}
-			continue
-		}
-		if err != nil || !os.SameFile(previous, now) || previous.Mode() != now.Mode() || previous.Size() != now.Size() || !previous.ModTime().Equal(now.ModTime()) {
+		entry, entryErr := os.Lstat(path)
+		target, targetErr := os.Stat(path)
+		resolved, _ := filepath.EvalSymlinks(path)
+		if !sameLibraryInfo(previous.entry, entry, entryErr) ||
+			!sameLibraryInfo(previous.target, target, targetErr) || resolved != previous.resolved {
 			return false
 		}
 	}
