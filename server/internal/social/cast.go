@@ -152,7 +152,7 @@ func (s *Store) CastBootstrapStart(ctx context.Context, p identity.Principal, re
 		return out, errInvalid
 	}
 	if req.DisplayName == "" {
-		req.DisplayName = "Cast receiver"
+		req.DisplayName = "Google Cast"
 	}
 	if !text(req.DisplayName, 64) {
 		return out, errInvalid

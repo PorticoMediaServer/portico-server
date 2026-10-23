@@ -41,6 +41,7 @@ type MemberResetRequest struct {
 	TurnOffTwoStep   bool  `json:"turnOffTwoStep,omitempty"`
 }
 type MemberResetCode struct {
+	ServerID  string `json:"serverId,omitempty"`
 	Code      string `json:"code"`
 	ExpiresAt string `json:"expiresAt"`
 }
@@ -450,6 +451,10 @@ func (s *Service) MakeMemberResetCode(ctx context.Context, bearer, target string
 		}
 		if linked {
 			return ErrForbidden
+		}
+		out.ServerID, e = LocalLinkServerIDTx(ctx, tx)
+		if e != nil {
+			return e
 		}
 		// Issuing a replacement does not disable MFA; the choice commits only when
 		// the recipient successfully proves the reset code.

@@ -22,6 +22,8 @@ import (
 // Invitation is an administrator-only record. Notes never belong in a shared card or recipient response.
 // Codes are derived under a server-only key; only their digest is in the database.
 type Invitation struct {
+	// ServerID is carried with a Local code so a link can pin its destination.
+	ServerID         string   `json:"serverId,omitempty"`
 	ID               string   `json:"id"`
 	Notes            *string  `json:"notes,omitempty"`
 	Role             string   `json:"role"`
@@ -281,6 +283,10 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 		if count >= 200 {
 			return ErrCapacity
 		}
+		serverID, e := identity.LocalLinkServerIDTx(ctx, tx)
+		if e != nil {
+			return e
+		}
 		now := s.now()
 		libraries, _ := json.Marshal(q.AllowedLibraries)
 		id := token()[:22]
@@ -297,6 +303,7 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 			return e
 		}
 		out.Code = code
+		out.ServerID = serverID
 		return nil
 	})
 	return
@@ -749,6 +756,7 @@ type InvitationLinkRequest struct {
 	ExpectedRevision int64 `json:"expectedRevision"`
 }
 type InvitationLink struct {
+	ServerID  string `json:"serverId,omitempty"`
 	Code      string `json:"code"`
 	ExpiresAt string `json:"expiresAt"`
 }
@@ -865,7 +873,11 @@ func (s *Store) PendingInvitationLink(ctx context.Context, auth Authorize, actor
 		if !hmac.Equal([]byte(hash), []byte(digest(code))) {
 			return ErrExpired
 		}
-		out = InvitationLink{Code: code, ExpiresAt: v.ExpiresAt}
+		serverID, e := identity.LocalLinkServerIDTx(ctx, tx)
+		if e != nil {
+			return e
+		}
+		out = InvitationLink{ServerID: serverID, Code: code, ExpiresAt: v.ExpiresAt}
 		return nil
 	})
 	return

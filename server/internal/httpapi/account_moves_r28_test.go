@@ -47,6 +47,9 @@ func TestAccountMovePublicHTTPCodeAndOwnerReadOnly(t *testing.T) {
 	if e = json.Unmarshal(codeReply.Body.Bytes(), &codes); e != nil || codeReply.Code != 200 || len(codes.Items) != 1 {
 		t.Fatalf("codes %d %s %v", codeReply.Code, codeReply.Body, e)
 	}
+	if codes.Items[0].ServerID != f.deps.Identity.ID() {
+		t.Fatal("Local move link lost canonical identity")
+	}
 	code := codes.Items[0].Code
 	preview := f.call("POST", "/v1/auth/move/code", "", `{"code":"`+code+`"}`)
 	if preview.Code != 200 || !strings.Contains(preview.Body.String(), `"username":"member"`) || strings.Contains(preview.Body.String(), code) {

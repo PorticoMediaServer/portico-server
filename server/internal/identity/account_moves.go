@@ -49,6 +49,7 @@ type MoveConfirmRequest struct {
 func (MoveConfirmRequest) String() string { return "[account move credentials redacted]" }
 
 type MoveCode struct {
+	ServerID  string `json:"serverId,omitempty"`
 	AccountID string `json:"accountId"`
 	Username  string `json:"username"`
 	Code      string `json:"code"`
@@ -506,6 +507,10 @@ func (s *Service) MakeMoveCodes(ctx context.Context, bearer string, q MoveCodeRe
 		if _, e := s.moveWebOwnerTx(ctx, tx, bearer); e != nil {
 			return e
 		}
+		serverID, e := LocalLinkServerIDTx(ctx, tx)
+		if e != nil {
+			return e
+		}
 		rows, e := tx.QueryContext(ctx, `SELECT a.id,a.username,w.move_id FROM identity_move_waiting w JOIN accounts a ON a.id=w.account_id JOIN identity_moves m ON m.id=w.move_id WHERE w.state='waiting' AND m.stage IN('moving_to_local','moving_to_portico') ORDER BY a.username,a.id`)
 		if e != nil {
 			return e
@@ -535,7 +540,7 @@ func (s *Service) MakeMoveCodes(ctx context.Context, bearer string, q MoveCodeRe
 			if _, e = tx.ExecContext(ctx, `INSERT INTO identity_move_codes(account_id,move_id,code_hash,expires_ms) VALUES(?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET move_id=excluded.move_id,code_hash=excluded.code_hash,expires_ms=excluded.expires_ms`, t.id, t.move, Digest(code), until.UnixMilli()); e != nil {
 				return e
 			}
-			out.Items = append(out.Items, MoveCode{t.id, t.name, code, until.UTC().Format(time.RFC3339)})
+			out.Items = append(out.Items, MoveCode{ServerID: serverID, AccountID: t.id, Username: t.name, Code: code, ExpiresAt: until.UTC().Format(time.RFC3339)})
 		}
 		return nil
 	})

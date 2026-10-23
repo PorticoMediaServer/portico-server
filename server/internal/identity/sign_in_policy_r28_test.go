@@ -48,6 +48,9 @@ func TestSignInPolicyCASScopesAndActualPasswordResetFactorConsumers(t *testing.T
 	if e != nil {
 		t.Fatal(e)
 	}
+	if code.ServerID != s.ID() {
+		t.Fatal("Local member reset link lost canonical identity")
+	}
 	until, e := time.Parse(time.RFC3339, code.ExpiresAt)
 	if e != nil || time.Until(until) < 15*time.Minute-time.Minute || time.Until(until) > 15*time.Minute {
 		t.Fatalf("reset lifetime %+v %v", code, e)
