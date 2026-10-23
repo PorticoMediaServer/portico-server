@@ -11,6 +11,10 @@ installs the locked rclone test executable in owned scratch, builds this exact
 job-labelled fixture, runs the three native mixed workloads and cleans up on
 success or failure. Use the admitted remote runner and a canonical private
 `TMPDIR`; `-race` may be passed for a focused race round. No host install is made.
+The native NAS cases need rootful Docker routing to reach their private192.168
+container addresses. `PORTICO_CONTROLLER_ONLY_TEST=1` instead runs the real DAV
+range/sequential controller case without Docker; this does not qualify native
+NAS connectivity.
 
 Build with `docker build --network=host --label portico=remote-sources-r40 --label "portico.job=$PORTICO_SAMBA_TEST_JOB" --iidfile "$TMPDIR/samba-image" internal/rcloneprogram/testdata/smb`.
 Set `PORTICO_SAMBA_TEST_IMAGE` to that exact image ID and

@@ -295,6 +295,7 @@ const (
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
 	return map[string]restrictionRoute{
+		"GET /v1/reading/continue":                                                   {check: readingRestrictionCheck("GET /v1/reading/continue")},
 		"GET /v1/reading/items":                                                      {check: readingRestrictionCheck("GET /v1/reading/items")},
 		"GET /v1/items/{itemId}/reading/versions":                                    {check: readingRestrictionCheck("GET /v1/items/{itemId}/reading/versions")},
 		"GET /v1/reading/sessions/{sessionId}/source":                                {check: readingRestrictionCheck("GET /v1/reading/sessions/{sessionId}/source")},
@@ -414,7 +415,6 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/items/{itemId}/playback/{session}/subtitles":                perItem("/playback/unknown/subtitles"),
 		"GET /v1/admin/console/settings":                                     exempt(reasonAdmin),
 		"GET /v1/admin/metadata/settings":                                    exempt(reasonAdmin),
-		"GET /v1/admin/access-tokens":                                        exempt(reasonAdmin),
 		"GET /v1/admin/webhooks":                                             exempt(reasonAdmin),
 		"GET /v1/admin/webhooks/{id}":                                        exempt(reasonAdmin),
 		"GET /v1/admin/webhooks/{id}/deliveries":                             exempt(reasonAdmin),
@@ -516,6 +516,9 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/media/linear/{playbackId}/{generation}/{token}/{name}": exempt(reasonGrant + "; v1 capability handler, with live revocation proven by TestChannelsARestrictionMidPlayFencesMedia"),
 
 		// Owner-only administration.
+		"GET /v1/admin/sign-in":                                 exempt("owner-only sign-in kind and owner/move state; no catalogue lookup"),
+		"GET /v1/admin/sign-in/move":                            exempt("owner-only account move progress; no catalogue lookup"),
+		"GET /v1/admin/sign-in/policy":                          exempt("owner-only sign-in policy; no catalogue lookup"),
 		"GET /v1/admin/api-keys":                                exempt(reasonAdmin),
 		"GET /v1/admin/access/members/{id}":                     exempt(reasonAdmin),
 		"GET /v1/admin/access/invitations/{id}":                 exempt(reasonAdmin),

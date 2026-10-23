@@ -15,10 +15,12 @@ import {BottomSheet, SidePanel} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
+import {useScreenAppearance} from '../browse/screen-preferences';
 import {ScreenProblem} from '../detail/ScreenProblem';
 import {createLiveBindings, type LiveBindings} from './bindings';
 import {parseLiveScreenSearch, type LiveScreenSearch} from './route-search';
 import {liveListPrograms, liveProgramWindow} from './program-window';
+import {LiveOnNow} from './OnNow';
 import styles from './live.module.css';
 
 const t = defaultI18n.t, halfHour = 30 * 60_000;
@@ -26,6 +28,7 @@ const nowStart = () => Math.floor(Date.now() / halfHour) * halfHour;
 type Selected = Readonly<{owner: LiveBindings; channel: GuideChannelRow; programme?: GuideProgram}>;
 function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   const context = useLibraryScreenContext(captured), search = parseLiveScreenSearch(useSearch({from: '/live'})), width = useShellWidth();
+  const appearance = useScreenAppearance(captured.context)!;
   const timezone = defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const key = JSON.stringify({kind: search.kind ?? 'all', sourceId: search.sourceId ?? '', timezone, group: search.group, favorites: search.favorites,
     search: search.q, sort: search.sort ?? 'number'} satisfies LegacyGuideOptions);
@@ -135,6 +138,9 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
             {groups.length > 6 && <Select aria-label={t('next.live.moreGroups')} placeholder={t('next.live.moreGroups')} value={groups.slice(6).some(([group]) => group === search.group) ? search.group : undefined}
               options={groups.slice(6).map(([group, count]) => ({value: group, label: group, description: defaultI18n.number(count)}))} onValueChange={group => navigate({group, favorites: undefined})}/>}
           </div>
+          {width >= 1024 && hasSources && <LiveOnNow owner={owner} now={now} timezone={timezone} artwork={context.artwork} reducedMotion={appearance.reducedMotion}
+            onOpen={(channel, programme) => {if (owner.life.current()) setSelected({owner, channel, programme});}}
+            onPlay={captured.binding.playback ? play : undefined}/>}
           <div className={styles.controls}><div className={styles.stepper}><Button variant="icon" size="small" icon="i-left" iconOnly aria-label={t('guide.earlier')} onClick={() => setStart(value => value - 2 * 60 * 60_000)}/><Button variant="text" size="small" onClick={() => setStart(nowStart())}>{t('guide.now')}</Button><Button variant="icon" size="small" icon="i-right" iconOnly aria-label={t('guide.later')} onClick={() => setStart(value => value + 2 * 60 * 60_000)}/></div>
             {days.length > 0 && <Select aria-label={t('guide.day')} value={String(localDayStart(start, timezone))}
               options={days.map(day => ({value: String(day), label: day === localDayStart(now, timezone) ? t('guide.today') : new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', timeZone: timezone}).format(day)}))}

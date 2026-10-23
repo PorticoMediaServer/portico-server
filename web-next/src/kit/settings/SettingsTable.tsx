@@ -17,8 +17,8 @@ export type SettingsTableAction = Readonly<{id: string; label: string; destructi
 export type SettingsTableHandle = {focusRow: (id: string) => void};
 export type SettingsTableProps = Readonly<{
   label: string; rows: readonly SettingsTableRow[]; columns: readonly SettingsTableColumn[]; query: TableQuery; onQueryChange: (query: TableQuery) => void;
-  filters?: readonly SettingsTableFilter[]; searchLabel: string; countLabel: string; emptyLabel: string; loading?: boolean; height?: number;
-  matchedCount: number; offset?: number; hasMore?: boolean; onLoadMore?: () => void;
+  filters?: readonly SettingsTableFilter[]; searchLabel: string; countLabel?: string; emptyLabel: string; loading?: boolean; height?: number;
+  matchedCount?: number; offset?: number; hasMore?: boolean; onLoadMore?: () => void;
   selected?: ReadonlySet<string>; onSelectionChange?: (selected: ReadonlySet<string>) => void; bulkActions?: readonly SettingsTableAction[];
   rowAction?: Readonly<{label: string; onAction: (row: SettingsTableRow, opener: HTMLElement) => void}>;
   actions?: ReactNode; ref?: Ref<SettingsTableHandle>;
@@ -96,7 +96,7 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
         <TextField ref={search} containerClassName={styles.tableSearch} type="search" variant="search" value={query.search} placeholder={searchLabel} aria-label={searchLabel} onChange={event => changeQuery({...query, search: event.currentTarget.value})}
           trailing={query.search && <button className={styles.clearSearch} type="button" aria-label={t('next.shell.clearSearch')} onClick={() => {changeQuery({...query, search: ''}); search.current?.focus();}}><Icon name="i-x" size={14} /></button>} />
         {filters.map(filter => <Select key={filter.id} className={[styles.tableFilter, query.filters[filter.id] && query.filters[filter.id] !== 'all' ? styles.tableFilterActive : undefined].filter(Boolean).join(' ')} aria-label={filter.label} value={query.filters[filter.id] ?? 'all'} selectedLabel={!query.filters[filter.id] || query.filters[filter.id] === 'all' ? filter.label : undefined} options={filter.options} onValueChange={value => changeQuery({...query, filters: {...query.filters, [filter.id]: value}})} />)}
-        <span className={styles.tableCount} role="status">{countLabel}</span>{actions}
+        {countLabel && <span className={styles.tableCount} role="status">{countLabel}</span>}{actions}
       </>}
     </div>
     <div ref={root} className={styles.tableScroll} tabIndex={-1} style={{maxHeight: height} as CSSProperties} aria-busy={loading}
@@ -115,7 +115,7 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
           if (atEdge && rows[next] && (next < range.first || next > range.last)) { event.preventDefault(); focusRow(rows[next].id, event.shiftKey ? stops.length - 1 : 0); }
         }
       }}>
-      <table className={styles.table} aria-label={label} aria-rowcount={matchedCount + 1} aria-colcount={columnsCount}>
+      <table className={styles.table} aria-label={label} aria-rowcount={matchedCount === undefined ? undefined : matchedCount + 1} aria-colcount={columnsCount}>
         <colgroup>{selectable && <col className={styles.checkboxColumn} />}{columns.map(column => <col key={column.id} style={{width: column.width}} />)}{rowAction && <col className={styles.actionColumn} />}</colgroup>
         <thead><tr>{selectable && <th scope="col"><input ref={all} type="checkbox" checked={allChecked} disabled={!selectableIds.length} aria-label={t('next.settings.selectLoaded')} onChange={event => onSelectionChange?.(selectTableRows(selected ?? new Set(), selectableIds, event.currentTarget.checked))} /></th>}
           {columns.map(column => <th key={column.id} scope="col" aria-sort={query.sort.by === column.id ? query.sort.direction === 'asc' ? 'ascending' : 'descending' : undefined} data-kind={column.kind}>
