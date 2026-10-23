@@ -492,8 +492,8 @@ test('Music source presentation follows the selected audio, never a default trac
     dock: {local: {fence, kind: 'music', expanded: true, playing: true, positionSeconds: 0, queue: null}} as WebPlaybackRuntimeSnapshot['dock'],
     playback: {phase: 'ready', audioEffects: {rendering: false, settings: {normalization: 'off'}}} as WebPlaybackRuntimeSnapshot['playback']});
   const signal = browserMusicSignal(music, undefined, false)!;
-  assert.equal(signal.steps.find(value => value.id === 'file')!.value, 'WAVPACK');
-  assert.equal(signal.source, 'WAVPACK', 'unknown lossless stays unknown instead of classifying WavPack from its codec');
+  assert.equal(signal.steps.find(value => value.id === 'file')!.value, 'WavPack');
+  assert.equal(signal.source, 'WavPack', 'unknown lossless stays unknown instead of classifying WavPack from its codec');
   assert.equal(browserMusicSignal({...music, session: {...session, presentation: {...session.presentation, audioTrackId: undefined}}}, undefined, false), null);
   assert.equal(browserMusicSignal({...music, session: {...session, versionId: 'not-current'}}, undefined, false), null);
   assert.equal(browserMusicSignal({...music, fence: {...fence, generation: 2}}, undefined, false), null);
