@@ -668,9 +668,10 @@ test('foreign library and unavailable explicit version cannot replace still-play
 
 test('screen cancellation or navigation during real start cannot adopt late output or stop a newer Play', async t => {
   for (const change of ['abort', 'navigation', 'new-play'] as const) {
-    const f = setup(t), gate = deferred(), abort = new AbortController(); let current = true;
+    const f = setup(t), gate = deferred(), abort = new AbortController(); let current = true, held = false;
     f.intercept(async (request, response) => {
-      if (request.method === 'POST' && request.path === '/v1/playback/sessions' && (request.body as {itemId?: string}).itemId === 'movie') await gate.hold();
+      // Device-queue starts carry queue/entry IDs, not a top-level itemId.
+      if (!held && request.method === 'POST' && request.path === '/v1/playback/sessions') {held = true;await gate.hold();}
       return response;
     });
     const pending = f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 0}, {signal: abort.signal, isCurrent: () => current});
