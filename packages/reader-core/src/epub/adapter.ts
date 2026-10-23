@@ -8,7 +8,7 @@ import {openEpubArchive, safeArchivePath, type EpubAssets} from './archive.ts';
 import {rejectXmlEntities, secureMarkup, secureCss} from './security.ts';
 import {epubDisplay, type EpubDisplayPreferences} from './display.ts';
 
-type Section = {id: string; size: number; cfi: string; linear?: string; createDocument(): Promise<Document>};
+type Section = {id: string; size: number; cfi: string; linear?: string; createDocument(): Promise<Document>; resolveHref(href:string):string};
 type Navigation = {index: number; anchor?: number | ((doc: Document) => Node | Range | number | null)};
 type Toc = {href: string; label: string; subitems?: Toc[]};
 type Book = {
@@ -250,7 +250,7 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
     doc.addEventListener('click',event=>{
       const link=(event.target as Element|null)?.closest('a[href]');if(!link)return;event.preventDefault();
       const href=link.getAttribute('href');if(!href||/^[a-z][a-z\d+.-]*:|^\//i.test(href))return;
-      const target=book.resolveHref(href.startsWith('#')?book.sections[index].id+href:href);
+      const target=book.resolveHref(book.sections[index].resolveHref(href));
       if(target)void cancellable(renderer.goTo(target),signal).catch(()=>{});
     },opts);
   };
