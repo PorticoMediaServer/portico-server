@@ -116,16 +116,7 @@ export type PlaybackSession = {
   duration: number;
   resumeSeconds: number;
 };
-export type SystemInfo = {
-  id: string;
-  name: string;
-  setupRequired: boolean;
-  /** This build can reach the Portico Account service (true for every release build). */
-  hostedConfigured: boolean;
-  /** This server signs people in with Portico Accounts. Absent from older servers. */
-  hostedAttached?: boolean;
-  version: string;
-};
+export type SystemInfo = Omit<RouteResponse<'get_system'>, 'signIn'> & {signIn: 'portico' | 'local'};
 /** A server-named request field (`name`, `rules[0].query.libraryIds`), or undefined for anything else. */
 /** CD-06: `error.confirmRoots`, kept only as a short list of plain http(s) URLs. */
 export function errorConfirmRoots(value: unknown): readonly string[] | undefined {
@@ -2052,3 +2043,7 @@ export {highestRatingChoices} from './profile-limits.ts';
 
 export * from './account-reset.ts';
 export * from './same-tab-return.ts';
+
+export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppSessionStorage, type AppServerSession, type NewServerConnection, type PorticoAccountScope, type SignInKind} from './app-sessions.ts';
+export {ServerSignInProbe, parseServerSignIn, signInLabelKey, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
+export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} from './tv-consent.ts';

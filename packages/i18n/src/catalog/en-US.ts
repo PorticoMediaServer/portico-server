@@ -19,9 +19,11 @@ import {drawnSubtitleMessages} from './en-US/subtitles.ts';
 import {ownerConsoleMessages} from './en-US/owner-console.ts';
 import {ownerParityMessages} from './en-US/owner-parity.ts';
 import {connectionTrustMessages} from './en-US/connection-trust.ts';
+import {accountMessages} from './en-US/accounts.ts';
 import {secureConnectionMessages} from './en-US/secure-connection.ts';
 
 export const enUS = {
+  ...accountMessages,
   'listening.rewound': 'Rewound {seconds} seconds',
   'section.recently_played': 'Recently played',
   'section.new_albums': 'New albums',
