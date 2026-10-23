@@ -247,6 +247,7 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 		return runner(ctx, key, spec, consume)
 	}
 	results := map[string]produced{}
+	started := time.Now()
 	switch {
 	case stage == catalog.SonicOperation:
 		results[stage], err = s.produceSonic(ctx, b, decode, publications[stage], physical)
@@ -280,6 +281,9 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	for _, op := range stages {
 		if err = s.publish(ctx, b, op, publications[op], input.Evidence(), tool, results[op]); err != nil {
 			return fail(err)
+		}
+		if op == catalog.SonicOperation {
+			s.recordSonicProgress(b.Source.LibraryID, len(results[op].Sonic), time.Since(started))
 		}
 	}
 	return false, "", nil

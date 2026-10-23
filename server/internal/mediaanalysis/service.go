@@ -59,11 +59,13 @@ type Service struct {
 	options   Options
 	// Serializes closed-byte publication/reference checks, opening leases and GC.
 	// Source IO and decoder execution never hold this mutex or a database writer.
-	publication sync.Mutex
-	slot        chan struct{}
-	physical    *livechannels.PhysicalLocks
-	custody     *artifactCustody
-	inventory   *mediaartifact.Inventory
+	publication     sync.Mutex
+	sonicProgressMu sync.Mutex
+	sonicProgress   map[string][]sonicProgressSample
+	slot            chan struct{}
+	physical        *livechannels.PhysicalLocks
+	custody         *artifactCustody
+	inventory       *mediaartifact.Inventory
 }
 
 func New(o Options) (*Service, error) {

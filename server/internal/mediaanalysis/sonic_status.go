@@ -16,11 +16,12 @@ import (
 // Disabling future analysis retains those results. No ETA is invented from a
 // queue length, and a verified installation alone never claims inference.
 type SonicStatus struct {
-	Settings        catalog.SonicSettings
-	PolicyAllows    bool
-	Total, Analyzed int64
-	Runtime         sonic.Availability
-	Work            workpolicy.HeavyWorkFacts
+	Settings                  catalog.SonicSettings
+	PolicyAllows              bool
+	Total, Analyzed           int64
+	Runtime                   sonic.Availability
+	Work                      workpolicy.HeavyWorkFacts
+	EstimatedRemainingSeconds *int64
 }
 
 func (s *Service) SonicStatus(ctx context.Context, library string, at time.Time, authorize func(*sql.Tx) error) (SonicStatus, error) {
@@ -77,5 +78,8 @@ func (s *Service) SonicStatus(ctx context.Context, library string, at time.Time,
 	 WHERE link.entity_id=item.id AND link.available=1 AND a.available=1 AND a.audio_codec<>'' AND a.duration>0
 	 AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.size=a.size AND o.modified_ns=a.modified_ns
 	 AND src.enabled=1 AND src.library_id=library.library_id AND o.root_incarnation=src.incarnation)`, Algorithm+":sonic:*", sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256, library).Scan(&out.Total, &out.Analyzed)
+	if err == nil && out.PolicyAllows && out.Runtime.State == "ready" && out.Work.WindowOpen && out.Work.PausedUntil <= at.UnixMilli() {
+		out.EstimatedRemainingSeconds = s.sonicRemainingSeconds(library, out.Total-out.Analyzed)
+	}
 	return out, err
 }
