@@ -114,6 +114,15 @@ func (s *Service) artworkSizeContext(ctx context.Context) (context.Context, erro
 	err := s.db.QueryRowContext(ctx, `SELECT artwork_max_edge FROM metadata_runtime_settings WHERE singleton=1`).Scan(&edge)
 	return withArtworkSize(ctx, edge), err
 }
+
+// artworkSizeMatchesTx fences the size actually used for encoding, separately
+// from a source fence captured before acquisition began.
+func artworkSizeMatchesTx(ctx context.Context, tx *sql.Tx, encodedEdge int) (bool, error) {
+	var matches bool
+	err := tx.QueryRowContext(ctx, `SELECT artwork_max_edge=? FROM metadata_runtime_settings WHERE singleton=1`, encodedEdge).Scan(&matches)
+	return matches, err
+}
+
 func artworkByteLimit(edge int) int {
 	if edge == 2560 {
 		return 888_888

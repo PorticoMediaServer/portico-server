@@ -521,7 +521,11 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if fence != j.fence || (!j.preview && revision != j.revision) || !enabled {
+	sizeMatches, err := artworkSizeMatchesTx(ctx, tx, artworkSize(workCtx))
+	if err != nil {
+		return err
+	}
+	if fence != j.fence || (!j.preview && revision != j.revision) || !enabled || !sizeMatches {
 		_, err = tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='stale',error='source_match_or_selection_changed',lease='',lease_until='' WHERE id=? AND lease=?`, j.id, j.lease)
 		if err != nil {
 			return err

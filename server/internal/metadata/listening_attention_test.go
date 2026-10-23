@@ -28,14 +28,14 @@ func TestMusicAndBooksNeedAttention(t *testing.T) {
 	if err != nil || len(page.Entries) != 1 || page.Entries[0].Kind != "album" || page.Total != 1 {
 		t.Fatalf("music attention: %+v %v", page, err)
 	}
-	assertQuietBook := func(wantMusic int) {
+	assertQuietBook := func(wantMusic int64) {
 		t.Helper()
 		page, err := s.Attention(ctx, "books", "", 25)
 		if err != nil || len(page.Entries) != 0 || page.Total != 0 {
 			t.Fatalf("local audiobook publicly listed: %+v %v", page, err)
 		}
 		all, err := s.Attention(ctx, "", "", 25)
-		if err != nil || all.Total != wantMusic || len(all.Entries) != wantMusic {
+		if err != nil || all.Total != wantMusic || len(all.Entries) != int(wantMusic) {
 			t.Fatalf("global attention: %+v %v", all, err)
 		}
 		for _, entry := range all.Entries {

@@ -14,6 +14,9 @@ import (
 // The providers and stream tags share this spelling; cn is TMDB's Cantonese
 // code, not the Chinese macrolanguage.
 func Primary(raw string) string {
+	if strings.Contains(raw, "_") {
+		return ""
+	}
 	parts := strings.Split(strings.ToLower(strings.TrimSpace(raw)), "-")
 	switch parts[0] {
 	case "", "xx", "und", "mul", "zxx":
@@ -30,7 +33,7 @@ func Primary(raw string) string {
 		return ""
 	}
 	base, _ := tag.Base()
-	if base == language.Und {
+	if base.String() == "und" {
 		return ""
 	}
 	return base.String()

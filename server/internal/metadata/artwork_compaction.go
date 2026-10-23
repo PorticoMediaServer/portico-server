@@ -122,11 +122,11 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	if err = recordArtworkObject(ctx, tx, installed, now); err != nil {
 		return err
 	}
-	var currentEdge int
-	if err = tx.QueryRowContext(ctx, `SELECT artwork_max_edge FROM metadata_runtime_settings WHERE singleton=1`).Scan(&currentEdge); err != nil {
+	sizeMatches, err := artworkSizeMatchesTx(ctx, tx, artworkSize(ctx))
+	if err != nil {
 		return err
 	}
-	if currentEdge != artworkSize(ctx) {
+	if !sizeMatches {
 		return nil
 	}
 	// Closed registry: every relational reference and both undo snapshots must

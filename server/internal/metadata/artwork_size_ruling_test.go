@@ -401,3 +401,52 @@ func TestLegacyLocalReadQueuesBoundedPictureWithoutServingOriginal(t *testing.T)
 		t.Fatal("local source was reread on the serving path", reads)
 	}
 }
+
+func TestPictureSizeChangeDuringReadDiscardsOldEncodingAndRetries(t *testing.T) {
+	s, db, target := repairFixture(t)
+	ctx := context.Background()
+	off := false
+	saveGlobal(t, s, func(in *MetadataSettingsUpdate) { in.OnlineLookups = &off })
+	raw := p08cPNG(t, 2700, 1350)
+	digest := sha256.Sum256(raw)
+	key := hex.EncodeToString(digest[:])
+	path := filepath.Join(t.TempDir(), "original.png")
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	reads := 0
+	s.LocalArtwork = func(requested string) (*os.File, string, error) {
+		reads++
+		if requested != key {
+			t.Error("wrong local source", requested)
+		}
+		if reads == 1 {
+			// The real setting write happens after the worker captured its
+			// encoding context, while it holds no publication transaction.
+			small := 1280
+			saveGlobal(t, s, func(in *MetadataSettingsUpdate) { in.ArtworkMaxEdge = &small })
+		}
+		f, err := os.Open(path)
+		return f, "image/png", err
+	}
+	if _, err := db.Exec(`UPDATE catalog_item_details SET poster_url=? WHERE entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, "local:"+key, target.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ArtworkStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var selected int
+	if err := db.QueryRow(`SELECT count(*) FROM artwork_selections`).Scan(&selected); err != nil || selected != 0 || reads != 1 {
+		t.Fatal("old-size bytes were published", selected, reads, err)
+	}
+	if err := s.ArtworkStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	f, _, err := s.EntityArtworkVariant(ctx, target, "poster", "", 2560, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if edge := artworkFileEdge(t, f); edge != 1280 || reads != 2 {
+		t.Fatal("retry did not encode current size", edge, reads)
+	}
+}
