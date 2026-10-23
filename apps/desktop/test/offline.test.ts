@@ -19,7 +19,7 @@ const receipt={receiptId:'receipt',keyId:'key',algorithm:'ed25519',payload:Buffe
 
 async function harness(){
   let current=true,cost:'unmetered'|'metered'|'unknown'='unmetered';
-  let row={id,revision:0,preparationId:'prep',itemId:'item',quality:'original',sha256:artifact.sha256,bytes:artifact.bytes,bytesDone:0,state:'queued',held:false,addedMs:1,receiptExpiresMs:null,title:{...titleFields,durationMs:durationSeconds*1000}};
+  let row={id,revision:0,preparationId:'prep',itemId:'item',quality:'original',sha256:artifact.sha256,bytes:artifact.bytes,bytesDone:0,state:'queued',held:false,addedMs:1,receiptExpiresMs:null,offlineAccess:'needsCheckIn',title:{...titleFields,durationMs:durationSeconds*1000}};
   const costListeners=new Set<()=>void>();
   const operations:Record<string,unknown>[]=[],requests:{path:string;body:unknown}[]=[];
   let afterAppend:(()=>void)|undefined,receiptResult:unknown={results:[{preparationId:'prep',receiptId:'receipt',outcome:'issued',code:'',receipt,titleOnServer:true}]};

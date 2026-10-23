@@ -352,7 +352,7 @@ impl DownloadsSession {
         let viewer = self.viewer(lease)?;
         use DownloadOperation as O;
         use DownloadReply as R;
-        Ok(match operation {
+        let mut reply = match operation {
             O::PrepareLocalQueue { selection } => {
                 R::LocalQueue(self.prepare_local_queue(lease, selection)?)
             }
@@ -400,7 +400,7 @@ impl DownloadsSession {
                 bytes,
                 title,
             } => R::Entry(self.store.enroll(Enrollment {
-                viewer,
+                viewer: viewer.clone(),
                 preparation_id,
                 item_id,
                 quality,
@@ -489,7 +489,18 @@ impl DownloadsSession {
                         .server_presence(&viewer, &id, expected_revision, on_server)?,
                 )
             }
-        })
+        };
+        match &mut reply {
+            R::Entry(entry) => self.store.project_access(&viewer, entry),
+            R::Page(page) => {
+                for entry in &mut page.items { self.store.project_access(&viewer, entry); }
+            }
+            R::Members(entries) => {
+                for entry in entries { self.store.project_access(&viewer, entry); }
+            }
+            _ => {},
+        }
+        Ok(reply)
     }
 }
 
@@ -724,6 +735,8 @@ mod tests {
                 )
                 .is_err()
         );
+        let projected = session.execute(&lease, DownloadOperation::Entry { id: entry.id.clone() }).unwrap();
+        assert!(matches!(projected, DownloadReply::Entry(value) if value.offline_access == "needsCheckIn"));
         let (receipt, key) = crate::download_receipt::tests::signed(&viewer, &sha, 5);
         session
             .store
@@ -733,6 +746,14 @@ mod tests {
             .store
             .save_receipt(&viewer, &entry.id, receipt)
             .unwrap();
+        let projected = session.execute(&lease, DownloadOperation::List { cursor: None, limit: 100 }).unwrap();
+        assert!(matches!(projected, DownloadReply::Page(value) if value.items.len() == 1 && value.items[0].offline_access == "valid"));
+        let media = session.store.playback_file(&viewer, &entry.id).unwrap();
+        let retained = media.with_extension("retained");
+        std::fs::rename(&media, &retained).unwrap();
+        let projected = session.execute(&lease, DownloadOperation::Entry { id: entry.id.clone() }).unwrap();
+        assert!(matches!(projected, DownloadReply::Entry(value) if value.state == "ready" && value.receipt_expires_ms.is_some() && value.offline_access == "needsCheckIn"));
+        std::fs::rename(retained, media).unwrap();
         let prepared = session
             .prepare_local_queue(
                 &lease,
@@ -804,8 +825,8 @@ mod tests {
     fn native_progress_requires_actual_current_generation_and_rejects_intent_and_nonfinite_time() {
         let root=std::env::temp_dir().join(format!("desktop-download-observation-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let mut session=DownloadsSession::open(&root).unwrap();let lease=session.bind(scope()).unwrap();let viewer=scope().viewer().unwrap();
-        let entry=session.store.enroll(Enrollment{viewer:viewer.clone(),preparation_id:"preparation".into(),item_id:"item".into(),quality:"original".into(),sha256:"a".repeat(64),bytes:5,title:DownloadTitle{kind:"song".into(),title:"Actual title".into(),artist:String::new(),parent_id:String::new(),parent_title:String::new(),group_id:String::new(),group_title:String::new(),group_number:None,number:None,year:2026,duration_ms:10000,on_server:true}}).unwrap();
-        session.active_local=Some(ActiveLocal{viewer:viewer.clone(),entry_id:entry.id,item_id:"item".into(),play_id:"play".into(),generation:7,last_write:std::time::Instant::now(),last_position_ms:0});
+        let entry=session.store.enroll(Enrollment{viewer: viewer.clone(),preparation_id:"preparation".into(),item_id:"item".into(),quality:"original".into(),sha256:"a".repeat(64),bytes:5,title:DownloadTitle{kind:"song".into(),title:"Actual title".into(),artist:String::new(),parent_id:String::new(),parent_title:String::new(),group_id:String::new(),group_title:String::new(),group_number:None,number:None,year:2026,duration_ms:10000,on_server:true}}).unwrap();
+        session.active_local=Some(ActiveLocal{viewer: viewer.clone(),entry_id:entry.id,item_id:"item".into(),play_id:"play".into(),generation:7,last_write:std::time::Instant::now(),last_position_ms:0});
         let mut observation=crate::boundary::Observation{generation:6,state:"playing".into(),position_ms:1234.0,rate:1.0,volume:1.0,muted:false,dropped_frames:0,native_surface_active:false,eq_applied:false,leveling_applied:false};
         session.record_observation(&observation,true).unwrap();assert!(session.store.pending_plays(&viewer).unwrap().is_empty());
         observation.generation=7;observation.state="loading".into();session.record_observation(&observation,true).unwrap();assert!(session.store.pending_plays(&viewer).unwrap().is_empty());

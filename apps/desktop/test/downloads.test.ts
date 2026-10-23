@@ -3,13 +3,16 @@ import assert from 'node:assert/strict';
 import {DesktopDownloadStore,downloadFailure,parseLocalDownload,type DownloadScope,type NativeDownloadsBridge} from '../src/downloads.ts';
 const scope:DownloadScope={authority:'local',serverId:'server',accountId:'account',profileId:'profile',sessionFamilyId:'family'};
 const lease='a'.repeat(64),rowId='b'.repeat(64);
-const row={id:rowId,preparationId:'prep',itemId:'item',quality:'original',sha256:'c'.repeat(64),bytes:8,bytesDone:2,state:'downloading',held:false,revision:4,addedMs:1,receiptExpiresMs:null,title:{kind:'song',title:'Actual stored title',artist:'Actual artist',parentId:'album',parentTitle:'Actual album',groupId:'disc',groupTitle:'',groupNumber:1,number:2,year:1977,durationMs:181000,onServer:false}};
+const row={id:rowId,preparationId:'prep',itemId:'item',quality:'original',sha256:'c'.repeat(64),bytes:8,bytesDone:2,state:'downloading',held:false,revision:4,addedMs:1,receiptExpiresMs:null,offlineAccess:'needsCheckIn',title:{kind:'song',title:'Actual stored title',artist:'Actual artist',parentId:'album',parentTitle:'Actual album',groupId:'disc',groupTitle:'',groupNumber:1,number:2,year:1977,durationMs:181000,onServer:false}};
 function bridge(command:NativeDownloadsBridge['command']):NativeDownloadsBridge{return{async bind(){return lease},async release(){},command};}
 test('native records preserve canonical title units without exposing raw fields',()=>{
  const parsed=parseLocalDownload({...row,path:'/private/never',token:'never'});
  assert.equal(parsed.title.durationSeconds,181);assert.equal(parsed.title.onServer,false);
  assert.ok(Object.isFrozen(parsed));assert.ok(!('path' in parsed));assert.ok(!('token' in parsed));
  assert.throws(()=>parseLocalDownload({...row,bytesDone:9}));
+ assert.equal(parsed.offlineAccess,'needsCheckIn');
+ assert.throws(()=>parseLocalDownload({...row,offlineAccess:undefined}));
+ assert.throws(()=>parseLocalDownload({...row,offlineAccess:'ready'}));
 });
 test('a late native acknowledgement is discarded after captured viewer retirement',async()=>{
  let current=true,finish!:(value:unknown)=>void;const releases:string[]=[];

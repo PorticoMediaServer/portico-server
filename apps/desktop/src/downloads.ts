@@ -4,7 +4,7 @@ import {parseDownloadTitle, type DownloadTitle, type DownloadReceipt} from '../.
 
 // App-owned transport. UI owners consume the canonical web port after its MAIN landing.
 export type DownloadScope = Readonly<{authority:'local'|'hosted';serverId:string;accountId:string;profileId:string;sessionFamilyId:string}>;
-export type LocalDownload = Readonly<{id:string;revision:number;preparationId:string;itemId:string;quality:string;sha256:string;bytes:number;bytesDone:number;state:'queued'|'downloading'|'paused'|'failed'|'ready';held:boolean;addedMs:number;receiptExpiresMs:number|null;title:DownloadTitle}>;
+export type LocalDownload = Readonly<{id:string;revision:number;preparationId:string;itemId:string;quality:string;sha256:string;bytes:number;bytesDone:number;state:'queued'|'downloading'|'paused'|'failed'|'ready';held:boolean;addedMs:number;receiptExpiresMs:number|null;offlineAccess:'valid'|'needsCheckIn';title:DownloadTitle}>;
 export type DownloadRules = Readonly<{removeWatched:boolean;nextEpisode:boolean;unmeteredOnly:boolean;limitBytes:number}>;
 export type RulesSnapshot = Readonly<{revision:number;rules:DownloadRules}>;
 export type DownloadCursor = Readonly<{addedMs:number;id:string}>;
@@ -35,10 +35,10 @@ function digest(value:unknown):string{const v=text(value,64);if(!/^[a-f0-9]{64}$
 function boolean(value:unknown):boolean{if(typeof value!=='boolean')return invalid();return value;}
 export function parseLocalDownload(value:unknown):LocalDownload {
   const v=object(value),state=text(v.state);
-  if(!['queued','downloading','paused','failed','ready'].includes(state))return invalid();
+  if(!['queued','downloading','paused','failed','ready'].includes(state)||!['valid','needsCheckIn'].includes(String(v.offlineAccess)))return invalid();
   const bytes=integer(v.bytes),bytesDone=integer(v.bytesDone);
   if(!bytes||bytesDone>bytes)return invalid();
-  return Object.freeze({id:digest(v.id),revision:integer(v.revision),preparationId:id(v.preparationId),itemId:id(v.itemId),quality:id(v.quality),sha256:digest(v.sha256),bytes,bytesDone,state:state as LocalDownload['state'],held:boolean(v.held),addedMs:integer(v.addedMs),receiptExpiresMs:v.receiptExpiresMs===null?null:integer(v.receiptExpiresMs),title:parseDownloadTitle(v.title)});
+  return Object.freeze({id:digest(v.id),revision:integer(v.revision),preparationId:id(v.preparationId),itemId:id(v.itemId),quality:id(v.quality),sha256:digest(v.sha256),bytes,bytesDone,state:state as LocalDownload['state'],held:boolean(v.held),addedMs:integer(v.addedMs),receiptExpiresMs:v.receiptExpiresMs===null?null:integer(v.receiptExpiresMs),offlineAccess:v.offlineAccess as LocalDownload['offlineAccess'],title:parseDownloadTitle(v.title)});
 }
 function rules(value:unknown):RulesSnapshot{
   const v=object(value),r=object(v.rules);

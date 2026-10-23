@@ -136,6 +136,8 @@ pub struct LocalDownload {
     pub revision: u64,
     pub added_ms: i64,
     pub receipt_expires_ms: Option<i64>,
+    /// Derived by the authority-bound IPC projection, never inferred from ready/expiry.
+    pub offline_access: String,
     pub title: DownloadTitle,
 }
 #[derive(Deserialize, Serialize)]
@@ -402,6 +404,7 @@ fn row_entry(row: &Row<'_>) -> rusqlite::Result<LocalDownload> {
         revision: count(row, 9)?,
         added_ms: row.get(10)?,
         receipt_expires_ms: row.get(11)?,
+        offline_access: "needsCheckIn".into(),
         title: DownloadTitle {
             kind: row.get(12)?,
             title: row.get(13)?,
@@ -968,6 +971,13 @@ impl DownloadStore {
             return Err(Error::DownloadVerificationFailed);
         }
         Ok(path)
+    }
+    pub fn project_access(&self, viewer: &DownloadViewer, entry: &mut LocalDownload) {
+        entry.offline_access = if self.playback_file(viewer, &entry.id).is_ok() {
+            "valid"
+        } else {
+            "needsCheckIn"
+        }.into();
     }
     pub fn note_play(
         &mut self,
