@@ -94,12 +94,27 @@ COPY scripts/rclone-bundle.py /src/scripts/rclone-bundle.py
 COPY third_party/rclone/ /src/third_party/rclone/
 RUN python3 /src/scripts/rclone-bundle.py prepare /rclone --target "${TARGETOS}-${TARGETARCH}" --execute-version
 
-FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+# Driver userspace is independent of the GPLv3 FFmpeg build. Intel's current
+# OpenCL packages need the newer runtime; keep old and new Intel ICDs together.
+FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS runtime-drivers
 ARG TARGETARCH
-RUN apt-get update \
- && apt-get install --yes --no-install-recommends bubblewrap ca-certificates util-linux tini tzdata libva2 libva-drm2 mesa-va-drivers \
- && if [ "$TARGETARCH" = amd64 ]; then apt-get install --yes --no-install-recommends intel-media-va-driver i965-va-driver; fi \
+RUN if [ "$TARGETARCH" = amd64 ]; then sed -i 's/Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources; fi \
+ && apt-get update \
+ && apt-get install --yes --no-install-recommends bubblewrap ca-certificates util-linux tini tzdata python3 libva2 libva-drm2 mesa-va-drivers mesa-vulkan-drivers mesa-opencl-icd libvulkan1 ocl-icd-libopencl1 vainfo clinfo vulkan-tools \
+ && if [ "$TARGETARCH" = amd64 ]; then \
+      apt-get install --yes --no-install-recommends intel-media-va-driver-non-free i965-va-driver libvpl2 libmfx1 libmfx-gen1.2; \
+      mkdir -p /usr/share/doc/portico/licenses/runtime-drivers; \
+      cp /usr/share/doc/intel-media-va-driver-non-free/copyright /usr/share/doc/portico/licenses/runtime-drivers/intel-media-va-driver-non-free.txt; \
+    fi \
  && rm -rf /var/lib/apt/lists/*
+
+COPY scripts/install-intel-opencl.py /tmp/install-intel-opencl.py
+COPY third_party/ffmpeg/intel-drivers.lock.json /usr/share/doc/portico/intel-drivers.lock.json
+RUN apt-get update \
+ && python3 /tmp/install-intel-opencl.py /usr/share/doc/portico/intel-drivers.lock.json \
+ && rm -rf /var/lib/apt/lists/* /tmp/install-intel-opencl.py
+
+FROM runtime-drivers
 
 # Runtime writes are restricted to mounted /config and /transcode. Numeric
 # identities work with Unraid and TrueNAS without editing /etc/passwd.
@@ -125,6 +140,8 @@ COPY --from=ffmpeg /ffmpeg/ /opt/portico/third_party/ffmpeg/
 ENV PORTICO_WEB_DIR=/opt/portico/web \
     PORTICO_DATA_DIR=/config \
     PORTICO_CONTAINER=1 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,video,utility \
     HOME=/config \
     TMPDIR=/config/Temp \
     PORTICO_BIND=[::]:32500 \
