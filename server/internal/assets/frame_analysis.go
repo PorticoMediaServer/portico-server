@@ -8,7 +8,8 @@ import (
 
 // Decoded flags detect H.264 PAFF/MBAFF missed by field_order. Frame cadence
 // is measured from timestamps; differing nominal and average rates alone do
-// not establish VFR. Failed or short windows remain unobserved.
+// not establish VFR. A constant bounded sample cannot prove whole-source CFR.
+// Failed or short windows remain unobserved.
 func analyzeFrames(raw []byte, d *StreamDetail) {
 	var doc struct {
 		Frames []struct {
@@ -57,16 +58,13 @@ func analyzeFrames(raw []byte, d *StreamDetail) {
 		d.Interlaced = true
 		d.InterlaceState = "interlaced"
 		d.InterlaceAnalysis = "decoded_frames"
-	} else if allProgressive && d.InterlaceState != "interlaced" && !d.Interlaced {
-		d.InterlaceState = "progressive"
+	} else if allProgressive && d.InterlaceState == "progressive" && !d.Interlaced {
+		// A bounded all-progressive sample can confirm a progressive header;
+		// it cannot prove an otherwise unknown whole stream is progressive.
 		d.InterlaceAnalysis = "decoded_frames"
 	}
-	if valid && steps >= 8 {
-		if variable {
-			d.FrameRateMode = "variable"
-		} else {
-			d.FrameRateMode = "constant"
-		}
+	if valid && steps >= 8 && variable {
+		d.FrameRateMode = "variable"
 	}
 	// A repeated picture is not enough to prove a complete telecine cadence.
 }

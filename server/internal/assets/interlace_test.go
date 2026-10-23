@@ -38,7 +38,8 @@ func TestDecodedInterlaceFlagsPreservePresence(t *testing.T) {
 		{"null", `{"interlaced_frame":null},{"interlaced_frame":null}`, "", "", ""},
 		{"partly_observed", `{"interlaced_frame":0},{}`, "", "", ""},
 		{"invalid_flag", `{"interlaced_frame":2},{"interlaced_frame":-1}`, "", "", ""},
-		{"progressive", `{"interlaced_frame":0},{"interlaced_frame":0}`, "", "progressive", "decoded_frames"},
+		{"progressive_sample_without_header", `{"interlaced_frame":0},{"interlaced_frame":0}`, "", "", ""},
+		{"confirms_progressive_header", `{"interlaced_frame":0},{"interlaced_frame":0}`, "progressive", "progressive", "decoded_frames"},
 		{"interlaced_with_missing", `{}, {"interlaced_frame":1}`, "", "interlaced", "decoded_frames"},
 		{"mixed", `{"interlaced_frame":0},{"interlaced_frame":1}`, "", "interlaced", "decoded_frames"},
 		{"override_progressive_header", `{"interlaced_frame":0},{"interlaced_frame":1}`, "progressive", "interlaced", "decoded_frames"},
@@ -63,8 +64,24 @@ func TestFrameCadenceDoesNotInventInterlace(t *testing.T) {
 	}
 	var d StreamDetail
 	analyzeFrames([]byte(`{"frames":[`+strings.Join(frames, ",")+`]}`), &d)
-	if d.FrameRateMode != "constant" || d.InterlacedFact() != nil || d.InterlaceAnalysis != "" {
+	if d.FrameRateMode != "" || d.InterlacedFact() != nil || d.InterlaceAnalysis != "" {
 		t.Fatalf("cadence and interlace presence were conflated: %+v", d)
+	}
+}
+
+func TestVariableFrameCadenceRemainsIndependentOfInterlace(t *testing.T) {
+	frames := make([]string, 10)
+	for i := range frames {
+		timestamp := float64(i) / 25
+		if i >= 5 {
+			timestamp += 0.04
+		}
+		frames[i] = fmt.Sprintf(`{"best_effort_timestamp_time":"%.3f"}`, timestamp)
+	}
+	var d StreamDetail
+	analyzeFrames([]byte(`{"frames":[`+strings.Join(frames, ",")+`]}`), &d)
+	if d.FrameRateMode != "variable" || d.InterlacedFact() != nil || d.InterlaceAnalysis != "" {
+		t.Fatalf("observed VFR was lost or invented interlace: %+v", d)
 	}
 }
 
