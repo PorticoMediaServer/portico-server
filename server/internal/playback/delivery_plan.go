@@ -369,7 +369,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 				err = finishConversionTarget(&p, videoOf(source), sourceAudioAt(source.Audio, p.AudioStream), client, in.Hardware, in.Server)
 			}
 			if err == nil {
-				p.Renditions = planAudioRenditions(p, source, client, in.Target, in.TranscodingEnabled && in.Policy.Transcode != "never")
+				p.Renditions = planAudioRenditions(p, source, client, in.Target, cfg.AudioConversionAllowed(in.TranscodingEnabled) && in.Policy.Transcode != "never")
 			}
 		}
 	}()
@@ -538,7 +538,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		// same reason instead of being planned and then failing to start.
 		transports = nil
 	}
-	conversionAllowed := in.TranscodingEnabled && cfg.ConversionMode != "never" && policy.Transcode != "never"
+	conversionAllowed := cfg.AudioConversionAllowed(in.TranscodingEnabled) && policy.Transcode != "never"
 
 	// Route 2: both streams copied into HLS.
 	remuxable := false
@@ -630,7 +630,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		if audioToDecode != nil && carrier != nil && !containsString(carrier.Audio, converted.Codec) {
 			rejections = append(rejections, RouteRejection{RejectAudioCodec, converted.Codec + " in " + transport})
 		}
-		if !conversionAllowed || !audioOnly && cfg.ConversionMode == "sound" {
+		if !conversionAllowed || !audioOnly && !cfg.VideoConversionAllowed(in.TranscodingEnabled) {
 			rejections = append(rejections, RouteRejection{RejectTranscodingDisabled, ""})
 		}
 		if transport == "" {
@@ -697,7 +697,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	}
 	if len(candidates) == 0 {
 		code := ReasonTranscodeRefused
-		if !in.TranscodingEnabled {
+		if !cfg.AudioConversionAllowed(in.TranscodingEnabled) || !audioOnly && !cfg.VideoConversionAllowed(in.TranscodingEnabled) {
 			code = ReasonTranscodeDisabledOwner
 		} else if policy.DirectStream == "never" && remuxable {
 			code = ReasonDirectStreamRefused

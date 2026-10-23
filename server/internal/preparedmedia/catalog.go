@@ -19,6 +19,7 @@ type selection struct {
 	Start                                       float64
 	End                                         *float64
 	Boundary                                    string
+	Cue                                         bool `json:",omitempty"`
 	AssetInc, ItemInc, AssociationInc, RootInc  string
 	AssetRev, ItemRev, AssociationRev, RootRev  int64
 	Physical, PhysicalInc, PhysicalRoot         string
@@ -52,10 +53,20 @@ func selectSource(ctx context.Context, tx *sql.Tx, item, asset string, requireAv
 	if requireAvailable && !available {
 		return s, ErrUnavailable
 	}
-	if s.Start != 0 || s.Boundary != "whole_source" {
+	if s.Kind == "song" {
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM music_virtual_tracks v JOIN catalog_assets a ON a.token=v.asset_id JOIN catalog_entities e ON e.id=v.entity_id WHERE a.token=? AND e.public_id=pid_blob(?) AND v.start_seconds=? AND v.end_seconds=?)`, asset, item, s.Start, s.End).Scan(&s.Cue); e != nil {
+			return s, e
+		}
+	}
+	if !s.Cue && (s.Start != 0 || s.Boundary != "whole_source") {
 		return s, ErrUnsupported
 	}
-	if s.End != nil {
+	if s.Cue {
+		if s.End == nil || s.Start < 0 || *s.End <= s.Start || math.IsNaN(*s.End) || math.IsInf(*s.End, 0) {
+			return s, ErrUnsupported
+		}
+	}
+	if s.End != nil && !s.Cue {
 		var duration float64
 		if e = tx.QueryRowContext(ctx, `SELECT duration FROM catalog_assets WHERE token=?`, asset).Scan(&duration); e != nil {
 			return s, e

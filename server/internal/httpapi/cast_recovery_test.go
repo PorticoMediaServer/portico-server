@@ -164,10 +164,12 @@ func TestCastReceiverCallsRegisteredRoutes(t *testing.T) {
 		"/v1/me/devices/current/capabilities": {"PUT"},
 		"/v1/playback/sessions":               {"POST"},
 		"/v1/playback/sessions/":              {"PATCH", "DELETE"},
+		"/v1/items/":                          {"GET"},
+		"/v1/queues/":                         {"GET"},
 		// A pairing the television took and then could not use: it undoes its own.
 		"/v1/cast/devices/": {"DELETE"},
 	}
-	suffixed := map[string]string{"/v1/playback/sessions/": "/timeline"}
+	suffixed := map[string]string{"/v1/playback/sessions/": "/timeline", "/v1/queues/": ":advance"}
 	for _, m := range regexp.MustCompile(`'(/v\d+/[^'?]*)`).FindAllStringSubmatch(source, -1) {
 		if _, ok := calls[m[1]]; !ok && m[1] != "/timeline" {
 			t.Errorf("receiver.js calls %s, which this test doesn't inventory", m[1])
@@ -188,7 +190,10 @@ func TestCastReceiverCallsRegisteredRoutes(t *testing.T) {
 			// Pairing and re-pairing carry no session. Everything else the
 			// receiver sends, it sends with a paired screen's session, which
 			// may make only the requests castTargetRoute lists.
-			if path != "/v1/cast/redeem" && path != "/v1/cast/reconnect" {
+			// Item identity and queue completion need the actual current
+			// occurrence, not a blanket path grant. Their credential-bound
+			// checks live in TestCastReceiverCurrentOccurrenceRoutes.
+			if path != "/v1/cast/redeem" && path != "/v1/cast/reconnect" && path != "/v1/items/" && path != "/v1/queues/" {
 				target := path
 				if strings.HasSuffix(path, "/") {
 					target += "ps_probe"

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {currentShellProfile, ShellBootstrap, sameShellAuthority, type ShellAssembler} from '../src/shell/bootstrap.ts';
+import {currentShellProfile, ShellBootstrap, sameShellAuthority, shellArtworkAuthorityKey, watchHomeViewerFence, type ShellAssembler} from '../src/shell/bootstrap.ts';
 import {type HttpLocalApi, type LocalSession} from '@core/index.ts';
+import {HomeService} from '@core/home-service.ts';
 import type {SelectedViewerRecord} from '@core/viewer-selection.ts';
 
 const unavailableAssembly: ShellAssembler = async () => { throw new Error('Unexpected assembly.'); };
@@ -50,6 +51,46 @@ test('token rotation retains a scope but every authority or family replacement r
   for (const key of ['serverId', 'accountId', 'profileId', 'authority', 'role'] as const) {
     assert.equal(sameShellAuthority(session, {...session, viewer: {...session.viewer, [key]: 'replacement'}} as LocalSession), false, key);
   }
+});
+
+function homeDocument(fence: string) {
+  return {serverId: 'server-a', viewerFence: fence, generatedAt: '2026-10-23T12:00:00.000Z', rows: [], spotlight: [], revision: {catalog: 1, viewer: 1}, layout: {revision: 1, rowOrder: [], hiddenRowIds: []}};
+}
+test('pending and failed initial Home reads have no fabricated fence; the first genuine retry establishes the baseline', async () => {
+  const gate = deferred<unknown>(); let response: Promise<unknown> | unknown = gate.promise, replacements = 0;
+  const home = new HomeService({request: async <T>() => await response as T});
+  const boundary = watchHomeViewerFence(home, () => true, () => {replacements++;});
+  const pending = home.load(); assert.equal(home.getSnapshot().phase, 'loading'); assert.equal(boundary.viewerFence, undefined);
+  gate.resolve({invalid: true}); await pending;
+  assert.equal(home.getSnapshot().phase, 'error'); assert.equal(home.getSnapshot().document, undefined); assert.equal(boundary.viewerFence, undefined);
+  response = homeDocument('actual-first-fence'); await home.retry();
+  assert.equal(boundary.viewerFence, 'actual-first-fence'); assert.equal(replacements, 0);
+  await home.load(); assert.equal(replacements, 0); boundary.dispose(); home.dispose();
+});
+test('a later genuine Home fence replacement retires only this boundary and never adopts its successor', async () => {
+  let response = homeDocument('first'), replacements = 0;
+  const home = new HomeService({request: async <T>() => response as T});
+  const boundary = watchHomeViewerFence(home, () => true, () => {replacements++;});
+  await home.load(); response = homeDocument('different'); await home.load();
+  assert.equal(replacements, 1); assert.equal(boundary.viewerFence, undefined);
+  response = homeDocument('third'); await home.load(); assert.equal(replacements, 1); home.dispose();
+});
+test('explicitly clearing an established document fences before its next request finishes', async () => {
+  const gate = deferred<unknown>(); let response: Promise<unknown> | unknown = homeDocument('first'), replacements = 0;
+  const home = new HomeService({request: async <T>() => await response as T});
+  const boundary = watchHomeViewerFence(home, () => true, () => {replacements++;});
+  await home.load(); response = gate.promise; const pending = home.load({clear: true});
+  assert.equal(replacements, 1); assert.equal(boundary.viewerFence, undefined);
+  gate.resolve(homeDocument('different')); await pending; assert.equal(replacements, 1); home.dispose();
+});
+test('artwork cache identity derives from captured family/viewer/role/epoch without a Home document', () => {
+  const session = {sessionFamilyId: 'family-a', accessToken: 'token-a', viewer: {serverId: 'server-a', authority: 'local', accountId: 'account-a', profileId: 'profile-a', role: 'member'}} as LocalSession;
+  const key = shellArtworkAuthorityKey(session, 4);
+  assert.equal(shellArtworkAuthorityKey({...session, accessToken: 'rotated-token'}, 4), key);
+  assert.notEqual(shellArtworkAuthorityKey(session, 5), key);
+  assert.notEqual(shellArtworkAuthorityKey({...session, sessionFamilyId: 'family-b'}, 4), key);
+  for (const field of ['serverId', 'accountId', 'profileId', 'role'] as const) assert.notEqual(shellArtworkAuthorityKey({...session, viewer: {...session.viewer, [field]: 'changed'}} as LocalSession, 4), key);
+  assert.doesNotMatch(key, /token-a|viewerFence/);
 });
 
 function directRecord(username: string | undefined = 'local-user', profileName = 'Evening profile') {

@@ -34,6 +34,7 @@ INSERT INTO inventory_objects(id,source_id,asset_id,revision,state,retired,root_
 	}
 	tx.Commit()
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "account", ProfileID: "profile"}}
+	insertFixtureAccount(t, db, p.AccountID, p.ProfileID)
 	s := New(db)
 	session, e := s.Create(p, item, "automatic", "one")
 	if e != nil {

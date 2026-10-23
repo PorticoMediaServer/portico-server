@@ -264,6 +264,8 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 			return errors.New("not a directory")
 		}
 		return encoder.Encode(snapshot(path, info))
+	case "inventory-audio-prefix":
+		return inventoryAudioPrefixHelper(r, out)
 	case "inventory-blob", "inventory-subtitle-blob":
 		return inventoryBlobHelper(r, out)
 	case "inventory-command":

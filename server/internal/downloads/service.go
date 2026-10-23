@@ -38,12 +38,14 @@ type Optimizer interface {
 }
 
 type Options struct {
-	DB         *sql.DB
-	Now        func() time.Time
-	OpenSource SourceOpener
-	Artifacts  ArtifactOpener
-	Optimizer  Optimizer
-	Notifier   DownloadNotifier
+	// DeliveryConfiguration reads the same current owner policy as playback.
+	DeliveryConfiguration func() playback.DeliveryConfiguration
+	DB                    *sql.DB
+	Now                   func() time.Time
+	OpenSource            SourceOpener
+	Artifacts             ArtifactOpener
+	Optimizer             Optimizer
+	Notifier              DownloadNotifier
 	// Plays is the personal-state writer offline plays are recorded through
 	// (catalog.AcceptPlaybackProgressAt): the one online playback uses.
 	Plays playback.OfflineWriter
@@ -54,23 +56,24 @@ type Options struct {
 }
 
 type Service struct {
-	libraryAccess LibraryAccess
-	access        RequestAccess
-	accessMu      sync.RWMutex
-	advanceMu     sync.Mutex
-	tidied        time.Time
-	pruned        time.Time
-	db            *sql.DB
-	now           func() time.Time
-	openOriginal  SourceOpener
-	artifacts     ArtifactOpener
-	optimizer     Optimizer
-	notifier      DownloadNotifier
-	plays         playback.OfflineWriter
-	grantPath     string
-	wake          *worker.Signal
-	done          chan struct{}
-	cancel        context.CancelFunc
+	deliveryConfiguration func() playback.DeliveryConfiguration
+	libraryAccess         LibraryAccess
+	access                RequestAccess
+	accessMu              sync.RWMutex
+	advanceMu             sync.Mutex
+	tidied                time.Time
+	pruned                time.Time
+	db                    *sql.DB
+	now                   func() time.Time
+	openOriginal          SourceOpener
+	artifacts             ArtifactOpener
+	optimizer             Optimizer
+	notifier              DownloadNotifier
+	plays                 playback.OfflineWriter
+	grantPath             string
+	wake                  *worker.Signal
+	done                  chan struct{}
+	cancel                context.CancelFunc
 }
 
 func New(o Options) (*Service, error) {
@@ -86,7 +89,7 @@ func New(o Options) (*Service, error) {
 	if o.BaseGrantPath == "" {
 		o.BaseGrantPath = "/v1/downloads/artifacts/"
 	}
-	return &Service{db: o.DB, now: o.Now, openOriginal: o.OpenSource, artifacts: o.Artifacts, optimizer: o.Optimizer, notifier: o.Notifier, plays: o.Plays, grantPath: o.BaseGrantPath, wake: worker.NewSignal()}, nil
+	return &Service{deliveryConfiguration: o.DeliveryConfiguration, db: o.DB, now: o.Now, openOriginal: o.OpenSource, artifacts: o.Artifacts, optimizer: o.Optimizer, notifier: o.Notifier, plays: o.Plays, grantPath: o.BaseGrantPath, wake: worker.NewSignal()}, nil
 }
 
 func (s *Service) millis() int64 { return s.now().UnixMilli() }
@@ -152,6 +155,7 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 	if out.Qualities, e = producibleQualities(tx); e != nil {
 		return out, e
 	}
+	out.Qualities = s.cappedQualities(out.Qualities)
 	return out, gated.Commit()
 }
 
@@ -244,7 +248,7 @@ const committedStates = `('queued','running','ready','paused')`
 // storedClaims are the live claims that stand for bytes this server keeps: the
 // converted files. An original is the library file itself, read in place, so
 // claiming one takes no room and is never refused for lack of it.
-const storedClaims = committedStates + ` AND quality<>'original'`
+const storedClaims = committedStates + ` AND (quality<>'original' OR recipe<>'')`
 
 func (s *Service) Usage(ctx context.Context, p identity.Principal, all bool) (Usage, error) {
 	return s.UsagePage(ctx, p, all, "", 256)
@@ -292,7 +296,7 @@ func (s *Service) UsagePage(ctx context.Context, p identity.Principal, all bool,
 		out.RemainingBytes = &remaining
 	}
 	if all {
-		rows, err := tx.QueryContext(ctx, `SELECT d.profile_key,d.authority,d.account_id,d.profile_id,COALESCE(a.username,d.account_id),COALESCE(p.name,d.profile_id),COALESCE(sum(d.bytes_total),0),count(*),COALESCE(sum(CASE WHEN d.quality<>'original' THEN d.bytes_total ELSE 0 END),0)
+		rows, err := tx.QueryContext(ctx, `SELECT d.profile_key,d.authority,d.account_id,d.profile_id,COALESCE(a.username,d.account_id),COALESCE(p.name,d.profile_id),COALESCE(sum(d.bytes_total),0),count(*),COALESCE(sum(CASE WHEN d.quality<>'original' OR d.recipe<>'' THEN d.bytes_total ELSE 0 END),0)
  FROM download_preparations d LEFT JOIN accounts a ON a.id=d.account_id AND d.authority='local' LEFT JOIN direct_profiles p ON p.id=d.profile_id AND d.authority='local'
  WHERE d.state IN `+committedStates+` AND d.profile_key>? GROUP BY d.profile_key ORDER BY d.profile_key LIMIT ?`, cursor, limit+1)
 		if err != nil {
@@ -582,7 +586,7 @@ func decodeCursor(v string) (int64, string, error) {
 // preparationQuality validates a requested quality against the published ladder
 // rather than accepting any string that later fails deep in the worker.
 func preparationQuality(v string) error {
-	if v == QualityOriginal || v == "automatic" {
+	if v == QualityOriginal || v == "automatic" || canonicalMusicQuality(v) {
 		return nil
 	}
 	if _, ok := playback.LadderPreset(v); ok {
