@@ -12,7 +12,7 @@ docker image inspect "$image" --format '{{.Id}} {{json .RepoDigests}} {{json .Co
 # Tauri generates permission schemas beside its manifest. Only this exact per-job
 # archive is writable, with the runner uid so its final cleanup can remove every file.
 mkdir -p "$TMPDIR/native-work/home"
-scope="${1:-shell}"
+scope="${1:-engine}"
 case "$scope" in shell|engine) ;; *) exit 64 ;; esac
 docker run --rm --network=host --user "$(id -u):$(id -g)" --label portico=desktop-r29 --cpus=2 --memory=3g --memory-swap=3g \
   --env HOME=/work/home --env CARGO_HOME=/work/cargo --env RUSTUP_TOOLCHAIN=1.99.0 \
