@@ -30,7 +30,7 @@
     "@vitejs/plugin-react": "5.2.0",
     "oxlint": "1.86.0",
     "typescript": "7.0.2",
-    "vite": "8.2.2",
+    "vite": "8.3.5",
     "rolldown": "1.2.9"
   }
 }
