@@ -69,6 +69,9 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
     return () => {publisher.dispose();if (chrome.current === publisher) chrome.current = undefined;};
   }, [expanded, activeVideo]);
   useLayoutEffect(() => {chrome.current?.update({controlsVisible, fullscreen});}, [expanded, activeVideo, controlsVisible, fullscreen]);
+  useEffect(() => {
+    if ((!expanded || !activeVideo) && document.fullscreenElement === host.current) void document.exitFullscreen().catch(binding?.reportError ?? (() => {}));
+  }, [expanded, activeVideo, binding]);
   const [notice, setNotice] = useState<{runtime: WebShellPlaybackRuntime; value: DockNoticeData} | null>(null), [now, setNow] = useState(() => performance.now());
   const previous = useRef<{runtime?: WebShellPlaybackRuntime; audio?: string; video?: string}>({});
   const leaving = useRef<string | undefined>(undefined);

@@ -145,7 +145,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
       else if (key === 'i' && windowPort?.pictureInPicture) { event.preventDefault(); effect(windowPort.pictureInPicture.toggle); reveal(); return; }
       else if (key === 'z' && windowPort?.fit) { event.preventDefault(); effect(windowPort.fit.toggle); reveal(); return; }
       else if (key === '?') { event.preventDefault(); setShortcuts(true); reveal(); return; }
-      else if (key === 'escape') { event.preventDefault(); if (fullWindow) setFullWindow(false); else onCollapse(); return; }
+      else if (key === 'escape') { event.preventDefault(); if (fullWindow) setFullWindow(false); else if (windowPort?.fullscreen?.active) effect(windowPort.fullscreen.toggle); else onCollapse(); return; }
       if (intent) { event.preventDefault(); send(intent); reveal(); }
     };
     window.addEventListener('keydown', keydown);
