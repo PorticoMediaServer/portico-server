@@ -1,9 +1,9 @@
 .caption {position:fixed;z-index:60;top:0;right:0;display:flex;}
-.caption [role=button] {width:46px;height:32px;display:grid;place-items:center;color:rgba(255,255,255,.92);}
-.caption [role=button]:hover,.caption [role=button][data-hover=true] {background:rgba(255,255,255,.09);}
-.caption [role=button].close:hover,.caption [role=button].close[data-hover=true] {background:#c42b1c;color:#fff;}
-.caption[data-focused=false] [role=button] {color:rgba(255,255,255,.42);}
-.caption [role=button] svg {display:block;}
-.caption [role=button]:focus-visible {outline:3px solid var(--focus);outline-offset:-3px;}
+.caption button {width:46px;height:32px;display:grid;place-items:center;appearance:none;font:inherit;padding:0;border:0;border-radius:0;background:transparent;color:rgba(255,255,255,.92);}
+.caption button:hover,.caption button[data-hover=true] {background:rgba(255,255,255,.09);}
+.caption button.close:hover,.caption button.close[data-hover=true] {background:#c42b1c;color:#fff;}
+.caption[data-focused=false] button {color:rgba(255,255,255,.42);}
+.caption button svg {display:block;}
+.caption button:focus-visible {outline:3px solid var(--focus);outline-offset:-3px;}
 .shade {display:none;position:fixed;z-index:55;top:0;left:84px;right:0;height:52px;pointer-events:none;background:linear-gradient(180deg,rgba(7,16,24,.9) 0,rgba(7,16,24,.66) 30px,rgba(7,16,24,0) 52px);}
 @media (min-width:600px) and (max-width:1023px) {.shade {display:block;}}

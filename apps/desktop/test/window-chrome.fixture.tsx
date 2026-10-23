@@ -1,4 +1,5 @@
 import {createRoot} from 'react-dom/client';
+import {useLayoutEffect} from 'react';
 import {WindowChrome} from '../src/WindowChrome';
 import type {WindowSnapshot,ChromeUpdate} from '../src/window';
 
@@ -6,10 +7,23 @@ import type {WindowSnapshot,ChromeUpdate} from '../src/window';
  * The surrounding immutable reference is a scaffold, never a product Home claim. */
 export function mountCaption(parent:HTMLElement,native:WindowSnapshot){
  const mount=document.createElement('div');
- Object.assign(mount.style,{position:'absolute',inset:'0',contain:'layout',zIndex:'60',pointerEvents:'none'});
- parent.append(mount);const root=createRoot(mount);
+ // Match the production body mount and its single fixed stacking context. A
+ // contained wrapper adds another alpha-compositing pass over the reference.
+ document.body.append(mount);const root=createRoot(mount);
  let geometry:ChromeUpdate['captions']=null;
  const actions:string[]=[];
- root.render(<WindowChrome native={native} state={{surface:'pages',controlsVisible:true,fullscreen:false}} onGeometry={value=>{geometry=value}} onAction={value=>{actions.push(value)}}/>);
+ function FramedCaption(){
+  useLayoutEffect(()=>{
+   const caption=mount.querySelector<HTMLElement>('[data-window-no-drag]');
+   if(caption){
+    const box=parent.getBoundingClientRect();
+    // Translate the window viewport's origin only; no glyph offsets or paint overrides.
+    caption.style.top=`${box.top}px`;caption.style.right=`${innerWidth-box.right}px`;
+    window.dispatchEvent(new Event('resize'));
+   }
+  },[]);
+  return <WindowChrome native={native} state={{surface:'pages',controlsVisible:true,fullscreen:false}} onGeometry={value=>{geometry=value}} onAction={value=>{actions.push(value)}}/>;
+ }
+ root.render(<FramedCaption/>);
  return {geometry:()=>geometry,actions,dispose(){root.unmount();mount.remove();}};
 }
