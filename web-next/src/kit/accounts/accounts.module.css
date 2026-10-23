@@ -38,6 +38,7 @@
 .pin .codeError { margin: 14px 0 0; font-size: 15px; line-height: 1.45; }
 .codeGroup { display: flex; flex-direction: column; align-items: center; }
 .codeBoxes { position: relative; display: flex; gap: 10px; }
+.codeBoxes[data-grouped] > span:nth-of-type(4) { margin-left: 8px; }
 .codeBoxes input { position: absolute; inset: 0; z-index: 1; width: 100%; opacity: 0; cursor: text; }
 .codeBoxes > span { width: 56px; height: 64px; border-radius: 12px; display: grid; place-items: center; font-size: 28px; font-weight: 800; background: rgba(7,16,24,.62); box-shadow: inset 0 0 0 1px var(--color-line-strong); backdrop-filter: blur(16px); }
 .pin .codeBoxes > span { width: 68px; height: 76px; }

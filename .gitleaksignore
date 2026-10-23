@@ -1,0 +1,3 @@
+# Historical throwaway browser-fixture password; current fixtures generate it
+# at runtime. Exempt only this finding, never the file or future credentials.
+b33d6a01af820140ac5f7c745e3e2558bab077d9:web-next/test/services-links-browser.mjs:generic-api-key:70

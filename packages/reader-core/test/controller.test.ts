@@ -191,3 +191,25 @@ for(const next of ['replacement','close'] as const)test(`delayed failed-open cle
     assert.equal(replacement.docsDisposed,0);
   }finally{release.resolve();await failed;await f.controller.close();}
 });
+
+test('authority retirement aborts a pending open and disposes late documents without mounting',async()=>{
+  const f=fixture(),authority=new AbortController(),pending=deferred<ReaderDocument<Prefs>>();let engineSignal!:AbortSignal,mounted=0;
+  f.adapter.open=async({signal})=>{engineSignal=signal;return pending.promise;};
+  f.document.mount=async()=>{mounted++;return f.view;};
+  const opening=f.controller.open({source,format:'epub',container,signal:authority.signal});await new Promise(done=>setImmediate(done));
+  authority.abort();assert.equal(f.controller.getSnapshot().status,'closed');assert.equal(engineSignal.aborted,true);
+  pending.resolve(f.document);await opening;assert.equal(mounted,0);assert.equal(f.docsDisposed,1);
+  const preaborted=fixture();await preaborted.controller.open({source,format:'epub',container,signal:authority.signal});
+  assert.equal(preaborted.controller.getSnapshot().status,'closed');assert.equal(preaborted.docsDisposed,0);
+});
+
+test('retiring an old authority cannot close its replacement; current retirement clears cached view and local overrides',async()=>{
+  const f=fixture(),old=new AbortController(),current=new AbortController();let added=0,removed=0;
+  const add=old.signal.addEventListener.bind(old.signal),remove=old.signal.removeEventListener.bind(old.signal);
+  old.signal.addEventListener=(...args)=>{added++;return add(...args);};old.signal.removeEventListener=(...args)=>{removed++;return remove(...args);};
+  await f.controller.open({source,format:'epub',container,signal:old.signal});
+  await f.controller.open({source,format:'epub',container,signal:current.signal});const ready=f.controller.getSnapshot();
+  assert.equal(added,1);assert.equal(removed,1);old.abort();assert.equal(f.controller.getSnapshot(),ready);
+  await f.controller.setOverride({textSize:7});current.abort();assert.equal(f.controller.getSnapshot().status,'closed');assert.deepEqual(f.controller.getSnapshot().overriddenKeys,[]);
+  await new Promise(done=>setImmediate(done));assert.equal(f.viewsDisposed,2);assert.equal(f.docsDisposed,2);
+});

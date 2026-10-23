@@ -26,54 +26,8 @@ func TestOwnerInstallBindsApprovedIdentityAndNarrowsOnlyAfterAtomicCommit(t *tes
 	for _, mode := range []string{"success", "callback rollback", "expired after commit"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx := context.Background()
-			pub, key, err := ed25519.GenerateKey(rand.Reader)
-			if err != nil {
-				t.Fatal(err)
-			}
-			verify, err := networking.NewApprovalVerifier("https://hosted.example", trust.KeyID(pub), pub)
-			if err != nil {
-				t.Fatal(err)
-			}
-			f := newOwnerCaptureFixture(t, verify)
-			err = dbwork.WithWriteTx(ctx, f.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
-				if err := f.capture(ctx, tx); err != nil {
-					return err
-				}
-				return f.s.BindOwnerClaimTransactionTx(ctx, tx, f.p, f.intent.OperationID, "actual_pending_transaction")
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = f.store.SetInstallationHooks(func(ctx context.Context, tx *sql.Tx, v networking.Intent) error {
-				return f.s.InstallOwnerClaimTx(ctx, tx, v.OperationID)
-			}, func() {}); err != nil {
-				t.Fatal(err)
-			}
-			now := time.Now().UTC()
-			// Exact production approval order; the fixture signature is checked by
-			// NewApprovalVerifier, rather than bypassing the authenticated facts.
-			raw := []byte(fmt.Sprintf(`{"targetUsername":"approved_owner","kind":"portico.claim.approval","version":"2","audience":"https://hosted.example","operationId":%q,"serverId":%q,"accountId":"account-approved","publicKey":%q,"localGeneration":"0","approvalRevision":"1","purpose":"switch","currentOwnerAccountId":"","previousOwnerRole":"","returnRegistrationId":"","issuedAt":%q,"expiresAt":%q}`, f.intent.OperationID, f.intent.ServerID, f.claim.PublicKey, now.Format(time.RFC3339Nano), now.Add(4*time.Minute).Format(time.RFC3339Nano)))
-			cert, err := trust.Certify(key, pub, "pin1", "documents", now.Add(-time.Hour), now.Add(time.Hour), 1, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			proof, _ := json.Marshal(trust.Envelope{Payload: base64.RawURLEncoding.EncodeToString(raw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, raw)), KeyID: "pin1", Certificate: cert})
-			var retrieving networking.Intent
-			err = f.runner.Do(ctx, func(ctx context.Context) error {
-				v, err := f.store.Approve(ctx, f.intent, proof)
-				if err != nil {
-					return err
-				}
-				v, err = f.store.BeginFinalizing(ctx, v)
-				if err != nil {
-					return err
-				}
-				retrieving, err = f.store.Committed(ctx, v, networking.Commit{OperationID: v.OperationID, ServerID: v.ServerID, ClaimGeneration: "1", CredentialGeneration: "1"})
-				return err
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			f, retrieving := prepareOwnerInstallFixture(t)
+			var err error
 			if mode == "expired after commit" {
 				if _, err = f.db.Exec(`UPDATE identity_owner_completions SET expires_ms=created_ms+1`); err != nil {
 					t.Fatal(err)
@@ -132,4 +86,70 @@ func TestOwnerInstallBindsApprovedIdentityAndNarrowsOnlyAfterAtomicCommit(t *tes
 			}
 		})
 	}
+}
+
+// prepareOwnerInstallFixture uses the production signed approval verifier and
+// actual claim-store progression. Result credentials remain a local fixture.
+func prepareOwnerInstallFixture(t *testing.T) (ownerCaptureFixture, networking.Intent) {
+	t.Helper()
+	ctx := context.Background()
+	pub, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verify, err := networking.NewApprovalVerifier("https://hosted.example", trust.KeyID(pub), pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := newOwnerCaptureFixture(t, verify)
+	err = dbwork.WithWriteTx(ctx, f.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		if err := f.capture(ctx, tx); err != nil {
+			return err
+		}
+		return f.s.BindOwnerClaimTransactionTx(ctx, tx, f.p, f.intent.OperationID, "actual_pending_transaction")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.store.SetInstallationHooks(func(ctx context.Context, tx *sql.Tx, v networking.Intent) error {
+		return f.s.InstallOwnerClaimTx(ctx, tx, v.OperationID)
+	}, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.store.SetTerminalRevoker(func(ctx context.Context, tx *sql.Tx, v networking.Intent, _ string) error {
+		return f.s.RetireOwnerCompletionForClaimTx(ctx, tx, v.OperationID)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	// Exact production approval order; the fixture signature is checked by
+	// NewApprovalVerifier, rather than bypassing the authenticated facts.
+	raw := []byte(fmt.Sprintf(`{"targetUsername":"approved_owner","kind":"portico.claim.approval","version":"2","audience":"https://hosted.example","operationId":%q,"serverId":%q,"accountId":"account-approved","publicKey":%q,"localGeneration":"0","approvalRevision":"1","purpose":"switch","currentOwnerAccountId":"","previousOwnerRole":"","returnRegistrationId":"","issuedAt":%q,"expiresAt":%q}`, f.intent.OperationID, f.intent.ServerID, f.claim.PublicKey, now.Format(time.RFC3339Nano), now.Add(4*time.Minute).Format(time.RFC3339Nano)))
+	cert, err := trust.Certify(key, pub, "pin1", "documents", now.Add(-time.Hour), now.Add(time.Hour), 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof, _ := json.Marshal(trust.Envelope{Payload: base64.RawURLEncoding.EncodeToString(raw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, raw)), KeyID: "pin1", Certificate: cert})
+	var retrieving networking.Intent
+	err = f.runner.Do(ctx, func(ctx context.Context) error {
+		v, err := f.store.Approve(ctx, f.intent, proof)
+		if err != nil {
+			return err
+		}
+		request := identity.Token()
+		cancelRaw := []byte(fmt.Sprintf(`{"kind":"portico.claim.cancel","version":"1","audience":"https://hosted.example","operationId":%q,"serverId":%q,"accountId":%q,"publicKey":%q,"localGeneration":"%d","requestId":%q,"mode":"intent"}`, v.OperationID, v.ServerID, v.AccountID, base64.RawURLEncoding.EncodeToString(v.PublicKey), v.LocalGeneration, request))
+		if _, err = f.store.ArmPreinstallCancellation(ctx, v, networking.Cancellation{Binding: v.Binding, RequestID: request, Proof: networking.SignedProof{Payload: cancelRaw, Signature: ed25519.Sign(f.key, cancelRaw)}}); err != nil {
+			return err
+		}
+		v, err = f.store.BeginFinalizing(ctx, v)
+		if err != nil {
+			return err
+		}
+		retrieving, err = f.store.Committed(ctx, v, networking.Commit{OperationID: v.OperationID, ServerID: v.ServerID, ClaimGeneration: "1", CredentialGeneration: "1"})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f, retrieving
 }

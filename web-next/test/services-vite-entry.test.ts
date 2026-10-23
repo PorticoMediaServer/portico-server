@@ -20,5 +20,10 @@ test('the plugin captures one explicit build mode before later environment mutat
   const plugin = servicesEntryPlugin(env); env.VITE_ACCOUNT_WORKSPACE = 'false';
   assert.equal(plugin.name, 'portico-services-entry');
   assert.equal(plugin.transformIndexHtml.order, 'pre');
-  assert.ok(plugin.transformIndexHtml.handler(html).includes('/src/services/main.tsx'));
+  assert.ok(plugin.transformIndexHtml.handler(html, {path: '/index.html'}).includes('/src/services/main.tsx'));
+});
+test('Services selection touches only the real root index, leaving owned fixture/deep HTML inputs alone', () => {
+  const plugin = servicesEntryPlugin({VITE_HOSTED_WEB: 'true', VITE_ACCOUNT_WORKSPACE: 'true'});
+  const fixture = '<html><script type="module" src="/test/fixture.tsx"></script></html>';
+  assert.equal(plugin.transformIndexHtml.handler(fixture, {path: '/test/fixture.html'}), fixture);
 });

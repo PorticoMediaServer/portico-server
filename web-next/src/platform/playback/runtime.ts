@@ -22,6 +22,7 @@ import {WebPlayback} from './web-playback.ts';
 import {DecodeAudioRender} from './DecodeAudioRender.ts';
 import {loadDeviceEqualizer, subscribeDeviceEqualizer} from './audio/equalizer-store.ts';
 import type {EqualizerSettings} from './audio/equalizer.ts';
+import type {EqualizerPort} from '../../kit/media/equalizer-port.ts';
 import {ByteCache} from './audio/bytes.ts';
 import {browserNativeHlsPolicy} from './native-hls.ts';
 import {documentVisibility} from './page-visibility.ts';
@@ -66,6 +67,7 @@ export class WebShellPlaybackRuntime {
   readonly authority: WebPlaybackAuthority;
   private readonly source: WebPlaybackSource;
   private readonly env: WebPlaybackEnvironment;
+  readonly equalizerPort?: EqualizerPort;
   private readonly audioCache = new ByteCache();
   private readonly choices = new PlayerSessionChoices();
   private readonly policy = new PlaybackPolicy();
@@ -97,6 +99,7 @@ export class WebShellPlaybackRuntime {
     this.authority = Object.freeze({...source.authority});
     this.source = Object.freeze({...source, authority: this.authority, contentScope: Object.freeze({...source.contentScope})});
     this.env = environment;
+    this.equalizerPort = environment.equalizerPort;
     this.capabilityPublisher = new CapabilityPublisher(localV1Http(source.api), () => JSON.stringify([this.authority.serverId, this.authority.accountId, this.authority.profileId, this.authority.epoch]));
     const inner = localV1Http(source.api);
     this.channelControl = new V1ChannelControl({http: {send: request => inner.send(request.method === 'DELETE' ? request : {...request, signal: request.signal ? AbortSignal.any([request.signal, this.life.signal]) : this.life.signal})}, key: environment.key, now: environment.timers?.now});
@@ -936,7 +939,8 @@ export class WebShellPlaybackRuntime {
   async setEqualizer(fence: PlaybackFence, settings: EqualizerSettings): Promise<void> {
     const stack = this.require(fence);
     if (stack.subject?.kind !== 'music') problem('equalizer_unavailable');
-    await stack.web.setEqualizer(settings);
+    if (this.equalizerPort) await this.equalizerPort.change(settings);
+    else await stack.web.setEqualizer(settings);
     if (this.current(stack)) this.sync();
   }
   refreshSettings(): void { this.assertCurrent(); this.surface?.applyPreferences(this.source.settings.subtitlePreferences?.()); this.stack.service.adoptAudioEffectsPreference(this.source.settings.audioEffects()); this.sync(); }

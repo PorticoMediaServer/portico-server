@@ -211,16 +211,12 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		w.WriteHeader(204)
 	})
 	d.httpHandle(mux, "POST /v1/direct/password", func(w http.ResponseWriter, r *http.Request) {
-		var q struct {
-			CurrentPassword string `json:"currentPassword"`
-			NewPassword     string `json:"newPassword"`
-			Code            string `json:"code"`
-		}
+		var q identity.DirectPasswordChange
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
 			return
 		}
-		if e := d.Identity.ChangeDirectPassword(r.Context(), directBearer(r), q.CurrentPassword, q.NewPassword, q.Code); e != nil {
+		if e := d.Identity.ChangeDirectPasswordWithReset(r.Context(), directBearer(r), q.CurrentPassword, q.NewPassword, q.Code, q.TurnOffTwoStep); e != nil {
 			failure(w, e)
 			return
 		}
