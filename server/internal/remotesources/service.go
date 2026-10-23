@@ -29,18 +29,18 @@ import (
 )
 
 type Source struct {
-	ID                string `json:"id"`
-	Kind              string `json:"kind"`
-	Name              string `json:"name"`
-	RootPath          string `json:"rootPath"`
-	Generation        int64  `json:"generation"`
-	State             string `json:"state"`
-	ErrorCode         string `json:"errorCode,omitempty"`
-	RangeSupport      string `json:"rangeSupport"`
-	Origin            string `json:"origin,omitempty"`
-	InsecureLocal     bool   `json:"insecureLocal"`
-	CredentialPresent bool   `json:"credentialPresent"`
-	MountID           string `json:"mountId,omitempty"`
+	ID                string     `json:"id"`
+	Kind              SourceKind `json:"kind"`
+	Name              string     `json:"name"`
+	RootPath          string     `json:"rootPath"`
+	Generation        int64      `json:"generation"`
+	State             string     `json:"state"`
+	ErrorCode         string     `json:"errorCode,omitempty"`
+	RangeSupport      string     `json:"rangeSupport"`
+	Origin            string     `json:"origin,omitempty"`
+	InsecureLocal     bool       `json:"insecureLocal"`
+	CredentialPresent bool       `json:"credentialPresent"`
+	MountID           string     `json:"mountId,omitempty"`
 }
 type Service struct {
 	db                  *sql.DB

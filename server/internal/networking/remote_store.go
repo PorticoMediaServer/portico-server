@@ -111,8 +111,17 @@ func (m *RemoteManager) snapshot(ctx context.Context) (RemoteConfig, certificate
 		return c, cert, authority, state, key, e
 	}
 	if saved != authority {
-		c = RemoteConfig{Revision: c.Revision + 1, PCP: true, NATPMP: true, UPnP: true, PublicPort: 32500}
-		if _, e = tx.ExecContext(ctx, `UPDATE networking_remote_settings SET authority=?,revision=?,enabled=0,lan_sharing=0,mapping=0,pcp=1,natpmp=1,upnp=1,public_port=32500,gateway='',manual_url='',ipv6_open=0 WHERE singleton=1`, authority, c.Revision); e != nil {
+		// Only an actually installed/acknowledged Portico scope gets the managed
+		// route default. Approval or an unclaimed Local scope cannot enable it.
+		// Once this scope exists, later snapshots preserve its owner's off choice.
+		enabled := false
+		if cert.Scope.ID != "" {
+			if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_state s JOIN identity_managed_route m ON m.singleton=s.singleton WHERE s.singleton=1 AND s.sign_in_kind='portico' AND m.enabled=1)`).Scan(&enabled); e != nil {
+				return c, cert, authority, state, key, e
+			}
+		}
+		c = RemoteConfig{Revision: c.Revision + 1, Enabled: enabled, PCP: true, NATPMP: true, UPnP: true, PublicPort: 32500}
+		if _, e = tx.ExecContext(ctx, `UPDATE networking_remote_settings SET authority=?,revision=?,enabled=?,lan_sharing=0,mapping=0,pcp=1,natpmp=1,upnp=1,public_port=32500,gateway='',manual_url='',ipv6_open=0 WHERE singleton=1`, authority, c.Revision, enabled); e != nil {
 			return c, cert, authority, state, key, e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE networking_remote_state SET generation=generation+1,topology_digest='',route_digest='',next_attempt=0,attempts=0,status='{}' WHERE singleton=1`); e != nil {
