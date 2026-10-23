@@ -7,7 +7,7 @@ export type WatchCommands = Pick<WebShellPlaybackRuntime, 'getSnapshot' | 'onAct
 /** A retained render or an old keyboard closure cannot command a new playback. */
 export async function dispatchWatch(runtime: WatchCommands, shown: WebPlaybackRuntimeSnapshot, intent: WatchIntent): Promise<void> {
   const current = runtime.getSnapshot();
-  if (shown.disposed || current.disposed || !shown.fence || !current.fence || !sameFence(shown.fence, current.fence)
+  if (shown.disposed || current.disposed || current.dock.remote?.phase === 'playing' || !shown.fence || !current.fence || !sameFence(shown.fence, current.fence)
     || shown.authority !== current.authority) throw new Error('stale_watch_command');
   await runtime.onAction({...intent, fence: shown.fence});
 }

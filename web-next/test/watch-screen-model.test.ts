@@ -10,6 +10,7 @@ import type {FileInfoProjection} from '@core/detail.ts';
 import type {PlaybackOptions, MediaVersion} from '@core/playback-v1/types.ts';
 import type {WebPlaybackAction, WebPlaybackRuntimeSnapshot} from '../src/platform/playback/types.ts';
 import type {QueuePlaybackFence} from '../../packages/player-core/src/index.ts';
+import {PlaybackDock} from '../../packages/player-core/src/index.ts';
 
 const authority = Object.freeze({serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile', epoch: 1, viewerFence: 'viewer-fence'});
 const fence: QueuePlaybackFence = {kind: 'queue', playback: {scope: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', controllerId: 'controller', controllerEpoch: 'epoch', commandLaneId: 'lane'}, run: 1}, sessionId: 'session', itemId: 'item', sourceId: 'source', entryId: 'entry', generation: 1};
@@ -37,6 +38,18 @@ test('retained screen and keyboard callbacks reject every changed fence and auth
     await assert.rejects(dispatchWatch({getSnapshot: () => snapshot(replacement), onAction: async () => { count++; }}, shown, {kind: 'seek', seconds: 50}), /stale_watch_command/);
     assert.equal(count, 0);
   }
+});
+test('a retained local callback cannot act after an actual confirmed remote dock takeover', async () => {
+  const shown = snapshot(), dock = new PlaybackDock(fence.playback.scope);
+  const playback = {kind: 'video' as const, fence, queue: null, positionSeconds: 30, playing: true, expanded: true};
+  dock.start(playback);
+  dock.beginRemote({id: 'cast', kind: 'cast', phase: 'connecting', sequence: '1', playback, positionSeconds: 0}, 0);
+  assert.equal(dock.getSnapshot().local?.playing, true);
+  dock.remote({id: 'cast', kind: 'cast', phase: 'playing', sequence: '2', playback, positionSeconds: 35}, 1000);
+  assert.equal(dock.getSnapshot().local?.playing, false);
+  let effects = 0;
+  await assert.rejects(dispatchWatch({getSnapshot: () => snapshot({dock: dock.getSnapshot()}), onAction: async () => { effects++; }}, shown, {kind: 'seek', seconds: 60}), /stale_watch_command/);
+  assert.equal(effects, 0);
 });
 test('seek bounds respect the actual retained live window and never invent a clock', () => {
   const live = snapshot();
