@@ -27,9 +27,12 @@ export function RegisteredSignInPage({account, pending}: {account: ServicesAccou
   if (!session || authenticating) return <ServicesAuthForm account={account} heading={t('auth.welcomeHome')} lead={lead}
     initialUsername={username} before={<HostedError error={error} />} after={back} onSignedIn={() => setAuthenticating(false)} />;
   const act = (work: (signal: AbortSignal) => Promise<void>) => {
-    if (busy) return;
+    if (busy || active.current && !active.current.signal.aborted) return;
     const controller = new AbortController(); active.current = controller; setBusy(true); setError(undefined);
-    void work(controller.signal).catch(value => {if (!controller.signal.aborted) setError(value);}).finally(() => {if (!controller.signal.aborted) setBusy(false);});
+    void work(controller.signal).catch(value => {if (!controller.signal.aborted) setError(value);}).finally(() => {
+      if (active.current === controller) active.current = undefined;
+      if (!controller.signal.aborted) setBusy(false);
+    });
   };
   return <ServicesAuthStage><ServicesHeading>{t('auth.welcomeHome')}</ServicesHeading><ServicesLead>{lead}</ServicesLead>
     <HostedError error={error} /><ServicesSignedInAccount username={session.account.username} disabled={busy}
