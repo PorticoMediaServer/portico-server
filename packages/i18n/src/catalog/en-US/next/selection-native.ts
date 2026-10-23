@@ -77,7 +77,7 @@ export const selectionNativeMessages = {
   'next.selection.native.notFound': 'This title couldn’t be found.',
   'next.selection.native.saveFailed': 'This title couldn’t be saved. Try again.',
   'next.selection.native.deleteTitle': 'Delete “{title}”?',
-  'next.selection.native.deleteTitles': 'Delete {count, number} titles?',
+  'next.selection.native.deleteTitles': 'Delete {count, plural, one {# title} other {# titles}}?',
   'next.selection.native.delete': 'Delete',
   'next.selection.native.deleteCount': 'Delete {count, number} titles',
   'next.selection.native.deleteLimit': 'Delete at most 200 titles at once. Select fewer, or narrow the view with a filter first.',
