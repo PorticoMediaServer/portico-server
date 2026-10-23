@@ -22,8 +22,18 @@ for name in ['dependency-inputs.json', 'compiler.txt']:
  matches=sorted(x for x in a.input.rglob(name) if x.is_file() and not x.is_symlink())
  if a.target=='linux-x64' and len(matches)!=1:p.error('expected one '+name+' provenance file')
  if len(matches)==1:shutil.copy2(matches[0],a.output/name)
-for i,f in enumerate(sorted(a.input.rglob('*'))):
- if f.is_file() and f.name.lower().startswith(('license','copying')):shutil.copy2(f,a.output/'LICENSES'/(str(i)+'-'+f.name))
+# Keep the collected source-relative notices intact. Several dependencies use
+# COPYRIGHT or NOTICE, and nested names distinguish separate upstream licences.
+for f in sorted(a.input.rglob('*')):
+ if not f.is_file() or f.is_symlink():continue
+ relative=f.relative_to(a.input)
+ if 'LICENSES' in relative.parts:
+  destination=a.output/relative
+ elif f.name.lower().startswith(('license','licence','copying','copyright','notice')):
+  destination=a.output/'LICENSES'/'build'/relative
+ else:continue
+ destination.parent.mkdir(parents=True,exist_ok=True)
+ shutil.copy2(f,destination)
 if len(list((a.output/'LICENSES').iterdir()))<2:p.error('dependency license texts missing')
 shutil.copy2(a.source,a.output/'corresponding-source.tar.xz')
 for name in ['NOTICE.md','sources.lock.json','requirements.v1.json']:shutil.copy2(root/'third_party/ffmpeg'/name,a.output/name)
