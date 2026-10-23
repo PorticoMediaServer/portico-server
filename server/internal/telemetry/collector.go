@@ -3,8 +3,9 @@ package telemetry
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"math"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/reportwindow"
 	"sort"
 	"sync"
 	"time"
@@ -25,7 +26,7 @@ const (
 	DetailSamples  = 300
 	RollupInterval = time.Minute
 	RollupSamples  = 24 * 60
-	persistEvery   = time.Hour
+	persistEvery   = time.Minute
 	sampleBudget   = 1500 * time.Millisecond
 )
 
@@ -125,6 +126,9 @@ func appendBounded(list []Sample, v Sample, limit int) []Sample {
 // zero, and a metric measured only under restriction stays limited.
 func average(samples []Sample, at int64) Sample {
 	out := newSample(at)
+	out.counts = map[string]int{}
+	out.totals = map[string]float64{}
+	out.firstAt, out.lastAt = map[string]int64{}, map[string]int64{}
 	if len(samples) == 0 {
 		return out
 	}
@@ -140,6 +144,10 @@ func average(samples []Sample, at int64) Sample {
 				}
 				continue
 			}
+			if count == 0 {
+				out.firstAt[name] = s.At
+			}
+			out.lastAt[name] = s.At
 			sum += m.Value
 			count++
 			if status != StatusAvailable {
@@ -151,6 +159,7 @@ func average(samples []Sample, at int64) Sample {
 			continue
 		}
 		out.Metrics[name] = Metric{Status: status, Value: sum / float64(count), Detail: detail}
+		out.counts[name], out.totals[name] = count, sum
 	}
 	return out
 }
@@ -166,107 +175,196 @@ func (c *Collector) Latest() Sample {
 	return c.detail[len(c.detail)-1]
 }
 
-// Windows are the only accepted values of the window query parameter.
-var Windows = []string{"10m", "1h", "24h"}
+// Windows are the accepted aggregate views and existing moving detail views.
+var Windows = []string{"live", "12h", "24h", "7d", "30d", "90d", "1y", "all", "today", "10m", "1h"}
 
-func windowSpan(window string) (time.Duration, bool) {
-	switch window {
-	case "10m":
-		return 10 * time.Minute, true
-	case "1h":
-		return time.Hour, true
-	case "24h":
-		return 24 * time.Hour, true
+func (c *Collector) Read(window, zone, until string) (Reading, bool) {
+	if window == "live" || window == "10m" {
+		r, e := reportwindow.Live(zone, until, c.now())
+		if e != nil {
+			return Reading{}, false
+		}
+		span := 2 * time.Minute
+		if window == "10m" {
+			span = 10 * time.Minute
+			r.From = c.now().Add(-span).UTC().Format(time.RFC3339Nano)
+			r.Buckets[0].Start = r.From
+		}
+		r.Period = window
+		out := emptyReading(window, r)
+		out.ObservedAt = c.now().UnixMilli()
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		for _, name := range MetricNames {
+			for _, s := range c.detail {
+				if s.At >= out.ObservedAt-span.Milliseconds() && s.At <= out.ObservedAt && s.Metrics[name].Known() {
+					out.Series[name] = append(out.Series[name], Point{T: s.At, V: s.Metrics[name].Value})
+				}
+			}
+			if len(c.detail) > 0 {
+				out.Status[name] = c.detail[len(c.detail)-1].Metrics[name]
+			}
+			if window == "live" && len(out.Series[name]) > 60 {
+				out.Series[name] = out.Series[name][len(out.Series[name])-60:]
+			}
+		}
+		return out, true
 	}
-	return 0, false
-}
-
-// Read answers one window. The ten-minute window is served from detail samples;
-// longer windows from one-minute rollups, including the minute still filling so
-// a fresh restart is not an empty chart.
-func (c *Collector) Read(window string) (Reading, bool) {
-	span, ok := windowSpan(window)
-	if !ok {
+	if c.db != nil {
+		out, e := ReadAggregate(context.Background(), c.db, window, zone, until)
+		return out, e == nil
+	}
+	r, e := reportwindow.Resolve(window, zone, until, -1)
+	if e != nil {
 		return Reading{}, false
 	}
-	now := c.now().UnixMilli()
-	out := Reading{Window: window, Series: map[string][]Point{}, Status: map[string]Metric{}, ObservedAt: now}
+	out := emptyReading(window, r)
+	a := newAggregate(r)
 	c.mu.Lock()
-	source := c.detail
-	if window != "10m" {
-		source = append(append([]Sample{}, c.rollups...), average(c.minute, c.minuteStamp))
-	}
-	latest := newSample(now)
-	if len(c.detail) > 0 {
-		latest = c.detail[len(c.detail)-1]
-	}
-	c.mu.Unlock()
-	from := now - span.Milliseconds()
-	for _, name := range MetricNames {
-		points := []Point{}
-		for _, s := range source {
-			if s.At < from || s.At > now {
-				continue
-			}
-			if m := s.Metrics[name]; m.Known() {
-				points = append(points, Point{T: s.At, V: m.Value})
+	defer c.mu.Unlock()
+	for _, s := range c.rollups {
+		if s.At >= r.FromMS() && s.At < r.UntilMS() {
+			for _, name := range MetricNames {
+				m := s.Metrics[name]
+				if m.Known() {
+					a.add(s.At, name, 1, m.Value, m.Status, m.Detail)
+				}
 			}
 		}
-		if window == "24h" && len(points) > 60 {
-			selected := make([]Point, 60)
-			for n := range selected {
-				selected[n] = points[n*(len(points)-1)/59]
-			}
-			points = selected
-		}
-		out.Series[name] = points
-		out.Status[name] = latest.Metrics[name]
 	}
+	a.finish(&out)
 	return out, true
 }
 
-// Restore loads persisted rollups so charts survive a restart. Rows outside the
-// retained day are dropped on the way in and deleted on the next write.
+func emptyReading(window string, r reportwindow.Interval) Reading {
+	out := Reading{Interval: r, Window: window, Series: map[string][]Point{}, Status: map[string]Metric{}, ObservedAt: r.UntilMS()}
+	for _, name := range MetricNames {
+		out.Series[name] = []Point{}
+		out.Status[name] = Unavailable("No measured fact in this interval.")
+	}
+	return out
+}
+
+type aggregateValue struct {
+	count          int64
+	total          float64
+	status, detail string
+}
+type aggregate struct {
+	interval reportwindow.Interval
+	values   map[string][]aggregateValue
+}
+
+func newAggregate(r reportwindow.Interval) *aggregate {
+	a := &aggregate{interval: r, values: map[string][]aggregateValue{}}
+	for _, name := range MetricNames {
+		a.values[name] = make([]aggregateValue, len(r.Buckets))
+	}
+	return a
+}
+func (a *aggregate) add(at int64, name string, count int64, total float64, status, detail string) {
+	values, known := a.values[name]
+	if !known || count <= 0 || math.IsNaN(total) || math.IsInf(total, 0) {
+		return
+	}
+	index, ok := a.interval.Index(max(at, a.interval.FromMS()))
+	if !ok {
+		return
+	}
+	v := &values[index]
+	v.count += count
+	v.total += total
+	if status == StatusLimited || v.status == "" {
+		v.status = status
+		v.detail = detail
+	}
+}
+func (a *aggregate) finish(out *Reading) {
+	for _, name := range MetricNames {
+		for n, v := range a.values[name] {
+			if v.count > 0 {
+				at, _ := time.Parse(time.RFC3339Nano, a.interval.Buckets[n].Start)
+				m := Metric{Status: v.status, Value: v.total / float64(v.count), Detail: v.detail}
+				out.Series[name] = append(out.Series[name], Point{T: at.UnixMilli(), V: m.Value})
+				out.Status[name] = m
+			}
+		}
+	}
+}
+
+// ReadAggregate joins the caller's actual read transaction when present. Only
+// completed event-time quarters are eligible, independent of ingestion time.
+func ReadAggregate(ctx context.Context, db *sql.DB, window, zone, until string) (Reading, error) {
+	if dbwork.Snapshot(ctx) == nil {
+		var out Reading
+		e := dbwork.WithReadSnapshot(ctx, db, func(snapshot context.Context) error {
+			var e error
+			out, e = ReadAggregate(snapshot, db, window, zone, until)
+			return e
+		})
+		return out, e
+	}
+
+	loc, at, e := reportwindow.Context(zone, until)
+	_ = loc
+	if e != nil {
+		return Reading{}, e
+	}
+	first := int64(-1)
+	if window == "all" {
+		first, e = reportwindow.FirstFact(ctx, db, at.UnixMilli())
+		if e != nil {
+			return Reading{}, e
+		}
+	}
+	r, e := reportwindow.Resolve(window, zone, until, first)
+	if e != nil {
+		return Reading{}, e
+	}
+	out := emptyReading(window, r)
+	a := newAggregate(r)
+	from := r.FromMS() - r.FromMS()%reportwindow.Grain.Milliseconds()
+	rows, e := dbwork.Query(ctx, db, `SELECT bucket_ms,metric,samples,total,status,detail FROM telemetry_rollups WHERE bucket_ms>=? AND bucket_ms<? ORDER BY bucket_ms,metric`, from, r.UntilMS())
+	if e != nil {
+		return out, e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t, count int64
+		var name, status, detail string
+		var total float64
+		if e = rows.Scan(&t, &name, &count, &total, &status, &detail); e != nil {
+			return out, e
+		}
+		a.add(t, name, count, total, status, detail)
+	}
+	if e = rows.Err(); e != nil {
+		return out, e
+	}
+	a.finish(&out)
+	return out, nil
+}
+
+// Quarters are retained for All time, exceeding the thirteen-month minimum.
+// No coarse UTC day loses a viewer-local month/hour boundary.
 func (c *Collector) Restore(ctx context.Context) {
 	if c.db == nil {
 		return
 	}
-	cutoff := c.now().Add(-24 * time.Hour).UnixMilli()
-	rows, e := c.db.QueryContext(ctx, `SELECT minute_ms,body FROM telemetry_rollups WHERE minute_ms>=? ORDER BY minute_ms LIMIT ?`, cutoff, RollupSamples)
-	if e != nil {
-		return
-	}
-	defer rows.Close()
-	restored := []Sample{}
-	var newest int64
-	for rows.Next() {
-		var at int64
-		var body string
-		if rows.Scan(&at, &body) != nil {
-			return
-		}
-		var s Sample
-		if json.Unmarshal([]byte(body), &s) != nil || s.Metrics == nil {
-			continue
-		}
-		s.At = at
-		restored = append(restored, s)
-		newest = at
-	}
-	if rows.Err() != nil {
+	var last sql.NullInt64
+	if dbwork.QueryRow(ctx, c.db, `SELECT max(last_event_ms) FROM telemetry_rollups`).Scan(&last) != nil {
 		return
 	}
 	c.mu.Lock()
-	c.rollups = append(restored, c.rollups...)
-	if len(c.rollups) > RollupSamples {
-		c.rollups = c.rollups[len(c.rollups)-RollupSamples:]
+	defer c.mu.Unlock()
+	if last.Valid {
+		c.persisted = last.Int64 - last.Int64%60000
 	}
-	c.persisted = newest
-	c.mu.Unlock()
 }
 
-// persist writes rollups the database has not seen yet and prunes the day. It
-// runs at most hourly, so the write is one small bounded batch.
+// Closed-minute batches only carry real samples into their UTC quarter. The
+// cursor is writer progress, not a report/ingestion snapshot. A restart leaves
+// an interrupted minute absent instead of inventing its missing observations.
 func (c *Collector) persist(ctx context.Context, final bool) {
 	if c.db == nil {
 		return
@@ -279,48 +377,38 @@ func (c *Collector) persist(ctx context.Context, final bool) {
 			pending = append(pending, s)
 		}
 	}
-	if final && len(c.minute) > 0 {
-		pending = append(pending, average(c.minute, c.minuteStamp))
-	}
-	c.lastPersist = now
 	c.mu.Unlock()
-	if len(pending) == 0 {
-		return
-	}
 	gated, e := dbwork.Begin(ctx, c.db, dbwork.ClassMaintenance)
 	if e != nil {
 		return
 	}
-	tx := gated.Tx()
 	defer gated.Rollback()
-	written := int64(0)
+	tx := gated.Tx()
 	for _, s := range pending {
-		body, e := json.Marshal(s)
-		if e != nil {
-			continue
+		for _, name := range MetricNames {
+			m := s.Metrics[name]
+			count, total := s.counts[name], s.totals[name]
+			if !m.Known() || count <= 0 || math.IsNaN(total) || math.IsInf(total, 0) {
+				continue
+			}
+			stamp := s.At - s.At%reportwindow.Grain.Milliseconds()
+			_, e = tx.ExecContext(ctx, `INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(bucket_ms,metric) DO UPDATE SET samples=samples+excluded.samples,total=total+excluded.total,status=CASE WHEN status='limited' OR excluded.status='limited' THEN 'limited' ELSE 'available' END,detail=excluded.detail,first_event_ms=min(first_event_ms,excluded.first_event_ms),last_event_ms=max(last_event_ms,excluded.last_event_ms)`, stamp, name, count, total, m.Status, m.Detail, s.firstAt[name], s.lastAt[name])
+			if e != nil {
+				return
+			}
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO telemetry_rollups VALUES(?,?) ON CONFLICT(minute_ms) DO UPDATE SET body=excluded.body`, s.At, string(body)); e != nil {
-			return
-		}
-		if s.At > written {
-			written = s.At
-		}
-	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM telemetry_rollups WHERE minute_ms<?`, now-24*time.Hour.Milliseconds()); e != nil {
-		return
 	}
 	if gated.Commit() != nil {
 		return
 	}
 	c.mu.Lock()
-	if written > c.persisted {
-		c.persisted = written
+	defer c.mu.Unlock()
+	c.lastPersist = now
+	if len(pending) > 0 {
+		c.persisted = pending[len(pending)-1].At
 	}
-	c.mu.Unlock()
 }
 
-// Rollups is the retained one-minute history, oldest first. Tests assert bounds
-// against it; nothing on the wire reads it directly.
 func (c *Collector) Rollups() []Sample {
 	c.mu.Lock()
 	defer c.mu.Unlock()

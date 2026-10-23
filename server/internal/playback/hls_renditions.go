@@ -516,7 +516,7 @@ func (h *HLS) startRendition(ctx context.Context, id string, r AudioRenditionPla
 		return ErrConversionSpace
 	}
 	run, cancel := context.WithCancel(h.ctx)
-	w := &hlsWindow{start: from, served: -1, produced: from - 1, cancel: cancel, done: make(chan struct{})}
+	w := &hlsWindow{audioConversion: r.Action == "convert", start: from, served: -1, produced: from - 1, cancel: cancel, done: make(chan struct{})}
 	h.active[key] = cancel
 	h.windows[key] = w
 	h.noteSessionServedLocked(id)
