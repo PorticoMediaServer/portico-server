@@ -116,7 +116,9 @@ func (s *Store) runSharedClaim(parent context.Context, c *claim) {
 		// Shared media keeps the leader's interval and gap evidence. It is never
 		// made complete merely because this profile attached after capture ended.
 		if e == nil {
-
+			result, e = s.prepareRecordingLayout(ctx, c, result)
+		}
+		if e == nil {
 			e = s.publish(ctx, c, result)
 		}
 	}
