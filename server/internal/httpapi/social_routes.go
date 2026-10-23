@@ -962,10 +962,13 @@ func (d Dependencies) serveCastBundle(mux *http.ServeMux) {
 const castReceiverCSP = "default-src 'none'; script-src 'self' https://www.gstatic.com/cast/; style-src 'self' 'unsafe-inline'; connect-src 'self' https://www.gstatic.com/cast/; img-src 'self' blob: data:; font-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors https://www.gstatic.com; base-uri 'none'; object-src 'none'; form-action 'self'"
 
 // CAF 3.0.0156 loads Google's hosted Shaka 4.15.56 itself. Only the receiver
-// document permits that script path; assets and every other page retain policy.
-var castReceiverPageCSP = strings.Replace(castReceiverCSP,
+// document permits that script path and its empty caption style (CSSOM rules
+// are not hash-bound). Page attributes/nonempty styles stay blocked; assets and
+// every other page retain policy.
+var castReceiverPageCSP = strings.Replace(strings.Replace(castReceiverCSP,
 	"script-src 'self' https://www.gstatic.com/cast/;",
-	"script-src 'self' https://www.gstatic.com/cast/ https://ajax.googleapis.com/ajax/libs/shaka-player/4.15.56/;", 1)
+	"script-src 'self' https://www.gstatic.com/cast/ https://ajax.googleapis.com/ajax/libs/shaka-player/4.15.56/;", 1),
+	"style-src 'self' 'unsafe-inline';", "style-src 'self'; style-src-elem 'self' https://www.gstatic.com 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=';", 1)
 
 // socialPlayback is the social store's view of v1 sessions (B8a): a handoff's
 // source and a group's host session, with the item's restrictions applied to a
