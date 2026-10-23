@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {HttpLocalApi, ReadingError, parsePreferenceSnapshot} from '@portico/client-core';
-import {routePath} from '@portico/contracts';
+import {routePath} from '../../../packages/contracts/src/index.ts';
 import {createReadBindings} from '../../src/screens/read/bindings.ts';
 
 const preferences = parsePreferenceSnapshot(JSON.parse(readFileSync(new URL('../../../server/testdata/contracts/get-bootstrap.json', import.meta.url), 'utf8')).response.preferences);

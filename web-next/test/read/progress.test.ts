@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {HttpLocalApi, parsePreferenceSnapshot, type ReadingLocation, type ReadingPreferences} from '@portico/client-core';
-import {routePath} from '@portico/contracts';
+import {routePath} from '../../../packages/contracts/src/index.ts';
 import {createReadingController, type ReaderAdapter, type ReaderMount} from '@portico/reader-core';
 import {bindReadingProgress} from '../../src/screens/read/progress.ts';
 
