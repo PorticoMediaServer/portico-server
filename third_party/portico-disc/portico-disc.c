@@ -95,7 +95,7 @@ static int bd_pid_facts(BLURAY *bd, unsigned clip, uint32_t packets, PD_DoviFact
 }
 static void bd_streams(const BLURAY_STREAM_INFO *streams, unsigned n, const char *kind,
                        const BLURAY_CLIP_INFO *clip_info, unsigned clip,
-                       const PD_DoviFacts *facts, uint8_t *seen, int *first) {
+                       const PD_DoviFacts *facts, const char *role, uint8_t *seen, int *first) {
     if ((n && !streams) || n > 256) { output_error = 1; return; }
     for (unsigned i = 0; i < n; i++) {
         const BLURAY_STREAM_INFO *s = &streams[i];
@@ -110,6 +110,7 @@ static void bd_streams(const BLURAY_STREAM_INFO *streams, unsigned n, const char
          * entries. PMT supplies the separate, validated base PID relation. */
         emit(",\"dolbyVisionEnhancementLayer\":%s,\"dolbyVisionEnhancementKnown\":%s",
              enhancement ? "true" : "false", enhancement ? "true" : "false");
+        if (role && clip_info->dv_stream_count) emit(",\"videoRole\":\"%s\"", role);
         if (base) emit(",\"dolbyVisionBasePid\":%u", base);
         emit("}");
         *first = 0;
@@ -145,21 +146,21 @@ static int probe_bd(BLURAY *bd, const char *packaging) {
             PD_DoviFacts facts;
             uint8_t seen[PD_PID_MAX] = {0};
             if (bd_pid_facts(bd, j, c->pkt_count, &facts) < 0) { bd_free_title_info(t); return 3; }
-            bd_streams(c->video_streams, c->video_stream_count, "video", c, j, &facts, seen, &first);
-            bd_streams(c->audio_streams, c->audio_stream_count, "audio", c, j, &facts, seen, &first);
-            bd_streams(c->pg_streams, c->pg_stream_count, "subtitle", c, j, &facts, seen, &first);
-            bd_streams(c->ig_streams, c->ig_stream_count, "interactive", c, j, &facts, seen, &first);
-            bd_streams(c->sec_video_streams, c->sec_video_stream_count, "video", c, j, &facts, seen, &first);
-            bd_streams(c->sec_audio_streams, c->sec_audio_stream_count, "audio", c, j, &facts, seen, &first);
-            bd_streams(c->dv_streams, c->dv_stream_count, "video", c, j, &facts, seen, &first);
+            bd_streams(c->video_streams, c->video_stream_count, "video", c, j, &facts, "primary", seen, &first);
+            bd_streams(c->audio_streams, c->audio_stream_count, "audio", c, j, &facts, NULL, seen, &first);
+            bd_streams(c->pg_streams, c->pg_stream_count, "subtitle", c, j, &facts, NULL, seen, &first);
+            bd_streams(c->ig_streams, c->ig_stream_count, "interactive", c, j, &facts, NULL, seen, &first);
+            bd_streams(c->sec_video_streams, c->sec_video_stream_count, "video", c, j, &facts, "secondary", seen, &first);
+            bd_streams(c->sec_audio_streams, c->sec_audio_stream_count, "audio", c, j, &facts, NULL, seen, &first);
+            bd_streams(c->dv_streams, c->dv_stream_count, "video", c, j, &facts, "enhancement", seen, &first);
             for (unsigned pid = 32; pid < PD_PID_MAX - 1; pid++) if (facts.base[pid]) {
                 BLURAY_STREAM_INFO pmt_stream;
                 memset(&pmt_stream, 0, sizeof(pmt_stream));
                 pmt_stream.coding_type = 0x24; /* observed PMT HEVC stream_type */
                 pmt_stream.pid = facts.base[pid];
-                bd_streams(&pmt_stream, 1, "video", c, j, &facts, seen, &first);
+                bd_streams(&pmt_stream, 1, "video", c, j, &facts, NULL, seen, &first);
                 pmt_stream.pid = pid;
-                bd_streams(&pmt_stream, 1, "video", c, j, &facts, seen, &first);
+                bd_streams(&pmt_stream, 1, "video", c, j, &facts, NULL, seen, &first);
             }
         }
         emit("],\"chapters\":[");
