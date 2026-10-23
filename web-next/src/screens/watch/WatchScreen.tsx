@@ -38,7 +38,8 @@ function Control({icon, label, action, disabled, main, skip, large, buttonRef, a
 export function WatchScreen({binding, snapshot, expanded, onCollapse, onControlsVisibleChange, surfaceSlotRef, surfaces, windowPort, geometry}: WatchScreenProps) {
   const size = useSyncExternalStore(subscribeWindow, windowSize, serverSize).split(':').map(Number), width = size[0]!, height = size[1]!;
   const coarsePointer = useCoarsePointer(), touchTablet = coarsePointer && width >= 600;
-  const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null), panelAnchor = useRef<HTMLButtonElement>(null), moreAnchor = useRef<HTMLButtonElement>(null);
+  const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null), panelAnchor = useRef<HTMLButtonElement>(null), moreAnchor = useRef<HTMLButtonElement>(null);
+  const bodyScroll = useRef<{identity?: string; top: number; left: number; anchor?: HTMLElement; offset?: number}>({top: 0, left: 0});
   const [panel, setPanel] = useState<WatchPanel | null>(null), [more, setMore] = useState(false), [shortcuts, setShortcuts] = useState(false), [visible, setVisible] = useState(true), [fullWindow, setFullWindow] = useState(false);
   type Scrub = {snapshot: WatchScreenProps['snapshot']; fence: PlaybackFence; seconds: number; pointerId: number};
   const [scrub, setScrub] = useState<Scrub | null>(null), [hoverSeconds, setHoverSeconds] = useState<number | null>(null);
@@ -62,11 +63,22 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const mode = geometry?.mode ?? (!fullWindow && shapePortrait ? 'portrait' : 'full');
   const portrait = mode === 'portrait' || mode === 'book', permanent = mode === 'tabletop';
   const mobile = width < 1024;
+  const bodyVisible = mode !== 'full';
   const externalPanel = surfaces?.playOn?.active === true;
   // Playback info f1: the film keeps playing with no player controls under the panel.
   const infoHidesChrome = panel === 'info' && !mobile;
   const chromeVisible = (visible || permanent) && !infoHidesChrome;
   const open = expanded && valid && presentation.kind === 'video' && snapshot.dock.remote?.phase !== 'playing';
+  useLayoutEffect(() => {
+    const element = body.current;
+    if (!element) return;
+    if (bodyScroll.current.identity !== surfaces?.bodyIdentity) bodyScroll.current = {identity: surfaces?.bodyIdentity, top: 0, left: 0};
+    if (!bodyVisible || !open) return;
+    const saved = bodyScroll.current, anchor = saved.anchor;
+    element.scrollTop = anchor?.isConnected && element.contains(anchor) && saved.offset !== undefined
+      ? element.scrollTop + anchor.getBoundingClientRect().top - element.getBoundingClientRect().top - saved.offset : saved.top;
+    element.scrollLeft = saved.left;
+  }, [bodyVisible, mode, open, width, height, geometry?.revision, surfaces?.bodyIdentity]);
   const identity = presentation ? playbackIdentity(presentation.subject, 'full', binding.environment) : undefined;
   const can = (kind: string) => !!presentation?.controls.includes(kind as never);
   const send = useCallback((intent: WatchIntent) => {
@@ -291,8 +303,13 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     </div>
     <div className={styles.notices}>{open && surfaces?.notices}</div>
     <div className={styles.prompts}>{open && surfaces?.prompts}</div>
-    <div className={styles.body} style={rectStyle(geometry?.body)} data-watch-retained-body>
-      {valid && surfaces?.body}
+    <div ref={body} className={styles.body} style={rectStyle(geometry?.body)} data-watch-retained-body onScroll={event => {
+      if (!bodyVisible || !open) return;
+      const element = event.currentTarget, top = element.getBoundingClientRect().top;
+      const anchor = Array.from(element.querySelectorAll<HTMLElement>('[data-episode-id],[data-entry-id],[data-item-id],h2,h3')).find(value => value.getBoundingClientRect().bottom > top);
+      bodyScroll.current = {identity: surfaces?.bodyIdentity, top: element.scrollTop, left: element.scrollLeft, anchor, offset: anchor ? anchor.getBoundingClientRect().top - top : undefined};
+    }}>
+      {surfaces?.body}
     </div>
     {open && surfaces?.render({panel, snapshot, layout: width < 1024 ? 'phone' : 'desktop', phoneTop: portrait ? geometry?.picture ? geometry.picture.top + geometry.picture.height : width * 9 / 16 + (window.visualViewport?.offsetTop ?? 0) : 0, close: () => setPanel(null), returnFocusRef: panelAnchor})}
     <Menu open={more} onOpenChange={setMore} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={300} items={menuItems} />
