@@ -89,7 +89,11 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
       if (current.dock.local?.expanded && current.fence && router.state.location.pathname !== '/player') runtime.collapse(current.fence);
     });
   }, [runtime]);
-  const collapse = () => { if (snapshot?.fence) runtime!.collapse(snapshot.fence); };
+  const collapse = () => {
+    const live = runtime?.getSnapshot();
+    if (!runtime || !snapshot?.fence || !live?.fence || live.disposed || !live.dock.local?.expanded || live.authority !== snapshot.authority || fenceKey(live.fence) !== fenceKey(snapshot.fence)) return;
+    runtime.collapse(live.fence);
+  };
   const toggleFullscreen = async () => {
     const live = runtime?.getSnapshot();
     if (!runtime || !snapshot?.fence || !live?.fence || live.disposed || !live.dock.local?.expanded || !localVideoSurfaceActive(live) || live.authority !== snapshot.authority || fenceKey(live.fence) !== fenceKey(snapshot.fence)) return;
