@@ -6,3 +6,5 @@ export {DetailScreen, TitleBody, TitleActions, TitleDetails, type DetailScreenPr
 export {ShowScreen, ShowBody, EpisodeBody, type ShowScreenProps} from './Show';
 export {PersonScreen, type PersonScreenProps} from './Person';
 export {createEntryDetailsBindings, type EntryDetailsBindings, type EntryDetailsAuthority} from './entry-details';
+export {createWatchBodyBindings, type WatchBodyBindings, type WatchBodyTarget, type WatchMyList} from './watch-body';
+export {WatchTitleBody} from './WatchTitleBody';

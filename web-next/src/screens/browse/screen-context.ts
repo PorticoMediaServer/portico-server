@@ -57,7 +57,6 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
           if (!playback) throw new DOMException('Playback is still loading', 'AbortError');
           await playback.runtime.playFromScreen(target, {signal, isCurrent: current});
           assert();signal.throwIfAborted();
-          await router.navigate({to: '/player'});
         },
       },
     };
