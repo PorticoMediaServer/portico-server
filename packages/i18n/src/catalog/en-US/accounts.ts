@@ -47,6 +47,8 @@ export const accountMessages = {
   'accounts.profiles.serverContext': 'On {server}',
   'accounts.profiles.retry': 'Try again',
   'accounts.servers.title': 'Your servers',
+  'accounts.servers.local': 'Local servers',
+  'accounts.servers.refresh': 'Refresh servers',
   'accounts.move.oldPasswordAction': 'Use your old username and password',
   'accounts.move.oldSignIn': 'Your old sign-in',
   'accounts.move.oldSignInBody': 'The username and password you used on {server}.',
