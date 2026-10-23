@@ -8,7 +8,7 @@ import (
 
 func registerMetadataHTTPContracts(registry *apikit.Registry) error {
 	// internal/httpapi/metadata_editor.go:25
-	if err := apikit.RegisterHTTP[metadata.BulkEdit, metadata.BulkReceipt](registry, apikit.Metadata{ID: "post_metadata_bulk", Method: "POST", Path: "/v1/metadata/bulk", Summary: "Run metadata bulk", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[metadata.BulkEdit, metadata.BulkReceipt](registry, apikit.Metadata{ID: "post_metadata_bulk", Method: "POST", Path: "/v1/metadata/bulk", Summary: "Run metadata bulk", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 524288, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/metadata_editor.go:65
@@ -16,19 +16,19 @@ func registerMetadataHTTPContracts(registry *apikit.Registry) error {
 		File             SubtitleBytesContract `json:"file"`
 		Subject          string                `json:"subject"`
 		ExpectedRevision string                `json:"expectedRevision"`
-	}, metadata.RepairState](registry, apikit.Metadata{ID: "post_metadata_kind_id_art_role_upload", Method: "POST", Path: "/v1/metadata/{kind}/{id}/art/{role}/upload", RequestContentTypes: []string{"multipart/form-data"}, Summary: "Run metadata art upload", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 11534336, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, metadata.RepairState](registry, apikit.Metadata{ID: "post_metadata_kind_id_art_role_upload", Method: "POST", Path: "/v1/metadata/{kind}/{id}/art/{role}/upload", RequestContentTypes: []string{"multipart/form-data"}, Summary: "Run metadata art upload", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 11534336, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/metadata_editor.go:68
-	if err := apikit.RegisterHTTP[struct{}, metadata.RepairState](registry, apikit.Metadata{ID: "delete_metadata_kind_id_art_role_upload_candidateId", Method: "DELETE", Path: "/v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}", Summary: "Remove metadata art upload", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"expectedRevision"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, metadata.RepairState](registry, apikit.Metadata{ID: "delete_metadata_kind_id_art_role_upload_candidateId", Method: "DELETE", Path: "/v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}", Summary: "Remove metadata art upload", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"expectedRevision"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/metadata_repair.go:77
-	if err := apikit.RegisterHTTP[struct{}, metadata.RepairPreview](registry, apikit.Metadata{ID: "get_metadata_kind_id_preview", Method: "GET", Path: "/v1/metadata/{kind}/{id}/preview", Summary: "Read metadata preview", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"mergeId"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, metadata.RepairPreview](registry, apikit.Metadata{ID: "get_metadata_kind_id_preview", Method: "GET", Path: "/v1/metadata/{kind}/{id}/preview", Summary: "Read metadata preview", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"mergeId"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/metadata_repair.go:102
-	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_metadata_kind_id_art_role", Method: "GET", Path: "/v1/metadata/{kind}/{id}/art/{role}", Summary: "Read metadata art", Access: apikit.Owner, Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"candidate", "subject", "v"}, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_metadata_kind_id_art_role", Method: "GET", Path: "/v1/metadata/{kind}/{id}/art/{role}", Summary: "Read metadata art", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"candidate", "size", "subject", "v", "w"}, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/musicbrainz.go:12
@@ -42,7 +42,7 @@ func registerMetadataHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[metadata.ScreenSeasonSelection, struct {
 		EntityId string `json:"entityId"`
 		Status   string `json:"status"`
-	}](registry, apikit.Metadata{ID: "put_shows_id_metadata_screen_season", Method: "PUT", Path: "/v1/shows/{id}/metadata/screen/season", Summary: "Save show metadata screen season", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "put_shows_id_metadata_screen_season", Method: "PUT", Path: "/v1/shows/{id}/metadata/screen/season", Summary: "Save show metadata screen season", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/screen_metadata.go:103
@@ -170,14 +170,14 @@ func registerMetadataHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[metadata.ScreenSelection, struct {
 		EntityID string `json:"entityId"`
 		Status   string `json:"status"`
-	}](registry, apikit.Metadata{ID: "put_items_id_metadata_screen", Method: "PUT", Path: "/v1/items/{id}/metadata/screen", Summary: "Save title metadata screen", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "put_items_id_metadata_screen", Method: "PUT", Path: "/v1/items/{id}/metadata/screen", Summary: "Save title metadata screen", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53
 	if err := apikit.RegisterHTTP[metadata.ScreenSearch, struct {
 		EntityID string `json:"entityId"`
 		Status   string `json:"status"`
-	}](registry, apikit.Metadata{ID: "post_items_id_metadata_screen_search", Method: "POST", Path: "/v1/items/{id}/metadata/screen/search", Summary: "Run title metadata screen search", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_items_id_metadata_screen_search", Method: "POST", Path: "/v1/items/{id}/metadata/screen/search", Summary: "Run title metadata screen search", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53
@@ -186,21 +186,21 @@ func registerMetadataHTTPContracts(registry *apikit.Registry) error {
 	}, struct {
 		EntityID string `json:"entityId"`
 		Status   string `json:"status"`
-	}](registry, apikit.Metadata{ID: "post_items_id_metadata_screen_retry", Method: "POST", Path: "/v1/items/{id}/metadata/screen/retry", Summary: "Run title metadata screen retry", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_items_id_metadata_screen_retry", Method: "POST", Path: "/v1/items/{id}/metadata/screen/retry", Summary: "Run title metadata screen retry", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53
 	if err := apikit.RegisterHTTP[metadata.ScreenSelection, struct {
 		EntityID string `json:"entityId"`
 		Status   string `json:"status"`
-	}](registry, apikit.Metadata{ID: "put_shows_id_metadata_screen", Method: "PUT", Path: "/v1/shows/{id}/metadata/screen", Summary: "Save show metadata screen", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "put_shows_id_metadata_screen", Method: "PUT", Path: "/v1/shows/{id}/metadata/screen", Summary: "Save show metadata screen", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53
 	if err := apikit.RegisterHTTP[metadata.ScreenSearch, struct {
 		EntityID string `json:"entityId"`
 		Status   string `json:"status"`
-	}](registry, apikit.Metadata{ID: "post_shows_id_metadata_screen_search", Method: "POST", Path: "/v1/shows/{id}/metadata/screen/search", Summary: "Run show metadata screen search", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_shows_id_metadata_screen_search", Method: "POST", Path: "/v1/shows/{id}/metadata/screen/search", Summary: "Run show metadata screen search", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53
@@ -209,15 +209,15 @@ func registerMetadataHTTPContracts(registry *apikit.Registry) error {
 	}, struct {
 		EntityID string `json:"entityId"`
 		Status   string `json:"status"`
-	}](registry, apikit.Metadata{ID: "post_shows_id_metadata_screen_retry", Method: "POST", Path: "/v1/shows/{id}/metadata/screen/retry", Summary: "Run show metadata screen retry", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_shows_id_metadata_screen_retry", Method: "POST", Path: "/v1/shows/{id}/metadata/screen/retry", Summary: "Run show metadata screen retry", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53
-	if err := apikit.RegisterHTTP[struct{}, metadata.RepairState](registry, apikit.Metadata{ID: "get_metadata_kind_id", Method: "GET", Path: "/v1/metadata/{kind}/{id}", Summary: "Read metadata", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, metadata.RepairState](registry, apikit.Metadata{ID: "get_metadata_kind_id", Method: "GET", Path: "/v1/metadata/{kind}/{id}", Summary: "Read metadata", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53
-	if err := apikit.RegisterHTTP[metadata.RepairCommand, metadata.RepairState](registry, apikit.Metadata{ID: "post_metadata_kind_id", Method: "POST", Path: "/v1/metadata/{kind}/{id}", Summary: "Run metadata", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[metadata.RepairCommand, metadata.RepairState](registry, apikit.Metadata{ID: "post_metadata_kind_id", Method: "POST", Path: "/v1/metadata/{kind}/{id}", Summary: "Run metadata", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53

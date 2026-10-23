@@ -30,10 +30,10 @@ func TestOpenAPILibraryKindsMatchServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	kind := doc.Paths["/v1/libraries"]["post"].RequestBody.Content["application/json"].Schema.Properties["kind"]
-	if kind.Type != "string" || len(kind.Enum) != 5 {
+	if kind.Type != "string" || len(kind.Enum) != 7 {
 		t.Fatal("library creation has no complete kind vocabulary")
 	}
-	want := []string{"movie", "tv", "anime", "music", "audiobook"}
+	want := []string{"movie", "tv", "anime", "music", "audiobook", "book", "comic"}
 	for i, expected := range want {
 		if kind.Enum[i] != expected {
 			t.Fatalf("library kind %d: got %s, want %s", i, kind.Enum[i], expected)

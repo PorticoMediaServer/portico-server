@@ -87,13 +87,13 @@ func TestRealSTRMApprovedLANProbeRangeAndRevocation(t *testing.T) {
 	s := New(db)
 	s.ConfigureRemote(remote)
 	p := identity.Principal{Hash: hash, Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
-	if _, e = s.CreateContext(ctx, p, item, "auto", "denied"); e == nil {
+	if _, e = s.CreateContext(ctx, p, item, "automatic", "denied"); e == nil {
 		t.Fatal("unapproved LAN descriptor played")
 	}
 	if _, e = s.ApproveNetworkRoots(ctx, "lib", []string{server.URL + "/media/"}); e != nil {
 		t.Fatal(e)
 	}
-	session, e := s.CreateContext(ctx, p, item, "auto", "allowed")
+	session, e := s.CreateContext(ctx, p, item, "automatic", "allowed")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -111,7 +111,7 @@ func TestRealSTRMApprovedLANProbeRangeAndRevocation(t *testing.T) {
 	if e != nil || e2 != nil || response.StatusCode != 206 || !bytes.Equal(raw, original[:16]) {
 		t.Fatalf("remote range %d %q %v", response.StatusCode, raw, e)
 	}
-	again, e := s.CreateContext(ctx, p, item, "auto", "allowed")
+	again, e := s.CreateContext(ctx, p, item, "automatic", "allowed")
 	if e != nil || again.ID != session.ID {
 		t.Fatal("STRM receipt retry failed", e)
 	}

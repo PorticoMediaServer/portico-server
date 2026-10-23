@@ -21,15 +21,15 @@ export type LibrarySettings=Readonly<{allowMediaDeletion:boolean;monitorChanges:
 export type LibrarySource=Readonly<{id:string;name:string;root:string;classification:'local'|'network';enabled:boolean}>;
 export type LibraryAdminDocument=Readonly<{libraryId:string;libraryName:string;libraryKind:string;revision:number;digest:string;settings:LibrarySettings;analysisMatrix:AnalysisMatrix;availableProviders:readonly MetadataProvider[];enumerations:Readonly<Record<string,readonly string[]>>;sources:readonly LibrarySource[]}>;
 export type DeleteFile=Readonly<{assetId:string;path:string;bytes:number;present:boolean;shared:boolean}>;
-export type DeleteDependent=Readonly<{kind:string;count:number;description:string}>;
+export type DeleteDependent=Readonly<{kind:string;count:number;description:string;networkTarget?:string;driveType?:string}>;
 export type DeleteTarget=Readonly<{itemId:string;title:string;kind:string;libraryId:string;libraryName:string;allowMediaDeletion:boolean;/** How many playable titles go with this item: 1 for a film, a show's episodes. */titles:number;bytes:number;files:readonly DeleteFile[];dependents:readonly DeleteDependent[]}>;
 export type DeletePreview=Readonly<{revision:number;confirmation:string;confirmationKind:'title'|'count';totalBytes:number;totalFiles:number;totalBytesText:string;blocked:readonly string[];targets:readonly DeleteTarget[]}>;
 /** One item's outcome. `code` says why an item was not removed: `file_changed` (the file at that path is no longer the one in the library) or `file_not_removed` (storage refused). */
 export type DeleteReceipt=Readonly<{itemId:string;title:string;removed:boolean;filesDeleted:number;filesKept:number;bytes:number;code:string}>;
 export type DeleteResult=Readonly<{revision:number;removed:number;failed:number;bytesDeleted:number;filesRetained:boolean;receipts:readonly DeleteReceipt[]}>;
 export type FilesystemRoot=Readonly<{path:string;name:string;kind:string;description:string}>;
-export type FilesystemEntry=Readonly<{name:string;path:string;kind:'directory'|'file'|'unknown';readable:boolean;symlink:boolean;bytes:number}>;
-export type FilesystemPage=Readonly<{path:string;parent:string;separator:string;platform:string;writable:boolean;truncated:boolean;roots:readonly FilesystemRoot[];entries:readonly FilesystemEntry[];nextCursor:string}>;
+export type FilesystemEntry=Readonly<{name:string;path:string;kind:'directory'|'file'|'unknown';readable:boolean;symlink:boolean;bytes:number;hidden:boolean;reason?:string}>;
+export type FilesystemPage=Readonly<{path:string;parent:string;separator:string;platform:string;writable:boolean;writableChecked:boolean;runsAs?:string;reason?:string;suggestions:readonly string[];truncated:boolean;roots:readonly FilesystemRoot[];entries:readonly FilesystemEntry[];nextCursor:string}>;
 export type LiveDefaults=Readonly<{importLimits:Readonly<{bytes:number;channels:number;programmes:number}>;streamBufferMs:number;retryWindowMs:number;userAgent:string;guideDays:number;logoImport:boolean;discoveryEnabled:boolean}>;
 export type FilterRule=Readonly<{mode:'include'|'exclude';values:readonly string[]}>;
 export type LiveSourceKind='playlist'|'xmltv-guide'|'hdhomerun';
@@ -68,7 +68,7 @@ export type RestoreSource=Readonly<{backupId:string}|{path:string}>;
 export type RestoreProgress=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number;result?:RestoreStaged;errorCode?:string}>;
 export type RestoreStaged=Readonly<{staged:true;restartRequired:true;validation:Readonly<{schemaVersion:number;integrity:'ok'}>}>;
 /** The 4xx codes POST /v1/admin/backups/restore answers with (spec §4); `insufficient_disk` is shared with start. */
-export const RESTORE_REFUSAL_CODES=Object.freeze(['restore_lock_unavailable','restore_source_invalid','restore_schema_newer','restore_pre_release','restore_integrity_failed','restore_not_portico','insufficient_disk'] as const);
+export const RESTORE_REFUSAL_CODES=Object.freeze(['restore_lock_unavailable','restore_source_invalid','restore_pre_release','restore_integrity_failed','restore_not_portico','insufficient_disk'] as const);
 export type RestoreRefusalCode=typeof RESTORE_REFUSAL_CODES[number];
 /** isRestoreRefusalCode answers whether a failure code is one of the catalogue-mapped restore refusals. */
 export function isRestoreRefusalCode(code:string):code is RestoreRefusalCode{
@@ -188,7 +188,7 @@ function parseDeleteFile(v:unknown):DeleteFile{
 }
 function parseTarget(v:unknown):DeleteTarget{
  if(!object(v)||!filled(v.itemId,256)||!text(v.title,1024)||!filled(v.kind,64)||!filled(v.libraryId,256)||!text(v.libraryName,512)||!flag(v.allowMediaDeletion)||!count(v.titles)||!count(v.bytes))invalid('delete target');
- const dependents=list(v.dependents,32,'delete dependents').map(entry=>{if(!object(entry)||!filled(entry.kind,64)||!count(entry.count)||!text(entry.description,512))invalid('delete dependent');return Object.freeze({kind:entry.kind,count:entry.count,description:entry.description});});
+ const dependents=list(v.dependents,32,'delete dependents').map(entry=>{if(!object(entry)||!filled(entry.kind,64)||!count(entry.count)||!text(entry.description,512))invalid('delete dependent');return Object.freeze({kind:entry.kind,count:entry.count,description:entry.description,...(typeof entry.networkTarget==='string'?{networkTarget:entry.networkTarget}:{}),...(typeof entry.driveType==='string'?{driveType:entry.driveType}:{})});});
  return Object.freeze({itemId:v.itemId,title:v.title,kind:v.kind,libraryId:v.libraryId,libraryName:v.libraryName,allowMediaDeletion:v.allowMediaDeletion,titles:v.titles,bytes:v.bytes,files:Object.freeze(list(v.files,10000,'delete files').map(parseDeleteFile)),dependents:Object.freeze(dependents)});
 }
 /** parseDeletePreview reads a delete preview. The confirmation it carries is the only text the delete will accept. */
@@ -224,9 +224,9 @@ export function parseFilesystemPage(v:unknown):FilesystemPage{
  const roots=readable(v.roots,64,'filesystem roots',entry=>{if(!object(entry)||!filled(entry.path,8192)||!filled(entry.name,256)||!filled(entry.kind,32)||!text(entry.description,512))invalid('filesystem root');return Object.freeze({path:entry.path,name:entry.name,kind:entry.kind,description:entry.description});});
  const entries=readable(v.entries,200,'filesystem entries',entry=>{
   if(!object(entry)||!filled(entry.name,512)||!filled(entry.path,8192)||!flag(entry.readable)||!flag(entry.symlink))invalid('filesystem entry');
-  return Object.freeze({name:entry.name,path:entry.path,kind:oneOfOr('administration','filesystem entry kind',entry.kind,['directory','file','unknown'] as const,'unknown'),readable:entry.readable,symlink:entry.symlink,bytes:count(entry.bytes)?entry.bytes:0});
+  return Object.freeze({name:entry.name,path:entry.path,kind:oneOfOr('administration','filesystem entry kind',entry.kind,['directory','file','unknown'] as const,'unknown'),readable:entry.readable,symlink:entry.symlink,bytes:count(entry.bytes)?entry.bytes:0,hidden:entry.hidden===true,...(typeof entry.reason==='string'&&['permission','offline','missing','broken-link'].includes(entry.reason)?{reason:entry.reason}:{})});
  });
- return Object.freeze({path:v.path,parent:v.parent,separator:v.separator,platform:v.platform,writable:v.writable,truncated:v.truncated,roots:Object.freeze(roots),entries:Object.freeze(entries),nextCursor:v.nextCursor});
+ return Object.freeze({path:v.path,parent:v.parent,separator:v.separator,platform:v.platform,writable:v.writable,writableChecked:v.writableChecked===true,...(typeof v.runsAs==='string'?{runsAs:v.runsAs}:{}),...(typeof v.reason==='string'?{reason:v.reason}:{}),suggestions:Object.freeze(Array.isArray(v.suggestions)?v.suggestions.filter((x):x is string=>text(x,8192)).slice(0,8):[]),truncated:v.truncated,roots:Object.freeze(roots),entries:Object.freeze(entries),nextCursor:v.nextCursor});
 }
 
 function parseLiveDefaults(v:unknown):LiveDefaults{

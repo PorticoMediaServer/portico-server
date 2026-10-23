@@ -424,7 +424,7 @@ func TestRestrictionPredicateFiltersHomeRowsAndTheirCounts(t *testing.T) {
 	_, s, names := tl10RestrictionFixture(t)
 	row := func(r identity.ContentRestrictions) HomeRow {
 		t.Helper()
-		out, e := s.HomeSingleRow(HomeRequest{Viewer: Viewer{Profile: "p", Fence: "f" + RestrictionFence(r), Libraries: []string{"a", "tv"}, Restrictions: r}, ServerID: "server", Profile: "p", ViewerFence: "f" + RestrictionFence(r), Libraries: []string{"a", "tv"}, Restrictions: r}, "recent_a", HomeRowPage{Limit: 20})
+		out, e := s.HomeSingleRow(HomeRequest{Viewer: Viewer{Profile: "p", Fence: "f" + RestrictionFence(r), Libraries: []string{"a"}, Restrictions: r}, ServerID: "server", Profile: "p", ViewerFence: "f" + RestrictionFence(r), Libraries: []string{"a"}, Restrictions: r}, "new_on_server", HomeRowPage{Limit: 20})
 		if e != nil {
 			t.Fatal(e)
 		}

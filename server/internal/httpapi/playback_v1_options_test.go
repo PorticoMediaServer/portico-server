@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/downloads"
 	"portico.local/server/internal/playbackv1"
 )
 
@@ -167,4 +169,124 @@ func TestPlaybackV1MultiPartVersions(t *testing.T) {
 	if w := f.raw("POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": "multi-part-0000002"}, startBody(item, map[string]any{"partIndex": 7})); w.Code != 400 {
 		t.Fatalf("an unknown part: %d %s", w.Code, w.Body.String())
 	}
+}
+
+func TestPlaybackV1AlternativesAreActuallyPlayableAndRespectPolicy(t *testing.T) {
+	f := newV1Fixture(t, 1)
+	var out playbackv1.Options
+	path := "/v1/items/" + f.items[0] + "/playback-options"
+	f.call("GET", path, nil, nil, 200, &out)
+	if len(out.Alternatives) != 1 || out.Alternatives[0].VersionID != f.records[0].Token || out.Alternatives[0].Label == "" {
+		t.Fatalf("playable alternatives %+v", out.Alternatives)
+	}
+	caps := webCapabilities()
+	nativeEngine(caps)["video"] = []map[string]any{{"codec": "av1", "bitDepths": []int{8}}}
+	nativeEngine(caps)["transports"] = []map[string]any{{"transport": "direct", "containers": []string{"mp4"}, "video": []string{"av1"}, "audio": []string{"aac"}}}
+	f.call("PUT", "/v1/me/devices/current/capabilities", nil, caps, 204, nil)
+	f.call("GET", path, nil, nil, 200, &out)
+	if len(out.Alternatives) != 0 {
+		t.Fatalf("unplayable version offered: %+v", out.Alternatives)
+	}
+}
+
+func TestPlaybackV1CollectionSuccessorUsesCollectionOrderAndAvailability(t *testing.T) {
+	f := newV1Fixture(t, 3)
+	collection := f.catalogTest.Collection(f.libraryHandle, "Collection", f.records[2], f.records[0], f.records[1])
+	f.catalogTest.Drain()
+	f.catalogTest.Write(func(ctx context.Context, tx *sql.Tx) error {
+		for i, n := range []int{2, 0, 1} {
+			if err := compactcatalog.SetCollectionMemberTx(ctx, tx, collection.ID, f.records[n].ID, fmt.Sprintf("%04d", i), true); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	var out playbackv1.Options
+	path := "/v1/items/" + f.items[2] + "/playback-options"
+	f.call("GET", path, nil, nil, 200, &out)
+	if out.Collection == nil || out.Collection.ID != collection.Public || out.Collection.Next.ID != f.items[0] || out.Collection.Next.Title == "" {
+		t.Fatalf("collection successor %+v", out.Collection)
+	}
+	if _, err := f.db.Exec(`UPDATE catalog_assets SET available=0 WHERE id=?`, f.records[0].Asset); err != nil {
+		t.Fatal(err)
+	}
+	f.call("GET", path, nil, nil, 200, &out)
+	if out.Collection == nil || out.Collection.Next.ID != f.items[1] {
+		t.Fatalf("unavailable successor offered %+v", out.Collection)
+	}
+}
+
+func TestPlaybackV1AutomaticVersionUsesMeasuredConnectionWithoutDefaultVersion(t *testing.T) {
+	f := newV1Fixture(t, 1)
+	item := f.records[0]
+	var original string
+	if err := f.db.QueryRow(`SELECT path FROM catalog_assets WHERE id=?`, item.Asset).Scan(&original); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(original, 80*1024*1024); err != nil {
+		t.Fatal(err)
+	}
+	small := original + ".small.mp4"
+	if err := os.WriteFile(small, []byte("small file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var smallToken string
+	f.catalogTest.Write(func(ctx context.Context, tx *sql.Tx) error {
+		info, err := os.Stat(original)
+		if err != nil {
+			return err
+		}
+		if _, _, err = compactcatalog.UpsertAssetTx(ctx, tx, compactcatalog.Asset{Path: original, Size: info.Size(), ModifiedNS: info.ModTime().UnixNano(), Container: "mp4", VideoCodec: "h264", AudioCodec: "aac", Width: 1920, Height: 1080, Duration: 600}); err != nil {
+			return err
+		}
+		info, err = os.Stat(small)
+		if err != nil {
+			return err
+		}
+		asset, token, err := compactcatalog.UpsertAssetTx(ctx, tx, compactcatalog.Asset{Path: small, Size: info.Size(), ModifiedNS: info.ModTime().UnixNano(), Container: "mp4", VideoCodec: "h264", AudioCodec: "aac", Width: 640, Height: 360, Duration: 600})
+		smallToken = token
+		if err != nil {
+			return err
+		}
+		return compactcatalog.LinkAssetTx(ctx, tx, item.ID, asset, compactcatalog.Link{})
+	})
+	f.catalogTest.Drain()
+	var normal, slow playbackv1.Options
+	path := "/v1/items/" + item.Public + "/playback-options"
+	f.call("GET", path, nil, nil, 200, &normal)
+	f.call("GET", path+"?throughputKbps=100", nil, nil, 200, &slow)
+	if normal.Preferred == nil || slow.Preferred == nil || normal.Preferred.VersionID != item.Token || slow.Preferred.VersionID != smallToken {
+		t.Fatalf("automatic versions normal=%+v slow=%+v", normal.Preferred, slow.Preferred)
+	}
+	var session playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "automatic-network-00001"}, startBody(item.Public, map[string]any{"throughputKbps": 100}), 201, &session)
+	if session.VersionID != smallToken {
+		t.Fatalf("start differs from preview: %+v", session)
+	}
+}
+
+func TestPlaybackV1ContainerDownloadOptionsHTTPUsesTypedRouteAndDeviceAuthority(t *testing.T) {
+	f, member, ids := queueAccessFixture(t)
+	offline, err := downloads.New(downloads.Options{DB: f.db})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer offline.Close()
+	f.deps.Downloads = offline
+	f.handler = New(f.deps)
+	principal, err := f.id.Authenticate(member)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := map[string]any{"target": map[string]string{"kind": "album", "id": ids["kids-album"]}, "deviceId": principal.DeviceID, "policy": map[string]string{"episodes": "all"}}
+	var out downloads.ContainerOptionsView
+	f.callAs(member, "POST", "/v1/downloads/options", nil, in, 200, &out)
+	if out.Total != 2 || len(out.Options) == 0 || out.Options[0].Quality != "original" {
+		t.Fatalf("container sheet %+v", out)
+	}
+	in["deviceId"] = "foreign-device"
+	f.callAs(member, "POST", "/v1/downloads/options", nil, in, 401, nil)
+	in["deviceId"] = principal.DeviceID
+	in["target"] = map[string]string{"kind": "album", "id": ids["owner-album"]}
+	f.callAs(member, "POST", "/v1/downloads/options", nil, in, 404, nil)
 }

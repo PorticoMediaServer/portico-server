@@ -6,7 +6,7 @@ import (
 )
 
 func TestPreparedRecipesUseBoundedFullMediaCommands(t *testing.T) {
-	for _, r := range []PreparedRecipe{{Width: 1280, Height: 720, VideoKbps: 2500, AudioKbps: 192}, {Width: 1920, Height: 1080, VideoKbps: 5000, AudioKbps: 192}, {AudioOnly: true, AudioKbps: 192}} {
+	for _, r := range []PreparedRecipe{{Width: 1280, Height: 720, VideoKbps: 4000, AudioKbps: 192}, {Width: 1920, Height: 1080, VideoKbps: 8000, AudioKbps: 192}, {AudioOnly: true, AudioKbps: 192}} {
 		args, e := preparedArgs("http://127.0.0.1:1/opaque", r, false)
 		if e != nil {
 			t.Fatal(e)
@@ -47,7 +47,7 @@ func TestPreparedChapterPolicyIsExplicitAndVersioned(t *testing.T) {
 
 func TestPreparedFragmentBoundPreservesLegacyBytes(t *testing.T) {
 	for _, audio := range []bool{false, true} {
-		r := PreparedRecipe{AudioOnly: audio, DropChapters: true, AudioKbps: 192, Width: 1280, Height: 720, VideoKbps: 2500}
+		r := PreparedRecipe{AudioOnly: audio, DropChapters: true, AudioKbps: 192, Width: 1280, Height: 720, VideoKbps: 4000}
 		old, err := preparedArgs("input", r, false)
 		if err != nil || strings.Contains(strings.Join(old, " "), "-frag_duration") {
 			t.Fatal("legacy fragmentation changed", old, err)

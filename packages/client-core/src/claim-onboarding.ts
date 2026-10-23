@@ -2,7 +2,7 @@ import {routePath, routePrefix} from "../../contracts/src/routes.ts";
 import {ApiError,HttpLocalApi,transportJSON} from './index.ts';
 import type {ServerPin} from './route-identity.ts';
 export type ClaimExpected={operationId:string;localGeneration:string;revision:string};
-export type ClaimApproval={operationId:string;serverId:string;publicKey:string;localGeneration:string;name:string;expectedRevision:string};
+export type ClaimApproval={operationId:string;serverId:string;publicKey:string;localGeneration:string;name:string;expectedRevision:string;purpose:"setup"|"switch"|"change-owner";currentOwnerAccountId:string;previousOwnerRole:string;returnRegistrationId:string};
 export type ClaimStatus={state:string;identity:{serverId:string;localGeneration:string};operation?:ClaimExpected;accountId?:string;installationAcknowledged:boolean;approvalRequired:boolean;actions:string[];approvalRequest?:ClaimApproval};
 export type ClaimAccount={accountId:string;profileId:string;approve:(input:ClaimApproval&{ownerProfileId:string},signal:AbortSignal)=>Promise<unknown>};
 export type ClaimSnapshot={status?:ClaimStatus;busy:boolean;error?:string;needsAccount?:boolean};
@@ -40,7 +40,7 @@ export class ClaimOnboarding {
   if(status.accountId!==account.accountId)throw new Error('This claim belongs to a different Portico Account. Resume that account or explicitly cancel this claim.');
   if(status.approvalRequired){const request=status.approvalRequest;if(!request||!status.operation)throw new Error('The claim needs to be refreshed.');
    // Preserve the producer's exact field order and selected owner profile.
-   const input={operationId:request.operationId,serverId:request.serverId,publicKey:request.publicKey,localGeneration:request.localGeneration,name:request.name,ownerProfileId:account.profileId,expectedRevision:request.expectedRevision};
+   const input={operationId:request.operationId,serverId:request.serverId,publicKey:request.publicKey,localGeneration:request.localGeneration,name:request.name,ownerProfileId:account.profileId,expectedRevision:request.expectedRevision,purpose:request.purpose,currentOwnerAccountId:request.currentOwnerAccountId,previousOwnerRole:request.previousOwnerRole,returnRegistrationId:request.returnRegistrationId};
    const envelope=await account.approve(input,signal);
    if(signal.aborted)throw new Error('The claim was interrupted. Reopen to resume it.');
    status=await this.post('approve',{expected:status.operation,approvalEnvelope:transportJSON(envelope)},signal);

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 
@@ -26,7 +27,7 @@ func TestABackupHoldsNoSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	copyDB := openReadOnly(t, filepath.Join(state, BackupsDir, id, DatabaseName))
+	copyDB := openReadOnly(t, storagepaths.Path(state, BackupsDir, id, DatabaseName))
 	var live, ended, accounts int
 	if err = copyDB.QueryRow(`SELECT (SELECT count(*) FROM authorization_session_families WHERE revoked=0),(SELECT count(*) FROM authorization_session_families WHERE revoked_reason='restored'),(SELECT count(*) FROM accounts)`).Scan(&live, &ended, &accounts); err != nil {
 		t.Fatal(err)
@@ -59,13 +60,13 @@ func TestABackupWhoseCopyCannotBeScrubbedIsNotKept(t *testing.T) {
 	if _, err := s.Create(context.Background(), KindManual); !errors.Is(err, refusal) {
 		t.Fatalf("create: %v", err)
 	}
-	if filepath.Base(scrubbed) != DatabaseName || !strings.Contains(scrubbed, ".partial-") {
+	if filepath.Base(scrubbed) != filepath.Base(DatabaseName) || !strings.Contains(scrubbed, ".partial-") {
 		t.Fatalf("the scrubber was given %q, not the copy being written", scrubbed)
 	}
 	if list, err := s.List(); err != nil || len(list) != 0 {
 		t.Fatalf("an unscrubbed copy was kept as a backup: %+v %v", list, err)
 	}
-	entries, _ := os.ReadDir(filepath.Join(state, BackupsDir))
+	entries, _ := os.ReadDir(storagepaths.Path(state, BackupsDir))
 	if len(entries) != 0 {
 		t.Fatalf("an unscrubbed copy was left on disk: %v", entries)
 	}

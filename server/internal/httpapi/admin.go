@@ -23,6 +23,12 @@ func (d Dependencies) adminRequest(r *http.Request, kind string) (catalog.AdminR
 		return d.libraryAdministrationAuthorize(ctx, tx, p, library)
 	}
 	out.LibraryScope = d.libraryAdministrationScope(p)
+	restrictions, fence, err := d.viewerRestrictions(r, p)
+	if err != nil {
+		return out, err
+	}
+	out.Restrictions = restrictions
+	out.ViewerFence += "/" + fence
 	for key, values := range r.URL.Query() {
 		if len(values) != 1 {
 			return out, catalog.ErrAdminQuery

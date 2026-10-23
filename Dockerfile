@@ -79,17 +79,26 @@ RUN if [ -d "/bundle/${TARGETOS}-${TARGETARCH}" ]; then mv "/bundle/${TARGETOS}-
 COPY scripts/verify-ffmpeg-manifest.py scripts/verify-ffmpeg-bundle.sh /tmp/
 RUN bash /tmp/verify-ffmpeg-bundle.sh /ffmpeg full
 
+# Fetch only the pinned architecture, verify the upstream signature and every payload byte.
+FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS rclone
+RUN apt-get update && apt-get install --yes --no-install-recommends python3 curl gnupg ca-certificates && rm -rf /var/lib/apt/lists/*
+ARG TARGETOS
+ARG TARGETARCH
+COPY scripts/rclone-bundle.py /src/scripts/rclone-bundle.py
+COPY third_party/rclone/ /src/third_party/rclone/
+RUN python3 /src/scripts/rclone-bundle.py prepare /rclone --target "${TARGETOS}-${TARGETARCH}" --execute-version
+
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 ARG TARGETARCH
 RUN apt-get update \
- && apt-get install --yes --no-install-recommends bubblewrap ca-certificates tini tzdata libva2 libva-drm2 mesa-va-drivers \
+ && apt-get install --yes --no-install-recommends bubblewrap ca-certificates util-linux tini tzdata libva2 libva-drm2 mesa-va-drivers \
  && if [ "$TARGETARCH" = amd64 ]; then apt-get install --yes --no-install-recommends intel-media-va-driver i965-va-driver; fi \
  && rm -rf /var/lib/apt/lists/*
 
-# An unprivileged user, and a state directory it owns. Everything the server
-# writes — the database, converted media, artwork, logs — lives under this one
-# path, so it is the only volume a deployment has to think about.
-RUN useradd --system --create-home --home-dir /var/lib/portico --shell /usr/sbin/nologin portico
+# Runtime writes are restricted to mounted /config and /transcode. Numeric
+# identities work with Unraid and TrueNAS without editing /etc/passwd.
+RUN mkdir -p /config /transcode
+COPY packaging/docker/entrypoint.sh /usr/local/bin/portico-entrypoint
 COPY LICENSE THIRD-PARTY-NOTICES.md /usr/share/doc/portico/
 COPY server/internal/imagework/SCALE_LICENSE /usr/share/doc/portico/licenses/image-scaling.txt
 COPY server/internal/thirdparty/sqlite/LICENSE /usr/share/doc/portico/licenses/sqlite-driver.txt
@@ -97,6 +106,9 @@ COPY server/internal/mediaexec/fonts/LICENSE /usr/share/doc/portico/licenses/dec
 COPY third_party/hls.js/LICENSE /usr/share/doc/portico/licenses/hls-js.txt
 COPY web/src/ui/fonts/OFL.txt /usr/share/doc/portico/licenses/manrope.txt
 COPY packages/design/LICENSE-LUCIDE /usr/share/doc/portico/licenses/lucide.txt
+COPY --from=rclone /rclone/LICENSE /usr/share/doc/portico/licenses/rclone.txt
+COPY --from=rclone /rclone/DEPENDENCY-NOTICES.txt /usr/share/doc/portico/licenses/rclone-dependencies.txt
+COPY --from=rclone /rclone/ /opt/portico/third_party/rclone/
 COPY --from=build /out/portico-server /usr/local/bin/portico-server
 COPY --from=web /out/web /opt/portico/web
 COPY --from=web /out/release.json /opt/portico/release.json
@@ -105,20 +117,23 @@ COPY --from=web /out/release.json /opt/portico/release.json
 COPY --from=ffmpeg /ffmpeg/ /opt/portico/third_party/ffmpeg/
 
 ENV PORTICO_WEB_DIR=/opt/portico/web \
-    PORTICO_STATE_DIR=/var/lib/portico \
+    PORTICO_DATA_DIR=/config \
+    PORTICO_CONTAINER=1 \
+    HOME=/config \
+    TMPDIR=/config/Temp \
     PORTICO_BIND=[::]:32500 \
+    PORTICO_RCLONE=/opt/portico/third_party/rclone/rclone \
     PORTICO_FFMPEG=/opt/portico/third_party/ffmpeg/bin/ffmpeg \
     PORTICO_FFPROBE=/opt/portico/third_party/ffmpeg/bin/ffprobe
-VOLUME ["/var/lib/portico"]
+VOLUME ["/config"]
 EXPOSE 32500
-USER portico
-WORKDIR /var/lib/portico
+WORKDIR /config
 
 # tini forwards signals and reaps orphans. It is the whole of point 1 above; do
 # not replace it with the binary directly unless the runtime supplies its own
 # init (`docker run --init`, or a Kubernetes pod with shareProcessNamespace and
 # a reaping PID 1).
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/portico-entrypoint"]
 CMD ["/usr/local/bin/portico-server"]
 
 # The readiness route needs no authentication and no database, by design, so it

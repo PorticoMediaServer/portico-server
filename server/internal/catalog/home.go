@@ -19,8 +19,10 @@ type HomeRequest struct {
 	Limit                          int
 	// Rows, when set, stops composing once this many rows with entries are
 	// composed (the Top Shelf feed shows four): the rest are never read.
-	Rows int
-	Now  time.Time
+	Rows          int
+	LiveAvailable bool
+	OnNow         func(HomeRowPage) (HomeRow, error)
+	Now           time.Time
 	// Restrictions is applied to every row by homeSource; see restrictions.go.
 	Restrictions identity.ContentRestrictions
 	// visibleShows, when set, is a first test of a started show (w.show_id)

@@ -67,7 +67,7 @@ func TestPlaybackOffersViewerBoundaryAndSafeProjection(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	session, e := playback.New(db).Create(principal, item.Public, "auto", "chapters-http")
+	session, e := playback.New(db).Create(principal, item.Public, "automatic", "chapters-http")
 	if e != nil {
 		t.Fatal(e)
 	}

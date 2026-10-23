@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"time"
 
@@ -92,7 +93,7 @@ func ApplyStaged(ctx context.Context, state string, verify VerifyFunc) error {
 	if verify == nil {
 		verify = VerifyRestored
 	}
-	staged := filepath.Join(state, RestoreStagedDir)
+	staged := storagepaths.Path(state, RestoreStagedDir)
 	raw, err := os.ReadFile(filepath.Join(staged, RestoreMarkerFile))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -161,7 +162,7 @@ func ApplyStaged(ctx context.Context, state string, verify VerifyFunc) error {
 var applyStep = func(string) error { return nil }
 
 func applyMarker(ctx context.Context, state, staged string, marker restoreMarker, verify VerifyFunc) error {
-	serverDB := filepath.Join(state, "server.sqlite")
+	serverDB := storagepaths.Path(state, "server.sqlite")
 	stagedDB := filepath.Join(staged, DatabaseName)
 	if _, err := os.Lstat(stagedDB); err != nil {
 		return poisoned(state, staged, "staged database is missing")
@@ -218,9 +219,9 @@ func applyMarker(ctx context.Context, state, staged string, marker restoreMarker
 		if err = applyStep("preparing:" + name); err != nil {
 			return err
 		}
-		from, to := filepath.Join(state, filepath.FromSlash(name)), filepath.Join(pre, filepath.FromSlash(name))
+		from, to := storagepaths.Path(state, filepath.FromSlash(name)), filepath.Join(pre, filepath.FromSlash(name))
 		if name == DatabaseName || name == DatabaseName+"-wal" {
-			from = filepath.Join(state, "server.sqlite"+strings.TrimPrefix(name, DatabaseName))
+			from = storagepaths.Path(state, "server.sqlite"+strings.TrimPrefix(name, DatabaseName))
 		}
 		if err = moveIfPresent(from, to); err != nil {
 			return failPreparing(state, staged, marker, err)
@@ -277,14 +278,14 @@ func undoPreparing(state string, marker restoreMarker) error {
 	if marker.PreRestore == "" {
 		return nil
 	}
-	pre := filepath.Join(state, BackupsDir, marker.PreRestore)
+	pre := storagepaths.Path(state, BackupsDir, marker.PreRestore)
 	if _, err := os.Lstat(pre); os.IsNotExist(err) {
 		return nil
 	}
 	for _, name := range preparingNames(marker) {
-		from, to := filepath.Join(pre, filepath.FromSlash(name)), filepath.Join(state, filepath.FromSlash(name))
+		from, to := filepath.Join(pre, filepath.FromSlash(name)), storagepaths.Path(state, filepath.FromSlash(name))
 		if name == DatabaseName || name == DatabaseName+"-wal" {
-			to = filepath.Join(state, "server.sqlite"+strings.TrimPrefix(name, DatabaseName))
+			to = storagepaths.Path(state, "server.sqlite"+strings.TrimPrefix(name, DatabaseName))
 		}
 		if _, err := os.Lstat(from); os.IsNotExist(err) {
 			continue
@@ -317,7 +318,7 @@ func failPreparing(state, staged string, marker restoreMarker, cause error) erro
 // whatever database happened to be in place and could record "restored").
 func failSwitch(state, staged string, marker restoreMarker, cause error) error {
 	if marker.PreRestore != "" {
-		if _, err := os.Lstat(filepath.Join(state, BackupsDir, marker.PreRestore, DatabaseName)); err != nil {
+		if _, err := os.Lstat(storagepaths.Path(state, BackupsDir, marker.PreRestore, DatabaseName)); err != nil {
 			// Verification refused this state. Without the recovery database, keep the
 			// journal unresolved instead of claiming a rollback that never happened.
 			return errors.Join(cause, fmt.Errorf("backup: previous database unavailable: %w", err))
@@ -355,7 +356,7 @@ func finishRollback(state, staged string, marker restoreMarker) error {
 // failure moves the pre-restore copy back. Completion journals the result before
 // cleanup, which can be resumed independently.
 func finishApplied(ctx context.Context, state, staged string, marker restoreMarker, verify VerifyFunc) error {
-	serverDB := filepath.Join(state, "server.sqlite")
+	serverDB := storagepaths.Path(state, "server.sqlite")
 	if err := verify(ctx, serverDB); err != nil {
 		return failSwitch(state, staged, marker, err)
 	}
@@ -379,7 +380,7 @@ func finishCompleted(state, staged string, marker restoreMarker) error {
 		return err
 	}
 	if marker.State == markerRolledBack && marker.PreRestore != "" {
-		pre := filepath.Join(state, BackupsDir, marker.PreRestore)
+		pre := storagepaths.Path(state, BackupsDir, marker.PreRestore)
 		if err := os.Remove(filepath.Join(pre, ManifestName)); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -390,7 +391,7 @@ func finishCompleted(state, staged string, marker restoreMarker) error {
 		} else if !os.IsNotExist(err) {
 			return err
 		}
-		if err := syncDirectory(filepath.Join(state, BackupsDir)); err != nil {
+		if err := syncDirectory(storagepaths.Path(state, BackupsDir)); err != nil {
 			return err
 		}
 	}
@@ -399,7 +400,7 @@ func finishCompleted(state, staged string, marker restoreMarker) error {
 		if err := local.pruneRecoveryCopies(); err != nil {
 			return err
 		}
-		if err := syncDirectory(filepath.Join(state, BackupsDir)); err != nil && !os.IsNotExist(err) {
+		if err := syncDirectory(storagepaths.Path(state, BackupsDir)); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
@@ -462,15 +463,15 @@ func syncRestoreDirectories(first, second string, files []string) error {
 // that had no database before the restore (no PreRestore) is cleared of the
 // restored files.
 func rollback(state string, marker restoreMarker) error {
-	serverDB := filepath.Join(state, "server.sqlite")
+	serverDB := storagepaths.Path(state, "server.sqlite")
 	if marker.PreRestore == "" {
 		var failed error
 		for _, name := range append([]string{"server.sqlite-wal", "server.sqlite-shm", "server.sqlite"}, marker.Files...) {
-			failed = errors.Join(failed, os.RemoveAll(filepath.Join(state, filepath.FromSlash(name))))
+			failed = errors.Join(failed, os.RemoveAll(storagepaths.Path(state, filepath.FromSlash(name))))
 		}
 		return errors.Join(failed, syncRestoreDirectories(state, state, marker.Files))
 	}
-	pre := filepath.Join(state, BackupsDir, marker.PreRestore)
+	pre := storagepaths.Path(state, BackupsDir, marker.PreRestore)
 	manifest, err := readManifest(pre)
 	if err != nil {
 		return errors.New("backup: the pre-restore manifest is unreadable; nothing was moved back")
@@ -521,7 +522,7 @@ func rollback(state string, marker restoreMarker) error {
 	}
 	var failed error
 	for _, name := range marker.Files {
-		from, to := filepath.Join(pre, filepath.FromSlash(name)), filepath.Join(state, filepath.FromSlash(name))
+		from, to := filepath.Join(pre, filepath.FromSlash(name)), storagepaths.Path(state, filepath.FromSlash(name))
 		if _, err := os.Lstat(from); err == nil {
 			if err = os.RemoveAll(to); err != nil {
 				failed = errors.Join(failed, err)
@@ -552,15 +553,15 @@ func rollback(state string, marker restoreMarker) error {
 // live state. A name already moved (absent from staged) is skipped, so a
 // resumed switch finishes the rest.
 func moveStagedIntoPlace(staged, state string, files []string) error {
-	if err := moveIfPresent(filepath.Join(staged, DatabaseName), filepath.Join(state, "server.sqlite")); err != nil {
+	if err := moveIfPresent(filepath.Join(staged, DatabaseName), storagepaths.Path(state, "server.sqlite")); err != nil {
 		return err
 	}
-	if err := moveIfPresent(filepath.Join(staged, DatabaseName+"-wal"), filepath.Join(state, "server.sqlite-wal")); err != nil {
+	if err := moveIfPresent(filepath.Join(staged, DatabaseName+"-wal"), storagepaths.Path(state, "server.sqlite-wal")); err != nil {
 		return err
 	}
 	_ = os.Remove(filepath.Join(staged, DatabaseName+"-shm"))
 	for _, name := range files {
-		if err := moveIfPresent(filepath.Join(staged, filepath.FromSlash(name)), filepath.Join(state, filepath.FromSlash(name))); err != nil {
+		if err := moveIfPresent(filepath.Join(staged, filepath.FromSlash(name)), storagepaths.Path(state, filepath.FromSlash(name))); err != nil {
 			return err
 		}
 	}
@@ -642,7 +643,7 @@ func writeMarker(staged string, marker restoreMarker) error {
 // (possibly an empty new database). A restore that is only staged has moved
 // nothing, so the current state is intact and the server may start.
 func RestoreUnresolved(state string) bool {
-	raw, err := os.ReadFile(filepath.Join(state, RestoreStagedDir, RestoreMarkerFile))
+	raw, err := os.ReadFile(storagepaths.Path(state, RestoreStagedDir, RestoreMarkerFile))
 	if os.IsNotExist(err) {
 		return false
 	}
@@ -668,7 +669,7 @@ func writeResult(state, outcome, reason string, markers ...restoreMarker) error 
 	if err != nil {
 		return err
 	}
-	final := filepath.Join(state, RestoreResultFile)
+	final := storagepaths.Path(state, RestoreResultFile)
 	if err = durableFile(final+".next", append(raw, '\n')); err != nil {
 		return err
 	}
@@ -691,7 +692,7 @@ func checkpointFile(path string) {
 }
 
 func backupsDir(state string) (string, error) {
-	dir := filepath.Join(state, BackupsDir)
+	dir := storagepaths.Path(state, BackupsDir)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}

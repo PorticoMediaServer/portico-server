@@ -125,3 +125,18 @@ func TestAnExpiredCertificateIsCriticalAndTheListIsBounded(t *testing.T) {
 		t.Fatal("the list must stay one screen")
 	}
 }
+
+func TestActivityQualifiedMajorIssuesHaveNoDiagnosticInference(t *testing.T) {
+	if got := MajorIssues(nil, false, false, false); len(got) != 0 {
+		t.Fatal(got)
+	}
+	got := MajorIssues([]NamedRecord{{ID: "source", Name: "Archive", Detail: "private credential"}}, true, true, true)
+	if len(got) != 4 || got[0].Severity != "playback_stop" || got[1].Severity != "data_risk" || got[0].Destination.Target != "source" {
+		t.Fatal(got)
+	}
+	for _, v := range got {
+		if strings.Contains(v.Subject, "credential") {
+			t.Fatal("raw source detail escaped")
+		}
+	}
+}

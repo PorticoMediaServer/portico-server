@@ -101,22 +101,23 @@ type Preview struct {
 	Names          []string          `json:"names"`
 }
 type Channel struct {
-	LogoPath                string      `json:"logoPath,omitempty"`
-	ID                      string      `json:"id"`
-	SourceID                string      `json:"sourceId"`
-	Provenance              Provenance  `json:"provenance"`
-	Name                    string      `json:"name"`
-	Number                  string      `json:"number"`
-	Group                   string      `json:"group"`
-	Generation              string      `json:"generation"`
-	Programmes              []Programme `json:"programmes"`
-	TuneAvailable           bool        `json:"tuneAvailable"`
-	TuneUnavailableReason   string      `json:"tuneUnavailableReason"`
-	RecordUnavailableReason string      `json:"recordUnavailableReason"`
-	RecordAvailable         bool        `json:"recordAvailable"`
-	Favorite                bool        `json:"favorite"`
-	Hidden                  bool        `json:"hidden"`
-	PreferenceRevision      int64       `json:"preferenceRevision"`
+	Mark                    *ChannelMark `json:"mark,omitempty"`
+	LogoPath                string       `json:"logoPath,omitempty"`
+	ID                      string       `json:"id"`
+	SourceID                string       `json:"sourceId"`
+	Provenance              Provenance   `json:"provenance"`
+	Name                    string       `json:"name"`
+	Number                  string       `json:"number"`
+	Group                   string       `json:"group"`
+	Generation              string       `json:"generation"`
+	Programmes              []Programme  `json:"programmes"`
+	TuneAvailable           bool         `json:"tuneAvailable"`
+	TuneUnavailableReason   string       `json:"tuneUnavailableReason"`
+	RecordUnavailableReason string       `json:"recordUnavailableReason"`
+	RecordAvailable         bool         `json:"recordAvailable"`
+	Favorite                bool         `json:"favorite"`
+	Hidden                  bool         `json:"hidden"`
+	PreferenceRevision      int64        `json:"preferenceRevision"`
 }
 type Programme struct {
 	RecordingID    string `json:"recordingId,omitempty"`
@@ -146,6 +147,9 @@ type Programme struct {
 	Image string `json:"image,omitempty"`
 }
 type GuideQuery struct {
+	// Compact returns only the first three current/future slots per channel.
+	Compact bool
+
 	Viewer        Owner
 	FavoritesOnly bool
 	IncludeHidden bool

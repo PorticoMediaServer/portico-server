@@ -59,7 +59,7 @@ func TestInspectCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	handle.Close()
-	if _, err = InspectCandidate(ctx, newer); !errors.Is(err, ErrCandidateNewer) {
+	if _, err = InspectCandidate(ctx, newer); !errors.Is(err, ErrCandidatePreRelease) {
 		t.Fatalf("newer schema: %v", err)
 	}
 }

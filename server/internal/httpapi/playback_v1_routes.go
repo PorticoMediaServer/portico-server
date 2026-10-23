@@ -237,7 +237,7 @@ func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 				}
 				limit = n
 			}
-			return d.playbackV1().AdminSessions(ctx, limit, q.URL.Query().Get("cursor"))
+			return d.dashboardSessions(ctx, q, limit, q.URL.Query().Get("cursor"))
 		})
 	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "terminate_admin_session", Method: "POST", Path: "/v1/admin/sessions/{id}:terminate", Summary: "End a viewer's playback, showing them an optional message; idempotent",
 		Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "playback", Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4 << 10, OptionalBody: true, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found"}},
@@ -249,7 +249,7 @@ func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 // v1Caller turns the admitted caller into the service's caller, with media
 // admission for new presentations and channel admission for channel starts.
 func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Caller {
-	return playbackv1.Caller{Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), AuthorizeItem: func(ctx context.Context, item string) error {
+	return playbackv1.Caller{Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), TransportClass: d.deliveryContext(q).TransportClass, AuthorizeItem: func(ctx context.Context, item string) error {
 		return itemAdmission(d.itemAccess(ctx, c.Principal, item))
 	}, Admit: func(ctx context.Context, item string) (int, error) {
 		// A channel start admits with no item: there is no title to fence,
@@ -297,15 +297,12 @@ func (d Dependencies) savedQuality(q *http.Request, p identity.Principal) (strin
 		return "", err
 	}
 	defer done()
-	values, _, _, err := operations.EffectivePreferences(tx, p.Viewer, deviceClassHeader(q))
+	values, sources, _, err := operations.EffectivePreferences(tx, p.Viewer, deviceClassHeader(q))
 	if err != nil {
 		return "", err
 	}
-	key := "quality." + playback.QualityHome
-	if d.requestIsRemote(q) {
-		key = "quality." + playback.QualityRemote
-	}
-	return values.Text(key), nil
+	class, _ := playback.NetworkClassOf(d.requestIsRemote(q))
+	return playback.SavedQualityPreference(playback.WithPreferenceSources(values, sources), class), nil
 }
 
 // replanCeilingsAt is what admission would allow this caller's connection right
@@ -351,7 +348,7 @@ func (d Dependencies) v1Remote(q *http.Request) bool {
 // v1Reach is a preview's reach: the same remote flag and member cap a start
 // from this connection would get, read without admitting anything.
 func (d Dependencies) v1Reach(q *http.Request, p identity.Principal) playbackv1.Reach {
-	reach := playbackv1.Reach{Remote: d.v1Remote(q), DeviceID: callerFrom(q.Context()).DeviceID}
+	reach := playbackv1.Reach{SavedQuality: playback.QualityOriginal, TransportClass: d.deliveryContext(q).TransportClass, Remote: d.v1Remote(q), DeviceID: callerFrom(q.Context()).DeviceID}
 	if saved, err := d.savedQuality(q, p); err == nil {
 		reach.SavedQuality = saved
 	}
@@ -383,6 +380,11 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 			c := d.v1ServiceCaller(q, callerFrom(ctx))
 			v, preparing, err := d.playbackV1().Start(ctx, c, q.Header.Get("Idempotency-Key"), in)
 			if err != nil {
+				if errors.Is(err, playback.ErrOwnerAccountCap) {
+					if detail, e := d.playbackV1().AccountStreamLimit(ctx, c); e == nil {
+						return v, &apierror.Error{Code: "stream_limit_reached", Reason: "owner_account_cap", Current: detail, Cause: err}
+					}
+				}
 				return v, err
 			}
 			if preparing {
@@ -460,7 +462,7 @@ func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 		})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "get_playback_options", Method: "GET", Path: "/v1/items/{itemId}/playback-options", Summary: "Read what a title offers and what this device would get",
 		Access: apikit.ViewerItem, Requires: apikit.ScopeRead, Lane: apikit.Media, Cost: apikit.Constant, Status: 200,
-		Query:  []string{"versionId", "partId", "audioId", "subtitleId", "quality", "qualityId", "maxVideoBitrateKbps", "maxHeight", "maxAudioBitrateKbps"},
+		Query:  []string{"versionId", "partId", "audioId", "subtitleId", "quality", "qualityId", "maxVideoBitrateKbps", "maxHeight", "maxAudioBitrateKbps", "throughputKbps"},
 		Errors: []string{"invalid_request", "unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.Options, error) {
 			c := callerFrom(ctx)
@@ -488,6 +490,9 @@ func previewFrom(q *http.Request) (playbackv1.Preview, error) {
 		return n, nil
 	}
 	var err error
+	if p.ThroughputKbps, err = number("throughputKbps"); err != nil {
+		return p, err
+	}
 	if p.Quality.MaxVideoBitrateKbps, err = number("maxVideoBitrateKbps"); err != nil {
 		return p, err
 	}
@@ -585,6 +590,14 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 		}
 		return n, nil
 	}
+
+	v1Route(r, apikit.Metadata{Admission: laneBrowsing, ID: "get_queue_entry_for_item", Method: "GET", Path: "/v1/queues/{id}/entry", Summary: "Resolve a visible episode outside the loaded queue window for an in-player jump", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.SelectionAsync, Status: 200, Query: []string{"itemId"}, Errors: []string{"invalid_request", "unauthorized", "not_found", "queue_building"}}, func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.QueueItemView, error) {
+		item := q.URL.Query().Get("itemId")
+		if item == "" || len(item) > 128 {
+			return playbackv1.QueueItemView{}, &playbackv1.FieldError{Path: "itemId"}
+		}
+		return d.playbackV1().EntryForItem(ctx, caller(ctx, q), q.PathValue("id"), item)
+	})
 	v1Route(r, apikit.Metadata{Admission: laneBrowsing, ID: "get_queue_window", Method: "GET", Path: "/v1/queues/{id}/window", Summary: "Read the entries around the current one (at most 200)",
 		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"around", "before", "after"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.EntryPage, error) {
@@ -620,6 +633,15 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 			}
 			return d.playbackV1().Entries(ctx, caller(ctx, q), q.PathValue("id"), from, int(limit))
 		})
+
+	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "batch_queue", Method: "POST", Path: "/v1/queues/{id}/batch", Summary: "Play a mixed selection next or later in its source order", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 32 << 10, Status: 200, Errors: command}, func(ctx context.Context, q *http.Request, in playbackv1.BatchQueueRequest) (playbackv1.BatchQueueResult, error) {
+		ctx, err := d.withQueueHomeRows(ctx, q, &in.Source)
+		if err != nil {
+			return playbackv1.BatchQueueResult{}, err
+		}
+		out, err := d.playbackV1().BatchQueue(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), in)
+		return reply(ctx, out, err)
+	})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "add_queue_segment", Method: "POST", Path: "/v1/queues/{id}/segments", Summary: "Play next, add to the queue, or insert after an entry",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 32 << 10, Status: 200, Errors: command},
 		func(ctx context.Context, q *http.Request, in playbackv1.AddSegmentRequest) (playbackv1.QueueReply, error) {

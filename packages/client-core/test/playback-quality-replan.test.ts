@@ -31,20 +31,20 @@ test('quality: a saved default or a menu entry becomes a request; the menu marks
   assert.deepEqual(savedQualities.slice(0, 3), ['original', 'automatic', '2160p']);
   assert.deepEqual(savedQualityRequest('original'), {mode: 'original'});
   assert.deepEqual(savedQualityRequest('automatic'), {mode: 'automatic'});
-  assert.deepEqual(savedQualityRequest('720p'), {mode: 'fixed', id: '720p'});
+  assert.deepEqual(savedQualityRequest('720p-high'), {mode: 'fixed', id: '720p-high'});
   assert.deepEqual(savedQualityRequest('data-saver'), {mode: 'original'}, 'anything unknown is the original');
   assert.deepEqual(savedQualityRequest(undefined), {mode: 'original'});
-  assert.deepEqual(qualityOptionRequest({mode: 'fixed', id: '1080p', maxHeight: 1080}), {mode: 'fixed', id: '1080p'});
+  assert.deepEqual(qualityOptionRequest({mode: 'fixed', id: '1080p-low', maxHeight: 1080}), {mode: 'fixed', id: '1080p-low'});
   assert.deepEqual(qualityOptionRequest({mode: 'automatic'}), {mode: 'automatic'});
-  assert.equal(qualityOptionSelected({mode: 'automatic'}, {mode: 'automatic', id: '720p'}), true, 'Automatic is selected whatever step it is on');
-  assert.equal(qualityOptionSelected({mode: 'fixed', id: '720p'}, {mode: 'automatic', id: '720p'}), false);
-  assert.equal(qualityOptionSelected({mode: 'fixed', id: '720p'}, {mode: 'fixed', id: '720p'}), true);
+  assert.equal(qualityOptionSelected({mode: 'automatic'}, {mode: 'automatic', id: '720p-high'}), true, 'Automatic is selected whatever step it is on');
+  assert.equal(qualityOptionSelected({mode: 'fixed', id: '720p-high'}, {mode: 'automatic', id: '720p-high'}), false);
+  assert.equal(qualityOptionSelected({mode: 'fixed', id: '720p-high'}, {mode: 'fixed', id: '720p-high'}), true);
   assert.equal(qualityOptionSelected({mode: 'original'}, undefined), true);
-  assert.equal(sameQuality({mode: 'fixed', id: '720p'}, {mode: 'fixed', id: '720p'}), true);
+  assert.equal(sameQuality({mode: 'fixed', id: '720p-high'}, {mode: 'fixed', id: '720p-high'}), true);
   // The quality in force is what the next title of a viewing asks for again.
-  assert.deepEqual(requestInForce({mode: 'automatic', id: '720p'}), {mode: 'automatic', id: '720p'});
+  assert.deepEqual(requestInForce({mode: 'automatic', id: '720p-high'}), {mode: 'automatic', id: '720p-high'});
   assert.deepEqual(requestInForce({mode: 'automatic'}), {mode: 'automatic'});
-  assert.deepEqual(requestInForce({mode: 'fixed', id: '1080p'}), {mode: 'fixed', id: '1080p'});
+  assert.deepEqual(requestInForce({mode: 'fixed', id: '1080p-low'}), {mode: 'fixed', id: '1080p-low'});
   assert.deepEqual(requestInForce({mode: 'original'}), {mode: 'original'});
 });
 
@@ -65,8 +65,8 @@ test('controller: quality steps, a fixed quality and a player failure re-plan th
   assert.equal(p.loads.at(-1)!.generation, 2);
   const up = await controller.stepQuality('up');
   assert.deepEqual(up!.presentation.quality, {mode: 'automatic'});
-  const fixed = await controller.setQuality({mode: 'fixed', id: '720p'});
-  assert.deepEqual(fixed!.presentation.quality, {mode: 'fixed', id: '720p'});
+  const fixed = await controller.setQuality({mode: 'fixed', id: '720p-high'});
+  assert.deepEqual(fixed!.presentation.quality, {mode: 'fixed', id: '720p-high'});
   p.at(120_000);
   const recovered = await controller.playerFailed('decode_error', 'MEDIA_ERR_DECODE\n' + 'x'.repeat(900));
   assert.equal(recovered!.id, id);
@@ -83,7 +83,7 @@ test('controller: a quality the measured connection cannot carry is refused and 
   const server = new FakePlaybackServer({neededKbps: 20_000});
   const p = player();
   const controller = new PlaybackSessionController({http: fakeHttp(server), player: p});
-  await controller.start({itemId: 'movie-1'}, {quality: {mode: 'fixed', id: '720p'}});
+  await controller.start({itemId: 'movie-1'}, {quality: {mode: 'fixed', id: '720p-high'}});
   const before = controller.getSnapshot().session!;
   await assert.rejects(controller.setQuality({mode: 'original'}, 5000), (e: unknown) => e instanceof PlaybackApiError && e.code === 'connection_too_slow');
   assert.equal(controller.getSnapshot().session!.presentation.generation, before.presentation.generation);
@@ -105,9 +105,9 @@ test('bridge: a player failure re-plans the session in place and tells the sessi
   assert.equal(result!.session!.resumeSeconds, 37.4);
   assert.deepEqual(changed, [`${started.session.id}:2`]);
   server.bump(started.session.id, {state: 'playing'});
-  const stale = await api.change(started.session.id, {quality: {mode: 'fixed', id: '1080p'}});
+  const stale = await api.change(started.session.id, {quality: {mode: 'fixed', id: '1080p-low'}});
   assert.equal(stale.session.id, started.session.id, 'a revision that moved is never shown to the viewer');
-  assert.deepEqual(stale.session.presentation.quality, {mode: 'fixed', id: '1080p'});
+  assert.deepEqual(stale.session.presentation.quality, {mode: 'fixed', id: '1080p-low'});
   for (let i = 0; i < 2; i++) assert.equal((await api.reportPlayerFailure(started.session.id, 'decode_error', '', 40))!.escalates, true);
   assert.deepEqual(await api.reportPlayerFailure(started.session.id, 'decode_error', '', 40), {escalates: false});
   await api.stopPlayback(started.session.id);

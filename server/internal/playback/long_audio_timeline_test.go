@@ -82,7 +82,7 @@ func TestLongAudiobookFinalSegmentUsesSourceTimestamp(t *testing.T) {
 	if _, err = s.PublishCapabilities(ctx, p, raw); err != nil {
 		t.Fatal(err)
 	}
-	session, err := s.Create(p, item, "auto", "long-book")
+	session, err := s.Create(p, item, "automatic", "long-book")
 	if err != nil {
 		t.Fatal(err)
 	}

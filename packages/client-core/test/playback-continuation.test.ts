@@ -10,3 +10,11 @@ test('delivery diagnostics carry all three audio renditions into the selection h
  assert.equal(plan.renditions.length,3);assert.equal(plan.defaultRenditionId,'audio-2');assert.equal(plan.renditions[1].codec,'ac3');
  assert.throws(()=>validateAudioPlan({...plan,renditions:[plan.renditions[0],plan.renditions[0]]}));
 });
+
+
+test('audio rendition display facts preserve HLS identity and reject malformed commentary',async()=>{
+ const {parseDeliveryAudioRenditions}=await import('../src/delivery.ts');
+ const rendition={ordinal:0,streamIndex:1,action:'copy',codec:'aac',channels:2,bitrateBps:128000,language:'en',label:'en · AAC · track 1',title:'Director commentary',commentary:true,default:true};
+ const out=parseDeliveryAudioRenditions([rendition]);assert.equal(out?.[0].label,rendition.label);assert.equal(out?.[0].title,rendition.title);assert.equal(out?.[0].commentary,true);
+ assert.equal(parseDeliveryAudioRenditions([{...rendition,commentary:'yes'}]),undefined);
+});

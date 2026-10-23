@@ -15,23 +15,34 @@ import (
 	"time"
 )
 
-func (d Dependencies) searchScope(r *http.Request) (identity.Principal, bool, []string, string, error) {
+func (d Dependencies) searchScope(r *http.Request) (identity.Principal, bool, []string, bool, string, error) {
 	p, e := d.principal(r)
 	if e != nil {
-		return p, false, nil, "", e
+		return p, false, nil, false, "", e
 	}
 	all, ids, policy, restriction, e := d.Hosted.SearchAccess(p)
 	if e != nil {
-		return p, false, nil, "", e
+		return p, false, nil, false, "", e
 	}
 	sort.Strings(ids)
 	raw, _ := json.Marshal(ids)
 	_, contentFence, e := d.viewerRestrictions(r, p)
 	if e != nil {
-		return p, false, nil, "", e
+		return p, false, nil, false, "", e
 	}
-	fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%t:%s:%s", presentationIdentity(p), p.Epoch, policy, restriction, all, raw, contentFence))))
-	return p, all, ids, fence, nil
+	// Service presence is not permission. Use the same current profile authority
+	// as Guide, and fence this decision so revocation during composition also
+	// withholds the response, even if a content-policy cache is still warm.
+	liveTV := false
+	if d.LiveChannels != nil {
+		e = d.featureAllowed(r.Context(), p, "live_tv")
+		if e != nil && !errors.Is(e, errFeatureRestricted) {
+			return p, false, nil, false, "", e
+		}
+		liveTV = e == nil
+	}
+	fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%t:%s:%s:%t", presentationIdentity(p), p.Epoch, policy, restriction, all, raw, contentFence, liveTV))))
+	return p, all, ids, liveTV, fence, nil
 }
 
 // commaList bounds a comma separated request parameter. An empty element is a
@@ -131,7 +142,7 @@ func (d Dependencies) searchHandler(w http.ResponseWriter, r *http.Request) {
 		failure(w, e)
 		return
 	}
-	p, all, ids, fence, e := d.searchScope(r)
+	p, all, ids, liveTV, fence, e := d.searchScope(r)
 	if e != nil {
 		failure(w, e)
 		return
@@ -164,7 +175,7 @@ func (d Dependencies) searchHandler(w http.ResponseWriter, r *http.Request) {
 	e = d.compose(r.WithContext(ctx), restrictions, func(cat *catalog.Service) error {
 		var composeErr error
 		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: ids, Restrictions: restrictions}
-		out, composeErr = cat.Search(cat.Context(), catalog.SearchRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Q: q.Get("q"), Group: q.Get("group"), Cursor: q.Get("cursor"), Sort: q.Get("sort"), Direction: q.Get("direction"), Limit: limit, AllLibraries: all, Libraries: ids, LibraryIDs: libraryIDs, Groups: groups, LiveTV: d.LiveChannels != nil, Record: q.Get("record") == "1", Restrictions: restrictions})
+		out, composeErr = cat.Search(cat.Context(), catalog.SearchRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Q: q.Get("q"), Group: q.Get("group"), Cursor: q.Get("cursor"), Sort: q.Get("sort"), Direction: q.Get("direction"), Limit: limit, AllLibraries: all, Libraries: ids, LibraryIDs: libraryIDs, Groups: groups, LiveTV: liveTV, Record: q.Get("record") == "1", Restrictions: restrictions})
 		return composeErr
 	})
 	if e != nil {
@@ -175,7 +186,7 @@ func (d Dependencies) searchHandler(w http.ResponseWriter, r *http.Request) {
 		failure(w, e)
 		return
 	}
-	_, _, _, after, e := d.searchScope(r)
+	_, _, _, _, after, e := d.searchScope(r)
 	if e != nil {
 		failure(w, e)
 		return

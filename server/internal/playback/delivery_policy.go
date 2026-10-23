@@ -1,6 +1,7 @@
 package playback
 
 import (
+	"portico.local/server/internal/qualityladder"
 	"sort"
 	"strings"
 )
@@ -18,7 +19,8 @@ const (
 )
 
 // TransportClassHeader is the optional client hint about the link it is on. It
-// is kept with a plan for diagnostics; it changes no decision.
+// selects the no-explicit-choice mobile video default; it grants no locality
+// or authority and cannot widen owner/member ceilings.
 const TransportClassHeader = "X-Portico-Transport-Class"
 
 // TransportClasses is the accepted domain of the header.
@@ -108,6 +110,57 @@ type DeliveryPreferenceReader interface {
 	Text(key string) string
 }
 
+// WithPreferenceSources preserves whether an effective value was stored or
+// supplied by the registry. A stored Original is an explicit choice.
+func WithPreferenceSources(values DeliveryPreferenceReader, sources map[string]string) DeliveryPreferenceReader {
+	return sourcedPreferences{DeliveryPreferenceReader: values, sources: sources}
+}
+
+type sourcedPreferences struct {
+	DeliveryPreferenceReader
+	sources map[string]string
+}
+
+func (v sourcedPreferences) PreferenceSource(key string) string { return v.sources[key] }
+func (v sourcedPreferences) List(key string) []string {
+	if reader, ok := v.DeliveryPreferenceReader.(interface{ List(string) []string }); ok {
+		return reader.List(key)
+	}
+	return nil
+}
+
+// SavedQualityPreference returns only an explicit saved choice, retaining its
+// provenance rather than mistaking the registry's Original for a stored value.
+func SavedQualityPreference(values DeliveryPreferenceReader, class NetworkClass) string {
+	if values == nil {
+		return ""
+	}
+	key := "quality." + class.qualityLane()
+	if source, ok := values.(interface{ PreferenceSource(string) string }); ok && source.PreferenceSource(key) == "default" {
+		return ""
+	}
+	if choice := values.Text(key); ValidSavedQuality(choice) {
+		return choice
+	}
+	return ""
+}
+
+// DefaultSavedQuality applies only when no explicit choice exists. Cellular
+// is the existing normalized transport declaration, never inferred from remote
+// reach or device class. Music and other audio keep Original on every link.
+func DefaultSavedQuality(saved, transport string, audioOnly bool) string {
+	if saved != "" {
+		if ValidSavedQuality(saved) {
+			return saved
+		}
+		return QualityOriginal
+	}
+	if !audioOnly && NormalizeTransportClass(transport) == "cellular" {
+		return "720p-high"
+	}
+	return QualityOriginal
+}
+
 // DeliveryModes is the domain of the three delivery preferences.
 var DeliveryModes = []string{"allow", "prefer", "never", "require"}
 
@@ -140,7 +193,7 @@ func ResolveDeliveryPolicy(values DeliveryPreferenceReader, class NetworkClass, 
 		DirectPlay:     "prefer",
 		DirectStream:   "allow",
 		Transcode:      "allow",
-		QualityMode:    "original",
+		QualityMode:    DefaultSavedQuality(SavedQualityPreference(values, class), transport, false),
 		AllowHDR:       true,
 		PlanningPolicy: cfg.PlanningPolicy,
 		Clamps:         []DeliveryClamp{},
@@ -155,15 +208,17 @@ func ResolveDeliveryPolicy(values DeliveryPreferenceReader, class NetworkClass, 
 		if m := values.Text("delivery.transcode"); validDeliveryMode(m) {
 			out.Transcode = m
 		}
-		if m := values.Text("quality." + lane); ValidSavedQuality(m) {
-			out.QualityMode = m
-		}
 	}
 	if class == NetworkRemote {
 		out.MaxVideoBitrateBPS = cfg.MaxVideoBitrateBPS
 	}
 	out.MaxAudioBitrateBPS = cfg.MaxAudioBitrateBPS
 	out.MaxVideoHeight = cfg.MaxVideoHeight
+	if class == NetworkRemote {
+		if step, ok := qualityladder.AtBitrate(cfg.MaxVideoBitrateBPS); ok {
+			out.MaxVideoHeight = narrowCeiling(out.MaxVideoHeight, step.Height)
+		}
+	}
 	if !cfg.AllowHDR {
 		out.Clamps = append(out.Clamps, DeliveryClamp{Field: "allowHDR", Source: "server_clamp", Requested: 1, Applied: 0})
 		out.AllowHDR = false

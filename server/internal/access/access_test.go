@@ -3,7 +3,10 @@ package access
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"net/netip"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,7 +37,8 @@ func fixture(t *testing.T) (*Store, *sql.DB, catalogueIDs) {
 	t.Cleanup(func() { db.Close() })
 	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1);
  INSERT INTO accounts VALUES('member','member',x'00','member-profile',1);
- INSERT INTO libraries(id,name,kind,root) VALUES('lib','Library','movie','/library');`); err != nil {
+ INSERT INTO libraries(id,name,kind,root) VALUES('lib','Library','movie','/library');
+ INSERT INTO libraries(id,name,kind,root) VALUES('other','Other library','movie','/other');`); err != nil {
 		t.Fatal(err)
 	}
 	return New(db), db, seedCatalogue(t, db)
@@ -348,21 +352,21 @@ func TestScheduleWindowsWrapMidnightAndDenyOutsideHours(t *testing.T) {
 func TestInvitationLifecycleCreatesTheAccountItDescribes(t *testing.T) {
 	store, db, _ := fixture(t)
 	ctx := context.Background()
-	invitation, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-1", Email: "Guest@Example.com", Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
-	if err != nil || invitation.Code == "" || invitation.Email != "guest@example.com" {
+	invitation, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-1", Notes: note("Guest fixture"), Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+	if err != nil || invitation.Code == "" || (invitation.Notes == nil || *invitation.Notes != "Guest fixture") {
 		t.Fatalf("invite: %v %+v", err, invitation)
 	}
 	// The code is returned once: a replay of the operation omits it.
-	replay, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-1", Email: "Guest@Example.com", Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+	replay, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-1", Notes: note("Guest fixture"), Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
 	if err != nil || replay.Code != "" || replay.ID != invitation.ID {
 		t.Fatalf("replay leaked or diverged: %v %+v", err, replay)
 	}
-	if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-2", Email: "guest@example.com"}); !errors.Is(err, ErrConflict) {
-		t.Fatalf("a second pending invitation for one address: %v", err)
+	if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-1", Notes: note("changed")}); !errors.Is(err, ErrIdempotencyKeyReused) {
+		t.Fatalf("reused operation: %v", err)
 	}
 	// An admin may not invite a peer.
 	admin := identity.Principal{Viewer: identity.Viewer{AccountID: "a", Role: identity.TierAdmin}}
-	if _, err = store.Invite(ctx, nil, admin, InvitationRequest{OperationID: "invite-3", Email: "peer@example.com", Role: identity.TierAdmin}); !errors.Is(err, identity.ErrUnauthorized) {
+	if _, err = store.Invite(ctx, nil, admin, InvitationRequest{OperationID: "invite-3", Notes: note("peer fixture"), Role: identity.TierAdmin}); !errors.Is(err, identity.ErrUnauthorized) {
 		t.Fatalf("an admin invited an admin: %v", err)
 	}
 	page, err := store.Invitations(ctx, nil, InvitationQuery{State: "pending"})
@@ -393,15 +397,15 @@ func TestInvitationLifecycleCreatesTheAccountItDescribes(t *testing.T) {
 	}
 }
 
-func TestInvitationPreviewIsMaskedReadOnlyAndOpaque(t *testing.T) {
+func TestInvitationPreviewIsPrivateReadOnlyAndOpaque(t *testing.T) {
 	store, db, _ := fixture(t)
 	ctx := context.Background()
-	invite, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "preview-invite-1", Email: "Justin@example.com", AllowedLibraries: []string{"lib"}})
+	invite, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "preview-invite-1", Notes: note("Private fixture note"), AllowedLibraries: []string{"lib"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	preview, err := store.Preview(ctx, invite.Code)
-	if err != nil || preview.Email != "j***@example.com" || preview.LibraryCount != 1 || preview.Role != identity.TierMember || preview.ExpiresAt != invite.ExpiresAt {
+	if err != nil || preview.InviterUsername != "owner" || preview.SignInMethod != "local" || len(preview.Libraries) != 1 || preview.Libraries[0].Name != "Library" || preview.LibraryCount != 1 || preview.Role != identity.TierMember || preview.ExpiresAt != invite.ExpiresAt {
 		t.Fatalf("preview: %+v %v", preview, err)
 	}
 	if _, err = store.Preview(ctx, invite.Code); err != nil {
@@ -424,10 +428,10 @@ func TestInvitationPreviewIsMaskedReadOnlyAndOpaque(t *testing.T) {
 	}
 }
 
-func TestRevokedInvitationFreesTheAddressAndCannotUndoAcceptance(t *testing.T) {
+func TestRevokedInvitationCannotUndoAcceptance(t *testing.T) {
 	store, _, _ := fixture(t)
 	ctx := context.Background()
-	invitation, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-revoke-1", Email: "guest@example.com"})
+	invitation, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-revoke-1", Notes: note("fixture")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +442,7 @@ func TestRevokedInvitationFreesTheAddressAndCannotUndoAcceptance(t *testing.T) {
 	if err != nil || out.State != "revoked" {
 		t.Fatalf("revoke: %v %+v", err, out)
 	}
-	if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-revoke-2", Email: "guest@example.com"}); err != nil {
+	if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-revoke-2", Notes: note("fixture")}); err != nil {
 		t.Fatalf("the address stayed occupied after a revoke: %v", err)
 	}
 }
@@ -483,7 +487,7 @@ func TestListsPageByCursorRatherThanOffset(t *testing.T) {
 	ctx := context.Background()
 	for i, address := range []string{"a@example.com", "b@example.com", "c@example.com"} {
 		store.Now = func() time.Time { return time.Unix(int64(1_700_000_000+i), 0) }
-		if _, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "page-invite-" + address, Email: address}); err != nil {
+		if _, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "page-invite-" + address, Notes: note(address)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -512,15 +516,15 @@ func TestListsPageByCursorRatherThanOffset(t *testing.T) {
 func TestAddresslessInvitationsArePendingSideBySideAndAcceptEitherWay(t *testing.T) {
 	store, db, _ := fixture(t)
 	ctx := context.Background()
-	first, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "blank-invite-1", Email: "  ", Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
-	if err != nil || first.Code == "" || first.Email != "" {
+	first, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "blank-invite-1", Notes: note("  "), Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+	if err != nil || first.Code == "" || first.Notes != nil {
 		t.Fatalf("first: %v %+v", err, first)
 	}
 	second, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "blank-invite-2", Role: identity.TierMember})
 	if err != nil || second.Code == "" {
 		t.Fatalf("a second addressless invitation: %v", err)
 	}
-	if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "bad-address-invite", Email: "not an address"}); !errors.Is(err, ErrInvalid) {
+	if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "bad-address-invite", Notes: note(strings.Repeat("x", 501))}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("an invalid address was accepted: %v", err)
 	}
 	page, err := store.Invitations(ctx, nil, InvitationQuery{State: "pending"})
@@ -528,7 +532,7 @@ func TestAddresslessInvitationsArePendingSideBySideAndAcceptEitherWay(t *testing
 		t.Fatalf("both pending: %v %+v", err, page)
 	}
 	preview, err := store.Preview(ctx, first.Code)
-	if err != nil || preview.Email != "" || preview.LibraryCount != 1 {
+	if err != nil || preview.InviterUsername != "owner" || preview.LibraryCount != 1 {
 		t.Fatalf("preview: %v %+v", err, preview)
 	}
 	hash, err := HashPassword("Correct-Horse-9")
@@ -1069,5 +1073,226 @@ func TestLiveProgrammeMemberRatingAppliesToKnownAndAbsentGuide(t *testing.T) {
 		if e = gate.AdmitProgramme(ctx, tx, p, rating); !errors.Is(e, ErrContentRating) {
 			t.Fatalf("%q admitted: %v", rating, e)
 		}
+	}
+}
+
+func note(v string) *string { return &v }
+func TestInvitationEditsLinksNotesAndTierBoundaries(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	if _, e := db.Exec(`INSERT INTO accounts VALUES('admin','admin',x'00','admin-profile',1);UPDATE direct_memberships SET role='admin' WHERE account_id='admin'`); e != nil {
+		t.Fatal(e)
+	}
+	admin := identity.Principal{Viewer: identity.Viewer{AccountID: "admin", Role: identity.TierAdmin}}
+	v, e := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "notes-invite-1", Notes: note("private fixture note"), Role: "member", AllowedLibraries: []string{"lib"}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	link, e := store.PendingInvitationLink(ctx, nil, admin, v.ID, InvitationLinkRequest{ExpectedRevision: 1})
+	if e != nil || link.Code != v.Code {
+		t.Fatalf("recover: %+v %v", link, e)
+	}
+	raw, _ := json.Marshal(link)
+	if strings.Contains(string(raw), "private") {
+		t.Fatalf("link leaked notes: %s", raw)
+	}
+	changed, e := store.EditInvitation(ctx, nil, admin, v.ID, InvitationChange{ExpectedRevision: 1, OperationID: "notes-edit-1", Notes: note("updated private note"), Role: "member", AllowedLibraries: []string{}, ExpiresAt: time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)})
+	if e != nil || changed.Revision != 2 {
+		t.Fatalf("edit: %+v %v", changed, e)
+	}
+	if _, e = store.PendingInvitationLink(ctx, nil, admin, v.ID, InvitationLinkRequest{ExpectedRevision: 1}); !errors.Is(e, ErrConflict) {
+		t.Fatalf("stale link: %v", e)
+	}
+	if _, e = store.EditInvitation(ctx, nil, admin, v.ID, InvitationChange{ExpectedRevision: 2, OperationID: "notes-edit-peer", Role: "admin", ExpiresAt: changed.ExpiresAt}); !errors.Is(e, identity.ErrForbidden) {
+		t.Fatalf("peer invite: %v", e)
+	}
+	preview, e := store.Preview(ctx, v.Code)
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, _ = json.Marshal(preview)
+	for _, s := range []string{"notes", "private", "email", "porticoUsername"} {
+		if strings.Contains(string(raw), s) {
+			t.Fatalf("preview leaked %s: %s", s, raw)
+		}
+	}
+	accepted, e := store.Accept(ctx, Acceptance{Code: v.Code, Username: "fixture_guest"}, []byte("hash"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, _ = json.Marshal(accepted)
+	if strings.Contains(string(raw), "notes") || strings.Contains(string(raw), "private") {
+		t.Fatalf("accept leaked notes: %s", raw)
+	}
+	m, e := store.Member(ctx, nil, accepted.AccountID)
+	if e != nil || m.Notes == nil || *m.Notes != "updated private note" || m.JoinedVia != v.ID || m.JoinedAt == "" || len(m.ProfileNames) != 1 {
+		t.Fatalf("join facts: %+v %v", m, e)
+	}
+	m, e = store.SetMemberNotes(ctx, nil, admin, m.AccountID, MemberNotesChange{ExpectedRevision: m.Revision, OperationID: "member-note-1", Notes: note("changed")})
+	if e != nil || m.Notes == nil || *m.Notes != "changed" {
+		t.Fatalf("member notes: %+v %v", m, e)
+	}
+	for _, id := range []string{"owner", "admin"} {
+		current, e := store.Member(ctx, nil, id)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = store.SetMemberNotes(ctx, nil, admin, id, MemberNotesChange{ExpectedRevision: current.Revision, OperationID: "forbidden-note-" + id, Notes: note("bad")}); !errors.Is(e, identity.ErrForbidden) {
+			t.Fatalf("admin changed %s: %v", id, e)
+		}
+	}
+	var notices int
+	if e = db.QueryRow(`SELECT count(*) FROM notification_records WHERE category='people.joined' AND audience='account-admin'`).Scan(&notices); e != nil || notices != 2 {
+		t.Fatalf("joined notices %d %v", notices, e)
+	}
+	var leaked bool
+	if e = db.QueryRow(`SELECT EXISTS(SELECT 1 FROM notification_records WHERE arguments LIKE '%private%' OR body LIKE '%private%')`).Scan(&leaked); e != nil || leaked {
+		t.Fatalf("notice private: %v %v", leaked, e)
+	}
+	if _, e = store.PendingInvitationLink(ctx, nil, owner(), v.ID, InvitationLinkRequest{ExpectedRevision: 3}); !errors.Is(e, ErrExpired) {
+		t.Fatalf("accepted recover: %v", e)
+	}
+}
+func TestInvitationFileKeySurvivesRestartAndRotationInvalidates(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	state := t.TempDir()
+	if e := store.LoadInvitationKey(state); e != nil {
+		t.Fatal(e)
+	}
+	v, e := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "key-invite-1"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	again := New(db)
+	if e = again.LoadInvitationKey(state); e != nil {
+		t.Fatal(e)
+	}
+	link, e := again.PendingInvitationLink(ctx, nil, owner(), v.ID, InvitationLinkRequest{ExpectedRevision: 1})
+	if e != nil || link.Code != v.Code {
+		t.Fatalf("restart: %+v %v", link, e)
+	}
+	var body string
+	if e = db.QueryRow(`SELECT body FROM access_receipts WHERE scope='invite' AND operation_id='key-invite-1'`).Scan(&body); e != nil || strings.Contains(body, v.Code) {
+		t.Fatalf("receipt leaked %v", e)
+	}
+	if e = os.WriteFile(filepath.Join(state, "invitation-link.key"), []byte(strings.Repeat("z", 32)), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e = again.LoadInvitationKey(state); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = again.Preview(ctx, v.Code); !errors.Is(e, ErrInvitationNotFound) {
+		t.Fatalf("rotated preview: %v", e)
+	}
+	if _, e = again.PendingInvitationLink(ctx, nil, owner(), v.ID, InvitationLinkRequest{ExpectedRevision: 1}); !errors.Is(e, ErrExpired) {
+		t.Fatalf("rotated link: %v", e)
+	}
+	if _, e = again.Accept(ctx, Acceptance{Code: v.Code, Username: "fixture_key_guest"}, []byte("hash")); !errors.Is(e, ErrExpired) {
+		t.Fatalf("rotated accept: %v", e)
+	}
+}
+
+func TestPeopleDevicesPageSortNetworkAndPrivacy(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	if _, e := db.Exec(`INSERT INTO accounts VALUES('admin','admin',x'00','admin-profile',1);UPDATE direct_memberships SET role='admin' WHERE account_id='admin';
+ INSERT INTO identity_devices(id,account_id,installation_id,name,platform,app,app_version,first_seen,last_seen,last_profile_id,ip) VALUES
+ ('d-a','member','i-a','Alpha','android','portico','test','2026-10-01T00:00:00Z','2026-10-03T00:00:00Z','member-profile','10.0.0.2'),
+ ('d-b','member','i-b','Beta','web','portico','test','2026-10-02T00:00:00Z','2026-10-02T00:00:00Z','member-profile','192.0.2.5'),
+ ('d-c','admin','i-c','Gamma','web','portico','test','2026-10-03T00:00:00Z','2026-10-01T00:00:00Z','admin-profile','10.0.0.3');`); e != nil {
+		t.Fatal(e)
+	}
+	networks := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	for _, sort := range []string{"name", "firstSeen", "lastSeen"} {
+		cursor := ""
+		seen := map[string]bool{}
+		for n := 0; n < 4; n++ {
+			page, e := store.PeopleDevices(ctx, nil, owner(), PeopleDeviceQuery{Limit: "1", Sort: sort, Cursor: cursor}, networks)
+			if e != nil {
+				t.Fatal(e)
+			}
+			for _, v := range page.Items {
+				if seen[v.ID] {
+					t.Fatal("duplicated cursor row")
+				}
+				seen[v.ID] = true
+				if v.ID == "d-a" && (v.LastNetwork != "home" || v.Username != "member" || v.ProfileName != "member") {
+					t.Fatalf("display trio: %+v", v)
+				}
+				raw, _ := json.Marshal(v)
+				if strings.Contains(string(raw), "10.0.0") || strings.Contains(string(raw), "notes") {
+					t.Fatalf("device privacy: %s", raw)
+				}
+			}
+			cursor = page.NextCursor
+			if cursor == "" {
+				break
+			}
+		}
+		if len(seen) != 3 {
+			t.Fatalf("sort %s exhausted %d", sort, len(seen))
+		}
+	}
+	admin := identity.Principal{Viewer: identity.Viewer{AccountID: "admin", Role: identity.TierAdmin}}
+	page, e := store.PeopleDevices(ctx, nil, admin, PeopleDeviceQuery{}, networks)
+	if e != nil || len(page.Items) != 2 {
+		t.Fatalf("admin devices: %+v %v", page, e)
+	}
+	if _, e = store.PeopleDevice(ctx, nil, admin, "d-c", networks); !errors.Is(e, sql.ErrNoRows) {
+		t.Fatalf("peer device: %v", e)
+	}
+	away, e := store.PeopleDevice(ctx, nil, owner(), "d-b", networks)
+	if e != nil || away.LastNetwork != "away" {
+		t.Fatalf("away: %+v %v", away, e)
+	}
+	if _, e = store.PeopleDevices(ctx, nil, owner(), PeopleDeviceQuery{Sort: "untrusted_sql"}, networks); !errors.Is(e, ErrInvalid) {
+		t.Fatalf("sort injection: %v", e)
+	}
+	first, e := store.PeopleDevices(ctx, nil, owner(), PeopleDeviceQuery{Limit: "1", Sort: "name"}, networks)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = store.PeopleDevices(ctx, nil, owner(), PeopleDeviceQuery{Limit: "1", Sort: "lastSeen", Cursor: first.NextCursor}, networks); !errors.Is(e, ErrInvalid) {
+		t.Fatalf("cross-sort cursor: %v", e)
+	}
+}
+
+func TestInvitationCollisionNeverInventsOrMergesAnIdentity(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	invite, e := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "collision-fixture"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	called := false
+	_, e = store.AcceptPortico(ctx, PorticoAcceptance{Code: invite.Code, AccountID: "acc_new_fixture", Username: "member"}, func(context.Context, *sql.Tx) (identity.DirectSignIn, error) {
+		called = true
+		return identity.DirectSignIn{}, nil
+	})
+	if !errors.Is(e, ErrConflict) || called {
+		t.Fatalf("identity collision: called=%v %v", called, e)
+	}
+	var count int
+	var state string
+	if e = db.QueryRow(`SELECT count(*) FROM accounts`).Scan(&count); e != nil || count != 2 {
+		t.Fatalf("accounts after collision: %d %v", count, e)
+	}
+	if e = db.QueryRow(`SELECT state FROM access_invitations WHERE id=?`, invite.ID).Scan(&state); e != nil || state != "pending" {
+		t.Fatalf("spent invitation on collision: %s %v", state, e)
+	}
+}
+func TestRoleReceiptCannotBorrowAnActorsOldTier(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	q := RoleChange{ExpectedRevision: 1, OperationID: "live-tier-role-fixture", Role: identity.TierAdmin}
+	if _, e := store.SetRole(ctx, nil, owner(), "member", q); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec(`UPDATE direct_memberships SET role='admin' WHERE account_id='owner'`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := store.SetRole(ctx, nil, owner(), "member", q); !errors.Is(e, identity.ErrForbidden) {
+		t.Fatalf("replayed privileged receipt: %v", e)
 	}
 }

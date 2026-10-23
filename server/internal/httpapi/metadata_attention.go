@@ -35,8 +35,8 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "rate_limited", "internal"}
 	rate := &personalLimiter{}
 	for _, route := range []struct{ id, path string }{{"get_metadata_attention", "/v1/libraries/{id}/metadata/attention"}, {"get_server_metadata_attention", "/v1/admin/metadata/attention"}} {
-		v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: route.id, Method: "GET", Path: route.path, Summary: "List unmatched and uncertain titles with their best candidates", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit", "includeInProgress"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.AttentionPage, error) {
-			if _, e := d.owner(r); e != nil {
+		v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: route.id, Method: "GET", Path: route.path, Summary: "List unmatched and uncertain titles with their best candidates", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit", "includeInProgress"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.AttentionPage, error) {
+			if _, e := d.administrator(r); e != nil {
 				return metadata.AttentionPage{}, e
 			}
 			limit := 25
@@ -62,12 +62,12 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 			if e != nil {
 				return out, metadataAttentionError(e)
 			}
-			_, e = d.owner(r)
+			_, e = d.administrator(r)
 			return out, e
 		})
 	}
-	v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "get_metadata_attention_counts", Method: "GET", Path: "/v1/admin/metadata/attention/counts", Summary: "Count titles waiting for attention per library and across the server", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.AttentionCounts, error) {
-		if _, err := d.owner(r); err != nil {
+	v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "get_metadata_attention_counts", Method: "GET", Path: "/v1/admin/metadata/attention/counts", Summary: "Count titles waiting for attention per library and across the server", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.AttentionCounts, error) {
+		if _, err := d.administrator(r); err != nil {
 			return metadata.AttentionCounts{}, err
 		}
 		if d.Metadata == nil {
@@ -76,8 +76,8 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 		return d.Metadata.AttentionCounts(ctx)
 	})
 
-	v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "post_metadata_attention", Method: "POST", Path: "/v1/libraries/{id}/metadata/attention", Summary: "Accept a candidate, search, enter a provider ID or dismiss a title", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 202, BodyLimit: 4096, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.AttentionCommand) (attentionReceipt, error) {
-		p, e := d.owner(r)
+	v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "post_metadata_attention", Method: "POST", Path: "/v1/libraries/{id}/metadata/attention", Summary: "Accept a candidate, search, enter a provider ID or dismiss a title", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 202, BodyLimit: 4096, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.AttentionCommand) (attentionReceipt, error) {
+		p, e := d.administrator(r)
 		if e != nil {
 			return attentionReceipt{}, e
 		}
@@ -87,7 +87,7 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 		if d.Metadata == nil {
 			return attentionReceipt{}, errMetadataUnavailable()
 		}
-		e = d.Metadata.AttentionAction(ctx, r.PathValue("id"), in, metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		e = d.Metadata.AttentionAction(ctx, r.PathValue("id"), in, metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, func(tx *sql.Tx) error { return d.manualMetadataAuthorize(ctx, tx, p) })
 		return attentionReceipt{Status: "accepted"}, metadataAttentionError(e)
 	})
 }
@@ -143,8 +143,8 @@ type refreshReceipt struct {
 
 func registerMetadataRefresh(registry *apikit.Registry, d Dependencies) {
 	for _, kind := range []string{"items", "shows"} {
-		v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "refresh_" + kind + "_metadata", Method: "POST", Path: "/v1/" + kind + "/{id}/metadata/refresh", Summary: "Fetch current metadata for a title", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 202, OptionalBody: true, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (refreshReceipt, error) {
-			p, e := d.owner(r)
+		v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "refresh_" + kind + "_metadata", Method: "POST", Path: "/v1/" + kind + "/{id}/metadata/refresh", Summary: "Fetch current metadata for a title", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 202, OptionalBody: true, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (refreshReceipt, error) {
+			p, e := d.administrator(r)
 			if e != nil {
 				return refreshReceipt{}, e
 			}
@@ -153,7 +153,7 @@ func registerMetadataRefresh(registry *apikit.Registry, d Dependencies) {
 				return refreshReceipt{}, e
 			}
 			defer write.Rollback()
-			if e = d.resourceAuthorize(write.Tx(), p, ""); e != nil {
+			if e = d.manualMetadataAuthorize(ctx, write.Tx(), p); e != nil {
 				return refreshReceipt{}, e
 			}
 			if d.Metadata == nil {
@@ -171,8 +171,8 @@ func registerMetadataRefresh(registry *apikit.Registry, d Dependencies) {
 func registerScreenMetadataReads(registry *apikit.Registry, d Dependencies) {
 	for _, target := range []struct{ route, kind string }{{"items", "item"}, {"shows", "show"}} {
 		kind := target.kind
-		v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "get_" + target.route + "_screen_metadata", Method: "GET", Path: "/v1/" + target.route + "/{id}/metadata/screen", Summary: "Read match evidence, field provenance and provider candidates", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.ScreenState, error) {
-			if _, e := d.owner(r); e != nil {
+		v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "get_" + target.route + "_screen_metadata", Method: "GET", Path: "/v1/" + target.route + "/{id}/metadata/screen", Summary: "Read match evidence, field provenance and provider candidates", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.ScreenState, error) {
+			if _, e := d.administrator(r); e != nil {
 				return metadata.ScreenState{}, e
 			}
 			if d.Metadata == nil {
@@ -182,7 +182,7 @@ func registerScreenMetadataReads(registry *apikit.Registry, d Dependencies) {
 			if e != nil {
 				return out, metadataAttentionError(e)
 			}
-			if _, e = d.owner(r); e != nil {
+			if _, e = d.administrator(r); e != nil {
 				return out, e
 			}
 			_, _, fence, e := d.homeScope(r)

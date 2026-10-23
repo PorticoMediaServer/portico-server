@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/identity"
 )
 
 // browseFixture builds one movie library with enough descriptive, personal and
@@ -542,5 +544,336 @@ func TestAggregatePivotProjectsFacets(t *testing.T) {
 	}
 	if _, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Pivot: "categories", Sort: []BrowseSortSelection{{Field: "title", Direction: "sideways"}}}); err == nil {
 		t.Fatal("invalid grouping direction accepted")
+	}
+}
+
+// CB-1/3/4: contextual counts share the canonical pivot, omit only the counted
+// field, and never count an actor/genre from a restricted member.
+func TestBrowseContextualFacetsAndPeopleAreBounded(t *testing.T) {
+	db, s, names := browseFixture(t)
+	c := catalogtest.New(t, db)
+	credits := make([]compactcatalog.Credit, 250)
+	for i := range credits {
+		credits[i] = compactcatalog.Credit{PersonKey: fmt.Sprintf("person-%03d", i), PersonName: fmt.Sprintf("Person %03d", i), CreditedName: fmt.Sprintf("Person %03d", i), Department: "Acting", Role: "Actor", Ordinal: i}
+	}
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.SetCreditsTx(ctx, tx, names["m2"].ID, "fixture", credits)
+	})
+	c.Drain()
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}
+	query := &BrowseNode{All: []BrowseNode{{Field: "year", Operator: "at-least", Value: float64(2000)}, {Field: "genre", Operator: "contains", Value: "Drama"}}}
+	page, err := s.Facets(viewer, FacetRequest{Library: "a", Pivot: "movies", Field: "genre", Query: query})
+	if err != nil || fmt.Sprint(page.Values) != fmt.Sprint([]FacetValue{{Value: "Action", Label: "Action", Count: 1}, {Value: "Comedy", Label: "Comedy", Count: 1}}) {
+		t.Fatalf("contextual genre: %+v %v", page, err)
+	}
+	people, err := s.Facets(viewer, FacetRequest{Library: "a", Pivot: "movies", Field: "actor", Limit: 10})
+	if err != nil || len(people.Values) != 10 || people.Total != 250 {
+		t.Fatalf("bounded people: %+v %v", people, err)
+	}
+	found, err := s.Facets(viewer, FacetRequest{Library: "a", Pivot: "movies", Field: "actor", Q: "Person 249", Limit: 10})
+	if err != nil || len(found.Values) != 1 || found.Values[0].Count != 1 || found.Values[0].Value != "Person 249" {
+		t.Fatalf("people typeahead: %+v %v", found, err)
+	}
+	// Removing the actor clause leaves the year, so this result changes with the
+	// other filter rather than reusing library-wide cached counts.
+	noPeople, err := s.Facets(viewer, FacetRequest{Library: "a", Pivot: "movies", Field: "actor", Query: &BrowseNode{Field: "year", Operator: "equals", Value: float64(1995)}})
+	if err != nil || len(noPeople.Values) != 0 {
+		t.Fatalf("context leaked people: %+v %v", noPeople, err)
+	}
+	libraries, err := s.FacetsAcross(viewer, FacetRequest{Field: "library", Query: &BrowseNode{Field: "favorite", Operator: "equals", Value: true}})
+	if err != nil || len(libraries.Values) != 1 || libraries.Values[0].Value != "a" || libraries.Values[0].Label != "Movies" || libraries.Values[0].Count != 1 {
+		t.Fatalf("library facet: %+v %v", libraries, err)
+	}
+}
+
+func TestBrowseQueryDurationAndBatchCountsUseWholeVisibleQuery(t *testing.T) {
+	db, s, names := browseFixture(t)
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}
+	query := &BrowseNode{Field: "genre", Operator: "contains", Value: "Action"}
+	first, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Pivot: "movies", Query: query, Limit: 1})
+	if err != nil || len(first.Entries) != 1 || first.PageInfo.DurationMs != 300000 || first.PageInfo.DurationIsLowerBound {
+		t.Fatalf("duration is not full query: %+v %v", first, err)
+	}
+	next, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Pivot: "movies", Query: query, Limit: 1, Cursor: first.PageInfo.NextCursor})
+	if err != nil || next.PageInfo.DurationMs != first.PageInfo.DurationMs || next.PageInfo.DurationIsLowerBound || next.PageInfo.NextCursor != "" {
+		t.Fatalf("duration continuation: %+v %v", next, err)
+	}
+	batch, err := s.BrowseCounts(viewer, "a", BrowseCountRequest{Pivot: "movies", Queries: []BrowseCountQuery{{ID: "genre", Query: query}, {ID: "clear", Query: nil}}}, nil)
+	if err != nil || len(batch.Counts) != 2 || batch.Counts[0].Total != 2 || batch.Counts[1].Total != 5 || batch.Counts[0].TotalIsLowerBound {
+		t.Fatalf("batch counts %+v %v", batch, err)
+	}
+	denied, err := s.BrowseCounts(Viewer{Profile: "p", Fence: "f"}, "a", BrowseCountRequest{Pivot: "movies", Queries: []BrowseCountQuery{{ID: "q", Query: query}}}, nil)
+	if err == nil || len(denied.Counts) != 0 {
+		t.Fatalf("unauthorized count %+v %v", denied, err)
+	}
+	if _, err = s.BrowseCounts(viewer, "a", BrowseCountRequest{Pivot: "movies", Queries: make([]BrowseCountQuery, 9)}, nil); err == nil {
+		t.Fatal("uncapped batch")
+	}
+	defer func(n int) { browseTotalThreshold = n }(browseTotalThreshold)
+	browseTotalThreshold = 1
+	if _, err = db.Exec(`UPDATE personal_items SET favorite=1,revision=revision+1 WHERE profile_id='p' AND item_id=?`, names["m2"].ID); err != nil {
+		t.Fatal(err)
+	}
+	personal := &BrowseNode{Field: "favorite", Operator: "equals", Value: true}
+	group, err := s.BrowseAcross(viewer, AcrossRequest{Pivot: "titles", Query: personal, Limit: 1})
+	if err != nil || group.PageInfo.DurationMs <= 0 || !group.PageInfo.DurationIsLowerBound {
+		t.Fatalf("partial group duration %+v %v", group, err)
+	}
+	empty, err := s.BrowseAcross(viewer, AcrossRequest{Pivot: "titles", Query: personal, Range: &BrowseRange{Start: 50}, Limit: 1})
+	if err != nil || len(empty.Entries) != 0 || empty.PageInfo.HasMore || empty.PageInfo.NextCursor != "" || empty.PageInfo.Total != 1 || !empty.PageInfo.TotalIsLowerBound || empty.PageInfo.DurationMs != group.PageInfo.DurationMs || !empty.PageInfo.DurationIsLowerBound {
+		t.Fatalf("empty final page lost query duration or invented continuation: %+v %v", empty, err)
+	}
+}
+
+func TestBrowseMatchUsesCurrentOnlineAttentionIncludingKept(t *testing.T) {
+	c := catalogtest.Open(t)
+	movies := c.Library("m", "Movies", "movie", "/m")
+	tv := c.Library("tv", "TV", "tv", "/tv")
+	music := c.Library("mu", "Music", "music", "/mu")
+	local := c.Library("local", "Local", "movie", "/local")
+	movie := c.Movie(movies, "/m/a.mkv", "Ordinary playable title", 2026)
+	pending := c.Movie(movies, "/m/b.mkv", "Pending title", 2026)
+	localMovie := c.Movie(local, "/local/a.mkv", "Local title", 2026)
+	show := c.Show(tv, "Show", 2026)
+	season := c.Season(show, 1)
+	episode := c.Episode(show, season, 1, "/tv/a.mkv")
+	artist := c.Artist(music, "Tagged artist")
+	album := c.Album(artist, "Tagged album", 2026)
+	song := c.Song(album, 1, "/mu/a.flac", "Tagged song")
+	for _, item := range []catalogtest.Item{movie, pending, episode, localMovie} {
+		library := "m"
+		if item.ID == episode.ID {
+			library = "tv"
+		}
+		if item.ID == localMovie.ID {
+			library = "local"
+		}
+		c.Exec(`INSERT INTO screen_metadata_work(target_kind,target_id,library_id,title_seed,status)VALUES('item',?,?,'Fixture','needs_selection') ON CONFLICT(target_kind,target_id) DO UPDATE SET status='needs_selection'`, item.ID, library)
+	}
+	c.Exec(`UPDATE screen_metadata_work SET status='pending_search' WHERE target_id=?`, pending.ID)
+	c.Exec(`UPDATE screen_metadata_attention SET dismissed_generation=generation WHERE entity_id=?`, movie.ID)
+	c.Exec(`INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,dismissed_generation)VALUES(?,'song','mu','needs_selection',1,1)`, song.ID)
+	c.Exec(`UPDATE library_metadata_agents SET agent='local',revision=revision+1 WHERE library_id='local'`)
+	c.Drain()
+	s := New(c.DB)
+	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m", "tv", "mu", "local"}}
+	q := &BrowseNode{Field: "match", Operator: "equals", Value: "unmatched"}
+	for _, test := range []struct {
+		lib, pivot string
+		id         string
+	}{{"m", "movies", movie.Public}, {"tv", "shows", show.Public}, {"tv", "episodes", episode.Public}, {"mu", "artists", artist.Public}, {"mu", "albums", album.Public}, {"mu", "songs", song.Public}} {
+		page, err := s.BrowseEntities(v, BrowseRequest{Library: test.lib, Pivot: test.pivot, Query: q})
+		if err != nil || len(page.Entries) != 1 || page.Entries[0].ID != test.id {
+			t.Fatalf("%s/%s match %+v %v", test.lib, test.pivot, page, err)
+		}
+		caps, err := s.BrowseCapabilitiesFor(test.lib, test.pivot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seen := false
+		for _, field := range caps.Fields {
+			seen = seen || field.ID == "match"
+		}
+		if !seen {
+			t.Fatalf("member field missing on %s/%s", test.lib, test.pivot)
+		}
+	}
+	// Album repair attention can exist without any song attention. Artists'
+	// playable memberships contain songs, so retain the direct album-artist
+	// edge too, after checking the album's current visibility.
+	c.Exec(`UPDATE listening_metadata_attention SET retired=1 WHERE entity_id=?`, song.ID)
+	c.Exec(`INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,dismissed_generation)VALUES(?,'album','mu','needs_selection',1,1) ON CONFLICT(entity_id) DO UPDATE SET reason='needs_selection',retired=0,dismissed_generation=generation`, album.ID)
+	for _, pivot := range []string{"artists", "albums", "songs"} {
+		page, err := s.BrowseEntities(v, BrowseRequest{Library: "mu", Pivot: pivot, Query: q})
+		want := 1
+		if pivot == "songs" {
+			want = 0
+		}
+		if err != nil || len(page.Entries) != want {
+			t.Fatalf("album-only attention on %s: %+v %v", pivot, page, err)
+		}
+	}
+	otherAlbum := c.Album(artist, "Visible sibling album", 2026)
+	c.Song(otherAlbum, 1, "/mu/visible.flac", "Visible sibling song")
+	c.Attributes(song.ID, "label", "private")
+	c.Drain()
+	limited := v
+	limited.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"private"}}
+	visibleArtist, err := s.BrowseEntities(limited, BrowseRequest{Library: "mu", Pivot: "artists"})
+	if err != nil || len(visibleArtist.Entries) != 1 {
+		t.Fatalf("visible sibling fixture %+v %v", visibleArtist, err)
+	}
+	hiddenFact, err := s.BrowseEntities(limited, BrowseRequest{Library: "mu", Pivot: "artists", Query: q})
+	if err != nil || len(hiddenFact.Entries) != 0 {
+		t.Fatalf("hidden album attention leaked through visible artist: %+v %v", hiddenFact, err)
+	}
+	caps, err := s.BrowseCapabilitiesFor("local", "movies")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range caps.Fields {
+		if field.ID == "match" {
+			t.Fatal("local-only capability advertises online match")
+		}
+	}
+	page, err := s.BrowseEntities(v, BrowseRequest{Library: "local", Pivot: "movies", Query: q})
+	if err != nil || len(page.Entries) != 0 {
+		t.Fatalf("local matched online %+v %v", page, err)
+	}
+	// A source switch invalidates an existing cursor and the facet cache even
+	// when the owner retained the same ordinary playable title.
+	first, err := s.BrowseEntities(v, BrowseRequest{Library: "m", Pivot: "movies", Limit: 1})
+	if err != nil || first.PageInfo.NextCursor == "" {
+		t.Fatal("cursor fixture", err)
+	}
+	c.Exec(`UPDATE library_metadata_agents SET agent='local',revision=revision+1 WHERE library_id='m'`)
+	_, err = s.BrowseEntities(v, BrowseRequest{Library: "m", Pivot: "movies", Limit: 1, Cursor: first.PageInfo.NextCursor})
+	if !errors.Is(err, ErrStaleContinuation) {
+		t.Fatalf("source-choice cursor survived: %v", err)
+	}
+}
+
+// 1,203 current authorized members are a source, never a page-length cap. The
+// sorted/filtered See all cursor and facets keep that entire canonical source.
+func TestBrowseHomeMembershipFacetsAndSortedExhaustion(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("m", "Movies", "movie", "/m")
+	hidden := c.Library("hidden", "Private", "movie", "/hidden")
+	want := make([]string, 1203)
+	filtered := []string{}
+	for i := range want {
+		item := c.Movie(lib, fmt.Sprintf("/m/%04d.mkv", i), fmt.Sprintf("Film %04d", i), 2025+i%2)
+		want[i] = item.Public
+		if i%2 == 1 {
+			filtered = append([]string{item.Public}, filtered...)
+		}
+		c.Fields(item.ID, map[string]any{"added_text": "2026-10-20T00:00:00.000Z"})
+		c.Genres(item.ID, "fixture", "Drama")
+	}
+	forbidden := c.Movie(lib, "/m/forbidden.mkv", "Restricted title", 2026)
+	c.Attributes(forbidden.ID, "label", "private")
+	c.Movie(hidden, "/hidden/film.mkv", "Outside scope", 2026)
+	c.Drain()
+	s := New(c.DB)
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}, Restrictions: identity.ContentRestrictions{BlockedLabels: []string{"private"}}}
+	home := HomeRequest{Viewer: viewer}
+	source, err := s.ResolveHomeRowMembership(home, "new_on_server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	group := &BrowseNode{Field: "homeRow", Operator: "equals", Value: "new_on_server"}
+	sources := map[string]HomeRowMembership{"new_on_server": source}
+	for _, tc := range []struct {
+		name      string
+		query     *BrowseNode
+		direction string
+		want      []string
+	}{{"all", group, "asc", want}, {"filtered", browseAnd(group, &BrowseNode{Field: "year", Operator: "equals", Value: float64(2026)}), "desc", filtered}} {
+		request := AcrossRequest{Pivot: "titles", Query: tc.query, Sort: []BrowseSortSelection{{Field: "title", Direction: tc.direction}}, Limit: 37, RowSources: sources}
+		got := []string{}
+		pages := 0
+		for {
+			page, e := s.BrowseAcross(viewer, request)
+			if e != nil {
+				t.Fatal(e)
+			}
+			replay, e := s.BrowseAcross(viewer, request)
+			if e != nil || !reflect.DeepEqual(page.Entries, replay.Entries) {
+				t.Fatalf("%s replay %v", tc.name, e)
+			}
+			for _, entry := range page.Entries {
+				got = append(got, entry.ID)
+			}
+			if fmt.Sprint(got) != fmt.Sprint(tc.want[:len(got)]) || page.PageInfo.Total != len(tc.want) || page.PageInfo.TotalIsLowerBound {
+				t.Fatalf("%s prefix/count changed at page %d: %+v", tc.name, pages, page.PageInfo)
+			}
+			pages++
+			if page.PageInfo.NextCursor == "" {
+				if page.PageInfo.HasMore {
+					t.Fatal("false end")
+				}
+				break
+			}
+			request.Cursor = page.PageInfo.NextCursor
+		}
+		if fmt.Sprint(got) != fmt.Sprint(tc.want) || tc.name == "all" && pages != 33 {
+			t.Fatalf("%s incomplete %d/%d in %d pages", tc.name, len(got), len(tc.want), pages)
+		}
+	}
+	facet, err := s.FacetsAcross(viewer, FacetRequest{Pivot: "titles", Field: "library", Query: group, RowSources: sources})
+	if err != nil || len(facet.Values) != 1 || facet.Values[0].Count != 1203 {
+		t.Fatalf("large facet %+v %v", facet, err)
+	}
+	q := browseAnd(group, &BrowseNode{Field: "year", Operator: "equals", Value: float64(2026)})
+	genres, err := s.FacetsAcross(viewer, FacetRequest{Pivot: "titles", Field: "genre", Query: q, RowSources: sources})
+	if err != nil || len(genres.Values) != 1 || genres.Values[0].Count != 601 {
+		t.Fatalf("large filtered genre %+v %v", genres, err)
+	}
+	first, err := s.BrowseAcross(viewer, AcrossRequest{Pivot: "titles", Query: group, Limit: 37, RowSources: sources})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Fields(forbidden.ID, map[string]any{"title": "Changed restricted revision"})
+	c.Drain()
+	fresh, err := s.ResolveHomeRowMembership(home, "new_on_server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.BrowseAcross(viewer, AcrossRequest{Pivot: "titles", Query: group, Limit: 37, Cursor: first.PageInfo.NextCursor, RowSources: map[string]HomeRowMembership{"new_on_server": fresh}})
+	if !errors.Is(err, ErrStaleContinuation) {
+		t.Fatalf("mixed revision continuation: %v", err)
+	}
+}
+
+func TestBrowseContextFacetsAndMatchNeverExposeRestrictedMemberFacts(t *testing.T) {
+	c := catalogtest.Open(t)
+	tv := c.Library("tv", "TV", "tv", "/tv")
+	show := c.Show(tv, "Shared show", 2026)
+	season := c.Season(show, 1)
+	visible := c.Episode(show, season, 1, "/tv/visible.mkv")
+	hidden := c.Episode(show, season, 2, "/tv/hidden.mkv")
+	c.Attributes(hidden.ID, "label", "private")
+	c.Genres(visible.ID, "fixture", "Family")
+	c.Genres(hidden.ID, "fixture", "Secret genre")
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.SetCreditsTx(ctx, tx, hidden.ID, "fixture", []compactcatalog.Credit{{PersonKey: "secret-person", PersonName: "Secret actor", CreditedName: "Secret actor", Role: "Actor", Department: "Acting"}})
+	})
+	c.Exec(`INSERT INTO screen_metadata_work(target_kind,target_id,library_id,title_seed,status)VALUES('item',?,'tv','Fixture','needs_selection') ON CONFLICT(target_kind,target_id) DO UPDATE SET status='needs_selection'`, hidden.ID)
+	c.Drain()
+	s := New(c.DB)
+	q := &BrowseNode{Field: "year", Operator: "equals", Value: float64(2026)}
+	open := Viewer{Profile: "p", Fence: "f", Libraries: []string{"tv"}}
+	restricted := open
+	restricted.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"private"}}
+	for _, field := range []string{"actor", "genre"} {
+		all, err := s.Facets(open, FacetRequest{Library: "tv", Pivot: "shows", Query: q, Field: field})
+		if err != nil || len(all.Values) == 0 {
+			t.Fatal("nonvacuous private fixture", field, all, err)
+		}
+		page, err := s.Facets(restricted, FacetRequest{Library: "tv", Pivot: "shows", Query: q, Field: field})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, value := range page.Values {
+			if strings.Contains(value.Value, "Secret") {
+				t.Fatalf("%s disclosed hidden member: %+v", field, page)
+			}
+		}
+		if field == "genre" && (len(page.Values) != 1 || page.Values[0].Value != "Family" || page.Values[0].Count != 1) {
+			t.Fatalf("visible member lost: %+v", page)
+		}
+	}
+	unmatched := &BrowseNode{Field: "match", Operator: "equals", Value: "unmatched"}
+	all, err := s.BrowseEntities(open, BrowseRequest{Library: "tv", Pivot: "shows", Query: unmatched})
+	if err != nil || len(all.Entries) != 1 {
+		t.Fatalf("attention fixture %+v %v", all, err)
+	}
+	page, err := s.BrowseEntities(restricted, BrowseRequest{Library: "tv", Pivot: "shows", Query: unmatched})
+	if err != nil || len(page.Entries) != 0 {
+		t.Fatalf("hidden attention disclosed through sibling %+v %v", page, err)
+	}
+	counts, err := s.BrowseCounts(restricted, "tv", BrowseCountRequest{Pivot: "shows", Queries: []BrowseCountQuery{{ID: "unmatched", Query: unmatched}}}, nil)
+	if err != nil || counts.Counts[0].Total != 0 {
+		t.Fatalf("count leaked hidden attention: %+v %v", counts, err)
 	}
 }

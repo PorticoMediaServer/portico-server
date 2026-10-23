@@ -26,6 +26,8 @@ func artworkWidth(r *http.Request) int {
 		}
 	}
 	switch r.URL.Query().Get("size") {
+	case "ambient-v1":
+		return metadata.ArtworkAmbientEdge
 	case "thumbnail":
 		return 400
 	default:

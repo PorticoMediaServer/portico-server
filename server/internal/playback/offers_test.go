@@ -68,7 +68,7 @@ func TestRealMultiAudioFactsPublicationOffersAndRevision(t *testing.T) {
 			t.Fatal("fake selection offer")
 		}
 	}
-	session, e := service.Create(p, item, "auto", "play")
+	session, e := service.Create(p, item, "automatic", "play")
 	if e != nil {
 		t.Fatal(e)
 	}

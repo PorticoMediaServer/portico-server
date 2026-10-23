@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strconv"
 
 	"portico.local/server/internal/mediaanalysis"
@@ -14,7 +14,7 @@ import (
 
 // ffmpeg is the shared, already resolved and verified startup tool.
 func initializeAnalysis(db *sql.DB, state string, inputs *subtitlevideo.Runtime, ffmpeg string) (*mediaanalysis.Service, error) {
-	o := mediaanalysis.Options{DB: db, Directory: filepath.Join(state, "analysis-artifacts"), FFmpeg: ffmpeg, Open: func(ctx context.Context, item, asset string) (mediaanalysis.Input, error) {
+	o := mediaanalysis.Options{DB: db, Directory: storagepaths.Path(state, "analysis-artifacts"), FFmpeg: ffmpeg, Open: func(ctx context.Context, item, asset string) (mediaanalysis.Input, error) {
 		return inputs.OpenSubtitleInput(ctx, item, asset, "")
 	}, Decoder: func(input mediaanalysis.Input) mediaanalysis.Decode { return inputs.AnalysisDecoder(input) }}
 	// These are real operator budgets. No capability is suppressed because a

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"sort"
 	"strconv"
@@ -15,13 +16,20 @@ import (
 	"portico.local/server/internal/worker"
 )
 
-const progressInterval = 10 * time.Second
+const progressInterval = time.Second
 const debounceInterval = time.Second
 
 type entry struct {
-	found    int64
-	sentAt   time.Time
-	revision int64
+	signature string
+	found     int64
+	sentAt    time.Time
+	revision  int64
+}
+
+// ActivityFiles is the owner's in-process scan observation. Its values are
+// used only to detect changes; file names never enter an event payload.
+type ActivityFiles interface {
+	CurrentActivityFile(job string) string
 }
 
 type Publisher struct {
@@ -29,26 +37,31 @@ type Publisher struct {
 	status  func(ctx context.Context, library string) (catalog.InventoryStatus, error)
 	now     func() time.Time
 	tracked map[string]entry
+	tasks   map[string]activityTaskEntry
+	files   ActivityFiles
 }
 
-func New(db *sql.DB, status func(ctx context.Context, library string) (catalog.InventoryStatus, error), now func() time.Time) *Publisher {
+func New(db *sql.DB, status func(ctx context.Context, library string) (catalog.InventoryStatus, error), now func() time.Time, files ...ActivityFiles) *Publisher {
 	if now == nil {
 		now = time.Now
 	}
-	return &Publisher{db: db, status: status, now: now, tracked: map[string]entry{}}
+	p := &Publisher{db: db, status: status, now: now, tracked: map[string]entry{}}
+	if len(files) > 0 {
+		p.files = files[0]
+	}
+	return p
 }
 
-func Run(ctx context.Context, db *sql.DB, status func(ctx context.Context, library string) (catalog.InventoryStatus, error)) {
-	New(db, status, nil).Run(ctx)
+func Run(ctx context.Context, db *sql.DB, status func(ctx context.Context, library string) (catalog.InventoryStatus, error), files ...ActivityFiles) {
+	New(db, status, nil, files...).Run(ctx)
 }
 
 func (p *Publisher) Run(ctx context.Context) {
-	// Only a write that names a scan table wakes the publisher: an idle server
-	// (no scan) runs no timer and no query, whatever else it commits. While a
-	// scan is tracked, a bounded poll at the progress interval backs the wakes
-	// up, so progress and the end are never missed.
+	// Only source work-table writes wake the publisher. An idle server runs
+	// no timer or query; while work is active the existing bounded timer backs
+	// up those signals so progress and completion cannot be missed.
 	signal := worker.NewSignal()
-	unregister := dbwork.WakeOnTableWrites(signal, "inventory_source_active", "inventory_runs")
+	unregister := dbwork.WakeOnTableWrites(signal, "inventory_source_active", "inventory_runs", "analysis_stage_runs", "segment_files", "console_operations", "personal_jobs")
 	defer unregister()
 	var lastTick time.Time
 	nextDue, _ := p.tick(ctx, p.now())
@@ -111,7 +124,21 @@ type pendingEvent struct {
 // due, writes them in a single short transaction. Tracked state changes only
 // after the commit succeeds; on a write error nothing is updated and the next
 // tick retries.
-func (p *Publisher) tick(ctx context.Context, now time.Time) (*time.Time, error) {
+func (p *Publisher) tick(ctx context.Context, now time.Time) (due *time.Time, err error) {
+	// A failed first write has no tracked entry yet. Retain a retry deadline
+	// even then, so an unchanged active queue cannot lose its invalidation.
+	defer func() {
+		if err != nil {
+			retry := now.Add(progressInterval)
+			if due == nil || retry.Before(*due) {
+				due = &retry
+			}
+		}
+	}()
+	taskDue, err := p.tickTaskProgress(ctx, now)
+	if err != nil {
+		return nil, err
+	}
 	active, err := p.activeLibraries(ctx)
 	if err != nil {
 		return nil, err
@@ -129,12 +156,13 @@ func (p *Publisher) tick(ctx context.Context, now time.Time) (*time.Time, error)
 	}
 	sort.Strings(libraries)
 	var events []pendingEvent
-	var earliestDue *time.Time
+	earliestDue := taskDue
 	apply := map[string]*entry{}
 	for _, library := range libraries {
 		st, err := p.status(ctx, library)
 		scanning := false
 		var found int64
+		var signature string
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				if prev, ok := p.tracked[library]; ok {
@@ -150,6 +178,7 @@ func (p *Publisher) tick(ctx context.Context, now time.Time) (*time.Time, error)
 					scanning = true
 				}
 				found += s.Discovered
+				signature += fmt.Sprintf("%s:%s:%s:%d:%d;", s.ID, s.Status, s.Phase, s.Discovered, s.Analyzed)
 			}
 		}
 		prev, tracked := p.tracked[library]
@@ -160,18 +189,18 @@ func (p *Publisher) tick(ctx context.Context, now time.Time) (*time.Time, error)
 				rev = 1
 			}
 			events = append(events, pendingEvent{library: library, state: "started", found: found, revision: strconv.FormatInt(rev, 10), revNum: rev})
-			next := entry{found: found, sentAt: now, revision: rev}
+			next := entry{signature: signature, found: found, sentAt: now, revision: rev}
 			apply[library] = &next
-		case scanning && tracked && found != prev.found && !now.Before(prev.sentAt.Add(progressInterval)):
+		case scanning && tracked && signature != prev.signature && !now.Before(prev.sentAt.Add(progressInterval)):
 			base := prev.revision + 1
 			if now.UnixMilli() > base {
 				base = now.UnixMilli()
 			}
 			events = append(events, pendingEvent{library: library, state: "progress", found: found, revision: strconv.FormatInt(base, 10), revNum: base})
-			next := entry{found: found, sentAt: now, revision: base}
+			next := entry{signature: signature, found: found, sentAt: now, revision: base}
 			apply[library] = &next
 		case scanning && tracked:
-			if found != prev.found {
+			if signature != prev.signature {
 				due := prev.sentAt.Add(progressInterval)
 				if earliestDue == nil || due.Before(*earliestDue) {
 					dueCopy := due

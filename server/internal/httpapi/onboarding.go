@@ -83,8 +83,7 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	for _, action := range []string{"finish", "remote-recovery"} {
-		action := action
+	for _, action := range []string{"finish"} {
 		d.httpHandle(mux, "POST /v1/setup/"+action, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			p, e := d.localOwner(r)
@@ -93,20 +92,14 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 				return
 			}
 			var q struct {
-				Revision         int64 `json:"revision,string"`
-				Enabled          bool  `json:"enabled"`
-				WarningConfirmed bool  `json:"warningConfirmed"`
+				Revision int64 `json:"revision,string"`
 			}
 			if e = decode(w, r, &q); e != nil {
 				failure(w, e)
 				return
 			}
 			var out identity.OnboardingState
-			if action == "finish" {
-				out, e = d.Identity.FinishSetup(r.Context(), p, q.Revision)
-			} else {
-				out, e = d.Identity.SetRemoteRecovery(r.Context(), p, q.Revision, q.Enabled, q.WarningConfirmed)
-			}
+			out, e = d.Identity.FinishSetup(r.Context(), p, q.Revision)
 			if e != nil {
 				failure(w, e)
 				return
@@ -196,7 +189,6 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 		w.WriteHeader(204)
 	})
 	for _, action := range []string{"token", "cancel"} {
-		action := action
 		d.httpHandle(mux, "POST /v1/quick-connect/"+action, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -219,10 +211,6 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 			out, e := d.Identity.PollQuick(ctx, q.DeviceCode)
 			if e != nil {
 				setupFailure(w, e)
-				return
-			}
-			if e = d.Identity.CheckRecoveryRoute(ctx, identity.Principal{Viewer: out.Viewer}, d.privateSetupPeer(r)); e != nil {
-				failure(w, e)
 				return
 			}
 			writeAuth(w, r, 200, out)

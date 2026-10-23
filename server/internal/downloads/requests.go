@@ -39,7 +39,7 @@ type ContainerRequest struct {
 	OperationID string          `json:"operationId"`
 	Target      ContainerTarget `json:"target"`
 	DeviceID    string          `json:"deviceId"`
-	Quality     string          `json:"quality"`
+	Quality     RequestQuality  `json:"quality,omitempty"`
 	Policy      EpisodePolicy   `json:"policy"`
 }
 type RequestView struct {
@@ -88,7 +88,8 @@ func (s *Service) requestAccess(ctx context.Context, tx *sql.Tx, p identity.Prin
 	return access(ctx, tx, p, device, "i.id")
 }
 func normalizeContainerRequest(r *ContainerRequest) error {
-	if !validID.MatchString(r.OperationID) || !validID.MatchString(r.DeviceID) || !validID.MatchString(r.Target.ID) || preparationQuality(r.Quality) != nil {
+	r.Quality = r.Quality.withDefault()
+	if !validID.MatchString(r.OperationID) || !validID.MatchString(r.DeviceID) || !validID.MatchString(r.Target.ID) || preparationQuality(string(r.Quality)) != nil {
 		return ErrInput
 	}
 	switch r.Target.Kind {
@@ -503,6 +504,14 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 	if e = retireStrays(ctx, tx, key, entity, item, now); e != nil {
 		return "", "", e
 	}
+	source, e := resolveSource(ctx, tx, item)
+	if reason := sourceReason(source, e); reason != "" {
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return "", "", e
+		}
+		return "", reason, nil
+	}
+	quality = resolvedQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), quality, source)
 	existing, e := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND state IN('queued','running','ready','paused','failed')`, key, entity, quality))
 	if e == nil {
 		// Asking for the whole season again is asking for the episode that
@@ -518,13 +527,6 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 	}
 	if !errors.Is(e, sql.ErrNoRows) {
 		return "", "", e
-	}
-	source, e := resolveSource(ctx, tx, item)
-	if reason := sourceReason(source, e); reason != "" {
-		if e != nil && !errors.Is(e, sql.ErrNoRows) {
-			return "", "", e
-		}
-		return "", reason, nil
 	}
 	recipe := chooseRecipe(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), quality, source)
 	if reason := qualityReason(ctx, tx, quality, recipe, source); reason != "" {

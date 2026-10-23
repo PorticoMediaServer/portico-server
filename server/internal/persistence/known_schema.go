@@ -16,7 +16,6 @@ import (
 // they have. Nothing is ever dropped automatically: a build that does not define
 // a table cannot know what removing it would cost.
 const knownSchemaObjects = `index access_invitation_page
-index access_invitation_pending
 index admin_channel_presets_page
 index admin_dvr_groups_page
 index admin_receipts_age
@@ -28,6 +27,7 @@ index analysis_results_retention
 index analysis_stage_job
 index api_credentials_account
 index api_credentials_page
+index api_events_activity_progress
 index api_events_audience
 index api_events_expiry
 index api_idempotency_expiry
@@ -72,6 +72,8 @@ index catalog_asset_links_order
 index catalog_assets_duration
 index catalog_assets_height
 index catalog_attribute_ambiguous_restrictions
+index catalog_automatic_collection_entity
+index catalog_automatic_members_group
 index catalog_book_context_author
 index catalog_book_context_series
 index catalog_book_evidence_jobs_turn
@@ -174,6 +176,7 @@ index catalog_entities_fact_gaps
 index catalog_entities_genreless
 index catalog_entities_library
 index catalog_entities_parent
+index catalog_entities_summary_added
 index catalog_entities_title
 index catalog_episodes_position
 index catalog_episodes_season
@@ -237,6 +240,7 @@ index catalog_term_sources_name_seek
 index catalog_term_sources_overrides
 index catalog_term_sources_provider
 index catalog_term_sources_term
+index catalog_title_tombstones_expiry
 index catalog_visibility_sort_edge_entity
 index catalogue_failures_recent
 index client_log_uploads_account_day
@@ -291,6 +295,7 @@ index download_requests_target
 index download_requests_viewer
 index download_requests_work
 index dvr_catalog_provenance_asset_id_fk
+index dvr_programme_images_url
 index dvr_recording_shares_capture
 index dvr_recordings_due
 index dvr_recordings_owner_page
@@ -307,6 +312,8 @@ index identity_browser_accounts_recent
 index identity_credential_attempts_age
 index identity_device_families_device
 index identity_devices_account
+index identity_devices_people_first_seen
+index identity_devices_people_name
 index identity_devices_recent
 index identity_factor_challenge_expiry
 index identity_refresh_device
@@ -360,6 +367,7 @@ index library_sources_library
 index listening_book_series_key
 index listening_group_names
 index listening_metadata_attention_active
+index listening_metadata_attention_browse
 index listening_metadata_attention_library
 index live_allocations_capacity
 index live_channel_choices_groups
@@ -370,6 +378,7 @@ index live_programme_images_digest
 index live_programmes_lineage
 index live_programmes_provider_key
 index live_programmes_window
+index live_reminders_owner
 index live_remote_due
 index live_remote_previews_expiry
 index live_reservation_window
@@ -415,6 +424,7 @@ index metadata_work_expiry
 index mount_operations_retention
 index networking_certificates_scope
 index networking_claim_one_active
+index networking_claim_one_installed
 index networking_mappings_expiry
 index notice_broadcast_work_expiry
 index notification_records_expiry
@@ -452,6 +462,7 @@ index personal_watched_intents_item_id_fk
 index personal_watchlist
 index play_history_account
 index play_history_library
+index play_history_listen_profile
 index play_history_recent
 index playback_admin_retention
 index playback_channel_sessions_live
@@ -476,6 +487,7 @@ index playback_v1_sessions_paused
 index playback_vod_pending
 index playlist_receipts_expiry
 index playlist_shared_viewer
+index playlist_shares_listen_actor
 index ported_artwork_jobs_entity
 index portico_admitted_signer
 index prepared_media_item_jobs
@@ -517,6 +529,7 @@ index saved_resource_receipts_expiry
 index saved_resource_shared
 index saved_resource_visibility
 index screen_metadata_attention_active
+index screen_metadata_attention_browse
 index screen_metadata_attention_library
 index screen_metadata_candidate_target
 index screen_metadata_children
@@ -625,6 +638,9 @@ table catalog_asset_links
 table catalog_assets
 table catalog_attribute_fields
 table catalog_attribute_terms
+table catalog_automatic_collections
+table catalog_automatic_member_overrides
+table catalog_automatic_members
 table catalog_book_chapters
 table catalog_book_context
 table catalog_book_evidence_clock
@@ -753,6 +769,7 @@ table catalog_rec_member_work
 table catalog_rec_postings
 table catalog_related_facets
 table catalog_related_facets_previous
+table catalog_removed_title_revisions
 table catalog_retention_cursors
 table catalog_search_documents
 table catalog_search_documents_next
@@ -786,6 +803,9 @@ table catalog_title_grams_config
 table catalog_title_grams_data
 table catalog_title_grams_docsize
 table catalog_title_grams_idx
+table catalog_title_tombstone_attributes
+table catalog_title_tombstone_viewers
+table catalog_title_tombstones
 table catalog_visibility_sort_buckets
 table catalog_visibility_sort_edges
 table catalog_visibility_sort_entity_jobs
@@ -802,11 +822,13 @@ table compact_visibility_rows
 table compact_visibility_unavailable
 table compact_visibility_unavailable_counts
 table configuration
+table console_alert_params
 table console_alerts
 table console_audit
 table console_documents
 table console_exports
 table console_notifications
+table console_operation_totals
 table console_operations
 table console_receipts
 table console_records
@@ -847,6 +869,7 @@ table dvr_delete_work
 table dvr_maintenance_cursors
 table dvr_owner_revisions
 table dvr_private_libraries
+table dvr_programme_images
 table dvr_receipts
 table dvr_recording_grants
 table dvr_recording_shares
@@ -948,6 +971,7 @@ table live_programme_icons
 table live_programme_images
 table live_programme_metadata
 table live_programmes
+table live_reminders
 table live_remote_configs
 table live_remote_previews
 table live_remote_save_bindings
@@ -1000,11 +1024,13 @@ table media_analysis_dependencies
 table media_analysis_formats
 table media_analysis_item_mappings
 table media_analysis_streams
+table member_password_resets
 table metadata_details
 table metadata_discovery_items
 table metadata_discovery_refresh
 table metadata_document_freshness
 table metadata_jobs
+table metadata_kept_files
 table metadata_movie_candidates
 table metadata_movie_selections
 table metadata_operation_identities
@@ -1057,6 +1083,7 @@ table notification_inbox
 table notification_records
 table notification_revision
 table onboarding_state_v1
+table owner_reset_file
 table personal_activity_receipts
 table personal_activity_revisions
 table personal_batch_receipts
@@ -1071,6 +1098,7 @@ table personal_job_destinations
 table personal_job_details
 table personal_job_failures
 table personal_job_items
+table personal_job_membership_outcomes
 table personal_jobs
 table personal_play_counts
 table personal_receipts
@@ -1083,6 +1111,7 @@ table playback_artifacts
 table playback_audio_plans
 table playback_channel_sessions
 table playback_conversion_failures
+table playback_conversion_observations
 table playback_conversion_targets
 table playback_copy_timelines
 table playback_delivery_plans
@@ -1175,6 +1204,7 @@ table remote_scan_cursors
 table remote_scan_generations
 table remote_source_operations
 table remote_sources
+table reset_file_sessions
 table restriction_outbox
 table restrictions
 table retained_title_identities
@@ -1191,7 +1221,6 @@ table saved_resource_receipts
 table saved_resource_shares
 table saved_resources
 table scan_queue
-table schema_migrations
 table screen_anime_seasons
 table screen_metadata_attention
 table screen_metadata_attention_counts
@@ -1359,6 +1388,11 @@ trigger catalog_attribute_fields_bound_insert
 trigger catalog_attribute_revision_delete
 trigger catalog_attribute_revision_insert
 trigger catalog_attribute_revision_update
+trigger catalog_automatic_fields_delete
+trigger catalog_automatic_fields_insert
+trigger catalog_automatic_fields_update
+trigger catalog_automatic_member_delete
+trigger catalog_automatic_member_insert
 trigger catalog_availability_object_delete
 trigger catalog_availability_object_insert
 trigger catalog_availability_object_update
@@ -1664,6 +1698,9 @@ trigger catalog_rec_ratings_update
 trigger catalog_related_facets_retain_delete
 trigger catalog_related_facets_retain_insert
 trigger catalog_related_facets_retain_update
+trigger catalog_removed_title_reference_delete
+trigger catalog_removed_title_reference_insert
+trigger catalog_removed_title_reference_update
 trigger catalog_search_documents_index_delete
 trigger catalog_search_documents_index_insert
 trigger catalog_search_documents_index_update
@@ -1688,6 +1725,7 @@ trigger catalog_sort_plays_update
 trigger catalog_title_grams_delete
 trigger catalog_title_grams_insert
 trigger catalog_title_grams_update
+trigger catalog_title_removed
 trigger catalog_visibility_sort_browse_delete
 trigger catalog_visibility_sort_browse_insert
 trigger catalog_visibility_sort_browse_update
@@ -1787,6 +1825,7 @@ trigger dvr_managed_source_update
 trigger dvr_owner_revisions_bound_check
 trigger dvr_owner_revisions_bound_delete
 trigger dvr_owner_revisions_bound_insert
+trigger dvr_preserve_programme_image
 trigger dvr_preserve_recording_dependency
 trigger dvr_recording_grants_recording_groups_list_delete
 trigger dvr_recording_grants_recording_groups_list_insert
@@ -1800,6 +1839,10 @@ trigger dvr_recordings_my_recordings_list_update
 trigger dvr_recordings_tuners_list_delete
 trigger dvr_recordings_tuners_list_insert
 trigger dvr_recordings_tuners_list_update
+trigger dvr_refresh_programme_image
+trigger dvr_release_programme_image
+trigger dvr_retain_late_programme_image
+trigger dvr_retain_programme_image
 trigger dvr_retire_disabled_rule_dependency
 trigger dvr_retirement_catalog_revision
 trigger dvr_rules_bound_check
@@ -1875,6 +1918,9 @@ trigger library_directory_insert_hint
 trigger library_directory_name_hint
 trigger library_directory_update_hint
 trigger library_metadata_agent_create
+trigger library_metadata_agents_browse_delete
+trigger library_metadata_agents_browse_insert
+trigger library_metadata_agents_browse_update
 trigger library_navigation_revisions_bound_check
 trigger library_navigation_revisions_bound_delete
 trigger library_navigation_revisions_bound_insert
@@ -1888,6 +1934,9 @@ trigger listening_attention_count_update
 trigger listening_attention_music_insert
 trigger listening_attention_music_update
 trigger listening_attention_retire
+trigger listening_metadata_attention_browse_delete
+trigger listening_metadata_attention_browse_insert
+trigger listening_metadata_attention_browse_update
 trigger listening_series_asset_delete
 trigger listening_series_asset_insert
 trigger listening_series_book_library
@@ -1915,6 +1964,7 @@ trigger live_logo_source_update
 trigger live_preference_receipts_bound_check
 trigger live_preference_receipts_bound_delete
 trigger live_preference_receipts_bound_insert
+trigger live_reminders_bound
 trigger live_remote_configs_live_sources_list_delete
 trigger live_remote_configs_live_sources_list_insert
 trigger live_remote_configs_live_sources_list_update
@@ -2113,6 +2163,10 @@ trigger networking_server_identities_bound_insert
 trigger notification_inbox_bound_check
 trigger notification_inbox_bound_delete
 trigger notification_inbox_bound_insert
+trigger owner_change_account_insert
+trigger owner_change_account_rename
+trigger owner_change_link_insert
+trigger owner_change_link_update
 trigger personal_activity_revisions_bound_check
 trigger personal_activity_revisions_bound_delete
 trigger personal_activity_revisions_bound_insert
@@ -2187,6 +2241,8 @@ trigger playback_requests_retention_insert
 trigger playback_route_failures_playback_problems_list_delete
 trigger playback_route_failures_playback_problems_list_insert
 trigger playback_route_failures_playback_problems_list_update
+trigger playback_v1_buffering_insert
+trigger playback_v1_buffering_transition
 trigger playlist_directory_insert
 trigger playlist_directory_revisions_bound_check
 trigger playlist_directory_revisions_bound_delete
@@ -2323,6 +2379,9 @@ trigger screen_fields_revision_DELETE
 trigger screen_fields_revision_INSERT
 trigger screen_fields_revision_UPDATE
 trigger screen_item_delete
+trigger screen_metadata_attention_browse_delete
+trigger screen_metadata_attention_browse_insert
+trigger screen_metadata_attention_browse_update
 trigger screen_metadata_attention_count_delete
 trigger screen_metadata_attention_count_insert
 trigger screen_metadata_attention_count_update
@@ -2494,7 +2553,8 @@ view catalog_related_facets_serving
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context`
+view listening_book_context
+`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

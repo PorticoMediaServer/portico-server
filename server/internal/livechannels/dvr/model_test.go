@@ -82,3 +82,27 @@ func TestBlockedKeywordsAndChannelsHaveVeto(t *testing.T) {
 		t.Fatal("blocked channel ignored")
 	}
 }
+
+func TestDVRExplicitTitleRulesRequireRealChannelAnchor(t *testing.T) {
+	c := RuleConfig{Name: "News", SourceID: strings.Repeat("a", 48), MatchKind: "title", Title: "News", ChannelID: strings.Repeat("b", 64), Enabled: true, Episodes: "all", AllowedChannels: []string{}, BlockedChannels: []string{}, Keywords: []string{}}
+	if !c.Valid() {
+		t.Fatal("title rule invalid")
+	}
+	p := livechannels.Programme{ChannelID: c.ChannelID, Title: "NEWS"}
+	if !c.Matches(p) {
+		t.Fatal("explicit title match failed")
+	}
+	p.ChannelID = strings.Repeat("c", 64)
+	if c.Matches(p) {
+		t.Fatal("title rule crossed channels")
+	}
+	p.ChannelID = c.ChannelID
+	p.Title = "Other news"
+	if c.Matches(p) {
+		t.Fatal("title rule used substring")
+	}
+	c.SeriesID = "fabricated"
+	if c.Valid() {
+		t.Fatal("title rule invented provider identity")
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/playback/vod"
 	"regexp"
 	"strconv"
 	"strings"
@@ -40,6 +41,7 @@ type AudioRenditionPlan struct {
 	ChannelLayout string `json:"channelLayout,omitempty"`
 	Language      string `json:"language"`
 	Label         string `json:"label"`
+	Title         string `json:"title,omitempty"`
 	Default       bool   `json:"default"`
 	Commentary    bool   `json:"commentary,omitempty"`
 }
@@ -75,7 +77,12 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 		}
 	}
 	for _, a := range tracks {
-		r := AudioRenditionPlan{Ordinal: len(out), StreamIndex: a.Index, Action: "copy", Codec: a.Codec, Channels: a.Channels, BitrateBPS: int(a.BitRate), Language: manifestAudioLanguage(a.Language), Default: a.Index == p.AudioStream, Commentary: a.Commentary}
+		r := AudioRenditionPlan{Ordinal: len(out), StreamIndex: a.Index, Action: "copy", Codec: a.Codec, Channels: a.Channels, BitrateBPS: int(a.BitRate), Language: manifestAudioLanguage(a.Language), Default: a.Index == p.AudioStream, Commentary: a.Commentary, Title: strings.TrimSpace(strings.Map(func(r rune) rune {
+			if r < 32 || r == 127 {
+				return ' '
+			}
+			return r
+		}, a.Title))}
 		r.Packaging = "mpegts_hls"
 		if kind == TransportHLSFMP4 {
 			r.Packaging = "fmp4_hls"
@@ -655,10 +662,20 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 			_, _ = tail.Write([]byte(windowConverterDiagnostic(err, "", h.root)))
 		}
 	} else {
+		var progress *vod.ConversionProgressWriter
+		if r.Action == "convert" {
+			observe, finish := h.observeConversion(ctx, id, generation)
+			defer finish()
+			args = append([]string{"-progress", "pipe:1", "-stats_period", "1", "-nostats"}, args...)
+			progress = vod.NewConversionProgressWriter(observe)
+		}
 		var cmd *exec.Cmd
 		if cmd, err = mediaexec.CommandContext(run, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}}); err == nil {
 			cmd.WaitDelay = 2 * time.Second
 			cmd.Stderr = tail
+			if progress != nil {
+				cmd.Stdout = progress
+			}
 			err = cmd.Run()
 		}
 	}

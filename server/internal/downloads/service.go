@@ -15,7 +15,6 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
-	"portico.local/server/internal/preparedmedia"
 )
 
 // SourceOpener reads an original catalog file. The server never opens a library
@@ -107,25 +106,19 @@ type Settings struct {
 
 // QualityChoice is one quality a download may be asked for.
 type QualityChoice struct {
-	Quality string `json:"quality"`
-	Label   string `json:"label"`
-	Kind    string `json:"kind"`
-	Height  int    `json:"targetDisplayHeight,omitempty"`
+	Quality            string  `json:"quality"`
+	Label              string  `json:"label"`
+	Kind               string  `json:"kind"`
+	Height             int     `json:"targetDisplayHeight,omitempty"`
+	MaxVideoBitrateBPS int     `json:"maxVideoBitrateBps,omitempty"`
+	MaxAudioBitrateBPS int     `json:"maxAudioBitrateBps,omitempty"`
+	DataGBPerHour      float64 `json:"dataGBPerHour,omitempty"`
 }
 
 func producibleQualities(tx *sql.Tx) ([]QualityChoice, error) {
-	out := []QualityChoice{{Quality: QualityOriginal, Label: "Original", Kind: "source"}}
-	transcoding := false
-	if e := tx.QueryRow(`SELECT transcoding_enabled FROM playback_owner_policy WHERE singleton=1`).Scan(&transcoding); e != nil && !errors.Is(e, sql.ErrNoRows) {
-		return out, e
-	}
-	if !transcoding {
-		return out, nil
-	}
+	out := []QualityChoice{{Quality: "original", Label: "Original", Kind: "source"}, {Quality: "automatic", Label: "Automatic", Kind: "source"}}
 	for _, rung := range playback.QualityLadder {
-		if preparedmedia.Producible(preparedProfile("movie", rung)) {
-			out = append(out, QualityChoice{Quality: rung.ID, Label: rung.Label, Kind: "optimized", Height: rung.Height})
-		}
+		out = append(out, QualityChoice{Quality: rung.ID, Label: rung.Label, Kind: "optimized", Height: rung.Height, MaxVideoBitrateBPS: rung.VideoBitrateBPS, MaxAudioBitrateBPS: rung.MaxAudioBitrateBPS, DataGBPerHour: rung.DataGBPerHour})
 	}
 	return out, nil
 }
@@ -589,7 +582,7 @@ func decodeCursor(v string) (int64, string, error) {
 // preparationQuality validates a requested quality against the published ladder
 // rather than accepting any string that later fails deep in the worker.
 func preparationQuality(v string) error {
-	if v == QualityOriginal {
+	if v == QualityOriginal || v == "automatic" {
 		return nil
 	}
 	if _, ok := playback.LadderPreset(v); ok {

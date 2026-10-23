@@ -328,7 +328,7 @@ func (d *HardwareDetector) runInput(ctx context.Context, executable string, args
 // VA-API requires mastering-display side data, which a lavfi pattern cannot
 // provide. Mount only this private fixture, with no source or output authority.
 func (d *HardwareDetector) probeVAAPIFilters(ctx context.Context, executable string, args []string) error {
-	file, err := os.CreateTemp("", "portico-hdr-probe-*.hevc")
+	file, err := os.CreateTemp(os.TempDir(), "portico-hdr-probe-*.hevc")
 	if err != nil {
 		return err
 	}

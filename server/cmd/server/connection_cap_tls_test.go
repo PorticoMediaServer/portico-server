@@ -9,7 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 	"time"
 
@@ -22,7 +22,7 @@ import (
 
 func TestMainBoundedDirectListenerPreservesHTTP2TLSAndRefresh(t *testing.T) {
 	state := t.TempDir()
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

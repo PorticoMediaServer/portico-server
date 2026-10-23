@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/networkpolicy"
 	"portico.local/server/internal/requestinput"
+	"portico.local/server/internal/storagepaths"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,6 +46,7 @@ import (
 	"portico.local/server/internal/playbackruntime"
 	"portico.local/server/internal/playbackv1"
 	"portico.local/server/internal/preparedmedia"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/remotesources"
@@ -55,6 +57,8 @@ import (
 )
 
 type Dependencies struct {
+	RcloneProgram     *rcloneprogram.Status
+	StorageLayout     *storagepaths.Layout
 	ConnectionUsage   func() ConnectionUsage
 	LocalArtworkUsage func() (int64, bool)
 	CacheDirectory    string
@@ -299,7 +303,16 @@ func failure(w http.ResponseWriter, e error) {
 	}
 	if errors.Is(e, identity.ErrProfileLocked) {
 		status, code = 429, "profile_pin_locked"
-		w.Header().Set("Retry-After", "60")
+		var wait *identity.ProfilePINError
+		if errors.As(e, &wait) {
+			w.Header().Set("Retry-After", strconv.FormatInt(wait.RetryAfterSeconds, 10))
+		}
+	}
+	if errors.Is(e, identity.ErrProfilePIN) {
+		var wait *identity.ProfilePINError
+		if errors.As(e, &wait) {
+			w.Header().Set("Retry-After", strconv.FormatInt(wait.RetryAfterSeconds, 10))
+		}
 	}
 	if errors.Is(e, identity.ErrProfileCapacity) {
 		status, code = 409, "profile_capacity"
@@ -645,10 +658,10 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 		return identity.Principal{}, identity.ErrUnauthorized
 	}
 	token := strings.TrimPrefix(header, "Bearer ")
-	private := d.privateSetupPeer(r)
 	// The cache is keyed on the token's digest, never on the token, and it is
 	// consulted only on lanes where a few seconds of lag in a revocation is
 	// acceptable. Everything that touches authority or playback resolves live.
+	private := d.privateSetupPeer(r)
 	key := ""
 	strict := strictPrincipal(dbwork.ClassFrom(r.Context(), dbwork.ClassInteractive))
 	if !strict && !private {
@@ -668,9 +681,6 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 	resolve := func(ctx context.Context) error {
 		var e error
 		if p, e = d.Identity.AuthenticateContext(ctx, token); e != nil {
-			return e
-		}
-		if e = d.Identity.CheckRecoveryRoute(ctx, p, private); e != nil {
 			return e
 		}
 		return d.allowedLibrary(ctx, p, "")
@@ -821,6 +831,7 @@ func New(d Dependencies) http.Handler {
 	authRate := &limiter{trustedProxies: d.TrustedProxies, proxies: func(r *http.Request) []netip.Prefix { return d.trustedProxyPrefixes(r.Context()) }}
 	d.linearMediaRoutes(mux)
 	d.mountRoutes(mux)
+	d.bundledRcloneRoutes(mux)
 	d.remoteSourceRoutes(mux)
 	d.episodeRoutes(mux)
 	d.playbackChapterRoutes(mux)
@@ -901,6 +912,54 @@ func New(d Dependencies) http.Handler {
 			failure(w, e)
 			return
 		}
+
+		ids := make([]string, 0, len(visible))
+		for _, library := range visible {
+			ids = append(ids, library.ID)
+		}
+		viewer, err := d.catalogViewer(r, p, ids, "")
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		summaries, err := d.Catalog.SummarizeLibraries(r.Context(), viewer, visible)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		for i := range visible {
+			summary, ok := summaries[visible[i].ID]
+			if ok {
+				visible[i].Summary = &summary
+			}
+		}
+		// Recheck authority after the composite read before any content escapes.
+		after, err := d.principal(r.WithContext(dbwork.WithClass(r.Context(), dbwork.ClassSecurityFence)))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		current, _, err := d.viewerRestrictions(r.WithContext(dbwork.WithClass(r.Context(), dbwork.ClassSecurityFence)), after)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		if catalog.RestrictionFence(current) != catalog.RestrictionFence(viewer.Restrictions) {
+			failure(w, identity.ErrForbidden)
+			return
+		}
+		allowed, err := d.allowedLibrarySet(r.Context(), after, ids)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		filtered := visible[:0]
+		for _, library := range visible {
+			if allowed[library.ID] {
+				filtered = append(filtered, library)
+			}
+		}
+		visible = filtered
 		write(w, 200, map[string]any{"items": visible})
 	})
 	d.httpHandle(mux, "POST /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
@@ -909,20 +968,23 @@ func New(d Dependencies) http.Handler {
 			failure(w, e)
 			return
 		}
-		var body struct {
-			Name string `json:"name"`
-			Kind string `json:"kind"`
-			Path string `json:"path"`
-			// MetadataAgent is the library's metadata source: "online" (the
-			// default when omitted) or "local" for local metadata only.
-			MetadataAgent string `json:"metadataAgent,omitempty"`
-			// MetadataLanguage is one of the chosen agent's Languages for
-			// Kind (see GET /v1/library-kinds/{kind}/metadata-agents).
-			// Omitted changes nothing.
-			MetadataLanguage string `json:"metadataLanguage,omitempty"`
-		}
+		var body libraryCreationRequest
 		if e := decode(w, r, &body); e != nil {
 			failure(w, e)
+			return
+		}
+		if body.Kind == "book" || body.Kind == "comic" || body.Kind == "audiobook" {
+			if body.MetadataAgent != "" && body.MetadataAgent != metadata.AgentLocal {
+				failure(w, catalog.ErrAdminQuery)
+				return
+			}
+			body.MetadataAgent = metadata.AgentLocal
+		}
+		folders := body.Folders
+		if len(folders) == 0 {
+			folders = []string{body.Path}
+		} else if body.Path != "" {
+			failure(w, catalog.ErrAdminQuery)
 			return
 		}
 		// The language is validated before creating anything: a rejected
@@ -962,7 +1024,7 @@ func New(d Dependencies) http.Handler {
 			_, err := d.Ingestion.QueueTx(r.Context(), tx, l.ID)
 			return err
 		}
-		l, e := d.Catalog.CreateAuthorizedThen(r.Context(), body.Name, body.Kind, body.Path, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, "") }, queue)
+		l, e := d.Catalog.CreateFoldersAuthorizedThen(r.Context(), body.Name, body.Kind, folders, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, "") }, queue)
 		if e != nil {
 			failure(w, e)
 			return

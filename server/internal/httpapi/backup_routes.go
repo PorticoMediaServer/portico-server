@@ -60,8 +60,7 @@ func backupRouteError(err error) error {
 		return &apierror.Error{Code: "restore_not_portico"}
 	case errors.Is(err, persistence.ErrCandidateIntegrity):
 		return &apierror.Error{Code: "restore_integrity_failed"}
-	case errors.Is(err, persistence.ErrCandidateNewer):
-		return &apierror.Error{Code: "restore_schema_newer"}
+
 	case errors.Is(err, persistence.ErrCandidatePreRelease):
 		return &apierror.Error{Code: "restore_pre_release"}
 	case errors.Is(err, backup.ErrInsufficientDisk):
@@ -157,7 +156,7 @@ func registerBackups(registry *apikit.Registry, d Dependencies) error {
 		return err
 	}
 	err = apikit.Register(registry, apikit.Route[RestoreBackupRequest, StartBackupResponse]{Metadata: apikit.Metadata{Admission: laneAdminLong,
-		ID: "post_admin_backups_restore", Method: "POST", Path: "/v1/admin/backups/restore", Summary: "Start restoring a backup", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4096, Status: 202, Errors: []string{"unauthorized", "invalid_request", "request_in_progress", "restore_lock_unavailable", "restore_source_invalid", "restore_schema_newer", "restore_pre_release", "restore_integrity_failed", "restore_not_portico", "insufficient_disk", "administration_unavailable", "internal"},
+		ID: "post_admin_backups_restore", Method: "POST", Path: "/v1/admin/backups/restore", Summary: "Start restoring a backup", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4096, Status: 202, Errors: []string{"unauthorized", "invalid_request", "request_in_progress", "restore_lock_unavailable", "restore_source_invalid", "restore_pre_release", "restore_integrity_failed", "restore_not_portico", "insufficient_disk", "administration_unavailable", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body RestoreBackupRequest) (StartBackupResponse, error) {
 		if d.Backups == nil {
 			return StartBackupResponse{}, &apierror.Error{Code: "administration_unavailable"}

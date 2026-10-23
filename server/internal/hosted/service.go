@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -53,13 +54,16 @@ type Policy struct {
 }
 type Signed = trust.Envelope
 type Service struct {
-	db       *sql.DB
-	identity *identity.Service
-	origin   string
-	key      ed25519.PublicKey
-	keyID    string
-	client   *http.Client
-	current  *currentClaims
+	reachMu     sync.Mutex
+	reachUntil  time.Time
+	reachResult ServicesReachability
+	db          *sql.DB
+	identity    *identity.Service
+	origin      string
+	key         ed25519.PublicKey
+	keyID       string
+	client      *http.Client
+	current     *currentClaims
 	// wake is "something changed, look again". It is what replaced a ten-second
 	// ticker that asked the database whether the outbox was empty whether or not
 	// anything had been written to it; an idle server now makes no query at all
@@ -203,4 +207,48 @@ func contains(v []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// ServicesReachability is a bounded liveness observation, not account or claim
+// authority. Configuration alone never means Portico Services answered.
+type ServicesReachability struct {
+	Configured bool   `json:"configured"`
+	Reachable  bool   `json:"reachable"`
+	CheckedAt  string `json:"checkedAt,omitempty"`
+}
+
+func (s *Service) ServicesReachability(ctx context.Context) ServicesReachability {
+	if s == nil || !s.Configured() {
+		return ServicesReachability{}
+	}
+	s.reachMu.Lock()
+	defer s.reachMu.Unlock()
+	if time.Now().Before(s.reachUntil) {
+		return s.reachResult
+	}
+	out := ServicesReachability{Configured: true, CheckedAt: time.Now().UTC().Format(time.RFC3339)}
+	bounded, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	req, e := http.NewRequestWithContext(bounded, http.MethodGet, s.origin+"/health", nil)
+	if e == nil {
+		req.Header.Set("Accept", "application/json")
+		client := *s.client
+		client.Jar = nil
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		if response, err := client.Do(req); err == nil {
+			if response.StatusCode == http.StatusOK {
+				var health struct {
+					Alive bool `json:"alive"`
+				}
+				raw, err := io.ReadAll(io.LimitReader(response.Body, 257))
+				out.Reachable = err == nil && len(raw) <= 256 && json.Unmarshal(raw, &health) == nil && health.Alive
+			}
+			response.Body.Close()
+		}
+	}
+	if ctx.Err() == nil {
+		s.reachResult = out
+		s.reachUntil = time.Now().Add(30 * time.Second)
+	}
+	return out
 }

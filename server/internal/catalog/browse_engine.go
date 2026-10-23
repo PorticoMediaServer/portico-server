@@ -46,10 +46,12 @@ type BrowsePageInfo struct {
 	// TotalIsLowerBound is set when a posted filter matched more than
 	// browseTotalThreshold titles: Total is then the threshold, a lower
 	// bound, and pages continue by their cursors.
-	TotalIsLowerBound bool   `json:"totalIsLowerBound"`
-	Revision          string `json:"revision"`
-	HasMore           bool   `json:"hasMore"`
-	NextCursor        string `json:"nextCursor"`
+	TotalIsLowerBound    bool   `json:"totalIsLowerBound"`
+	Revision             string `json:"revision"`
+	HasMore              bool   `json:"hasMore"`
+	NextCursor           string `json:"nextCursor"`
+	DurationMs           int64  `json:"durationMs"`
+	DurationIsLowerBound bool   `json:"durationIsLowerBound"`
 }
 
 type BrowseApplied struct {
@@ -58,11 +60,12 @@ type BrowseApplied struct {
 	Seek  *BrowseSeek           `json:"seek,omitempty"`
 }
 type BrowseResult struct {
-	Pivot         string                 `json:"pivot"`
-	Applied       BrowseApplied          `json:"applied"`
-	Entries       []ContentEntry         `json:"entries"`
-	PageInfo      BrowsePageInfo         `json:"pageInfo"`
-	PositionIndex []BrowsePositionAnchor `json:"positionIndex"`
+	Pivot          string                 `json:"pivot"`
+	Applied        BrowseApplied          `json:"applied"`
+	Entries        []ContentEntry         `json:"entries"`
+	PageInfo       BrowsePageInfo         `json:"pageInfo"`
+	PositionIndex  []BrowsePositionAnchor `json:"positionIndex"`
+	DisplayTargets []HomeDisplayTarget    `json:"displayTargets,omitempty"`
 }
 
 // BrowseRequest is the whole of the POST body plus the authorized scope the
@@ -70,24 +73,26 @@ type BrowseResult struct {
 // authorization facts into the revision so a permission change invalidates a
 // range the same way a catalog change does.
 type BrowseRequest struct {
-	ServerID    string
-	Library     string
-	Profile     string
-	ViewerFence string
-	Pivot       string
-	Query       *BrowseNode
-	Sort        []BrowseSortSelection
-	Limit       int
-	Cursor      string
-	Range       *BrowseRange
-	Seek        *BrowseSeek
+	ServerID       string
+	Library        string
+	Profile        string
+	ViewerFence    string
+	HomeRowDisplay string
+	Pivot          string
+	Query          *BrowseNode
+	Sort           []BrowseSortSelection
+	Limit          int
+	Cursor         string
+	Range          *BrowseRange
+	Seek           *BrowseSeek
 	// Restrictions is the viewer's content restriction. The browse engine applies
 	// it in browseSelect; see restrictions.go for the predicate it compiles.
 	Restrictions identity.ContentRestrictions
 	// Rows are the Home rows the query names, resolved by the caller to their
 	// titles in order (ResolveHomeRows); a homeRow condition reads nothing else.
-	Rows   map[string][]int64
-	viewer Viewer
+	Rows       map[string][]int64
+	RowSources map[string]HomeRowMembership
+	viewer     Viewer
 	// scope overrides the cursor scope so the legacy GET surface keeps its
 	// existing continuation fencing.
 	scope *cursorScope
@@ -319,7 +324,7 @@ func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts
 	if err != nil {
 		return "", err
 	}
-	extra, err := s.browseGroupFence(request.Query, request.Rows)
+	extra, err := s.browseGroupFence(request.Query, request.Rows, request.RowSources)
 	if err != nil {
 		return "", err
 	}
@@ -332,7 +337,7 @@ func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts
 		}
 		extra += "\x00" + fence
 	}
-	digest := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%s", request.Library, pivot.ID, request.ViewerFence, queryFingerprint(request.Query), canonicalSort(sorts), revision.Catalog, revision.Viewer, extra)))
+	digest := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%s", request.Library, pivot.ID, request.ViewerFence, queryFingerprint(request.Query)+"\x00display:"+request.HomeRowDisplay, canonicalSort(sorts), revision.Catalog, revision.Viewer, extra)))
 	return "browse_" + hex.EncodeToString(digest[:]), nil
 }
 
@@ -355,6 +360,7 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 	if err := s.prepareViewer(viewer); err != nil {
 		return BrowseResult{}, err
 	}
+	s = s.WithRecommendationRestrictions(viewer.EffectiveRestrictions())
 	request.Profile, request.ViewerFence, request.Restrictions, request.viewer = viewer.Profile, viewer.Fence, viewer.EffectiveRestrictions(), viewer
 	if dbwork.Snapshot(s.Context()) == nil {
 		var result BrowseResult
@@ -386,7 +392,16 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 				return out, err
 			}
 		}
+		if err = s.EnrichListeningEntries(viewer, entries); err != nil {
+			return out, err
+		}
 		out.Entries = entries
+	}
+	if out.PageInfo.Revision != "" {
+		out.PageInfo.DurationMs, out.PageInfo.DurationIsLowerBound, err = s.browseQueryDuration(viewer, FacetRequest{Library: request.Library, Pivot: out.Pivot, Query: request.Query, Rows: request.Rows, RowSources: request.RowSources})
+		if err != nil {
+			return out, err
+		}
 	}
 	return out, nil
 }
@@ -434,15 +449,9 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	if request.Seek != nil && !seekable {
 		return out, nil, browseIssue("seek", "seek requires the first sort to be title ascending")
 	}
-	if request.Query != nil {
-		if request.Seek != nil {
-			return out, nil, browseIssue("seek", "seek is unavailable for filtered queries")
-		}
-
-	}
 
 	where, args := browseScopeSQL(request.Library, pivot)
-	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), rows: request.Rows}
+	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), rows: request.Rows, rowSources: request.RowSources}
 	for _, member := range entityKindMembers(pivot) {
 		if kind, err := compactcatalog.ParseKind(member); err == nil {
 			compiler.kinds = append(compiler.kinds, int(kind))
@@ -480,6 +489,9 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	out.PageInfo.Revision = revision
 	stale := request.Range != nil && request.Range.Revision != "" && request.Range.Revision != revision
+	if stale && request.HomeRowDisplay != "" {
+		return out, nil, ErrStaleContinuation
+	}
 
 	// The count, the letter index and the anchor rank used to be three passes over
 	// the whole pivot. When the client has posted no expression of its own — which
@@ -511,7 +523,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 
 	start := 0
-	scope := cursorScope{Library: request.Library, Viewer: request.ViewerFence, Profile: request.Profile, View: "browse:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query), Search: seekPrefix(request.Seek), Limit: request.Limit}
+	scope := cursorScope{Library: request.Library, Viewer: request.ViewerFence, Profile: request.Profile, View: "browse:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query) + "\x00display:" + request.HomeRowDisplay, Search: seekPrefix(request.Seek), Limit: request.Limit}
 	if request.scope != nil {
 		scope = *request.scope
 	}
@@ -522,6 +534,9 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		cursor, err := s.decodeCursor(request.Cursor, scope)
 		if err != nil {
 			return out, nil, err
+		}
+		if cursor.Fingerprint != revision {
+			return out, nil, ErrStaleContinuation
 		}
 		expires = cursor.Expires
 		if start, err = strconv.Atoi(cursor.Value); err != nil || start < 0 {
@@ -555,6 +570,17 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		start = request.Range.Start
 	}
 
+	if request.Query != nil && len(sorts) > 0 && sorts[0].Field == "title" && (request.Cursor == "" || request.Seek != nil) {
+		anchors, hit := s.cachedAnchors(out.PageInfo.Revision)
+		if !hit {
+			anchors, err = s.browsePositionIndex(where, order, args, orderArgs)
+			if err != nil {
+				return out, nil, err
+			}
+			s.storeAnchors(out.PageInfo.Revision, anchors)
+		}
+		out.PositionIndex = anchors
+	}
 	// The letter index is only meaningful under an ascending title sort; it is
 	// computed once per range so a scrub rail and the grid share one ranking.
 	if request.Query == nil && seekable && (request.Cursor == "" || request.Seek != nil) {
@@ -600,7 +626,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	group, groupArgs := "", []any(nil)
 	if sorts[0].Field == "groupOrder" {
-		if group, groupArgs, err = s.groupOrderSource(groupOrderTarget(request.Query), request.Rows); err != nil {
+		if group, groupArgs, err = s.groupOrderSource(groupOrderTarget(request.Query), request.Rows, request.RowSources); err != nil {
 			return out, nil, err
 		}
 	}
@@ -671,7 +697,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			}
 		}
 		// The cursor carries the integer entity id; cursors are opaque and signed.
-		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Total: total, Expires: expires})
+		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: revision, Total: total, Expires: expires})
 		if err != nil {
 			return out, nil, err
 		}
@@ -820,6 +846,9 @@ func (s *Service) browseProjection(profile string, rows []browseRow) ([]ContentE
 		out = append(out, entry)
 	}
 	if err = s.nameEntryMakers(out); err != nil {
+		return nil, err
+	}
+	if err = s.ProjectCoverSamples(profile, out); err != nil {
 		return nil, err
 	}
 	if err = s.countEntryPlays(profile, out); err != nil {

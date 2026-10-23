@@ -13,10 +13,11 @@ import {PlaybackApiError, call, enc, type V1Http} from './http.ts';
 import {parseOptions, type AudioStream, type MediaVersion, type PlaybackOptions, type PlaybackPlan, type SubtitleStream} from './types.ts';
 import type {QualityRequest} from './quality.ts';
 
-export type OptionsPreview = Readonly<{versionId?: string; partId?: string; quality?: QualityRequest; audioId?: string; subtitleId?: string | null}>;
+export type OptionsPreview = Readonly<{versionId?: string; partId?: string; quality?: QualityRequest; audioId?: string; subtitleId?: string | null; throughputKbps?: number}>;
 
 function query(p: OptionsPreview): string {
   const q = new URLSearchParams();
+  if (p.throughputKbps && Number.isSafeInteger(p.throughputKbps) && p.throughputKbps>0) q.set('throughputKbps',String(p.throughputKbps));
   if (p.versionId) q.set('versionId', p.versionId);
   if (p.partId) q.set('partId', p.partId);
   if (p.audioId) q.set('audioId', p.audioId);

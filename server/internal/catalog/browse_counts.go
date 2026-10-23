@@ -1,7 +1,12 @@
 package catalog
 
 import (
+	"context"
+	"fmt"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"strings"
+	"time"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
@@ -260,4 +265,113 @@ func (s *Service) browseSummarise(library string, kinds []string, r identity.Con
 	out.total = position
 	out.exact = true
 	return out, nil
+}
+
+// BrowseCountBatch is one bounded, read-only relax-suggestion request.
+const BrowseCountMaximum = 8
+
+type BrowseCountQuery struct {
+	ID    string      `json:"id"`
+	Query *BrowseNode `json:"query"`
+}
+type BrowseCountRequest struct {
+	Pivot   string             `json:"pivot"`
+	Queries []BrowseCountQuery `json:"queries"`
+}
+type BrowseCount struct {
+	ID                string `json:"id"`
+	Total             int    `json:"total"`
+	TotalIsLowerBound bool   `json:"totalIsLowerBound"`
+	Revision          string `json:"revision"`
+}
+type BrowseCountBatch struct {
+	Counts []BrowseCount `json:"counts"`
+}
+
+func (s *Service) BrowseCounts(viewer Viewer, library string, request BrowseCountRequest, sources map[string]HomeRowMembership) (BrowseCountBatch, error) {
+	out := BrowseCountBatch{Counts: []BrowseCount{}}
+	if len(request.Queries) < 1 || len(request.Queries) > BrowseCountMaximum {
+		return out, browseIssue("queries", "send between 1 and 8 count queries")
+	}
+	if dbwork.Snapshot(s.Context()) == nil {
+		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
+			var err error
+			out, err = s.WithContext(ctx).BrowseCounts(viewer, library, request, sources)
+			return err
+		})
+		return out, err
+	}
+	seen := map[string]bool{}
+	for _, query := range request.Queries {
+		if query.ID == "" || len(query.ID) > 128 || seen[query.ID] {
+			return out, browseIssue("queries.id", "each count needs a unique bounded id")
+		}
+		seen[query.ID] = true
+		// Direct service callers have the same grammar and bounds as HTTP callers.
+		if err := validateMeasureNode(query.Query); err != nil {
+			return out, err
+		}
+		if library == "" && acrossAnchor(query.Query) == nil {
+			return out, ErrBrowseAcrossGroup
+		}
+		scope, args, revision, err := s.browseMeasureScope(viewer, FacetRequest{Library: library, Pivot: request.Pivot, Query: query.Query, RowSources: sources})
+		if err != nil {
+			return out, err
+		}
+		total, hit := s.cachedBrowseTotal("count:" + revision)
+		if !hit {
+			if err = s.read().QueryRow(`SELECT count(*) FROM (`+scope+` LIMIT ?)`, append(args, browseTotalThreshold+1)...).Scan(&total); err != nil {
+				return out, err
+			}
+			s.storeBrowseTotal("count:"+revision, total)
+		}
+		out.Counts = append(out.Counts, BrowseCount{ID: query.ID, Total: min(total, browseTotalThreshold), TotalIsLowerBound: total > browseTotalThreshold, Revision: revision})
+	}
+	return out, nil
+}
+func validateMeasureNode(node *BrowseNode) error {
+	if node == nil {
+		return nil
+	}
+	raw, err := node.MarshalJSON()
+	if err != nil {
+		return requestinput.New("invalid query")
+	}
+	_, err = ParseBrowseQuery(raw, "query")
+	return err
+}
+
+// browseQueryDuration sums each visible playable member once, using the
+// maintained longest-file metric (seconds). Missing duration or a capped member
+// set is explicitly a lower bound. No page or source length limits are imposed.
+func (s *Service) browseQueryDuration(viewer Viewer, request FacetRequest) (int64, bool, error) {
+	scope, args, revision, err := s.browseMeasureScope(viewer, request)
+	if err != nil {
+		return 0, false, err
+	}
+	key := "duration:" + revision + ":" + RestrictionFence(viewer.Restrictions)
+
+	if cached, hit := s.state.facetCache.get(key, 0); hit {
+		return cached.durationMs, cached.durationLower, nil
+	}
+	aggregate, err := s.state.facetCache.do(key, func() (FacetPage, error) {
+		if cached, hit := s.state.facetCache.get(key, 0); hit {
+			return cached, nil
+		}
+		visible, va := viewer.itemVisibilitySQL("member.item_id")
+		// One bounded member stream supplies the sum, the missing-metric flag and
+		// the sentinel. Keep integer milliseconds intact on 32-bit Go targets too.
+		query := `WITH targets AS (` + scope + `), members AS MATERIALIZED (SELECT DISTINCT member.item_id FROM targets target CROSS JOIN catalog_browse_memberships member ON member.entity_id=target.entity_id WHERE ` + visible + ` LIMIT ` + fmt.Sprint(browseTotalThreshold+1) + `)
+ SELECT COALESCE(CAST(round(sum(CASE WHEN n<=` + fmt.Sprint(browseTotalThreshold) + ` AND duration>0 THEN duration ELSE 0 END)*1000) AS INTEGER),0),count(*),COALESCE(sum(n<=` + fmt.Sprint(browseTotalThreshold) + ` AND (duration IS NULL OR duration<=0)),0)
+ FROM (SELECT metric.duration,row_number() OVER() AS n FROM members LEFT JOIN catalog_browse_item_metrics metric ON metric.item_id=members.item_id)`
+		var duration int64
+		var count, missing int
+		if err := s.read().QueryRow(query, append(args, va...)...).Scan(&duration, &count, &missing); err != nil {
+			return FacetPage{}, err
+		}
+		out := FacetPage{durationMs: duration, durationLower: count > browseTotalThreshold || missing > 0}
+		s.state.facetCache.put(key, facetCacheEntry{revision: 0, publications: dbwork.Publications(), expires: time.Now().Add(time.Minute), page: out})
+		return out, nil
+	})
+	return aggregate.durationMs, aggregate.durationLower, err
 }

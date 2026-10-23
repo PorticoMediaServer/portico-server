@@ -11,31 +11,26 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"os"
 	"portico.local/server/internal/dbwork"
-	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 )
 
 type SetupOptions struct {
-	RequestID     string `json:"requestId,omitempty"`
-	SetupToken    string `json:"setupToken"`
-	Username      string `json:"username"`
-	Password      string `json:"password"`
-	Name          string `json:"name"`
-	AuthMode      string `json:"authMode,omitempty"`
-	RecoverySaved bool   `json:"recoverySaved,omitempty"`
-	Interactive   bool   `json:"interactive,omitempty"`
+	RequestID   string `json:"requestId,omitempty"`
+	SetupToken  string `json:"setupToken"`
+	Username    string `json:"username,omitempty"`
+	Password    string `json:"password,omitempty"`
+	Name        string `json:"name"`
+	AuthMode    string `json:"authMode,omitempty"`
+	Interactive bool   `json:"interactive,omitempty"`
 }
 type OnboardingState struct {
-	AuthMode          string `json:"authMode"`
-	Phase             string `json:"phase"`
-	Ready             bool   `json:"ready"`
-	RecoveryOwner     bool   `json:"recoveryOwner"`
-	RecoveryConfirmed bool   `json:"recoveryConfirmed"`
-	RemoteRecovery    bool   `json:"remoteRecovery"`
-	ClaimInstalled    bool   `json:"claimInstalled"`
-	Revision          int64  `json:"revision,string"`
-	SessionLabel      string `json:"sessionLabel"`
+	AuthMode       string `json:"authMode"`
+	Phase          string `json:"phase"`
+	Ready          bool   `json:"ready"`
+	ClaimInstalled bool   `json:"claimInstalled"`
+	Revision       int64  `json:"revision,string"`
+	SessionLabel   string `json:"sessionLabel"`
 }
 
 func setupOperationID() string {
@@ -48,97 +43,123 @@ func setupOperationID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", raw[:4], raw[4:6], raw[6:8], raw[8:10], raw[10:])
 }
 
-// SetupWithOptions has a stable resume key and commits the local owner, chosen
-// mode, native family and encrypted receipt together. It never creates a Hosted
-// account or assumes an unacknowledged claim succeeded.
-func (s *Service) SetupWithOptions(ctx context.Context, q SetupOptions, private bool) (Envelope, error) {
+// SetupWithOptions creates either a local owner or an account-mode pending
+// initialization. It never substitutes a local credential for a Portico Account.
+func (s *Service) SetupWithOptions(ctx context.Context, q SetupOptions, private bool) (SetupResult, error) {
 	if q.AuthMode == "" {
-		q.AuthMode = "local"
+		q.AuthMode = "hosted"
 	}
 	if q.RequestID == "" {
 		q.RequestID = setupOperationID()
 	}
 	q.Username = strings.ToLower(strings.TrimSpace(q.Username))
 	q.Name = strings.TrimSpace(q.Name)
-	if !setupUUID.MatchString(q.RequestID) || (q.AuthMode != "hosted" && q.AuthMode != "local") || len(q.Username) < 3 || len(q.Username) > 64 || !directPassword(q.Password) || !setupLabel(q.Name, 100) {
-		return Envelope{}, requestinput.New("Choose a server name, a username (3-64 characters) and a password of at least 8 characters")
+	if !setupUUID.MatchString(q.RequestID) || (q.AuthMode != "local" && q.AuthMode != "hosted") || !setupLabel(q.Name, 100) {
+		return SetupResult{}, ErrDirectInput
 	}
-	if q.AuthMode == "hosted" && !q.RecoverySaved {
-		return Envelope{}, requestinput.New("Confirm that you saved the recovery owner's password")
+	if q.AuthMode == "hosted" && (q.Username != "" || q.Password != "") {
+		return SetupResult{}, ErrDirectInput
+	}
+	if q.AuthMode == "local" && (len(q.Username) < 3 || len(q.Username) > 64 || strings.ContainsAny(q.Username, " \t\r\n@") || !directPassword(q.Password)) {
+		return SetupResult{}, ErrDirectInput
 	}
 	raw, _ := json.Marshal(q)
 	defer clear(raw)
 	requestHash := s.setupHash("initialize-request", string(raw))
-	// A repeated create is recoverable even after the one-time file is removed.
-	var existing string
-	e := s.db.QueryRowContext(ctx, `SELECT operation_id FROM onboarding_state_v1 WHERE singleton=1`).Scan(&existing)
-	if e == nil {
+	var existing, mode, secretHash string
+	var setupRevision int64
+	e := s.db.QueryRowContext(ctx, `SELECT operation_id,auth_mode,setup_hash,revision FROM onboarding_state_v1 WHERE singleton=1`).Scan(&existing, &mode, &secretHash, &setupRevision)
+	switch {
+	case e == nil:
 		if existing != q.RequestID {
-			return Envelope{}, ErrConflict
+			return SetupResult{}, ErrConflict
 		}
-		return s.resumeSetup(ctx, q.RequestID, q.SetupToken, requestHash, private)
+		if mode == q.AuthMode {
+			return s.resumeSetup(ctx, q.RequestID, q.SetupToken, requestHash, private)
+		}
+		// An owner who declines the web claim may select local sign-in using the
+		// same protected setup secret; no public bootstrap can replace that secret.
+		if mode != "hosted" || q.AuthMode != "local" || subtle.ConstantTimeCompare([]byte(secretHash), []byte(s.setupHash("initialize-secret", q.SetupToken))) != 1 {
+			return SetupResult{}, ErrUnauthorized
+		}
+	case errors.Is(e, sql.ErrNoRows):
+		token, e := os.ReadFile(s.setupPath)
+		if e != nil || subtle.ConstantTimeCompare(token, []byte(q.SetupToken)) != 1 {
+			return SetupResult{}, ErrUnauthorized
+		}
+	default:
+		return SetupResult{}, e
 	}
-	if !errors.Is(e, sql.ErrNoRows) {
-		return Envelope{}, e
-	}
-	if !s.SetupRequired() {
-		return Envelope{}, ErrConflict
-	}
-	token, e := os.ReadFile(s.setupPath)
-	if e != nil || subtle.ConstantTimeCompare(token, []byte(q.SetupToken)) != 1 {
-		return Envelope{}, ErrUnauthorized
-	}
-	if slotErr := s.takeHashSlot(ctx); slotErr != nil {
-		return Envelope{}, slotErr
-	}
-	defer func() { <-s.hashSlots }()
-	hash, e := bcrypt.GenerateFromPassword([]byte(q.Password), PasswordCost)
-	if e != nil {
-		return Envelope{}, e
+	var hash []byte
+	if q.AuthMode == "local" {
+		if e = s.takeHashSlot(ctx); e != nil {
+			return SetupResult{}, e
+		}
+		hash, e = bcrypt.GenerateFromPassword([]byte(q.Password), PasswordCost)
+		<-s.hashSlots
+		if e != nil {
+			return SetupResult{}, e
+		}
 	}
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
 	if e != nil {
-		return Envelope{}, e
+		return SetupResult{}, e
 	}
-	tx := gated.Tx()
 	defer gated.Rollback()
+	tx := gated.Tx()
 	var count int
 	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM accounts`).Scan(&count); e != nil {
-		return Envelope{}, e
+		return SetupResult{}, e
 	}
 	if count != 0 {
-		return Envelope{}, ErrConflict
+		return SetupResult{}, ErrConflict
 	}
-	aid, pid := Token(), Token()
-	if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,?,?)`, aid, q.Username, hash, pid); e != nil {
-		return Envelope{}, e
+	if existing != "" {
+		var active sql.NullString
+		err := tx.QueryRowContext(ctx, `SELECT active_operation_id FROM networking_claim_identity WHERE singleton=1`).Scan(&active)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return SetupResult{}, err
+		}
+		if active.Valid {
+			return SetupResult{}, ErrConflict
+		}
+		// Fence both the continuation secret and the pending revision against a
+		// concurrent claim completion or another method choice.
+		result, e := tx.ExecContext(ctx, `DELETE FROM onboarding_state_v1 WHERE singleton=1 AND operation_id=? AND auth_mode='hosted' AND setup_hash=? AND revision=?`, q.RequestID, secretHash, setupRevision)
+		if e != nil {
+			return SetupResult{}, e
+		}
+		n, _ := result.RowsAffected()
+		if n != 1 {
+			return SetupResult{}, ErrConflict
+		}
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO configuration(key,value) VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, q.Name); e != nil {
-		return Envelope{}, e
+		return SetupResult{}, e
 	}
-	out, e := s.IssueTx(ctx, tx, aid, pid, "local", "owner", 1, time.Time{})
-	if e != nil {
-		return out, e
+	out := SetupResult{}
+	var receipt []byte
+	if q.AuthMode == "local" {
+		aid, pid := Token(), Token()
+		if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,?,?)`, aid, q.Username, hash, pid); e != nil {
+			return SetupResult{}, e
+		}
+		out.Envelope, e = s.IssueTx(ctx, tx, aid, pid, "local", "owner", 1, time.Time{})
+		if e != nil {
+			return SetupResult{}, e
+		}
+		receipt, e = s.sealSetup(out.Envelope, "initialize:"+q.RequestID)
+		if e != nil {
+			return SetupResult{}, e
+		}
+	} else {
+		out.Pending = &PendingAccountSetup{ServerID: s.serverID, RequestID: q.RequestID, AuthMode: "hosted", ClaimRequired: true, Revision: 1}
 	}
-	sealed, e := s.sealSetup(out, "initialize:"+q.RequestID)
-	if e != nil {
-		return out, e
-	}
-	recovery := ""
-	// Clients no longer show a setup checklist: a local server is ready once its
-	// owner exists. A hosted one becomes ready when its claim is installed.
-	ready := q.AuthMode == "local"
-	if q.AuthMode == "hosted" {
-		recovery = aid
-	}
-	// A server set up from outside the LAN keeps its recovery owner usable from
-	// there too, so the person who set it up is never locked out. The owner can
-	// switch remote recovery off afterwards.
-	if _, e = tx.ExecContext(ctx, `INSERT INTO onboarding_state_v1(singleton,auth_mode,operation_id,request_hash,setup_hash,receipt,receipt_until,recovery_account,recovery_confirmed,remote_recovery,ready) VALUES(1,?,?,?,?,?,?,?,?,?,?)`, q.AuthMode, q.RequestID, requestHash, s.setupHash("initialize-secret", q.SetupToken), sealed, time.Now().Unix()+setupReceiptSeconds, recovery, q.RecoverySaved, !private, ready); e != nil {
-		return out, e
+	if _, e = tx.ExecContext(ctx, `INSERT INTO onboarding_state_v1(singleton,auth_mode,operation_id,request_hash,setup_hash,receipt,receipt_until,ready) VALUES(1,?,?,?,?,?,?,?)`, q.AuthMode, q.RequestID, requestHash, s.setupHash("initialize-secret", q.SetupToken), receipt, time.Now().Unix()+setupReceiptSeconds, q.AuthMode == "local"); e != nil {
+		return SetupResult{}, e
 	}
 	if e = gated.Commit(); e != nil {
-		return Envelope{}, e
+		return SetupResult{}, e
 	}
 	_ = os.Remove(s.setupPath)
 	return out, nil
@@ -148,119 +169,51 @@ func (s *Service) SetupWithOptions(ctx context.Context, q SetupOptions, private 
 // signs in with the password they just chose.
 const setupReceiptSeconds = 900
 
-func (s *Service) ResumeSetup(ctx context.Context, id, secret string, private bool) (Envelope, error) {
+func (s *Service) ResumeSetup(ctx context.Context, id, secret string, private bool) (SetupResult, error) {
 	return s.resumeSetup(ctx, id, secret, "", private)
 }
-func (s *Service) resumeSetup(ctx context.Context, id, secret, requestHash string, private bool) (Envelope, error) {
+func (s *Service) resumeSetup(ctx context.Context, id, secret, requestHash string, private bool) (SetupResult, error) {
 	if !setupUUID.MatchString(id) || len(secret) != 43 {
-		return Envelope{}, ErrUnauthorized
+		return SetupResult{}, ErrUnauthorized
 	}
 	gated2, e := dbwork.BeginSnapshot(ctx, s.db)
 	if e != nil {
-		return Envelope{}, e
+		return SetupResult{}, e
 	}
 	tx := gated2.Tx()
 	defer gated2.Rollback()
 	var storedSecret, storedRequest string
 	var cipher []byte
-	var until int64
-	e = tx.QueryRowContext(ctx, `SELECT setup_hash,request_hash,receipt,receipt_until FROM onboarding_state_v1 WHERE singleton=1 AND operation_id=?`, id).Scan(&storedSecret, &storedRequest, &cipher, &until)
+	var until, revision int64
+	var mode string
+	e = tx.QueryRowContext(ctx, `SELECT setup_hash,request_hash,receipt,receipt_until,auth_mode,revision FROM onboarding_state_v1 WHERE singleton=1 AND operation_id=?`, id).Scan(&storedSecret, &storedRequest, &cipher, &until, &mode, &revision)
 	if errors.Is(e, sql.ErrNoRows) {
-		return Envelope{}, e
+		return SetupResult{}, e
 	}
 	if e != nil {
-		return Envelope{}, e
+		return SetupResult{}, e
 	}
 	if subtle.ConstantTimeCompare([]byte(storedSecret), []byte(s.setupHash("initialize-secret", secret))) != 1 || requestHash != "" && subtle.ConstantTimeCompare([]byte(storedRequest), []byte(requestHash)) != 1 {
-		return Envelope{}, ErrUnauthorized
+		return SetupResult{}, ErrUnauthorized
+	}
+	if mode == "hosted" && len(cipher) == 0 {
+		return SetupResult{Pending: &PendingAccountSetup{ServerID: s.serverID, RequestID: id, AuthMode: "hosted", ClaimRequired: true, Revision: revision}}, gated2.Commit()
 	}
 	if until <= time.Now().Unix() || len(cipher) == 0 {
-		return Envelope{}, ErrUnauthorized
+		return SetupResult{}, ErrUnauthorized
 	}
 	var out Envelope
 	if e = s.openSetup(cipher, "initialize:"+id, &out); e != nil {
-		return out, e
+		return SetupResult{}, e
 	}
 	record, e := s.familyTokenTx(ctx, tx, Digest(out.AccessToken))
 	if e != nil {
-		return Envelope{}, e
+		return SetupResult{}, e
 	}
 	if _, e = s.SessionFamilyTx(ctx, tx, record.principal); e != nil {
-		return Envelope{}, e
+		return SetupResult{}, e
 	}
-	if e = s.recoveryPasswordAllowedTx(ctx, tx, out.Viewer.AccountID, private); e != nil {
-		return Envelope{}, e
-	}
-	return out, gated2.Commit()
-}
-
-// recoveryPasswordAllowedTx is the recovery owner's password rule: from the
-// private network only, unless the owner turned remote recovery on.
-func (s *Service) recoveryPasswordAllowedTx(ctx context.Context, tx *sql.Tx, account string, private bool) error {
-	var recovery string
-	var remote bool
-	e := tx.QueryRowContext(ctx, `SELECT recovery_account,remote_recovery FROM onboarding_state_v1 WHERE singleton=1`).Scan(&recovery, &remote)
-	if errors.Is(e, sql.ErrNoRows) {
-		return nil
-	}
-	if e != nil {
-		return e
-	}
-	if recovery == account && !remote && !private {
-		return ErrUnauthorized
-	}
-	return nil
-}
-
-// recoveryAllowedTx guards an established session. A recovery owner that is
-// also a Portico Account may sign in remotely through Hosted, so a session
-// family admitted that way (portico_admitted_families) is usable from
-// anywhere; a session that came from the recovery password stays
-// private-network only (INT M9).
-func (s *Service) recoveryAllowedTx(ctx context.Context, tx *sql.Tx, account, family string, private bool) error {
-	e := s.recoveryPasswordAllowedTx(ctx, tx, account, private)
-	if !errors.Is(e, ErrUnauthorized) {
-		return e
-	}
-	if !porticoFamilyTx(ctx, tx, family) {
-		return e
-	}
-	return nil
-}
-
-type recoveryLocalityKey struct{}
-
-// WithRecoveryLocality carries the edge's verified peer locality into identity
-// transactions. Missing locality is treated as remote, never as LAN authority.
-func WithRecoveryLocality(ctx context.Context, private bool) context.Context {
-	return context.WithValue(ctx, recoveryLocalityKey{}, private)
-}
-
-func (s *Service) checkRecoveryContextTx(ctx context.Context, tx *sql.Tx, p Principal, family string) error {
-	if p.Authority != "local" {
-		return nil
-	}
-	private, _ := ctx.Value(recoveryLocalityKey{}).(bool)
-	return s.recoveryAllowedTx(ctx, tx, p.AccountID, family, private)
-}
-
-// CheckRecoveryRouteTx applies live recovery policy within the caller's snapshot
-// or write fence, using the verified request locality attached by the HTTP edge.
-func (s *Service) CheckRecoveryRouteTx(ctx context.Context, tx *sql.Tx, p Principal) error {
-	return s.checkRecoveryContextTx(ctx, tx, p, familyForTokenTx(ctx, tx, p.Hash))
-}
-
-func (s *Service) CheckRecoveryRoute(ctx context.Context, p Principal, private bool) error {
-	if p.Authority != "local" || private {
-		return nil
-	}
-	gated3, e := dbwork.BeginSnapshot(ctx, s.db)
-	if e != nil {
-		return e
-	}
-	tx := gated3.Tx()
-	defer gated3.Rollback()
-	return s.recoveryAllowedTx(ctx, tx, p.AccountID, familyForTokenTx(ctx, tx, p.Hash), private)
+	return SetupResult{Envelope: out}, gated2.Commit()
 }
 
 func (s *Service) Onboarding(ctx context.Context, p Principal) (OnboardingState, error) {
@@ -284,8 +237,7 @@ func (s *Service) Onboarding(ctx context.Context, p Principal) (OnboardingState,
 }
 func (s *Service) onboardingTx(ctx context.Context, tx *sql.Tx, p Principal) (OnboardingState, error) {
 	out := OnboardingState{AuthMode: "local", Ready: true, Phase: "ready", SessionLabel: "This Server"}
-	var recovery string
-	e := tx.QueryRowContext(ctx, `SELECT auth_mode,ready,recovery_account,recovery_confirmed,remote_recovery,revision FROM onboarding_state_v1 WHERE singleton=1`).Scan(&out.AuthMode, &out.Ready, &recovery, &out.RecoveryConfirmed, &out.RemoteRecovery, &out.Revision)
+	e := tx.QueryRowContext(ctx, `SELECT auth_mode,ready,revision FROM onboarding_state_v1 WHERE singleton=1`).Scan(&out.AuthMode, &out.Ready, &out.Revision)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return out, e
 	}
@@ -295,20 +247,11 @@ func (s *Service) onboardingTx(ctx context.Context, tx *sql.Tx, p Principal) (On
 			return out, e
 		}
 	}
-	out.RecoveryOwner = recovery != "" && recovery == p.AccountID
-	// Nothing asks the owner to press "Finish" any more: a hosted server whose
-	// claim is installed and whose recovery owner is confirmed is ready.
-	if out.AuthMode == "hosted" && !out.Ready && out.RecoveryConfirmed && out.ClaimInstalled {
-		out.Ready = true
-		out.Phase = "ready"
-	}
-	if out.RecoveryOwner {
-		out.SessionLabel = "This Server \u00b7 Recovery Owner"
-	}
 	if out.AuthMode == "hosted" && !out.Ready {
 		out.Phase = "waiting_for_web"
 		if out.ClaimInstalled {
-			out.Phase = "recovery_owner_credential_confirmed"
+			out.Ready = true
+			out.Phase = "ready"
 		}
 	}
 	return out, nil
@@ -330,8 +273,8 @@ func (s *Service) FinishSetup(ctx context.Context, p Principal, expected int64) 
 	if p.Authority != "local" || p.Role != "owner" || out.Revision != expected {
 		return out, ErrConflict
 	}
-	if out.AuthMode == "hosted" && (!out.RecoveryOwner || !out.RecoveryConfirmed || !out.ClaimInstalled) {
-		return out, errors.New("Complete the current claim and confirm the saved local recovery credential before finishing setup")
+	if out.AuthMode == "hosted" && !out.ClaimInstalled {
+		return out, errors.New("Complete the current account claim before finishing setup")
 	}
 	if !out.Ready {
 		if _, e = tx.ExecContext(ctx, `UPDATE onboarding_state_v1 SET ready=1,revision=revision+1,receipt_until=MIN(receipt_until,?) WHERE singleton=1 AND revision=?`, time.Now().Unix()+300, expected); e != nil {
@@ -342,36 +285,6 @@ func (s *Service) FinishSetup(ctx context.Context, p Principal, expected int64) 
 		out.Revision++
 	}
 	return out, gated5.Commit()
-}
-
-// This is a distinct, warned local-owner setting. Ordinary remote-access opt-in
-// never enables recovery login and forwarded headers never count as a LAN peer.
-func (s *Service) SetRemoteRecovery(ctx context.Context, p Principal, expected int64, enabled, warningConfirmed bool) (OnboardingState, error) {
-	if enabled && !warningConfirmed {
-		return OnboardingState{}, ErrUnauthorized
-	}
-	gated6, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
-	if e != nil {
-		return OnboardingState{}, e
-	}
-	tx := gated6.Tx()
-	defer gated6.Rollback()
-	if _, e = s.SessionFamilyTx(ctx, tx, p); e != nil {
-		return OnboardingState{}, e
-	}
-	out, e := s.onboardingTx(ctx, tx, p)
-	if e != nil {
-		return out, e
-	}
-	if !out.RecoveryOwner || out.Revision != expected {
-		return out, ErrConflict
-	}
-	if _, e = tx.ExecContext(ctx, `UPDATE onboarding_state_v1 SET remote_recovery=?,revision=revision+1 WHERE singleton=1 AND revision=?`, enabled, expected); e != nil {
-		return out, e
-	}
-	out.RemoteRecovery = enabled
-	out.Revision++
-	return out, gated6.Commit()
 }
 
 // BrowserSetupToken is only exposed by the origin-checked first-run route.
@@ -385,9 +298,138 @@ func (s *Service) BrowserSetupToken(ctx context.Context) (string, error) {
 	if count != 0 {
 		return "", ErrConflict
 	}
+	var pending bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM onboarding_state_v1)`).Scan(&pending); err != nil {
+		return "", err
+	}
+	if pending {
+		return "", ErrConflict
+	}
 	token, err := os.ReadFile(s.setupPath)
 	if err != nil {
 		return "", err
 	}
 	return string(token), nil
+}
+
+// SetupClaimAuthority verifies the continuation secret without inventing a
+// member, profile, session or owner. It is consumed only by claim bootstrap.
+func (s *Service) SetupClaimAuthority(ctx context.Context, secret string) (PendingAccountSetup, string, error) {
+	if len(secret) != 43 {
+		return PendingAccountSetup{}, "", ErrUnauthorized
+	}
+	read, e := dbwork.BeginSnapshot(ctx, s.db)
+	if e != nil {
+		return PendingAccountSetup{}, "", e
+	}
+	defer read.Rollback()
+	var out PendingAccountSetup
+	var hash string
+	e = read.Tx().QueryRowContext(ctx, `SELECT operation_id,revision,setup_hash FROM onboarding_state_v1 WHERE singleton=1 AND auth_mode='hosted' AND ready=0 AND NOT EXISTS(SELECT 1 FROM accounts)`).Scan(&out.RequestID, &out.Revision, &hash)
+	if e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			e = ErrUnauthorized
+		}
+		return out, "", e
+	}
+	if subtle.ConstantTimeCompare([]byte(hash), []byte(s.setupHash("initialize-secret", secret))) != 1 {
+		return out, "", ErrUnauthorized
+	}
+	out.ServerID = s.serverID
+	out.AuthMode = "hosted"
+	out.ClaimRequired = true
+	return out, hash, read.Commit()
+}
+func (s *Service) CheckSetupClaimTx(ctx context.Context, tx *sql.Tx, requestID string, revision int64, proofHash string) error {
+	var hash string
+	e := tx.QueryRowContext(ctx, `SELECT setup_hash FROM onboarding_state_v1 WHERE singleton=1 AND operation_id=? AND revision=? AND auth_mode='hosted' AND ready=0 AND NOT EXISTS(SELECT 1 FROM accounts)`, requestID, revision).Scan(&hash)
+	if e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return ErrUnauthorized
+		}
+		return e
+	}
+	if subtle.ConstantTimeCompare([]byte(hash), []byte(proofHash)) != 1 {
+		return ErrUnauthorized
+	}
+	return ctx.Err()
+}
+
+// CompleteAccountSetup requires both the installed, validated claim's account
+// and that same account's fresh Hosted identity assertion. Claim approval alone
+// contains no username: no display name, email or guessed owner is substituted.
+func (s *Service) CompleteAccountSetup(ctx context.Context, requestID, secret string, who PorticoIdentity) (DirectSignIn, error) {
+	pending, proof, e := s.SetupClaimAuthority(ctx, secret)
+	if e != nil || pending.RequestID != requestID {
+		return DirectSignIn{}, ErrUnauthorized
+	}
+	if !validHostedAccountID(who.AccountID) || len(who.Username) < 3 || len(who.Username) > 64 || strings.ContainsAny(who.Username, " \t\r\n@") || !directName(who.Username) || who.Consent == "" || who.SignerKeyID == "" {
+		return DirectSignIn{}, ErrUnauthorized
+	}
+	var out DirectSignIn
+	e = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		if who.Return != nil {
+			if who.Return.Purpose != "setup" {
+				return ErrUnauthorized
+			}
+			if e := CheckPorticoReturnTx(ctx, tx, who); e != nil {
+				return e
+			}
+		}
+		if e := s.CheckSetupClaimTx(ctx, tx, requestID, pending.Revision, proof); e != nil {
+			return e
+		}
+		if s.SetupClaimReadyTx == nil {
+			return ErrUnauthorized
+		}
+		installed, e := s.SetupClaimReadyTx(ctx, tx)
+		if e != nil {
+			return e
+		}
+		if !installed {
+			return ErrUnauthorized
+		}
+		var account string
+		e = tx.QueryRowContext(ctx, `SELECT i.account_id FROM networking_claim_identity c JOIN networking_claim_intents i ON i.operation_id=c.installed_operation_id AND i.operation_id=c.active_operation_id AND i.server_id=c.server_id AND i.public_key=c.public_key AND i.local_generation=c.reset_generation WHERE c.singleton=1 AND i.stage='installed' AND i.installation_acknowledged=1 AND i.setup_operation_id=?`, requestID).Scan(&account)
+		if e != nil || account != who.AccountID {
+			return ErrUnauthorized
+		}
+		if e = admitPorticoSignerTx(ctx, tx, who.SignerKeyID); e != nil {
+			return e
+		}
+		aid, pid := Token(), Token()
+		if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,X'',?)`, aid, who.Username, pid); e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO account_portico_links(account_id,hosted_account_id,consent) VALUES(?,?,?)`, aid, who.AccountID, who.Consent); e != nil {
+			return e
+		}
+		name := who.DisplayName
+		if !directName(name) {
+			name = who.Username
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET name=? WHERE id=?`, name, pid); e != nil {
+			return e
+		}
+		out, e = s.PorticoSignInTx(ctx, tx, who)
+		if e != nil {
+			return e
+		}
+		if out.Session == nil {
+			return ErrDevicePending
+		}
+		receipt, e := s.sealSetup(*out.Session, "initialize:"+requestID)
+		if e != nil {
+			return e
+		}
+		_, e = tx.ExecContext(ctx, `UPDATE onboarding_state_v1 SET ready=1,revision=revision+1,receipt=?,receipt_until=? WHERE singleton=1`, receipt, time.Now().Unix()+setupReceiptSeconds)
+		if e == nil && who.Return != nil {
+			e = CheckPorticoReturnTx(ctx, tx, who)
+		}
+		return e
+	})
+	if e != nil {
+		return DirectSignIn{}, e
+	}
+	return out, nil
 }

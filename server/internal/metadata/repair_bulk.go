@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/compactcatalog"
 	"strings"
 	"time"
 
@@ -340,10 +341,28 @@ func ValidateJobEdit(m BulkEdit) error {
 	return validBulkEdit(m)
 }
 func (s *Service) JobEditRevision(ctx context.Context, tx *sql.Tx, item string) (string, error) {
-	target := RepairTarget{Kind: "item", ID: item}
+	target, err := s.JobEditTarget(ctx, tx, item)
+	if err != nil {
+		return "", err
+	}
 	before, entity, err := readRepairSnapshot(ctx, tx, target)
 	if err != nil {
 		return "", err
 	}
 	return repairRevision(ctx, tx, target, before, entity)
+}
+
+// JobEditTarget retains the displayed entity's editor namespace. Editing a
+// whole view of shows must edit those shows, not expand into their episodes.
+func (s *Service) JobEditTarget(ctx context.Context, tx *sql.Tx, id string) (RepairTarget, error) {
+	var kind compactcatalog.Kind
+	if err := tx.QueryRowContext(ctx, `SELECT kind FROM catalog_entities WHERE public_id=pid_blob(?) AND retired=0`, id).Scan(&kind); err != nil {
+		return RepairTarget{}, err
+	}
+	target := RepairTarget{Kind: compactcatalog.OwnerNamespace(kind), ID: id}
+	switch target.Kind {
+	case "item", "show", "season", "album", "artist", "book":
+		return target, nil
+	}
+	return RepairTarget{}, ErrRepairInput
 }

@@ -126,8 +126,7 @@ func TestPlaybackHistoryExportIsADownloadableCSV(t *testing.T) {
 
 func TestCapacityComposerUsesTheAppliedCacheDirectory(t *testing.T) {
 	cache := t.TempDir()
-	t.Setenv("PORTICO_CACHE_DIR", cache)
-	d := Dependencies{}
+	d := Dependencies{CacheDirectory: cache}
 	capacity := d.capacityComposer()
 	if capacity.State != cache {
 		t.Fatal(capacity.State)

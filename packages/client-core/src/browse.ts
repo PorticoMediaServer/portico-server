@@ -30,7 +30,7 @@ export function browseFields(nodes:readonly BrowseNode[]):string[]{
 export type BrowseFacetSource=Readonly<{endpoint:string;field:string}>;
 export type BrowseFieldCapability=Readonly<{id:string;labelKey:string;type:BrowseValueType;operators:readonly BrowseOperator[];controlHint:BrowseControlHint;complexity:BrowseComplexity;cost:BrowseCost;applicableKinds:readonly string[];allowedValues?:readonly string[];facetSource?:BrowseFacetSource}>;
 /** `requiresGroup`: the group's own order (a playlist's, a season's, an album's), offered on a group's page and never on a library tab. */
-export type BrowseSortCapability=Readonly<{id:string;labelKey:string;directions:readonly BrowseDirection[];defaultDirection:BrowseDirection;expensive:boolean;seeded?:boolean;requiresGroup?:boolean;applicableKinds:readonly string[]}>;
+export type BrowseSortCapability=Readonly<{id:string;labelKey:string;directions:readonly BrowseDirection[];defaultDirection:BrowseDirection;expensive:boolean;seeded?:boolean;requiresGroup?:boolean;ownerOnly?:boolean;applicableKinds:readonly string[]}>;
 /** `members`: a pivot read within one group (a book's parts), never a library tab. Paging is by key in a library and by position across libraries. */
 export type BrowsePivotCapability=Readonly<{id:string;labelKey:string;entityKinds:readonly string[];defaultSort:readonly BrowseSortSelection[];supportedViews:readonly string[];browsable:boolean;aggregate?:string;members?:boolean;sorts?:readonly string[];filters?:readonly string[];paging?:BrowsePaging}>;
 export type BrowsePaging='keyset'|'offset';
@@ -42,14 +42,15 @@ export type BrowseCapabilities=Readonly<{surfaces?:readonly BrowseSurfaceCapabil
 export type BrowsePositionAnchor=Readonly<{key:string;index:number}>;
 /** `totalIsLowerBound`: a filter matched more titles than the server counts (10,000); `total` then
  * grows as pages arrive and the count reads "10,000+". */
-export type BrowsePageInfo=Readonly<{start:number;total:number;totalIsLowerBound:boolean;revision:string;hasMore:boolean;nextCursor:string}>;
+export type BrowsePageInfo=Readonly<{start:number;total:number;totalIsLowerBound:boolean;revision:string;hasMore:boolean;nextCursor:string;durationMs?:number;durationIsLowerBound?:boolean}>;
 export type BrowseRange=Readonly<{start:number;revision?:string;anchorId?:string}>;
 export type BrowseSeek=Readonly<{prefix:string}>;
 export type BrowseApplied=Readonly<{query:BrowseNode|null;sort:readonly BrowseSortSelection[];seek:BrowseSeek|null}>;
-export type BrowseResult=Readonly<{pivot:string;applied:BrowseApplied;entries:readonly ContentEntry[];pageInfo:BrowsePageInfo;positionIndex:readonly BrowsePositionAnchor[]}>;
-export type BrowseFacetValue=Readonly<{value:string;label:string;count:number}>;
-export type BrowseFacetPage=Readonly<{field:string;total:number;values:readonly BrowseFacetValue[]}>;
-export type BrowseRequestBody=Readonly<{pivot?:string;query?:BrowseNode;sort?:readonly BrowseSortSelection[];limit?:number;cursor?:string;range?:BrowseRange;seek?:BrowseSeek}>;
+export type BrowseResult=Readonly<{pivot:string;applied:BrowseApplied;entries:readonly ContentEntry[];pageInfo:BrowsePageInfo;positionIndex:readonly BrowsePositionAnchor[];displayTargets?:readonly BrowseDisplayTarget[]}>;
+export type BrowseDisplayTarget=Readonly<{membershipId:string;entryId:string}>;
+export type BrowseFacetValue=Readonly<{value:string;label:string;count:number;countIsLowerBound?:boolean}>;
+export type BrowseFacetPage=Readonly<{field:string;total:number;values:readonly BrowseFacetValue[];totalIsLowerBound?:boolean;revision?:string}>;
+export type BrowseRequestBody=Readonly<{pivot?:string;query?:BrowseNode;sort?:readonly BrowseSortSelection[];limit?:number;cursor?:string;range?:BrowseRange;seek?:BrowseSeek;homeRowDisplay?:string}>;
 
 const hints:readonly string[]=['toggle','select','number-range','date-range','facet-multi-select','text'];
 const operators:readonly string[]=['equals','not-equals','contains','starts-with','in','not-in','less-than','at-most','greater-than','at-least','between','is-present','is-missing','contains-any','contains-all'];
@@ -171,7 +172,7 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
   // A sort with no direction this app knows is not offered; a default it does not know is the first direction offered.
   if(!directions.length)bad();
   const defaultDirection=directions.includes(v.defaultDirection as BrowseDirection)?v.defaultDirection as BrowseDirection:directions[0];
-  return {id:v.id,labelKey:v.labelKey,directions,defaultDirection,expensive:v.expensive===true,seeded:v.seeded===true,...(v.requiresGroup===true?{requiresGroup:true}:{}),applicableKinds:known('sort.applicableKinds',v.applicableKinds,64)};
+  return {id:v.id,labelKey:v.labelKey,directions,defaultDirection,expensive:v.expensive===true,seeded:v.seeded===true,...(v.requiresGroup===true?{requiresGroup:true}:{}),...(v.ownerOnly===true?{ownerOnly:true}:{}),applicableKinds:known('sort.applicableKinds',v.applicableKinds,64)};
  }),v=>v.id);
  const quickFilters=keepReadable('browse','quickFilters',rows(raw.quickFilters??[],32),v=>{
   if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
@@ -201,15 +202,27 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
  const info=raw.pageInfo;
  if(!count(info.start)||!count(info.total)||!id(info.revision)||!str(info.nextCursor??'',4096))bad();
  const sent=rows(raw.entries,200);
- const entries=firstOfEach('browse','entries',keepReadable('browse','entries',sent,validateContentEntry),e=>e.id);
+ const displayTargets=raw.displayTargets===undefined?undefined:rows(raw.displayTargets,60).map((v,index)=>{
+  if(!obj(v)||!id(v.membershipId)||!id(v.entryId)||!obj(sent[index])||sent[index].id!==v.entryId)bad();
+  return {membershipId:v.membershipId,entryId:v.entryId};
+ });
+ if(displayTargets&&(displayTargets.length!==sent.length||new Set(displayTargets.map(t=>t.membershipId)).size!==sent.length))bad();
+ // A Home projection is an exact canonical page: do not compact a stale or
+ // unreadable target and accidentally change membership positions or prefix.
+ const entries=displayTargets?sent.map(validateContentEntry):firstOfEach('browse','entries',keepReadable('browse','entries',sent,validateContentEntry),e=>e.id);
  if(sent.length&&!entries.length)bad();
  // Past a lower bound the server's own hasMore says whether the list goes on; the total then
  // reaches one page past what has arrived, so a virtualized list keeps growing as it scrolls.
  const lowerBound=info.totalIsLowerBound===true;
  const end=sent.length?info.start+sent.length:0;
  const more=lowerBound?info.hasMore===true||!!info.nextCursor:info.start+sent.length<info.total;
- const total=lowerBound?Math.max(info.total,more?end+Math.max(sent.length,1):end):Math.max(info.total,end);
-  const positionIndex=parsePositionIndex(raw.positionIndex,total);
+ let total=lowerBound?Math.max(info.total,more?end+Math.max(sent.length,1):end):Math.max(info.total,end);
+ const positionIndex=parsePositionIndex(raw.positionIndex,total,lowerBound);
+ // An anchor is proof that at least index+1 canonical members exist, even
+ // past a capped count. Preserve every Unicode key and grow the virtual bound.
+ if(lowerBound&&positionIndex.length)total=Math.max(total,...positionIndex.map(anchor=>anchor.index+1));
+ const reachedEnd=sent.length>0&&!more;
+ const duration=info.durationMs===undefined?{}:count(info.durationMs)&&typeof info.durationIsLowerBound==='boolean'?{durationMs:info.durationMs,durationIsLowerBound:info.durationIsLowerBound}:bad();
  const applied=raw.applied;
  return freeze({
   pivot:raw.pivot,
@@ -219,8 +232,8 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
    seek:applied.seek===undefined||applied.seek===null?null:(obj(applied.seek)&&str(applied.seek.prefix,8)&&applied.seek.prefix?{prefix:applied.seek.prefix}:bad()),
   },
   entries,
-  pageInfo:{start:info.start,total,totalIsLowerBound:lowerBound&&more,revision:info.revision,hasMore:lowerBound?more:info.start+sent.length<total,nextCursor:(info.nextCursor??'') as string},
-  positionIndex,
+  pageInfo:{start:info.start,total,totalIsLowerBound:lowerBound&&!reachedEnd,revision:info.revision,hasMore:lowerBound?more:info.start+sent.length<total,nextCursor:(info.nextCursor??'') as string,...duration},
+  positionIndex,...(displayTargets?{displayTargets}:{}),
  });
 }
 
@@ -230,15 +243,15 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
  * minutes for duration, and an empty key for rows without a value. The field is
  * optional and best-effort: a missing index, an entry whose shape is unknown, or an
  * anchor that is out of order or past the total is dropped rather than failing the page. */
-function parsePositionIndex(v:unknown,total:number):BrowsePositionAnchor[]{
+function parsePositionIndex(v:unknown,total:number,lowerBound=false):BrowsePositionAnchor[]{
  if(v===undefined||v===null)return [];
  if(!Array.isArray(v))return [];
  const out:BrowsePositionAnchor[]=[];
  let previous=-1;
- for(const entry of v.slice(0,256)){
+ for(const entry of v){
   if(!obj(entry)||!str(entry.key,8)||!count(entry.index))continue;
   const index=entry.index as number;
-  if(index<=previous||index>=Math.max(total,1)){noteSkipped('browse','positionIndex');continue;}
+  if(index<=previous||!lowerBound&&index>=Math.max(total,1)){noteSkipped('browse','positionIndex');continue;}
   previous=index;
   out.push({key:entry.key as string,index});
  }
@@ -282,10 +295,10 @@ export function parseBrowseFacets(raw:unknown,expected?:string):BrowseFacetPage{
  if(!obj(raw)||!count(raw.total)||!id(raw.field)||(expected!==undefined&&raw.field!==expected))bad();
  const values=firstOfEach('browse','facets',keepReadable('browse','facets',rows(raw.values,200),v=>{
   if(!obj(v)||!id(v.value)||!str(v.label??'',512))bad();
-  return {value:v.value,label:(v.label||v.value) as string,count:count(v.count)?v.count:0};
+  return {value:v.value,label:(v.label||v.value) as string,count:count(v.count)?v.count:0,...(v.countIsLowerBound===true?{countIsLowerBound:true}:{})};
  }),v=>v.value);
  if(raw.total<values.length)bad();
- return freeze({field:raw.field,total:raw.total,values});
+ return freeze({field:raw.field,total:raw.total,values,...(raw.totalIsLowerBound===true?{totalIsLowerBound:true}:{}),...(id(raw.revision)?{revision:raw.revision}:{})});
 }
 
 /** Validates one node against the published vocabulary, naming the first failure
@@ -343,6 +356,7 @@ export class BrowseQueryBuilder{
  private pageCursor?:string;
  private pageRange?:BrowseRange;
  private pageSeek?:BrowseSeek;
+ private displayRow?:string;
  constructor(capabilities:BrowseCapabilities,pivotId?:string){
   this.capabilities=capabilities;
   const wanted=pivotId??capabilities.resolvedPivot?.id??capabilities.pivots.find(p=>p.browsable)?.id;
@@ -408,11 +422,20 @@ export class BrowseQueryBuilder{
   this.pageSeek={prefix};
   return this;
  }
+ /** Home-origin See all alone opts into actual episode/season cards. */
+ displayHomeRow(rowId:string):this{
+  if(!id(rowId))throw new BrowseQueryError('homeRowDisplay','Choose a Home row.');
+  this.displayRow=rowId;return this;
+ }
  build():BrowseRequestBody{
   const limits=this.capabilities.queryLimits;
   const query=this.predicates.length===0?undefined:this.predicates.length===1?this.predicates[0]:{all:[...this.predicates]};
   if(query&&countClauses(query)>limits.maximumClauses)throw new BrowseQueryError('query',`Use at most ${limits.maximumClauses} conditions.`);
-  const body:BrowseRequestBody={pivot:this.pivot.id,...(query?{query}:{}),...(this.sorts.length?{sort:[...this.sorts]}:{}),...(this.pageLimit?{limit:this.pageLimit}:{}),...(this.pageCursor?{cursor:this.pageCursor}:{}),...(this.pageRange?{range:this.pageRange}:{}),...(this.pageSeek?{seek:this.pageSeek}:{})};
+  if(this.displayRow){
+   if(!positiveHomeRow(query,this.displayRow))throw new BrowseQueryError('homeRowDisplay','Use the same positive Home row condition.');
+   if((this.pageLimit??this.capabilities.queryLimits.defaultLimit)>60)throw new BrowseQueryError('limit','Ask for at most 60 Home display entries.');
+  }
+  const body:BrowseRequestBody={pivot:this.pivot.id,...(this.displayRow?{homeRowDisplay:this.displayRow}:{}),...(query?{query}:{}),...(this.sorts.length?{sort:[...this.sorts]}:{}),...(this.pageLimit?{limit:this.pageLimit}:{}),...(this.pageCursor?{cursor:this.pageCursor}:{}),...(this.pageRange?{range:this.pageRange}:{}),...(this.pageSeek?{seek:this.pageSeek}:{})};
   if(JSON.stringify(body).length>limits.maximumBytes)throw new BrowseQueryError('query','That query is too large.');
   return freeze(body);
  }
@@ -424,4 +447,54 @@ export function browseWithin(capabilities:BrowseCapabilities,surfaceId:string,va
  const surface=capabilities.surfaces?.find(s=>s.id===surfaceId);
  if(!surface?.membershipField)throw new BrowseQueryError('surface','That title group is not available.');
  return new BrowseQueryBuilder(capabilities,pivotId).where(surface.membershipField,surfaceId==='search-results'?'contains':'equals',value);
+}
+
+function positiveHomeRow(node:BrowseNode|undefined,rowId:string):boolean{
+ if(!node)return false;
+ if('field' in node)return node.field==='homeRow'&&node.operator==='equals'&&node.value===rowId;
+ return 'all' in node&&node.all.filter(child=>positiveHomeRow(child,rowId)).length===1;
+}
+/** Stable work identity for virtual positions/anchors; Entry.id remains the
+ * actual navigation, selection and playback target. Never infer one from another. */
+export function browseMembershipId(page:BrowseResult,index:number):string|undefined{
+ return page.displayTargets?.[index]?.membershipId??page.entries[index]?.id;
+}
+/** Canonical anchor for a currently displayed entry, including Home's genuine
+ * displayTargets mapping. A missing entry is not guessed from a parent id. */
+export function browseMembershipAnchor(page:Pick<BrowseResult,'entries'|'displayTargets'>,entryId:string):string|undefined{
+ const mapped=page.displayTargets?.find(target=>target.entryId===entryId);
+ return mapped?.membershipId??(page.entries.some(entry=>entry.id===entryId)?entryId:undefined);
+}
+export type BrowseCount=Readonly<{id:string;total:number;totalIsLowerBound:boolean;revision:string}>;
+export type BrowseCountQuery=Readonly<{id:string;query:BrowseNode|null}>;
+export const browseCountsPath=(libraryId:string):string=>libraryId===acrossLibraries?routePath('browse_across_counts'):routePath('browse_library_counts',{id:libraryId});
+/** One request for the empty state's candidates. UI callers debounce/cancel it
+ * with the panel lifecycle; it does not run another full browse for counts. */
+export function browseCountsRequest(pivot:string,queries:readonly BrowseCountQuery[]):Readonly<{pivot:string;queries:readonly BrowseCountQuery[]}>{
+ if(!id(pivot)||queries.length<1||queries.length>8||new Set(queries.map(q=>q.id)).size!==queries.length)bad();
+ return freeze({pivot,queries:queries.map(q=>{if(!id(q.id)||q.id.length>128)bad();return {id:q.id,query:q.query===null?null:parseBrowseNode(q.query)};})});
+}
+export function parseBrowseCounts(raw:unknown,expected:readonly string[]):readonly BrowseCount[]{
+ if(!obj(raw))bad();const sent=rows(raw.counts,8);if(sent.length!==expected.length)bad();
+ return freeze(sent.map((v,index)=>{if(!obj(v)||v.id!==expected[index]||!count(v.total)||typeof v.totalIsLowerBound!=='boolean'||!id(v.revision))bad();return {id:v.id as string,total:v.total,totalIsLowerBound:v.totalIsLowerBound,revision:v.revision};}));
+}
+/** Contextual facet URL; query includes current filters and immutable group.
+ * The server leaves the counted field out and rechecks current authority. */
+export function browseContextFacetsPath(libraryId:string,field:string,pivot:string,query?:BrowseNode,q='',limit=200):string{
+ if(!id(field)||!id(pivot)||!count(limit)||limit<1||limit>200||q.length>100)bad();
+ const params=new URLSearchParams({field,pivot,limit:String(limit)});
+ if(query)params.set('query',JSON.stringify(parseBrowseNode(query)));
+ if(q)params.set('q',q);
+ return browseFacetsPath(libraryId)+'?'+params.toString();
+}
+export type BrowseRememberedTotal=Readonly<{total:number;totalIsLowerBound:boolean}>;
+/** Last authoritative unfiltered total, scoped to the caller's viewer/library
+ * identity. Applying filters never launches a second count or replaces it. */
+export class BrowseTotalsMemory{
+ private totals=new Map<string,BrowseRememberedTotal>();
+ observe(scope:string,page:BrowseResult,unfiltered:boolean):BrowseRememberedTotal|undefined{
+  if(unfiltered){if(!this.totals.has(scope)&&this.totals.size>=64)this.totals.delete(this.totals.keys().next().value!);this.totals.set(scope,Object.freeze({total:page.pageInfo.total,totalIsLowerBound:page.pageInfo.totalIsLowerBound}));}
+  return this.totals.get(scope);
+ }
+ clear():void{this.totals.clear();}
 }

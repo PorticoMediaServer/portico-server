@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"portico.local/server/internal/decoder"
+	"portico.local/server/internal/qualityladder"
 	"strings"
 	"sync"
 	"time"
@@ -79,13 +80,11 @@ type Preset struct {
 // Presets is the server's ladder. It is server policy, published rather than
 // inferred by a client.
 func Presets() []Preset {
-	return []Preset{
-		{"2160p", "4K", 2160, 40000, 384},
-		{"1080p", "1080p", 1080, 10000, 256},
-		{"720p", "720p", 720, 4000, 192},
-		{"480p", "480p", 480, 1500, 128},
-		{"360p", "360p", 360, 720, 96},
+	out := []Preset{}
+	for _, p := range qualityladder.Menu() {
+		out = append(out, Preset{ID: p.ID, Label: p.Label, Height: p.Height, VideoKbps: p.VideoBitrateBPS / 1000, AudioKbps: p.MaxAudioBitrateBPS / 1000})
 	}
+	return out
 }
 
 type Dependency struct {
@@ -158,7 +157,10 @@ type Capacity struct {
 	// State is the server state directory, the fallback working location when no
 	// temporary directory is configured.
 	State string
-	Now   func() time.Time
+	// Directory is the exact effective producer root. When present, it takes
+	// precedence over the legacy state/configured directory composition.
+	Directory *string
+	Now       func() time.Time
 	// Run is the reporter seam, so tests compose a report without executables.
 	Run func(ctx context.Context, name string, args ...string) (string, error)
 
@@ -189,7 +191,12 @@ func (c *Capacity) Report(ctx context.Context, s TranscodeSettings, sessions Ses
 	probes, dependencies := c.observe(ctx, s.HardwareDevice, now)
 	sessions.Limits = SessionLimits{Concurrent: s.MaxConcurrentSessions, Hardware: s.MaxHardwareSessions, Software: s.MaxSoftwareSessions, Background: s.MaxBackgroundSessions}
 	effective, effectiveWarning := resolveBackend(s.HardwareBackend, probes)
-	directory := resolveTemporaryDirectory(s.TemporaryDirectory, c.State)
+	var directory TemporaryDirectory
+	if c.Directory != nil {
+		directory = exactTemporaryDirectory(*c.Directory)
+	} else {
+		directory = resolveTemporaryDirectory(s.TemporaryDirectory, c.State)
+	}
 	out := Report{
 		Toolchain:          decoder.CurrentToolchain(),
 		Enabled:            s.Enabled,
@@ -308,6 +315,10 @@ func resolveTemporaryDirectory(configured, state string) TemporaryDirectory {
 	if path == "" && state != "" {
 		path = filepath.Join(state, "hls")
 	}
+	return exactTemporaryDirectory(path)
+}
+
+func exactTemporaryDirectory(path string) TemporaryDirectory {
 	out := TemporaryDirectory{Path: path}
 	if path == "" {
 		return out

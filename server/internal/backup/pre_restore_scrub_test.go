@@ -11,11 +11,11 @@ import (
 func TestPreRestoreScrubResumesWithoutRehashingChangedState(t *testing.T) {
 	folder := t.TempDir()
 	dbPath := filepath.Join(folder, DatabaseName)
-	if err := os.WriteFile(dbPath, []byte("database before scrub"), 0600); err != nil {
+	if err := writeTestFile(dbPath, []byte("database before scrub"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	statePath := filepath.Join(folder, "networking-tls.pem")
-	if err := os.WriteFile(statePath, []byte("original certificate"), 0600); err != nil {
+	statePath := filepath.Join(folder, "Keys/networking-tls.pem")
+	if err := writeTestFile(statePath, []byte("original certificate"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	files, err := hashTree(folder)
@@ -27,7 +27,7 @@ func TestPreRestoreScrubResumesWithoutRehashingChangedState(t *testing.T) {
 	}
 	interrupted := errors.New("interrupted after database scrub")
 	if err = ScrubPreRestoreCopy(context.Background(), folder, func(context.Context, string) error {
-		if err := os.WriteFile(dbPath, []byte("scrubbed database"), 0600); err != nil {
+		if err := writeTestFile(dbPath, []byte("scrubbed database"), 0600); err != nil {
 			return err
 		}
 		return interrupted
@@ -35,7 +35,7 @@ func TestPreRestoreScrubResumesWithoutRehashingChangedState(t *testing.T) {
 		t.Fatalf("interruption: %v", err)
 	}
 	// Changing an untouched file must not be blessed by the resume operation.
-	if err = os.WriteFile(statePath, []byte("changed certificate"), 0600); err != nil {
+	if err = writeTestFile(statePath, []byte("changed certificate"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	calls := 0
@@ -46,7 +46,7 @@ func TestPreRestoreScrubResumesWithoutRehashingChangedState(t *testing.T) {
 	if calls != 0 {
 		t.Fatal("changed backup reached scrubber")
 	}
-	if err = os.WriteFile(statePath, []byte("original certificate"), 0600); err != nil {
+	if err = writeTestFile(statePath, []byte("original certificate"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err = ScrubPreRestoreCopy(context.Background(), folder, scrub); err != nil {
@@ -67,7 +67,7 @@ func TestPreRestoreScrubResumesWithoutRehashingChangedState(t *testing.T) {
 func TestPreRestoreScrubRefusesCorruptDatabaseBeforeMutation(t *testing.T) {
 	folder := t.TempDir()
 	path := filepath.Join(folder, DatabaseName)
-	if err := os.WriteFile(path, []byte("original database"), 0600); err != nil {
+	if err := writeTestFile(path, []byte("original database"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	files, err := hashTree(folder)
@@ -77,7 +77,7 @@ func TestPreRestoreScrubRefusesCorruptDatabaseBeforeMutation(t *testing.T) {
 	if err = writeManifest(folder, Manifest{Format: Format, Version: Version, Kind: KindPreRestore, Files: files}); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(path, []byte("changed database"), 0600); err != nil {
+	if err = writeTestFile(path, []byte("changed database"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err = ScrubPreRestoreCopy(context.Background(), folder, func(context.Context, string) error { t.Fatal("corrupt database reached scrubber"); return nil }); !errors.Is(err, ErrIntegrity) {
@@ -90,11 +90,11 @@ func TestPreRestoreScrubRefusesDatabaseAndWALSymlinks(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			folder := t.TempDir()
 			path := filepath.Join(folder, name)
-			if err := os.WriteFile(filepath.Join(folder, DatabaseName), []byte("database"), 0600); err != nil {
+			if err := writeTestFile(filepath.Join(folder, DatabaseName), []byte("database"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			outside := filepath.Join(t.TempDir(), "outside")
-			if err := os.WriteFile(outside, []byte("outside"), 0600); err != nil {
+			if err := writeTestFile(outside, []byte("outside"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			if name == DatabaseName {

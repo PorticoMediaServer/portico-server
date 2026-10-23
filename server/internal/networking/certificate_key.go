@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -30,7 +31,10 @@ const tlsSealFileName = "networking-tls-seal.key"
 // first use. When the old seal file is still around, the live sealed key is
 // adopted for continuity and sealed rows move to keyless material.
 func ensureTLSKey(ctx context.Context, db *sql.DB, stateDir string) (*ecdsa.PrivateKey, error) {
-	path := filepath.Join(stateDir, TLSKeyFileName)
+	path := storagepaths.Path(stateDir, TLSKeyFileName)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return nil, err
+	}
 	if key, err := loadTLSKey(path); err == nil {
 		migrateCertificateKeys(ctx, db, stateDir)
 		return key, nil
@@ -176,7 +180,7 @@ func migrateCertificateKeys(ctx context.Context, db *sql.DB, stateDir string) {
 		return
 	}
 	// Best effort: a leftover file is inert and migrates again next start.
-	_ = os.Remove(filepath.Join(stateDir, tlsSealFileName))
+	_ = os.Remove(storagepaths.Path(stateDir, tlsSealFileName))
 }
 
 func migrateCertificateKeysTx(ctx context.Context, tx *sql.Tx) error {
@@ -250,7 +254,7 @@ func migrateCertificateKeysTx(ctx context.Context, tx *sql.Tx) error {
 
 // loadTLSSeal reads the removed seal key for the one migration that needs it.
 func loadTLSSeal(stateDir string) (cipher.AEAD, error) {
-	raw, err := os.ReadFile(filepath.Join(stateDir, tlsSealFileName))
+	raw, err := os.ReadFile(storagepaths.Path(stateDir, tlsSealFileName))
 	if err != nil || len(raw) != 32 {
 		return nil, errCertificateMaterial
 	}

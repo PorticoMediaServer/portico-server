@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"runtime"
 	"strings"
 
@@ -100,9 +101,9 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 	if err = checkFreeSpace(s.state, estimate); err != nil {
 		return out, err
 	}
-	staged := filepath.Join(s.state, RestoreStagedDir)
+	staged := storagepaths.Path(s.state, RestoreStagedDir)
 	incoming := filepath.Join(staged, ".incoming")
-	complete := filepath.Join(s.state, ".staged-complete")
+	complete := storagepaths.Path(s.state, ".staged-complete")
 	// A previous staged restore is superseded. The marker only ever appears
 	// at restore-staged/restore.json, so a crash anywhere below leaves either
 	// the previous staged copy or nothing behind.

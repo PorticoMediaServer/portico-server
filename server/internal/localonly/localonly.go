@@ -19,13 +19,13 @@ type querier interface {
 // Library reports whether the library must never go online.
 func Library(ctx context.Context, q querier, library string) (bool, error) {
 	var local bool
-	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM library_metadata_agents WHERE library_id=? AND agent='local')`, library).Scan(&local)
+	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_metadata_agents a ON a.library_id=l.id WHERE l.id=? AND (a.agent='local' OR l.kind IN('book','comic','audiobook')))`, library).Scan(&local)
 	return local, err
 }
 
 // Item reports whether the library holding the item must never go online.
 func Item(ctx context.Context, q querier, item string) (bool, error) {
 	var local bool
-	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN library_metadata_agents a ON a.library_id=cl.library_id WHERE e.public_id=pid_blob(?) AND a.agent='local')`, item).Scan(&local)
+	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries l ON l.id=cl.library_id LEFT JOIN library_metadata_agents a ON a.library_id=cl.library_id WHERE e.public_id=pid_blob(?) AND (a.agent='local' OR l.kind IN('book','comic','audiobook')))`, item).Scan(&local)
 	return local, err
 }

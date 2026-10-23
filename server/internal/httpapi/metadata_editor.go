@@ -26,7 +26,7 @@ func (d Dependencies) metadataEditorRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 		defer cancel()
-		p, err := d.manualMetadataOwner(ctx, r)
+		p, err := d.manualMetadataAdministrator(ctx, r)
 		if err != nil {
 			failure(w, err)
 			return
@@ -54,7 +54,7 @@ func (d Dependencies) metadataEditorRoutes(mux *http.ServeMux) {
 			repairFailure(w, err)
 			return
 		}
-		if _, err = d.manualMetadataOwner(ctx, r); err != nil {
+		if _, err = d.manualMetadataAdministrator(ctx, r); err != nil {
 			failure(w, err)
 			return
 		}
@@ -69,7 +69,7 @@ func (d Dependencies) metadataEditorRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-		p, err := d.manualMetadataOwner(ctx, r)
+		p, err := d.manualMetadataAdministrator(ctx, r)
 		if err != nil {
 			failure(w, err)
 			return
@@ -97,7 +97,7 @@ func (d Dependencies) artworkUpload(w http.ResponseWriter, r *http.Request, rate
 	w.Header().Set("Cache-Control", "no-store")
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	p, err := d.manualMetadataOwner(ctx, r)
+	p, err := d.manualMetadataAdministrator(ctx, r)
 	if err != nil {
 		closeUnreadUpload(w, r)
 		failure(w, err)
@@ -161,7 +161,7 @@ func (d Dependencies) artworkUpload(w http.ResponseWriter, r *http.Request, rate
 }
 
 func (d Dependencies) writeRepairState(w http.ResponseWriter, r *http.Request, ctx context.Context, p identity.Principal, out metadata.RepairState) {
-	if _, err := d.manualMetadataOwner(ctx, r); err != nil {
+	if _, err := d.manualMetadataAdministrator(ctx, r); err != nil {
 		failure(w, err)
 		return
 	}

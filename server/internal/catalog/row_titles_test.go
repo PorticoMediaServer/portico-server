@@ -11,7 +11,7 @@ import (
 // fallback is US English sentence case and the code is the client catalogue id.
 func TestServerRowTitlesCarryCodeParamsAndSentenceCaseFallback(t *testing.T) {
 	// The fixed rows, as Home builds them (no libraries: no recent rows).
-	specs, err := (&Service{}).homeSpecs(HomeRequest{CommunityActivity: true})
+	specs, err := (&Service{}).homeSpecs(HomeRequest{CommunityActivity: true, LiveAvailable: true})
 	if err != nil || len(specs) != len(homeRowTitleCodes) {
 		t.Fatalf("specs %d %v", len(specs), err)
 	}

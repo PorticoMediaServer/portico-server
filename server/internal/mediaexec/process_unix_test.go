@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strconv"
 	"strings"
 	"syscall"
@@ -31,7 +32,7 @@ func configureForTest(t *testing.T, state string) int {
 
 func ledgerEntries(t *testing.T, state string) []string {
 	t.Helper()
-	entries, err := os.ReadDir(filepath.Join(state, "run", "media-processes"))
+	entries, err := os.ReadDir(storagepaths.Path(state, "run", "media-processes"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +181,7 @@ func TestLedgerRecordsSweepsAndReapsOnlyProvenGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	forged := strings.Join([]string{ledgerHeader, "previous", self, identity.start + "1", identity.boot}, "\n") + "\n"
-	if err = os.WriteFile(filepath.Join(state, "run", "media-processes", self), []byte(forged), 0600); err != nil {
+	if err = os.WriteFile(storagepaths.Path(state, "run", "media-processes", self), []byte(forged), 0600); err != nil {
 		t.Fatal(err)
 	}
 	// A new run of the server (new instance) reaps the earlier run's job.
@@ -329,7 +330,7 @@ func crashedServer() {
 	}
 	// Wait until the shim has recorded the group before reporting it.
 	for i := 0; i < 500; i++ {
-		if _, err = os.Stat(filepath.Join(state, "run", "media-processes", strconv.Itoa(cmd.Process.Pid))); err == nil {
+		if _, err = os.Stat(storagepaths.Path(state, "run", "media-processes", strconv.Itoa(cmd.Process.Pid))); err == nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)

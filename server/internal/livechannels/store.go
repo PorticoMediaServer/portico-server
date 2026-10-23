@@ -560,7 +560,7 @@ func (s *Store) readCursor(v string) (guideCursor, error) {
 }
 func (s *Store) Guide(ctx context.Context, a Authority, q GuideQuery) (Guide, error) {
 	out := Guide{Channels: []Channel{}, Sources: []GuideSource{}, Timezone: q.Timezone, ObservedAt: time.Now().UTC().Format(time.RFC3339)}
-	if q.Start.IsZero() || q.End.IsZero() || !q.End.After(q.Start) || q.End.Sub(q.Start) > 24*time.Hour || q.Start.Nanosecond() != 0 || q.End.Nanosecond() != 0 || q.Limit < 1 || q.Limit > 50 || len(q.Search) > 120 || len(q.SourceID) > 256 || q.Kind != LiveSource {
+	if q.Start.IsZero() || q.End.IsZero() || !q.End.After(q.Start) || (!q.Compact && q.End.Sub(q.Start) > 24*time.Hour || q.End.Sub(q.Start) > 14*24*time.Hour) || q.Start.Nanosecond() != 0 || q.End.Nanosecond() != 0 || q.Limit < 1 || q.Limit > 50 || len(q.Search) > 120 || len(q.SourceID) > 256 || q.Kind != LiveSource {
 		return out, ErrInvalid
 	}
 	if _, e := time.LoadLocation(q.Timezone); e != nil {
@@ -706,6 +706,9 @@ func (s *Store) Guide(ctx context.Context, a Authority, q GuideQuery) (Guide, er
 		}
 		args = append(args, out.End, out.Start)
 		programmeSQL, programmeArgs := guideProgrammeQuery(out.Channels, out.End, out.Start)
+		if q.Compact {
+			programmeSQL, programmeArgs = compactProgrammeQuery(out.Channels, out.End, out.Start)
+		}
 		rows, e = tx.QueryContext(ctx, programmeSQL, programmeArgs...)
 		if e != nil {
 			return out, ErrUnavailable
@@ -841,4 +844,15 @@ func readDiagnosticsTx(ctx context.Context, tx *sql.Tx, v *Source) error {
 		v.Diagnostics.Examples = []string{}
 	}
 	return nil
+}
+
+// Each selected channel drives its indexed LIMIT, independent of lineup size.
+func compactProgrammeQuery(channels []Channel, end, start string) (string, []any) {
+	parts := []string{}
+	args := []any{}
+	for _, c := range channels {
+		parts = append(parts, `SELECT * FROM (SELECT p.generation_id,p.channel_id,p.id,p.title,p.start_utc,p.end_utc,p.lineage,COALESCE(m.series_id,''),COALESCE(m.episode_id,''),COALESCE(m.new_evidence,'unknown'),COALESCE(m.description,''),COALESCE(m.facts,'{}') FROM live_programmes p LEFT JOIN live_programme_metadata m ON m.generation_id=p.generation_id AND m.id=p.id WHERE p.generation_id=? AND p.channel_id=? AND p.start_utc<? AND p.end_utc>? ORDER BY p.start_utc,p.id LIMIT 3)`)
+		args = append(args, c.Generation, c.ID, end, start)
+	}
+	return strings.Join(parts, " UNION ALL "), args
 }

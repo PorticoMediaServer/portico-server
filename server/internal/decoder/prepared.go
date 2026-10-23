@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"portico.local/server/internal/qualityladder"
 	"portico.local/server/internal/storage"
 )
 
@@ -78,7 +79,7 @@ func preparedArgs(input string, r PreparedRecipe, validate bool) ([]string, erro
 	if r.VideoCodec != "" && r.VideoCodec != "h264" && !hevc || hevc && r.AudioOnly {
 		return nil, ErrInvalidConfiguration
 	}
-	if hevc && r.AudioKbps != 384 || !hevc && r.AudioKbps != 192 && r.AudioKbps != 96 {
+	if hevc && r.AudioKbps != 384 || !hevc && r.AudioKbps != 192 && r.AudioKbps != 128 && r.AudioKbps != 96 {
 		return nil, ErrInvalidConfiguration
 	}
 	if r.Source.DynamicRange != "" && r.Source.DynamicRange != "sdr" && !preparedHDR(r) || len(r.Source.AudioChannels) > 16 {
@@ -243,13 +244,8 @@ func RunPreparedValidate(ctx context.Context, s *storage.Supervisor, key, execut
 }
 
 func validPreparedVideo(r PreparedRecipe) bool {
-	ladder := [][3]int{{640, 360, 1000}, {854, 480, 2000}, {1280, 720, 2500}, {1920, 1080, 5000}, {2560, 1440, 12000}, {3840, 2160, 20000}}
-	if r.VideoCodec == "hevc" {
-		// The same pictures at 70% of the H.264 rate, as conversions use.
-		ladder = [][3]int{{1280, 720, 1750}, {1920, 1080, 3500}, {2560, 1440, 8400}, {3840, 2160, 14000}}
-	}
-	for _, p := range ladder {
-		if r.Width == p[0] && r.Height == p[1] && r.VideoKbps == p[2] {
+	for _, p := range qualityladder.Fixed() {
+		if r.Width == p.Width() && r.Height == p.Height && r.VideoKbps == p.VideoBitrateBPS/1000 {
 			return true
 		}
 	}

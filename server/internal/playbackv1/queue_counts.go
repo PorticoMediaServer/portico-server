@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -103,4 +104,65 @@ func (s *Service) storeContainerCount(ctx context.Context, c containerCount) {
 	if _, err := dbwork.ExecWrite(write, s.DB, dbwork.ClassBackgroundMedia, `INSERT INTO queue_v1_container_counts(selector,catalog,keys,counted_ms) VALUES(?,?,?,?) ON CONFLICT(selector) DO UPDATE SET catalog=excluded.catalog,keys=excluded.keys,counted_ms=excluded.counted_ms`, c.selector, c.catalog, c.keys, s.now().UnixMilli()); err != nil {
 		log.Printf("A container's size could not be kept: %v", err)
 	}
+}
+
+// Duration summaries are bounded memoized projections. Their key includes the
+// queue edit revision, current visibility predicate/arguments, and catalogue
+// revisions (asset duration/availability and metadata changes move those).
+// They never retain item IDs, titles, paths or media URLs.
+type queueDurationSummary struct {
+	ms    int64
+	known bool
+}
+type queueDurationCache struct {
+	sync.Mutex
+	values map[string]queueDurationSummary
+}
+
+func (s *Service) queueDuration(ctx context.Context, l *layout, p identity.Principal) (queueDurationSummary, error) {
+	key := ""
+	if s.Visibility != nil {
+		where, args, err := s.Visibility(ctx, l.tx, p, "i.id")
+		if err != nil {
+			return queueDurationSummary{}, err
+		}
+		var catalog string
+		if err = l.tx.QueryRowContext(ctx, `SELECT COALESCE(group_concat(library_id||':'||revision,','),'') FROM (SELECT library_id,revision FROM library_revisions ORDER BY library_id)`).Scan(&catalog); err != nil {
+			return queueDurationSummary{}, err
+		}
+		raw, _ := json.Marshal([]any{l.q.id, l.q.revision, p.Authority, p.AccountID, p.ProfileID, where, args, catalog})
+		key = string(raw)
+		s.durations.Lock()
+		cached, ok := s.durations.values[key]
+		s.durations.Unlock()
+		if ok {
+			return cached, nil
+		}
+	}
+	summary := queueDurationSummary{known: true}
+	for from := int64(0); from < l.total(); from += WindowMax {
+		// A summary walks the queue in pages, discarding each page's key chunks.
+		l.chunks = map[string][]byte{}
+		entries, err := s.window(ctx, l, p, from, WindowMax)
+		if err != nil {
+			return queueDurationSummary{}, err
+		}
+		for _, entry := range entries {
+			if !entry.Available || entry.DurationMs <= 0 {
+				summary.known = false
+				continue
+			}
+			summary.ms += entry.DurationMs
+		}
+	}
+	l.chunks = map[string][]byte{}
+	if key != "" {
+		s.durations.Lock()
+		if s.durations.values == nil || len(s.durations.values) >= 64 {
+			s.durations.values = map[string]queueDurationSummary{}
+		}
+		s.durations.values[key] = summary
+		s.durations.Unlock()
+	}
+	return summary, nil
 }

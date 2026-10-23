@@ -46,6 +46,7 @@ type JobObservation struct {
 	State     string
 	Phase     string
 	Processed *int64
+	Total     *int64
 	ErrorCode string
 }
 type Job struct {
@@ -68,13 +69,14 @@ type Job struct {
 	Lane             string          `json:"lane"`
 	Actions          []string        `json:"actions"`
 	Processed        *int64          `json:"processed,omitempty"`
+	Total            *int64          `json:"total,omitempty"`
 }
 
-const jobColumns = `id,sequence,kind,resource,trigger,state,phase,revision,attempt,created_ms,updated_ms,next_ms,domain_id,error_code,predecessor,settings_revision,processed`
+const jobColumns = `id,sequence,kind,resource,trigger,state,phase,revision,attempt,created_ms,updated_ms,next_ms,domain_id,error_code,predecessor,settings_revision,processed,(SELECT total FROM console_operation_totals WHERE operation_id=console_operations.id)`
 
 func scanJob(row interface{ Scan(...any) error }) (Job, error) {
 	var j Job
-	e := row.Scan(&j.ID, &j.Sequence, &j.Kind, &j.Resource, &j.Trigger, &j.State, &j.Phase, &j.Revision, &j.Attempt, &j.CreatedAt, &j.UpdatedAt, &j.NextAt, &j.DomainID, &j.ErrorCode, &j.Predecessor, &j.SettingsRevision, &j.Processed)
+	e := row.Scan(&j.ID, &j.Sequence, &j.Kind, &j.Resource, &j.Trigger, &j.State, &j.Phase, &j.Revision, &j.Attempt, &j.CreatedAt, &j.UpdatedAt, &j.NextAt, &j.DomainID, &j.ErrorCode, &j.Predecessor, &j.SettingsRevision, &j.Processed, &j.Total)
 	j.Actions = []string{}
 	return j, e
 }
@@ -570,12 +572,33 @@ func (s *Scheduler) dueJobsFair(ctx context.Context) []Job {
 }
 
 func (s *Scheduler) finish(ctx context.Context, j Job, state, phase, code string) {
-	updated, e := updateOperation(ctx, s.Store.DB, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), j.ID, `UPDATE console_operations SET state=?,phase=?,error_code=?,processed=?,revision=revision+1,updated_ms=? WHERE id=? AND revision=? AND state!='cancellation-requested'`, state, phase, code, j.Processed, s.Store.now(), j.ID, j.Revision)
+	updated := false
+	e := dbwork.WithWriteTx(ctx, s.Store.DB, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), func(tx *sql.Tx) error {
+		var err error
+		updated, err = updateOperationTx(tx, j.ID, `UPDATE console_operations SET state=?,phase=?,error_code=?,processed=?,revision=revision+1,updated_ms=? WHERE id=? AND revision=? AND state!='cancellation-requested'`, state, phase, code, j.Processed, s.Store.now(), j.ID, j.Revision)
+		if err != nil || !updated {
+			return err
+		}
+		if j.Total == nil {
+			_, err = tx.Exec(`DELETE FROM console_operation_totals WHERE operation_id=?`, j.ID)
+			return err
+		}
+		if j.Processed == nil || *j.Total < *j.Processed || *j.Total < 0 {
+			return ErrInvalid
+		}
+		_, err = tx.Exec(`INSERT INTO console_operation_totals(operation_id,total) VALUES(?,?) ON CONFLICT(operation_id) DO UPDATE SET total=excluded.total`, j.ID, *j.Total)
+		return err
+	})
 	if e != nil || !updated {
 		return
 	}
 	if e == nil && state == "failed" {
-		_ = s.Store.Alert(ctx, "job-failed-"+j.Kind, "warning", true)
+		params := map[string]string{"reason": code, "time": time.UnixMilli(s.Store.now()).UTC().Format(time.RFC3339Nano)}
+		var title string
+		if e := s.Store.DB.QueryRowContext(ctx, `SELECT name FROM libraries WHERE id=?`, j.Resource).Scan(&title); e == nil && title != "" {
+			params["title"] = title
+		}
+		_ = s.Store.Alert(ctx, "job-failed-"+j.Kind, "warning", true, params)
 		_ = s.Store.Record(ctx, "runtime", "error", "scheduler", "job-failed", map[string]int64{"attempt": int64(j.Attempt)})
 	}
 }
@@ -647,8 +670,9 @@ func (s *Scheduler) advance(ctx context.Context, j Job) {
 		case "succeeded", "failed", "cancelled":
 			lanes.release(j.ID)
 		}
-		if v.State != j.State || v.Phase != j.Phase || v.ErrorCode != j.ErrorCode || !equalCount(v.Processed, j.Processed) {
+		if v.State != j.State || v.Phase != j.Phase || v.ErrorCode != j.ErrorCode || !equalCount(v.Processed, j.Processed) || !equalCount(v.Total, j.Total) {
 			j.Processed = v.Processed
+			j.Total = v.Total
 			s.finish(ctx, j, v.State, v.Phase, v.ErrorCode)
 		}
 		return
@@ -669,6 +693,7 @@ func (s *Scheduler) advance(ctx context.Context, j Job) {
 			return
 		} // A rolled-back batch is safe to retry, including after restart.
 		j.Processed = v.Processed
+		j.Total = v.Total
 		s.finish(ctx, j, v.State, v.Phase, v.ErrorCode)
 		return
 	}
@@ -977,6 +1002,7 @@ func (s *Scheduler) startAsyncStep(ctx context.Context, j Job, a Adapter) {
 			return
 		}
 		j.Processed = v.Processed
+		j.Total = v.Total
 		s.finish(child, j, v.State, v.Phase, v.ErrorCode)
 	})
 }

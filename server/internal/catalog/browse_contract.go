@@ -98,11 +98,10 @@ func attributeJoin(field string) string {
 
 var browseFields = []browseField{
 	{ID: "entityKind", LabelKey: "browse.field.entityKind", Type: valueEnum, Operators: enumOperators, ControlHint: "select", Complexity: "quick", Cost: "indexed", ApplicableKinds: kinds(commonKinds), AllowedValues: []string{"movie", "episode", "show", "season", "song", "album", "artist", "audiobook_file", "book", "author", "collection"}, Entity: `CASE e.kind WHEN 1 THEN 'movie' WHEN 2 THEN 'show' WHEN 3 THEN 'season' WHEN 4 THEN 'episode' WHEN 5 THEN 'artist' WHEN 6 THEN 'album' WHEN 7 THEN 'song' WHEN 8 THEN 'book' WHEN 9 THEN 'audiobook_file' WHEN 10 THEN 'collection' WHEN 11 THEN 'extra' WHEN 12 THEN 'disc' WHEN 13 THEN 'author' END`},
-	// Match: whether an album's files carried tags. An untagged file lands under the placeholder
-	// artist the scanner makes ("Unknown artist"); the owner's Unmatched view of a music library
-	// lists those albums. Clients do not offer it as a filter to members.
-	{ID: "match", LabelKey: "browse.field.match", Type: valueEnum, Operators: enumOperators, ControlHint: "select", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds("album"), AllowedValues: []string{"matched", "unmatched"},
-		Entity: `CASE WHEN EXISTS(SELECT 1 FROM catalog_albums al JOIN catalog_entities ar ON ar.id=al.artist_id WHERE al.entity_id=e.entity_id AND ar.title='Unknown artist') THEN 'unmatched' ELSE 'matched' END`},
+	// Match is a current online metadata attention fact, including Keep as is.
+	// Its compiler uses the indexed attention relation, never a placeholder name.
+	{ID: "match", LabelKey: "browse.field.match", Type: valueEnum, Operators: enumOperators, ControlHint: "select", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds("movie,show,season,episode,artist,album,song"), AllowedValues: []string{"matched", "unmatched"}},
+	{ID: "library", LabelKey: "browse.field.library", Type: valueEnum, Operators: enumOperators, ControlHint: "facet-multi-select", Complexity: "quick", Cost: "indexed", ApplicableKinds: kinds(commonKinds), Facet: "library", Entity: `(SELECT library_id FROM catalog_libraries WHERE id=e.library_id)`},
 	{ID: "search", LabelKey: "browse.field.search", Type: valueString, Operators: []string{"contains"}, ControlHint: "text", Complexity: "quick", Cost: "indexed-join", ApplicableKinds: kinds(commonKinds), Entity: "e.title"},
 	{ID: "title", LabelKey: "browse.field.title", Type: valueString, Operators: stringOperators(false), ControlHint: "text", Complexity: "quick", Cost: "indexed", ApplicableKinds: kinds(commonKinds), Entity: "e.title"},
 	{ID: "year", LabelKey: "browse.field.year", Type: valueNumber, Operators: numberOperators, ControlHint: "number-range", Complexity: "quick", Cost: "indexed", ApplicableKinds: kinds("movie,episode,show,season,album,song,book,audiobook_file"), Facet: "year", Entity: "NULLIF(e.year,0)"},
@@ -148,11 +147,11 @@ var browseFields = []browseField{
 		Join: attributeJoin("studio"), Value: "ca.source_value"},
 	{ID: "network", LabelKey: "browse.field.network", Type: valueString, Operators: stringOperators(false), ControlHint: "facet-multi-select", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds("show,season,episode"), Facet: "network",
 		Join: attributeJoin("network"), Value: "ca.source_value"},
-	{ID: "actor", LabelKey: "browse.field.actor", Type: valueSet, Operators: stringOperators(true), ControlHint: "text", Complexity: "advanced", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds),
+	{ID: "actor", LabelKey: "browse.field.actor", Type: valueSet, Operators: stringOperators(true), ControlHint: "facet-multi-select", Complexity: "advanced", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Facet: "actor",
 		Join: `JOIN catalog_credits cc ON cc.entity_id=bei.item_id JOIN catalog_credit_labels cd ON cd.id=cc.department_id AND cd.label='Acting'`, Value: "cc.credited_name"},
-	{ID: "director", LabelKey: "browse.field.director", Type: valueSet, Operators: stringOperators(true), ControlHint: "text", Complexity: "advanced", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds),
+	{ID: "director", LabelKey: "browse.field.director", Type: valueSet, Operators: stringOperators(true), ControlHint: "facet-multi-select", Complexity: "advanced", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Facet: "director",
 		Join: `JOIN catalog_credits cc ON cc.entity_id=bei.item_id JOIN catalog_credit_labels cr ON cr.id=cc.role_id JOIN catalog_credit_labels cd ON cd.id=cc.department_id AND (cr.label='Director' OR cd.label='Directing')`, Value: "cc.credited_name"},
-	{ID: "writer", LabelKey: "browse.field.writer", Type: valueSet, Operators: stringOperators(true), ControlHint: "text", Complexity: "advanced", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds),
+	{ID: "writer", LabelKey: "browse.field.writer", Type: valueSet, Operators: stringOperators(true), ControlHint: "facet-multi-select", Complexity: "advanced", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Facet: "writer",
 		Join: `JOIN catalog_credits cc ON cc.entity_id=bei.item_id JOIN catalog_credit_labels cr ON cr.id=cc.role_id JOIN catalog_credit_labels cd ON cd.id=cc.department_id AND (cr.label IN('Writer','Screenplay') OR cd.label='Writing')`, Value: "cc.credited_name"},
 	{ID: "durationMs", LabelKey: "browse.field.durationSeconds", Type: valueNumber, Operators: numberOperators, ControlHint: "number-range", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(assetedKinds),
 		Join: `JOIN catalog_asset_links ia ON ia.entity_id=bei.item_id JOIN catalog_assets ast ON ast.id=ia.asset_id`, Value: "ast.duration"},
@@ -395,6 +394,7 @@ type BrowseSortCapability struct {
 	DefaultDirection string   `json:"defaultDirection"`
 	Expensive        bool     `json:"expensive"`
 	Seeded           bool     `json:"seeded"`
+	OwnerOnly        bool     `json:"ownerOnly"`
 	// RequiresGroup marks the group's own order: offered on a group's page,
 	// refused without a group condition.
 	RequiresGroup   bool     `json:"requiresGroup"`
@@ -477,12 +477,16 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		return out, err
 	}
 	out.Library = lib
+	online, err := s.browseOnlineLibrary(library)
+	if err != nil {
+		return out, err
+	}
 	available := pivotsForKind(lib.Kind)
 	if len(available) == 0 {
 		return out, requestinput.New("this library kind publishes no browse pivots")
 	}
 	for _, entry := range available {
-		out.Pivots = append(out.Pivots, BrowsePivotCapability{ID: entry.ID, LabelKey: entry.LabelKey, EntityKinds: entry.EntityKinds, DefaultSort: entry.DefaultSort, SupportedViews: entry.SupportedViews, Browsable: entry.Browsable || entry.Aggregate != "", Aggregate: entry.Aggregate, Members: entry.Members, Sorts: pivotSortIDs(lib.Kind, entry), Filters: pivotFieldIDs(lib.Kind, entry), Paging: "keyset"})
+		out.Pivots = append(out.Pivots, BrowsePivotCapability{ID: entry.ID, LabelKey: entry.LabelKey, EntityKinds: entry.EntityKinds, DefaultSort: entry.DefaultSort, SupportedViews: entry.SupportedViews, Browsable: entry.Browsable || entry.Aggregate != "", Aggregate: entry.Aggregate, Members: entry.Members, Sorts: pivotSortIDs(lib.Kind, entry), Filters: libraryBrowseFields(lib.Kind, entry, online), Paging: "keyset"})
 	}
 	kindFilter := map[string]bool{}
 	if pivot == "" {
@@ -510,6 +514,9 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		}
 	}
 	for _, field := range browseFields {
+		if field.ID == "library" || field.ID == "match" && !online {
+			continue
+		}
 		if len(kindFilter) > 0 && !anyKind(field.ApplicableKinds, kindFilter) {
 			continue
 		}
@@ -526,7 +533,7 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		if len(kindFilter) > 0 && !anyKind(entry.ApplicableKinds, kindFilter) {
 			continue
 		}
-		out.Sorts = append(out.Sorts, BrowseSortCapability{ID: entry.ID, LabelKey: entry.LabelKey, Directions: entry.Directions, DefaultDirection: entry.DefaultDirection, Expensive: entry.ID == "forYou", Seeded: entry.ID == "random", RequiresGroup: entry.Ordering == -3, ApplicableKinds: entry.ApplicableKinds})
+		out.Sorts = append(out.Sorts, BrowseSortCapability{ID: entry.ID, LabelKey: entry.LabelKey, Directions: entry.Directions, DefaultDirection: entry.DefaultDirection, Expensive: entry.ID == "forYou", Seeded: entry.ID == "random", OwnerOnly: entry.ID == "fileSize", RequiresGroup: entry.Ordering == -3, ApplicableKinds: entry.ApplicableKinds})
 	}
 	if out.ResolvedPivot == nil || out.ResolvedPivot.Aggregate != "" {
 		groupSorts := []string{"count", "recentActivity"}
@@ -651,5 +658,21 @@ func BrowseFacetFields() []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// browseOnlineLibrary is read-only eligibility, independent of owner Settings UI.
+func (s *Service) browseOnlineLibrary(library string) (bool, error) {
+	var online bool
+	err := s.read().QueryRow(`SELECT l.kind IN('movie','tv','anime','music') AND COALESCE(a.agent,'online')='online' FROM libraries l LEFT JOIN library_metadata_agents a ON a.library_id=l.id WHERE l.id=?`, library).Scan(&online)
+	return online, err
+}
+func libraryBrowseFields(kind string, pivot browsePivot, online bool) []string {
+	out := []string{}
+	for _, id := range pivotFieldIDs(kind, pivot) {
+		if id != "library" && (id != "match" || online) {
+			out = append(out, id)
+		}
+	}
 	return out
 }

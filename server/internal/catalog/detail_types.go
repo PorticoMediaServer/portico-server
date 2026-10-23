@@ -102,20 +102,31 @@ type DetailMetadata struct {
 // TitleFacts are the item's own facts from catalog_item_details (the editor's General
 // fields), for the page's facts line and Details section. Absent fields are omitted.
 type TitleFacts struct {
-	ContentRating string `json:"contentRating,omitempty"`
-	Studio        string `json:"studio,omitempty"`
-	Network       string `json:"network,omitempty"`
-	Tagline       string `json:"tagline,omitempty"`
-	ReleaseDate   string `json:"releaseDate,omitempty"`
-	OriginalTitle string `json:"originalTitle,omitempty"`
-	Country       string `json:"country,omitempty"`
-	Edition       string `json:"edition,omitempty"`
+	OriginalLanguage string `json:"originalLanguage,omitempty"`
+	ContentRating    string `json:"contentRating,omitempty"`
+	Studio           string `json:"studio,omitempty"`
+	Network          string `json:"network,omitempty"`
+	Tagline          string `json:"tagline,omitempty"`
+	ReleaseDate      string `json:"releaseDate,omitempty"`
+	OriginalTitle    string `json:"originalTitle,omitempty"`
+	Country          string `json:"country,omitempty"`
+	Edition          string `json:"edition,omitempty"`
+}
+type EpisodeNeighbour struct {
+	ID     string `json:"id"`
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+}
+type EpisodeDetails struct {
+	ContentRating string            `json:"contentRating,omitempty"`
+	Previous      *EpisodeNeighbour `json:"previous,omitempty"`
+	Next          *EpisodeNeighbour `json:"next,omitempty"`
 }
 type Detail struct {
-	Facts *TitleFacts `json:"facts,omitempty"`
-	// Files is every file of the title with its tracks, for the page's Files
-	// list and the version picker: best version first.
-	Files []TitleFile `json:"files,omitempty"`
+	Collections    []DetailCollection `json:"collections"`
+	EpisodeDetails *EpisodeDetails    `json:"episodeDetails,omitempty"`
+	Facts          *TitleFacts        `json:"facts,omitempty"`
+	Languages      DetailLanguages    `json:"languages"`
 	// MissingSince is when the title's last file went from disk (RFC 3339).
 	// Absent while the title has a file. A missing title is shown, cannot be
 	// played, and comes back when a file that is the same title appears.

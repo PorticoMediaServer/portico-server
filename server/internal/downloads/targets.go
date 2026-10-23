@@ -7,7 +7,6 @@ import (
 	"math"
 	"path"
 	"portico.local/server/internal/preparedmedia"
-	"strconv"
 	"strings"
 
 	"portico.local/server/internal/assets"
@@ -27,23 +26,13 @@ type source struct {
 	VideoCodec          string
 	AudioCodec          string
 	Height              int
+	VideoBitrateBPS     int64
 	Duration            float64
 	Available           bool
 	Parts               int
 }
 
 func audioKind(kind string) bool { return kind == "song" || kind == "audiobook_file" }
-
-// The audio recipe has one budget, and every ladder rung resolves to it for an
-// audio source. Estimating from the recipe rather than from the rung keeps the
-// size honest whichever rung a client names.
-const audioRecipeBitrateBPS = 192_000
-
-// canonicalAudioRung is the rung an audio item publishes. The ladder is a video
-// vocabulary; an audio source has one optimized target, and this is the rung
-// whose audio budget equals the recipe's, so the published estimate and the
-// delivered bytes agree.
-const canonicalAudioRung = "1080p"
 
 // resolveSource reads the file a download of this item is a download of.
 //
@@ -70,6 +59,17 @@ func resolveVersionSource(ctx context.Context, tx *sql.Tx, item, version string)
 	}
 	s.Kind, _ = compactcatalog.Kind(kindInt).Name()
 	s.Item, s.Available = item, available != 0
+	if s.Duration > 0 {
+		s.VideoBitrateBPS = int64(float64(s.Size) * 8 / s.Duration)
+	}
+	if facts, err := playback.DeliverySourceTx(ctx, tx, s.Asset); err == nil && facts.Video != nil {
+		if facts.Video.Height > 0 {
+			s.Height = facts.Video.Height
+		}
+		if facts.Video.BitRate > 0 {
+			s.VideoBitrateBPS = facts.Video.BitRate
+		}
+	}
 	return s, nil
 }
 
@@ -93,18 +93,27 @@ func sourceReason(s source, e error) string {
 // or when the conversion code reports it can make one; a rung that is only a
 // name in the ladder is refused before a claim that could only fail is made.
 func qualityReason(ctx context.Context, tx *sql.Tx, quality, recipe string, found source) string {
-	if quality == QualityOriginal {
+	if quality == QualityOriginal || sameAsSource(quality, found) {
 		return ""
 	}
-	rung, ok := ladderRung(quality)
+	if quality == "automatic" && recipe != "" {
+		if preparedmedia.Producible(recipe) {
+			return ""
+		}
+		if versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item); e == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
+			return ""
+		}
+		return ReasonNotOptimized
+	}
+	_, ok := ladderRung(quality)
 	if !ok {
 		return ReasonNotOptimized
 	}
-	if !audioKind(found.Kind) && found.Height > 0 && rung.Height > found.Height {
+	if audioKind(found.Kind) {
 		return ReasonNotOptimized
 	}
 	if recipe == "" {
-		recipe = preparedProfile(found.Kind, rung)
+		return ReasonNotOptimized
 	}
 	if preparedmedia.Producible(recipe) {
 		return ""
@@ -127,17 +136,17 @@ func preparedProfile(kind string, rung playback.QualityPreset) string {
 	if audioKind(kind) {
 		return "audio-aac-v3"
 	}
-	return "portable-" + strconv.Itoa(rung.Height) + "-v3"
+	return "portable-" + rung.ID + "-v3"
 }
 
 // estimateBytes is bitrate times duration, and the caller publishes it as an
 // estimate. Only the original's size is exact before the artifact exists.
 func estimateBytes(quality, id string, s source) (int64, bool) {
-	if quality == QualityOriginal {
+	if quality == QualityOriginal || sameAsSource(quality, s) {
 		return s.Size, false
 	}
 	rung, ok := playback.LadderPreset(quality)
-	if !ok || s.Duration <= 0 || math.IsNaN(s.Duration) || math.IsInf(s.Duration, 0) {
+	if (!ok && id == "") || s.Duration <= 0 || math.IsNaN(s.Duration) || math.IsInf(s.Duration, 0) {
 		return 0, true
 	}
 	if id == "" {
@@ -297,6 +306,9 @@ func qualityLabel(quality string) string {
 	if quality == QualityOriginal {
 		return "Original"
 	}
+	if quality == "automatic" {
+		return "Automatic"
+	}
 	if rung, ok := playback.LadderPreset(quality); ok {
 		return rung.Label
 	}
@@ -309,12 +321,29 @@ func qualityLabel(quality string) string {
 // and the device plays its result; otherwise the H.264 recipe, which is quicker
 // to make and plays everywhere. "" for the original.
 func chooseRecipe(ctx context.Context, tx *sql.Tx, device playback.CapabilityDocument, quality string, found source) string {
+	if quality == "automatic" {
+		if audioKind(found.Kind) {
+			if recipePlayable(ctx, tx, device, "audio-aac-v3", found) {
+				return "audio-aac-v3"
+			}
+			return ""
+		}
+		for _, p := range playback.QualityLadder {
+			if found.Height > 0 && p.Height <= found.Height {
+				return chooseRecipe(ctx, tx, device, p.ID, found)
+			}
+		}
+		return ""
+	}
 	rung, ok := ladderRung(quality)
-	if quality == QualityOriginal || !ok {
+	if quality == QualityOriginal || sameAsSource(quality, found) || !ok {
 		return ""
 	}
 	plain := preparedProfile(found.Kind, rung)
-	rich := preparedmedia.RichProfileFor(rung.Height)
+	if !recipePlayable(ctx, tx, device, plain, found) {
+		plain = ""
+	}
+	rich := preparedmedia.RichProfileFor(rung.ID)
 	if audioKind(found.Kind) || rich == "" || found.Asset == "" {
 		return plain
 	}
@@ -392,4 +421,62 @@ func richTarget(f playback.DeliverySource, recipe preparedmedia.Profile) playbac
 		out.Audio = append(out.Audio, playback.SourceAudio{Index: i + 1, Ordinal: i, Codec: "aac", Channels: decoder.PreparedChannels(true, a.Channels), Default: a.Default, StreamDetail: assets.StreamDetail{SampleRate: 48000}})
 	}
 	return out
+}
+
+// sameAsSource is an evidenced partial ordering, never a resolution guess.
+func sameAsSource(quality string, s source) bool {
+	r, ok := playback.LadderPreset(quality)
+	return ok && !audioKind(s.Kind) && r.SameAsSource(s.Height, s.VideoBitrateBPS)
+}
+
+// resolvedQuality is frozen before admission. A source-equivalent step stores
+// an original-file claim, so neither the worker nor a retry can create work.
+func resolvedQuality(ctx context.Context, tx *sql.Tx, device playback.CapabilityDocument, quality string, s source) string {
+	if sameAsSource(quality, s) {
+		return QualityOriginal
+	}
+	if quality != "automatic" {
+		return quality
+	}
+	facts, err := playback.DeliverySourceTx(ctx, tx, s.Asset)
+	if err != nil || playback.DownloadPlayable(facts, device) {
+		return QualityOriginal
+	}
+	if audioKind(s.Kind) {
+		return "automatic"
+	}
+	for _, r := range playback.QualityLadder {
+		if s.Height > 0 && r.Height <= s.Height && !sameAsSource(r.ID, s) {
+			recipe := chooseRecipe(ctx, tx, device, r.ID, s)
+			if recipe != "" && recipePlayable(ctx, tx, device, recipe, s) {
+				return r.ID
+			}
+		}
+	}
+
+	// Unknown dimensions cannot justify inventing a conversion size.
+	return QualityOriginal
+}
+
+// recipePlayable shares the exact prepared-output description between the
+// option projection and admission. Device codec limits cannot be bypassed by
+// posting a row that was disabled in the menu.
+func recipePlayable(ctx context.Context, tx *sql.Tx, device playback.CapabilityDocument, id string, s source) bool {
+	r, err := preparedmedia.ProfileByID(id)
+	if err != nil {
+		return false
+	}
+	target := playback.DeliverySource{Container: "mp4", Audio: []playback.SourceAudio{{Codec: "aac", Channels: 2, StreamDetail: assets.StreamDetail{SampleRate: 48000}}}}
+	if audioKind(s.Kind) {
+		return playback.DownloadPlayable(target, device)
+	}
+	facts, err := playback.DeliverySourceTx(ctx, tx, s.Asset)
+	if err == nil && facts.Video != nil && facts.Video.DynamicRange == assets.RangeDolbyVision && decoder.DolbyVisionBaseRange(facts.Video.DolbyVisionProfile, facts.Video.DolbyVisionCompatibility) == "" {
+		return false
+	}
+	if preparedmedia.Rich(id) {
+		return err == nil && facts.Video != nil && playback.DownloadPlayable(richTarget(facts, r), device)
+	}
+	target.Video = &playback.SourceVideo{Codec: "h264", StreamDetail: assets.StreamDetail{Profile: "High", Level: decoder.H264OutputLevel(r.Width, r.Height, 60), Width: r.Width, Height: r.Height, FrameRate: 60, BitDepth: 8, DynamicRange: "sdr"}}
+	return playback.DownloadPlayable(target, device)
 }

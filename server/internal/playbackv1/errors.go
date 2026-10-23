@@ -22,3 +22,10 @@ var (
 	ErrNotControllable = errors.New("device not controllable")
 	ErrStreamExists    = errors.New("stream exists")
 )
+
+// StreamLimitDetail is observed account capacity, never a list of hidden titles.
+type StreamLimitDetail struct {
+	Scope   string `json:"scope"`
+	Limit   int64  `json:"limit"`
+	Playing int64  `json:"playing"`
+}

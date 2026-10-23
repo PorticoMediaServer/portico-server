@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"sync"
 	"testing"
 )
@@ -35,7 +36,7 @@ func TestRestoreVerifiesCopiedBytesAgainstCapturedManifest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			folder := filepath.Join(state, BackupsDir, id)
+			folder := storagepaths.Path(state, BackupsDir, id)
 			source := Source{BackupID: id}
 			if byPath {
 				source = Source{Path: folder}
@@ -51,7 +52,7 @@ func TestRestoreVerifiesCopiedBytesAgainstCapturedManifest(t *testing.T) {
 					t.Fatal("copy marker must be unique")
 				}
 				raw = bytes.Replace(raw, []byte("COPY_ORIGINAL_VALUE"), []byte("COPY_MODIFIED_VALUE"), 1)
-				if err = os.WriteFile(path, raw, 0600); err != nil {
+				if err = writeTestFile(path, raw, 0600); err != nil {
 					t.Fatal(err)
 				}
 				// Rewriting the source manifest too cannot change the expectations
@@ -80,7 +81,7 @@ func TestRestoreVerifiesCopiedBytesAgainstCapturedManifest(t *testing.T) {
 			if !changed {
 				t.Fatal("source mutation hook was not exercised")
 			}
-			if _, err = os.Stat(filepath.Join(state, RestoreStagedDir, RestoreMarkerFile)); !os.IsNotExist(err) {
+			if _, err = os.Stat(storagepaths.Path(state, RestoreStagedDir, RestoreMarkerFile)); !os.IsNotExist(err) {
 				t.Fatalf("invalid copy published a restore marker: %v", err)
 			}
 		})

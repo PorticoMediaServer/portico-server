@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"sync"
 	"syscall"
@@ -58,7 +59,7 @@ func newRouteIdentityFixture(t *testing.T) *routeIdentityFixture {
 	if e := os.Chmod(state, 0700); e != nil {
 		t.Fatal(e)
 	}
-	db := openFixtureDB(t, filepath.Join(state, "server.sqlite"))
+	db := openFixtureDB(t, storagepaths.Path(state, "server.sqlite"))
 	if e := installNetworkingClaimsForTest(t, context.Background(), db); e != nil {
 		t.Fatal(e)
 	}
@@ -71,7 +72,7 @@ func newRouteIdentityFixture(t *testing.T) *routeIdentityFixture {
 		t.Fatal(e)
 	}
 	stageIdentityFixture(t, db, nil, DurableIdentity{ServerID: id, PublicKey: pub, KeyIncarnation: "key1"})
-	dir := filepath.Join(state, "networking-keys")
+	dir := storagepaths.Path(state, "networking-keys")
 	if e = privateDirectory(dir); e != nil {
 		t.Fatal(e)
 	}

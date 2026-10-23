@@ -5,7 +5,6 @@ import (
 	access "portico.local/server/internal/access"
 	administration "portico.local/server/internal/administration"
 	diagnostics "portico.local/server/internal/diagnostics"
-	hosted "portico.local/server/internal/hosted"
 	operations "portico.local/server/internal/operations"
 	persistence "portico.local/server/internal/persistence"
 	servicelog "portico.local/server/internal/servicelog"
@@ -49,11 +48,17 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[access.InvitationRevoke, access.Invitation](registry, apikit.Metadata{ID: "post_admin_access_invitations_id_revoke", Method: "POST", Path: "/v1/admin/access/invitations/{id}/revoke", Summary: "Run server access invitations revoke", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
+	if err := apikit.RegisterHTTP[access.MemberNotesChange, access.Member](registry, apikit.Metadata{ID: "put_admin_access_member_notes", Method: "PUT", Path: "/v1/admin/access/members/{id}/notes", Summary: "Manage invitation or private person notes", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[access.InvitationChange, access.Invitation](registry, apikit.Metadata{ID: "put_admin_access_invitation", Method: "PUT", Path: "/v1/admin/access/invitations/{id}", Summary: "Manage invitation or private person notes", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[access.InvitationLinkRequest, access.InvitationLink](registry, apikit.Metadata{ID: "post_admin_access_invitation_link", Method: "POST", Path: "/v1/admin/access/invitations/{id}/link", Summary: "Manage invitation or private person notes", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
 	// internal/httpapi/admin_access.go:139
-	if err := apikit.RegisterHTTP[struct {
-		access.Acceptance
-		PorticoIdentity *hosted.Signed "json:\"porticoIdentity,omitempty\""
-	}, access.Member](registry, apikit.Metadata{ID: "post_access_invitations_accept", Method: "POST", Path: "/v1/access/invitations/accept", Summary: "Run access invitations accept", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[InvitationAcceptRequest, InvitationAcceptanceResponse](registry, apikit.Metadata{ID: "post_access_invitations_accept", Method: "POST", Path: "/v1/access/invitations/accept", Summary: "Run access invitations accept", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin_concurrency.go:182
@@ -133,7 +138,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/administration.go:218
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.FilesystemPage]](registry, apikit.Metadata{ID: "get_admin_filesystem", Method: "GET", Path: "/v1/admin/filesystem", Summary: "Read server filesystem", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.FilesystemPage]](registry, apikit.Metadata{ID: "get_admin_filesystem", Method: "GET", Path: "/v1/admin/filesystem", Summary: "Read server filesystem", Query: []string{"path", "cursor", "limit", "includeFiles", "showHidden", "prefix", "checkWritable"}, Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:232

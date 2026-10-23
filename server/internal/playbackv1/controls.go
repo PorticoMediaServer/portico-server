@@ -2,7 +2,9 @@ package playbackv1
 
 import (
 	"context"
+	"database/sql"
 	"strconv"
+	"time"
 
 	"portico.local/server/internal/identity"
 )
@@ -83,17 +85,19 @@ func (s *Service) AdminControl(ctx context.Context, id string, in ControlCommand
 
 type RemotePlayback struct {
 	SessionControls
-	Device AdminName  `json:"device"`
-	Item   *AdminItem `json:"item,omitempty"`
-	Kind   string     `json:"kind"`
+	Device AdminName   `json:"device"`
+	Item   *AdminItem  `json:"item,omitempty"`
+	Kind   string      `json:"kind"`
+	Next   *QueueEntry `json:"next,omitempty"`
 }
 type RemoteControlsDocument struct {
 	Items      []RemotePlayback `json:"items"`
 	NextCursor string           `json:"nextCursor"`
 }
 
-// RemoteControls is one document for this profile's playback on all its devices,
-// including paired receivers. It grants no control of another viewer's session.
+// RemoteControls lists this account's active playback across its profiles.
+// Other profiles offer only stop; ordinary transport and track changes keep
+// their existing profile fence. The HTTP layer redacts hidden current titles.
 func (s *Service) RemoteControls(ctx context.Context, c Caller, cursor string, limit int) (RemoteControlsDocument, error) {
 	out := RemoteControlsDocument{Items: []RemotePlayback{}}
 	if limit == 0 {
@@ -102,7 +106,7 @@ func (s *Service) RemoteControls(ctx context.Context, c Caller, cursor string, l
 	if limit < 1 || limit > 100 || len(cursor) > 160 {
 		return out, &FieldError{Path: "limit"}
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM playback_v1_sessions WHERE authority=? AND account_id=? AND profile_id=? AND ended_ms=0 AND lease_expires_ms>? AND id>? ORDER BY id LIMIT ?`, c.Principal.Authority, c.Principal.AccountID, c.Principal.ProfileID, s.now().UnixMilli(), cursor, limit+1)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM playback_v1_sessions WHERE authority=? AND account_id=? AND ended_ms=0 AND lease_expires_ms>? AND id>? ORDER BY id LIMIT ?`, c.Principal.Authority, c.Principal.AccountID, s.now().UnixMilli(), cursor, limit+1)
 	if err != nil {
 		return out, err
 	}
@@ -143,7 +147,63 @@ func (s *Service) RemoteControls(ctx context.Context, c Caller, cursor string, l
 		if e != nil {
 			return out, e
 		}
-		out.Items = append(out.Items, RemotePlayback{controls, device, item, r.kind})
+		if !sameProfile(c.Principal, r) {
+			controls.Actions = []string{"stop"}
+		}
+		remote := RemotePlayback{SessionControls: controls, Device: device, Item: item, Kind: r.kind}
+		if r.queueID != "" {
+			tx, e := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+			if e != nil {
+				return out, e
+			}
+			q, e := loadQueue(ctx, tx, r.queueID)
+			if e == nil {
+				l, e := s.readLayout(ctx, tx, q)
+				if e == nil {
+					if pos, _, ok := completionNext(l); ok {
+						entries, e := s.window(ctx, l, c.Principal, pos, 1)
+						if e == nil && len(entries) == 1 && entries[0].Available {
+							remote.Next = &entries[0]
+						}
+					}
+				}
+			}
+			tx.Rollback()
+		}
+		out.Items = append(out.Items, remote)
 	}
 	return out, nil
+}
+
+// StopAccountSession lets a viewer free their own account's stream slot even
+// when the playing profile's title is hidden. It never discloses that title or
+// grants transport, track or media access across profiles.
+func (s *Service) StopAccountSession(ctx context.Context, c Caller, id string) error {
+	r, err := loadRow(ctx, s.DB, id)
+	if err != nil {
+		return err
+	}
+	if r.authority != c.Principal.Authority || r.account != c.Principal.AccountID {
+		return ErrNotFound
+	}
+	c.Principal.ProfileID = r.profile
+	c.AuthorizeItem = nil
+	return s.Stop(ctx, c, id, nil)
+}
+
+// AccountStreamLimit reads the same durable media slots as owner admission.
+// It is called only after that producer refuses the account cap.
+func (s *Service) AccountStreamLimit(ctx context.Context, c Caller) (StreamLimitDetail, error) {
+	out := StreamLimitDetail{Scope: "account"}
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return out, err
+	}
+	defer tx.Rollback()
+	if err = tx.QueryRowContext(ctx, `SELECT per_account_cap FROM playback_owner_policy WHERE singleton=1`).Scan(&out.Limit); err != nil {
+		return out, err
+	}
+	stamp := s.now().UTC().Format(time.RFC3339)
+	err = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_sessions ps JOIN authorization_access auth ON auth.hash=ps.session_hash WHERE ps.state NOT IN('stopped','ended','failed') AND ps.expires_at>? AND auth.expires_at>? AND auth.revoked=0 AND auth.authority=? AND ps.account_id=? AND NOT EXISTS(SELECT 1 FROM playback_private_presentations pp JOIN playback_sessions owner ON owner.id=pp.owner_session_id WHERE pp.session_id=ps.id AND owner.state NOT IN('stopped','ended','failed'))`, stamp, stamp, c.Principal.Authority, c.Principal.AccountID).Scan(&out.Playing)
+	return out, err
 }

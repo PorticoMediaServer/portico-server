@@ -154,7 +154,7 @@ func (s *Service) CleanupBulkJobs(ctx context.Context, budget time.Duration) err
 			return e
 		}
 		more := false
-		for _, table := range []string{"personal_job_items", "personal_job_failures"} {
+		for _, table := range []string{"personal_job_items", "personal_job_failures", "personal_job_membership_outcomes"} {
 			if more, e = s.deleteBulkRows(ctx, table, id); e != nil {
 				return e
 			}
@@ -243,7 +243,13 @@ func bulkEvent(tx *sql.Tx, p identity.Principal, id string) error {
 	if err = tx.QueryRow(`SELECT revision FROM personal_jobs WHERE id=?`, id).Scan(&revision); err != nil {
 		return err
 	}
-	return apievents.Append(tx, apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID), "job.updated", "job", id, strconv.FormatInt(revision, 10), j)
+	if err = apievents.Append(tx, apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID), "job.updated", "job", id, strconv.FormatInt(revision, 10), j); err != nil {
+		return err
+	}
+	if jobOwnerCommand(j.Command) {
+		return apievents.Append(tx, "admin", "job.updated", "job", id, strconv.FormatInt(revision, 10), j)
+	}
+	return operations.AppendActivityProgressTx(tx, "job.updated", "job", id, strconv.FormatInt(revision, 10), j.State != "running" && j.State != "queued")
 }
 
 func (s *Service) CreateBulkJob(ctx context.Context, p identity.Principal, v Viewer, in JobRequest, scheduler *operations.Scheduler, access BulkAccess) (out BulkJob, err error) {
@@ -253,7 +259,7 @@ func (s *Service) CreateBulkJob(ctx context.Context, p identity.Principal, v Vie
 	if !personalOperation.MatchString(in.OperationID) {
 		return out, jobInvalid("invalid command or operationId")
 	}
-	if jobOwnerCommand(in.Command) && p.Role != "owner" {
+	if jobOwnerCommand(in.Command) && !identity.Administrative(p.Role) {
 		return out, identity.ErrUnauthorized
 	}
 	if err = s.validateBulkCommand(in.Command, in.Args); err != nil {
@@ -427,7 +433,13 @@ func (s *Service) BulkAdapter(access BulkAccess) operations.Adapter {
 			if state == "complete" || state == "partial" {
 				state = "succeeded"
 			}
-			return operations.JobObservation{State: state, Phase: j.State, Processed: &n, ErrorCode: j.ErrorCode}, nil
+			return operations.JobObservation{State: state, Phase: j.State, Processed: &n, Total: func() *int64 {
+				if j.TotalKnown {
+					n := j.Total
+					return &n
+				}
+				return nil
+			}(), ErrorCode: j.ErrorCode}, nil
 		}}
 }
 
@@ -473,7 +485,7 @@ func (s *Service) AdvanceBulkJob(ctx context.Context, id string, access BulkAcce
 			e = commandErr
 		}
 		if e != nil {
-			if !errors.Is(e, identity.ErrUnauthorized) && !errors.Is(e, identity.ErrContentRestricted) {
+			if !errors.Is(e, identity.ErrUnauthorized) && !errors.Is(e, identity.ErrForbidden) && !errors.Is(e, identity.ErrContentRestricted) {
 				return e
 			}
 			if _, e = tx.ExecContext(ctx, `UPDATE personal_jobs SET revision=revision+1,state='failed',error_code='authority_revoked',updated_ms=? WHERE id=?`, time.Now().UnixMilli(), id); e != nil {
@@ -509,7 +521,12 @@ func (s *Service) AdvanceBulkJob(ctx context.Context, id string, access BulkAcce
 		args := append(append([]any{}, bound...), id, cursor, bulkBatchSize)
 		// Limit membership first, then check live visibility. Revoked members cannot
 		// disappear from the cursor and make the job loop indefinitely.
-		rows, e := tx.QueryContext(ctx, `SELECT m.ordinal,m.item_id,i.id IS NOT NULL AND i.retired=0 AND (`+visible+`),COALESCE(pid(i.public_id),'') FROM (SELECT ordinal,item_id FROM personal_job_items WHERE job_id=? AND ordinal>? ORDER BY ordinal LIMIT ?) m LEFT JOIN catalog_entities i ON i.id=m.item_id`, args...)
+		memberSQL := `SELECT m.ordinal,m.item_id,i.id IS NOT NULL AND i.retired=0 AND (` + visible + `),COALESCE(pid(i.public_id),'') FROM (SELECT ordinal,item_id FROM personal_job_items WHERE job_id=? AND ordinal>? ORDER BY ordinal LIMIT ?) m LEFT JOIN catalog_entities i ON i.id=m.item_id`
+		membership := j.Command == "playlist-add" || j.Command == "collection-add"
+		if membership {
+			memberSQL = `SELECT m.ordinal,m.item_id,i.id IS NOT NULL AND i.retired=0 AND i.public_id=outcome.item_public_id AND (` + visible + `),pid(outcome.item_public_id) FROM (SELECT ordinal,item_id,job_id FROM personal_job_items WHERE job_id=? AND ordinal>? ORDER BY ordinal LIMIT ?) m JOIN personal_job_details detail ON detail.job_id=m.job_id AND detail.item_id=m.item_id JOIN personal_job_membership_outcomes outcome ON outcome.job_id=m.job_id AND outcome.item_public_id=pid_blob(detail.expected) LEFT JOIN catalog_entities i ON i.id=m.item_id`
+		}
+		rows, e := tx.QueryContext(ctx, memberSQL, args...)
 		if e != nil {
 			return e
 		}
@@ -565,6 +582,19 @@ func (s *Service) AdvanceBulkJob(ctx context.Context, id string, access BulkAcce
 					return e
 				}
 				j.Failed++
+				if membership {
+					result, err := tx.ExecContext(ctx, `UPDATE personal_job_membership_outcomes SET outcome='failed',code=? WHERE job_id=? AND item_public_id=pid_blob(?) AND outcome='pending'`, code, id, m.publicID)
+					if err != nil {
+						return err
+					}
+					count, err := result.RowsAffected()
+					if err != nil {
+						return err
+					}
+					if count != 1 {
+						return errors.New("membership failure did not match captured identity")
+					}
+				}
 			} else {
 				j.Done++
 			}

@@ -1,154 +1,67 @@
 # Portico component specification
 
-The shared spec for buttons, fields, switches, chips, segmented controls, rows, sheets and dialogs, menus, feedback and confirmations. **The numbers live in `src/components.ts`** (exported from `@portico/design` as `componentSpec`, `buttonSpec`, `rowSpec`, `overlaySpec`, …); this file gives the rules those numbers serve. The web app applies them in its `src/ui`, the Apple app in its `src/ui`.
+`src/index.ts` and `src/components.ts` are the shared numeric specification for `web-next/src/kit` and `apps/native/src-next/kit`. The approved `kit.css`, page-local CSS, `DESIGN.md` and answered product questions define their values. The motion table in `motion.html#1` takes precedence over older page timings and reduced-motion rules. Renderers build the components; this package has no renderer or application data.
 
-Every value has four columns: `web` (browsers), `phone` (iPhone and phone-width web), `tablet` (iPad) and `tv` (1920×1080 ten-foot design pixels). Colors are tokens from `colors`, never literals. Tests in `packages/client-core/test/design-components.test.ts` pin the grid (every padding/gap/inset on `spacingGrid`), the minimum targets, and 4.5:1 label contrast for every interactive state on page and overlay surfaces.
+Geometry is in logical pixels, with explicit `web`, `phone`, `tablet` and `tv` columns where the drawings differ. TV is a 1920×1080 canvas. Tablet follows the phone layout below 1024; above that width web uses the desktop layout. Never multiply all TV radii by one factor. Never stretch cards or type to fill a wider screen.
 
-## Focus (all controls)
-- One focus system: a 2 px `focus` ring (TV 4), outside free-standing controls (offset +2 / TV +4), inside items that sit in a container: rows, menu items, tabs, segments (offset −2 / TV −4).
-- Keyboard focus never adds a fill on top of the ring. Hover may change the fill.
-- Only TV scales on focus: buttons and chips 1.05, rows 1.015, cards 1.08.
+## Type and spacing
 
-## Buttons
-- **Variants:** `primary` (action blue; one per context), `secondary` (blue-slate `raisedHigh`), `ghost`, `destructive` (only inside a destructive context, e.g. a confirmation), `link`.
-- **Sizes:** sm 32 (web/phone/iPad) / 64 (TV); md 40 web, 44 phone/iPad, 64 TV; lg 48 web, 52 phone/iPad, 72 TV. On touch a 32 pt `sm` button extends its hit area to 44. On TV nothing focusable is below 64 (APL-SYS-01), so `sm` and `md` share a height there.
-- **One height per group.** Example: the web detail row is all `lg` (Play, Watchlist and the icon buttons).
-- **Radius:** `control` (8; TV 14) at every size. `round` only for transport controls and avatars.
-- **Icon-only:** square, always labeled (web: tooltip + `aria-label`; Apple: `accessibilityLabel`).
-- **States:** see `button.variants`. A selected secondary is an accent tint (28%) with `text` label and an accent border. (Web's current `accentStrong` label on the tint is 4.2–4.4:1 and fails.) A pressed link keeps `accent` and underlines: `accentDeep` text fails contrast on dark surfaces.
-- **Loading:** keep the geometry and the label; a spinner replaces the leading icon. Never "Saving…".
-- **Hierarchy:** a page's create action is the primary in the page header. A group's create action is `secondary sm` in the group header. Filter bars never use primary.
+Manrope is the only interface typeface. `typography.extraBold` names the 800 face; native font bundling is separate. `typeScale.desktop`, `.handheld` and `.tenFoot` include the lockup, long lockup, row heading, navigation, card, button, tab, chip, metadata, synopsis, rank, fallback and activity roles. `normal` line-height means the font's own metrics, exactly as the CSS rules that omit line-height. Numeric line heights are logical pixels. Tracking is in em. All roles use sentence case; labels have no uppercase transform or spaced-out uppercase tracking.
 
-## Fields
-- Height 40 web / 44 phone / 64 TV; radius 8 (TV 14); fill `raised` (hover/focus `raisedHigh`).
-- Border `lineControl` at rest (≥ 3:1, X-11), `accent` while editing, `danger` when invalid.
-- Keyboard focus adds the standard ring. No glow.
-- Label above (`captionStrong`, `textSecondary`, 8 gap). Help or error below (`caption`). The error has an `error` glyph and replaces the help.
+Lockups are 84 desktop, 46 phone and 120 TV, weight 800, tracking −0.045em and line-height 0.94. Desktop long lockups are 64. Row headings are 22/700/−0.015em on desktop, 19 on phone and 32 on TV. Navigation is 15/600 on desktop. Desktop card titles are 14/600 with 13-pixel secondary text. The full type data lives in `typeScale`.
 
-## Switches
-- iOS/iPadOS use the system switch tinted `accent`. Web and TV draw 44×26 (TV 56×32) with a 22 (TV 24) thumb.
-- A row with a switch toggles when the row is pressed, with role `switch`.
-- **The accessible name never changes with state:** "Show Trending now on Home", not "Hide…" or "Show…".
-- A setting that can't be turned off shows a `lock` glyph and a caption ("Always on Home") instead of a disabled switch.
+`spacingGrid` includes every kit inset as well as page-local control insets; it is not restricted to multiples of four. `spacing` gives shared named roles. Page gutters are 20 on phone/tablet and 64 at desktop width 1440. Desktop gutters interpolate from 32 at 1024 to 64 at 1440 and stay 64 above it. TV content begins at 200, with 96 on the trailing edge; TV sign-in uses 120 and player chrome uses 96.
 
-## Chips
-- 32 high (TV 64; touch hit 44); pill radius; label `captionStrong`; 16 px icon.
-- **Rest:** `raised` fill with a `lineSoft` border and `textSecondary` label.
-- **Selected:** accent tint 28% with an accent border and a `text` label.
-- **Removable chips** end with a `close` glyph, and their accessible name is "Remove {label}".
-- Filter bars mix chips with ghost/secondary buttons at the chip height, 8 apart (TV 12).
+Radii are named by purpose: tags 6, thumbnails 8, card artwork and surface 10, hero buttons and live cards 12, fallback panels 14, banners 16, activity popovers 18 and phone sheets 24. Phone hero buttons use 10; TV artwork, hero buttons and chips use 14. Local facet and quick-filter pills keep their own drawn radii in `chipSpec`.
 
-## Segmented control
-32 high (TV 64; touch hit 44 by extending vertically), 4 padding, radius 8 with 6 on segments. `raisedSoft` track; the selected segment is `raisedHigh` with a `text` label. Use it for 2–5 peer choices only.
+## Buttons and focus
 
-## Rows and grouped lists
-- **One row component with variants** (`rowSpec`):
+Primary buttons use `text` fill and `ink` text; hover uses white. Accent is reserved for selection, progress and small highlights. Secondary buttons are glass: text at 14% opacity, 22% on hover, with 20-pixel web backdrop blur. Phones and Apple TV use native blur; Android TV and Fire TV use the same translucent fill without blur. A selected secondary uses an accent tint and readable text.
 
-  | Variant | Trailing element |
-  |---|---|
-  | `navigation` | Value (optional) plus `forward` chevron; pushes a page |
-  | `value` | Value plus `chevronUpDown` (Apple) or a native select (web); opens a picker |
-  | `toggle` | Switch |
-  | `action` | No glyph; title in `accent`, or `danger` when destructive |
-  | `menu` | `more` glyph; opens a contextual menu |
-  | `static` | Nothing; not focusable |
-  | `media` | Art or ordinal, progress, watched |
+Hero buttons are 54 high with radius 12, horizontal padding 26 and gap 10 on desktop; phone 46/radius 10/padding 20/gap 8; TV 72/radius 14/padding 38/gap 14. `buttonSpec.hero` is separate from ordinary control sizes. The phone title action group shares its row. Round icon buttons keep the same height, and carry an accessible name. Normal press scale is 0.97. Loading preserves both label and geometry.
 
-- **Metrics:**
-  - Min height: single line 48 web / 44 phone and iPad / 64 TV; with subtitle 64 / 56 / 80; media rows 64 / 96.
-  - Padding: horizontal 16 web / 12 phone / 16 iPad / 20 TV; vertical 8 (TV 12).
-  - Leading slot: a 24 box (TV 32) holding a 20–22 glyph (TV 30), 12 gap (TV 20) before the text.
-  - Text: title `bodyStrong`; subtitle `caption` in `textTertiary`, wrapping to 3 lines in settings rows and 1 in media rows. Settings help text must wrap.
-- **Groups:**
-  - One surface per group (`raised`, radius 10, TV 18, `lineSoft` border). Never a border or card per row.
-  - The group draws the separators, starting where the row text starts.
-  - Header uses the `label` role; the footer caption wraps. Groups sit 24 apart (TV 40).
+Keyboard focus is a 3-pixel pale focus outline, offset 3 on desktop and 2 on phone controls. Container rows use an inset ring. TV uses a 4-pixel ink gap, 4-pixel pale ring and a fixed soft blue glow (26 down, blur 64, spread −12, accent-strong at 60%). Exactly one element has TV focus. Cards scale to 1.08, buttons/chips to 1.05 and rows to 1.02; neighbours never move. Hover is separate: card art scales to 1.045; live cards and episode stills to 1.03, over 260 ms. Labels stay still. Fade a prepared shadow layer; never animate box-shadow or blur.
 
-## Sheets and dialogs (one scaffold, three kinds)
-- **Kinds:**
+## Artwork, heroes and rows
 
-  | Kind | Close control | Footer | Dismissal |
-  |---|---|---|---|
-  | `form` | No ✕ | Cancel (ghost) + one primary | Esc, scrim, swipe down and TV Menu all mean Cancel. Asks "Discard changes?" when there are edits |
-  | `picker` | ✕ only | None | Choosing closes it |
-  | `acknowledge` | None | One primary | Can't be dismissed (recovery codes, a new API key) |
+Home heroes are 720 desktop and 560 phone. Desktop title heroes are 660; phone title art is 396 with its identity over the art. The Safari-contained mobile-web frames use 486 Home and 330 title art (`heroSpec.mobileWeb`), with 56-pixel web top/tab bars; the native phone tab bar remains 84. TV heroes occupy the fixed canvas. `heroSpec` defines copy widths and offsets, backdrop positions, composited masks and continuous fades. Desktop ambient copies use blur 90, saturation 1.4 and opacity 0.32; phones use blur 60 and opacity 0.45; TV opacity is 0.3. Web writes both prefixed source-in and standard intersect masks. Android TV/Fire TV ambient colour uses the approved palette or a pre-blurred image instead of an expensive live blur.
 
-- **Material and size:**
-  - Surface: opaque `overlaySurface`. Only desktop web may use `overlaySurfaceTranslucent`, behind working blur.
-  - Border: `lineStrong` at 70%. Radius 14 (TV 24). Scrim `ink` at 62% (phone 72%, TV 80%).
-  - Phone uses a bottom sheet with a grabber; everything else is centered.
-  - Widths sm/md/lg: 440/520/640 (TV 520/640/760). Max height 88% web, 90% phone, 82% iPad/TV.
-- **Alignment:**
-  - One inset for header, body and footer: 20 web and iPad, 16 phone, 28 TV.
-  - The body's horizontal padding is the inset minus the row padding, so row text lines up with the title. Non-row content (notices, fields, text) adds the row padding back.
-- **Header:** title uses `heading`; the optional subtitle is one line of `caption` in `textSecondary` and is context, not instructions.
-- **Footer:**
-  - An opaque band with a `lineSoft` hairline, 12 vertical padding (TV 20).
-  - The scaffold lays out the footer itself: leading ghost action (Reset to default, Clear all) at the leading edge, a spacer, then Cancel and the primary.
-  - On TV the primary comes first and takes focus. On phone web the buttons stack full width, primary on top.
-- **Side panel** (`side`, the episode panel): a full-height panel on the trailing edge, 440 wide (TV 640). It is opaque, has no radius on the trailing side, and slides in 24. Phones use the bottom sheet instead.
-- **Half detent** (phones, `half`): opens at 50% of the screen. Dragging the grabber up expands it to full height; dragging down collapses it, then dismisses it. The keyboard expands it.
-- **Results:** a result never opens a second overlay; use a toast.
-- **Hand-off:** an overlay opened as another closes waits until the first has gone (iOS drops a modal presented during a dismissal).
-- **Motion:** 180 ms enter, 120 ms exit, 24 translate (sheet) or 0.98 → 1 scale (centered). Reduce Motion keeps the fade only.
+There is no logo dependency or poster beside the video hero identity. Facts are separate parts with gaps and weight contrast, with no middle-dot separator. Missing facts disappear. The resuming primary's progress line is 4 pixels, edge-to-edge, with accent fill on an ink-at-14% track. The hero rotates every 8 seconds, pauses on hover or focus and holds still under reduced motion; manually switching still fades in 160 ms. `heroSpec.rotation` holds crossfade, copy and drift values.
 
-## Menus
-- **Panel:** opaque `overlaySurface`, radius 12 (TV 20), padding 8, width 220–320.
-- **Size:** at most 12 visible rows. The web card menu puts owner actions in a Manage submenu so it never scrolls.
-- **Rows:** 40 pointer / 44 touch / 64 TV; padding 12, 18 glyph, 12 gap, `body` label. Highlight is an accent tint 16%.
-- **Groups and markers:**
-  - Section labels use the `label` role; separators are `lineSoft`, inset 4.
-  - Selected shows a trailing `check` in accent; a submenu shows a trailing `forward` glyph.
-  - Destructive items are `danger`, last, and in their own group.
-- **Entry actions order** (shared model; CON-24): Play · Watch Together · personal (Watchlist, Favorites, watched, like/dislike) · organize (Add to playlist…, Add to collection…, Download…) · Details · Manage (Edit metadata…, Refresh metadata, Delete…).
+`cardSpec` defines posters (2:3), wide cards (16:9), squares, circles and 3:4 magazine covers. Posters are 190 desktop, 118 phone and 214 TV; wide cards are 316 desktop, 262 on current phone app/web frames and 400 TV. The original mock's 260 phone-wide width is explicitly scoped as `phoneMockWide`. Music/audiobooks use squares, artists use cover mosaics and people use initials. Rows never mix poster and square geometry.
 
-## Feedback
-- **Notice:**
-  - Tones `info` / `success` / `warning` / `error`, each with its own glyph (`info`, `success`, `warning`, `error`). Apple must stop using the warning triangle for errors.
-  - Tint 12% and border 30% of the tone color; padding 12 (TV 20); radius 10.
-  - Action is `secondary sm`.
-  - Never an error in `info` tone.
-- **StateView:** an 88 (TV) / 56 circle with the glyph, `subheading` title, `body` text, and at most two actions: the primary for recovery, a ghost for the alternative. Recovery verbs are "Try again", "Refresh", or no button while Portico retries on its own.
-- **Toast:**
-  - Opaque `overlaySurface`, radius 12, 4 s (8 s when it carries an action such as Undo or View).
-  - Position: web bottom center; iPhone above the tab bar or mini player; TV top trailing, and not focusable unless it has an action.
-- **Loading:**
-  - Skeletons match the final geometry.
-  - Spinners are 16 (inline), 28 (region) or 44 (screen), with an accent arc on a 35% `textTertiary` track.
-  - Loading copy is "Loading {thing}", with no ellipsis and never a bare "Loading".
+`shelfSpec` carries heading gaps, track padding, snapping geometry, arrows, row spacing and ranks. Desktop track gaps are 16, phone 12, TV 28. Desktop row spacing is 44, phone 28. The ranked number is 168/800 with −0.08em tracking, outside the poster. `bannerSpec` defines the 300-pixel collection banner, 52/800 title, masked image, mini posters and 16-pixel corners.
 
-## Confirmations (tiers)
-- **Tier 0** (reversible: remove from queue or Watchlist, archive, mark read): no dialog; an Undo toast.
-- **Tier 1** (bounded loss: delete profile, remove device, revoke key, end group, sign out everywhere, delete a recording):
-  - A `form` dialog; title "Verb object?"; the body states the consequence.
-  - Footer: Cancel and a destructive button labeled with the verb, never "OK" or "Confirm".
-  - A password step-up stays inside the same dialog.
-- **Tier 2** (irreversible disk or server-wide loss: delete files, empty trash, clean up a folder, remove a library): Tier 1 plus one field labeled "Type {token} to confirm". The token is a short human word, never an ID, and it's the only instruction.
-- **Non-destructive checks** (verify a backup, disconnect this browser): a normal `form` with a primary. No typed field.
+`episodeSpec` has a dimmed backdrop-crop fallback, duration badge, progress and title/secondary lines. Never draw a large episode number over artwork. The small label below the title is Episode N, a date, absolute number or Special as appropriate. Mixed-show rows keep show/season/episode context. `generatedArtSpec` defines fallback panels, poster ambient copies, typographic glyphs and people circles. Decorative glyphs are forbidden in sign-in, state and server-band backgrounds.
 
-## Title hero (`heroSpec`; Spec — Title Pages §1)
-- **Height:** it never changes between media types on one device.
-  - TV: 60% of the screen. Web and iPad: min(70% of the viewport, 720).
-  - Phone: a 16:9 backdrop with the identity block below it.
-- **Backdrop:**
-  - Requested at `w=1920` (TV, desktop, iPad) or `w=800` (phones). Opacity 0.8 on wide layouts, 1 on phones.
-  - Scrims in `ink`. Wide layouts have a bottom gradient (0→35%, 28%→0, 62%→55%, 100%→100%) and a left gradient (0→82%, 45%→30%, 75%→0). Phones have a bottom gradient only (0→0, 55%→15%, 100%→100%).
-  - With no backdrop: an accent glow over a `raised` → `ink` gradient, never an empty box.
-- **Identity:**
-  - An eyebrow in the `label` role.
-  - The title is `display` (web, iPad, TV) or `title` (phone), up to 2 lines.
-  - Logo art replaces the title, at most 440 wide (phone 280, TV 640).
-- **Facts line:** one line in `body`, `textSecondary`, with `·` separators in `textTertiary`, 12 apart (TV 16). The content rating is a badge 24 high (TV 36) with padding 8 (TV 12), a `small` radius and a `lineControl` border, in `captionStrong`.
-- **Synopsis:** `body` in `textSecondary`, 2 lines. "More" expands it inline, or opens a text sheet on TV. Maximum width 640 on web, 720 on iPad, 960 on TV.
-- **Actions:**
-  - One height for the group: `lg`, or `md` on phones, where the primary is full width.
-  - Secondary actions are round icon buttons that show their label on focus or hover.
-  - When resuming, a 3 px progress bar sits under the primary's label.
-- **Artwork beside the identity:** only on wide layouts, and only without logo art. Poster 240 wide (iPad 160); square 240 (iPad 180, TV 280).
+## Controls and overlays
 
-## Play on (X-18; `playOnDestinations` in client-core presentation)
-- **Rows:** AirPlay (only where the system picker exists: iPhone, iPad, Safari on macOS), Google Cast (Chromecasts), then Portico devices on this network.
-- **Layout:** standard rows with a leading glyph (`airplay`, `googleCast`, and `tvDevice`, `phone`, `tablet` or `browser` for Portico devices). Portico devices sit under the heading "On this network".
-- **Portico devices:** signed-in Portico players found by local-network discovery. Never a cloud or remote device list, and never a code to type.
-- **Empty:** nothing found shows "No Portico devices or Chromecasts found on this network."
-- **TV:** Apple TV and Android TV show no Play on entry; they are receivers.
+Chips use raised-high at rest and raised-bright on hover. Base geometry is 40/radius 10 desktop, 34/radius 9 phone and 64/radius 14 TV. Selected chips use an accent tint and accent boundary, never white. Quick filters and facet pills keep their explicit geometry. Selected segmented controls use a glass fill; the desktop browse view toggle has its distinct raised-bright selected surface. Touch hit areas extend to 44 and TV targets to 64, even where the visual is smaller.
+
+Fields keep a readable placeholder, control boundary, label, help/error and visible focus. The separate search geometry covers the larger drawn search surface. Switches share their row's accessible name and interaction; compact desktop switches are 38×22 with a 16 thumb, phone switches 48×29 with a 23 thumb. TV focuses the row, not the switch alone.
+
+Rows support navigation, value, toggle, action, menu, static and media variants. Settings help wraps; one surface groups related rows and draws text-aligned separators. Media rows truncate where the frames show a single line.
+
+The overlay kinds are form, picker and acknowledge. Form dismissal means Cancel, with a discard check for changed values; acknowledge cannot dismiss. Phone sheets have a grabber and half/full detents. Opaque sheets use `raised`; the desktop blurred material is explicit. Context menus use raised-high; phone menu material is raised-bright at 96% with blur 30. Visual menu rows can be smaller than the hit target. Keep owner/destructive actions grouped, accessible names explicit and focus inside the active overlay. Side panels are distinct from centered dialogs. The motion data distinguishes standard dialog/menu entry, quick exits and slow side-panel travel, plus the settle spring for gesture release.
+
+## Shell and activity
+
+`navigationSpec` defines the transparent 76-pixel desktop top bar, solid-on-scroll material, icon buttons, avatar, 100/96 phone top bar, 84-pixel blurred tab bar and TV rail (260 closed, 560 expanded, 320 expanded item). The shell lane supplies routing, permissions and interaction.
+
+`activitySpec` covers every state in desktop-activity frames 1–6. The chosen glyph is Levels (A), 22 drawing in a 40-pixel hit area. Idle has no count; busy streams show a count and accent tint; an update uses the quiet dot; open has an underline. Members never mount this control or make admin reads. The panel is 420 wide, radius 18, raised at 94%, blur 30/saturation 1.3. Progress rings show real fractions, never a looping spinner. Title and detail truncate independently, with the episode/device detail yielding first. Activity data and behavior belong to the shell lane.
+
+## Feedback and motion
+
+Notices preserve distinct info, success, warning and error tones. State recovery uses a white primary and glass secondary. Toast actions use glass, last 4 seconds (8 with an action) and appear above the dock/tab bar on phones. Skeletons preserve final geometry and hold still; Live dots and level meters are also still. Loading and errors use catalogue strings in the renderer.
+
+`motion` is quick 120, standard 180, hover 260, slow 320, morph 420 and hero 900 ms. Curves are out `(.2,.8,.2,1)`, in `(.4,0,1,1)`, in-out `(.4,0,.2,1)` and linear. Native spring configurations are settle 26/260/1, player 24/200/1 and snap 30/420/1 (damping/stiffness/mass). `springTiming` creates the same 33 CSS `linear()` samples and 0.002 settlement tolerance as the approved motion page: 500, 571 and 371 ms. `springPosition` accepts release velocity; interrupted gestures start from the current position and velocity without queuing.
+
+Reduced motion means a 160-ms crossfade, no slide, scale, spring, parallax, drift or rotation. Finger tracking remains direct. Content follows the touched surface by 60–80 ms, at most three steps. System navigation/rotation/keyboard remain native.
+
+## CSS generation and verification
+
+Run `node packages/design/scripts/tokens.mjs`; it writes only `web-next/src/kit/tokens.css`. Run the same command with `--check` to fail on missing/stale output without writing. It works from any cwd, uses no dependencies and never rewrites `web/`. The scaffold must run `--check` in its checks and import the generated CSS before kit component styles.
+
+CSS exports palette, named and pixel spacing, radii, all component leaves (`--spec-*`), durations, curves, spring samples, targets, layers and responsive type/hero/card tokens. Dimensional lengths use px, type uses rem, tracking uses em, time uses ms and proportions/scales are unitless. `[data-platform="tv"]` selects the TV projection. `.portico-motion` or `[data-portico-motion]` opts a moving layer into the shared motion contract; reduced motion permits only opacity, suppresses automatic animation and removes its motion transform. `[data-motion-gesture]` preserves finger tracking. `[data-reduce-motion="true"]` applies the in-app preference. Renderers must use the exported reduced-motion rules for script-driven motion too.
+
+Token/component tests preserve 4.5:1 text and 3:1 boundary/focus thresholds, pin approved geometry and motion, verify the spring samples, and prove generator determinism and read-only stale detection. Platform rendering, focus engines and real Home proofs remain the component/shell lanes' verification.

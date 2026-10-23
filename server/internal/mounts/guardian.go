@@ -33,7 +33,7 @@ func Guardian(input io.Reader) error {
 		"--buffer-size=8M", "--dir-cache-time=1m", "--contimeout=10s", "--timeout=30s",
 		"--low-level-retries=2", "--retries=1", "--log-level=ERROR", "--use-json-log"}
 	if request.CacheBytes > 0 {
-		if request.CacheBytes > 64<<30 || request.CacheFloor < 1<<30 || filepath.Dir(request.CachePath) != request.PrivateHome || !cacheSpaceAvailable(request.PrivateHome, request.CacheFloor) {
+		if request.CacheBytes > 64<<30 || request.CacheFloor < 1<<30 || !filepath.IsAbs(request.CachePath) || !cacheSpaceAvailable(filepath.Dir(request.CachePath), request.CacheFloor) {
 			return errors.New("cache allocation unavailable")
 		}
 		if err := os.MkdirAll(request.CachePath, 0700); err != nil {

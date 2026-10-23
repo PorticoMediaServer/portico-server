@@ -4,55 +4,43 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"portico.local/server/internal/dbwork"
 )
 
-func TestSchemaMigrationsAreNumberedAndImmutable(t *testing.T) {
-	migrations, err := schemaMigrations()
-	if err != nil {
-		t.Fatal(err)
+// Updating the pre-release schema means directly editing the baseline and this
+// expected digest. Existing state must then be reset, never upgraded.
+const schemaSourceDigest = "9a0fb3c846c5d1efefbffbbde185509f4b1cddc7021be92e1bca749df5d2ede7"
+
+func TestSchemaBaselineDigest(t *testing.T) {
+	if BaselineDigest() != schemaSourceDigest {
+		t.Fatalf("set schemaSourceDigest in this file to: %s", BaselineDigest())
 	}
-	if len(migrations) == 0 || migrations[0].version != baselineSchemaVersion || migrations[0].name != "0001_baseline.sql" {
-		t.Fatal("missing baseline")
-	}
-	// Every installed server has recorded the baseline with this digest and
-	// checks it on each open, so editing the file would make all of them refuse
-	// to start. A schema change is a new numbered migration.
-	if migrations[0].digest != shippedBaselineDigest {
-		t.Fatalf("0001_baseline.sql changed (sha256 %s); add a numbered migration instead", migrations[0].digest)
+	entries, err := os.ReadDir("migrations")
+	if err != nil || len(entries) != 1 || entries[0].Name() != "0001_baseline.sql" {
+		t.Fatalf("expected one baseline, got %v (%v)", entries, err)
 	}
 }
 
-const shippedBaselineDigest = "e1d88a4370c8e63956f24d2dd25a797be6805002b4b983f5d2a001542eb15acc"
-
 func TestASecondOpenRunsNoSchemaWork(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.sqlite")
+	path := freshDatabaseCopy(t, t.TempDir(), "state.sqlite")
 	first, err := OpenFresh(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
-	stored, err := storedSchemaVersion(ctx, first)
-	if err != nil || stored != schemaVersion {
-		t.Fatalf("a fresh install recorded version %d (%v), not %d", stored, err, schemaVersion)
+	var digest string
+	if err = first.QueryRow(`SELECT value FROM configuration WHERE key=?`, baselineDigestKey).Scan(&digest); err != nil || digest != BaselineDigest() {
+		t.Fatal(digest, err)
 	}
-	var recorded int
-	if err = first.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&recorded); err != nil {
-		t.Fatal(err)
+	var ledger int
+	if err = first.QueryRow(`SELECT count(*) FROM sqlite_schema WHERE name='schema_migrations'`).Scan(&ledger); err != nil || ledger != 0 {
+		t.Fatalf("migration ledger survives: %d %v", ledger, err)
 	}
-	steps, err := schemaMigrations()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if recorded != len(steps) {
-		t.Fatalf("the ledger recorded %d steps of %d", recorded, len(steps))
-	}
-	// Drop a table the installers create. A second open must not put it back:
-	// that is the proof that no DDL ran, and it is the behaviour the startup time
-	// depends on.
-	if _, err = first.Exec(`DROP TABLE IF EXISTS detail_jobs`); err != nil {
+	if _, err = first.Exec(`DROP TABLE detail_jobs`); err != nil {
 		t.Fatal(err)
 	}
 	first.Close()
@@ -62,90 +50,114 @@ func TestASecondOpenRunsNoSchemaWork(t *testing.T) {
 	}
 	defer second.Close()
 	var exists int
-	if err = second.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='detail_jobs'`).Scan(&exists); err != nil {
-		t.Fatal(err)
-	}
-	if exists != 0 {
-		t.Fatal("a second open re-ran the installers; a current database must run no DDL at all")
+	if err = second.QueryRow(`SELECT count(*) FROM sqlite_schema WHERE name='detail_jobs'`).Scan(&exists); err != nil || exists != 0 {
+		t.Fatalf("reopen ran DDL: %d %v", exists, err)
 	}
 }
 
-func TestANewerSchemaIsRefusedWithAClearMessage(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.sqlite")
+func TestSchemaMismatchRefusesWithoutChangingState(t *testing.T) {
+	for _, change := range []string{
+		`UPDATE configuration SET value='another-baseline' WHERE key='schema_baseline_digest'`,
+		`DELETE FROM configuration WHERE key='schema_baseline_digest'`,
+		`UPDATE configuration SET value='99999' WHERE key='schema_version'`,
+		`UPDATE configuration SET value='invalid' WHERE key='schema_version'`,
+		`DELETE FROM configuration WHERE key='schema_version'`,
+	} {
+		t.Run(change, func(t *testing.T) {
+			path := freshDatabaseCopy(t, t.TempDir(), "state.sqlite")
+			db, err := OpenFresh(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = db.Exec(`INSERT INTO configuration VALUES('preserve_me','private-state');` + change); err != nil {
+				t.Fatal(err)
+			}
+			db.Close()
+			assertResetRefusal(t, path)
+			if _, err = InspectCandidate(context.Background(), path); !errors.Is(err, ErrSchemaResetRequired) {
+				t.Fatalf("restore accepted mismatch: %v", err)
+			}
+			db, err = dbwork.OpenHandle(path, dbwork.DefaultPolicy())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			var marker string
+			if err = db.QueryRow(`SELECT value FROM configuration WHERE key='preserve_me'`).Scan(&marker); err != nil || marker != "private-state" {
+				t.Fatalf("refusal changed state: %q %v", marker, err)
+			}
+			if _, err = os.Stat(filepath.Join(filepath.Dir(path), "migration-backups")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("refusal created upgrade copy: %v", err)
+			}
+		})
+	}
+}
+
+func assertResetRefusal(t *testing.T, path string) {
+	t.Helper()
+	db, err := OpenFresh(path)
+	if db != nil {
+		db.Close()
+		t.Fatal("mismatched state returned a database")
+	}
+	if !errors.Is(err, ErrSchemaResetRequired) || !strings.Contains(err.Error(), "state directory") || !strings.Contains(err.Error(), "Stop Portico") {
+		t.Fatalf("missing plain reset instruction: %v", err)
+	}
+}
+
+func TestNonemptyUnrecognizedStateIsNeverInstalledOver(t *testing.T) {
+	for _, setup := range []string{
+		`CREATE TABLE unrelated(id INTEGER PRIMARY KEY); INSERT INTO unrelated VALUES(7)`,
+		`CREATE TABLE configuration(wrong TEXT); INSERT INTO configuration VALUES('old')`,
+		`CREATE TABLE configuration(key TEXT PRIMARY KEY,value TEXT NOT NULL); INSERT INTO configuration VALUES('schema_version','265')`,
+	} {
+		t.Run(setup, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "old.sqlite")
+			db, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = db.Exec(setup); err != nil {
+				t.Fatal(err)
+			}
+			db.Close()
+			assertResetRefusal(t, path)
+			db, err = sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			var installed int
+			if err = db.QueryRow(`SELECT count(*) FROM sqlite_schema WHERE name='segment_files'`).Scan(&installed); err != nil || installed != 0 {
+				t.Fatalf("refusal installed baseline: %d %v", installed, err)
+			}
+		})
+	}
+}
+
+func TestFreshBaselineIncludesSegmentAndGatedSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fresh.sqlite")
 	db, err := OpenFresh(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = Set(db, schemaVersionKey, "99999"); err != nil {
-		t.Fatal(err)
-	}
-	db.Close()
-	_, err = OpenFresh(path)
-	if !errors.Is(err, ErrSchemaNewer) {
-		t.Fatalf("an older binary opened a newer database: %v", err)
-	}
-	// The owner has to be able to act on this, so it has to name both versions.
-	if !strings.Contains(err.Error(), "99999") || !strings.Contains(err.Error(), "restore") {
-		t.Fatalf("the refusal does not tell the owner what to do: %v", err)
-	}
-}
-
-// A database an earlier pre-release Portico wrote (its ledger runs to 265
-// without the baseline, and its schema version is above the baseline's) is
-// refused with the plain reset message, not told to upgrade Portico.
-func TestAPreReleaseDatabaseIsRefusedWithTheResetMessage(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.sqlite")
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, q := range []string{
-		`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,name TEXT NOT NULL,digest TEXT NOT NULL,applied_at TEXT NOT NULL)`,
-		`CREATE TABLE configuration(key TEXT PRIMARY KEY,value TEXT NOT NULL)`,
-		`INSERT INTO configuration VALUES('schema_version','265')`,
-		`INSERT INTO schema_migrations VALUES(16,'0016_baseline.sql','x','2026-09-01T00:00:00Z'),(265,'0265_last.sql','y','2026-09-24T00:00:00Z')`,
-	} {
-		if _, err = db.Exec(q); err != nil {
-			t.Fatal(err)
+	defer db.Close()
+	for _, table := range []string{"segment_files", "segment_shows", "segment_catchup", "managed_mounts", "mount_allocations", "mount_backend_configs", "mount_controls", "mount_operations", "mount_revision", "remote_native_listings", "identity_recovery_codes"} {
+		var count int
+		if err = db.QueryRow(`SELECT count(*) FROM sqlite_schema WHERE type='table' AND name=?`, table).Scan(&count); err != nil || count != 1 {
+			t.Errorf("missing table %s: %d %v", table, count, err)
 		}
 	}
-	db.Close()
-	_, err = OpenFresh(path)
-	if !errors.Is(err, ErrSchemaResetRequired) {
-		t.Fatalf("a pre-release database: %v", err)
+	for _, column := range []string{"recovery_account", "recovery_confirmed", "remote_recovery"} {
+		var count int
+		if err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('onboarding_state_v1') WHERE name=?`, column).Scan(&count); err != nil || count != 0 {
+			t.Errorf("retired owner-setup column remains %s: %d %v", column, count, err)
+		}
 	}
-	if err.Error() != "This database was created by an earlier pre-release Portico and can't be upgraded. Move it aside and start fresh." {
-		t.Fatalf("refusal message: %q", err)
-	}
-}
-
-func TestAppliedMigrationDigestRejectsSilentSchemaDrift(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.sqlite")
-	db, err := OpenFresh(path)
-	if err != nil {
+	if err = VerifySchemaObjects(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`UPDATE schema_migrations SET digest='tampered'`); err != nil {
+	if err = VerifySeededRows(context.Background(), db); err != nil {
 		t.Fatal(err)
-	}
-	db.Close()
-	_, err = OpenFresh(path)
-	if err == nil || !strings.Contains(err.Error(), "digest mismatch") {
-		t.Fatal("changed applied SQL silently accepted", err)
-	}
-}
-
-func TestEarlierDevelopmentBaselineRequiresReset(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "old.sqlite")
-	db, err := OpenFresh(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = db.Exec(`UPDATE schema_migrations SET digest='earlier-development-baseline';UPDATE configuration SET value='11' WHERE key='schema_version'`); err != nil {
-		t.Fatal(err)
-	}
-	db.Close()
-	if _, err = OpenFresh(path); !errors.Is(err, ErrSchemaResetRequired) {
-		t.Fatalf("development state got an upgrade instruction instead of reset: %v", err)
 	}
 }

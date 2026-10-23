@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -50,7 +51,7 @@ func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address stri
 	if account == UnboundAccount {
 		account = ""
 	}
-	q := claimweb.Request{Kind: "portico.claim.web.v1", Audience: transport.origin, OperationID: v.OperationID, ServerID: v.ServerID, AccountID: account, PublicKey: base64.RawURLEncoding.EncodeToString(v.PublicKey), LocalGeneration: v.LocalGeneration, Name: h.name(), Address: address, IssuedAt: now, ExpiresAt: now.Add(webClaimLifetime)}
+	q := claimweb.Request{Kind: "portico.claim.web.v2", Audience: transport.origin, OperationID: v.OperationID, ServerID: v.ServerID, AccountID: account, PublicKey: base64.RawURLEncoding.EncodeToString(v.PublicKey), LocalGeneration: v.LocalGeneration, Name: h.name(), Address: address, Purpose: v.Purpose, CurrentOwnerAccountID: v.CurrentOwnerAccountID, PreviousOwnerRole: v.PreviousOwnerRole, ReturnRegistrationID: v.ReturnRegistrationID, IssuedAt: now, ExpiresAt: now.Add(webClaimLifetime)}
 	raw, _ := json.Marshal(q)
 	signature, e := h.signer.Sign(ctx, v.Binding, raw)
 	if e != nil {
@@ -64,7 +65,7 @@ func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address stri
 	if e = transport.call(ctx, "pending", out.Signed, &pending, nil); e != nil {
 		return out, e
 	}
-	fragment := url.Values{"code": {pending.Code}, "server": {q.Name}, "return": {address}}
+	fragment := url.Values{"code": {pending.Code}, "server": {q.Name}, "operation": {v.OperationID}}
 	out.Code = pending.Code
 	out.URL = transport.origin + "/claim#" + fragment.Encode()
 	out.ExpiresAt = q.ExpiresAt
@@ -244,6 +245,23 @@ func webClaimAnswer(state string) []byte {
 func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimRequestGuard, local localWebClaim) ([]byte, bool) {
 	ctx, cancel := context.WithDeadline(context.Background(), local.ExpiresAt)
 	defer cancel()
+	withdraw := func() {
+		cleanup, stop := context.WithTimeout(context.Background(), time.Second*3)
+		defer stop()
+		_ = h.runner.Do(cleanup, func(ctx context.Context) error {
+			v, e := h.store.Load(ctx, expected.OperationID)
+			if e != nil {
+				return e
+			}
+			_, _, e = h.store.WithdrawReplacement(ctx, v)
+			return e
+		})
+	}
+	defer func() {
+		if !time.Now().Before(local.ExpiresAt) {
+			withdraw()
+		}
+	}()
 	t := h.transport.(*HTTPTransport)
 	raw, _ := json.Marshal(local.Signed)
 	request, e := http.NewRequestWithContext(ctx, "POST", t.origin+"/v1/server-claims/events", bytes.NewReader(raw))
@@ -272,6 +290,7 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 		return nil, false
 	}
 	if d.Status != "approved" {
+		withdraw()
 		return webClaimAnswer("approval_closed"), true
 	}
 	var status ClaimStatus
@@ -304,6 +323,9 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 		return ErrUnavailable
 	})
 	if e != nil {
+		if errors.Is(e, ErrOwnerCollision) {
+			withdraw()
+		}
 		log.Printf("Claim approval from the web could not be applied: %v", e)
 		return webClaimAnswer("approval_changed"), true
 	}

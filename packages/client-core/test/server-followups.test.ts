@@ -5,10 +5,10 @@ import {parseSessionControls,playbackControlsService} from '../src/playback-cont
 import {parseVersionDeletePreview,parseLiveSourceChoicePage} from '../src/administration.ts';
 import {parseMetadataAttentionCounts} from '../src/metadata-attention.ts';
 
-test('storage copies carry a safe delete id and reclamation facts',async()=>{
- const id='before-20261013T120000.000000000Z.sqlite';const data={databasePath:'/state/db',cacheDirectory:'/cache',backupDirectory:'/backups',reclaimableBytes:4096,lastReclaimedBytes:2048,upgradeCopies:[{id,createdAt:'2026-10-13T12:00:00Z',bytes:20,path:'/state/migration-backups/'+id}]};
- const out=parseStorageStatus(data);assert.equal(out.reclaimableBytes,4096);assert.throws(()=>parseStorageStatus({...data,upgradeCopies:[{...data.upgradeCopies[0],id:'../db'}]}));
- const calls:unknown[]=[];const service=storageStatusService(async <T>(...args:unknown[])=>{calls.push(args);return data as T});await service.removeUpgradeCopy(out.upgradeCopies[0]);assert.deepEqual(calls,[['/v1/admin/storage/upgrade-copies/'+id,'DELETE']]);
+test('storage status reads destinations and validates reclamation facts',async()=>{
+ const data={databasePath:'/state/db',cacheDirectory:'/cache',backupDirectory:'/backups',reclaimableBytes:4096,lastReclaimedBytes:2048};
+ const out=parseStorageStatus(data);assert.equal(out.reclaimableBytes,4096);assert.throws(()=>parseStorageStatus({...data,reclaimableBytes:-1}));
+ const calls:unknown[]=[];const service=storageStatusService(async <T>(...args:unknown[])=>{calls.push(args);return data as T});assert.deepEqual(await service.read(),out);assert.deepEqual(calls,[['/v1/admin/storage/status']]);
  assert.equal(parseFFmpegValidation({path:'/bad',state:'refused',inUse:false,reasonCode:'ffmpeg.validation.unreadable',missingFeatures:[],checkedAt:'2026-10-13T12:00:00Z'}).state,'refused');
 });
 test('administrator controls carry the session revision and no media URL',async()=>{

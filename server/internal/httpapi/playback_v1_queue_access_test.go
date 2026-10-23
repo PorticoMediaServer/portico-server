@@ -466,3 +466,108 @@ func TestPlaybackV1StagedQueuesAreSwept(t *testing.T) {
 		t.Fatalf("stale %d (snapshots %d), fresh %d", stale, snaps, fresh)
 	}
 }
+
+func TestPlaybackV1QueueWindowDisplayFactsAndRestrictionRedaction(t *testing.T) {
+	f, member, ids := queueAccessFixture(t)
+	var q playbackv1.QueueReply
+	f.callAs(member, "POST", "/v1/queues", map[string]string{"Idempotency-Key": "display-facts-00000001"}, map[string]any{"segments": []any{map[string]any{"source": queueItems(ids["mixed-e1"], ids["kids-album-t1"], ids["film"])}}}, 201, &q)
+	if len(q.Window) != 3 || q.Queue.RemainingCount != 2 {
+		t.Fatalf("window/count %+v", q)
+	}
+	ep, song := q.Window[0], q.Window[1]
+	if ep.SegmentID == "" || ep.ShowID != ids["mixed"] || ep.SeasonID == "" || ep.Episode == nil || ep.Episode.SeasonNumber != 1 || ep.Episode.Number != 1 {
+		t.Fatalf("episode %+v", ep)
+	}
+	if song.AlbumID != ids["kids-album"] || song.Album != "kids-album" || song.ArtistID != ids["band"] || song.Artist != "The Band" || song.SegmentID != ep.SegmentID {
+		t.Fatalf("song %+v", song)
+	}
+	f.catalogTest.Attributes(f.catalogTest.ID(ids["mixed-e1"]), "contentRating", "R")
+	f.catalogTest.Drain()
+	var page playbackv1.EntryPage
+	f.callAs(member, "GET", "/v1/queues/"+q.Queue.ID+"/entries?from=0&limit=10", nil, nil, 200, &page)
+	hidden := page.Items[0]
+	if hidden.Available || hidden.ItemID != "" || hidden.Title != "" || hidden.ShowID != "" || hidden.SeasonID != "" || hidden.Episode != nil || hidden.BackdropURL != "" || hidden.DurationMs != 0 {
+		t.Fatalf("restricted facts leaked: %+v", hidden)
+	}
+}
+
+func TestPlaybackV1BatchQueuePreservesMixedOrderAndFences(t *testing.T) {
+	f, member, ids := queueAccessFixture(t)
+	var q playbackv1.QueueReply
+	f.callAs(member, "POST", "/v1/queues", map[string]string{"Idempotency-Key": "batch-mixed-000001"}, map[string]any{"selector": queueItems(ids["film"])}, 201, &q)
+	path := "/v1/queues/" + q.Queue.ID + "/batch"
+	request := map[string]any{"placement": "next", "source": queueItems(ids["kids-album-t1"], ids["restricted"], f.items[0], ids["film"])}
+	old := q.Queue.Revision
+	f.callAs(member, "POST", path, map[string]string{"If-Match": old}, request, 200, &q)
+	var page playbackv1.EntryPage
+	f.callAs(member, "GET", "/v1/queues/"+q.Queue.ID+"/entries?from=0&limit=20", nil, nil, 200, &page)
+	if len(page.Items) != 3 || page.Items[1].ItemID != ids["kids-album-t1"] || page.Items[2].ItemID != ids["film"] {
+		t.Fatalf("mixed order: %+v", page.Items)
+	}
+	f.callAs(member, "POST", path, map[string]string{"If-Match": old}, request, 412, nil)
+	f.callAs(member, "POST", path, nil, request, 428, nil)
+	f.call("POST", path, map[string]string{"If-Match": q.Queue.Revision}, request, 404, nil)
+	f.callAs(member, "POST", path, map[string]string{"If-Match": q.Queue.Revision}, map[string]any{"placement": "end", "source": queueItems(ids["restricted"])}, 404, nil)
+	var after playbackv1.QueueView
+	f.callAs(member, "GET", "/v1/queues/"+q.Queue.ID, nil, nil, 200, &after)
+	if after.Total != q.Queue.Total || after.Revision != q.Queue.Revision {
+		t.Fatal("refused command changed queue")
+	}
+}
+
+func TestPlaybackV1QueueDurationCoversBeyondWindowAndInvalidatesOnFacts(t *testing.T) {
+	f := newV1Fixture(t, 201)
+	var q playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "duration-all-000001"}, map[string]any{"selector": queueItems(f.items...)}, 201, &q)
+	if q.Queue.TotalDurationMs == nil || *q.Queue.TotalDurationMs != 201*600000 || !q.Queue.DurationKnown || q.Queue.RemainingCount != 200 {
+		t.Fatalf("whole queue: %+v", q.Queue)
+	}
+	if _, err := f.db.Exec(`UPDATE catalog_assets SET duration=120 WHERE id=?`, f.records[200].Asset); err != nil {
+		t.Fatal(err)
+	}
+	var after playbackv1.QueueView
+	f.call("GET", "/v1/queues/"+q.Queue.ID, nil, nil, 200, &after)
+	if after.TotalDurationMs == nil || *after.TotalDurationMs != 200*600000+120000 {
+		t.Fatalf("stale summary %+v", after)
+	}
+}
+
+func TestPlaybackV1WholeShowQueueResolvesAnotherSeasonWithCurrentAuthority(t *testing.T) {
+	f, member, ids := queueAccessFixture(t)
+	show := f.names["mixed"]
+	season := f.catalogTest.Season(show, 2)
+	episode := f.catalogTest.Episode(show, season, 1, filepath.Join(f.root, "kids", "season-two.mp4"))
+	f.catalogTest.Attributes(episode.ID, "contentRating", "PG")
+	f.catalogTest.Drain()
+	var q playbackv1.QueueReply
+	f.callAs(member, "POST", "/v1/queues", map[string]string{"Idempotency-Key": "show-episodes-00001"}, map[string]any{"segments": []any{map[string]any{"source": containerSource("show", ids["mixed"]), "anchor": map[string]any{"itemId": ids["mixed-e1"]}}}}, 201, &q)
+	var found playbackv1.QueueItemView
+	path := "/v1/queues/" + q.Queue.ID + "/entry?itemId=" + episode.Public
+	f.callAs(member, "GET", path, nil, nil, 200, &found)
+	if found.Entry.ItemID != episode.Public || found.Entry.Episode == nil || found.Entry.Episode.SeasonNumber != 2 || found.Revision != q.Queue.Revision {
+		t.Fatalf("season jump %+v", found)
+	}
+	f.callAs(member, "GET", "/v1/queues/"+q.Queue.ID+"/entry?itemId="+ids["restricted"], nil, nil, 404, nil)
+	f.call("GET", path, nil, nil, 404, nil)
+	f.catalogTest.Attributes(episode.ID, "contentRating", "R")
+	f.catalogTest.Drain()
+	f.callAs(member, "GET", path, nil, nil, 404, nil)
+}
+
+func TestPlaybackV1RemoteReportUsesGenuineNextAndRechecksRestriction(t *testing.T) {
+	f, member, ids := queueAccessFixture(t)
+	var q playbackv1.QueueReply
+	f.callAs(member, "POST", "/v1/queues", map[string]string{"Idempotency-Key": "remote-next-000001"}, map[string]any{"selector": queueItems(ids["film"], ids["mixed-e1"]), "startPlayback": map[string]any{"state": "paused"}}, 201, &q)
+	var report playbackv1.RemoteControlsDocument
+	f.callAs(member, "GET", "/v1/playback/controls", nil, nil, 200, &report)
+	if len(report.Items) != 1 || report.Items[0].Next == nil || report.Items[0].Next.ItemID != ids["mixed-e1"] || report.Items[0].Next.Episode == nil || report.Items[0].DurationMs != 600000 {
+		t.Fatalf("report %+v", report)
+	}
+	f.catalogTest.Attributes(f.names["mixed-e1"].ID, "contentRating", "R")
+	f.catalogTest.Drain()
+	report = playbackv1.RemoteControlsDocument{}
+	w := f.callAs(member, "GET", "/v1/playback/controls", nil, nil, 200, &report)
+	if len(report.Items) != 1 || report.Items[0].Next != nil || strings.Contains(w.Body.String(), ids["mixed-e1"]) {
+		t.Fatalf("restricted successor leaked %s", w.Body.String())
+	}
+}

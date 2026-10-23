@@ -289,6 +289,9 @@ const (
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
 	return map[string]restrictionRoute{
+		"GET /v1/me/saved/summary":                                                   static("/v1/me/saved/summary"),
+		"GET /v1/me/removed-titles/{id}":                                             probe(func(m *restrictionEnv) []string { return prefixed("/v1/me/removed-titles/", m.hiddenItemSamples()) }),
+		"GET /v1/admin/activity":                                                     exempt(reasonAdmin),
 		"GET /v1/admin/playback/route-failures":                                      exempt(reasonAdmin),
 		"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
 		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
@@ -391,6 +394,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/admin/live/sources/{id}/groups":                             exempt("owner-only line-up choices"),
 		"GET /v1/admin/live/sources/{id}/channels":                           exempt("owner-only line-up choices"),
 		"GET /v1/admin/storage/status":                                       exempt("owner-only storage status"),
+		"GET /v1/admin/storage/usage":                                        exempt("owner-only folder totals and filesystem notices; no catalogue content"),
 		"GET /v1/admin/metadata/attention":                                   exempt("owner-only metadata evidence"),
 		"GET /v1/admin/metadata/attention/counts":                            exempt("owner-only metadata evidence"),
 		"GET /v1/libraries/{id}/metadata/attention":                          perLibrary("/metadata/attention"),
@@ -424,6 +428,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/subtitle-fonts/cjk":                    exempt(reasonNoTitles),
 		"GET /receiver/cast/":                           exempt("static Cast receiver page"),
 		"GET /v1/attribution":                           exempt(reasonNoTitles),
+		"GET /v1/auth/services-reachability":            exempt(reasonNoTitles),
 		"GET /v1/auth/capabilities":                     exempt(reasonNoTitles),
 		"GET /v1/capabilities":                          exempt(reasonNoTitles),
 		"GET /v1/devices":                               exempt(reasonNoTitles),
@@ -456,6 +461,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/downloads/receipts/revocations":        exempt(reasonNoTitles),
 		"GET /v1/cast/configuration":                    exempt(reasonNoTitles),
 		"GET /v1/storage/mounts":                        exempt(reasonAdmin),
+		"GET /v1/storage/rclone/bundled":                exempt(reasonAdmin),
 		"GET /v1/storage/sources":                       exempt(reasonAdmin),
 		"GET /v1/storage/operations/{id}":               exempt(reasonAdmin),
 		"GET /v1/storage/source-operations/{id}":        exempt(reasonAdmin),
@@ -471,18 +477,25 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/downloads/preparations/{id}": probe(func(m *restrictionEnv) []string {
 			return prefixed("/v1/downloads/preparations/", m.preparations)
 		}),
-		"GET /v1/groups/{id}":                                           exempt(reasonGrant),
-		"GET /v1/groups/{id}/queue":                                     exempt(reasonGrant),
-		"GET /v1/handoffs/{id}":                                         exempt(reasonGrant),
-		"GET /v1/media/{grant}":                                         exempt(reasonGrant),
-		"GET /v1/media/{grant}/audio":                                   exempt(reasonGrant),
-		"GET /v1/media/{grant}/audio-converted":                         exempt(reasonGrant),
-		"GET /v1/media/{grant}/audio-index":                             exempt(reasonGrant),
-		"GET /v1/media/subtitles/{grant}/{resource}/{revision}":         exempt(reasonGrant),
-		"GET /v1/media/{grant}/{file}":                                  exempt(reasonGrant),
-		"GET /v1/playback/sessions/{id}":                                exempt(reasonGrant),
-		"GET /v1/playback/sessions/{id}/chapters":                       exempt(reasonGrant),
-		"GET /v1/queues/{id}":                                           exempt(reasonGrant),
+		"GET /v1/groups/{id}":                                   exempt(reasonGrant),
+		"GET /v1/groups/{id}/queue":                             exempt(reasonGrant),
+		"GET /v1/handoffs/{id}":                                 exempt(reasonGrant),
+		"GET /v1/media/{grant}":                                 exempt(reasonGrant),
+		"GET /v1/media/{grant}/audio":                           exempt(reasonGrant),
+		"GET /v1/media/{grant}/audio-converted":                 exempt(reasonGrant),
+		"GET /v1/media/{grant}/audio-index":                     exempt(reasonGrant),
+		"GET /v1/media/subtitles/{grant}/{resource}/{revision}": exempt(reasonGrant),
+		"GET /v1/media/{grant}/{file}":                          exempt(reasonGrant),
+		"GET /v1/playback/sessions/{id}":                        exempt(reasonGrant),
+		"GET /v1/playback/sessions/{id}/chapters":               exempt(reasonGrant),
+		"GET /v1/queues/{id}":                                   exempt(reasonGrant),
+		"GET /v1/queues/{id}/entry": probe(func(m *restrictionEnv) []string {
+			out := []string{}
+			for _, id := range m.hiddenItemSamples() {
+				out = append(out, "/v1/queues/matrix-unknown/entry?itemId="+url.QueryEscape(id))
+			}
+			return out
+		}),
 		"GET /v1/queues/{id}/entries":                                   exempt(reasonGrant),
 		"GET /v1/queues/{id}/window":                                    exempt(reasonGrant),
 		"GET /v1/receivers/{id}/grants":                                 exempt(reasonGrant),
@@ -587,15 +600,25 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/groups":                          static("/v1/groups"),
 
 		// Catalogue: one title.
-		"GET /v1/items/{id}":                                  perItem(""),
-		"GET /v1/items/{id}/detail":                           perItem("/detail"),
-		"GET /v1/items/{id}/credits":                          perItem("/credits?group=cast"),
-		"GET /v1/items/{id}/art/{kind}":                       perItem("/art/poster"),
-		"GET /v1/items/{id}/chapters/{chapter}/image":         perItem("/chapters/0/image"),
-		"GET /v1/items/{itemId}/download-options":             perItem("/download-options"),
-		"GET /v1/items/{id}/listening":                        perItem("/listening"),
+		"GET /v1/items/{id}":                          perItem(""),
+		"GET /v1/items/{id}/detail":                   perItem("/detail"),
+		"GET /v1/items/{id}/credits":                  perItem("/credits?group=cast"),
+		"GET /v1/items/{id}/art/{kind}":               perItem("/art/poster"),
+		"GET /v1/items/{id}/chapters/{chapter}/image": perItem("/chapters/0/image"),
+		"GET /v1/items/{itemId}/download-options":     perItem("/download-options"),
+		"GET /v1/items/{id}/listening":                perItem("/listening"),
+		"GET /v1/books/{id}/timeline":                 perEntity("/v1/books/", "book", "/timeline?limit=10&positionMs=0"),
+		"GET /v1/items/{id}/similar": probe(func(m *restrictionEnv) []string {
+			var out []string
+			for _, kind := range []string{"album", "book", "artist"} {
+				out = append(out, perEntity("/v1/items/", kind, "/similar?limit=12").probe(m)...)
+			}
+			return out
+		}),
 		"GET /v1/items/{id}/playback-offers":                  perItem("/playback-offers"),
 		"GET /v1/items/{id}/recommendations":                  perItem("/recommendations"),
+		"GET /v1/items/{id}/file-info":                        perItem("/file-info"),
+		"GET /v1/items/{id}/recommendations/rows/{row}":       perItem("/recommendations/rows/more_like"),
 		"GET /v1/items/{id}/source-availability":              perItem("/source-availability"),
 		"GET /v1/items/{id}/trickplay":                        perItem("/trickplay"),
 		"GET /v1/items/{id}/trickplay/{set}/thumbnails.vtt":   perItem("/trickplay/set/thumbnails.vtt"),
@@ -665,9 +688,18 @@ func restrictionRoutes() map[string]restrictionRoute {
 		// Live TV, guide and recordings: channels and recordings carry their own
 		// restriction (channel_restriction_test, recordings_switch_test); the
 		// matrix still checks that no catalogue title leaks through them.
-		"GET /v1/guide":          static("/v1/guide?kind=live-source&start=2026-09-19T12:00:00Z&end=2026-09-19T14:00:00Z&timezone=UTC&limit=30"),
-		"GET /v1/guide/channels": static("/v1/guide/channels?kind=all&sort=number&offset=0&limit=50"),
-		"GET /v1/guide/sources":  static("/v1/guide/sources"),
+		"GET /v1/guide":           static("/v1/guide?kind=live-source&start=2026-09-19T12:00:00Z&end=2026-09-19T14:00:00Z&timezone=UTC&limit=30"),
+		"GET /v1/guide/channels":  static("/v1/guide/channels?kind=all&sort=number&offset=0&limit=50"),
+		"GET /v1/guide/sources":   static("/v1/guide/sources"),
+		"GET /v1/guide/on-now":    static("/v1/guide/on-now"),
+		"GET /v1/guide/now-next":  static("/v1/guide/now-next"),
+		"GET /v1/guide/airings":   static("/v1/guide/airings?start=2026-09-19T12:00:00Z&end=2026-09-20T12:00:00Z&search=Programme"),
+		"GET /v1/guide/reminders": static("/v1/guide/reminders"),
+		"GET /v1/dvr/summary":     static("/v1/dvr/summary"),
+		"GET /v1/dvr/groups":      static("/v1/dvr/groups"),
+		"GET /v1/dvr/recordings/{id}/image": probe(func(m *restrictionEnv) []string {
+			return prefixed("/v1/dvr/recordings/", m.hiddenItemSamples(), "/image")
+		}),
 		"GET /v1/guide/programme-images/{generation}/{programme}": exempt("programme image rechecks live source access and rating restrictions; guide_images_test covers hidden and changed programmes"),
 		"GET /v1/dvr":                 static("/v1/dvr"),
 		"GET /v1/dvr/channels":        static("/v1/dvr/channels"),
@@ -707,7 +739,20 @@ func restrictionReadPOSTs(m *restrictionEnv) map[string][]postProbe {
 			}
 		}
 	}
-	return map[string][]postProbe{"POST /v1/libraries/{id}/browse": browse, "POST /v1/browse": across, "POST /v1/jobs": jobs}
+	pickers := []postProbe{}
+	if m != nil {
+		for _, kind := range []string{"playlist", "collection"} {
+			pickers = append(pickers, postProbe{"/v1/home/destination-picker", fmt.Sprintf(`{"kind":%q,"limit":40,"itemIds":[%q,%q]}`, kind, m.visibleMovie, m.hiddenItems["movie"][0])})
+		}
+	}
+	counts, acrossCounts := []postProbe{}, []postProbe{}
+	if m != nil {
+		for _, library := range m.libraries {
+			counts = append(counts, postProbe{"/v1/libraries/" + library + "/browse/counts", `{"queries":[{"id":"clear","query":null},{"id":"rating","query":{"field":"year","operator":"at-least","value":1900}}]}`})
+		}
+		acrossCounts = append(acrossCounts, postProbe{"/v1/browse/counts", `{"pivot":"titles","queries":[{"id":"my-list","query":{"field":"watchlisted","operator":"equals","value":true}},{"id":"favorites","query":{"field":"favorite","operator":"equals","value":true}}]}`})
+	}
+	return map[string][]postProbe{"POST /v1/libraries/{id}/browse/counts": counts, "POST /v1/browse/counts": acrossCounts, "POST /v1/libraries/{id}/browse": browse, "POST /v1/browse": across, "POST /v1/jobs": jobs, "POST /v1/home/destination-picker": pickers}
 }
 
 func prefixed(prefix string, ids []string, suffix ...string) []string {
@@ -769,7 +814,7 @@ func (m *restrictionEnv) hiddenItemSamples() []string {
 }
 
 func (m *restrictionEnv) homeRows() []string {
-	rows := []string{"continue", "continue_listening", "ondeck", "recommended", "trending"}
+	rows := []string{"continue", "new_on_server", "because_you_watched", "listen_next", "continue_books", "recommended", "trending_now", "community_watching"}
 	for _, library := range m.libraries {
 		rows = append(rows, "recent_"+library)
 	}

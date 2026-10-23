@@ -34,6 +34,17 @@ func newReplanFixture(t *testing.T, bitrate int64) *replanFixture {
 	return &replanFixture{t: t, db: db, s: s, h: h, p: p, item: item}
 }
 
+// A copy admitted under the canonical 2 Mbit/s preset must fit its 720p
+// height as well as its bitrate. Other fixtures retain their 1080p source.
+func new720pReplanFixture(t *testing.T, bitrate int64) *replanFixture {
+	t.Helper()
+	f := newReplanFixture(t, bitrate)
+	updateCatalogAsset(t, f.db, firstCatalogAssetToken(t, f.db), func(a *compactcatalog.Asset) {
+		a.Width, a.Height = 1280, 720
+	})
+	return f
+}
+
 func (f *replanFixture) configure(cfg DeliveryConfiguration) {
 	f.s.ConfigureDelivery(fixedSettings{cfg}, nil, nil, "")
 	f.h.ConfigureSettings(fixedSettings{cfg})
@@ -126,14 +137,14 @@ func TestReplanRefusesAV1PresentationWhoseCeilingsWereNotStored(t *testing.T) {
 	}
 	t.Run("a legacy session", func(t *testing.T) {
 		f := newReplanFixture(t, 40_000_000)
-		session, err := f.s.Create(f.p, f.item, "auto", "legacy")
+		session, err := f.s.Create(f.p, f.item, "automatic", "legacy")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err = f.subtitle(context.Background(), session.ID, styledSubtitle); err != nil {
 			t.Fatalf("a legacy session's burn-in re-plan: %v", err)
 		}
-		if plan := f.plan(session.ID); plan.BurnIn == nil || plan.Target == nil || plan.QualityID != "original" {
+		if plan := f.plan(session.ID); plan.BurnIn == nil || plan.Target == nil || plan.QualityID != "automatic" {
 			t.Fatalf("legacy re-plan: %+v", plan)
 		}
 	})
@@ -151,8 +162,14 @@ func TestConversionFallbackKeepsThePresentationCeilings(t *testing.T) {
 		{"the viewer's limit", V1Choice{Limit: true, MaxVideoBitrateBPS: 2_000_000, MaxVideoHeight: 1080}, 2_000_000},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			// 1.6 Mbit/s: within the ceiling, so the picture is copied.
-			f := newReplanFixture(t, 1_600_000)
+			// The remote preset requires 720p; the explicit viewer limit keeps
+			// its original 1080p source and independently supplied height.
+			var f *replanFixture
+			if test.choice.Remote {
+				f = new720pReplanFixture(t, 1_600_000)
+			} else {
+				f = newReplanFixture(t, 1_600_000)
+			}
 			session := f.start("copied", test.choice)
 			started := f.plan(session.ID)
 			if started.VideoAction != "copy" || started.Target == nil {
@@ -175,6 +192,15 @@ func TestConversionFallbackKeepsThePresentationCeilings(t *testing.T) {
 			}
 		})
 	}
+	t.Run("canonical remote cap converts a taller source at admission", func(t *testing.T) {
+		f := newReplanFixture(t, 1_600_000)
+		session := f.start("taller-than-preset", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 2_000_000})
+		plan := f.plan(session.ID)
+		if plan.VideoAction != "convert" || plan.TargetHeight != 720 || plan.VideoBitrateBPS < 1 || plan.VideoBitrateBPS > 2_000_000 || plan.Target == nil {
+			t.Fatalf("1080p source bypassed the canonical 2 Mbit/s 720p cap: %+v", plan)
+		}
+	})
+
 }
 
 // A re-plan never plans above what the presentation started under, whatever
@@ -422,7 +448,7 @@ func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
 		}
 		return session
 	}
-	for _, quality := range []string{"auto", "original"} {
+	for _, quality := range []string{"automatic", "original"} {
 		t.Run(quality+" under the member's cap", func(t *testing.T) {
 			f := newReplanFixture(t, 40_000_000)
 			session := legacy(t, f, quality)
@@ -431,7 +457,7 @@ func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
 				if err := f.subtitle(claimsLocal, session.ID, resource); err != nil {
 					t.Fatal(err)
 				}
-				if plan := f.plan(session.ID); plan.VideoAction != "convert" || plan.VideoBitrateBPS < 1 || plan.VideoBitrateBPS > 1_000_000 || plan.QualityID != "original" || plan.Target == nil {
+				if plan := f.plan(session.ID); plan.VideoAction != "convert" || plan.VideoBitrateBPS < 1 || plan.VideoBitrateBPS > 1_000_000 || plan.QualityID != quality || plan.Target == nil {
 					t.Fatalf("a legacy re-plan (burn-in %v) planned %s at %d bit/s (%s) above the member's 1000000", resource != nil, plan.VideoAction, plan.VideoBitrateBPS, plan.QualityID)
 				}
 			}
@@ -453,7 +479,7 @@ func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
 	})
 	t.Run("a request that carries no ceilings is refused", func(t *testing.T) {
 		f := newReplanFixture(t, 40_000_000)
-		session := legacy(t, f, "auto")
+		session := legacy(t, f, "automatic")
 		started := f.plan(session.ID)
 		for _, resource := range []*subtitles.Resource{styledSubtitle, nil} {
 			if err := f.bareSubtitle(context.Background(), session.ID, resource); !errors.Is(err, ErrQualityUnavailable) {
@@ -466,7 +492,7 @@ func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
 	})
 	t.Run("on the LAN it is planned as it always was", func(t *testing.T) {
 		f := newReplanFixture(t, 40_000_000)
-		session := legacy(t, f, "auto")
+		session := legacy(t, f, "automatic")
 		if err := f.subtitle(context.Background(), session.ID, styledSubtitle); err != nil {
 			t.Fatal(err)
 		}
@@ -494,7 +520,7 @@ func TestConversionFallbackAppliesTheMembersCurrentCap(t *testing.T) {
 		return asked
 	}
 	t.Run("admitted at 2 Mbit/s, capped at 1 Mbit/s since", func(t *testing.T) {
-		f := newReplanFixture(t, 1_600_000)
+		f := new720pReplanFixture(t, 1_600_000)
 		session := f.start("tightened", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 2_000_000})
 		started := f.plan(session.ID)
 		if started.VideoAction != "copy" {
@@ -521,7 +547,7 @@ func TestConversionFallbackAppliesTheMembersCurrentCap(t *testing.T) {
 		}
 	})
 	t.Run("a limit that cannot be read", func(t *testing.T) {
-		f := newReplanFixture(t, 1_600_000)
+		f := new720pReplanFixture(t, 1_600_000)
 		session := f.start("unreadable", V1Choice{Remote: true, AdminMaxVideoBitrateBPS: 2_000_000})
 		started := f.plan(session.ID)
 		unreadable := errors.New("limits unreadable")
@@ -547,7 +573,7 @@ func TestConversionFallbackAppliesTheMembersCurrentCap(t *testing.T) {
 	})
 	t.Run("a legacy session a request has shown to be remote", func(t *testing.T) {
 		f := newReplanFixture(t, 1_600_000)
-		session, err := f.s.Create(f.p, f.item, "auto", "legacy-remote")
+		session, err := f.s.Create(f.p, f.item, "automatic", "legacy-remote")
 		if err != nil {
 			t.Fatal(err)
 		}

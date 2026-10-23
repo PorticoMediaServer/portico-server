@@ -31,7 +31,8 @@ func serviceCommand() (bool, error) {
 		return true, err
 	}
 	for key, value := range map[string]string{
-		"PORTICO_STATE_DIR":  filepath.Join(env("ProgramData", `C:\ProgramData`), "Portico Media Server"),
+		"PORTICO_DATA_DIR":   filepath.Join(env("ProgramData", `C:\ProgramData`), "Portico"),
+		"PORTICO_SERVICE":    "1",
 		"PORTICO_WEB_DIR":    filepath.Join(filepath.Dir(executable), "web"),
 		"PORTICO_LOG_STDERR": "off",
 		"PORTICO_BIND":       "[::]:32500",
@@ -68,7 +69,7 @@ func manageWindowsService(action string) error {
 			return exeErr
 		}
 		if errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
-			service, err = manager.CreateService("PorticoMediaServer", executable, mgr.Config{StartType: mgr.StartAutomatic, DisplayName: "Portico Media Server", Description: "Organizes and streams your media. Data is kept in ProgramData\\Portico Media Server.", ServiceStartName: "NT AUTHORITY\\LocalService", SidType: windows.SERVICE_SID_TYPE_UNRESTRICTED}, "--service")
+			service, err = manager.CreateService("PorticoMediaServer", executable, mgr.Config{StartType: mgr.StartAutomatic, DisplayName: "Portico Media Server", Description: "Organizes and streams your media. Data is kept in ProgramData\\Portico.", ServiceStartName: "NT AUTHORITY\\LocalService", SidType: windows.SERVICE_SID_TYPE_UNRESTRICTED}, "--service")
 			created = err == nil
 		} else if err == nil {
 			path, pathErr := windows.UTF16PtrFromString(windows.EscapeArg(executable) + " --service")

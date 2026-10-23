@@ -5,7 +5,7 @@ import {DownloadsService} from '../src/downloads-service.ts';
 const sha='a'.repeat(64);
 const usageDoc={profileId:'profile',profileBytes:0,profileCount:0,serverBytes:0,serverCount:0,distinctArtifactBytes:0,maxPreparedBytes:0,remainingBytes:null,retentionDays:7,profiles:[]};
 const preparation=(over:Record<string,unknown>={}):any=>({
- id:'prep',itemId:'item',libraryId:'lib',profileId:'profile',quality:'1080p',origin:'item',title:{kind:'movie',title:'Film',onServer:true},batchId:'batch',state:'ready',reason:'',
+ id:'prep',itemId:'item',libraryId:'lib',profileId:'profile',quality:'1080p-low',origin:'item',title:{kind:'movie',title:'Film',onServer:true},batchId:'batch',state:'ready',reason:'',
  artifact:{kind:'prepared',ref:'version',sha256:sha,bytes:4096,estimated:false,container:'mp4',contentType:'video/mp4',fileName:'prep.mp4'},
  progress:{bytesDone:4096,bytesTotal:4096,bytesTotalEstimated:false,percent:100,etaMs:null},
  actions:['remove'],revision:3,createdAt:'2026-09-16T10:00:00Z',updatedAt:'2026-09-16T10:05:00Z',readyAt:'2026-09-16T10:05:00Z',expiresAt:'2026-10-16T10:05:00Z',...over});
@@ -337,4 +337,33 @@ test('a quiet read that fails leaves the list as it is and says nothing',async()
 test('a quiet read never runs before the first load or on a server without downloads',async()=>{
  const s=server([preparation()]),service=new DownloadsService(s.api,()=>'op',10);
  try{await service.revalidate();assert.equal(s.calls.length,0);}finally{service.dispose();}
+});
+
+
+test('container options keep server aggregate sizes and reject a different target',async()=>{
+ const calls: unknown[]=[];let wrong=false;
+ const service=new DownloadsService({async request<T>(path:string,method='GET',body?:unknown):Promise<T>{calls.push({path,method,body});return {target:{kind:'season',id:wrong?'other':'season'},total:43,options:[{quality:'original',label:'Original',sameAsOriginal:false,estimatedBytes:43000,estimated:false,available:true,unavailableCount:0,unknownSizeCount:0}]} as T;}});
+ try {
+  const result=await service.containerOptions({kind:'season',id:'season'},'device',{episodes:'all'});
+  assert.equal(result.total,43);assert.equal(result.options[0]?.estimatedBytes,43000);
+  assert.deepEqual(calls,[{path:'/v1/downloads/options',method:'POST',body:{target:{kind:'season',id:'season'},deviceId:'device',policy:{episodes:'all'}}}]);
+  wrong=true;await assert.rejects(service.containerOptions({kind:'season',id:'season'},'device',{episodes:'all'}));
+ } finally {service.dispose();}
+});
+
+test('quality defaults r25: item omission sends Original and never rewrites an explicit request',async()=>{
+ const s=server([]),sent:any[]=[];
+ const api={request:async<T>(path:string,method='GET',body?:any):Promise<T>=>{
+  if(path==='/v1/downloads/preparations'&&method==='POST'){sent.push(body);return {batchId:'b',accepted:1,items:[preparation({quality:body.quality})],rejected:[],duplicate:false} as T;}
+  return s.api.request<T>(path,method,body);
+ }};
+ const service=new DownloadsService(api,()=>'op');
+ try {
+  await service.request({mediaId:'item'});
+  assert.equal(sent.at(-1).quality,'original');
+  for(const quality of ['original','automatic','720p-high']){await service.request({mediaId:'item'},quality);assert.equal(sent.at(-1).quality,quality);}
+  const n=sent.length;
+  for(const quality of ['',null,'auto','1080p','bogus'])await assert.rejects(service.request({mediaId:'item'},quality as any));
+  assert.equal(sent.length,n);
+ }finally{service.dispose();}
 });

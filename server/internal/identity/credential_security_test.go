@@ -14,7 +14,7 @@ import (
 func TestMemberResetReplacesPasswordAndRequiresChange(t *testing.T) {
 	ctx := context.Background()
 	s, db, owner := directFixture(t)
-	member, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "member", Name: "Member", Password: "Old-password1!", AllowedLibraries: []string{}})
+	member, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "member", Name: "Member", Password: "Old-password1!", AllowedLibraries: []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func TestMemberResetReplacesPasswordAndRequiresChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.UpdateDirectMember(ctx, owner.AccountToken, member.ID, DirectMemberInput{ExpectedRevision: member.Revision, Password: "Temporary-password1!", AllowedLibraries: []string{}})
+	resetCode, err := s.MakeMemberResetCode(ctx, owner.AccountToken, member.ID, MemberResetRequest{ExpectedRevision: member.Revision})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestMemberResetReplacesPasswordAndRequiresChange(t *testing.T) {
 	if _, err = s.DirectLogin(ctx, "member", "Old-password1!"); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("old password: %v", err)
 	}
-	reset, err := s.DirectLogin(ctx, "member", "Temporary-password1!")
+	reset, err := s.VerifyMemberReset(ctx, MemberResetVerify{Username: "member", Code: resetCode.Code})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestMemberResetReplacesPasswordAndRequiresChange(t *testing.T) {
 	if _, err = s.DirectMe(ctx, reset.AccountToken); !errors.Is(err, ErrPasswordChangeRequired) {
 		t.Fatalf("temporary password escaped gate: %v", err)
 	}
-	if err = s.ChangeDirectPassword(ctx, reset.AccountToken, "Temporary-password1!", "Chosen-password1!", ""); err != nil {
+	if err = s.ChangeDirectPassword(ctx, reset.Session.AccessToken, "", "Chosen-password1!", ""); err != nil {
 		t.Fatal(err)
 	}
 	var revokedReason string
@@ -104,7 +104,7 @@ func TestMFASecretsArePlainAndReadable(t *testing.T) {
 func TestAccountBackoffIsIsolated(t *testing.T) {
 	ctx := context.Background()
 	s, db, login := directFixture(t)
-	_, err := s.CreateDirectMember(ctx, login.AccountToken, DirectMemberInput{Username: "other", Name: "Other", Password: "Other-password1!", AllowedLibraries: []string{}})
+	_, err := s.CreateDirectMember(ctx, login.AccountToken, DirectMemberCreate{Username: "other", Name: "Other", Password: "Other-password1!", AllowedLibraries: []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,8 @@ func TestLocalOwnerRecoveryRevokesSessionsAndRequiresNewPassword(t *testing.T) {
 	if _, err = s.VerifyTwoFactor(ctx, login.AccountToken, "Testing1!", currentTOTP(t, enrollment.Secret)); err != nil {
 		t.Fatal(err)
 	}
-	code, err := s.RecoverOwner(ctx, true)
+	code := requestResetFileCode(t, s)
+	recovered, err := s.VerifyOwnerReset(ctx, OwnerResetVerify{Code: code, TurnOffTwoStep: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,11 +290,10 @@ func TestLocalOwnerRecoveryRevokesSessionsAndRequiresNewPassword(t *testing.T) {
 	if _, err = s.Authenticate(login.Session.AccessToken); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("recovery retained old session", err)
 	}
-	recovered, err := s.DirectLogin(ctx, "owner", code)
-	if err != nil || recovered.Challenge != nil || !recovered.PasswordChangeRequired || recovered.Session == nil || recovered.Session.Viewer.Role != "account" {
+	if recovered.Challenge != nil || !recovered.PasswordChangeRequired || recovered.Session == nil || recovered.Session.Viewer.Role != "account" {
 		t.Fatalf("recovery did not require a new password: %v", err)
 	}
-	if err = s.ChangeDirectPassword(ctx, recovered.AccountToken, code, "Recovered-password1!", ""); err != nil {
+	if err = s.ChangeDirectPassword(ctx, recovered.Session.AccessToken, "", "Recovered-password1!", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.DirectLogin(ctx, "owner", code); !errors.Is(err, ErrUnauthorized) {
@@ -322,7 +322,7 @@ func TestArtworkCapabilityCannotBecomeAFeedCredential(t *testing.T) {
 func TestMemberCannotApproveOwnDevice(t *testing.T) {
 	ctx := context.Background()
 	s, _, owner := directFixture(t)
-	_, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "member", Name: "Member", Password: "Member-password1!", AllowedLibraries: []string{}})
+	_, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "member", Name: "Member", Password: "Member-password1!", AllowedLibraries: []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,13 +402,13 @@ func TestSharedNetworkGuessesCannotHoldTheOwnerOut(t *testing.T) {
 	}
 }
 
-// C58: recovery with --reset-mfa removes the owner's two-factor setup; the
+// Reset-file verification can explicitly remove the owner's two-factor setup; the
 // owner gets an in-app notice and a re-enrol prompt. Other accounts keep
 // theirs: with plaintext storage there is no key to lose.
 func TestRecoveryResetMFARemovesOwnerFactorOnly(t *testing.T) {
 	ctx := context.Background()
 	s, db, owner := directFixture(t)
-	if _, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "member", Name: "Member", Password: "Member-password1!", AllowedLibraries: []string{}}); err != nil {
+	if _, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "member", Name: "Member", Password: "Member-password1!", AllowedLibraries: []string{}}); err != nil {
 		t.Fatal(err)
 	}
 	member, err := s.DirectLogin(ctx, "member", "Member-password1!")
@@ -429,7 +429,7 @@ func TestRecoveryResetMFARemovesOwnerFactorOnly(t *testing.T) {
 	if _, err = s.VerifyTwoFactor(ctx, owner.AccountToken, "Testing1!", currentTOTP(t, ownerEnrollment.Secret)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = RecoverOwnerCLI(ctx, db, true); err != nil {
+	if _, err = s.VerifyOwnerReset(ctx, OwnerResetVerify{Code: requestResetFileCode(t, s), TurnOffTwoStep: true}); err != nil {
 		t.Fatal(err)
 	}
 	var notices, factors, ownerFactors int

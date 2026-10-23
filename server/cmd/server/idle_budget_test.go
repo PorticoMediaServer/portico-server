@@ -51,7 +51,7 @@ func TestServerIdleStatementBudget(t *testing.T) {
 	}
 	full := os.Getenv("PORTICO_FULL_IDLE")
 	reportPath := filepath.Join(root, "idle.json")
-	cmd.Env = append(cmd.Env, "PORTICO_IDLE_HELPER=1", "PORTICO_IDLE_REPORT="+reportPath, "PORTICO_FULL_IDLE="+full, "PORTICO_STATE_DIR="+filepath.Join(root, "state"), "PORTICO_BIND=127.0.0.1:0", "PORTICO_DISCOVERY=0")
+	cmd.Env = append(cmd.Env, "PORTICO_IDLE_HELPER=1", "PORTICO_IDLE_REPORT="+reportPath, "PORTICO_FULL_IDLE="+full, "PORTICO_DATA_DIR="+filepath.Join(root, "state"), "HOME="+root, "PORTICO_BIND=127.0.0.1:0", "PORTICO_DISCOVERY=0")
 	output, e := cmd.CombinedOutput()
 	if e != nil {
 		t.Fatalf("isolated idle server: %v\n%s", e, output)

@@ -66,7 +66,7 @@ func (d Dependencies) alertUploadBudget(ctx context.Context, exhausted bool) {
 	if d.connectionPolicy.uploadAlert.Load() == exhausted {
 		return
 	}
-	if err := d.Console.Alert(ctx, "upload-budget-exhausted", "warning", exhausted); err == nil {
+	if err := d.Console.Alert(ctx, "upload-budget-exhausted", "warning", exhausted, map[string]string{"reason": "upload-budget-exhausted", "time": time.Now().UTC().Format(time.RFC3339Nano)}); err == nil {
 		d.connectionPolicy.uploadAlert.Store(exhausted)
 	}
 }

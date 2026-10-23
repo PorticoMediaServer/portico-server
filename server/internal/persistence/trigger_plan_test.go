@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Migration 0093: the statements the sign-out and account-removal triggers run
+// The statements the sign-out and account-removal triggers run
 // search their tables by index instead of scanning them.
 func TestTriggerJoinsSearchInsteadOfScan(t *testing.T) {
 	db, err := OpenFresh(filepath.Join(t.TempDir(), "state.sqlite"))

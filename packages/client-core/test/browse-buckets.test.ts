@@ -46,3 +46,10 @@ test('W1: no match returns undefined so the caller clamps', () => {
   assert.equal(bucketIndexFor(index, 'nonsense', '1995'), 480);
   assert.equal(bucketIndexFor(index, 'nonsense', 'other'), undefined);
 });
+
+test('CB-8: every non-Latin server key survives after the Latin rail in server order',async()=>{
+ const {browseLetterRail}=await import('../src/browse-buckets.ts');
+ const rail=browseLetterRail([{key:'B',index:0},{key:'Ω',index:1},{key:'Ж',index:2},{key:'東',index:3}]);
+ assert.equal(rail.length,30);assert.equal(rail.find(a=>a.key==='A')?.index,undefined);assert.equal(rail.find(a=>a.key==='B')?.index,0);
+ assert.deepEqual(rail.slice(27),[{key:'Ω',index:1},{key:'Ж',index:2},{key:'東',index:3}]);
+});

@@ -11,7 +11,7 @@ import type {ServerPin} from './route-identity.ts';
  *      with Hosted (`/v1/networking/claim/web-approval`), which answers with a
  *      49-character claim code and `approvalUrl`
  *      (`https://web.getportico.tv/claim#code=…&server=…&return=…`).
- *   2. The client opens `approvalUrl` (a browser window, or the system browser from an app);
+ *   2. The client opens `approvalUrl` (the same browser tab, or the system browser from an app);
  *      the person signs in there if needed and approves or denies. That site never talks to
  *      the client.
  *   3. Meanwhile the client holds one request open
@@ -36,7 +36,9 @@ export function safeApprovalUrl(url: string | undefined, hostedOrigin: string): 
   try {
     const u = new URL(url);
     const hosted = new URL(hostedOrigin);
-    return u.origin === hosted.origin && u.pathname === '/claim' && /(^|&)code=/.test(u.hash.slice(1)) ? u.href : undefined;
+    if(hosted.protocol!=='https:'||hosted.username||hosted.password||hosted.pathname!=='/'||hosted.search||hosted.hash||u.username||u.password||u.protocol!=='https:'||u.search)return undefined;
+    const fragment=new URLSearchParams(u.hash.slice(1));
+    return u.origin===hosted.origin&&u.pathname==='/claim'&&fragment.getAll('code').length===1&&!!fragment.get('code') ? u.href : undefined;
   } catch { return undefined; }
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"portico.local/server/internal/catalog"
@@ -33,7 +34,7 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 			w.Header().Set("Cache-Control", "no-store")
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
-			p, err := d.manualMetadataOwner(ctx, r)
+			p, err := d.manualMetadataAdministrator(ctx, r)
 			if err != nil {
 				failure(w, err)
 				return
@@ -65,7 +66,7 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 				repairFailure(w, err)
 				return
 			}
-			if _, err = d.manualMetadataOwner(ctx, r); err != nil {
+			if _, err = d.manualMetadataAdministrator(ctx, r); err != nil {
 				failure(w, err)
 				return
 			}
@@ -78,7 +79,7 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-		p, err := d.manualMetadataOwner(ctx, r)
+		p, err := d.manualMetadataAdministrator(ctx, r)
 		if err != nil {
 			failure(w, err)
 			return
@@ -162,11 +163,15 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 		var f *os.File
 		var mime string
 		if candidate := r.URL.Query().Get("candidate"); candidate != "" {
-			if _, err = d.manualMetadataOwner(r.Context(), r); err != nil {
+			if _, err = d.manualMetadataAdministrator(r.Context(), r); err != nil {
 				failure(w, err)
 				return
 			}
-			f, mime, err = d.Metadata.PreviewArtwork(r.Context(), target, candidate, artworkWidth(r))
+			if strings.HasPrefix(candidate, "attention:") {
+				f, mime, err = d.Metadata.PreviewAttentionArtwork(r.Context(), target, strings.TrimPrefix(candidate, "attention:"), artworkWidth(r), func(tx *sql.Tx) error { return d.manualMetadataAuthorize(r.Context(), tx, p) })
+			} else {
+				f, mime, err = d.Metadata.PreviewArtwork(r.Context(), target, candidate, artworkWidth(r))
+			}
 		} else {
 			f, mime, err = d.Metadata.EntityArtworkVariant(r.Context(), target, r.PathValue("role"), r.URL.Query().Get("subject"), artworkWidth(r), r.URL.Query().Get("v"))
 		}

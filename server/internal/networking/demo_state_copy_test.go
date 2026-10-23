@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 
 	"portico.local/server/internal/persistence"
@@ -35,7 +36,7 @@ func TestPlainStateMigrationsOnAStateCopy(t *testing.T) {
 	if _, err = OpenClaimCipher(ctx, db, dir); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = os.Stat(filepath.Join(dir, "networking-claim-credentials.key")); !os.IsNotExist(err) {
+	if _, err = os.Stat(storagepaths.Path(dir, "networking-claim-credentials.key")); !os.IsNotExist(err) {
 		t.Fatalf("the claim credential key file is still there: %v", err)
 	}
 	var sealed int
@@ -53,10 +54,10 @@ func TestPlainStateMigrationsOnAStateCopy(t *testing.T) {
 	if err != nil || key == nil {
 		t.Fatalf("TLS key: %v", err)
 	}
-	if _, err = os.Stat(filepath.Join(dir, TLSKeyFileName)); err != nil {
+	if _, err = os.Stat(storagepaths.Path(dir, TLSKeyFileName)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = os.Stat(filepath.Join(dir, tlsSealFileName)); !os.IsNotExist(err) {
+	if _, err = os.Stat(storagepaths.Path(dir, tlsSealFileName)); !os.IsNotExist(err) {
 		t.Fatalf("the TLS seal file is still there: %v", err)
 	}
 	var sealedMaterial int

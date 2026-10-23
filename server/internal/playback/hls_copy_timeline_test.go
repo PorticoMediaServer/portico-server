@@ -112,7 +112,7 @@ func copyFixture(t *testing.T, gop int, seconds int) (context.Context, *Service,
 	s.ConfigureHLS(h)
 	s.ConfigureDelivery(fixedSettings{cfg}, nil, nil, "")
 	p := identity.Principal{Hash: "login", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}, Epoch: 1}
-	session, err := s.Create(p, item, "auto", "copy")
+	session, err := s.Create(p, item, "automatic", "copy")
 	if err != nil {
 		cancel()
 		t.Fatal(err)

@@ -46,6 +46,15 @@ func downloadRequestError(e error) error {
 }
 func registerDownloadRequests(r *apikit.Registry, d Dependencies) {
 	failures := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "idempotency_key_reused", "rate_limited", "internal"}
+	v1Route(r, apikit.Metadata{Admission: laneBrowsing, ID: "get_container_download_options", Method: "POST", Path: "/v1/downloads/options", Summary: "Read combined per-quality sizes for the visible members of a container", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Cost: apikit.SelectionAsync, Status: 200, BodyLimit: 8192, Errors: append(append([]string{}, failures...), "downloads_unavailable")}, func(ctx context.Context, q *http.Request, in downloads.ContainerOptionsRequest) (downloads.ContainerOptionsView, error) {
+		p, owner, e := d.downloadViewer(q)
+		if e != nil {
+			return downloads.ContainerOptionsView{}, e
+		}
+		out, e := d.Downloads.ContainerOptions(ctx, p, in, owner)
+		return out, downloadRequestError(e)
+	})
+
 	v1Route(r, apikit.Metadata{Admission: laneDefault, ID: "create_download_request", Method: "POST", Path: "/v1/downloads/requests", Summary: "Queue all visible members of a container for offline preparation", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.SelectionAsync, Status: 202, BodyLimit: 8192, Errors: failures}, func(ctx context.Context, q *http.Request, in downloads.ContainerRequest) (downloads.RequestView, error) {
 		p, e := d.principal(q)
 		if e != nil {

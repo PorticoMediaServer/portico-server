@@ -6,14 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"portico.local/server/internal/apievents"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/mediatools"
+	"portico.local/server/internal/playback/vod"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 	"portico.local/server/internal/supervise"
@@ -153,6 +156,10 @@ func NewHLS(ctx context.Context, db *sql.DB, root, binary string) (*HLS, error) 
 	}
 	helper, e := os.Executable()
 	if e != nil {
+		return nil, e
+	}
+	// A new server process has no running converters from its previous life.
+	if _, e = dbwork.ExecWrite(ctx, db, dbwork.ClassEstablishedPlayback, `DELETE FROM playback_conversion_observations`); e != nil {
 		return nil, e
 	}
 	return &HLS{fmp4: true, SourceStorage: storage.New(helper), db: db, root: root, binary: resolved, active: map[string]context.CancelFunc{}, windows: map[string]*hlsWindow{}, reclaimed: map[string]int{}, usage: map[string]*hlsUsage{}, timelines: map[string]*copyTimeline{}, ffprobe: siblingProbe(resolved), ctx: ctx}, nil
@@ -572,11 +579,21 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		// The one media executor (mediaexec): sandboxed where the platform can,
 		// the input only as descriptor 3, writes only into this session's folder,
 		// and its own process group, so cancelling reaches the whole sandbox.
+		var progress *vod.ConversionProgressWriter
+		if plan != nil && (plan.VideoAction == "convert" || plan.AudioAction == "convert" || plan.BurnIn != nil) {
+			observe, finish := h.observeConversion(ctx, id, generation)
+			defer finish()
+			args = append([]string{"-progress", "pipe:1", "-stats_period", "1", "-nostats"}, args...)
+			progress = vod.NewConversionProgressWriter(observe)
+		}
 		cmd, err := mediaexec.CommandContext(processCtx, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}, Fonts: true, Hardware: conversionJobHardware(plan, stages)})
 		if err != nil {
 			return err, ""
 		}
 		cmd.WaitDelay = 2 * time.Second
+		if progress != nil {
+			cmd.Stdout = progress
+		}
 		tail := &tailWriter{limit: 4096}
 		cmd.Stderr = tail
 		err = cmd.Run()
@@ -1116,3 +1133,47 @@ func (h *HLS) CleanupGenerated(ctx context.Context) error {
 }
 
 var generatedDirectoryID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,160}$`)
+
+// observeConversion records only actual child reports. Producer identity prevents
+// a replaced window from publishing into, or clearing, its successor's facts.
+func (h *HLS) observeConversion(ctx context.Context, id string, generation int) (func(vod.ConversionProgress), func()) {
+	producer := strconv.FormatInt(time.Now().UnixNano(), 10)
+	var last time.Time
+	observe := func(p vod.ConversionProgress) {
+		if p.ObservedAt.Sub(last) < time.Second || math.IsNaN(p.Speed) || math.IsInf(p.Speed, 0) || p.Speed < 0 {
+			return
+		}
+		last = p.ObservedAt
+		write, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+		defer cancel()
+		_ = dbwork.WithWriteTx(write, h.db, dbwork.ClassEstablishedPlayback, func(tx *sql.Tx) error {
+			result, err := tx.ExecContext(write, `INSERT INTO playback_conversion_observations(session_id,generation,producer,speed,observed_ms)
+    SELECT id,generation,?,?,? FROM playback_sessions WHERE id=? AND generation=? AND state NOT IN('stopped','ended','failed')
+    ON CONFLICT(session_id,producer) DO UPDATE SET speed=excluded.speed,observed_ms=excluded.observed_ms`, producer, p.Speed, p.ObservedAt.UnixMilli(), id, generation)
+			if err != nil {
+				return err
+			}
+			n, _ := result.RowsAffected()
+			if n == 0 {
+				return nil
+			}
+			return apievents.Append(tx, apievents.AdminAudience, "admin.sessions", "session", id, "", nil)
+		})
+	}
+	finish := func() {
+		write, cancel := context.WithTimeout(context.WithoutCancel(ctx), 250*time.Millisecond)
+		defer cancel()
+		_ = dbwork.WithWriteTx(write, h.db, dbwork.ClassEstablishedPlayback, func(tx *sql.Tx) error {
+			result, err := tx.ExecContext(write, `DELETE FROM playback_conversion_observations WHERE session_id=? AND producer=?`, id, producer)
+			if err != nil {
+				return err
+			}
+			removed, err := result.RowsAffected()
+			if err != nil || removed == 0 {
+				return err
+			}
+			return apievents.Append(tx, apievents.AdminAudience, "admin.sessions", "session", id, "", nil)
+		})
+	}
+	return observe, finish
+}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 
 	"portico.local/server/internal/persistence"
@@ -21,7 +22,7 @@ func TestDevE2EOwnerAbsentOutsideDevtrust(t *testing.T) {
 	if err := os.MkdirAll(state, 0700); err != nil {
 		t.Fatal(err)
 	}
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

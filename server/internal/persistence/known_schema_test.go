@@ -139,7 +139,7 @@ func TestForeignSchemaObjectsCostOneCatalogRead(t *testing.T) {
 }
 
 // createStatement matches any remaining runtime schema declaration. Subsystems
-// now install through migrations, so this list should shrink as old installers
+// now install through the baseline, so this list should shrink as old installers
 // are removed rather than requiring a large fixed set.
 var createStatement = regexp.MustCompile(`CREATE\s+(TABLE|UNIQUE\s+INDEX|INDEX|TRIGGER|VIEW)\s+IF\s+NOT\s+EXISTS\s+"?([A-Za-z_0-9]+)"?`)
 

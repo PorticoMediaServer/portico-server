@@ -21,6 +21,7 @@ import (
 	_ "golang.org/x/image/webp"
 	"portico.local/server/internal/atomicfile"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/storagepaths"
 	"portico.local/server/internal/worker"
 )
 
@@ -267,7 +268,7 @@ func (s *Service) guideImageRoot() (string, error) {
 	if s.StateDirectory() == "" {
 		return "", ErrUnavailable
 	}
-	root := filepath.Join(s.StateDirectory(), "guide-images")
+	root := storagepaths.Path(s.StateDirectory(), "guide-images")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return "", ErrUnavailable
 	}

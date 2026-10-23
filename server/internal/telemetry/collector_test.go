@@ -174,3 +174,25 @@ func TestACollectorWithoutASamplerStillAnswers(t *testing.T) {
 type emptySampler struct{}
 
 func (emptySampler) Sample(context.Context, int64) Sample { return Sample{} }
+
+func TestActivityDaySeriesUsesAtMostSixtyRealPoints(t *testing.T) {
+	clock := time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC)
+	c := New(Options{Sampler: &fakeSampler{}, Now: func() time.Time { return clock }})
+	for n := 0; n < 1440; n++ {
+		c.Collect(context.Background())
+		clock = clock.Add(time.Minute)
+	}
+	out, ok := c.Read("24h")
+	if !ok || len(out.Series["cpu"]) != 60 || len(out.Series["gpuUsage"]) != 0 {
+		t.Fatal(out, ok)
+	}
+	points := out.Series["cpu"]
+	if points[0].V != 1 || points[len(points)-1].V != 1440 {
+		t.Fatal("first/last measured points changed", points)
+	}
+	for n, p := range points {
+		if p.V != float64((p.T-points[0].T)/time.Minute.Milliseconds()+1) || n > 0 && p.T <= points[n-1].T {
+			t.Fatal("invented/interpolated point", p)
+		}
+	}
+}

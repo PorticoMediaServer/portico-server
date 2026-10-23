@@ -37,6 +37,7 @@ func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]an
 		switch name {
 		case "HomeDocument":
 			field("rows")["maxItems"] = 64
+			field("spotlight")["maxItems"] = 5
 		case "HomeLayout":
 			for _, key := range []string{"rowOrder", "hiddenRowIds"} {
 				v := field(key)
@@ -47,6 +48,8 @@ func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]an
 			}
 		case "FilesystemPage":
 			field("roots")["maxItems"] = 64
+			field("entries")["maxItems"] = 200
+			field("suggestions")["maxItems"] = 8
 		case "Capture":
 			field("component")["enum"] = []string{"scheduler"}
 		case "FeedbackSubmission":
@@ -59,16 +62,20 @@ func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]an
 }
 
 type libraryCreationRequest struct {
-	Name             string `json:"name"`
-	Kind             string `json:"kind"`
-	Path             string `json:"path"`
-	MetadataAgent    string `json:"metadataAgent,omitempty"`
-	MetadataLanguage string `json:"metadataLanguage,omitempty"`
+	Name             string   `json:"name"`
+	Kind             string   `json:"kind"`
+	Path             string   `json:"path,omitempty"`
+	Folders          []string `json:"folders,omitempty"`
+	MetadataAgent    string   `json:"metadataAgent,omitempty"`
+	MetadataLanguage string   `json:"metadataLanguage,omitempty"`
 }
 
 func (libraryCreationRequest) JSONSchema() map[string]any {
 	type wire libraryCreationRequest
 	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
-	shape["properties"].(map[string]any)["kind"].(map[string]any)["enum"] = []string{"movie", "tv", "anime", "music", "audiobook"}
+	shape["properties"].(map[string]any)["kind"].(map[string]any)["enum"] = []string{"movie", "tv", "anime", "music", "audiobook", "book", "comic"}
+	folders := shape["properties"].(map[string]any)["folders"].(map[string]any)
+	folders["minItems"] = 1
+	folders["maxItems"] = 64
 	return shape
 }

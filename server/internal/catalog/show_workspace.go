@@ -29,6 +29,9 @@ func (s *Service) showWorkspaceOnce(r ShowWorkspaceRequest) (ShowWorkspace, erro
 	if e := s.prepareViewer(r.Viewer); e != nil {
 		return out, e
 	}
+	if _, _, err := episodePlayStateSQL(r.Profile, r.PlayState); err != nil {
+		return out, err
+	}
 	if r.Limit == 0 {
 		r.Limit = 40
 	}
@@ -67,6 +70,11 @@ func (s *Service) showWorkspaceOnce(r ShowWorkspaceRequest) (ShowWorkspace, erro
 	}
 	watched, unwatched := int(counts.WatchedCount), int(counts.UnwatchedCount)
 	out.Show.WatchedCount, out.Show.UnwatchedCount = &watched, &unwatched
+	out.Show.EpisodeCount = counts.WatchedCount + counts.UnwatchedCount
+	visibleAdded, addedArgs := r.Viewer.itemVisibilitySQL("item.id")
+	if e = s.read().QueryRow(`SELECT COALESCE(min(d.added_text),'') FROM catalog_episodes ep JOIN catalog_entities item ON item.id=ep.entity_id JOIN catalog_item_details d ON d.entity_id=item.id WHERE ep.show_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND `+visibleAdded, append([]any{show}, addedArgs...)...).Scan(&out.Show.AddedAt); e != nil {
+		return out, e
+	}
 	if out.Show.LibraryKind != "tv" && out.Show.LibraryKind != "anime" {
 		return out, ErrShowContext
 	}
@@ -209,9 +217,10 @@ func (s *Service) showHeroEvidence(show string, viewer Viewer, out *ShowWorkspac
 	// aired date, or the episode's own date), for the "2008–2013" span.
 	// The latest episode date: the published compact episode's air_date
 	// (days since the epoch), else its TVDB evidence date.
+	lastVisible, lastArgs := viewer.itemVisibilitySQL("item.id")
 	if err = s.read().QueryRow(`SELECT COALESCE(max(COALESCE(strftime('%Y-%m-%d',ep.air_date*86400,'unixepoch'),substr(json_extract(pe.payload,'$.aired'),1,10),'')),'')
  FROM catalog_entities sh JOIN catalog_episodes ep ON ep.show_id=sh.id JOIN catalog_entities item ON item.id=ep.entity_id
- LEFT JOIN provider_evidence pe ON pe.item_id=item.id AND pe.provider='tvdb' WHERE sh.public_id=pid_blob(?)`, show).Scan(&out.Show.LastAired); err != nil {
+ LEFT JOIN provider_evidence pe ON pe.item_id=item.id AND pe.provider='tvdb' WHERE sh.public_id=pid_blob(?) AND `+lastVisible, append([]any{show}, lastArgs...)...).Scan(&out.Show.LastAired); err != nil {
 		return err
 	}
 	out.ShowCredits, err = s.showCredits(show, viewer)
@@ -341,7 +350,7 @@ func (s *Service) workspaceSeasons(r ShowWorkspaceRequest, show string, revision
 	scope := cursorScope{Library: r.Library, Viewer: r.ViewerFence, Profile: r.Profile, View: "show_workspace_seasons", Entity: show, Sort: "season", Direction: "asc", Limit: r.SeasonLimit}
 	after := -1
 	if r.SeasonCursor != "" {
-		c, e := s.decodeRevisionCursor(r.SeasonCursor, scope, revision)
+		c, e := s.decodeDetailCursor(r.SeasonCursor, scope, revision)
 		if e != nil {
 			return e
 		}
@@ -411,7 +420,7 @@ func (s *Service) workspaceSeasons(r ShowWorkspaceRequest, show string, revision
 		byID[season.ID] = season
 	}
 	countArgs := append([]any{r.Profile, idsJSON(seasonIDs)}, bound...)
-	counts, e := s.read().Query(`SELECT pid(se.public_id),count(*),sum(`+personalstate.CompactSQL("?", "item.id")+`)
+	counts, e := s.read().Query(`SELECT pid(se.public_id),count(*),COALESCE(min(strftime('%Y-%m-%d',ep.air_date*86400,'unixepoch')),''),COALESCE(max(strftime('%Y-%m-%d',ep.air_date*86400,'unixepoch')),''),sum(`+personalstate.CompactSQL("?", "item.id")+`)
 		FROM catalog_episodes ep JOIN catalog_entities item ON item.id=ep.entity_id JOIN catalog_entities se ON se.id=ep.season_id
 		WHERE se.public_id IN(SELECT pid_blob(value) FROM json_each(?))
 		AND EXISTS(SELECT 1 FROM catalog_asset_links a WHERE a.entity_id=item.id) AND `+restriction+`
@@ -422,12 +431,14 @@ func (s *Service) workspaceSeasons(r ShowWorkspaceRequest, show string, revision
 	for counts.Next() {
 		var id string
 		var total, watched int
-		if e = counts.Scan(&id, &total, &watched); e != nil {
+		var first, last string
+		if e = counts.Scan(&id, &total, &first, &last, &watched); e != nil {
 			counts.Close()
 			return e
 		}
 		if season := byID[id]; season != nil {
 			*season.EpisodeCount, *season.WatchedCount, *season.UnwatchedCount = total, watched, total-watched
+			season.FirstAired, season.LastAired = first, last
 		}
 	}
 	e = counts.Err()

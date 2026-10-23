@@ -8,10 +8,9 @@ set -e
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 D="${PORTICO_DEV_DIR:?set PORTICO_DEV_DIR to a state directory (never a server you care about)}"
 export PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
-export PORTICO_STATE_DIR="$D/state"
+export PORTICO_DATA_DIR="$D/state"
 export PORTICO_BIND="${PORTICO_BIND:-0.0.0.0:32500}"
 export PORTICO_WEB_DIR="${PORTICO_WEB_DIR:-$ROOT/web/dist}"
-export PORTICO_CACHE_DIR="$D/cache"
 export PORTICO_BACKUP_DIR="$D/backups"
 export PORTICO_BACKUP_KEY_DIR="$D/backup-keys"
 export PORTICO_BACKUP_RECOVERY_KEY_DIR="$D/recovery-keys"

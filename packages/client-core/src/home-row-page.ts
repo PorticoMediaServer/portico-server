@@ -7,12 +7,10 @@
  * rather than showing a mixture of two rankings. Framework-free: web and Apple both drive it.
  */
 import type {ContentEntry} from './library-content.ts';
-import {fetchHomeRow, type HomeApi, type HomeRow} from './home.ts';
+import {fetchHomeRow, hasFencedHomeMembership, type HomeApi, type HomeRow} from './home.ts';
 import {mergeRevalidatedList} from './freshness-actions.ts';
 
 export const HOME_ROW_PAGE_LIMIT = 60;
-/** How many pages a quiet refresh reads again, at most: what a viewer scrolls through, bounded. */
-export const REVALIDATE_PAGES = 5;
 
 export type HomeRowPageSnapshot = Readonly<{
   phase: 'loading' | 'ready' | 'error';
@@ -69,9 +67,9 @@ export class HomeRowPager {
   /**
    * Read what is shown again without a loading state and merge it into the list: new and changed
    * entries appear in place, and one removed from deep in the list goes too, because every page
-   * the viewer has scrolled into is read again (up to REVALIDATE_PAGES of them; past that, the
-   * pages beyond stay as they were until the list is reopened). A failed read rejects and changes
-   * nothing; a cursor refused on the way keeps what the pages read so far say.
+   * the viewer has scrolled into is read again, stopping at the loaded length or true end.
+   * Fenced rows keep only the authoritative reread pages. A failed read rejects and changes nothing;
+   * a refused fenced cursor restarts the row instead of retaining part of an obsolete ranking.
    */
   async revalidate(context?: {signal?: AbortSignal; settle?: () => Promise<void>}): Promise<void> {
     if (this.disposed || this.state.phase !== 'ready' || this.state.paging) return;
@@ -80,19 +78,28 @@ export class HomeRowPager {
     const row = await fetchHomeRow(this.api, this.rowId, {limit: this.limit}, context?.signal);
     const fresh = [...row.entries];
     let cursor = row.nextCursor;
-    for (let pages = 1; cursor && fresh.length < shown && pages < REVALIDATE_PAGES; pages++) {
+    while (cursor && fresh.length < shown) {
+      if(this.disposed||mine!==this.generation||context?.signal?.aborted)return;
       let page: HomeRow;
       try { page = await fetchHomeRow(this.api, this.rowId, {limit: this.limit, cursor}, context?.signal); } catch (e) {
-        if (codeOf(e) === 'stale_continuation' || codeOf(e) === 'invalid_cursor') break;
+        if (codeOf(e) === 'stale_continuation' || codeOf(e) === 'invalid_cursor') {
+          if (hasFencedHomeMembership(this.rowId)) {
+            await context?.settle?.();
+            if (!this.disposed && mine === this.generation && !context?.signal?.aborted && this.state.phase === 'ready' && !this.state.paging) await this.load(true);
+            return;
+          }
+          break;
+        }
         throw e;
       }
       const seen = new Set(fresh.map(e => e.id));
       fresh.push(...page.entries.filter(e => !seen.has(e.id)));
-      cursor = page.nextCursor === cursor ? '' : page.nextCursor;
+      if(page.nextCursor===cursor)throw Object.assign(new Error('The row cursor did not advance.'),{code:'nonprogressing_cursor'});
+      cursor = page.nextCursor;
     }
     await context?.settle?.();
     if (this.disposed || mine !== this.generation || context?.signal?.aborted || this.state.phase !== 'ready' || this.state.paging) return;
-    const entries = mergeRevalidatedList(this.state.entries, fresh, e => e.id, {complete: !cursor, same: (a, b) => JSON.stringify(a) === JSON.stringify(b)});
+    const entries = mergeRevalidatedList(this.state.entries, fresh, e => e.id, {complete: hasFencedHomeMembership(this.rowId) || !cursor, same: (a, b) => JSON.stringify(a) === JSON.stringify(b)});
     const keptTail = entries.length > fresh.length;
     this.publish({row, entries: entries === this.state.entries ? entries : Object.freeze([...entries]), total: row.total, nextCursor: keptTail ? this.state.nextCursor : cursor});
   }
@@ -107,8 +114,8 @@ export class HomeRowPager {
       if (mine !== this.generation) return;
       const seen = new Set(this.state.entries.map(e => e.id));
       const entries = [...this.state.entries, ...page.entries.filter(e => !seen.has(e.id))];
-      // A cursor that comes back unchanged would page forever: treat it as the end.
-      this.publish({entries: Object.freeze(entries), total: page.total, nextCursor: page.nextCursor === cursor ? '' : page.nextCursor, paging: false});
+      if(page.nextCursor===cursor)throw Object.assign(new Error('The row cursor did not advance.'),{code:'nonprogressing_cursor'});
+      this.publish({entries: Object.freeze(entries), total: page.total, nextCursor: page.nextCursor, paging: false});
     } catch (e) {
       if (mine !== this.generation) return;
       if (codeOf(e) === 'stale_continuation' || codeOf(e) === 'invalid_cursor') { await this.load(true); return; }

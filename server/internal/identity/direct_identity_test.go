@@ -32,7 +32,7 @@ func directFixture(t *testing.T) (*Service, *sql.DB, DirectSignIn) {
 func TestMemberPasswordCostAndOwnershipProofOutsideWriter(t *testing.T) {
 	ctx := context.Background()
 	s, db, login := directFixture(t)
-	member, err := s.CreateDirectMember(ctx, login.AccountToken, DirectMemberInput{Username: "member", Name: "Member", Password: "Testing2!", AllowedLibraries: []string{}})
+	member, err := s.CreateDirectMember(ctx, login.AccountToken, DirectMemberCreate{Username: "member", Name: "Member", Password: "Testing2!", AllowedLibraries: []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestDirectPINRevisionRevokesFamiliesAndInstallationTrust(t *testing.T) {
 func TestDirectMembershipIntersectionAndPrimaryNotOwner(t *testing.T) {
 	ctx := context.Background()
 	s, db, owner := directFixture(t)
-	member, e := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "member", Password: "Testing2!", Name: "Member", AllowedLibraries: []string{"movies"}})
+	member, e := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "member", Password: "Testing2!", Name: "Member", AllowedLibraries: []string{"movies"}})
 	if e != nil {
 		t.Fatal(e)
 	}

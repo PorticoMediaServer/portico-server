@@ -47,6 +47,11 @@ func contentItem(item Item) ContentEntry {
 	if item.Episode != nil {
 		entry.Subtitle = item.Episode.ShowTitle
 		entry.EpisodeNumber = &item.Episode.Number
+		entry.DateBased = item.Episode.Numbering == "date"
+		entry.Special = item.Episode.SeasonNumber != nil && *item.Episode.SeasonNumber == 0
+		if item.Episode.Numbering == "absolute" {
+			entry.AbsoluteNumber = &item.Episode.Number
+		}
 		entry.SeasonNumber = item.Episode.SeasonNumber
 	}
 	if item.Song != nil {
@@ -512,6 +517,9 @@ func (s *Service) Content(request ContentRequest) (ContentEnvelope, error) {
 	pages := make([][]ContentEntry, 0, len(out.Sections))
 	for _, section := range out.Sections {
 		pages = append(pages, section.Entries)
+	}
+	if err = s.EnrichListeningEntries(request.Viewer, pages...); err != nil {
+		return out, err
 	}
 	return out, s.attachViewerRatings(request.Viewer.Profile, pages...)
 }

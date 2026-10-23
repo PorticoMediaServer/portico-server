@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/personalstate"
 
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/decoder"
@@ -30,21 +31,24 @@ type SourceDescription struct {
 // exact for the original and for a rung that is already prepared; everywhere
 // else it is bitrate times duration and `estimated` says so.
 type QualityOption struct {
-	Quality            string `json:"quality"`
-	Label              string `json:"label"`
-	Kind               string `json:"kind"`
-	TargetHeight       int    `json:"targetDisplayHeight,omitempty"`
-	MaxVideoBitrateBPS int    `json:"maxVideoBitrateBps,omitempty"`
-	MaxAudioBitrateBPS int    `json:"maxAudioBitrateBps,omitempty"`
-	Bytes              int64  `json:"estimatedBytes"`
-	Estimated          bool   `json:"estimated"`
-	Available          bool   `json:"available"`
-	Reason             string `json:"reason,omitempty"`
-	RequiresPrepare    bool   `json:"requiresPreparation"`
-	PreparedProfileID  string `json:"preparedProfileId,omitempty"`
-	PreparedVersionID  string `json:"preparedVersionId,omitempty"`
-	ExistingID         string `json:"preparationId,omitempty"`
-	ExistingState      string `json:"preparationState,omitempty"`
+	Quality            string  `json:"quality"`
+	Label              string  `json:"label"`
+	Kind               string  `json:"kind"`
+	TargetHeight       int     `json:"targetDisplayHeight,omitempty"`
+	MaxVideoBitrateBPS int     `json:"maxVideoBitrateBps,omitempty"`
+	MaxAudioBitrateBPS int     `json:"maxAudioBitrateBps,omitempty"`
+	Bytes              int64   `json:"estimatedBytes"`
+	Estimated          bool    `json:"estimated"`
+	Available          bool    `json:"available"`
+	Reason             string  `json:"reason,omitempty"`
+	RequiresPrepare    bool    `json:"requiresPreparation"`
+	PreparedProfileID  string  `json:"preparedProfileId,omitempty"`
+	PreparedVersionID  string  `json:"preparedVersionId,omitempty"`
+	ExistingID         string  `json:"preparationId,omitempty"`
+	ExistingState      string  `json:"preparationState,omitempty"`
+	SameAsOriginal     bool    `json:"sameAsOriginal"`
+	DataGBPerHour      float64 `json:"dataGBPerHour,omitempty"`
+	EffectiveQuality   string  `json:"effectiveQuality"`
 }
 
 // DownloadPolicy is what this profile is allowed to do, published next to the
@@ -75,8 +79,8 @@ type DownloadOptionsView struct {
 	Storage DownloadStorage   `json:"storage"`
 }
 
-// Options publishes the download menu for one item: the original, and each
-// smaller quality this server either already holds a copy of or can make.
+// Options publishes the complete canonical menu for one item. Source-equivalent
+// steps retain the original; other steps need a playable retained or producible copy.
 // owner says whether this viewer can order the conversion a rung needs; a
 // viewer who cannot sees the rung as unavailable rather than being allowed to
 // queue work that will never start.
@@ -89,8 +93,17 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	if e != nil {
 		return out, e
 	}
-	tx := gated.Tx()
 	defer gated.Rollback()
+	out, e = s.optionsTx(ctx, gated.Tx(), p, item, owner)
+	if e != nil {
+		return out, e
+	}
+	return out, gated.Commit()
+}
+
+func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item string, owner bool) (DownloadOptionsView, error) {
+	out := DownloadOptionsView{ItemID: item, Options: []QualityOption{}}
+	var e error
 	if e = s.visibleItem(ctx, tx, p, item); e != nil {
 		if errors.Is(e, identity.ErrContentRestricted) {
 			return out, ErrNotFound
@@ -166,11 +179,44 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	} else if !allowed {
 		original.Reason = ReasonNotAllowed
 	}
+	original.EffectiveQuality = "original"
 	out.Options = append(out.Options, decorate(original, live))
+	automatic := original
+	automatic.Quality = "automatic"
+	automatic.Label = "Automatic"
+	effective := resolvedQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), "automatic", found)
+	automatic.EffectiveQuality = effective
+	if effective != "original" {
+		automatic.Kind = "optimized"
+		automatic.PreparedProfileID = chooseRecipe(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), effective, found)
+		automatic.Bytes, automatic.Estimated = estimateBytes(effective, automatic.PreparedProfileID, found)
+		if recipe, err := preparedmedia.ProfileByID(automatic.PreparedProfileID); err == nil {
+			automatic.MaxAudioBitrateBPS = recipe.AudioKbps * 1000
+			automatic.TargetHeight = recipe.Height
+			automatic.MaxVideoBitrateBPS = recipe.VideoKbps * 1000
+		}
+		if version := selectableVersionForSource(versions, automatic.PreparedProfileID, found.Asset); version != nil {
+			automatic.PreparedVersionID = version.ID
+			automatic.Bytes = version.Size
+			automatic.Estimated = false
+		} else if automatic.Available {
+			switch {
+			case !transcoding:
+				automatic.Available = false
+				automatic.Reason = playback.RungReasonTranscodeOff
+			case owner && preparedmedia.Producible(automatic.PreparedProfileID):
+				automatic.RequiresPrepare = true
+			default:
+				automatic.Available = false
+				automatic.Reason = ReasonNotOptimized
+			}
+		}
+	}
 
-	// An audio source has exactly one optimized target. Walking the video ladder
-	// for it would publish six copies of the same AAC recipe under names like
-	// "4K 2160p", which describes nothing about an audio file.
+	out.Options = append(out.Options, decorate(automatic, live))
+
+	// Audio uses Original or an actual Automatic audio recipe. The video steps
+	// remain visible as inapplicable, without pretending to describe audio quality.
 	device := playback.CapabilityDocumentTx(ctx, tx, p)
 	// A Dolby Vision picture with no base layer (profile 5) has nothing a
 	// prepared copy could show: its optimized steps are not offered, rather
@@ -182,31 +228,39 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 	}
 	presets := playback.QualityLadder
-	if audioKind(found.Kind) {
-		preset, _ := playback.LadderPreset(canonicalAudioRung)
-		presets = []playback.QualityPreset{preset}
-	}
 	for _, preset := range presets {
-		// A rung taller than the source would be an upscale, not a download.
-		if found.Height > 0 && preset.Height > found.Height && !audioKind(found.Kind) {
+		if audioKind(found.Kind) {
+			out.Options = append(out.Options, QualityOption{Quality: preset.ID, Label: preset.Label, Kind: "optimized", TargetHeight: preset.Height, MaxVideoBitrateBPS: preset.VideoBitrateBPS, DataGBPerHour: preset.DataGBPerHour, Reason: "not_video"})
+			continue
+		}
+		if sameAsSource(preset.ID, found) {
+			option := original
+			option.Quality = preset.ID
+			option.Label = preset.Label
+			option.SameAsOriginal = true
+			option.DataGBPerHour = preset.DataGBPerHour
+			option.TargetHeight = preset.Height
+			option.MaxVideoBitrateBPS = preset.VideoBitrateBPS
+			out.Options = append(out.Options, decorate(option, live))
 			continue
 		}
 		option := QualityOption{
-			Quality: preset.ID, Label: preset.Label, Kind: "optimized",
+			Quality: preset.ID, Label: preset.Label, Kind: "optimized", EffectiveQuality: preset.ID, DataGBPerHour: preset.DataGBPerHour,
 			TargetHeight: preset.Height, MaxVideoBitrateBPS: preset.VideoBitrateBPS, MaxAudioBitrateBPS: preset.MaxAudioBitrateBPS,
 			PreparedProfileID: chooseRecipe(ctx, tx, device, preset.ID, found),
 		}
-		if audioKind(found.Kind) {
-			option.Label, option.TargetHeight, option.MaxVideoBitrateBPS, option.MaxAudioBitrateBPS = "AAC 192 kbps", 0, 0, audioRecipeBitrateBPS
-		}
 		option.Bytes, option.Estimated = estimateBytes(preset.ID, option.PreparedProfileID, found)
-		version := selectableVersion(versions, option.PreparedProfileID)
+		version := selectableVersionForSource(versions, option.PreparedProfileID, found.Asset)
 		recipe, recipeErr := preparedmedia.ProfileByID(option.PreparedProfileID)
 		// Finished versions remain usable without an available encoder. New
 		// work must pass the same recipe and inventory checks as the producer.
 		if recipeErr != nil || version == nil && (noBaseLayer || !preparedmedia.Producible(option.PreparedProfileID)) {
+			option.Reason = ReasonNotOptimized
+			out.Options = append(out.Options, decorate(option, live))
 			continue
 		}
+		// Rich recipes retain surround audio at their actual encoder budget.
+		option.MaxAudioBitrateBPS = recipe.AudioKbps * 1000
 		targetSource := playback.DeliverySource{Container: "mp4", Audio: []playback.SourceAudio{{Codec: "aac", Channels: 2, StreamDetail: assets.StreamDetail{SampleRate: 48000}}}}
 		if !audioKind(found.Kind) && preparedmedia.Rich(option.PreparedProfileID) {
 			// The device's planner already took the HEVC recipe's result.
@@ -215,6 +269,8 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			targetSource.Video = &playback.SourceVideo{Codec: "h264", StreamDetail: assets.StreamDetail{Profile: "High", Level: decoder.H264OutputLevel(recipe.Width, recipe.Height, 60), Width: recipe.Width, Height: recipe.Height, FrameRate: 60, BitDepth: 8, DynamicRange: "sdr"}}
 		}
 		if !preparedmedia.Rich(option.PreparedProfileID) && !playback.DownloadPlayable(targetSource, device) {
+			option.Reason = ReasonNotOptimized
+			out.Options = append(out.Options, decorate(option, live))
 			continue
 		}
 		switch {
@@ -234,7 +290,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 		out.Options = append(out.Options, decorate(option, live))
 	}
-	return out, gated.Commit()
+	return out, nil
 }
 
 func decorate(option QualityOption, live map[string][2]string) QualityOption {
@@ -265,4 +321,136 @@ func selectableVersionForSource(versions []preparedmedia.Version, profile, sourc
 		}
 	}
 	return selectableVersion(selected, profile)
+}
+
+// ContainerOptionsRequest reads exactly the members a container download would
+// admit. It creates no preparation or durable request.
+type ContainerOptionsRequest struct {
+	Target   ContainerTarget `json:"target"`
+	DeviceID string          `json:"deviceId"`
+	Policy   EpisodePolicy   `json:"policy"`
+}
+type ContainerQualityOption struct {
+	Quality            string  `json:"quality"`
+	DataGBPerHour      float64 `json:"dataGBPerHour,omitempty"`
+	MaxVideoBitrateBPS int     `json:"maxVideoBitrateBps,omitempty"`
+	SameAsOriginal     bool    `json:"sameAsOriginal"`
+	Label              string  `json:"label"`
+	EstimatedBytes     int64   `json:"estimatedBytes"`
+	Estimated          bool    `json:"estimated"`
+	Available          bool    `json:"available"`
+	UnavailableCount   int     `json:"unavailableCount"`
+	UnknownSizeCount   int     `json:"unknownSizeCount"`
+}
+type ContainerOptionsView struct {
+	Target  ContainerTarget          `json:"target"`
+	Total   int                      `json:"total"`
+	Options []ContainerQualityOption `json:"options"`
+}
+
+// ContainerOptions aggregates every selected member within one database
+// snapshot. Keyset batches keep memory bounded independently of season size;
+// each member uses the same policy, recipe and exact/prepared-size producer as
+// the one-title sheet. An incomplete estimate explicitly names unknown sizes.
+func (s *Service) ContainerOptions(ctx context.Context, p identity.Principal, in ContainerOptionsRequest, owner bool) (ContainerOptionsView, error) {
+	out := ContainerOptionsView{Target: in.Target, Options: []ContainerQualityOption{}}
+	normalized := ContainerRequest{OperationID: "options", Target: in.Target, DeviceID: in.DeviceID, Quality: QualityOriginal, Policy: in.Policy}
+	if err := normalizeContainerRequest(&normalized); err != nil {
+		return out, err
+	}
+	in.Policy = normalized.Policy
+	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return out, err
+	}
+	defer snapshot.Rollback()
+	tx := snapshot.Tx()
+	visible, args, err := s.requestAccess(ctx, tx, p, in.DeviceID)
+	if err != nil {
+		return out, err
+	}
+	if _, err = requestFence(ctx, tx, p, in.Target, in.Policy.Episodes, visible, args); err != nil {
+		return out, err
+	}
+	query, bound := requestSelection(in.Target)
+	query += ` AND (` + visible + `) AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements d WHERE d.item_id=i.id)`
+	bound = append(bound, args...)
+	if in.Policy.Episodes != "all" {
+		query += ` AND NOT (` + personalstate.SQL("?", "i.id") + `)`
+		bound = append(bound, identity.PersonalKey(p.Viewer))
+	}
+	byQuality := map[string]int{}
+	coverage := map[string]int{}
+	key, after := "", ""
+	for {
+		limit := requestBatchSize
+		if in.Policy.Episodes == "next" {
+			limit = min(limit, in.Policy.KeepNext-out.Total)
+			if limit <= 0 {
+				break
+			}
+		}
+		rows, e := tx.QueryContext(ctx, `SELECT id,position FROM (`+query+`) WHERE (position,id)>(?,?) ORDER BY position,id LIMIT ?`, append(append([]any{}, bound...), key, after, limit)...)
+		if e != nil {
+			return out, e
+		}
+		type member struct{ id, key string }
+		batch := []member{}
+		for rows.Next() {
+			var m member
+			if e = rows.Scan(&m.id, &m.key); e != nil {
+				rows.Close()
+				return out, e
+			}
+			batch = append(batch, m)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return out, e
+		}
+		if len(batch) == 0 {
+			break
+		}
+		observeRequestBatch(ctx, "options", len(batch))
+		for _, m := range batch {
+			options, e := s.optionsTx(ctx, tx, p, m.id, owner)
+			if e != nil {
+				return out, e
+			}
+			out.Total++
+			key, after = m.key, m.id
+			for _, option := range options.Options {
+				index, exists := byQuality[option.Quality]
+				if !exists {
+					index = len(out.Options)
+					byQuality[option.Quality] = index
+					out.Options = append(out.Options, ContainerQualityOption{Quality: option.Quality, Label: option.Label, Available: true, DataGBPerHour: option.DataGBPerHour, MaxVideoBitrateBPS: option.MaxVideoBitrateBPS, SameAsOriginal: true})
+				}
+				sum := &out.Options[index]
+				coverage[option.Quality]++
+				sum.SameAsOriginal = sum.SameAsOriginal && option.SameAsOriginal
+				sum.EstimatedBytes += option.Bytes
+				sum.Estimated = sum.Estimated || option.Estimated
+				if option.Bytes <= 0 {
+					sum.UnknownSizeCount++
+				}
+				if !option.Available {
+					sum.UnavailableCount++
+				}
+			}
+		}
+	}
+	if out.Total == 0 {
+		return out, ErrNotFound
+	}
+	for i := range out.Options {
+		q := &out.Options[i]
+		missing := out.Total - coverage[q.Quality]
+		q.UnavailableCount += missing
+		q.UnknownSizeCount += missing
+		q.Available = q.UnavailableCount == 0
+	}
+	// Do not retain any per-title credential, path or preparation identity.
+	return out, snapshot.Commit()
 }

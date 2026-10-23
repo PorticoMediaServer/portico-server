@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -25,7 +26,7 @@ import (
 func testService(t *testing.T) (*Service, string, *sql.DB) {
 	t.Helper()
 	state := t.TempDir()
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,9 +138,9 @@ func TestBackupDuringConcurrentWrites(t *testing.T) {
 	if max := time.Duration(maxWait.Load()); max > 250*time.Millisecond {
 		t.Fatalf("writer waited %v during backup", max)
 	}
-	checkOK(t, openReadOnly(t, filepath.Join(state, BackupsDir, id, DatabaseName)))
+	checkOK(t, openReadOnly(t, storagepaths.Path(state, BackupsDir, id, DatabaseName)))
 	var probe string
-	if err = openReadOnly(t, filepath.Join(state, BackupsDir, id, DatabaseName)).QueryRow(`SELECT value FROM configuration WHERE key='backup_write_probe'`).Scan(&probe); err != nil {
+	if err = openReadOnly(t, storagepaths.Path(state, BackupsDir, id, DatabaseName)).QueryRow(`SELECT value FROM configuration WHERE key='backup_write_probe'`).Scan(&probe); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -174,13 +175,13 @@ func TestListDeletePrune(t *testing.T) {
 	// Four pre-restore folders, older than the backups above.
 	for i := 0; i < 4; i++ {
 		id := base.Add(-time.Duration(i+1)*time.Hour).Format(timestampLayout) + "-pre-restore"
-		dir := filepath.Join(state, BackupsDir, id)
+		dir := storagepaths.Path(state, BackupsDir, id)
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			t.Fatal(err)
 		}
 		manifest := Manifest{Format: Format, Version: LegacyVersion, ServerID: "srv-test", SchemaVersion: 1, CreatedAt: base.Add(-time.Duration(i+1) * time.Hour).Format(time.RFC3339), Kind: KindPreRestore}
 		raw, _ := json.Marshal(manifest)
-		if err := os.WriteFile(filepath.Join(dir, ManifestName), raw, 0600); err != nil {
+		if err := writeTestFile(filepath.Join(dir, ManifestName), raw, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -276,13 +277,13 @@ func TestStageSources(t *testing.T) {
 	if !staged.Staged || !staged.RestartRequired || staged.Validation.Integrity != "ok" || staged.Validation.SchemaVersion != persistence.SchemaVersion() {
 		t.Fatalf("bad stage result: %+v", staged)
 	}
-	marker, err := os.ReadFile(filepath.Join(state, RestoreStagedDir, RestoreMarkerFile))
+	marker, err := os.ReadFile(storagepaths.Path(state, RestoreStagedDir, RestoreMarkerFile))
 	if err != nil || !bytes.Contains(marker, []byte(`"state": "staged"`)) {
 		t.Fatal("marker missing")
 	}
-	_ = os.RemoveAll(filepath.Join(state, RestoreStagedDir))
+	_ = os.RemoveAll(storagepaths.Path(state, RestoreStagedDir))
 
-	folder := filepath.Join(state, BackupsDir, id)
+	folder := storagepaths.Path(state, BackupsDir, id)
 	staged, err = svc.Stage(ctx, Source{Path: folder})
 	if err != nil {
 		t.Fatal(err)
@@ -290,15 +291,15 @@ func TestStageSources(t *testing.T) {
 	if !staged.Staged {
 		t.Fatal("folder source not staged")
 	}
-	_ = os.RemoveAll(filepath.Join(state, RestoreStagedDir))
+	_ = os.RemoveAll(storagepaths.Path(state, RestoreStagedDir))
 
 	bare := filepath.Join(t.TempDir(), "bare.db")
-	checkpointDB(t, filepath.Join(state, "server.sqlite"))
-	raw, err := os.ReadFile(filepath.Join(state, "server.sqlite"))
+	checkpointDB(t, storagepaths.Path(state, "server.sqlite"))
+	raw, err := os.ReadFile(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(bare, raw, 0600); err != nil {
+	if err = writeTestFile(bare, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	staged, err = svc.Stage(ctx, Source{Path: bare})
@@ -308,7 +309,7 @@ func TestStageSources(t *testing.T) {
 	if staged.Validation.SchemaVersion != persistence.SchemaVersion() {
 		t.Fatal("bare source validation wrong")
 	}
-	_ = os.RemoveAll(filepath.Join(state, RestoreStagedDir))
+	_ = os.RemoveAll(storagepaths.Path(state, RestoreStagedDir))
 
 	for _, source := range []Source{
 		{},
@@ -316,7 +317,7 @@ func TestStageSources(t *testing.T) {
 		{BackupID: "nope"},
 		{BackupID: "../escape"},
 		{Path: "relative.db"},
-		{Path: filepath.Join(state, "missing.db")},
+		{Path: storagepaths.Path(state, "missing.db")},
 		{Path: t.TempDir()},
 	} {
 		if _, err = svc.Stage(ctx, source); !errors.Is(err, ErrSourceInvalid) {
@@ -324,7 +325,7 @@ func TestStageSources(t *testing.T) {
 		}
 	}
 	text := filepath.Join(t.TempDir(), "note.db")
-	if err = os.WriteFile(text, []byte("not a database"), 0600); err != nil {
+	if err = writeTestFile(text, []byte("not a database"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = svc.Stage(ctx, Source{Path: text}); !errors.Is(err, persistence.ErrCandidateNotPortico) {
@@ -336,12 +337,12 @@ func TestStageSources(t *testing.T) {
 func TestStageValidation(t *testing.T) {
 	svc, state, _ := testService(t)
 	ctx := context.Background()
-	raw, err := os.ReadFile(filepath.Join(state, "server.sqlite"))
+	raw, err := os.ReadFile(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	truncated := filepath.Join(t.TempDir(), "truncated.db")
-	if err = os.WriteFile(truncated, raw[:len(raw)/2], 0600); err != nil {
+	if err = writeTestFile(truncated, raw[:len(raw)/2], 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = svc.Stage(ctx, Source{Path: truncated}); !errors.Is(err, persistence.ErrCandidateIntegrity) {
@@ -352,14 +353,14 @@ func TestStageValidation(t *testing.T) {
 	for i := 100; i < 356 && i < len(mangled); i++ {
 		mangled[i] ^= 0xff
 	}
-	if err = os.WriteFile(flipped, mangled, 0600); err != nil {
+	if err = writeTestFile(flipped, mangled, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = svc.Stage(ctx, Source{Path: flipped}); !errors.Is(err, persistence.ErrCandidateIntegrity) {
 		t.Fatalf("flipped database staged: %v", err)
 	}
 	newer := filepath.Join(t.TempDir(), "newer.db")
-	if err = os.WriteFile(newer, raw, 0600); err != nil {
+	if err = writeTestFile(newer, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	handle, err := dbwork.OpenHandle(newer, dbwork.DefaultPolicy())
@@ -370,7 +371,7 @@ func TestStageValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	handle.Close()
-	if _, err = svc.Stage(ctx, Source{Path: newer}); !errors.Is(err, persistence.ErrCandidateNewer) {
+	if _, err = svc.Stage(ctx, Source{Path: newer}); !errors.Is(err, persistence.ErrCandidatePreRelease) {
 		t.Fatalf("newer schema staged: %v", err)
 	}
 }
@@ -394,7 +395,7 @@ func TestApplyStagedCycle(t *testing.T) {
 	if err = ApplyStaged(ctx, state, nil); err != nil {
 		t.Fatal(err)
 	}
-	restored, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	restored, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +408,7 @@ func TestApplyStagedCycle(t *testing.T) {
 	if err != nil || last == nil || last.Outcome != "restored" {
 		t.Fatalf("last restore: %+v %v", last, err)
 	}
-	if _, err = os.Stat(filepath.Join(state, RestoreStagedDir)); !os.IsNotExist(err) {
+	if _, err = os.Stat(storagepaths.Path(state, RestoreStagedDir)); !os.IsNotExist(err) {
 		t.Fatal("staged folder left behind")
 	}
 	pres, err := svc.List()
@@ -418,7 +419,7 @@ func TestApplyStagedCycle(t *testing.T) {
 	for _, info := range pres {
 		if info.Kind == KindPreRestore {
 			pre++
-			manifest, err := readManifest(filepath.Join(state, BackupsDir, info.ID))
+			manifest, err := readManifest(storagepaths.Path(state, BackupsDir, info.ID))
 			if err != nil || manifest.Kind != KindPreRestore {
 				t.Fatal("pre-restore manifest wrong")
 			}
@@ -437,10 +438,10 @@ func TestApplyStagedRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	db.Close()
-	checkpointDB(t, filepath.Join(state, "server.sqlite"))
-	beforeDB := fileHashOrEmpty(t, filepath.Join(state, "server.sqlite"))
-	beforeWAL := fileHashOrEmpty(t, filepath.Join(state, "server.sqlite-wal"))
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	checkpointDB(t, storagepaths.Path(state, "server.sqlite"))
+	beforeDB := fileHashOrEmpty(t, storagepaths.Path(state, "server.sqlite"))
+	beforeWAL := fileHashOrEmpty(t, storagepaths.Path(state, "server.sqlite-wal"))
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,17 +459,17 @@ func TestApplyStagedRollback(t *testing.T) {
 	if err = ApplyStaged(ctx, state, func(context.Context, string) error { return injected }); !errors.Is(err, injected) {
 		t.Fatalf("apply returned %v", err)
 	}
-	if after := fileHashOrEmpty(t, filepath.Join(state, "server.sqlite")); after != beforeDB {
+	if after := fileHashOrEmpty(t, storagepaths.Path(state, "server.sqlite")); after != beforeDB {
 		t.Fatal("database not rolled back")
 	}
-	if after := fileHashOrEmpty(t, filepath.Join(state, "server.sqlite-wal")); after != beforeWAL {
+	if after := fileHashOrEmpty(t, storagepaths.Path(state, "server.sqlite-wal")); after != beforeWAL {
 		t.Fatal("WAL not rolled back")
 	}
 	last, err := svc.LastRestore()
 	if err != nil || last == nil || last.Outcome != "rolled_back" || last.Reason == "" {
 		t.Fatalf("last restore: %+v %v", last, err)
 	}
-	entries, err := os.ReadDir(filepath.Join(state, BackupsDir))
+	entries, err := os.ReadDir(storagepaths.Path(state, BackupsDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +478,7 @@ func TestApplyStagedRollback(t *testing.T) {
 			t.Fatal("pre-restore folder left behind")
 		}
 	}
-	if _, err = os.Stat(filepath.Join(state, RestoreStagedDir)); !os.IsNotExist(err) {
+	if _, err = os.Stat(storagepaths.Path(state, RestoreStagedDir)); !os.IsNotExist(err) {
 		t.Fatal("staged folder left behind")
 	}
 }
@@ -486,23 +487,23 @@ func TestApplyStagedRollback(t *testing.T) {
 func TestApplyBareDatabaseKeepsStateFiles(t *testing.T) {
 	svc, state, db := testService(t)
 	ctx := context.Background()
-	pemPath := filepath.Join(state, "networking-tls.pem")
-	if err := os.WriteFile(pemPath, []byte("pem-bytes"), 0600); err != nil {
+	pemPath := storagepaths.Path(state, "Keys/networking-tls.pem")
+	if err := writeTestFile(pemPath, []byte("pem-bytes"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	logoPath := filepath.Join(state, "channel-logos", "logo.png")
+	logoPath := storagepaths.Path(state, "Metadata/channel-logos", "logo.png")
 	if err := os.MkdirAll(filepath.Dir(logoPath), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(logoPath, []byte("logo-bytes"), 0600); err != nil {
+	if err := writeTestFile(logoPath, []byte("logo-bytes"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(filepath.Join(state, "server.sqlite"))
+	raw, err := os.ReadFile(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	bare := filepath.Join(t.TempDir(), "bare.db")
-	if err = os.WriteFile(bare, raw, 0600); err != nil {
+	if err = writeTestFile(bare, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	handle, err := dbwork.OpenHandle(bare, dbwork.DefaultPolicy())
@@ -526,7 +527,7 @@ func TestApplyBareDatabaseKeepsStateFiles(t *testing.T) {
 	if logo, err := os.ReadFile(logoPath); err != nil || string(logo) != "logo-bytes" {
 		t.Fatal("channel logo replaced by a bare restore")
 	}
-	restored, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	restored, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -544,15 +545,15 @@ func TestStatePermissionsCheckAndFix(t *testing.T) {
 		t.Skip("POSIX modes do not describe Windows ACLs")
 	}
 	state := t.TempDir()
-	loose := filepath.Join(state, "subtitles", "loose.srt")
+	loose := storagepaths.Path(state, "Metadata/subtitles", "loose.srt")
 	if err := os.MkdirAll(filepath.Dir(loose), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(loose, []byte("subtitles"), 0644); err != nil {
+	if err := writeTestFile(loose, []byte("Metadata/subtitles"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	execPath := filepath.Join(state, "run-helper")
-	if err := os.WriteFile(execPath, []byte("x"), 0755); err != nil {
+	execPath := storagepaths.Path(state, "run-helper")
+	if err := writeTestFile(execPath, []byte("x"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(state, 0755); err != nil {
@@ -625,7 +626,7 @@ func TestRestorePreReleaseBackupIsRefused(t *testing.T) {
 	oldPath := filepath.Join(t.TempDir(), "old.sqlite")
 	buildPreReleaseDatabase(t, oldPath)
 	state := t.TempDir()
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -637,7 +638,7 @@ func TestRestorePreReleaseBackupIsRefused(t *testing.T) {
 	if _, err = svc.Stage(context.Background(), Source{Path: oldPath}); !errors.Is(err, persistence.ErrCandidatePreRelease) {
 		t.Fatalf("pre-release backup staged: %v", err)
 	}
-	if !strings.Contains(persistence.ErrSchemaResetRequired.Error(), "can't be upgraded") {
+	if !strings.Contains(persistence.ErrSchemaResetRequired.Error(), "state directory") {
 		t.Fatalf("refusal message: %q", persistence.ErrSchemaResetRequired)
 	}
 	var marker string
@@ -705,17 +706,17 @@ func TestScheduledBackupFiresOncePerOccurrence(t *testing.T) {
 func TestPreRestoreBackupCanBeStaged(t *testing.T) {
 	svc, state, _ := testService(t)
 	ctx := context.Background()
-	checkpointDB(t, filepath.Join(state, "server.sqlite"))
-	raw, err := os.ReadFile(filepath.Join(state, "server.sqlite"))
+	checkpointDB(t, storagepaths.Path(state, "server.sqlite"))
+	raw, err := os.ReadFile(storagepaths.Path(state, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := time.Now().UTC().Format(timestampLayout) + "-pre-restore"
-	folder := filepath.Join(state, BackupsDir, id)
+	folder := storagepaths.Path(state, BackupsDir, id)
 	if err = os.MkdirAll(folder, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(folder, DatabaseName), raw, 0o600); err != nil {
+	if err = writeTestFile(filepath.Join(folder, DatabaseName), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	hashed, err := hashTree(folder)
@@ -730,7 +731,7 @@ func TestPreRestoreBackupCanBeStaged(t *testing.T) {
 		if err != nil || !staged.Staged {
 			t.Fatalf("pre-restore backup %+v not staged: %+v %v", source, staged, err)
 		}
-		_ = os.RemoveAll(filepath.Join(state, RestoreStagedDir))
+		_ = os.RemoveAll(storagepaths.Path(state, RestoreStagedDir))
 	}
 }
 
@@ -741,6 +742,9 @@ func TestManifestVerificationDoesNotHoldWholeFilesInMemory(t *testing.T) {
 	dir := t.TempDir()
 	const size = 96 << 20
 	path := filepath.Join(dir, DatabaseName)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
 	file, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
@@ -780,4 +784,11 @@ func TestManifestVerificationDoesNotHoldWholeFilesInMemory(t *testing.T) {
 	if err = checkManifestHashes(dir, []FileEntry{{Name: "absent", Bytes: 1, SHA256: entries[0].SHA256}}); !errors.Is(err, ErrSourceInvalid) {
 		t.Fatalf("a missing file was not refused as an invalid source: %v", err)
 	}
+}
+
+func writeTestFile(path string, data []byte, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, mode)
 }

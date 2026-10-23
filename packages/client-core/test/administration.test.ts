@@ -199,7 +199,7 @@ test('the restore receipt is strict and the refusal codes are recognised',()=>{
   const staged=parseRestoreStaged({staged:true,restartRequired:true,validation:{schemaVersion:41,integrity:'ok'}});
   assert.equal(staged.validation.schemaVersion,41);
   for(const raw of [null,{},{staged:true},{staged:true,restartRequired:true},{staged:true,restartRequired:true,validation:{schemaVersion:41,integrity:'failed'}},{staged:true,restartRequired:false,validation:{schemaVersion:41,integrity:'ok'}}])assert.throws(()=>parseRestoreStaged(raw),{code:'invalid_administration_response'});
-  for(const code of ['restore_source_invalid','restore_schema_newer','restore_pre_release','restore_integrity_failed','restore_not_portico','insufficient_disk'])assert(isRestoreRefusalCode(code));
+  for(const code of ['restore_source_invalid','restore_pre_release','restore_integrity_failed','restore_not_portico','insufficient_disk'])assert(isRestoreRefusalCode(code));
   assert.equal(isRestoreRefusalCode('request_failed'),false);
 });
 

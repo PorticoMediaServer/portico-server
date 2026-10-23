@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/ingestion"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/storagepaths"
 	"strconv"
 	"strings"
 	"testing"
@@ -79,11 +80,11 @@ func TestHLSManifestRepresentationRangeReloadAndGrantRevocation(t *testing.T) {
 	}
 	player.ConfigureHLS(hls)
 	handler := New(Dependencies{DB: db, Identity: id, Catalog: cat, Ingestion: ingestion.New(db, cat, assets.Probe{}), Playback: player, Hosted: host})
-	setupToken, err := os.ReadFile(filepath.Join(root, "setup-token"))
+	setupToken, err := os.ReadFile(storagepaths.Path(root, "setup-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := json.Marshal(map[string]string{"setupToken": string(setupToken), "username": "owner", "password": "long-test-password", "name": "Test"})
+	body, err := json.Marshal(map[string]string{"authMode": "local", "setupToken": string(setupToken), "username": "owner", "password": "long-test-password", "name": "Test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +122,7 @@ func TestHLSManifestRepresentationRangeReloadAndGrantRevocation(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatal("catalog", err)
 	}
-	session, err := player.Create(principal, items[0].ID, "auto", "hls-manifest-http")
+	session, err := player.Create(principal, items[0].ID, "automatic", "hls-manifest-http")
 	if err != nil {
 		t.Fatal(err)
 	}

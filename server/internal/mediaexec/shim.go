@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -83,7 +84,7 @@ func Configure(o Options) (int, error) {
 	}
 	ledger := ""
 	if o.StateDir != "" && runtime.GOOS != "windows" {
-		ledger = filepath.Join(o.StateDir, "run", "media-processes")
+		ledger = storagepaths.Path(o.StateDir, "run", "media-processes")
 		if err = os.MkdirAll(ledger, 0700); err != nil {
 			return 0, err
 		}

@@ -18,7 +18,7 @@ function row(changes: Record<string, unknown> = {}): any {
 }
 function document(changes: Record<string, unknown> = {}): any {
   return {
-    serverId: 'server', viewerFence: 'fence', rows: [row()], layout: {revision: 2, rowOrder: ['recent_movies'], hiddenRowIds: []},
+    serverId: 'server', viewerFence: 'fence', rows: [row()], spotlight: [], layout: {revision: 2, rowOrder: ['recent_movies'], hiddenRowIds: []},
     revision: {catalog: 3, viewer: 1}, generatedAt: '2026-09-16T12:00:00.000Z', ...changes,
   };
 }
@@ -82,7 +82,7 @@ test('one Home row that cannot be read is left out and the others are kept', () 
   assert.deepEqual([...validateHomeLayout({revision: 2, rowOrder: ['a', 'a', 7, '', 'b'], hiddenRowIds: ['c', 'c']}).rowOrder], ['a', 'b']);
   // A hero that cannot be read is absent; Home is still shown.
   assert.equal(validateHomeDocument(document({hero: {rowId: 7}})).hero, undefined);
-  assert.deepEqual(validateHomeDocument(document({hero: {rowId: 'recent_movies', entryId: 'm2'}})).hero, {rowId: 'recent_movies', entryId: 'm2'});
+  assert.equal(validateHomeDocument(document({hero: {rowId: 'recent_movies', entryId: 'm2'}})).hero, undefined);
 });
 
 test('a Home row reads neutrally where it is only drawn, and ignores fields this app does not know', () => {
@@ -194,20 +194,23 @@ test('a row descriptor without entries still validates its own shape', () => {
   assert.equal(empty.required, true);
 });
 
-test('PERF-S14: a row paged sideways keeps at most HOME_ROW_MAX_ENTRIES and then stops offering more', async () => {
-  const {appendHomeRowPage, HOME_ROW_MAX_ENTRIES} = await import('../src/home.ts');
+test('GP-RH-1: rows preserve every loaded card and stop only at the server true end', async () => {
+  const {appendHomeRowPage, homeRowPagingState} = await import('../src/home.ts');
   const entry = (i: number) => ({id: `e${i}`, kind: 'movie', title: `Title ${i}`, navigation: {view: 'item', entityId: `e${i}`}});
-  const page = (from: number, n: number, cursor: string) => validateHomeRow(row({id: 'recent_movies', entries: Array.from({length: n}, (_, k) => entry(from + k)), total: 1_000_000, hasMore: true, nextCursor: cursor}));
-  let current = page(0, 24, 'c1');
-  for (let i = 1; current.nextCursor; i++) {
-    assert.ok(i < 20, 'paging ends');
-    current = appendHomeRowPage(current, page(i * 24 - 1, 24, `c${i + 1}`));
+  const page = (from: number, n: number, cursor: string) => validateHomeRow(row({entries: Array.from({length: n}, (_, k) => entry(from + k)), total: 1203, hasMore: !!cursor, nextCursor: cursor}));
+  let current = page(0, 37, 'c1');
+  assert.deepEqual(homeRowPagingState(current, 25, false), {prefetch:false,skeletons:0,exhausted:false});
+  assert.equal(homeRowPagingState(current, 26, false).prefetch, true);
+  assert.equal(homeRowPagingState(current, 36, true).skeletons, current.limit);
+  for (let from = 37; from < 1203; from += 37) {
+    const prefix = current.entries.map(e => e.id);
+    current = appendHomeRowPage(current, page(from, Math.min(37, 1203-from), from+37 < 1203 ? `c${from}` : ''));
+    assert.deepEqual(current.entries.slice(0,prefix.length).map(e => e.id),prefix);
   }
-  assert.equal(current.entries.length, HOME_ROW_MAX_ENTRIES);
-  assert.equal(new Set(current.entries.map(e => e.id)).size, HOME_ROW_MAX_ENTRIES, 'an overlapping page adds no duplicate');
+  assert.equal(current.entries.length, 1203);
+  assert.equal(new Set(current.entries.map(e => e.id)).size, 1203);
   assert.equal(current.nextCursor, '');
-  assert.equal(current.hasMore, true, 'the server still has more; See all is the way there');
-  assert.equal(current.total, 1_000_000);
+  assert.equal(homeRowPagingState(current,1202,false).exhausted,true);
 });
 
 test('CD-31/CD-32: Home stays bounded at 64 rows and 64 layout IDs including DVR rows', () => {
@@ -237,4 +240,15 @@ test('a movie\'s More like this row is the similar-titles row under the catalogu
   assert.equal(moreLikeThisRow(parsed([genre]), 'More like this')?.title, 'More Animation');
   assert.equal(moreLikeThisRow(parsed([]), 'More like this'), undefined);
   assert.equal(moreLikeThisRow(null, 'More like this'), undefined);
+});
+
+test('Home-origin membership keeps exact delivery targets across page append',async()=>{
+ const {appendHomeRowPage}=await import('../src/home.ts');
+ const first=validateHomeRow(row({id:'new_on_server',entries:[entry('season','season')],displayTargets:[{membershipId:'show',entryId:'season'}],why:{code:'reason',fallback:'Actual reason'},whyTitles:[{id:'seed',name:'Actual seed'}],nextCursor:'second'}));
+ const second=validateHomeRow(row({id:'new_on_server',entries:[entry('episode','episode')],displayTargets:[{membershipId:'other-show',entryId:'episode'}],nextCursor:''}));
+ const merged=appendHomeRowPage(first,second);
+ assert.deepEqual(merged.displayTargets,[{membershipId:'show',entryId:'season'},{membershipId:'other-show',entryId:'episode'}]);
+ assert.deepEqual(merged.whyTitles,[{id:'seed',name:'Actual seed'}]);
+ assert.throws(()=>validateHomeRow(row({displayTargets:[{membershipId:'show',entryId:'absent'}]})),{code:'invalid_home'});
+ assert.throws(()=>appendHomeRowPage(first,validateHomeRow(row({id:'new_on_server',entries:[entry('new-season','season')],displayTargets:[{membershipId:'show',entryId:'new-season'}]}))),{code:'stale_continuation'});
 });

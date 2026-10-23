@@ -56,7 +56,7 @@ func TestAllocationCrashStagesAndRestart(t *testing.T) {
 				}
 			}
 			// New service startup exercises reconciliation after a simulated host interruption.
-			_, e := New(s.db, filepath.Dir(s.private), s.root, s.helper, s.storage)
+			_, e := New(s.db, filepath.Dir(filepath.Dir(s.private)), s.root, s.helper, s.storage)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -125,7 +125,7 @@ func TestSuccessfulCreateCommitsAllocationWithReceipt(t *testing.T) {
 	if n != 0 {
 		t.Fatal("accepted reservation retained")
 	}
-	_, e = New(s.db, filepath.Dir(s.private), s.root, s.helper, s.storage)
+	_, e = New(s.db, filepath.Dir(filepath.Dir(s.private)), s.root, s.helper, s.storage)
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -18,6 +18,42 @@ type Action struct {
 	Target string `json:"target"`
 }
 
+// MajorIssue is a qualified fact, separate from diagnostic health and ordinary
+// attention items. Code selects localized title/details; Subject is a library
+// or source label, never a person, file path, diagnostic, or credential.
+type MajorIssue struct {
+	Kind        string `json:"kind"`
+	Code        string `json:"code"`
+	Severity    string `json:"severity"`
+	Subject     string `json:"subject"`
+	Destination Action `json:"destination"`
+}
+
+// MajorIssues admits only facts that stop playback or risk data. The callers
+// supply measured conditions; counts, scans and watchdog health never qualify.
+func MajorIssues(unreachable []NamedRecord, storageNearlyFull, backupFailed, renewalFailed bool) []MajorIssue {
+	out := []MajorIssue{}
+	for _, v := range unreachable {
+		out = append(out, MajorIssue{Kind: "library", Code: "library_unreachable", Severity: "playback_stop", Subject: v.Name, Destination: Action{Kind: "library-source", Target: v.ID}})
+		if len(out) == 20 {
+			return out
+		}
+	}
+	for _, v := range []struct {
+		active             bool
+		code, kind, target string
+	}{
+		{storageNearlyFull, "storage_nearly_full", "storage", "state"},
+		{backupFailed, "backup_failed", "backups", ""},
+		{renewalFailed, "secure_renewal_failed", "networking", "certificate"},
+	} {
+		if v.active && len(out) < 20 {
+			out = append(out, MajorIssue{Kind: v.kind, Code: v.code, Severity: "data_risk", Subject: "", Destination: Action{Kind: v.kind, Target: v.target}})
+		}
+	}
+	return out
+}
+
 type Item struct {
 	ID       string `json:"id"`
 	Severity string `json:"severity"`

@@ -7,14 +7,15 @@ import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
  * Existing library navigation owns destinations/Back; this module owns no queue or device store. */
 import {validateContentEntry,type ContentEntry} from './library-content.ts';
 import {parseBrowseNode,parseBrowseResult,type BrowseNode,type BrowseResult,type BrowseSortSelection} from './browse.ts';
-import type {SavedApi,SavedScope,SavedRoute,SavedActor} from './saved.ts';
+import type {SavedApi,SavedScope,SavedRoute,SavedActor,SavedShapeCounts} from './saved.ts';
+import {parseSavedShapeCounts} from './saved.ts';
 export type PersonalResourceKind='collection'|'view';
 /** A saved view stores the whole browse request: the pivot, the expression tree
  * and the sort. The server validates it against the published capabilities; this
  * parser only refuses what it could never have produced. */
 export type SavedDefinition=Readonly<{libraryId:string;pivot:string;query:BrowseNode|null;sort:readonly BrowseSortSelection[];presentation:'grid'|'list'}>;
 export type PersonalVisibility='private'|'server';
-export type PersonalResource=Readonly<{serverId:string;viewerFence:string;id:string;kind:PersonalResourceKind;name:string;summary:string;visibility:PersonalVisibility;revision:number;role:'owner'|'editor'|'viewer';entryCount:number;actions:readonly string[];definition?:SavedDefinition;status:'ready'|'needs-review';invalidComponents:readonly string[];pinned:boolean;pinRevision:number;shares:readonly Readonly<SavedActor&{role:'viewer'|'editor';displayName:string}>[]}>;
+export type PersonalResource=Readonly<{totalIsLowerBound?:boolean;shape?:'posters'|'squares';artworkPaths?:readonly string[];samples?:readonly ContentEntry[];onHome?:boolean;serverId:string;viewerFence:string;id:string;kind:PersonalResourceKind;name:string;summary:string;visibility:PersonalVisibility;revision:number;role:'owner'|'editor'|'viewer';entryCount:number;actions:readonly string[];definition?:SavedDefinition;status:'ready'|'needs-review';invalidComponents:readonly string[];pinned:boolean;pinRevision:number;shares:readonly Readonly<SavedActor&{role:'viewer'|'editor';displayName:string}>[]}>;
 export type PersonalResourceEntry=Readonly<{id:string;hidden:boolean;media?:ContentEntry;updatedAt?:string;positionSeconds?:number;completed?:boolean}>;
 export type PersonalSavedIntent=Readonly<
  {action:'create';kind:PersonalResourceKind;name:string;summary?:string;visibility?:PersonalVisibility;definition?:SavedDefinition}|
@@ -28,7 +29,7 @@ export type PersonalSavedIntent=Readonly<
  {action:'share';actor:SavedActor;role:'viewer'|'editor'}|{action:'unshare';actor:SavedActor}|
  {action:'clear-history'|'reset-viewing-activity'}>;
 export type PersonalSavedError=Readonly<{code:string;message:string;conflict:boolean}>;
-export type PersonalSavedSnapshot=Readonly<{route:SavedRoute|null;loading:boolean;error:PersonalSavedError|null;mutationError:PersonalSavedError|null;pending:boolean;retryPending:boolean;resources:readonly PersonalResource[];resource:PersonalResource|null;entries:readonly PersonalResourceEntry[];browse:BrowseResult|null;revision:number;viewerFence:string;cursor:string|null;history:readonly (string|null)[];nextCursor:string;result:Readonly<{resourceId?:string;deleted:boolean;entries?:EntryOutcomes;/** A removal can be undone until `until` with this token. */undo?:Readonly<{token:string;until:string}>}>|null;candidates:readonly Readonly<SavedActor&{id:string;displayName:string}>[];candidateCursor:string;libraries:readonly Readonly<{id:string;name:string;kind:string}>[]}>;
+export type PersonalSavedSnapshot=Readonly<{shapeCounts?:SavedShapeCounts;route:SavedRoute|null;loading:boolean;error:PersonalSavedError|null;mutationError:PersonalSavedError|null;pending:boolean;retryPending:boolean;resources:readonly PersonalResource[];resource:PersonalResource|null;entries:readonly PersonalResourceEntry[];browse:BrowseResult|null;revision:number;viewerFence:string;cursor:string|null;history:readonly (string|null)[];nextCursor:string;result:Readonly<{resourceId?:string;deleted:boolean;entries?:EntryOutcomes;/** A removal can be undone until `until` with this token. */undo?:Readonly<{token:string;until:string}>}>|null;candidates:readonly Readonly<SavedActor&{id:string;displayName:string}>[];candidateCursor:string;libraries:readonly Readonly<{id:string;name:string;kind:string}>[]}>;
 const obj=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const str=(v:unknown,max=4096):v is string=>typeof v==='string'&&v.length<=max&&!/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v);
 const id=(v:unknown):v is string=>str(v,256)&&v.length>0&&!/[\r\n]/.test(v);
@@ -57,7 +58,9 @@ function resource(v:unknown,scope:SavedScope):PersonalResource{
  const invalidComponents=keepReadable('personal-saved','resource.invalidComponents',rows(v.invalidComponents,32),x=>{if(!str(x,256))bad();return x;});
  // Needs-review definitions are deliberately not executed or silently normalized.
  const d=v.kind==='view'&&v.status==='ready'?definition(v.definition):undefined;
- return {serverId:scope.serverId,viewerFence:v.viewerFence,id:v.id,kind:v.kind as PersonalResourceKind,name:v.name,summary:v.summary,visibility:v.visibility as PersonalVisibility,revision:v.revision,role:v.role as PersonalResource['role'],entryCount:v.entryCount,actions,...(d?{definition:d}:{}),status:v.status as PersonalResource['status'],invalidComponents,pinned:v.pinned,pinRevision:v.pinRevision,shares};
+ const card=v.shape===undefined?{}:{...(v.totalIsLowerBound===true?{totalIsLowerBound:true}:{}),shape:v.shape as 'posters'|'squares',artworkPaths:rows(v.artworkPaths,4).map(x=>{if(!str(x,4096))bad();return x;}),samples:rows(v.samples,4).map(validateContentEntry),onHome:v.onHome===true};
+ if(v.shape!==undefined&&!['posters','squares'].includes(v.shape as string))bad();
+ return {...card,serverId:scope.serverId,viewerFence:v.viewerFence,id:v.id,kind:v.kind as PersonalResourceKind,name:v.name,summary:v.summary,visibility:v.visibility as PersonalVisibility,revision:v.revision,role:v.role as PersonalResource['role'],entryCount:v.entryCount,actions,...(d?{definition:d}:{}),status:v.status as PersonalResource['status'],invalidComponents,pinned:v.pinned,pinRevision:v.pinRevision,shares};
 }
 /** Visibility is a published server policy, not a client-side sharing rule. */
 function visibility(v:unknown):PersonalVisibility{if(v!=='private'&&v!=='server')throw new Error('Collection visibility must be private or server.');return v;}
@@ -223,7 +226,7 @@ export class PersonalSavedService{
  private async page(route:SavedRoute,cursor:string|null,history:readonly (string|null)[]){
    const query=new URLSearchParams({limit:String(PAGE),...(cursor?{cursor}:{})});
    const path=route.view==='resource'?encodedRoutePath("get_saved_resources_id_content", {"id": encodeURIComponent(route.resourceId!)}):route.view==='history'?routePath("get_personal_history"):routePath("get_saved_resources");
-   if(route.view==='collections'||route.view==='views')query.set('kind',route.view==='collections'?'collection':'view');
+   if(route.view==='collections'||route.view==='views'){query.set('kind',route.view==='collections'?'collection':'view');if('shape'in route&&route.shape)query.set('shape',route.shape);}
    if(route.view==='history'&&'period'in route&&route.period)query.set('period',route.period);
    const raw=await this.request<unknown>(path+'?'+query);
    if(!obj(raw)||!str(raw.nextCursor,4096))bad();let patch:{-readonly [K in keyof PersonalSavedSnapshot]?:PersonalSavedSnapshot[K]}&{viewerFence:string;revision:number;nextCursor:string}={resource:null,resources:[],entries:[],browse:null,nextCursor:raw.nextCursor,cursor,history:[...history],viewerFence:'',revision:0};
@@ -240,7 +243,7 @@ export class PersonalSavedService{
     if(raw.serverId!==this.scope.serverId||!id(raw.viewerFence)||!num(raw.revision))bad();patch.viewerFence=raw.viewerFence;patch.revision=raw.revision;
     if(route.view==='history')patch.entries=distinct(keepReadable('personal-saved','history',rows(raw.entries),e=>{e=wireDurations(e,{positionSeconds:'positionMs'});if(!obj(e)||!id(e.id)||!str(e.updatedAt,128)||typeof e.positionSeconds!=='number'||!Number.isFinite(e.positionSeconds)||e.positionSeconds<0||typeof e.completed!=='boolean')bad();return {id:e.id,hidden:false,media:validateContentEntry(e.media),updatedAt:e.updatedAt,positionSeconds:e.positionSeconds,completed:e.completed};}),'history');
     // A row from another server or another viewer fence refuses the whole directory; any other row this app cannot read is left out alone.
-    else{const listed=rows(raw.resources);for(const v of listed)if(obj(v)&&(v.serverId!==this.scope.serverId||v.viewerFence!==raw.viewerFence))bad();patch.resources=distinct(keepReadable('personal-saved','resources',listed,v=>{const r=resource(v,this.scope);if(r.kind!==(route.view==='collections'?'collection':'view'))bad();return r;}),'resources');}
+    else{if(raw.shapeCounts!==undefined)patch.shapeCounts=parseSavedShapeCounts(raw.shapeCounts);const listed=rows(raw.resources);for(const v of listed)if(obj(v)&&(v.serverId!==this.scope.serverId||v.viewerFence!==raw.viewerFence))bad();patch.resources=distinct(keepReadable('personal-saved','resources',listed,v=>{const r=resource(v,this.scope);if(r.kind!==(route.view==='collections'?'collection':'view'))bad();return r;}),'resources');}
    }
    return patch;
  }

@@ -22,6 +22,8 @@ func directBearer(r *http.Request) string {
 	return strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 }
 func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
+	d.ownerResetFileRoutes(mux)
+	d.serverReturnRoutes(mux)
 	// A challenge for a Portico identity assertion: the installation asks this
 	// server, has Hosted sign the challenge into its assertion, then signs in
 	// with it. The answer is signed with this server's identity key over the
@@ -223,7 +225,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		write(w, 200, map[string]any{"items": out})
 	})
 	d.httpHandle(mux, "POST /v1/direct/members", func(w http.ResponseWriter, r *http.Request) {
-		var q identity.DirectMemberInput
+		var q identity.DirectMemberCreate
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
 			return

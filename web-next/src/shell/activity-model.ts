@@ -1,0 +1,54 @@
+import {playbackIdentity, type CardSubject, type PlaybackSubject, type TimeEnvironment} from '@core/presentation/kit-model/index.ts';
+import type {ActivitySummarySession, ActivitySummarySnapshot, OwnerActivitySummary} from '@core/admin/activity-summary/index.ts';
+import {jobName, jobStateName, scanStepName} from '@core/server-admin/console-catalogue.ts';
+import {heightText} from '@core/presentation/kit-model/technical.ts';
+import {defaultI18n} from '@i18n';
+import type {ActivityPanelView} from '../kit/shell';
+
+/** Cold, refreshing and failed reads do not establish normal health or zero work. */
+export function activityPanelView(snapshot: ActivitySummarySnapshot, serverName: string, time: TimeEnvironment, actions: Pick<ActivityPanelView, 'onDashboard' | 'onRetry'> & {openUpdate: () => void}): ActivityPanelView {
+  if (snapshot.phase === 'ready' && snapshot.document) return activityView(snapshot.document, time, actions);
+  return {serverName, streams: [], scans: [], tasks: [], phase: snapshot.phase === 'error' || snapshot.phase === 'unavailable' ? 'error' : 'loading', onRetry: actions.onRetry, onDashboard: actions.onDashboard};
+}
+
+/** Semantic facts only. The canonical formatter owns episode identity and fact order. */
+export function activitySubject(stream: ActivitySummarySession): PlaybackSubject | undefined {
+  const item = stream.item;
+  if (!item || !['movie', 'episode', 'extra', 'song', 'audiobook_file'].includes(item.kind)) return undefined;
+  const subject: CardSubject = {id: item.id, kind: item.kind as CardSubject['kind'], title: item.title, year: item.year, artist: item.artist, album: item.album,
+    ...(item.showId && item.showTitle ? {show: {id: item.showId, title: item.showTitle}} : {}),
+    ...(item.kind === 'episode' ? {episode: item.episodeNumbering === 'date' ? {mode: 'date' as const, day: item.airDate}
+      : item.episodeNumbering === 'absolute' ? {mode: 'absolute' as const, number: item.episodeNumber}
+      : item.seasonNumber === 0 ? {mode: 'special' as const} : {mode: 'seasonal' as const, season: item.seasonNumber, episode: item.episodeNumber}} : {}),
+  };
+  return {kind: item.kind === 'song' ? 'music' : item.kind === 'audiobook_file' ? 'audiobook' : 'video', item: subject};
+}
+export function activityView(document: OwnerActivitySummary, time: TimeEnvironment, actions: Pick<ActivityPanelView, 'onDashboard' | 'onRetry'> & {openUpdate: () => void}): ActivityPanelView {
+  const {t} = defaultI18n;
+  // health.degraded includes watchdog recovery as well as failed probes/corruption.
+  // It cannot qualify a major issue. Future status must supply its qualified
+  // playback-stop/data-risk severity, honest title/details and existing destination
+  // before a shared projection can supply majorIssue to Activity and its Settings row.
+  return {serverName: document.serverName, health: document.health.degraded ? 'attention' : 'normal', streamCount: document.streams.count, streamOverflow: document.streams.overflow, taskCount: document.tasks.count,
+    // This bounded set is already selected globally. Preserve its order and exact overflow facts.
+    streams: document.streams.items.map(stream => {
+      const subject = activitySubject(stream);
+      const video = stream.decision.video?.action === 'transcode' || stream.decision.video?.action === 'burn' || stream.decision.subtitles?.action === 'burn';
+      const height = heightText(stream.videoHeight, time.t);
+      const conversion = stream.converting && video && height
+        ? {id: 'delivery', text: t('next.home.shell.convertingTo', {quality: height}), role: 'status' as const}
+        : stream.converting ? {id: 'delivery', text: t(video ? 'web.nowPlaying.delivery.convertVideo' : 'web.nowPlaying.delivery.convertAudio'), role: 'status' as const} : undefined;
+      return {id: stream.id, identity: subject ? playbackIdentity(subject, 'dock', time) : undefined, title: stream.item?.title, username: stream.user.username, name: stream.profile.name, device: stream.device.name,
+        startedAt: stream.startedAt, initial: Array.from(stream.profile.name.trim())[0] ?? '', positionMs: stream.positionMs, durationMs: stream.durationMs, paused: stream.state === 'paused',
+        problem: stream.problem ? {id: 'problem', text: t(stream.state === 'buffering' ? 'web.together.loading' : 'next.shell.activityProblem'), role: 'status' as const} : undefined,
+        conversion, onOpen: () => actions.onDashboard('streams')};
+    }),
+    scans: document.scans.map(scan => ({id: scan.libraryId, title: scan.libraryName, detail: scanStepName(t, defaultI18n.has, scan.phase), current: scan.current,
+      icon: 'i-refresh', processed: scan.analyzed, discovered: scan.discovered, total: scan.total, onOpen: () => actions.onDashboard('activity')})),
+    tasks: document.tasks.items.map(task => ({id: task.id, title: jobName(t, defaultI18n.has, task.kind), detail: jobStateName(t, defaultI18n.has, task.state),
+      current: task.libraryName, icon: 'i-act', processed: task.processed, total: task.total, onOpen: () => actions.onDashboard('activity')})),
+    update: {...document.update, onOpen: actions.openUpdate},
+    ...(document.lastScanFinishedAt ? {lastScan: defaultI18n.relativeTime(document.lastScanFinishedAt, Date.parse(document.observedAt))} : {}),
+    phase: 'ready', onRetry: actions.onRetry, onDashboard: actions.onDashboard,
+  };
+}

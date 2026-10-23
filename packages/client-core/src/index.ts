@@ -32,7 +32,8 @@ export * from './delivery.ts';
 export * from './client-profile.ts';
 import {readConsoleJson,consoleUTF8Size} from './console-transport.ts';
 import {channelSeconds,channelMessage,type ChannelProjection,type ChannelReference} from './playback/linear-protocol.ts';
-import type {ChannelPlayback,ChannelView} from './playback-v1/channel-control.ts';
+import type {ChannelPlayback,ChannelView,ChannelStartOptions} from './playback-v1/channel-control.ts';
+export type {ChannelStartOptions} from './playback-v1/channel-control.ts';
 export type {ChannelReference,ChannelProjection} from './playback/linear-protocol.ts';
 import type {QueueController} from './queue-controller.ts';
 import {readLyricsResponse} from "./lyrics-http.ts";
@@ -501,6 +502,7 @@ export class HttpLocalApi {
   setup(setupToken: string, username: string, password: string, name: string) {
     return this.request<RouteResponse<"setup_server">>(routePath("setup_server"), "POST", routeBody("setup_server", {
       setupToken,
+      authMode: "local",
       username,
       password,
       name,
@@ -1078,12 +1080,14 @@ export class PlaybackService {
   }
   /** Channel selection uses this same service/adapter owner, but never a VOD
    * create, persisted catalog placeholder, resume checkpoint or chapter query. */
-  async playChannel(reference:ChannelReference):Promise<void> {
+  async playChannel(reference:ChannelReference,options:ChannelStartOptions={}):Promise<void> {
+    const state=options.state??'playing';
+    if(state!=='playing'&&state!=='paused')throw new Error('invalid_channel_start_state');
     const oldVOD=this.snapshot.channel?undefined:this.snapshot.session?.id;
-    this.leave();this.channelReference=reference;this.channelWantedState='playing';
+    this.leave();this.channelReference=reference;this.channelWantedState=state;
     const intentId=this.snapshot.intentId;
     this.channelSeekId=undefined;this.channelObservedSeek=undefined;this.channelSubmittedSeek=undefined;
-    this.update({channel:reference,phase:'starting',intent:'playing',itemId:reference.channelId});
+    this.update({channel:reference,phase:'starting',intent:state,itemId:reference.channelId,playbackRun:this.snapshot.playbackRun+1});
     if(!this.channels){this.update({phase:'error',error:'Channel playback is not configured on this client.'});return;}
     // Release the exact prior VOD before live admission. This is resource
     // cleanup, not a predicted capacity check or a profile-wide singleton.
@@ -1094,7 +1098,7 @@ export class PlaybackService {
     await this.channels.open(reference,{
       state:value=>{if(this.snapshot.intentId===intentId&&this.snapshot.channel)this.applyChannel(value);},
       error:(message,terminal)=>{if(this.snapshot.intentId!==intentId||!this.snapshot.channel)return;this.update({error:message,...(terminal?{phase:'error' as const,session:undefined,pendingSeek:undefined}:{} )});}
-    });
+    },{state});
   }
   /** Channels on v1 sessions (spec §18.6): the apps switch to this when the server offers them. */
   useChannelPlayback(control:ChannelPlayback){if(this.snapshot.channel)this.leave();this.channels=control;}
@@ -1149,13 +1153,15 @@ export class PlaybackService {
   getQueueController(){return this.queue;}
   installQueue(queue:QueueController){this.queue=queue;this.update({});return()=>{if(this.queue===queue){this.queue=undefined;this.update({});}};}
   /** `fresh`: the viewer started a new playback (a new queue), not the queue moving on. */
-  beginQueueIntent(itemId?:string,fresh=false):number{
+  beginQueueIntent(itemId?:string,fresh=false,state:'playing'|'paused'='playing'):number{
     // Live uses another lane and never becomes a queue replacement predecessor.
     if(this.snapshot.channel)this.leave(false);
     const run=fresh?{playbackRun:this.snapshot.playbackRun+1}:{};
+    // A parked restore or server-selected start has no new per-title choices to retain.
+    if(fresh&&(state==='paused'||itemId===undefined)){this.lastPlay=undefined;this.escalations=0;}
     if(fresh&&this.options.beforeFreshPlayback)this.freshReady=this.options.beforeFreshPlayback().catch(()=>{});
-    if(!this.snapshot.session){this.clearStartup();this.update({phase:'starting',intent:'playing',itemId,error:undefined,...run});}
-    else this.update({intent:'playing',error:undefined,...run});
+    if(!this.snapshot.session){this.clearStartup();this.update({phase:'starting',intent:state,itemId,error:undefined,...run});}
+    else this.update({intent:state,error:undefined,...run});
     return this.snapshot.intentId;
   }
   async prepareQueueIntent(intentId:number):Promise<boolean>{
@@ -1966,7 +1972,7 @@ export { DeviceAuthorizationService, HttpDeviceAuthorizationApi, type DeviceAuth
 export { HostedGate, hostedGate, type HostedGateSnapshot, type HostedRequestKind } from "./hosted-gate.ts";
 export { CredentialSessionService,HttpCredentialApi,type CredentialContext,type CredentialRecord,type CredentialStorage,type CredentialApi,type CredentialSnapshot,type CredentialCoordinator } from "./credentials.ts";
 export {LibraryNavigationService,navigationStorageKey,type NavigationScope,type LibraryRoute,type LibraryEntityView,type EntityViewState,type NavigationFocus,type ScrollAnchor,type LibraryNavigationMetadata,type LibraryViewState,type LibraryViewUpdate,type NavigationStorage,type LibraryNavigationSnapshot} from './library-navigation.ts';
-export {LibraryContentService,type ContentView,type ContentSurface,type ContentRoute,type ContentScope,type LibraryContentApi,type ContentEntryKind,type ContentHeading,type ContentEntry,type ContentSection,type ContentProjection,type LibraryContentSnapshot} from './library-content.ts';
+export {readListeningSimilar,LibraryContentService,type ContentView,type ContentSurface,type ContentRoute,type ContentScope,type LibraryContentApi,type ContentEntryKind,type ContentHeading,type ContentEntry,type ContentSection,type ContentProjection,type LibraryContentSnapshot} from './library-content.ts';
 
 export * from './hosted-security.ts';
 export {DetailService,type DetailScope,type DetailTarget,type DetailApi,type PersonalState,type PersonalOfflineMutation,type PersonalConflict,type DetailAction,type DetailMetadata,type DetailEpisodeInfo,type DetailSongInfo,type DetailBookFileInfo,type DetailSource,type DetailItem,type DetailProjection,type PersonalIntent,type DetailError,type DetailSnapshot} from './detail.ts';
@@ -1975,6 +1981,7 @@ export {SearchService,searchPath,parseSearchHistory,type SearchGroup,type Search
 export * from './people.ts';
 export {savedListPath,personalHistoryPath,savedListFilters,savedListSorts,historyPeriods,type SavedListFilter,type SavedListSort,type HistoryPeriod,type SavedApi,type SavedScope,type SavedRoute,type SavedActor} from './saved.ts';
 export * from './browse.ts';
+export * from './browse-buckets.ts';
 export * from './social-playback.ts';
 export * from './group-session.ts';
 export * from './remote-playback.ts';
@@ -2030,3 +2037,18 @@ export * from './event-feed.ts';
 export * from './home-service.ts';
 export * from './scan-issues.ts';
 export * from './playback-controls.ts';
+export {sizeClassForWidth, type SizeClass} from './presentation/size-class.ts';
+
+export {readLibrarySummaries,parseLibrarySummary} from './library-summary.ts';
+export type {LibrarySummary} from './library-summary.ts';
+
+export {browseServerFilesystem} from './library-management.ts';
+export {libraryNavigationIcon} from './presentation/library-navigation.ts';
+
+
+export {PeopleInvitationsClient,parsePublicInvitation,privatePersonNotes,personIdentity} from './direct-account.ts';
+export type {ServerInvitation,PeopleMember,PublicInvitation} from './direct-account.ts';
+export {highestRatingChoices} from './profile-limits.ts';
+
+export * from './account-reset.ts';
+export * from './same-tab-return.ts';
