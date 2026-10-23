@@ -125,6 +125,8 @@ func (s *Service) Offers(ctx context.Context, p identity.Principal, scope Offers
 	if e = tx.QueryRowContext(ctx, `SELECT transcoding_enabled FROM playback_owner_policy WHERE singleton=1`).Scan(&out.TranscodingOpen); e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return out, e
 	}
+	legacyEnabled := out.TranscodingOpen
+	out.TranscodingOpen = cfg.AudioConversionAllowed(legacyEnabled)
 	for i := range out.Sources {
 		source := &out.Sources[i]
 		facts, _ := DeliverySourceTx(ctx, tx, source.ID)
@@ -132,7 +134,7 @@ func (s *Service) Offers(ctx context.Context, p identity.Principal, scope Offers
 		if facts.Video != nil && facts.Video.BitRate > 0 {
 			rate = facts.Video.BitRate
 		}
-		source.Qualities = QualityOffers(source.Height, source.Available && source.FactsStatus == "known", out.TranscodingOpen, policy, rate)
+		source.Qualities = QualityOffers(source.Height, source.Available && source.FactsStatus == "known", cfg.VideoConversionAllowed(legacyEnabled), policy, rate)
 	}
 
 	out.PreparedVersions = []preparedmedia.Version{}
