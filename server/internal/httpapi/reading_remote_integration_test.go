@@ -10,8 +10,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
@@ -59,7 +61,7 @@ func readingRemoteProgram(t *testing.T) string {
 }
 
 func TestReadingRemoteRegistered(t *testing.T) {
-	program := readingRemoteProgram(t)
+	_ = readingRemoteProgram(t)
 	var err error
 	f := newV1Fixture(t, 0)
 	managed, err := mounts.New(f.db, f.root, "", f.deps.Storage.Binary, f.deps.Storage)
@@ -81,14 +83,27 @@ func TestReadingRemoteRegistered(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mount, err := managed.Create(context.Background(), mounts.CreateInput{Name: "Reading fixture", Executable: program, Remote: "fixture:" + root, Config: "[fixture]\ntype = local\n"})
-	if err != nil {
-		t.Fatal("approved actual remote configuration", err)
-	}
 	remote, err := remotesources.New(f.db, f.root, managed)
 	if err != nil {
 		t.Fatal(err)
 	}
+	origin := readingDAVFiles(t, root)
+	defer origin.Close()
+	principal, err := f.id.Authenticate(f.owner.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configured, err := remote.ConfigureDAV(context.Background(), principal.Hash, "", remotesources.DAVInput{OperationID: fmt.Sprintf("%013d-00000000-0000-4000-8000-000000000001", time.Now().UnixMilli()), Name: "Reading fixture", Root: origin.URL + "/", InsecureLocal: true}, func(tx *sql.Tx) error {
+		live, err := f.id.PrincipalByDigestTx(context.Background(), tx, principal.Hash)
+		if err == nil && live.Role != "owner" {
+			return identity.ErrForbidden
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal("supported actual DAV configuration", err)
+	}
+	remoteRoot := configured.Source.RootPath
 	f.deps.Storage.Remote = remote
 	f.cat.SetStorage(f.deps.Storage)
 	life, cancel := context.WithCancel(context.Background())
@@ -106,7 +121,7 @@ func TestReadingRemoteRegistered(t *testing.T) {
 	// fixed sleep is treated as proof that its shared process is ready.
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		_, err = remote.InspectRoot(life, mount.MountPath)
+		_, err = remote.InspectRoot(life, remoteRoot)
 		if err == nil {
 			break
 		}
@@ -126,9 +141,12 @@ func TestReadingRemoteRegistered(t *testing.T) {
 	}
 	for _, kind := range []string{"book", "comic"} {
 		t.Run(kind, func(t *testing.T) {
-			library, err := f.cat.Create("Real remote "+kind, kind, filepath.Join(mount.MountPath, kind))
+			library, err := f.cat.Create("Real remote "+kind, kind, filepath.Join(remoteRoot, kind))
 			if err != nil {
 				t.Fatal("real remote library", err)
+			}
+			if _, err = remote.InspectRoot(life, filepath.Join(remoteRoot, kind)); err != nil {
+				t.Fatal("source metadata after real library publication", err)
 			}
 			readingScan(t, f, library.ID)
 			member, err := f.id.CreateDirectMember(context.Background(), owner.AccountToken, identity.DirectMemberCreate{Username: "reader-" + kind, Password: "different-test-password", Name: "Reader", AllowedLibraries: []string{library.ID}})
@@ -363,6 +381,9 @@ func TestReadingRemoteSequentialPDF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = remote.InspectRoot(life, source.Source.RootPath); err != nil {
+		t.Fatal("sequential metadata after real library publication", err)
+	}
 	readingScan(t, f, library.ID)
 	d := f.deps
 	d.Hosted = nil
@@ -412,4 +433,87 @@ func TestReadingRemoteSequentialPDF(t *testing.T) {
 			t.Fatal("origin credential escaped")
 		}
 	}
+}
+
+// The DAV directory/document metadata is derived from actual fixture files;
+// finite206 is implemented by net/http against their real open descriptors.
+func readingDAVFiles(t *testing.T, root string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		relative := strings.TrimPrefix(r.URL.Path, "/")
+		if relative != "" && !filepath.IsLocal(relative) {
+			http.NotFound(w, r)
+			return
+		}
+		file := filepath.Join(root, filepath.FromSlash(relative))
+		info, err := os.Stat(file)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case "OPTIONS":
+			w.Header().Set("DAV", "1")
+			return
+		case "REPORT":
+			w.WriteHeader(501)
+			return
+		case "PROPFIND":
+			w.Header().Set("Content-Type", "application/xml")
+			w.WriteHeader(207)
+			fmt.Fprint(w, `<d:multistatus xmlns:d="DAV:">`)
+			emit := func(name, path string, info os.FileInfo) {
+				href := "/"
+				if name != "" {
+					parts := strings.Split(filepath.ToSlash(name), "/")
+					for i := range parts {
+						parts[i] = url.PathEscape(parts[i])
+					}
+					href += strings.Join(parts, "/")
+				}
+				if info.IsDir() && !strings.HasSuffix(href, "/") {
+					href += "/"
+				}
+				fmt.Fprintf(w, `<d:response><d:href>%s</d:href><d:propstat><d:prop>`, html.EscapeString(href))
+				if info.IsDir() {
+					fmt.Fprint(w, `<d:resourcetype><d:collection/></d:resourcetype>`)
+				} else {
+					fmt.Fprintf(w, `<d:resourcetype/><d:getcontentlength>%d</d:getcontentlength><d:getlastmodified>%s</d:getlastmodified><d:getetag>"%d-%d"</d:getetag>`, info.Size(), info.ModTime().UTC().Format(http.TimeFormat), info.Size(), info.ModTime().UnixNano())
+				}
+				fmt.Fprint(w, `</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>`)
+			}
+			emit(relative, file, info)
+			if info.IsDir() && r.Header.Get("Depth") == "1" {
+				entries, err := os.ReadDir(file)
+				if err != nil {
+					return
+				}
+				for _, entry := range entries {
+					child := filepath.Join(file, entry.Name())
+					value, err := os.Stat(child)
+					if err != nil {
+						return
+					}
+					emit(filepath.Join(relative, entry.Name()), child, value)
+				}
+			}
+			fmt.Fprint(w, `</d:multistatus>`)
+			return
+		case "HEAD", "GET":
+			if info.IsDir() {
+				http.NotFound(w, r)
+				return
+			}
+			body, err := os.Open(file)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			defer body.Close()
+			w.Header().Set("ETag", fmt.Sprintf(`"%d-%d"`, info.Size(), info.ModTime().UnixNano()))
+			http.ServeContent(w, r, info.Name(), info.ModTime(), body)
+		default:
+			w.WriteHeader(405)
+		}
+	}))
 }
