@@ -8,6 +8,7 @@ import (
 	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/storage"
 	"strconv"
+	"strings"
 )
 
 const MaxSubtitleOutput = medialimits.MaxSubtitleFileMiB << 20
@@ -51,6 +52,9 @@ func RunSubtitleExtract(ctx context.Context, sup *storage.Supervisor, key, execu
 	switch format {
 	case "srt":
 		codec = "srt"
+	case "cea608", "cea708":
+		codec = "webvtt"
+		mux = "webvtt"
 	case "vtt":
 		codec = "webvtt"
 		mux = "webvtt"
@@ -65,7 +69,12 @@ func RunSubtitleExtract(ctx context.Context, sup *storage.Supervisor, key, execu
 		res.Close()
 		return nil, ErrInvalidConfiguration
 	}
-	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-threads", "1", "-copyts", "-start_at_zero", "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,avi,mpegts,mpeg", "-i", input, "-map", "0:" + strconv.Itoa(index), "-vn", "-an", "-dn", "-c:s", codec, "-map_metadata", "-1", "-f", mux, "pipe:1"}
+	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-threads", "1", "-copyts", "-start_at_zero", "-protocol_whitelist", "http,tcp", "-i", input, "-map", "0:" + strconv.Itoa(index), "-vn", "-an", "-dn", "-c:s", codec, "-map_metadata", "-1", "-f", mux, "pipe:1"}
+	if format == "cea608" || format == "cea708" {
+		escaped := strings.NewReplacer("\\", "\\\\", ":", "\\:", "'", "\\'").Replace(input)
+		movie := "movie=filename='" + escaped + "':format_opts='protocol_whitelist=http,tcp'[out0+subcc]"
+		args = []string{"-hide_banner", "-nostdin", "-v", "error", "-threads", "1", "-f", "lavfi", "-i", movie, "-map", "0:s:0", "-vn", "-an", "-c:s", "webvtt", "-f", "webvtt", "pipe:1"}
+	}
 	cmd, err := confinedCommand(executable, args, endpoint, files...)
 	if err != nil {
 		res.Close()

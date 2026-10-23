@@ -167,9 +167,10 @@ type Lease struct {
 	ReportEveryMs int    `json:"reportEveryMs"`
 }
 type Presentation struct {
-	Generation int    `json:"generation"`
-	Mode       string `json:"mode"`
-	URL        string `json:"url"`
+	PlaybackInfo *playback.PlaybackInfo `json:"playbackInfo,omitempty"`
+	Generation   int                    `json:"generation"`
+	Mode         string                 `json:"mode"`
+	URL          string                 `json:"url"`
 	// Engine is the player engine the device must play this presentation with:
 	// "native" (the platform's own player) or "mpv". The server chose it from
 	// the device's capability document and the viewer's player setting.
@@ -790,6 +791,11 @@ func (s *Service) describe(view *Presentation, plan playback.DeliveryPlan, choic
 		view.Engine = playback.EngineNative
 	}
 	view.Decision = decisions(plan, choice, plan.SourceVideoCodec != "")
+	rendering := "off"
+	if view.Subtitle != nil {
+		rendering = view.Subtitle.Delivery
+	}
+	view.PlaybackInfo = playback.PlaybackInfoForPlan(plan, rendering)
 	view.BitrateKbps = planKbps(plan)
 	view.Container = plan.OutputContainer
 	view.VideoHeight = playback.ActivityVideoHeight(plan)

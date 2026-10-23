@@ -156,13 +156,15 @@ func TestFragmentedSignallingFollowsActualDolbyVisionLayer(t *testing.T) {
 	detail := hdr10Detail
 	detail.DynamicRange = assets.RangeDolbyVision
 	detail.DolbyVisionProfile = 8
+	detail.DolbyVisionRPU = true
+	detail.DolbyVisionMetadataKnown = true
 	detail.DolbyVisionLevel = 6
 	detail.DolbyVisionCompatibility = 1
 	detail.CodecTag = "dvh1"
 	source := videoSource("mkv", "hevc", detail, SourceAudio{Codec: "eac3", Channels: 6})
 	p := decide(t, source, appleTVProfile(), qualifiedCopy)
 	m := string(hlsMasterManifest(&p))
-	if !strings.Contains(m, `CODECS="dvh1.08.06,ec-3"`) || !strings.Contains(m, `SUPPLEMENTAL-CODECS="dvh1.08.06/db1p"`) || !strings.Contains(m, "VIDEO-RANGE=PQ") {
+	if !strings.Contains(m, `CODECS="hvc1.2.4.L153.B0,ec-3"`) || !strings.Contains(m, `SUPPLEMENTAL-CODECS="dvh1.08.06/db1p"`) || !strings.Contains(m, "VIDEO-RANGE=PQ") {
 		t.Fatal(m)
 	}
 	client := appleTVProfile()

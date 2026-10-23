@@ -179,14 +179,15 @@ func (r *Runtime) probe(ctx context.Context, input subtitles.RenderInput, ledger
 }
 
 type probeStream struct {
-	Width         int               `json:"width"`
-	Height        int               `json:"height"`
-	Index         int               `json:"index"`
-	Type          string            `json:"codec_type"`
-	Codec         string            `json:"codec_name"`
-	ColorTransfer string            `json:"color_transfer"`
-	Tags          map[string]string `json:"tags"`
-	Disposition   struct {
+	Width          int               `json:"width"`
+	Height         int               `json:"height"`
+	Index          int               `json:"index"`
+	Type           string            `json:"codec_type"`
+	Codec          string            `json:"codec_name"`
+	ClosedCaptions int               `json:"closed_captions"`
+	ColorTransfer  string            `json:"color_transfer"`
+	Tags           map[string]string `json:"tags"`
+	Disposition    struct {
 		Default         int `json:"default"`
 		Forced          int `json:"forced"`
 		Attached        int `json:"attached_pic"`
@@ -235,7 +236,11 @@ func (r *Runtime) Extract(ctx context.Context, item, source string, index int, f
 	} else if format == "dvb" {
 		data, e = json.Marshal(subtitles.RenderAsset{Version: 2, TimeDomain: "source-relative", Renderer: "burn_in", Format: "mks", Data: data})
 	} else {
-		data, e = subtitles.Canonical(data, format, 0)
+		canonicalFormat := format
+		if format == "cea608" || format == "cea708" {
+			canonicalFormat = "vtt"
+		}
+		data, e = subtitles.Canonical(data, canonicalFormat, 0)
 	}
 	if e == nil && (format == "ass" || format == "ssa") {
 		var asset subtitles.RenderAsset
@@ -261,6 +266,9 @@ func (r *Runtime) Probe(ctx context.Context, item, source string) (*subtitles.In
 	}
 	inventory := &subtitles.Inventory{OriginUS: facts.origin, TimingKnown: true, Status: "known", Tracks: []subtitles.Track{}}
 	for _, s := range streams {
+		if s.Type == "video" && s.ClosedCaptions > 0 {
+			inventory.Tracks = append(inventory.Tracks, subtitles.Track{Origin: "embedded", Format: "cea608", StreamIndex: s.Index, Title: "Closed captions", HearingImpaired: true})
+		}
 		if s.Type != "subtitle" {
 			continue
 		}

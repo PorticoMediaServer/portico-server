@@ -164,6 +164,7 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 			continue
 		}
 		quality := resolvedQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), string(r.Quality), found)
+		quality = clampDownloadQuality(quality, found, s.deliveryConfiguration())
 		// A live claim on the same item and quality is the same claim. Returning
 		// it keeps a client that retried a batch from accumulating duplicates.
 		// One that failed is what the viewer is asking to have another go at:

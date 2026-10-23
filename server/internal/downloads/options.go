@@ -180,11 +180,21 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 		original.Reason = ReasonNotAllowed
 	}
 	original.EffectiveQuality = "original"
+	if limited := clampDownloadQuality("original", found, s.deliveryConfiguration()); limited != "original" {
+		original.Available = false
+		original.Reason = ReasonDownloadQualityCap
+		original.EffectiveQuality = limited
+	}
 	out.Options = append(out.Options, decorate(original, live))
 	automatic := original
 	automatic.Quality = "automatic"
 	automatic.Label = "Automatic"
+	automatic.Available = out.Source.Available && allowed
+	if automatic.Reason == ReasonDownloadQualityCap {
+		automatic.Reason = ""
+	}
 	effective := resolvedQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), "automatic", found)
+	effective = clampDownloadQuality(effective, found, s.deliveryConfiguration())
 	automatic.EffectiveQuality = effective
 	if effective != "original" {
 		automatic.Kind = "optimized"
@@ -229,6 +239,10 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 	}
 	presets := playback.QualityLadder
 	for _, preset := range presets {
+		if limited := clampDownloadQuality(preset.ID, found, s.deliveryConfiguration()); limited != preset.ID {
+			out.Options = append(out.Options, QualityOption{Quality: preset.ID, Label: preset.Label, Kind: "optimized", EffectiveQuality: limited, Reason: ReasonDownloadQualityCap})
+			continue
+		}
 		if audioKind(found.Kind) {
 			out.Options = append(out.Options, QualityOption{Quality: preset.ID, Label: preset.Label, Kind: "optimized", TargetHeight: preset.Height, MaxVideoBitrateBPS: preset.VideoBitrateBPS, DataGBPerHour: preset.DataGBPerHour, Reason: "not_video"})
 			continue

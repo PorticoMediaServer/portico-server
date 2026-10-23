@@ -511,7 +511,8 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 		}
 		return "", reason, nil
 	}
-	quality = resolvedQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), quality, source)
+	quality = resolvedQuality(ctx, tx, playback.CapabilityDocumentForDeviceTx(ctx, tx, device), quality, source)
+	quality = clampDownloadQuality(quality, source, s.deliveryConfiguration())
 	existing, e := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND state IN('queued','running','ready','paused','failed')`, key, entity, quality))
 	if e == nil {
 		// Asking for the whole season again is asking for the episode that
@@ -528,7 +529,7 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 	if !errors.Is(e, sql.ErrNoRows) {
 		return "", "", e
 	}
-	recipe := chooseRecipe(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), quality, source)
+	recipe := chooseRecipe(ctx, tx, playback.CapabilityDocumentForDeviceTx(ctx, tx, device), quality, source)
 	if reason := qualityReason(ctx, tx, quality, recipe, source); reason != "" {
 		return "", reason, nil
 	}

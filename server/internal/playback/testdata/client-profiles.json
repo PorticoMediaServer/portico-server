@@ -2651,8 +2651,9 @@
       "codec": "eac3",
       "maxChannels": 8,
       "evidence": "declared",
-      "objectAudio": [
-       "atmos"
+      "objectAudio": [],
+      "variants": [
+       "eac3"
       ]
      },
      {
@@ -3114,8 +3115,9 @@
       "codec": "eac3",
       "maxChannels": 8,
       "evidence": "declared",
-      "objectAudio": [
-       "atmos"
+      "objectAudio": [],
+      "variants": [
+       "eac3"
       ]
      },
      {
@@ -3221,6 +3223,16 @@
     "video": [
      {
       "codec": "h264",
+      "chromaSubsampling": [
+       "4:2:0",
+       "4:2:2",
+       "4:4:4",
+       "4:0:0"
+      ],
+      "frameRateModes": [
+       "constant",
+       "variable"
+      ],
       "bitDepths": [
        8,
        10
@@ -3236,6 +3248,16 @@
      },
      {
       "codec": "hevc",
+      "chromaSubsampling": [
+       "4:2:0",
+       "4:2:2",
+       "4:4:4",
+       "4:0:0"
+      ],
+      "frameRateModes": [
+       "constant",
+       "variable"
+      ],
       "bitDepths": [
        8,
        10
@@ -3253,6 +3275,16 @@
      },
      {
       "codec": "vp9",
+      "chromaSubsampling": [
+       "4:2:0",
+       "4:2:2",
+       "4:4:4",
+       "4:0:0"
+      ],
+      "frameRateModes": [
+       "constant",
+       "variable"
+      ],
       "bitDepths": [
        8
       ],
@@ -3267,6 +3299,16 @@
      },
      {
       "codec": "av1",
+      "chromaSubsampling": [
+       "4:2:0",
+       "4:2:2",
+       "4:4:4",
+       "4:0:0"
+      ],
+      "frameRateModes": [
+       "constant",
+       "variable"
+      ],
       "bitDepths": [
        8
       ],
@@ -3756,6 +3798,16 @@
     "video": [
      {
       "codec": "h264",
+      "chromaSubsampling": [
+       "4:2:0",
+       "4:2:2",
+       "4:4:4",
+       "4:0:0"
+      ],
+      "frameRateModes": [
+       "constant",
+       "variable"
+      ],
       "bitDepths": [
        8,
        10
@@ -3771,6 +3823,16 @@
      },
      {
       "codec": "hevc",
+      "chromaSubsampling": [
+       "4:2:0",
+       "4:2:2",
+       "4:4:4",
+       "4:0:0"
+      ],
+      "frameRateModes": [
+       "constant",
+       "variable"
+      ],
       "bitDepths": [
        8,
        10
@@ -3788,6 +3850,16 @@
      },
      {
       "codec": "vp9",
+      "chromaSubsampling": [
+       "4:2:0",
+       "4:2:2",
+       "4:4:4",
+       "4:0:0"
+      ],
+      "frameRateModes": [
+       "constant",
+       "variable"
+      ],
       "bitDepths": [
        8
       ],
@@ -3802,6 +3874,16 @@
      },
      {
       "codec": "av1",
+      "chromaSubsampling": [
+       "4:2:0",
+       "4:2:2",
+       "4:4:4",
+       "4:0:0"
+      ],
+      "frameRateModes": [
+       "constant",
+       "variable"
+      ],
       "bitDepths": [
        8
       ],

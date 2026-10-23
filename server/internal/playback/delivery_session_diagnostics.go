@@ -31,6 +31,7 @@ type SessionHardware struct {
 // paths, no source identifiers and no credentials: it is an explanation, not a
 // handle.
 type SessionDelivery struct {
+	PlaybackInfo          *PlaybackInfo           `json:"playbackInfo,omitempty"`
 	AudioRenditions       []AudioRenditionPlan    `json:"audioRenditions,omitempty"`
 	Mode                  string                  `json:"mode"`
 	Strategy              string                  `json:"strategy"`
@@ -115,6 +116,11 @@ func SessionDeliveryTx(ctx context.Context, tx *sql.Tx, settings DeliverySetting
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_subtitle_presentations WHERE session_id=? AND render_id!='')`, session).Scan(&burned); err != nil {
 		return nil, err
 	}
+	rendering := "off"
+	if burned {
+		rendering = "burn"
+	}
+	out.PlaybackInfo = PlaybackInfoForPlan(*plan, rendering)
 	if burned {
 		out.Streams = append(out.Streams, SessionStreamDecision{Kind: "subtitle", InputCodec: "", OutputCodec: "", Action: "burn_in"})
 	}

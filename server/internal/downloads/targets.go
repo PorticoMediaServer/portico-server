@@ -177,7 +177,7 @@ func artifactDelivery(container, preparation string) (string, string) {
 		kind, extension = "video/mp4", "mp4"
 	case "m4a", "m4b":
 		kind, extension = "audio/mp4", container
-	case "mkv":
+	case "mkv", "matroska":
 		kind, extension = "video/x-matroska", "mkv"
 	case "webm":
 		kind, extension = "video/webm", "webm"

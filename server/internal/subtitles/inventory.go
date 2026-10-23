@@ -213,7 +213,7 @@ func CodecFormat(codec string) string {
 	switch codec {
 	case "subrip", "text", "mov_text":
 		return "srt"
-	case "webvtt":
+	case "webvtt", "eia_608", "eia_708", "dvb_teletext", "text_teletext":
 		return "vtt"
 	case "ass":
 		return "ass"

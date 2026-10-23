@@ -78,25 +78,33 @@ type RouteEvaluation struct {
 }
 
 type TraceVideo struct {
-	Rotation                 int     `json:"rotation,omitempty"`
-	SampleAspectRatio        string  `json:"sampleAspectRatio,omitempty"`
-	OutputRange              string  `json:"outputRange,omitempty"`
-	DolbyVisionLevel         int     `json:"dolbyVisionLevel,omitempty"`
-	DolbyVisionCompatibility int     `json:"dolbyVisionCompatibility,omitempty"`
-	Codec                    string  `json:"codec"`
-	Profile                  string  `json:"profile,omitempty"`
-	Level                    int     `json:"level,omitempty"`
-	BitDepth                 int     `json:"bitDepth,omitempty"`
-	Width                    int     `json:"width,omitempty"`
-	Height                   int     `json:"height,omitempty"`
-	FrameRate                float64 `json:"frameRate,omitempty"`
-	Interlaced               bool    `json:"interlaced,omitempty"`
-	DynamicRange             string  `json:"dynamicRange,omitempty"`
-	DolbyVisionProfile       int     `json:"dolbyVisionProfile,omitempty"`
-	BitRate                  int64   `json:"bitRate,omitempty"`
+	Breadth                  assets.StreamBreadth `json:"breadth"`
+	HDR10Plus                bool                 `json:"hdr10Plus"`
+	MasterDisplay            string               `json:"masterDisplay,omitempty"`
+	MaxCLL                   string               `json:"maxCll,omitempty"`
+	Rotation                 int                  `json:"rotation,omitempty"`
+	SampleAspectRatio        string               `json:"sampleAspectRatio,omitempty"`
+	OutputRange              string               `json:"outputRange,omitempty"`
+	DolbyVisionLevel         int                  `json:"dolbyVisionLevel,omitempty"`
+	DolbyVisionCompatibility int                  `json:"dolbyVisionCompatibility,omitempty"`
+	Codec                    string               `json:"codec"`
+	Profile                  string               `json:"profile,omitempty"`
+	Level                    int                  `json:"level,omitempty"`
+	BitDepth                 int                  `json:"bitDepth,omitempty"`
+	Width                    int                  `json:"width,omitempty"`
+	Height                   int                  `json:"height,omitempty"`
+	FrameRate                float64              `json:"frameRate,omitempty"`
+	Interlaced               bool                 `json:"interlaced,omitempty"`
+	DynamicRange             string               `json:"dynamicRange,omitempty"`
+	DolbyVisionProfile       int                  `json:"dolbyVisionProfile,omitempty"`
+	BitRate                  int64                `json:"bitRate,omitempty"`
 }
 
 type TraceAudio struct {
+	Variant     string `json:"variant,omitempty"`
+	SampleRate  int    `json:"sampleRate,omitempty"`
+	BitDepth    int    `json:"bitDepth,omitempty"`
+	Layout      string `json:"layout,omitempty"`
 	StreamIndex int    `json:"streamIndex"`
 	Codec       string `json:"codec"`
 	Channels    int    `json:"channels,omitempty"`
@@ -204,7 +212,7 @@ func videoRejections(v *SourceVideo, client ClientProfile, t ClientTransport, al
 	if c.MaxBitrateBPS > 0 && max(v.BitRate, v.MaxBitRate) > int64(c.MaxBitrateBPS) {
 		out = append(out, RouteRejection{RejectVideoBitrate, fmt.Sprintf("%d", max(v.BitRate, v.MaxBitRate))})
 	}
-	if v.ChromaSubsampling != "" && len(c.ChromaSubsampling) > 0 && !containsString(c.ChromaSubsampling, v.ChromaSubsampling) {
+	if v.ChromaSubsampling != "" && (len(c.ChromaSubsampling) > 0 && !containsString(c.ChromaSubsampling, v.ChromaSubsampling) || len(c.ChromaSubsampling) == 0 && v.ChromaSubsampling != "4:2:0") {
 		out = append(out, RouteRejection{RejectChroma, v.ChromaSubsampling})
 	}
 	if v.FrameRateMode != "" && len(c.FrameRateModes) > 0 && !containsString(c.FrameRateModes, v.FrameRateMode) {
@@ -369,7 +377,7 @@ var (
 	tsCopyVideo   = []string{"h264", "hevc", "mpeg2video"}
 	tsCopyAudio   = []string{"aac", "mp3", "mp2", "ac3", "eac3"}
 	fmp4CopyVideo = []string{"h264", "hevc", "av1", "vp9"}
-	fmp4CopyAudio = []string{"aac", "mp3", "ac3", "eac3", "flac", "opus", "alac", "truehd", "dts", "dts_hd"}
+	fmp4CopyAudio = []string{"aac", "mp3", "ac3", "eac3", "flac", "opus", "alac", "truehd", "dts", "pcm"}
 )
 
 // hlsTransports lists the device's HLS transports this server can produce, in
@@ -435,7 +443,8 @@ var convertedAudioRates = map[string][]int{
 	"aac":  {48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350},
 	"ac3":  {48000, 44100, 32000},
 	"eac3": {48000, 44100, 32000},
-	"flac": {192000, 176400, 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000},
+	"flac": {384000, 352800, 192000, 176400, 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000},
+	"pcm":  {384000, 352800, 192000, 176400, 96000, 88200, 48000, 44100, 32000, 16000, 8000},
 	"opus": {48000, 24000, 16000, 12000, 8000},
 }
 
@@ -453,13 +462,13 @@ func convertedSampleRate(a *SourceAudio, codec string, output *ClientAudioCodec)
 		return 48000, true
 	}
 	limit := 48000
-	if codec == "flac" {
-		limit = 192000
+	if codec == "flac" || codec == "pcm" {
+		limit = 655350
 	}
 	if output != nil && output.MaxSampleRate > 0 && output.MaxSampleRate < limit {
 		limit = output.MaxSampleRate
 	}
-	if codec == "flac" && a.SampleRate > 0 && a.SampleRate <= limit {
+	if (codec == "flac" || codec == "pcm") && a.SampleRate > 0 && a.SampleRate <= limit {
 		return a.SampleRate, true
 	}
 	chosen := 0
@@ -523,6 +532,9 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 	// Keep the widest audible layout first. Within it, keep lossless samples,
 	// then receiver-friendly Dolby, Opus and AAC, before dropping channels.
 	for _, n := range layouts {
+		if c := client.audioCodec("pcm"); c != nil && c.Preferred {
+			candidates = append(candidates, candidate{"pcm", n})
+		}
 		for _, o := range outputs.Audio {
 			if o.Lossless {
 				candidates = append(candidates, candidate{o.Codec, n})
@@ -556,7 +568,7 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 		if p := client.passthroughCodec(c.codec); p != nil && (p.MaxChannels == 0 || p.MaxChannels >= c.channels) {
 			passed = true
 		}
-		if c.codec == "flac" && decoder != nil && decoder.MaxBitDepth > 0 && decoder.MaxBitDepth < 16 {
+		if (c.codec == "flac" || c.codec == "pcm") && decoder != nil && decoder.MaxBitDepth > 0 && decoder.MaxBitDepth < 16 {
 			continue
 		}
 		if !decoded && !passed {

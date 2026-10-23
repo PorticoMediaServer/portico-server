@@ -794,6 +794,7 @@ func run() (runErr error) {
 	// Probe encoders once at startup, off the request path, so the first session
 	// never waits on ffmpeg. Sessions that arrive earlier take software until then.
 	player.ConfigureProbe(assets.Probe{Binary: ffprobeTool, Supervisor: storeIO.Supervisor})
+	offlineDownloads.ConfigureDelivery(deliverySettings)
 	supervise.Go("cmd.hardware-report", func() { player.HardwareReport(context.Background()) })
 	appliedConversionSetting := startupMedia.TemporaryDirectory
 	conversionDirectory := layout.Transcode

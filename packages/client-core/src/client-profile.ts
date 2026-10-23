@@ -54,7 +54,7 @@ export type ClientVideoCodec={chromaSubsampling?:('4:2:0'|'4:2:2'|'4:4:4'|'4:0:0
 /** One operating point of a video decoder. `bitDepths` absent: every depth the codec lists. */
 export type ClientVideoLimit={bitDepths?:number[];maxWidth?:number;maxHeight?:number;maxFrameRate?:number;maxLevel?:number};
 /** An audio codec the engine decodes itself. */
-export type ClientAudioCodec={variants?:AudioVariant[];codec:string;maxChannels?:number;maxSampleRate?:number;maxBitDepth?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
+export type ClientAudioCodec={preferred?:boolean;variants?:AudioVariant[];codec:string;maxChannels?:number;maxSampleRate?:number;maxBitDepth?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
 /** An audio codec the engine can hand to the audio output undecoded. Used only while
  * `audioOutput.route` is hdmi, arc, earc, optical or spdif and the viewer has not turned it off. */
 export type ClientAudioPassthrough={variants?:AudioVariant[];codec:string;maxChannels?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
@@ -119,7 +119,7 @@ function engineProblem(e:EngineCapabilities|undefined,path:string):string|null{
   if(v.evidence!==undefined&&!evidences.includes(v.evidence))return path+'.video.'+v.codec+'.evidence';
  }
  for(const a of e.audio??[]){
-  if(!variantsAccepted(a.variants)||typeof a.codec!=='string'||!token.test(a.codec)||!int(a.maxChannels,64)||!int(a.maxSampleRate,1<<22)||!int(a.maxBitDepth,64)||!tokens(a.objectAudio,4))return path+'.audio.'+a.codec;
+  if(!bool(a.preferred)||!variantsAccepted(a.variants)||typeof a.codec!=='string'||!token.test(a.codec)||!int(a.maxChannels,64)||!int(a.maxSampleRate,1<<22)||!int(a.maxBitDepth,64)||!tokens(a.objectAudio,4))return path+'.audio.'+a.codec;
   if(a.evidence!==undefined&&!evidences.includes(a.evidence))return path+'.audio.'+a.codec+'.evidence';
  }
  for(const a of e.audioPassthrough??[]){
@@ -427,7 +427,7 @@ export function mpvEngine(native:EngineCapabilities,facts:MpvFacts={}):EngineCap
   const hw=hard.get(codec);
   // Hardware decoding where the platform has it; mpv also takes 10-bit H.264 in software.
   const width=hw?.maxWidth??softWidth,height=hw?.maxHeight??softHeight;
-  const entry:ClientVideoCodec={codec,bitDepths:tenBit?[8,10]:[8],maxWidth:width,maxHeight:height,maxFrameRate:hw?.maxFrameRate??60,dynamicRanges:hdr&&tenBit?['sdr','hdr10','hlg']:['sdr'],interlaced:true,evidence:hw?.evidence??'declared'};
+  const entry:ClientVideoCodec={codec,chromaSubsampling:['4:2:0','4:2:2','4:4:4','4:0:0'],frameRateModes:['constant','variable'],bitDepths:tenBit?[8,10]:[8],maxWidth:width,maxHeight:height,maxFrameRate:hw?.maxFrameRate??60,dynamicRanges:hdr&&tenBit?['sdr','hdr10','hlg']:['sdr'],interlaced:true,evidence:hw?.evidence??'declared'};
   if(hw?.maxLevel)entry.maxLevel=hw.maxLevel;
   if(codec==='hevc'&&facts.dolbyVisionProfiles?.length){entry.dolbyVisionProfiles=[...facts.dolbyVisionProfiles];entry.dynamicRanges=[...entry.dynamicRanges!,'dolby_vision'];}
   return entry;
@@ -668,6 +668,7 @@ export function appleProfile(options:{television:boolean;osVersion?:string;model
   if(facts.hdrModes?.hdr10)display.push('hdr10');
   if(facts.hdrModes?.hlg)display.push('hlg');
   if(facts.hdrModes?.dolbyVision)display.push('dolby_vision');
+  if(facts.hdrModes?.hdr10Plus===true&&facts.videoEligibility?.hdr10Plus===true)display.push('hdr10plus');
  }
  // What the device *decodes* is separate from what the screen *shows*. With hardware HEVC Main10,
  // AVPlayer decodes HDR10 and HLG and tone-maps them for an SDR screen itself, so the server must
@@ -678,8 +679,21 @@ export function appleProfile(options:{television:boolean;osVersion?:string;model
  hevc.dynamicRanges=hardwareHevc?[...new Set<DynamicRange>(['sdr','hdr10','hlg',...display])]:[...display];
  // Profile 5 is single-layer Dolby Vision; 8.1 and 8.4 carry an HDR10 or HLG base. With the
  // Dolby Vision decoder in hardware AVPlayer handles both, on an SDR screen too.
- if(facts.hardwareDecode?.dolbyVision===true||(display.includes('dolby_vision')&&facts.hardwareDecode?.dolbyVision!==false)){hevc.dolbyVisionProfiles=[5,8];if(!hevc.dynamicRanges.includes('dolby_vision'))hevc.dynamicRanges=[...hevc.dynamicRanges,'dolby_vision'];}
+ const eligible=facts.videoEligibility;
+ hevc.dolbyVisionProfiles=[];
+ if(eligible?.dolbyVision5===true)hevc.dolbyVisionProfiles.push(5);
+ if(eligible?.dolbyVision81===true||eligible?.dolbyVision84===true)hevc.dolbyVisionProfiles.push(8);
+ if(hevc.dolbyVisionProfiles.length&&display.includes('dolby_vision')){if(!hevc.dynamicRanges.includes('dolby_vision'))hevc.dynamicRanges.push('dolby_vision');}
  else hevc.dynamicRanges=hevc.dynamicRanges.filter(x=>x!=='dolby_vision');
+ for(const codec of engine.audio??[])if(codec.codec==='eac3'){
+  codec.objectAudio=facts.audio?.eac3JocEligible===true?['atmos']:[];
+  codec.variants=facts.audio?.eac3JocEligible===true?['eac3','eac3_joc']:['eac3'];
+ }
+ for(const codec of engine.audioPassthrough??[])if(codec.codec==='eac3'){
+  codec.objectAudio=facts.audio?.eac3JocEligible===true?['atmos']:[];
+  codec.variants=facts.audio?.eac3JocEligible===true?['eac3','eac3_joc']:['eac3'];
+ }
+
  // The Apple TV HD (AppleTV5,x) and devices without hardware HEVC decode H.264 up to 1080p only;
  // the declared 4K floor would send them files they stutter on.
  const h264=engine.video!.find(x=>x.codec==='h264');
@@ -689,9 +703,9 @@ export function appleProfile(options:{television:boolean;osVersion?:string;model
   for(const t of engine.transports!)if((t.transport==='direct'&&t.video?.length)||t.transport==='hls_fmp4')t.video=[...t.video!,'av1'];
  }
  document.display={...(facts.screen?{width:Math.round(facts.screen.width),height:Math.round(facts.screen.height),maxFrameRate:facts.screen.maxFrameRate??60}:{}),dynamicRanges:display};
- const channels=Math.max(2,Math.min(16,facts.audio?.maxOutputChannels??2));
+ const channels=Math.max(2,Math.min(16,facts.audio?.maximumOutputNumberOfChannels??facts.audio?.maxOutputChannels??2));
  const route=appleRoute(facts.audio?.route??'');
- document.audioOutput={maxChannels:facts.audio?.spatial?Math.max(channels,8):channels,...(route&&token.test(route)?{route}:{}),spatial:facts.audio?.spatial===true};
+ document.audioOutput={maxChannels:channels,...(route&&token.test(route)?{route}:{}),spatial:facts.audio?.spatial===true};
  return capabilityDocumentProblem(document)?declared:document;
 }
 

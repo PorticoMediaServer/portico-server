@@ -337,9 +337,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			if p.Trace != nil && p.Trace.Video != nil && source.Video != nil {
 				v := source.Video
 				p.Trace.Video.OutputRange = effectiveRange(v, client.videoCodec(v.Codec), client)
-				if p.VideoAction == "copy" && v.DolbyVisionProfile == 7 {
-					p.Trace.Video.OutputRange = assets.RangeHDR10
-				}
+
 				if p.VideoAction == "convert" {
 					p.Trace.Video.OutputRange = assets.RangeSDR
 					if p.OutputRange != "" {
@@ -360,7 +358,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 					p.Trace.Notes = append(p.Trace.Notes, NoteAudioPassthrough)
 				}
 			}
-			if p.VideoAction == "convert" || p.AudioAction == "convert" || p.VideoAction == "copy" && videoOf(source) != nil && videoOf(source).DynamicRange == assets.RangeDolbyVision && p.Trace.Video.OutputRange != assets.RangeDolbyVision {
+			if containsString(p.ReasonCodes, ReasonDTSCoreExtracted) || p.VideoAction == "convert" || p.AudioAction == "convert" || p.VideoAction == "copy" && videoOf(source) != nil && videoOf(source).DynamicRange == assets.RangeDolbyVision && p.Trace.Video.OutputRange != assets.RangeDolbyVision {
 				err = finishConversionTarget(&p, videoOf(source), sourceAudioAt(source.Audio, p.AudioStream), client, in.Hardware, in.Server)
 			}
 			if err == nil {
@@ -396,12 +394,12 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	video := source.Video
 	if video != nil {
 		p.SourceVideoCodec, p.OutputVideoCodec = video.Codec, video.Codec
-		trace.Video = &TraceVideo{Rotation: video.Rotation, SampleAspectRatio: video.SampleAspectRatio, Codec: video.Codec, Profile: video.Profile, Level: video.Level, BitDepth: video.BitDepth, Width: video.Width, Height: video.Height, FrameRate: video.FrameRate, Interlaced: video.Interlaced, DynamicRange: video.DynamicRange, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionLevel: video.DolbyVisionLevel, DolbyVisionCompatibility: video.DolbyVisionCompatibility, BitRate: video.BitRate}
+		trace.Video = &TraceVideo{Breadth: video.StreamBreadth, HDR10Plus: video.HDR10Plus, MasterDisplay: video.MasterDisplay, MaxCLL: video.MaxCLL, Rotation: video.Rotation, SampleAspectRatio: video.SampleAspectRatio, Codec: video.Codec, Profile: video.Profile, Level: video.Level, BitDepth: video.BitDepth, Width: video.Width, Height: video.Height, FrameRate: video.FrameRate, Interlaced: video.Interlaced, DynamicRange: video.DynamicRange, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionLevel: video.DolbyVisionLevel, DolbyVisionCompatibility: video.DolbyVisionCompatibility, BitRate: video.BitRate}
 	}
 	if audio != nil {
 		p.SourceAudioCodec, p.OutputAudioCodec = audio.Codec, audio.Codec
 		p.AudioStream = audio.Index
-		trace.Audio = &TraceAudio{StreamIndex: audio.Index, Codec: audio.Codec, Channels: audio.Channels, Language: audio.Language, ObjectAudio: audio.ObjectAudio, ChosenBy: chosenBy, Tracks: len(source.Audio)}
+		trace.Audio = &TraceAudio{Variant: sourceVariant(audio), SampleRate: audio.SampleRate, BitDepth: sourceAudioDepth(audio), Layout: audio.Layout, StreamIndex: audio.Index, Codec: audio.Codec, Channels: audio.Channels, Language: audio.Language, ObjectAudio: audio.ObjectAudio, ChosenBy: chosenBy, Tracks: len(source.Audio)}
 	}
 	if in.Remote && !in.BurnIn {
 		p.Mode = "remote"
@@ -490,7 +488,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		var best []RouteRejection
 		matched := false
 		for _, t := range client.Transports {
-			if t.Transport != TransportDirect || !containsString(t.Containers, source.Container) {
+			if t.Transport != TransportDirect || !transportContainsContainer(t, source.Container) {
 				continue
 			}
 			var r []RouteRejection
@@ -535,6 +533,11 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	}
 	conversionAllowed := in.TranscodingEnabled && cfg.ConversionMode != "never" && policy.Transcode != "never"
 
+	copyAudio := audio
+	core := coreAudioCandidate(audio, client, in.Server)
+	if core != nil {
+		copyAudio = core
+	}
 	// Route 2: both streams copied into HLS.
 	remuxable := false
 	if !audioOnly {
@@ -549,7 +552,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		case !cfg.RemuxEnabled:
 			rejections = append(rejections, RouteRejection{RejectOwnerRemuxDisabled, ""})
 		}
-		transport, r := bestCopyTransport(transports, client, video, audio, in.Target.AllowHDR, true)
+		transport, r := bestCopyTransport(transports, client, video, copyAudio, in.Target.AllowHDR, true)
 		r = append(r, baseCopyRejections(video, client, in.Server)...)
 		rejections = append(rejections, r...)
 		// remuxable describes the source and the device, not the preferences:
@@ -770,6 +773,9 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	case DeliveryOriginal:
 		return p, nil
 	case DeliveryCopyRemux:
+		if core != nil {
+			p.ReasonCodes = append(p.ReasonCodes, ReasonDTSCoreExtracted)
+		}
 		p.OutputContainer = output
 		p.VideoAction, p.AudioAction = "copy", "copy"
 		if audio == nil {
@@ -1084,7 +1090,18 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 			request.Target = &target
 		}
 	}
-	return decoder.BuildConversion(request)
+	graph, err := decoder.BuildConversion(request)
+	if err != nil {
+		return graph, err
+	}
+	if request.CopyAudio && containsString(p.ReasonCodes, ReasonDTSCoreExtracted) {
+		filter, e := decoder.AudioCopyFilter(p.OutputAudioCodec, true, request.Toolchain)
+		if e != nil {
+			return graph, e
+		}
+		graph.Audio = append(graph.Audio, filter...)
+	}
+	return graph, nil
 }
 
 // Legacy sessions without a snapshot return nil; callers must choose an explicit

@@ -154,6 +154,9 @@ func TestDolbyVisionCopyAndSDRBaseTargetsStayAccurate(t *testing.T) {
 	video := hdr10Detail
 	video.DynamicRange = assets.RangeDolbyVision
 	video.DolbyVisionProfile = 5
+	video.DolbyVisionRPU = true
+	video.DolbyVisionMetadataKnown = true
+	video.DolbyVisionLevel = 6
 	video.CodecTag = "dvh1"
 	source := videoSource("mp4", "hevc", video, SourceAudio{Index: 1, Codec: "truehd", Channels: 8, StreamDetail: assets.StreamDetail{SampleRate: 48000, BitsPerSample: 24}})
 	p := decide(t, source, appleTVProfile(), func(in *DeliveryInput) { in.Server = plannerToolchain(); in.FMP4Output = true })

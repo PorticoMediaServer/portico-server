@@ -125,6 +125,7 @@ type ClientVideoCodec struct {
 // ClientAudioCodec is one audio decoder of an engine: the device turns the
 // codec into sound itself.
 type ClientAudioCodec struct {
+	Preferred     bool     `json:"preferred,omitempty"`
 	Variants      []string `json:"variants,omitempty"`
 	Codec         string   `json:"codec"`
 	MaxChannels   int      `json:"maxChannels"`
@@ -1001,4 +1002,18 @@ func WithVideoBitrateCeiling(p ClientProfile, ceiling int) ClientProfile {
 // snapshot, so download menus and playback make their choices from one source.
 func CapabilityDocumentTx(ctx context.Context, tx *sql.Tx, p identity.Principal) CapabilityDocument {
 	return capabilityDocumentFor(ctx, tx, p)
+}
+
+// CapabilityDocumentForDeviceTx is used only after download request authority
+// has checked its destination device. Missing/revoked facts use the baseline.
+func CapabilityDocumentForDeviceTx(ctx context.Context, tx *sql.Tx, device string) CapabilityDocument {
+	var raw string
+	if tx.QueryRowContext(ctx, `SELECT document FROM playback_device_capabilities WHERE device_id=?`, device).Scan(&raw) != nil {
+		return BaselineCapabilityDocument()
+	}
+	d, e := ParseCapabilityDocument([]byte(raw))
+	if e != nil {
+		return BaselineCapabilityDocument()
+	}
+	return d
 }

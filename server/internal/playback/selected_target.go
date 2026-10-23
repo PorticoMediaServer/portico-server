@@ -54,12 +54,13 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 	}
 	if video != nil {
 		t.SourceRange = video.DynamicRange
+		if p.VideoAction == "convert" && video.DolbyVisionProfile == 5 && t.DynamicRange == assets.RangeHDR10 {
+			t.ReshapeDolbyVision = true
+		}
 		if p.VideoAction == "copy" {
 			t.BitDepth = video.BitDepth
 			t.DynamicRange = effectiveRange(video, client.videoCodec(video.Codec), client)
-			if video.DolbyVisionProfile == 7 {
-				t.DynamicRange = assets.RangeHDR10
-			}
+
 			t.DolbyVisionProfile, t.DolbyVisionCompatibility = video.DolbyVisionProfile, video.DolbyVisionCompatibility
 			t.CopyDolbyVision = t.DynamicRange == assets.RangeDolbyVision
 		} else {
@@ -88,14 +89,14 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 	if audio != nil {
 		if p.AudioAction == "copy" {
 			t.AudioChannels, t.AudioSampleRate, t.AudioBitrateBPS = audio.Channels, audio.SampleRate, 0
-			if t.AudioCodec == "flac" {
+			if t.AudioCodec == "flac" || t.AudioCodec == "pcm" {
 				t.AudioBitrateBPS = 0
 			}
 		}
 		if p.AudioAction == "copy" || t.AudioChannels == audio.Channels && (audio.Layout == "5.1" || audio.Layout == "5.1(side)" || audio.Layout == "7.1" || audio.Layout == "mono" || audio.Layout == "stereo") {
 			t.AudioChannelLayout = audio.Layout
 		}
-		if t.AudioCodec == "flac" {
+		if t.AudioCodec == "flac" || t.AudioCodec == "pcm" {
 			t.AudioBitDepth = flacDepth(audio, client.audioCodec(t.AudioCodec))
 			if sourceAudioDepth(audio) > t.AudioBitDepth {
 				p.AudioLossless = false
@@ -211,7 +212,7 @@ func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, codec *ClientVideoCo
 }
 
 func baseCopyRejections(video *SourceVideo, client ClientProfile, facts *decoder.ToolchainFacts) []RouteRejection {
-	if video == nil || video.DynamicRange != assets.RangeDolbyVision || video.DolbyVisionProfile != 7 && nativeDolbyVision(video, client.videoCodec(video.Codec), client) {
+	if video == nil || video.DynamicRange != assets.RangeDolbyVision || nativeDolbyVision(video, client.videoCodec(video.Codec), client) {
 		return nil
 	}
 	if facts == nil || !facts.BitstreamFilters["dovi_rpu"] || video.DolbyVisionProfile == 7 && !facts.BitstreamFilters["filter_units"] {

@@ -14,10 +14,11 @@ import (
 // than a fixed ladder rate. BitrateBPS, when supplied, still caps that mode.
 // Copy actions remain on ConversionRequest; a copy target names source codecs.
 type ConversionTarget struct {
-	VideoCodec   string `json:"videoCodec"`
-	BitDepth     int    `json:"bitDepth"`
-	DynamicRange string `json:"dynamicRange"`
-	ToneMap      bool   `json:"toneMap"`
+	ReshapeDolbyVision bool   `json:"reshapeDolbyVision,omitempty"`
+	VideoCodec         string `json:"videoCodec"`
+	BitDepth           int    `json:"bitDepth"`
+	DynamicRange       string `json:"dynamicRange"`
+	ToneMap            bool   `json:"toneMap"`
 	// Unmapped says an HDR picture is written as a standard one without tone
 	// mapping, because the owner turned tone mapping off. It is the one way a
 	// conversion from HDR to SDR may go without it: left out by accident, the
@@ -74,7 +75,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	}
 	if t.Packaging == "" {
 		t.Packaging = "mpegts_hls"
-		if (t.VideoCodec != "h264" && t.VideoCodec != "mpeg2video") || t.AudioCodec == "flac" || t.AudioCodec == "opus" || t.AudioCodec == "truehd" {
+		if (t.VideoCodec != "h264" && t.VideoCodec != "mpeg2video") || t.AudioCodec == "flac" || t.AudioCodec == "pcm" || t.AudioCodec == "opus" || t.AudioCodec == "truehd" {
 			t.Packaging = "fmp4_hls"
 		}
 	}
@@ -87,10 +88,10 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.AudioBitDepth != 0 && t.AudioBitDepth != 16 && t.AudioBitDepth != 24 && t.AudioBitDepth != 32 {
 		return t, ErrInvalidConfiguration
 	}
-	if t.AudioCodec != "flac" && t.AudioBitDepth != 0 {
+	if t.AudioCodec != "flac" && t.AudioCodec != "pcm" && t.AudioBitDepth != 0 {
 		return t, ErrInvalidConfiguration
 	}
-	if t.AudioCodec == "flac" && t.AudioBitrateBPS > 0 {
+	if (t.AudioCodec == "flac" || t.AudioCodec == "pcm") && t.AudioBitrateBPS > 0 {
 		return t, ErrInvalidConfiguration
 	}
 	if t.VideoCodec != "h264" && t.VideoCodec != "hevc" && t.VideoCodec != "av1" && t.VideoCodec != "mpeg2video" && t.VideoCodec != "vp9" {
@@ -104,7 +105,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.DynamicRange != "sdr" && t.DynamicRange != "hdr10" && t.DynamicRange != "hlg" && !(t.CopyDolbyVision && t.DynamicRange == "dolby_vision") {
 		return t, ErrInvalidConfiguration
 	}
-	if t.DynamicRange != "sdr" && (t.BitDepth < 10 || t.ToneMap) {
+	if t.DynamicRange != "sdr" && (t.BitDepth < 10 && !(t.CopyDolbyVision && (t.DolbyVisionProfile == 4 || t.DolbyVisionProfile == 9)) || t.ToneMap) {
 		return t, ErrInvalidConfiguration
 	}
 	if t.SourceRange != "" && t.SourceRange != "sdr" && t.SourceRange != "hdr10" && t.SourceRange != "hdr10_plus" && t.SourceRange != "hlg" && t.SourceRange != "dolby_vision" {
@@ -113,10 +114,13 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if base := DolbyVisionBaseRange(t.DolbyVisionProfile, t.DolbyVisionCompatibility); !t.CopyDolbyVision && base != "" && t.SourceRange == "dolby_vision" {
 		t.SourceRange = base
 	}
-	if t.SourceRange != "" && t.DynamicRange != "sdr" && t.SourceRange != t.DynamicRange && !(t.SourceRange == "hdr10_plus" && t.DynamicRange == "hdr10") {
+	if t.ReshapeDolbyVision && (t.SourceRange != "dolby_vision" || t.DolbyVisionProfile != 5 || t.DynamicRange != "hdr10" || t.BitDepth != 10 || t.CopyDolbyVision || t.ToneMap) {
+		return t, ErrInvalidConfiguration
+	}
+	if t.SourceRange != "" && t.DynamicRange != "sdr" && t.SourceRange != t.DynamicRange && !(t.SourceRange == "hdr10_plus" && t.DynamicRange == "hdr10") && !t.ReshapeDolbyVision {
 		return t, errors.New("dynamic_range_conversion_unavailable")
 	}
-	if t.CopyDolbyVision && (t.VideoCodec != "hevc" || t.BitDepth != 10 || t.DynamicRange != "dolby_vision" || t.SourceRange != "dolby_vision" || t.DolbyVisionProfile == 0 || t.Packaging != "fmp4_hls") {
+	if t.CopyDolbyVision && (!dolbyVisionCodec(t.VideoCodec, t.DolbyVisionProfile) || t.BitDepth != 10 && t.DolbyVisionProfile != 9 || t.DynamicRange != "dolby_vision" || t.SourceRange != "dolby_vision" || t.DolbyVisionProfile == 0 || t.Packaging != "fmp4_hls") {
 		return t, ErrInvalidConfiguration
 	}
 	if t.Unmapped && (t.ToneMap || t.DynamicRange != "sdr") {
@@ -135,11 +139,11 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 		return t, ErrInvalidConfiguration
 	}
 	switch t.AudioCodec {
-	case "aac", "ac3", "eac3", "opus", "flac", "dts", "dts_hd", "truehd", "mp3", "mp2", "alac":
+	case "aac", "ac3", "eac3", "opus", "flac", "dts", "dts_hd", "truehd", "mp3", "mp2", "alac", "pcm":
 	default:
 		return t, ErrInvalidConfiguration
 	}
-	if t.AudioSampleRate < 0 || t.AudioSampleRate > 192000 {
+	if t.AudioSampleRate < 0 || t.AudioSampleRate > 655350 {
 		return t, ErrInvalidConfiguration
 	}
 	if t.AudioChannelLayout == "" {
@@ -151,13 +155,13 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.Packaging != "mpegts_hls" && t.Packaging != "fmp4_hls" {
 		return t, ErrInvalidConfiguration
 	}
-	if t.Packaging == "mpegts_hls" && ((t.VideoCodec != "h264" && t.VideoCodec != "hevc" && t.VideoCodec != "mpeg2video") || t.AudioCodec == "flac" || t.AudioCodec == "opus" || t.AudioCodec == "truehd") {
+	if t.Packaging == "mpegts_hls" && ((t.VideoCodec != "h264" && t.VideoCodec != "hevc" && t.VideoCodec != "mpeg2video") || t.AudioCodec == "flac" || t.AudioCodec == "pcm" || t.AudioCodec == "opus" || t.AudioCodec == "truehd") {
 		return t, errors.New("codec_requires_fragmented_mp4")
 	}
 	if t.MasterDisplay != "" && !masteringDisplayPattern.MatchString(t.MasterDisplay) || t.MaxCLL != "" && !maxCLLPattern.MatchString(t.MaxCLL) {
 		return t, ErrInvalidConfiguration
 	}
-	if t.DolbyVisionProfile < 0 || t.DolbyVisionProfile > 9 || t.DolbyVisionCompatibility < 0 || t.DolbyVisionCompatibility > 6 {
+	if t.DolbyVisionProfile < 0 || t.DolbyVisionProfile > 10 || t.DolbyVisionCompatibility < 0 || t.DolbyVisionCompatibility > 6 {
 		return t, ErrInvalidConfiguration
 	}
 	return t, nil
@@ -290,7 +294,13 @@ func DolbyVisionBaseRange(profile, compatibility int) string {
 	if profile == 7 {
 		return "hdr10"
 	}
-	if profile == 8 {
+	if profile == 9 {
+		return "sdr"
+	}
+	if profile == 4 && compatibility == 2 {
+		return "sdr"
+	}
+	if profile == 8 || profile == 10 {
 		switch compatibility {
 		case 1:
 			return "hdr10"
@@ -364,4 +374,16 @@ func svtHDRParams(t ConversionTarget) string {
 		out += ":content-light=" + t.MaxCLL
 	}
 	return out
+}
+
+func dolbyVisionCodec(codec string, profile int) bool {
+	switch profile {
+	case 9:
+		return codec == "h264"
+	case 10:
+		return codec == "av1"
+	case 4, 5, 7, 8:
+		return codec == "hevc"
+	}
+	return false
 }

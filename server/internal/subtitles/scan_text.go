@@ -25,7 +25,7 @@ func (s *Service) ImportScanText(ctx context.Context, item, source string, check
 
 func textFormat(format string) bool {
 	switch format {
-	case "srt", "vtt", "ass", "ssa", "smi", "sami", "ttml", "dfxp":
+	case "cea608", "cea708", "srt", "vtt", "ass", "ssa", "smi", "sami", "ttml", "dfxp":
 		return true
 	}
 	return false

@@ -315,7 +315,7 @@ func SupportedForKind(path, kind string) bool {
 	if kind == "music" || kind == "audiobook" {
 		return audio || extension == ".mp4"
 	}
-	return SupportedPath(path) && !audio
+	return !audio && ProbeVideoCandidate(path)
 }
 
 // OpenPlayback validates the opened descriptor against the creation-time pin,
@@ -344,4 +344,16 @@ func OpenPlayback(db *sql.DB, session, grantHash string) (*os.File, error) {
 func demuxerIdentity(raw string) string {
 	name, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(raw)), ",")
 	return streamText(name, 64)
+}
+
+// A suffix is a discovery hint, never an FFmpeg demuxer whitelist. Unknown
+// regular library files are probed; common metadata, images and archives are
+// excluded before launching a bounded probe. A timed video stream is still
+// required before anything becomes a playable catalog asset.
+func ProbeVideoCandidate(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".nfo", ".txt", ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".db", ".sqlite", ".sqlite3", ".srt", ".vtt", ".ass", ".ssa", ".sup", ".idx", ".sub", ".cue", ".log", ".md", ".url", ".lnk", ".jpg", ".jpeg", ".png", ".webp", ".avif", ".bmp", ".tif", ".tiff", ".svg", ".ico", ".ttf", ".otf", ".woff", ".woff2", ".zip", ".rar", ".7z", ".gz", ".xz", ".bz2", ".tar", ".pdf", ".epub", ".cbz", ".cbr":
+		return false
+	}
+	return true
 }

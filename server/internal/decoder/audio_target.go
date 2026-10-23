@@ -14,10 +14,19 @@ func buildAudioTarget(t ConversionTarget, downmix bool, facts *ToolchainFacts) (
 	}
 	codec := t.AudioCodec
 	encoder := codec
+	if codec == "pcm" {
+		encoder = "pcm_s24le"
+		if t.AudioBitDepth == 16 {
+			encoder = "pcm_s16le"
+		}
+		if t.AudioBitDepth == 32 {
+			encoder = "pcm_s32le"
+		}
+	}
 	if codec == "opus" {
 		encoder = "libopus"
 	}
-	if codec != "aac" && codec != "ac3" && codec != "eac3" && codec != "opus" && codec != "flac" {
+	if codec != "aac" && codec != "ac3" && codec != "eac3" && codec != "opus" && codec != "flac" && codec != "pcm" {
 		return nil, ErrInvalidConfiguration
 	}
 	// Upstream AC-3/E-AC-3 encoders only encode up to 5.1. Eight-channel
@@ -35,7 +44,7 @@ func buildAudioTarget(t ConversionTarget, downmix bool, facts *ToolchainFacts) (
 	if codec == "aac" && !aacTargetRate(rate) {
 		return nil, ErrInvalidConfiguration
 	}
-	if codec != "flac" && rate > 48000 {
+	if codec != "flac" && codec != "pcm" && rate > 48000 {
 		return nil, ErrInvalidConfiguration
 	}
 	if codec == "ac3" || codec == "eac3" {
@@ -61,6 +70,9 @@ func buildAudioTarget(t ConversionTarget, downmix bool, facts *ToolchainFacts) (
 		}
 	}
 	out = append(out, "-af", filters)
+	if codec == "pcm" {
+		return out, nil
+	}
 	if codec == "flac" {
 		depth := t.AudioBitDepth
 		if depth == 0 {

@@ -50,7 +50,7 @@ test('the viewer’s player setting and overrides are stamped on the document',(
 });
 
 test('the mpv engine reads everything, draws every subtitle kind and respects the device’s decoders',()=>{
- const apple=appleProfile({television:true},{hardwareDecode:{hevc:true,dolbyVision:true},hdrModes:{hdr10:true,hlg:true,dolbyVision:true},eligibleForHDRPlayback:true,audio:{maxOutputChannels:8,route:'HDMI'}});
+ const apple=appleProfile({television:true},{hardwareDecode:{hevc:true,dolbyVision:true},videoEligibility:{dolbyVision5:true,dolbyVision81:true,dolbyVision84:true},hdrModes:{hdr10:true,hlg:true,dolbyVision:true},eligibleForHDRPlayback:true,audio:{maxOutputChannels:8,route:'HDMI'}});
  const d=withMpvEngine(apple,{version:'0.39'});
  assert.equal(capabilityDocumentProblem(d),null);
  const mpv=d.engines.mpv!;
@@ -123,7 +123,7 @@ test('a probe that throws or hangs leaves the declared floor',async()=>{
 
 test('Apple facts widen and narrow the declared table',()=>{
  const options={television:true,osVersion:'18.0'};
- const tv=appleProfile(options,{model:'AppleTV14,1',hardwareDecode:{hevc:true,av1:false,dolbyVision:true},hdrModes:{hdr10:true,hlg:true,dolbyVision:true},eligibleForHDRPlayback:true,screen:{width:3840,height:2160,maxFrameRate:60},audio:{maxOutputChannels:8,route:'HDMI',spatial:false}});
+ const tv=appleProfile(options,{model:'AppleTV14,1',hardwareDecode:{hevc:true,av1:false,dolbyVision:true},videoEligibility:{dolbyVision5:true,dolbyVision81:true,dolbyVision84:true},hdrModes:{hdr10:true,hlg:true,dolbyVision:true},eligibleForHDRPlayback:true,screen:{width:3840,height:2160,maxFrameRate:60},audio:{maxOutputChannels:8,route:'HDMI',spatial:false}});
  assert.equal(capabilityDocumentProblem(tv),null);
  assert.equal(tv.engines.native.evidence,'mixed');
  assert.deepEqual(tv.engines.native.video!.find(v=>v.codec==='hevc')!.dolbyVisionProfiles,[5,8]);
@@ -139,7 +139,7 @@ test('Apple facts widen and narrow the declared table',()=>{
  // Hardware HEVC decodes HDR10/HLG (and Dolby Vision with its decoder) for an SDR screen too: the
  // decoder lists the ranges, the display stays SDR, and the engine says it tone-maps.
  const sdrScreen=appleProfile(options,{hardwareDecode:{hevc:true,dolbyVision:true},hdrModes:{},eligibleForHDRPlayback:false,audio:{maxOutputChannels:2}});
- assert.deepEqual(sdrScreen.engines.native.video!.find(v=>v.codec==='hevc')!.dynamicRanges,['sdr','hdr10','hlg','dolby_vision']);
+ assert.deepEqual(sdrScreen.engines.native.video!.find(v=>v.codec==='hevc')!.dynamicRanges,['sdr','hdr10','hlg']);
  assert.deepEqual(sdrScreen.display!.dynamicRanges,['sdr']);
  assert.equal(sdrScreen.engines.native.toneMapsHdr,true,'device tone mapping is declared, not implied');
  // The Apple TV HD decodes H.264 up to 1080p.

@@ -46,8 +46,11 @@ func AvailableConversionOutputs(f *ToolchainFacts) ConversionOutputs {
 			o.Video = append(o.Video, ConversionVideoOutput{codec, depth, ranges, transports})
 		}
 	}
-	for _, codec := range []string{"flac", "eac3", "ac3", "opus", "aac"} {
+	for _, codec := range []string{"flac", "pcm", "eac3", "ac3", "opus", "aac"} {
 		encoder := codec
+		if codec == "pcm" {
+			encoder = "pcm_s24le"
+		}
 		if codec == "opus" {
 			encoder = "libopus"
 		}
@@ -57,14 +60,14 @@ func AvailableConversionOutputs(f *ToolchainFacts) ConversionOutputs {
 		rates := map[int]int{1: 96000, 2: 192000, 6: 512000, 8: 768000}
 		transports := hls
 		switch codec {
-		case "flac":
+		case "flac", "pcm":
 			rates, transports = map[int]int{1: 0, 2: 0, 6: 0, 8: 0}, mp4
 		case "opus":
 			rates, transports = map[int]int{1: 64000, 2: 128000, 6: 384000, 8: 512000}, mp4
 		case "ac3", "eac3":
 			rates = map[int]int{1: 192000, 2: 384000, 6: 640000}
 		}
-		o.Audio = append(o.Audio, ConversionAudioOutput{codec, codec == "flac", rates, transports})
+		o.Audio = append(o.Audio, ConversionAudioOutput{codec, codec == "flac" || codec == "pcm", rates, transports})
 	}
 	return o
 }

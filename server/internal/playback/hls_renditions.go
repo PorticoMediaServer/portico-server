@@ -25,6 +25,10 @@ import (
 // AudioRenditionPlan describes independently produced audio on the source clock.
 // A published but unrequested rendition owns no process or generated segments.
 type AudioRenditionPlan struct {
+	Variant     string `json:"variant,omitempty"`
+	ObjectAudio string `json:"objectAudio,omitempty"`
+	CoreExtract bool   `json:"coreExtract,omitempty"`
+	Passthrough bool   `json:"passthrough"`
 	Failure     string `json:"failure,omitempty"`
 	Ordinal     int    `json:"ordinal"`
 	StreamIndex int    `json:"streamIndex"`
@@ -77,7 +81,7 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 		}
 	}
 	for _, a := range tracks {
-		r := AudioRenditionPlan{Ordinal: len(out), StreamIndex: a.Index, Action: "copy", Codec: a.Codec, Channels: a.Channels, BitrateBPS: int(a.BitRate), Language: manifestAudioLanguage(a.Language), Default: a.Index == p.AudioStream, Commentary: a.Commentary, Title: strings.TrimSpace(strings.Map(func(r rune) rune {
+		r := AudioRenditionPlan{Variant: sourceVariant(&a), ObjectAudio: a.ObjectAudio, SampleRate: a.SampleRate, BitDepth: sourceAudioDepth(&a), Passthrough: audioPassedThrough(&a, client), Ordinal: len(out), StreamIndex: a.Index, Action: "copy", Codec: a.Codec, Channels: a.Channels, BitrateBPS: int(a.BitRate), Language: manifestAudioLanguage(a.Language), Default: a.Index == p.AudioStream, Commentary: a.Commentary, Title: strings.TrimSpace(strings.Map(func(r rune) rune {
 			if r < 32 || r == 127 {
 				return ' '
 			}
@@ -87,7 +91,18 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 		if kind == TransportHLSFMP4 {
 			r.Packaging = "fmp4_hls"
 		}
-		if len(audioRejections(&a, client, *transport)) > 0 || !serverCopyAudio(kind, a.Codec) || bitrateOver(a.BitRate, target.MaxAudioBitrateBPS) {
+		candidate := a
+		if core := coreAudioCandidate(&a, client, decoder.CurrentToolchain()); core != nil && len(audioRejections(&a, client, *transport)) > 0 && len(audioRejections(core, client, *transport)) == 0 {
+			candidate = *core
+			r.CoreExtract = true
+			r.Variant = "dts_core"
+			r.ObjectAudio = ""
+			r.Channels = 0
+			r.SampleRate = core.SampleRate
+			r.BitDepth = 0
+			r.Passthrough = audioPassedThrough(core, client)
+		}
+		if len(audioRejections(&candidate, client, *transport)) > 0 || !serverCopyAudio(kind, a.Codec) || bitrateOver(a.BitRate, target.MaxAudioBitrateBPS) {
 			if !convert {
 				continue
 			}
@@ -96,6 +111,10 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 				continue
 			}
 			r.Action, r.Codec, r.Channels, r.BitrateBPS, r.SampleRate = "convert", t.Codec, t.Channels, t.Bitrate, t.SampleRate
+			r.CoreExtract = false
+			r.ObjectAudio = ""
+			r.Variant = ""
+			r.Passthrough = false
 			if t.Downmix {
 				r.Downmix = DownmixITULimited
 			}
@@ -103,10 +122,13 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 		if r.Action == "copy" || r.Channels == a.Channels && (a.Layout == "mono" || a.Layout == "stereo" || a.Layout == "5.1" || a.Layout == "5.1(side)" || a.Layout == "7.1") {
 			r.ChannelLayout = a.Layout
 		}
-		if r.Codec == "flac" {
+		if r.Codec == "flac" || r.Codec == "pcm" {
 			r.BitDepth = flacDepth(&a, client.audioCodec(r.Codec))
 		}
-		r.Label = fmt.Sprintf("%s · %s · track %d", r.Language, strings.ToUpper(r.Codec), a.Ordinal+1)
+		r.Label = fmt.Sprintf("%s, %s", r.Language, audioDisplayName(r.Variant, r.Codec, r.ObjectAudio))
+		if r.ChannelLayout != "" {
+			r.Label += ", " + r.ChannelLayout
+		}
 		if a.Title != "" {
 			r.Label = a.Title + " · " + r.Label
 		}
@@ -123,7 +145,17 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 	return out
 }
 
-func audioCodecString(codec string) string {
+func audioCodecString(codec string, variants ...string) string {
+	if codec == "dts" && len(variants) > 0 {
+		switch variants[0] {
+		case "dts_hd_hra":
+			return "dtsh"
+		case "dts_hd_ma", "dtsx":
+			return "dtsl"
+		case "dts_express":
+			return "dtse"
+		}
+	}
 	switch codec {
 	case "aac":
 		return "mp4a.40.2"
@@ -137,6 +169,8 @@ func audioCodecString(codec string) string {
 		return "opus"
 	case "flac":
 		return "fLaC"
+	case "pcm":
+		return "ipcm"
 	case "dts":
 		return "dtsc"
 	case "dts_hd":
@@ -310,11 +344,19 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 		if r.Commentary {
 			auto = "NO"
 		}
-		fmt.Fprintf(&b, "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"%s\",LANGUAGE=\"%s\",DEFAULT=%s,AUTOSELECT=%s,CHANNELS=\"%d\",URI=\"audio-%d.m3u8\"\n", manifestQuoted(r.Label), r.Language, def, auto, max(1, r.Channels), r.Ordinal)
-		if audioCodecString(r.Codec) == "" {
+		channels := ""
+		if r.Channels > 0 {
+			joc := ""
+			if r.Codec == "eac3" && r.ObjectAudio == "atmos" {
+				joc = "/JOC"
+			}
+			channels = fmt.Sprintf(",CHANNELS=\"%d%s\"", r.Channels, joc)
+		}
+		fmt.Fprintf(&b, "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"%s\",LANGUAGE=\"%s\",DEFAULT=%s,AUTOSELECT=%s%s,URI=\"audio-%d.m3u8\"\n", manifestQuoted(r.Label), r.Language, def, auto, channels, r.Ordinal)
+		if audioCodecString(r.Codec, r.Variant) == "" {
 			completeCodecs = false
 		}
-		if c := audioCodecString(r.Codec); c != "" && !containsString(codecs, c) {
+		if c := audioCodecString(r.Codec, r.Variant); c != "" && !containsString(codecs, c) {
 			codecs = append(codecs, c)
 		}
 		audioRate = max(audioRate, r.BitrateBPS)
@@ -343,18 +385,10 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 	if completeCodecs && len(codecs) > 0 {
 		fmt.Fprintf(&b, ",CODECS=\"%s\"", strings.Join(codecs, ","))
 	}
-	if hevcSampleEntry(p) == "dvh1" && p.Trace.Video.DolbyVisionProfile == 8 {
-		brand := ""
-		switch p.Trace.Video.DolbyVisionCompatibility {
-		case 1:
-			brand = "db1p"
-		case 4:
-			brand = "db4h"
-		}
-		if brand != "" {
-			fmt.Fprintf(&b, ",SUPPLEMENTAL-CODECS=\"%s/%s\"", videoCodecString(p), brand)
-		}
+	if supplemental := videoSupplementalCodecs(p); supplemental != "" {
+		fmt.Fprintf(&b, ",SUPPLEMENTAL-CODECS=\"%s\"", supplemental)
 	}
+
 	if len(p.Renditions) > 0 {
 		b.WriteString(",AUDIO=\"audio\"")
 	}
@@ -394,6 +428,9 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 			switch dynamicRange {
 			case assets.RangeHDR10, "hdr10_plus", assets.RangeDolbyVision:
 				dr = "PQ"
+				if dynamicRange == assets.RangeDolbyVision && (v.DolbyVisionProfile == 8 || v.DolbyVisionProfile == 10) && v.DolbyVisionCompatibility == 4 {
+					dr = "HLG"
+				}
 			case assets.RangeHLG:
 				dr = "HLG"
 			}
@@ -572,6 +609,14 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 		return
 	}
 	args = append(args, graph.Audio...)
+	if r.CoreExtract {
+		filter, e := decoder.AudioCopyFilter(r.Codec, true, decoder.CurrentToolchain())
+		if e != nil {
+			failed(FailureConverter)
+			return
+		}
+		args = append(args, filter...)
+	}
 	fragmented := renditionPackaging(r) == "fmp4_hls"
 	initWindow := fmt.Sprintf("audio-%d-init-%d.mp4", r.Ordinal, from)
 	outputDir := dir
@@ -757,7 +802,7 @@ func (h *HLS) renditionFile(ctx context.Context, id, name string, p *DeliveryPla
 }
 
 func hevcSampleEntry(p *DeliveryPlan) string {
-	if p != nil && p.OutputVideoCodec == "hevc" && p.VideoAction == "copy" && p.Trace != nil && p.Trace.Video != nil && p.Trace.Video.OutputRange == assets.RangeDolbyVision && (p.Trace.Video.DolbyVisionProfile == 5 || p.Trace.Video.DolbyVisionProfile == 8) {
+	if p != nil && p.OutputVideoCodec == "hevc" && p.VideoAction == "copy" && p.Trace != nil && p.Trace.Video != nil && p.Trace.Video.OutputRange == assets.RangeDolbyVision && p.Trace.Video.DolbyVisionProfile == 5 && p.Trace.Video.Breadth.DolbyVisionRPU && p.Trace.Video.DolbyVisionLevel > 0 {
 		return "dvh1"
 	}
 	return "hvc1"
@@ -778,4 +823,43 @@ func (h *HLS) noteRenditionServed(id, key string, index int) {
 	if w := h.windows[key]; w != nil {
 		w.served = max(w.served, index)
 	}
+}
+
+// Backward-compatible DV is described by its actual base in CODECS and by
+// its enhancement plus mandatory compatibility brand in SUPPLEMENTAL-CODECS.
+func videoSupplementalCodecs(p *DeliveryPlan) string {
+	if p == nil || p.VideoAction != "copy" || p.Trace == nil || p.Trace.Video == nil {
+		return ""
+	}
+	v := p.Trace.Video
+	if v.OutputRange != assets.RangeDolbyVision {
+		if v.HDR10Plus {
+			if codec := videoCodecString(p); codec != "" {
+				return codec + "/cdm4"
+			}
+		}
+		return ""
+	}
+	if !v.Breadth.DolbyVisionRPU {
+		return ""
+	}
+	brand := ""
+	switch v.DolbyVisionCompatibility {
+	case 1:
+		brand = "db1p"
+	case 2:
+		brand = "db2g"
+	case 4:
+		brand = "db4h"
+	}
+	if brand == "" || v.DolbyVisionLevel <= 0 {
+		return ""
+	}
+	if v.DolbyVisionProfile == 8 && p.OutputVideoCodec == "hevc" {
+		return fmt.Sprintf("dvh1.08.%02d/%s", v.DolbyVisionLevel, brand)
+	}
+	if v.DolbyVisionProfile == 10 && p.OutputVideoCodec == "av1" {
+		return fmt.Sprintf("dav1.10.%02d/%s", v.DolbyVisionLevel, brand)
+	}
+	return ""
 }

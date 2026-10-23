@@ -54,23 +54,24 @@ type Options struct {
 }
 
 type Service struct {
-	libraryAccess LibraryAccess
-	access        RequestAccess
-	accessMu      sync.RWMutex
-	advanceMu     sync.Mutex
-	tidied        time.Time
-	pruned        time.Time
-	db            *sql.DB
-	now           func() time.Time
-	openOriginal  SourceOpener
-	artifacts     ArtifactOpener
-	optimizer     Optimizer
-	notifier      DownloadNotifier
-	plays         playback.OfflineWriter
-	grantPath     string
-	wake          *worker.Signal
-	done          chan struct{}
-	cancel        context.CancelFunc
+	deliverySettings playback.DeliverySettings
+	libraryAccess    LibraryAccess
+	access           RequestAccess
+	accessMu         sync.RWMutex
+	advanceMu        sync.Mutex
+	tidied           time.Time
+	pruned           time.Time
+	db               *sql.DB
+	now              func() time.Time
+	openOriginal     SourceOpener
+	artifacts        ArtifactOpener
+	optimizer        Optimizer
+	notifier         DownloadNotifier
+	plays            playback.OfflineWriter
+	grantPath        string
+	wake             *worker.Signal
+	done             chan struct{}
+	cancel           context.CancelFunc
 }
 
 func New(o Options) (*Service, error) {
