@@ -12,13 +12,14 @@ import {homeCollectionCaption} from '@core/presentation/home-spotlight.ts';
 import {channelMonograms, programmeFactParts, type TimeEnvironment} from '@portico/client-core/kit-model';
 import {useFreshness, usePooledService, useQuietRefresh} from '../../platform/freshness';
 import {Artwork, AmbientArt, GeneratedArt} from '../../kit/artwork';
-import {Hero, HeroFacts, Shelf, type HeroCandidate, type LayoutPlatform} from '../../kit/layout';
+import {Hero, HeroFacts, type HeroCandidate, type LayoutPlatform} from '../../kit/layout';
 import {Button} from '../../kit/controls';
 import {CollectionBanner, LiveCard, PosterCard, RankedCard, SquareCard, WideCard, type CardSelection} from '../../kit/cards';
 import {HomeSkeleton, StateView} from '../../kit/states';
 import type {ShellArtwork} from '../../shell/artwork';
 import {useShellWidth} from '../../shell/viewport';
 import {currentHomeLive, homeCardModel, homeLiveDeadline, homePlaybackTarget, homeSpotlights} from './model';
+import {PagedShelf} from '../browse/PagedShelf';
 import styles from './home.module.css';
 
 export type HomeSelection = Readonly<{
@@ -174,20 +175,21 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bi
   const env = {t, locale: bindings.time.locale};
   const header = {heading: serverTextLabel(defaultI18n, row.titleText, row.title), subtitle: serverTextLabel(defaultI18n, row.subtitleText), platform,
     onSeeAll: row.seeAll ? () => bindings.effects.openSeeAll(row.seeAll!) : undefined};
-  const visibleRange = useCallback((first: number, last: number) => { onRange(first, last); if (row.nextCursor && last >= row.entries.length - 3) onMore(); }, [row.nextCursor, row.entries.length, onMore, onRange]);
+  const wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
+  const cardWidth = wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118;
   const live = currentHomeLive(row.live, nowMs);
   if (row.live) {
     if (!live) return null;
     const marks = channelMonograms({kind: 'authoritative', channels: live.channels.map(({channel}) => ({sourceId: channel.sourceId, id: channel.id, mark: channel.mark}))});
-    return <Shelf {...header} items={live.channels} getKey={value => JSON.stringify([value.channel.sourceId, value.channel.id])} reducedMotion={bindings.reducedMotion}
-      onVisibleRange={(first, last) => { onRange(first, last); if (row.nextCursor && last >= live.channels.length - 3) onMore(); }}
+    return <PagedShelf {...header} items={live.channels} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={platform === 'desktop' ? 316 : 262} artworkRatio={16 / 9} getKey={value => JSON.stringify([value.channel.sourceId, value.channel.id])} reducedMotion={bindings.reducedMotion}
+      onVisibleRange={onRange}
       renderItem={(item, context) => <VisibleLive item={item} mark={marks.get(item.channel.sourceId)!.get(item.channel.id)!} nowMs={nowMs} order={rowIndex * 1000 + context.index} row={row} {...bindings} />} />;
   }
   if (row.collection) {
     return <VisibleCollection row={row} rowIndex={rowIndex} {...bindings} />;
   }
   if (!row.entries.length) return null;
-  return <Shelf {...header} items={row.entries} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={visibleRange}
+  return <PagedShelf {...header} items={row.entries} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={cardWidth} artworkRatio={wide ? 16 / 9 : square ? 1 : 2 / 3} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={onRange}
     renderItem={(entry, context) => <VisibleCard entry={entry} row={row} rowIndex={rowIndex} index={context.index} platform={platform} {...bindings} />} />;
 }
 

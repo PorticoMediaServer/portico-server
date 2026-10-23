@@ -1,0 +1,75 @@
+import {useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {defaultI18n} from '@i18n';
+import {timelineFacts, type TextEnvironment} from '@portico/client-core/kit-model';
+import {durationText} from '@core/presentation/kit-model/text.ts';
+import type {BrowseSortSelection} from '@core/browse.ts';
+import {AlphabetRail, WindowedGrid, type WindowedGridHandle} from '../../kit/layout';
+import {Skeleton} from '../../kit/states';
+import {Artwork, GeneratedArt} from '../../kit/artwork';
+import {Button} from '../../kit/controls';
+import {Icon} from '../../kit/Icon';
+import {SelectionCircle} from '../../kit/selection';
+import type {ShellArtwork} from '../../shell/artwork';
+import {BrowseEntryCard, type BrowseItemActions} from './EntryCard';
+import type {BrowseController, BrowseMember} from './controller';
+import styles from './browse.module.css';
+
+export type BrowseResultsProps = Readonly<{
+  controller: BrowseController; label: string; view: 'grid' | 'list'; cardWidth: number; shape: 'poster' | 'square' | 'collection';
+  artwork: ShellArtwork; env: TextEnvironment; reducedMotion: boolean; backdrops: boolean;
+  actions: (member: BrowseMember, index: number) => BrowseItemActions;
+  onVisibleRange?: (first: number, last: number) => void;
+  onSort: (sort: BrowseSortSelection) => void;
+  empty?: ReactNode;
+}>;
+const t = defaultI18n.t;
+const columns = [
+  {id: 'title', label: 'library.column.title'}, {id: 'year', label: 'library.column.year'},
+  {id: 'duration', label: 'library.column.runtime'}, {id: 'communityRating', label: 'library.column.rating'},
+  {id: 'resolution', label: 'library.column.resolution'}, {id: 'added', label: 'library.column.added'},
+] as const;
+export function BrowseResults(props: BrowseResultsProps) {
+  const {controller, view, shape, cardWidth, onVisibleRange} = props;
+  const root = useRef<HTMLDivElement>(null), grid = useRef<WindowedGridHandle>(null);
+  const [size, setSize] = useState({width: 0, height: 600}), [visible, setVisible] = useState({first: -1, last: -1});
+  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  const snapshot = useSyncExternalStore(controller.collection.subscribe, controller.collection.getSnapshot, controller.collection.getSnapshot);
+  useLayoutEffect(() => {
+    const element = root.current; if (!element) return;
+    const read = () => {const bounds = element.getBoundingClientRect();setSize({width: element.clientWidth, height: Math.max(280, window.innerHeight - bounds.top)});};
+    const observer = new ResizeObserver(read); observer.observe(element); window.addEventListener('resize', read);read();
+    return () => {observer.disconnect();window.removeEventListener('resize', read);};
+  }, []);
+  const range = useCallback((first: number, last: number) => {setVisible(before => before.first === first && before.last === last ? before : {first, last});onVisibleRange?.(first, last);}, [onVisibleRange]);
+  const anchors = Object.entries(snapshot.positionIndex ?? {}).map(([key, index]) => ({key, index}));
+  const list = view === 'list', ratio = shape === 'poster' ? 2 / 3 : shape === 'collection' ? 1.9 : 1;
+  const height = cardWidth / ratio + (shape === 'collection' ? 0 : 58);
+  return <div className={styles.results} ref={root} data-view={view}>
+    {list && <div className={styles.listHead} role="row">{columns.map(column => {
+      const offered = state.capabilities?.sorts.find(sort => sort.id === column.id);
+      return <div key={column.id} role="columnheader" aria-sort={state.sort?.field === column.id ? state.sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
+        {offered ? <button type="button" onClick={() => props.onSort({field: offered.id, direction: state.sort?.field === offered.id && offered.directions.length > 1 ? state.sort.direction === 'asc' ? 'desc' : 'asc' : offered.defaultDirection})}>{t(column.label)}{state.sort?.field === column.id && <Icon name={state.sort.direction === 'asc' ? 'i-up' : 'i-down'} size={14}/>}</button> : t(column.label)}
+      </div>;
+    })}<span aria-label={t('next.cards.watched')} role="columnheader"/><span/></div>}
+    {snapshot.total === 0 ? props.empty : <WindowedGrid collection={controller.collection} ref={grid} label={props.label} height={size.height - (list ? 44 : 0)}
+      cardWidth={list ? Math.max(1, size.width) : cardWidth} rowHeight={list ? 70 : height} gap={list ? 0 : 20} rowGap={list ? 0 : 30} reducedMotion={props.reducedMotion}
+      onVisibleRange={range} renderPlaceholder={() => <Skeleton height={list ? 54 : cardWidth / ratio} width={list ? '100%' : cardWidth}/>}
+      renderItem={(member, context) => list ? <BrowseListRow {...props} member={member} index={context.index}/> : <BrowseEntryCard entry={member.entry} actions={props.actions(member, context.index)} artwork={props.artwork} env={props.env}
+        width={cardWidth} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />}
+    {state.sort?.field === 'title' && anchors.length > 0 && <AlphabetRail anchors={anchors} visibleRange={visible} onJump={anchor => grid.current?.scrollToIndex(anchor.index)} className={styles.rail}/>}
+  </div>;
+}
+function BrowseListRow({member, index, artwork, env, actions}: BrowseResultsProps & {member: BrowseMember; index: number}) {
+  const {entry} = member, action = actions(member, index), progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
+  const art = artwork.foreground(entry.posterUrl, 72 * devicePixelRatio, 2 / 3, {group: entry.libraryId, order: index});
+  const added = entry.addedAt && Number.isFinite(Date.parse(entry.addedAt)) ? new Intl.DateTimeFormat(env.locale ?? 'en-US', {month: 'short', day: 'numeric', year: 'numeric'}).format(new Date(entry.addedAt)) : undefined;
+  const resolution = entry.resolution === '4k' ? t('quality.4k') : entry.resolution === '1080p' ? t('downloads.quality.1080p') : entry.resolution === '720p' ? t('downloads.quality.720p') : entry.resolution === 'sd' ? t('quality.sd') : undefined;
+  return <div className={styles.listRow} data-browse-entry={entry.id}>
+    <div className={styles.listTitle}>{action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: 'pointer'})} accessibilityLabel={t('next.selection.select')} variant="row"/>}
+      <button type="button" data-layout-primary onClick={action.onOpen}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(entry.title)[0] ?? ''}/>}/></span><span>{entry.title}</span></button></div>
+    <span>{entry.year}</span><span>{durationText(entry.duration, env.t)}</span><span>{entry.rating !== undefined && <><Icon name="i-star" size={13}/>{defaultI18n.number(entry.rating, {maximumFractionDigits: 1})}</>}</span>
+    <span>{resolution && <span className={styles.resolution}>{resolution}</span>}</span><span>{added}</span>
+    <span>{entry.watched ? <Icon name="i-check" size={18}/> : progress !== undefined && <span className={styles.miniProgress}><span style={{width: `${progress * 100}%`}}/></span>}</span>
+    <span className={styles.listActions}>{action.onPlay && <Button variant="primary" size="small" icon="i-play" iconOnly onClick={action.onPlay} aria-label={t('next.browse.play', {title: entry.title})}/>}{action.onMore && <Button variant="icon" size="small" icon="i-more" iconOnly onClick={event => action.onMore?.(event.currentTarget)} aria-label={t('next.browse.moreFor', {title: entry.title})}/>}</span>
+  </div>;
+}
