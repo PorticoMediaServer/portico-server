@@ -357,6 +357,8 @@ test('b4: failed policy pauses and each Play retries configuration before native
   await player.playEntries(['song-1','song-2'].map(queueItemInput));await settle();
   assert.equal(playback.getSnapshot().intent,'paused');
   assert.equal(playback.getSnapshot().listeningNotice,'listening_policy_failed');
+  owner.emit({intent:'paused',ready:false});
+  assert.equal(playback.getSnapshot().listeningNotice,'listening_policy_failed','a loading observation cannot clear a pause notice');
   const before=policies.length;
   playback.resume();await settle();
   assert.ok(policies.length>before,'Play re-sends the rejected policy');

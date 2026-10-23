@@ -835,10 +835,10 @@ export class PlaybackService {
     };
   }
   private update(patch: Partial<PlaybackSnapshot>) {
-    if(patch.intent==='playing'||patch.phase==='starting'||patch.phase==='idle'||patch.phase==='error'||patch.error)patch={...patch,listeningNotice:undefined};
+    if(patch.intent==='playing'||patch.phase==='idle'||patch.phase==='error'||patch.error||'intentId' in patch&&patch.intentId!==this.snapshot.intentId)patch={...patch,listeningNotice:undefined};
     const changed='session' in patch&&(patch.session?.id!==this.snapshot.session?.id||patch.session?.generation!==this.snapshot.session?.generation);
     if(changed||patch.phase==='idle'||patch.phase==='error'){
-      const actual=patch.nativeListening;
+      const actual=patch.phase==='idle'||patch.phase==='error'?undefined:patch.nativeListening;
       patch={...patch,audioEffects:{...(patch.audioEffects??this.snapshot.audioEffects),eqApplied:actual?.eqApplied===true,levelingApplied:actual?.levelingApplied===true}};
     }
     // `ended` belongs to one session: a new start or another session clears it.
@@ -1053,7 +1053,7 @@ export class PlaybackService {
   /** Called only after filters/gain have actually been installed or removed for this song. */
   audioProcessingApplied(binding:AudioProcessingBinding,facts:AudioProcessingApplied):boolean{
     const s=this.snapshot;
-    if(this.nativeV1||s.phase==='idle'||s.phase==='error'||s.intentId!==binding.intentId||s.session?.id!==binding.sessionId||s.session.generation!==binding.generation||typeof facts.eqApplied!=='boolean'||typeof facts.levelingApplied!=='boolean')return false;
+    if(!s.session||this.nativeV1||s.phase==='idle'||s.phase==='error'||s.intentId!==binding.intentId||s.session.id!==binding.sessionId||s.session.generation!==binding.generation||typeof facts.eqApplied!=='boolean'||typeof facts.levelingApplied!=='boolean')return false;
     if(s.audioEffects.eqApplied!==facts.eqApplied||s.audioEffects.levelingApplied!==facts.levelingApplied)this.update({audioEffects:{...s.audioEffects,...facts}});
     return true;
   }
@@ -1307,6 +1307,7 @@ export class PlaybackService {
    * keeps them on the device (see the Apple app's offline playback).
    */
   playLocal(itemId: string, session: () => PlaybackSession, startPosition?: number): Promise<void> {
+    if(this.snapshot.listeningNotice)this.update({listeningNotice:undefined});
     this.escalations = 0;
     this.lastPlay = { itemId, local: session };
     this.update({ playbackRun: this.snapshot.playbackRun + 1 });
