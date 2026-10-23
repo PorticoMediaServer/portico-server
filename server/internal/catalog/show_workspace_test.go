@@ -212,7 +212,7 @@ func TestShowWorkspaceEpisodeCreditsUseSelectedVisibleItem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.EpisodeCredits) != 1 || page.EpisodeCredits[0].ID != visibleToken || page.EpisodeCredits[0].PortraitURL != "/v1/people/"+visibleToken+"/portrait?v="+digest+"&w=400" {
+	if len(page.EpisodeCredits) != 1 || page.EpisodeCredits[0].ID != visibleToken || page.EpisodeCredits[0].PortraitURL != "/v1/metadata/item/"+names["ep-001"].Public+"/art/portrait?v="+digest+"&w=400&subject=fixture%3Avisible" {
 		t.Fatalf("selected episode credits: %+v", page.EpisodeCredits)
 	}
 	r.EpisodeID = names["ep-002"].Public
