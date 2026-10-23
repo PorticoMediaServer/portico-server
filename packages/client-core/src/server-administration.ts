@@ -34,16 +34,18 @@ export type ScheduleWindow=Readonly<{days:readonly number[];startMinute:number;e
 export type AccessSchedule=Readonly<{timezone:string;windows:readonly ScheduleWindow[]}>;
 export type ChannelPolicy=Readonly<{mode:'all'|'allow'|'deny';channels:readonly string[]}>;
 export type TagPolicy=Readonly<{deniedLabels:readonly string[]}>;
+export type StreamLimitMode='inherit'|'unlimited'|'limit';
+export type StreamLimitFacts=Readonly<{serverMaxStreams:number|null;effectiveMaxStreams:number|null}>;
 export type MemberLimits=Readonly<{
  accessTokens:boolean;maxProfiles:number;allowRemote:boolean;conversion:'server'|'audio'|'none';
- maxStreams:number;remoteBitrateKbps:number;
+ maxStreams:number;maxStreamsMode:StreamLimitMode;remoteBitrateKbps:number;
  /** The rating system `maxContentRating` is a value of, or '' when it is a plain rating. */
  ratingSystem:string;maxContentRating:string;
  /** What the limit resolves to: the youngest age the rating admits, or -1 for no limit. Set by the server. */
  maximumAge:number;
  allowUnrated:boolean;
  schedule:AccessSchedule;channelPolicy:ChannelPolicy;tagPolicy:TagPolicy}>;
-export type LimitsDocument=Readonly<{accountId:string;revision:number;updatedAt?:string;limits:MemberLimits}>;
+export type LimitsDocument=Readonly<{accountId:string;revision:number;updatedAt?:string;limits:MemberLimits}> & StreamLimitFacts;
 /**
  * `disabledAt` and `disabledReason` are present while the account is off: when it was turned off,
  * and whether an owner or administrator did it (`owner`) or the person left at their Portico
@@ -52,7 +54,7 @@ export type LimitsDocument=Readonly<{accountId:string;revision:number;updatedAt?
 export type AccessMember=Readonly<{accountId:string;username:string;email?:string;displayName?:string;profileId:string;role:AccessTier;disabled:boolean;
  disabledAt?:string;disabledReason?:'owner'|'left'|'did_not_move';
  hostedAccountId?:string;notes?:string;joinedVia?:string;joinedAt?:string;profileNames?:readonly string[];lastActiveAt?:string;liveState?:'idle'|'watching'|'listening';
- revision:number;allowedLibraries:readonly string[];limitsRevision:number;limits:MemberLimits}>;
+ revision:number;allowedLibraries:readonly string[];limitsRevision:number;limits:MemberLimits}> & StreamLimitFacts;
 export type Invitation=Readonly<{id:string;email:string;role:AccessTier;allowedLibraries:readonly string[];state:InvitationState;
  createdAt:string;expiresAt:string;acceptedAt?:string;accountId?:string;revision:number;code?:string;
  /** The one Portico Account this invitation is for, when the owner named one. */
@@ -113,6 +115,8 @@ const page=<T>(raw:unknown,each:(x:unknown)=>T,key:(row:T)=>string,whole=false):
 
 export function parseMemberLimits(raw:unknown):MemberLimits{
  if(!obj(raw))return invalid();
+ const maxStreamsMode=oneOf(raw.maxStreamsMode,['inherit','unlimited','limit'] as const),maxStreams=num(raw.maxStreams,0,1000);
+ if(maxStreamsMode==='limit'?maxStreams<1:maxStreams!==0)return invalid();
  const schedule=obj(raw.schedule)?raw.schedule:{};
  const channels=obj(raw.channelPolicy)?raw.channelPolicy:{};
  const tags=obj(raw.tagPolicy)?raw.tagPolicy:{};
@@ -120,7 +124,7 @@ export function parseMemberLimits(raw:unknown):MemberLimits{
  if(windows.length>64)invalid();
  return Object.freeze({
   accessTokens:bool(raw.accessTokens),maxProfiles:num(raw.maxProfiles,1,8),allowRemote:bool(raw.allowRemote),conversion:oneOf(raw.conversion,['server','audio','none'] as const),
-  maxStreams:num(raw.maxStreams??0,0,1000),
+  maxStreams,maxStreamsMode,
   remoteBitrateKbps:num(raw.remoteBitrateKbps??0,0,200000),
   // The rating is whatever the server stored: a value of the named system, or any rating its
   // table knows. It is bounded here and judged there; the age it resolves to comes back with it.
@@ -136,11 +140,12 @@ export function parseMemberLimits(raw:unknown):MemberLimits{
   tagPolicy:Object.freeze({deniedLabels:list(tags.deniedLabels,256,x=>str(x,120))})});
 }
 
+const streamLimitFacts=(raw:Record<string,unknown>):StreamLimitFacts=>({serverMaxStreams:raw.serverMaxStreams===null?null:num(raw.serverMaxStreams,1,1000),effectiveMaxStreams:raw.effectiveMaxStreams===null?null:num(raw.effectiveMaxStreams,1,1000)});
 export function parseLimitsDocument(raw:unknown,accountId?:string):LimitsDocument{
  if(!obj(raw))return invalid();
  const id=str(raw.accountId);
  if(accountId&&id!==accountId)invalid();
- return Object.freeze({accountId:id,revision:num(raw.revision,1),updatedAt:optionalWhen(raw.updatedAt),limits:parseMemberLimits(raw.limits)});
+ return Object.freeze({accountId:id,revision:num(raw.revision,1),updatedAt:optionalWhen(raw.updatedAt),limits:parseMemberLimits(raw.limits),...streamLimitFacts(raw)});
 }
 
 export function parseAccessMember(raw:unknown):AccessMember{
@@ -154,7 +159,7 @@ export function parseAccessMember(raw:unknown):AccessMember{
   ...(raw.profileNames!==undefined?{profileNames:list(raw.profileNames,8,x=>str(x,120))}:{}),...(raw.lastActiveAt?{lastActiveAt:when(raw.lastActiveAt)}:{}),
   ...(raw.liveState!==undefined?{liveState:oneOf(raw.liveState,['idle','watching','listening'] as const)}:{}),
   revision:num(raw.revision,1),
-  allowedLibraries:list(raw.allowedLibraries,1000,x=>str(x)),limitsRevision:num(raw.limitsRevision,1),limits:parseMemberLimits(raw.limits)});
+  allowedLibraries:list(raw.allowedLibraries,1000,x=>str(x)),limitsRevision:num(raw.limitsRevision,1),limits:parseMemberLimits(raw.limits),...streamLimitFacts(raw)});
 }
 export const parseAccessMemberPage=(raw:unknown)=>page(raw,parseAccessMember,row=>row.accountId,true);
 
