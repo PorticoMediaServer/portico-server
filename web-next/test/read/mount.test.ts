@@ -58,6 +58,19 @@ test('retiring a hidden surface releases its wait without starting an adapter', 
   assert.equal(f.mounted, 0); assert.equal(env.listeners.size, 0); assert.ok(env.observers.every(value => value.disconnected));
 });
 
+test('the host forwards authoritative catalogue omission into the actual core and renderer', async t => {
+  const env = environment(t), f = fixture();
+  Object.defineProperty(f.document, 'metadata', {value: {title: 'Embedded unit title', author: 'Embedded unit author', language: 'en', pageCount: 12}});
+  const mounted = mountReaderSurface({controller: f.controller, source, format: 'epub', metadata: {title: 'Owner unit title'}, authority: env.authority,
+    container: {clientWidth: 1440, clientHeight: 900} as HTMLElement, reportError() { assert.fail('unexpected metadata error'); }});
+  await mounted.ready;
+  assert.equal(f.mount.metadata?.title, 'Owner unit title');
+  assert.equal(f.mount.metadata?.author, undefined); assert.equal(f.mount.metadata?.language, undefined);
+  assert.equal(f.controller.getSnapshot().metadata?.author, undefined);
+  assert.equal(f.controller.getSnapshot().metadata?.pageCount, 12);
+  await mounted.close();
+});
+
 test('authority retirement aborts a pending real controller open and discards its late document', async t => {
   const env = environment(t), f = fixture(), pending = deferred<ReaderDocument<object>>(); let signal!: AbortSignal;
   f.adapter.open = async options => { signal = options.signal; return pending.promise; };

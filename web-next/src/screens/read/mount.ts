@@ -1,4 +1,4 @@
-import {readerErrorCode, type ReaderController, type ReaderErrorCode, type ReaderFormat, type ReaderLocation, type ReaderSource} from '@portico/reader-core';
+import {readerErrorCode, type ReaderController, type ReaderErrorCode, type ReaderFormat, type ReaderLocation, type ReaderMetadata, type ReaderSource} from '@portico/reader-core';
 
 export type ReaderMountAuthority = Readonly<{
   isCurrent: () => boolean;
@@ -7,6 +7,8 @@ export type ReaderMountAuthority = Readonly<{
 }>;
 export type ReaderSurfaceMountOptions<P extends object> = Readonly<{
   controller: ReaderController<P>; source: ReaderSource; format: ReaderFormat; initialLocation?: ReaderLocation;
+  /** Actual manifest identity; an omitted author stays omitted in the engine and chrome. */
+  metadata?: ReaderMetadata;
   authority: ReaderMountAuthority; container: HTMLElement;
   reportError: (code: ReaderErrorCode) => void;
   /** Await disposal before reusing a DOM container (including StrictMode reconnect). */
@@ -15,7 +17,7 @@ export type ReaderSurfaceMountOptions<P extends object> = Readonly<{
 export type ReaderSurfaceMount = Readonly<{ready: Promise<void>; close: () => Promise<void>}>;
 
 /** The core owns the document, preferences, location and view; this owns only DOM lifetime. */
-export function mountReaderSurface<P extends object>({controller, source, format, initialLocation, authority, container, reportError, settled = Promise.resolve()}: ReaderSurfaceMountOptions<P>): ReaderSurfaceMount {
+export function mountReaderSurface<P extends object>({controller, source, format, initialLocation, metadata, authority, container, reportError, settled = Promise.resolve()}: ReaderSurfaceMountOptions<P>): ReaderSurfaceMount {
   let active = true, opened = false, opening = false, frame: number | undefined, width = 0, height = 0;
   let closeResult: Promise<void> | undefined;
   const current = () => active && authority.isCurrent();
@@ -59,7 +61,7 @@ export function mountReaderSurface<P extends object>({controller, source, format
     if (!current()) return;
     width = container.clientWidth; height = container.clientHeight;
     opening = true;
-    await controller.open({source, format, container, location: initialLocation, viewport: {width, height}});
+    await controller.open({source, format, container, metadata, location: initialLocation, viewport: {width, height}});
     opening = false;
     if (!current()) { await close(); return; }
     opened = true;

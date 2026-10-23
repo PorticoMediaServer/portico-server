@@ -7,12 +7,12 @@ import styles from '../../kit/reader/surface.module.css';
 export type ReaderSurfaceProps<P extends object> = Omit<ReaderSurfaceMountOptions<P>, 'container' | 'settled'>;
 
 /** Real adapter content only. The surrounding Portico chrome consumes the same controller. */
-export function ReaderSurface<P extends object>({controller, source, format, initialLocation, authority, reportError}: ReaderSurfaceProps<P>) {
+export function ReaderSurface<P extends object>({controller, source, format, initialLocation, metadata, authority, reportError}: ReaderSurfaceProps<P>) {
   const container = useRef<HTMLDivElement>(null), settled = useRef(Promise.resolve());
   useEffect(() => {
     const element = container.current; if (!element) return;
-    const mounted = mountReaderSurface({controller, source, format, initialLocation, authority, reportError, container: element, settled: settled.current});
+    const mounted = mountReaderSurface({controller, source, format, initialLocation, metadata, authority, reportError, container: element, settled: settled.current});
     return () => { settled.current = mounted.close().catch(error => { if (authority.isCurrent()) reportError(readerErrorCode(error)); }); };
-  }, [controller, source, format, initialLocation, authority, reportError]);
+  }, [controller, source, format, initialLocation, metadata, authority, reportError]);
   return <div ref={container} className={styles.surface} />;
 }

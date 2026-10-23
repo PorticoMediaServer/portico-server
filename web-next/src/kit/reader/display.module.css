@@ -8,7 +8,7 @@
 .group + .group { margin-top: 14px; }
 .themes { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
 .controls .theme { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 0; background: transparent; font-size: 12.5px; font-weight: 700; color: var(--color-text-secondary); }
-.theme > span { display: grid; place-items: center; width: 100%; height: 50px; border-radius: 12px; font-family: var(--reader-prose-font, var(--font)); font-size: 22px; box-shadow: inset 0 0 0 1px rgba(237,245,250,.14); }
+.theme > span { display: grid; place-items: center; width: 100%; height: 50px; border-radius: 12px; font-family: Literata; font-size: 22px; box-shadow: inset 0 0 0 1px rgba(237,245,250,.14); }
 .theme[data-tone="dark"] > span { background: #0c151d; color: #d4dde4; }
 .theme[data-tone="black"] > span { background: #000; color: #c9cfd3; }
 .theme[data-tone="sepia"] > span { background: #f1e6d1; color: #443629; }
@@ -20,7 +20,7 @@
 .font[data-state="checked"] { background: rgba(237,245,250,.08); color: var(--color-text); }
 .font:hover { background: rgba(237,245,250,.06); }
 .font[data-face="publisher"] .fontDesktop { font-family: var(--reader-publisher-font, var(--font)); }
-.font[data-face="literata"] .fontDesktop { font-family: var(--reader-prose-font, var(--font)); }
+.font[data-face="literata"] .fontDesktop { font-family: Literata; }
 .font[data-face="manrope"] .fontDesktop { font-family: var(--font); font-weight: 600; }
 .fontDesktop { font-size: 17px; }
 .fontDesktop small { margin-left: 6px; font-family: var(--font); font-size: 12.5px; font-weight: 600; color: var(--color-text-tertiary); }
@@ -28,7 +28,7 @@
 .check { margin-left: auto; color: var(--color-accent-strong); opacity: 0; }
 .font[data-state="checked"] .check { opacity: 1; }
 .sizer { display: flex; align-items: center; gap: 14px; }
-.controls .smaller, .controls .larger { display: grid; place-items: center; flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%; font-family: var(--reader-prose-font, var(--font)); color: var(--color-text-secondary); background: rgba(237,245,250,.08); }
+.controls .smaller, .controls .larger { display: grid; place-items: center; flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%; font-family: Literata; color: var(--color-text-secondary); background: rgba(237,245,250,.08); }
 .controls .smaller { font-size: 14px; }
 .controls .larger { font-size: 21px; }
 .range { position: relative; flex: 1; min-width: 0; height: 44px; display: flex; align-items: center; }
@@ -70,7 +70,7 @@
   .fontCompact { display: flex; flex-direction: column; align-items: center; gap: 2px; }
   .fontCompact > span { font-size: 21px; line-height: 1.1; color: var(--color-text-secondary); }
   .font[data-face="publisher"] .fontCompact > span { font-family: var(--reader-publisher-font, var(--font)); }
-  .font[data-face="literata"] .fontCompact > span { font-family: var(--reader-prose-font, var(--font)); }
+  .font[data-face="literata"] .fontCompact > span { font-family: Literata; }
   .font[data-face="manrope"] .fontCompact > span { font-family: var(--font); font-weight: 600; }
   .fontCompact small { font-family: var(--font); font-size: 11.5px; font-weight: 700; color: var(--color-text-tertiary); }
   .font[data-state="checked"] .fontCompact > span { color: var(--color-text); }
