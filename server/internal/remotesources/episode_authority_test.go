@@ -8,6 +8,7 @@ import (
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/storage"
 )
 
 type episodeFactsFixture struct {
@@ -159,6 +160,9 @@ func TestEpisodeAutomaticAndExplicitPolicyMatrix(t *testing.T) {
 	library := catalog.ScanPolicy{Tier: "complete", Revision: 7, Operations: []string{"probe", "episode_thumbnail"}}
 	for _, preset := range []string{"list", "once", "everything", "ask", "missing"} {
 		profile, _ := SourceReadPreset(preset)
+		if preset == "missing" {
+			profile, _ = SourceReadPreset("list")
+		}
 		profile.Saved = preset != "missing"
 		for _, mode := range []string{"provider_then_made", "provider", "off", "unknown"} {
 			for _, still := range []bool{false, true} {
@@ -227,6 +231,11 @@ func TestEpisodeOperationalLimitsAndPurposeUseDifferentScheduleGates(t *testing.
 	if _, err = episodeWorkLimits(EpisodeAutomatic, work, source); err != nil {
 		t.Fatal(err)
 	}
+	work.AnalysisOpen = false
+	if _, err = episodeWorkLimits(EpisodeAutomatic, work, source); !errors.Is(err, storage.ErrBusy) {
+		t.Fatal("known closed window did not stay pending", err)
+	}
+	work.AnalysisOpen = true
 	for _, state := range []string{"", "throttled", "quota", "unavailable"} {
 		work.ProviderState = state
 		if _, err = episodeWorkLimits(EpisodeExplicitOneEpisode, work, source); err == nil {
@@ -236,6 +245,32 @@ func TestEpisodeOperationalLimitsAndPurposeUseDifferentScheduleGates(t *testing.
 	work.ProviderState, work.ProviderRevision = "ready", 0
 	if _, err = episodeWorkLimits(EpisodeExplicitOneEpisode, work, source); err == nil {
 		t.Fatal("unknown provider observation silently treated as ready")
+	}
+}
+
+func TestEpisodeSourceTierExclusionIsExactAutomaticApplicability(t *testing.T) {
+	library := catalog.ScanPolicy{Tier: "complete", Revision: 7, Operations: []string{"episode_thumbnail"}}
+	state := EpisodeState{PolicyRevision: 7, ArtworkRevision: "current-artwork", Mode: "provider_then_made", ProviderResolved: true, GenerationNeeded: true}
+	for _, preset := range []string{"list", "once", "ask", "missing"} {
+		profile, _ := SourceReadPreset(preset)
+		profile.Saved = true
+		if preset == "missing" {
+			profile, _ = SourceReadPreset("list")
+		}
+		if err := episodePolicy(EpisodeAutomatic, state, library, true, profile); !errors.Is(err, ErrEpisodeAutomaticSourceTier) {
+			t.Fatal("known excluded source tier was not examined", preset, err)
+		}
+		if err := episodePolicy(EpisodeExplicitOneEpisode, state, library, true, profile); err != nil {
+			t.Fatal("automatic source exclusion blocked explicit command", preset, err)
+		}
+	}
+	if err := episodePolicy(EpisodeAutomatic, state, library, true, SourceReadProfile{}); !errors.Is(err, ErrEpisodeAuthority) {
+		t.Fatal("unknown profile was treated as a positive exclusion", err)
+	}
+	state.ProviderResolved = false
+	list, _ := SourceReadPreset("list")
+	if err := episodePolicy(EpisodeAutomatic, state, library, true, list); !errors.Is(err, ErrEpisodeAuthority) {
+		t.Fatal("unknown provider authority was treated as a positive exclusion", err)
 	}
 }
 

@@ -15,6 +15,11 @@ import (
 
 var ErrEpisodeAuthority = errors.New("episode thumbnail authority is unavailable or refused")
 
+// ErrEpisodeAutomaticSourceTier is a positive applicability result, never a
+// permission grant. Only this exact result can map to an examined scan step
+// without generation. Unknown authority and explicit work never return it.
+var ErrEpisodeAutomaticSourceTier = errors.New("automatic episode thumbnail is outside the saved source scan tier")
+
 type EpisodePurpose string
 
 const (
@@ -137,8 +142,16 @@ func episodePolicy(purpose EpisodePurpose, state EpisodeState, library catalog.S
 	if purpose == EpisodeExplicitOneEpisode {
 		return nil
 	}
-	if purpose != EpisodeAutomatic || state.Mode != "provider_then_made" || !state.ProviderResolved || !state.GenerationNeeded || state.ArtworkRevision == "" || len(state.ArtworkRevision) > 512 || state.ProviderStill || !library.Allows("episode_thumbnail") || remote && (!profile.Saved || profile.ScanDepth != "complete") {
+	if purpose != EpisodeAutomatic || state.Mode != "provider_then_made" || !state.ProviderResolved || !state.GenerationNeeded || state.ArtworkRevision == "" || len(state.ArtworkRevision) > 512 || state.ProviderStill || !library.Allows("episode_thumbnail") {
 		return ErrEpisodeAuthority
+	}
+	if remote {
+		if !validSourceReadProfile(profile) || !profile.Saved && profile.ScanDepth != "file_list_only" {
+			return ErrEpisodeAuthority
+		}
+		if profile.ScanDepth == "file_list_only" || profile.ScanDepth == "basic" {
+			return ErrEpisodeAutomaticSourceTier
+		}
 	}
 	// A bounded decode is not a whole-file read, irrespective of the profile's
 	// whole-file I/O switch. No whole-file operation is authorized here.
@@ -149,8 +162,13 @@ func episodeWorkLimits(purpose EpisodePurpose, state EpisodeWorkState, source Re
 	if state.ProviderRevision < 1 || state.ReadLeaseRevision < 1 || state.ProviderState != "ready" || source.Connections < 0 || source.RequestsPerSecond < 0 || source.BytesPerSecond < 0 {
 		return ReadLimits{}, ErrEpisodeAuthority
 	}
-	if purpose == EpisodeAutomatic && (state.AnalysisRevision < 1 || !state.AnalysisOpen) {
-		return ReadLimits{}, ErrEpisodeAuthority
+	if purpose == EpisodeAutomatic {
+		if state.AnalysisRevision < 1 {
+			return ReadLimits{}, ErrEpisodeAuthority
+		}
+		if !state.AnalysisOpen {
+			return ReadLimits{}, storage.ErrBusy
+		}
 	}
 	if purpose != EpisodeAutomatic && purpose != EpisodeExplicitOneEpisode {
 		return ReadLimits{}, ErrEpisodeAuthority
