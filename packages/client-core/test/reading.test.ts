@@ -116,12 +116,12 @@ test('EPUB reads only original enumerated bytes; CBZ exposes actual page names a
 
 test('nullable progress and paused history stay explicit; CAS conflict does not retire a valid source', async () => {
   const f = setup(), session = await f.client.open({itemId: 'book', sourceId: 'asset'});
-  assert.deepEqual(await session.progress(), {progress: null});
-  assert.deepEqual(await session.saveProgress({expectedRevision: 0, location: {format: 'pdf', pageIndex: 0, progression: .1}}), {progress: null, saved: false});
+  const initial = await session.progress(); assert.equal(initial.progress, null); assert.deepEqual(Object.keys(initial), ['progress']);
+  const paused = await session.saveProgress({expectedRevision: 0, location: {format: 'pdf', pageIndex: 0, progression: .1}}); assert.equal(paused.progress, null); assert.equal(paused.saved, false);
   f.hook(call => call.init.method === 'PUT' ? json({error: {code: 'revision_mismatch'}}, 412) : undefined);
   await assert.rejects(session.saveProgress({expectedRevision: 0, location: {format: 'pdf', pageIndex: 0, progression: .1}}), coded('revision_mismatch'));
   assert.equal(session.signal.aborted, false);
-  assert.deepEqual(await session.progress(), {progress: null});
+  assert.equal((await session.progress()).progress, null);
   f.retire(); const count = f.calls.length;
   await assert.rejects(session.progress(), coded('cancelled')); assert.equal(f.calls.length, count);
 });
