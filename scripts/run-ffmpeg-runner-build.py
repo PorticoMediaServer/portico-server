@@ -50,6 +50,9 @@ def main():
     if preflight['availableDiskBytes'] < disk_peak + 20 * 2**30 or available < ram_cap:
         print('REFUSED: this FFmpeg job peak does not fit; continue code-only', flush=True)
         return 75
+    subprocess.run(['python3', str(root / 'scripts/check-ffmpeg-source.py'),
+                    '--archive-commit', args.source_commit, '--archive-rejections'],
+                   cwd=root, env=env, check=True)
     # Verify capability before a lengthy source dependency intake. No sudo,
     # daemon configuration, host package installation or private auth is used.
     subprocess.run(['docker', 'version', '--format', '{{.Server.Version}}'], check=True)
@@ -83,7 +86,7 @@ def main():
             'artifactPath': str(destination / archive.name), 'files': hashes,
             'qualifiedTargetVerification': True, 'mainConsumerAdmission': False,
             'retention': 'Retain this verified product until explicit consumer release; per-job source/tmp is disposable.',
-            'scope': 'One Linux source bundle/fixtures/ABI/licences/repeat proof. No physical GPU, other targets or full HW1-HW7 completion.',
+            'scope': 'One Linux source bundle/generated fixtures/ABI/licences/repeat proof. No physical GPU, real Atmos/JOC, mastered FEL, other targets or full HW1-HW7 completion.',
             'consumerFence': 'This exact product source must be normally merged on MAIN before feature consumers use the artifact.'}
         (staging / 'artifact-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
         staging.rename(destination)
