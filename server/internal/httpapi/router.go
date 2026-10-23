@@ -698,9 +698,9 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 	private := d.privateSetupPeer(r)
 	key := ""
 	strict := strictPrincipal(dbwork.ClassFrom(r.Context(), dbwork.ClassInteractive))
-	if !strict && !private && !castOccurrenceRoute(r.Method, r.URL.Path) {
+	if !strict && !private {
 		key = identity.Digest(token)
-		if cached, ok := d.principals.lookup(key, time.Now()); ok {
+		if cached, ok := d.principals.lookup(key, time.Now()); ok && !(cached.Grant == identity.GrantCastTarget && castOccurrenceRoute(r.Method, r.URL.Path)) {
 			// The cache remembers who a token is, not what this request is: a
 			// narrowed session is judged against every request it makes.
 			if e := cached.PermitsRequest(r.Context()); e != nil {
@@ -733,7 +733,7 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 	}
 	// A denial is never cached: the reason may have been transient, and a cached
 	// refusal is the one mistake here a viewer would actually see.
-	if err == nil && key != "" {
+	if err == nil && key != "" && !(p.Grant == identity.GrantCastTarget && castOccurrenceRoute(r.Method, r.URL.Path)) {
 		d.principals.store(key, p, time.Now(), generation)
 	}
 	if err == nil {
