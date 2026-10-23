@@ -1482,6 +1482,24 @@ CREATE TABLE tvdb_series_candidates(show_id INTEGER NOT NULL REFERENCES catalog_
 CREATE TABLE tvdb_episode_evidence(show_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,generation INTEGER NOT NULL,provider_id INTEGER NOT NULL,season_number INTEGER,number INTEGER,absolute_number INTEGER,title TEXT NOT NULL,overview TEXT NOT NULL,payload TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(show_id,generation,provider_id)) STRICT;
 CREATE TABLE tvdb_episode_links(item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,provider_id INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL,observed_at TEXT NOT NULL) STRICT;
 CREATE TABLE admin_revision(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL) STRICT;
+-- Library presentation and local-evidence choices. Domain policies retain their own authority.
+CREATE TABLE library_preferences(
+ library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
+ group_collections INTEGER NOT NULL DEFAULT 1 CHECK(group_collections IN(0,1)),
+ local_tags TEXT NOT NULL DEFAULT 'prefer' CHECK(local_tags IN('prefer','off')),
+ lyrics_source TEXT NOT NULL DEFAULT 'files' CHECK(lyrics_source IN('files','lrclib')),
+ title_source TEXT NOT NULL DEFAULT 'tags' CHECK(title_source IN('tags','names')),
+ episode_numbering TEXT NOT NULL DEFAULT 'season' CHECK(episode_numbering IN('season','absolute')),
+ find_extras INTEGER NOT NULL DEFAULT 1 CHECK(find_extras IN(0,1)),
+ sort_ignore_articles INTEGER NOT NULL DEFAULT 1 CHECK(sort_ignore_articles IN(0,1))
+) STRICT;
+CREATE TRIGGER library_preferences_configuration AFTER UPDATE ON library_preferences BEGIN
+ UPDATE library_configuration SET revision=revision+1 WHERE library_id=NEW.library_id;
+ UPDATE library_revisions SET revision=revision+1 WHERE library_id=NEW.library_id;
+ UPDATE admin_revision SET revision=revision+1 WHERE id=1;
+END;
+CREATE INDEX libraries_admin_position ON libraries(position,name,id);
 CREATE TABLE library_configuration(library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,revision INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE TABLE job_observations(job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,updated_at TEXT NOT NULL,finished_at TEXT) STRICT;
 CREATE TABLE metadata_publication_heads(
@@ -3630,7 +3648,7 @@ CREATE TABLE live_icon_jobs(
  skipped INTEGER NOT NULL DEFAULT 0,
  next_attempt_ms INTEGER NOT NULL DEFAULT 0
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE "maintenance_window_tasks"(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,task TEXT NOT NULL CHECK(task='backup'),PRIMARY KEY(window_id,task)) STRICT;
+CREATE TABLE "maintenance_window_tasks"(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,task TEXT NOT NULL CHECK(task IN('backup','analysis','trickplay')),PRIMARY KEY(window_id,task)) STRICT;
 CREATE TABLE networking_claim_credentials(
  operation_id TEXT PRIMARY KEY REFERENCES networking_claim_intents(operation_id),
  server_id TEXT NOT NULL, local_generation INTEGER NOT NULL CHECK(local_generation>=0),
@@ -8070,3 +8088,77 @@ CREATE TABLE playback_observed_output(
  subtitle_rendering TEXT NOT NULL,
  delivered_kbps INTEGER NOT NULL CHECK(delivered_kbps BETWEEN 0 AND 1000000)
 ) STRICT;
+
+CREATE TABLE backup_settings(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ backup_folder TEXT NOT NULL DEFAULT '',
+ include_artwork INTEGER NOT NULL DEFAULT 0 CHECK(include_artwork IN(0,1)),
+ passphrase_protected INTEGER NOT NULL DEFAULT 0 CHECK(passphrase_protected IN(0,1)),
+ passphrase_sealed BLOB,
+ CHECK((passphrase_protected=0 AND passphrase_sealed IS NULL) OR (passphrase_protected=1 AND length(passphrase_sealed)>=40))
+) STRICT;
+INSERT INTO backup_settings(singleton) VALUES(1);
+
+CREATE TABLE backup_destinations(path TEXT PRIMARY KEY) STRICT;
+INSERT INTO backup_destinations(path) VALUES('');
+
+CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), updated_ms INTEGER NOT NULL DEFAULT 0,
+ "analysisStorageGiB" INTEGER,
+ "analysisStageStorageMiB" INTEGER,
+ "subtitleTrackLimit" INTEGER,
+ "subtitleFileLimitMiB" INTEGER,
+ "hardwareBackend" TEXT,
+ "hardwareDevice" TEXT,
+ "hdrToneMapping" INTEGER,
+ "hdrToneMappingAlgorithm" TEXT,
+ "x264Preset" TEXT,
+ "directStreamRemux" INTEGER,
+ "planningPolicy" TEXT,
+ "throttleBufferMs" INTEGER,
+ "playedRetentionMs" INTEGER,
+ "temporaryDirectory" TEXT,
+ "ffmpegPath" TEXT,
+ "sessionStorageMiB" INTEGER,
+ "maxConcurrentSessions" INTEGER,
+ "maxHardwareSessions" INTEGER,
+ "maxSoftwareSessions" INTEGER,
+ "maxBackgroundSessions" INTEGER,
+ "diagnosticDays" INTEGER,
+ "notificationDays" INTEGER,
+ "jobDays" INTEGER,
+ "playHistoryDays" INTEGER,
+ "apiRequestsPerMinute" INTEGER,
+ "home.communityActivityEnabled" INTEGER,
+ "updates.releaseChannel" TEXT,
+ "updates.feedUrl" TEXT,
+ "library.missingTitles" TEXT,
+ "library.missingTitlesDays" INTEGER,
+ "library.segmentDetection" TEXT,
+ "remoteSignInPolicy" TEXT,
+ "remoteBitrateLimitKbps" INTEGER,
+ "connectionLimit" INTEGER,
+ "advertiseUrl" TEXT,
+ "lanDiscoveryEnabled" INTEGER,
+ "dlnaEnabled" INTEGER,
+ "uploadCapacityKbps" INTEGER,
+ "pausedSessionTimeoutMinutes" INTEGER,
+ "advertisedInterface" TEXT,
+ "ownAddressEnabled" INTEGER,
+ "customCertificatePath" TEXT,
+ "customCertificateKeyPath" TEXT,
+ "customCertificateDomain" TEXT,
+ "logLevel" TEXT,
+ "conversionMode" TEXT CHECK("conversionMode" IN('all','sound','never')),
+ "outputFormat" TEXT CHECK("outputFormat" IN('auto','h264')),
+ "downloadMaxQuality" TEXT) STRICT;
+
+CREATE TABLE server_setting_lists(setting TEXT NOT NULL,position INTEGER NOT NULL CHECK(position>=0),value TEXT NOT NULL,PRIMARY KEY(setting,position)) WITHOUT ROWID, STRICT;
+
+CREATE TABLE server_log_retention(category TEXT PRIMARY KEY,days INTEGER NOT NULL CHECK(days BETWEEN 1 AND 90)) STRICT;
+
+CREATE TABLE server_setting_sources(field TEXT PRIMARY KEY,source TEXT NOT NULL CHECK(source IN('server','file'))) STRICT;
+
+CREATE TABLE server_configuration_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),pending_revision INTEGER NOT NULL DEFAULT 0) STRICT;
+
+CREATE TABLE server_configuration_pending(field TEXT PRIMARY KEY,revision INTEGER NOT NULL CHECK(revision>0)) STRICT;
+INSERT INTO server_configuration_state(singleton) VALUES(1);
