@@ -7,9 +7,9 @@ image="portico/$job"
 cleanup(){ docker image rm "$image" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 # Root's remote wrapper holds the machine slot for this entire sequential check.
-docker build --label portico=desktop-r29 --tag "$image" --file apps/desktop/test/native-linux.Dockerfile .
+docker build --network=host --label portico=desktop-r29 --tag "$image" --file apps/desktop/test/native-linux.Dockerfile .
 docker image inspect "$image" --format '{{.Id}} {{json .RepoDigests}} {{json .Config.Labels}}'
-docker run --rm --label portico=desktop-r29 --cpus=2 --memory=3g --memory-swap=3g \
+docker run --rm --network=host --label portico=desktop-r29 --cpus=2 --memory=3g --memory-swap=3g \
   --mount "type=bind,src=$PWD,dst=/source,readonly" "$image" bash -c '
 set -eu
 export TMPDIR=/work/tmp CARGO_TARGET_DIR=/work/cargo-target CARGO_BUILD_JOBS=1
