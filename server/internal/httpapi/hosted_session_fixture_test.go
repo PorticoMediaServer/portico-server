@@ -12,8 +12,9 @@ import (
 )
 
 // Existing fixtures describe their members in policy-shaped data. Install those
-// descriptions as server-local membership before admitting a Portico Account;
-// Hosted policy bytes themselves no longer authorize media or administration.
+// descriptions as server-local membership after a genuine completed Local setup.
+// Hosted policy bytes themselves never authorize media or administration. The
+// historical helper name does not select an authority or create a Portico link.
 func issuePorticoFixture(t *testing.T, db *sql.DB, ident *identity.Service, account, profile, role string) (identity.Envelope, error) {
 	t.Helper()
 	var raw string
@@ -51,19 +52,42 @@ func issuePorticoFixture(t *testing.T, db *sql.DB, ident *identity.Service, acco
 		}
 	}
 	ctx := context.Background()
+	if role != identity.TierMember && role != identity.TierAdmin {
+		return identity.Envelope{}, identity.ErrForbidden
+	}
+	var accounts int
+	if err := db.QueryRow(`SELECT count(*) FROM accounts`).Scan(&accounts); err != nil {
+		return identity.Envelope{}, err
+	}
+	if accounts == 0 {
+		secret, err := ident.BrowserSetupToken(ctx)
+		if err != nil {
+			return identity.Envelope{}, err
+		}
+		if _, err = ident.SetupWithOptions(ctx, identity.SetupOptions{SetupToken: secret, AuthMode: "local", Username: "fixture-owner", Password: "Local-password1!", Name: "Fixture"}, true); err != nil {
+			return identity.Envelope{}, err
+		}
+	}
+	if err := ident.RequireSignInKind(ctx, identity.SignInLocal); err != nil {
+		return identity.Envelope{}, err
+	}
+	var ready bool
+	if err := db.QueryRow(`SELECT ready FROM onboarding_state_v1 WHERE singleton=1 AND auth_mode='local'`).Scan(&ready); err != nil {
+		return identity.Envelope{}, err
+	}
+	if !ready {
+		return identity.Envelope{}, identity.ErrUnauthorized
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return identity.Envelope{}, err
 	}
 	defer tx.Rollback()
-	if _, err = tx.Exec(`INSERT OR IGNORE INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`, account, account, profile); err != nil {
+	if _, err = tx.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) SELECT ?,?,a.password_hash,?,1 FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE m.role='owner' AND m.disabled=0 AND length(a.password_hash)>0`, account, account, profile); err != nil {
 		return identity.Envelope{}, err
 	}
 	encoded, _ := json.Marshal(libraries)
 	if _, err = tx.Exec(`UPDATE direct_memberships SET role=?,allowed_libraries=? WHERE account_id=?`, role, string(encoded), account); err != nil {
-		return identity.Envelope{}, err
-	}
-	if _, err = tx.Exec(`INSERT OR IGNORE INTO account_portico_links(account_id,hosted_account_id) VALUES(?,?)`, account, "portico-"+account); err != nil {
 		return identity.Envelope{}, err
 	}
 	out, err := ident.IssueTx(ctx, tx, account, profile, "local", role, 1, time.Time{})
@@ -74,7 +98,7 @@ func issuePorticoFixture(t *testing.T, db *sql.DB, ident *identity.Service, acco
 		return identity.Envelope{}, err
 	}
 	if _, err = ident.Authenticate(out.AccessToken); err != nil {
-		t.Fatalf("Portico Account fixture issued an unusable local session: %v", err)
+		t.Fatalf("completed Local fixture issued an unusable local session: %v", err)
 	}
 	return out, nil
 }

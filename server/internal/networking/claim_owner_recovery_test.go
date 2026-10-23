@@ -10,9 +10,68 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"portico.local/server/internal/dbwork"
 	"testing"
 	"time"
 )
+
+func TestOwnerRecoveryEmptyLaneSleepsUntilActualWake(t *testing.T) {
+	f, h, tr := handlerFixture(t)
+	// Observe the same real SQLite file through the production instrumented
+	// driver. No replacement schema, query stub or artificial timer is used.
+	observed, err := sql.Open(dbwork.DriverName, f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { observed.Close() })
+	observed.SetMaxOpenConns(1)
+	h.store.db = observed
+	ctx, cancel := context.WithTimeout(t.Context(), 40*time.Second)
+	defer cancel()
+	ctx, read := dbwork.Measure(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.RunWebClaimRecovery(ctx, func(string) ClaimRequestGuard { return nil })
+	}()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Error("owner recovery did not stop")
+		}
+	}()
+	waitForStatements := func(want int64) {
+		t.Helper()
+		deadline := time.NewTimer(3 * time.Second)
+		defer deadline.Stop()
+		tick := time.NewTicker(5 * time.Millisecond)
+		defer tick.Stop()
+		for read().Statements < want {
+			select {
+			case <-deadline.C:
+				t.Fatalf("recovery wake read %d statements, wanted %d", read().Statements, want)
+			case <-tick.C:
+			}
+		}
+	}
+	waitForStatements(3)
+	before := read().Statements
+	select {
+	case <-time.After(31 * time.Second):
+	case <-done:
+		t.Fatal("empty recovery stopped without cancellation")
+	}
+	if after := read().Statements; after != before {
+		t.Fatalf("empty recovery polled SQLite after its startup read: %d -> %d", before, after)
+	}
+	h.wakeClaimRecovery()
+	waitForStatements(before + 3)
+	if tr.finalizes != 0 || tr.retrieves != 0 || tr.cancels != 0 {
+		t.Fatal("empty recovery performed remote claim work")
+	}
+}
 
 func firstSwitchApproved(t *testing.T, f *sqlFixture) Intent {
 	t.Helper()
