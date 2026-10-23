@@ -13,7 +13,7 @@ export type ShellBindings = Readonly<{
   scopeKey: string;
   shell: Omit<ShellProps, 'children'>;
   home: HomeBindings;
-  playback: ShellPlaybackBinding;
+  playback?: ShellPlaybackBinding;
   settings?: SettingsBindings;
 }>;
 const Context = createContext<ShellBindings | undefined>(undefined);

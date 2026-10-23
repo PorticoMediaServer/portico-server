@@ -43,7 +43,7 @@ const libraries = titleCase === 'short' ? defaultLibraries.slice(0, 2).map((libr
   : titleCase === 'long' ? defaultLibraries.slice(0, 3).map(library => ({...library, name: `Test ${library.name} library with an intentionally long complete title for the desktop navigation overflow regression`}))
   : defaultLibraries;
 const bindings = {api, events, scopeKey: 'synthetic-viewer', shell: {
-  identity: {viewer, username: 'test-user', serverName: 'Synthetic test server', profileName: 'Test profile', profiles: [], canManageProfiles: false, accountFacts: [],
+  identity: {viewer, username: 'test-user', serverName: 'Synthetic test server', profileName: 'Test profile', profiles: [], canManageProfiles: false, accountFacts: [], capabilities: {manageAccount: true, managePeople: true, manageServer: true, manageSignIn: true},
     libraries, liveAvailable: true, unread: 3, showNotificationDot: true},
   OwnerActivity: activity.OwnerActivity, dockVisible: false, onSignOut: () => {proof.signOut++;}, overlays: <RetainedState />,
 }, home: {service, artwork: {foreground: () => undefined, ambient: () => undefined},

@@ -137,7 +137,6 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
         </div>
       </nav> : <>
         {home && <header className={styles.phoneHeader}><Link className={styles.brand} to="/" aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link><div className={styles.phoneTools}>
-          {identity.capabilities?.manageServer === true && viewer.role === 'owner' && <button type="button" className={styles.phoneActivity} aria-label={t('next.shell.activity')} onClick={dashboard}><Icon name="i-activity" size={22} /></button>}
           {account}
         </div></header>}
         {phoneSelection ?? <nav className={styles.tabbar} aria-label={t('next.home.shell.main')}>

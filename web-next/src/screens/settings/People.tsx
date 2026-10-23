@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {SettingsPeopleClient, type SettingsPeoplePage, type SettingsPeopleQuery, type SettingsPersonRow, type SettingsBulkAccess, type SettingsBulkAction} from '@core/settings-people.ts';
 import {settingsRowIndex, settingsSpec, type SettingsRow, type SettingsValue} from '@core/presentation/settings-spec.ts';
@@ -8,6 +8,7 @@ import {Button} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays/Dialog';
 import {SettingsRow as Row} from '../../kit/shell/SettingsSurfaces';
 import {SettingsPageFailure} from '../../kit/settings';
+import type {SettingsViewerScope} from '../../platform/settings-platform';
 
 const t = defaultI18n.t, section = settingsSpec.find(section => section.scope === 'server' && section.id === 'people')!;
 const table = section.groups![0].rows[0].control, personSpec = section.panels!.person;
@@ -23,11 +24,22 @@ export type PeopleStreamLimits = Readonly<{
   readBulk: (access: SettingsBulkAccess | undefined) => SettingsValue;
   patchBulk: (access: SettingsBulkAccess | undefined, choice: SettingsValue) => SettingsBulkAccess;
 }>;
-export type PeopleBindings = Readonly<{client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier}; streamLimits?: PeopleStreamLimits; invite: (opener: HTMLElement) => void; openHome: () => void; reportError: (error: unknown) => void}>;
+export type PeopleBindings = Readonly<{
+  client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier};
+  authority: Readonly<{scope: SettingsViewerScope; isCurrent: () => boolean; subscribe: (listener: () => void) => () => void; onAuthorityChanged: () => void}>;
+  streamLimits?: PeopleStreamLimits; invite: (opener: HTMLElement) => void; openHome: () => void; reportError: (error: unknown) => void;
+}>;
 
 /** The table query, detail revision and bulk transaction stay bound to one real session. */
 export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
+  const scope = bindings.authority.scope;
+  return <PeopleWorkspace key={JSON.stringify([scope.serverId, scope.authority, scope.accountId, scope.profileId, scope.sessionFamilyId, bindings.actor.role])} bindings={bindings} />;
+}
+
+function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   const {client} = bindings;
+  const live = useSyncExternalStore(bindings.authority.subscribe, bindings.authority.isCurrent, () => false);
+  const [denied, setDenied] = useState(false);
   const [query, setQuery] = useState<TableQuery>(initialQuery), [page, setPage] = useState<SettingsPeoplePage>(), [error, setError] = useState<unknown>();
   const [loading, setLoading] = useState(false), [selected, setSelected] = useState<ReadonlySet<string>>(new Set()), [refresh, setRefresh] = useState(0);
   const [person, setPerson] = useState<AccessMember>(), [personId, setPersonId] = useState<string>(), [tab, setTab] = useState(personSpec.tabs![0].id);
@@ -36,35 +48,49 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
   const [chooseHours, setChooseHours] = useState(false);
   const [command, setCommand] = useState<{action: SettingsBulkAction; rows: readonly SettingsPersonRow[]} | undefined>(), [bulk, setBulk] = useState<SettingsBulkAccess>();
   const tableRef = useRef<SettingsTableHandle>(null), opener = useRef<HTMLElement | null>(null), generation = useRef(0), mounted = useRef(true);
+  const requests = useRef(new Set<AbortController>()), retired = useRef(false);
   const confirmOpener = useRef<HTMLElement | null>(null);
-  useEffect(() => () => {mounted.current = false; ++generation.current;}, []);
+  useEffect(() => {const activeRequests = requests.current;mounted.current = true;return () => {mounted.current = false;for (const request of activeRequests) request.abort();activeRequests.clear();};}, []);
+  const failure = useCallback((error: unknown): boolean => {
+    if (!mounted.current || !bindings.authority.isCurrent()) return true;
+    const status = error && typeof error === 'object' && 'status' in error ? error.status : undefined;
+    if (status === 401 || status === 403) {
+      if (retired.current) return true;
+      retired.current = true;++generation.current;client.dispose();
+      for (const request of requests.current) request.abort();requests.current.clear();
+      setDenied(true);setPage(undefined);setPerson(undefined);setPersonId(undefined);setSelected(new Set());setCommand(undefined);setBulk(undefined);setError(undefined);
+      bindings.authority.onAuthorityChanged();return true;
+    }
+    setError(error);return false;
+  }, [bindings.authority, client]);
   useEffect(() => {
+    if (!live || denied) return;
     const current = ++generation.current, controller = new AbortController();
     setPage(undefined); setLoading(true); setError(undefined); setSelected(new Set());
-    const timer = setTimeout(() => {void client.read(queryOf(query), '', controller.signal).then(value => {if (current === generation.current) setPage(value);}).catch(error => {if (!controller.signal.aborted && current === generation.current) setError(error);}).finally(() => {if (current === generation.current) setLoading(false);});}, query.search ? 200 : 0);
+    const timer = setTimeout(() => {void client.read(queryOf(query), '', controller.signal).then(value => {if (current === generation.current && bindings.authority.isCurrent()) setPage(value);}).catch(error => {if (!controller.signal.aborted && current === generation.current) failure(error);}).finally(() => {if (current === generation.current) setLoading(false);});}, query.search ? 200 : 0);
     return () => {clearTimeout(timer); controller.abort();};
-  }, [client, query, refresh]);
+  }, [client, query, refresh, live, denied, failure, bindings.authority]);
   useEffect(() => {
-    if (!personId) {setPerson(undefined); return;}
+    if (!live || denied || !personId) {setPerson(undefined); return;}
     const controller = new AbortController(); setPerson(undefined); setError(undefined); setChooseLibraries(false); setChooseHours(false);
-    void client.person(personId, controller.signal).then(value => {if (!controller.signal.aborted) setPerson(value);}).catch(error => {if (!controller.signal.aborted) setError(error);});
+    void client.person(personId, controller.signal).then(value => {if (!controller.signal.aborted && bindings.authority.isCurrent()) setPerson(value);}).catch(error => {if (!controller.signal.aborted) failure(error);});
     return () => controller.abort();
-  }, [client, personId]);
+  }, [client, personId, live, denied, failure, bindings.authority]);
   const more = () => {
-    if (loading || !page?.nextCursor) return;
-    const current = generation.current, before = page; setLoading(true);
-    void client.read(queryOf(query), page.nextCursor).then(next => {if (current === generation.current) {
+    if (!live || denied || !bindings.authority.isCurrent() || loading || !page?.nextCursor) return;
+    const current = generation.current, before = page, request = new AbortController();requests.current.add(request);setLoading(true);
+    void client.read(queryOf(query), page.nextCursor, request.signal).then(next => {if (current === generation.current && bindings.authority.isCurrent()) {
       const ids = new Set(before.items.map(row => row.accountId));
       setPage({...next, items: [...before.items, ...next.items.filter(row => !ids.has(row.accountId))]});
-    }}).catch(error => {if (current === generation.current) setError(error);}).finally(() => {if (current === generation.current) setLoading(false);});
+    }}).catch(error => {if (!request.signal.aborted && current === generation.current) failure(error);}).finally(() => {requests.current.delete(request);if (current === generation.current) setLoading(false);});
   };
   const run = async (action: () => Promise<void>) => {
-    if (saving) return; setSaving(true); setSaved(false); setError(undefined);
-    try {await action(); if (mounted.current) {setSaved(true); setRefresh(value => value + 1);}}
-    catch (error) {if (mounted.current) {setError(error); bindings.reportError(error);}}
+    if (!live || denied || !bindings.authority.isCurrent() || saving) return; setSaving(true); setSaved(false); setError(undefined);
+    try {await action(); if (mounted.current && bindings.authority.isCurrent() && !retired.current) {setSaved(true); setRefresh(value => value + 1);}}
+    catch (error) {if (!failure(error)) bindings.reportError(error);}
     finally {if (mounted.current) setSaving(false);}
   };
-  const canEdit = !!person && person.accountId !== bindings.actor.accountId && managesTier(bindings.actor.role, person.role);
+  const canEdit = live && !denied && bindings.authority.isCurrent() && !!person && person.accountId !== bindings.actor.accountId && managesTier(bindings.actor.role, person.role);
   const values: Readonly<Record<string, SettingsValue | undefined>> = person ? {
     'people.username': person.username, 'people.notes': person.notes ?? '', 'people.role': person.role === 'admin' ? 'administrator' : person.role,
     'people.libraries': person.allowedLibraries.length || chooseLibraries ? 'some' : 'all', ...(bindings.streamLimits ? {'people.maxStreams': bindings.streamLimits.read(person)} : {}),
@@ -114,6 +140,7 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
     void run(async () => {const saved = await client.limits(before, {...before.limits, schedule: {...before.limits.schedule, windows}}); setPerson(current => current?.accountId === before.accountId ? {...before, limits: saved.limits, limitsRevision: saved.revision} : current);});
   };
   const ask = (action: SettingsBulkAction, ids: readonly string[], element?: HTMLElement) => {
+    if (!live || denied || !bindings.authority.isCurrent()) return;
     const rows = (page?.items ?? []).filter(row => ids.includes(row.accountId)).map(row => person?.accountId === row.accountId ? {...row, revision: person.revision, limitsRevision: person.limitsRevision} : row);
     if (!rows.length || rows.some(row => row.accountId === bindings.actor.accountId || !managesTier(bindings.actor.role, row.role))) return;
     confirmOpener.current = element ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null); setCommand({action, rows}); if (action === 'access') setBulk({});
@@ -133,8 +160,9 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
     if (row.control.type === 'action') return <SettingsAction appearance={row.control.style === 'danger' ? 'danger' : 'glass'} disabled={!canEdit || saving || !personRow} onClick={() => {if (personRow) ask(row.id === 'people.delete' ? 'remove' : person.disabled ? 'enable' : 'disable', [personId!]);}}>{row.id === 'people.turnOff' && person.disabled ? t('next.settings.turnOn') : t(row.control.label!)}</SettingsAction>;
     return null;
   };
+  if (!live || denied) return null;
   return <>
-    <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="small" variant="primary" icon="i-plus" iconSize={20} onClick={event => bindings.invite(event.currentTarget)}>{t(table.addLabel!)}</Button>}>
+    <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="small" variant="primary" icon="i-plus" iconSize={20} onClick={event => {if (bindings.authority.isCurrent()) bindings.invite(event.currentTarget);}}>{t(table.addLabel!)}</Button>}>
     {error && !page && !personId ? <SettingsPageFailure retry={() => setRefresh(value => value + 1)} home={bindings.openHome} /> : <SettingsTable ref={tableRef} height={table.height}
       label={t(section.title)} rows={(page?.items ?? []).map(row => ({id: row.accountId, label: row.username, selectable: row.accountId !== bindings.actor.accountId && managesTier(bindings.actor.role, row.role), cells: {
         person: {title: row.username, meta: row.email, avatar: Array.from(row.username)[0]?.toLocaleUpperCase()},
