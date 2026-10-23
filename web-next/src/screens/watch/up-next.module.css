@@ -13,6 +13,7 @@
 .actions { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
 .actions button { height: 42px; padding: 0 18px; border: 0; border-radius: 10px; display: inline-flex; align-items: center; gap: 8px; font-size: var(--up-next-action-size); font-weight: var(--up-next-weight); line-height: normal; background: color-mix(in srgb, var(--color-text) 14%, transparent); backdrop-filter: blur(20px); color: var(--color-text); transition: transform 160ms var(--up-next-ease), background 160ms var(--up-next-ease); cursor: pointer; white-space: nowrap; }
 .actions button:hover { background: color-mix(in srgb, var(--color-text) 22%, transparent); }
+.actions svg { display: block; flex: none; }
 .actions button:active { transform: scale(.97); }
 .actions button:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
 .actions .play { background: var(--color-text); color: var(--color-ink); }

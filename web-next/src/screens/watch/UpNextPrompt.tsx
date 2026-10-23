@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import {durationText} from '@core/presentation/kit-model/text.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback';
 import {Artwork} from '../../kit/artwork';
-import {Icon} from '../../kit/Icon';
+import {WatchPromptGlyph} from './PromptGlyph';
 import type {WatchBindings} from './types';
 import {watchClock} from './model';
 import {dispatchWatchMarker} from './policy';
@@ -37,8 +37,8 @@ export function WatchUpNextPrompt({binding, snapshot, artwork, environment, expa
     </div>
     {offer.progress !== undefined && <div className={styles.meter} aria-hidden="true"><i style={{width: `${offer.progress * 100}%`}} /></div>}
     <div className={styles.actions}>
-      <button type="button" className={styles.play} onClick={() => act('play-now')}><Icon name="i-play" size={18} />{t('player.upNext.playNow')}</button>
-      {prompt.sceneAfterCredits && marker && <button type="button" onClick={skip}><Icon name="i-next" size={18} />{t('player.skip', {kind: marker.kind})}</button>}
+      <button type="button" className={styles.play} onClick={() => act('play-now')}><WatchPromptGlyph kind="play" size={18} />{t('player.upNext.playNow')}</button>
+      {prompt.sceneAfterCredits && marker && <button type="button" onClick={skip}><WatchPromptGlyph kind="next" size={18} />{t('player.skip', {kind: marker.kind})}</button>}
       <button type="button" onClick={() => act('watch-credits')}>{t('player.upNext.watchCredits')}</button>
     </div>
     {prompt.sceneAfterCredits && marker && <div className={styles.note}>{t('player.upNext.sceneAfterCredits')}</div>}
