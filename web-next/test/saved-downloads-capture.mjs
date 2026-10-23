@@ -55,10 +55,11 @@ try {
   await page.evaluate(async () => { await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))); });
   const fields = page.locator('[data-saved-resource-fields]');
   const fieldsBounds = await fields.boundingBox();
+  const fieldsStyles = await fields.evaluate(element => [...element.querySelectorAll('input,textarea,label,em')].map(child => ({tag: child.tagName, text: child instanceof HTMLInputElement || child instanceof HTMLTextAreaElement ? child.value : child.textContent, font: getComputedStyle(child).font, spacing: getComputedStyle(child).letterSpacing})));
   await fields.screenshot({path: join(process.env.PORTICO_RUNNER_OUTPUT, 'resource-draft-fields.jpg'), type: 'jpeg', quality: 95, caret: 'initial'});
   await draft.screenshot({path: join(process.env.PORTICO_RUNNER_OUTPUT, 'resource-draft-context.jpg'), type: 'jpeg', quality: 95, caret: 'initial'});
   await draft.getByRole('button', {name: 'Cancel', exact: true}).click();
   await draft.waitFor({state: 'hidden'});
   await page.evaluate(() => window.savedDownloadsComponentProof.dispose());
-  console.log(JSON.stringify({kind: 'COMPONENT ONLY; no application/native acceptance', node: process.version, actualTransportResponses: responses, observations, retryAndClose: true, fieldsOnly: {fieldsBounds, actualUserEntry: 'Rainy day films', summary: '', writerAvailable: false, cancel: true}}));
+  console.log(JSON.stringify({kind: 'COMPONENT ONLY; no application/native acceptance', node: process.version, actualTransportResponses: responses, observations, retryAndClose: true, fieldsOnly: {fieldsBounds, fieldsStyles, actualUserEntry: 'Rainy day films', summary: '', writerAvailable: false, cancel: true}}));
 } finally { await browser?.close(); await server.close(); }

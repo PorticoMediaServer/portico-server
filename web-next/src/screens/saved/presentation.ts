@@ -1,7 +1,17 @@
 import {appearancePreferences} from '@core/preference-effects.ts';
 import type {PreferenceSnapshot} from '@core/preferences.ts';
 import type {AmbientArtSource} from '../../kit/artwork';
-import type {SavedPresentation} from './Saved';
+
+/** Live presentation from the parent's canonical preference facade, never
+ * another persisted view/key map. The parent owns writes and route history. */
+export type SavedPresentation = Readonly<{
+  view: 'grid' | 'list';
+  cardWidth: number;
+  backdrops: boolean;
+  reducedMotion: boolean;
+  backdrop?: AmbientArtSource;
+  setView(view: 'grid' | 'list'): void;
+}>;
 
 export type SavedPresentationInput = Readonly<{
   /** The actual responsive frame baseline, before the viewer's card scaling. */

@@ -24,6 +24,8 @@ import {savedText as s} from './text.ts';
 import {SavedHistory, SavedResourceScreen} from './Resource';
 import {ResourceFields} from './ResourceFields';
 import {SavedDialog} from './SavedDialog';
+import type {SavedPresentation} from './presentation.ts';
+export type {SavedPresentation} from './presentation.ts';
 import type {SavedOperations} from './operations.ts';
 import {sameSavedRoute, savedViewKey} from './route.ts';
 import {useSavedViewOperations} from './use-view-operations.ts';
@@ -35,16 +37,6 @@ export type SavedSelection = Readonly<{
   card(service: SavedService, sectionId: string, entry: SavedEntry): CardSelection | undefined;
   registerWindow(service: SavedService, sectionId: string, first: number, last: number): (() => void) | undefined;
   personalCard(service: PersonalSavedService, entry: PersonalResourceEntry): CardSelection | undefined;
-}>;
-/** Live presentation from the parent's canonical preference facade, never another
- * persisted view/key map. The parent owns setting effects and route history. */
-export type SavedPresentation = Readonly<{
-  view: 'grid' | 'list';
-  cardWidth: number;
-  backdrops: boolean;
-  reducedMotion: boolean;
-  backdrop?: AmbientArtSource;
-  setView(view: 'grid' | 'list'): void;
 }>;
 export type SavedEffects = SavedDownloadEffects & Readonly<{
   openEntry(entry: ContentEntry): void;

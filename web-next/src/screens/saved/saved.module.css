@@ -11,8 +11,8 @@
 .resourceEditorField > div { height: 42px; padding: 0 14px; border-radius: 10px; background: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line); }
 .resourceEditorField > div:focus-within { box-shadow: inset 0 0 0 2px var(--color-focus); }
 .resourceEditorField input { caret-color: var(--color-accent-strong); font-size: calc(var(--type-body-size) * 29 / 30); }
-.resourceSummary > span > em { margin-left: 6px; font-style: normal; font-weight: 500; color: var(--color-text-tertiary); }
-.resourceSummary > textarea { appearance: none; display: block; width: 100%; height: 72px; padding: 12px 14px; margin: 0; border: 0; border-radius: 10px; resize: none; background: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-secondary); font-family: var(--font); font-size: calc(var(--type-body-size) * 29 / 30); line-height: 1.45; font-weight: 500; }
+.resourceSummary > span > em { margin-left: 6px; font-style: normal; font-weight: var(--type-micro-weight); color: var(--color-text-tertiary); }
+.resourceSummary > textarea { appearance: none; display: block; width: 100%; height: 72px; padding: 12px 14px; margin: 0; border: 0; border-radius: 10px; resize: none; background: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-secondary); font-family: var(--font); font-size: calc(var(--type-body-size) * 29 / 30); line-height: calc(var(--type-body-size) * 29 / 30 * 1.45); font-weight: var(--type-micro-weight); }
 .resourceSummary > textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-focus); }
 .wash { position: absolute; inset: 0 0 auto; height: 640px; pointer-events: none; overflow: hidden; mask-image: linear-gradient(180deg, var(--color-ink) 20%, transparent); }
 .wash > * { width: 100%; height: 100%; }
@@ -25,7 +25,7 @@
 .resources { display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 30px 16px; padding: 26px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .newTile { width: 172px; margin: 30px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .visibility { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-top: 18px; font-size: var(--type-body-size); line-height: normal; font-weight: var(--type-row-heading-weight); }
-.visibilityHelp { margin: 8px 0 0; font-size: var(--type-caption-size); line-height: 1.5; color: var(--color-text-tertiary); }
+.visibilityHelp { margin: 8px 0 0; font-size: var(--type-caption-size); line-height: calc(var(--type-caption-size) * 1.5); color: var(--color-text-tertiary); }
 .resourceBack { padding: 104px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .resourceHeader { position: relative; z-index: var(--layer-content); display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 40px; align-items: end; padding: 22px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .resourceCover { aspect-ratio: 1; border-radius: 14px; overflow: hidden; }
