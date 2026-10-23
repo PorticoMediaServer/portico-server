@@ -14,7 +14,7 @@ import {DeleteVersionDialog} from './DeleteVersion';
 import {FOLDER_SPLITTABLE_KINDS, SPLITTABLE_KINDS} from '@core/title-identity.ts';
 import type {TitleFile} from '@core/detail.ts';
 import {setPendingTrackChoice} from '../../player/pending-choice';
-import {useCreditPages, useDetail, useItemRecommendations} from '../../app/detail';
+import {useCreditPages, useDetail, useFileInfo, useItemRecommendations} from '../../app/detail';
 import {titleRecommendationRows} from '@core/recommendations.ts';
 import {homeRowHeading} from '@core/home.ts';
 import {useNotInterested} from '../../app/not-interested-notice';
@@ -68,6 +68,22 @@ export function DetailScreen() {
   const player = usePlayerActions();
   const data = snapshot.data;
   const item = data?.item;
+  const [filesOpen, setFilesOpen] = useState(false);
+  const fileInfo = useFileInfo(target, data?.scope.viewerFence, filesOpen, data?.revision);
+  const files = fileInfo.snapshot.data?.files;
+  const fileManage = fileInfo.snapshot.data?.manage;
+  const fileSection = useRef<HTMLDivElement>(null);
+  // Keep the existing Files section; read its separate projection only when
+  // that part of the page comes into view.
+  useEffect(() => {
+    if (!item || !fileSection.current || filesOpen) return;
+    if (typeof IntersectionObserver === 'undefined') { setFilesOpen(true); return; }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) { setFilesOpen(true); observer.disconnect(); }
+    });
+    observer.observe(fileSection.current);
+    return () => observer.disconnect();
+  }, [item, filesOpen]);
   // Movies read their rows from the recommendations endpoint (below).
   const recommendations = useItemRecommendations(item ? {libraryId: item.libraryId, itemId: item.id, kind: item.kind} : null);
   // P5: every title recommendation offers Not interested; a card turned down leaves at once.
@@ -170,8 +186,8 @@ export function DetailScreen() {
   const [splitting, setSplitting] = useState<{file: TitleFile; summary: string; folder?: 'album' | 'book'}>();
   const [deletingVersion, setDeletingVersion] = useState<{file: TitleFile; summary: string}>();
   // What tells one version from another in the Version control: its edition, and where two still read the same, a bit rate or size.
-  const versionFacts = useMemo(() => Object.fromEntries((data?.files ?? []).map(file => [file.id, {edition: file.edition, bitRate: file.bitRate, size: file.size}])), [data?.files]);
-  useEffect(() => { setAllPeople(false); setChoice({}); setSplitting(undefined); }, [itemId]);
+  const versionFacts = useMemo(() => Object.fromEntries((files ?? []).map(file => [file.id, {edition: file.edition, bitRate: file.bitRate, size: file.size}])), [files]);
+  useEffect(() => { setAllPeople(false); setChoice({}); setSplitting(undefined); setDeletingVersion(undefined); setFilesOpen(false); }, [itemId]);
   // The detail carries the cast's first page and the key crew; the rest of
   // either group pages in as its row scrolls (nothing is cut off).
   const totals = data?.metadata.creditTotals;
@@ -266,11 +282,14 @@ export function DetailScreen() {
           {/* Extras ride along with the title: trailers, featurettes, deleted scenes, each an ordinary playable item. */}
           {data?.extras?.map(group => <SectionView key={`extra:${group.type}`} section={{id: `extra:${group.type}`, type: 'rail', heading: {key: `extras.${group.type}`, fallback: group.label}, entries: group.items, totalCount: group.items.length, nextCursor: ''}} libraryId={item?.libraryId} />)}
           {/* Details and Files close the page (Spec — Page Content §0.3): the facts, then every version of the file. */}
-          {detailRows.length || data?.files?.length ? (
+          {detailRows.length || item ? (
             <Section title={t('title.details')}>
-              <div className={s.details}>
+              <div className={s.details} ref={fileSection}>
                 {detailRows.length ? <KeyValue rows={detailRows} /> : null}
-                {data?.files?.length ? <TitleFiles files={data.files} onSplit={owner && item && SPLITTABLE_KINDS.includes(item.kind) ? (file, summary) => setSplitting({file, summary}) : undefined} folderKind={item?.kind === 'audiobook_file' ? 'book' : 'album'} onSplitFolder={owner && item && FOLDER_SPLITTABLE_KINDS.includes(item.kind) ? (file, summary) => setSplitting({file, summary, folder: item.kind === 'audiobook_file' ? 'book' : 'album'}) : undefined} onDelete={owner && item ? (file, summary) => setDeletingVersion({file, summary}) : undefined} /> : null}
+                {filesOpen && fileInfo.snapshot.phase === 'loading' ? <LoadingGrid /> : null}
+                {filesOpen && fileInfo.snapshot.phase === 'error' ? <ErrorNotice error={fileInfo.snapshot.error} context="detail" retry={fileInfo.retry} refresh={() => { retry(); fileInfo.retry(); }} /> : null}
+                {filesOpen && files ? <TitleFiles files={files} onSplit={owner && fileManage?.split && item && SPLITTABLE_KINDS.includes(item.kind) ? (file, summary) => setSplitting({file, summary}) : undefined} folderKind={item?.kind === 'audiobook_file' ? 'book' : 'album'} onSplitFolder={owner && fileManage?.split && item && FOLDER_SPLITTABLE_KINDS.includes(item.kind) ? (file, summary) => setSplitting({file, summary, folder: item.kind === 'audiobook_file' ? 'book' : 'album'}) : undefined} onDelete={owner && fileManage?.delete && item ? (file, summary) => setDeletingVersion({file, summary}) : undefined} /> : null}
+                {filesOpen && fileInfo.snapshot.data?.nextCursor ? <Button variant="ghost" label={t('title.more')} onClick={fileInfo.more} disabled={fileInfo.snapshot.phase === 'loading'} /> : null}
               </div>
             </Section>
           ) : null}
@@ -289,8 +308,8 @@ export function DetailScreen() {
           </div>
         </Dialog>
       ) : null}
-      {deletingVersion && item ? <DeleteVersionDialog itemId={item.id} title={item.title} file={deletingVersion.file} summary={deletingVersion.summary} onClose={() => setDeletingVersion(undefined)} onDeleted={() => { setDeletingVersion(undefined); void retry(); }} /> : null}
-      {splitting && item ? <SplitVersionDialog libraryId={item.libraryId} title={item.title} file={splitting.file} summary={splitting.summary} folder={splitting.folder} onClose={() => setSplitting(undefined)} /> : null}
+      {deletingVersion && item && owner && fileManage?.delete && files?.some(file => file === deletingVersion.file) ? <DeleteVersionDialog itemId={item.id} title={item.title} file={deletingVersion.file} summary={deletingVersion.summary} onClose={() => setDeletingVersion(undefined)} onDeleted={() => { setDeletingVersion(undefined); void retry(); fileInfo.retry(); }} /> : null}
+      {splitting && item && owner && fileManage?.split && files?.some(file => file === splitting.file) ? <SplitVersionDialog libraryId={item.libraryId} title={item.title} file={splitting.file} summary={splitting.summary} folder={splitting.folder} onClose={() => setSplitting(undefined)} /> : null}
       {ratingOpen && item ? <RatingDialog title={item.title} value={personal?.rating != null ? personal.rating / 2 : null} onClose={() => setRatingOpen(false)} onRate={stars => { mutate({action: 'rating', value: stars == null ? null : Math.round(stars * 2)}); setRatingOpen(false); }} /> : null}
       <AnchoredMenu open={!!organise} anchor={organise?.anchor} onOpenChange={open => !open && setOrganise(undefined)} label={organise?.mode === 'playlist' ? t('entry.sheet.addToPlaylist') : t('entry.sheet.addToCollection')}>
         {item && organise ? (organise.mode === 'playlist'

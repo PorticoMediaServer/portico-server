@@ -50,7 +50,9 @@ export function HomeScreen() {
     if (destination?.to === 'browse') void navigate({to: '/library/$libraryId', params: {libraryId: destination.libraryId}, search: {view: destination.tab as LibraryView, ...(destination.sort ? {sort: destination.sort.field, direction: destination.sort.direction} : {}), ...(destination.filters.length ? {filters: encodePredicates(destination.filters)} : {})}});
     else if (destination?.to === 'row') void navigate({to: '/home/rows/$rowId', params: {rowId: destination.rowId}});
     else if (destination?.to === 'saved_view') seeAllView(destination.resourceId, row);
-    else if (destination) void navigate({to: '/library/$libraryId', params: {libraryId: destination.libraryId}, search: {}});
+    else if (destination?.to === 'library') void navigate({to: '/library/$libraryId', params: {libraryId: destination.libraryId}, search: {}});
+    else if (destination?.to === '/library/$libraryId/$view/$entityId') void navigate(destination);
+    else if (destination?.to === '/channels/$entry') void navigate(destination);
   };
   // P6: a saved view's row opens the view's own page (the complete list, its filters and sort).
   const seeAllView = (resourceId: string, row: HomeRow) => void navigate({to: '/saved/$kind/$resourceId', params: {kind: 'view', resourceId}, search: {title: row.title}});
