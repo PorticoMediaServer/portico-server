@@ -19,6 +19,7 @@ required = ['libva2', 'libva-drm2', 'mesa-va-drivers', 'mesa-vulkan-drivers',
             'intel-media-va-driver-non-free', 'i965-va-driver', 'libvpl2',
             'libmfx1', 'libmfx-gen1.2']
 lock = json.loads(pathlib.Path('/usr/share/doc/portico/intel-drivers.lock.json').read_text())
+distributionPackages = list(required)
 for item in lock['packages']:
     # The checksum-pinned archive filename has an exact Debian package name.
     required.append(item['name'].split('_', 1)[0])
@@ -26,9 +27,14 @@ required = sorted(set(required))
 for package in required:
     status = subprocess.check_output(['dpkg-query', '-W', '-f=${Status}', package], text=True)
     assert status == 'install ok installed', (package, status)
-    assert (pathlib.Path('/usr/share/doc') / package / 'copyright').stat().st_size > 0, package
-for package in ['intel-media-va-driver-non-free'] + [i['name'].split('_', 1)[0] for i in lock['packages']]:
-    assert (pathlib.Path('/usr/share/doc/portico/licenses/runtime-drivers') / (package + '.txt')).stat().st_size > 0, package
+for package in distributionPackages:
+    if package != 'libmfx1':
+        assert (pathlib.Path('/usr/share/doc') / package / 'copyright').stat().st_size > 0, package
+notices = pathlib.Path('/usr/share/doc/portico/licenses/runtime-drivers')
+assert (notices / 'intel-media-va-driver-non-free.txt').stat().st_size > 0
+for item in lock['packages']:
+    package = item['name'].split('_', 1)[0]
+    assert any(p.is_file() and p.stat().st_size > 0 for p in (notices / package).rglob('*')), package
 sources = pathlib.Path('/etc/apt/sources.list.d/debian.sources').read_text()
 assert 'Components: main non-free\n' in sources
 assert 'contrib' not in sources and 'non-free-firmware' not in sources

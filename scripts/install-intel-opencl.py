@@ -3,9 +3,9 @@
 import hashlib
 import json
 from pathlib import Path
-import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import urllib.request
 
@@ -15,7 +15,8 @@ if arch != lock['architecture']:
     sys.exit(0)
 with tempfile.TemporaryDirectory(prefix='portico-intel-opencl-') as folder:
     packages = []
-    names = []
+    notices = Path('/usr/share/doc/portico/licenses/runtime-drivers')
+    notices.mkdir(parents=True, exist_ok=True)
     for item in lock['packages']:
         path = Path(folder) / item['name']
         urllib.request.urlretrieve(item['url'], path)
@@ -23,12 +24,27 @@ with tempfile.TemporaryDirectory(prefix='portico-intel-opencl-') as folder:
             if hashlib.file_digest(stream, 'sha256').hexdigest() != item['sha256']:
                 raise ValueError('Intel driver checksum mismatch: ' + item['name'])
         packages.append(str(path))
-        names.append(subprocess.check_output(['dpkg-deb', '--field', str(path), 'Package'], text=True).strip())
+        name = subprocess.check_output(['dpkg-deb', '--field', str(path), 'Package'], text=True).strip()
+        # Debian slim intentionally drops most /usr/share/doc payloads. Retain
+        # the exact archive's licence texts before apt applies those filters;
+        # upstream IGC uses LICENSE files rather than Debian's copyright name.
+        found = 0
+        with subprocess.Popen(['dpkg-deb', '--fsys-tarfile', str(path)], stdout=subprocess.PIPE) as process:
+            with tarfile.open(fileobj=process.stdout, mode='r|') as contents:
+                for member in contents:
+                    basename = Path(member.name).name.lower()
+                    if not member.isfile() or not any(word in basename for word in ('license', 'licence', 'copyright', 'copying', 'notice')):
+                        continue
+                    relative = Path(member.name)
+                    if relative.is_absolute() or '..' in relative.parts or not 0 < member.size <= 2 << 20:
+                        raise ValueError('Invalid driver licence member: ' + member.name)
+                    destination = notices / name / relative
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    with contents.extractfile(member) as source, destination.open('xb') as target:
+                        target.write(source.read())
+                    found += 1
+            if process.wait() != 0:
+                raise ValueError('Intel driver archive unreadable: ' + name)
+        if not found:
+            raise ValueError('Intel driver licence missing from pinned archive: ' + name)
     subprocess.run(['apt-get', 'install', '--yes', '--no-install-recommends', *packages], check=True)
-    notices = Path('/usr/share/doc/portico/licenses/runtime-drivers')
-    notices.mkdir(parents=True, exist_ok=True)
-    for name in names:
-        copyright = Path('/usr/share/doc') / name / 'copyright'
-        if not copyright.is_file() or copyright.stat().st_size == 0:
-            raise ValueError('Intel driver copyright missing: ' + name)
-        shutil.copyfile(copyright, notices / (name + '.txt'))
