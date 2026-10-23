@@ -23,6 +23,21 @@ test('server occurrence order preserves duplicate media and opaque hidden rows',
  const s=setup(async p=>isContent(p)?projection('playlist',0,entries):resource(0,3));await s.select({view:'playlist',playlistId:'playlist'});
  assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().projection!.sections[0].entries,entries);assert(Object.isFrozen(s.getSnapshot().projection!.sections[0].entries));
 });
+test('Saved retains genuine shared catalogue facts and stored display titles for media and visible occurrences',async()=>{
+ const facts={...media('episode'),kind:'episode',title:'The Hunger Games: Special Edition',displayTitle:'  The Hunger Games: Special Edition  ',year:2012,watched:true,new:false,seasonNumber:2,episodeNumber:7,show:{id:'show',name:'Actual show'},artist:{id:'artist',name:'Actual artist'},album:{id:'album',name:'Actual album'},author:'Actual author',libraryId:'actual-library',duration:120,progressSeconds:17};
+ for(const view of ['watchlist','playlist']){
+  const entries=view==='playlist'?[{id:'occurrence',kind:'playlist_entry',hidden:false,media:facts}]:[facts];
+  const s=setup(async p=>isContent(p)?projection(view,0,entries):resource());
+  await s.select(view==='playlist'?{view:'playlist',playlistId:'playlist'}:{view:'watchlist'});
+  const entry=s.getSnapshot().projection!.sections[0].entries[0];
+  assert.deepEqual(view==='playlist'?(entry as {media:unknown}).media:entry,facts);
+  s.dispose();
+ }
+ const hidden=setup(async p=>isContent(p)?projection('playlist',0,[{id:'hidden',kind:'playlist_entry',hidden:true,media:facts}]):resource());
+ await hidden.select({view:'playlist',playlistId:'playlist'});
+ assert.deepEqual(hidden.getSnapshot().projection!.sections[0].entries,[{id:'hidden',kind:'playlist_entry',hidden:true}]);
+ hidden.dispose();
+});
 test('a hidden occurrence stays opaque whatever else its row carries, and a repeated occurrence ID keeps its first row',async()=>{
  for(const entries of [[{...occurrence(),hidden:true}],[{id:'entry',kind:'playlist_entry',hidden:true,title:'Secret'}]]){const s=setup(async p=>isContent(p)?projection('playlist',0,entries):resource());await s.select({view:'playlist',playlistId:'playlist'});assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().projection!.sections[0].entries,[{id:'entry',kind:'playlist_entry',hidden:true}]);}
  const s=setup(async p=>isContent(p)?projection('playlist',0,[occurrence('one'),{...occurrence('one'),media:media('other')},occurrence('two')]):resource());await s.select({view:'playlist',playlistId:'playlist'});

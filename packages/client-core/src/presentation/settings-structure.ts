@@ -159,12 +159,9 @@ export type SettingsPage = Readonly<{id: string; title: MessageId; icon: IconId;
 export type SettingsHeading = Readonly<{id: SettingsHeadingId; title: MessageId; pages: readonly SettingsPage[]}>;
 export type SettingsStructure = Readonly<{headings: readonly SettingsHeading[]}>;
 
-/** The Player setting's values, in the order shown: Automatic is the default. */
+/** Runtime engine-setting values; authored controls live in the platform Settings spec. */
 export const PLAYER_ENGINES = ['automatic', 'native', 'mpv'] as const;
 export type PlayerEngineSetting = (typeof PLAYER_ENGINES)[number];
-const PLAYER_ENGINE_CHOICES: readonly SettingsChoice[] = [
-  {value: 'automatic', label: 'settings.player.automatic'}, {value: 'native', label: 'settings.player.native'}, {value: 'mpv', label: 'settings.player.mpv'},
-];
 
 // ── Authoring helpers ────────────────────────────────────────────────────────
 
@@ -268,11 +265,6 @@ const accountPages: readonly AuthoredPage[] = [
         {kind: 'composite', id: 'playbackMethod', storage: 'registry', label: 'settings.row.playbackMethod', help: 'settings.help.playbackMethod', scope: 'deviceClass', control: {type: 'choice', choices: [
           {value: 'automatic', label: 'settings.playbackMethod.automatic'}, {value: 'original', label: 'settings.playbackMethod.original'}, {value: 'convert', label: 'settings.playbackMethod.convert'},
         ]}},
-        // Which player plays: Automatic (the default) uses the device's own when it can play the
-        // title as it is or with a plain repackaging, and mpv only when the alternative is
-        // converting the picture, lossy sound or burned-in subtitles. Kept by the device itself,
-        // and shown only where there is a second player to choose.
-        {kind: 'composite', id: 'playerEngine', storage: 'device', label: 'settings.row.player', help: 'settings.help.player', scope: 'device', platforms: ['phone', 'tv'], needs: c => !!c.playerEngines, control: {type: 'choice', choices: PLAYER_ENGINE_CHOICES}},
       ]},
       // Where the device cannot detect them, the viewer says what the TV shows and plays. Off: standard range and stereo.
       {id: 'tvOutputs', title: 'settings.section.tvOutputs', description: 'settings.section.tvOutputsHelp', rows: [
@@ -282,7 +274,6 @@ const accountPages: readonly AuthoredPage[] = [
       // The short list for when detection is wrong. Each narrows what the server plans this device as.
       {id: 'fixes', title: 'settings.section.playbackFixes', description: 'settings.section.playbackFixesHelp', rows: [
         {kind: 'composite', id: 'forceStereo', storage: 'device', label: 'settings.row.forceStereo', help: 'settings.help.forceStereo', scope: 'device', control: {type: 'switch'}},
-        {kind: 'composite', id: 'disablePassthrough', storage: 'device', label: 'settings.row.disablePassthrough', help: 'settings.help.disablePassthrough', scope: 'device', needs: c => c.audioPassthrough === true, control: {type: 'switch'}},
         {kind: 'composite', id: 'disableHdr', storage: 'device', label: 'settings.row.disableHdr', help: 'settings.help.disableHdr', scope: 'device', needs: c => c.hdr !== false, control: {type: 'switch'}},
       ]},
     ],
@@ -303,7 +294,6 @@ const accountPages: readonly AuthoredPage[] = [
         // Every app draws cards at this size and backdrops behind titles (the shell applies both).
         {kind: 'composite', id: 'cardSize', storage: 'registry', label: 'settings.row.cardSize', scope: 'deviceClass', needs: c => !c.preferenceKeys || c.preferenceKeys.has('appearance.cardSizePercent'), control: {type: 'choice', choices: [{value: 'small', label: 'settings.cardSize.small'}, {value: 'medium', label: 'settings.cardSize.medium'}, {value: 'large', label: 'settings.cardSize.large'}]}},
         toggle('appearance.showBackdrops', 'pref.label.appearance.showBackdrops', {scope: 'deviceClass', help: 'settings.help.backdrops'}),
-        toggle('appearance.reduceMotion', 'pref.label.appearance.reduceMotion', {scope: 'deviceClass', help: 'pref.help.appearance.reduceMotion.web', platforms: ['web']}),
         // Apple keeps this on the device, beside the system's own Reduce Motion.
         {kind: 'composite', id: 'reduceMotion', storage: 'device', label: 'pref.label.appearance.reduceMotion', help: 'settings.help.reduceMotionDevice', scope: 'device', platforms: ['phone', 'tv'], control: {type: 'switch'}},
         {kind: 'composite', id: 'textSize', storage: 'device', label: 'settings.row.textSize', scope: 'device', platforms: ['tv'], control: {type: 'choice', choices: [{value: 'standard', label: 'settings.textSize.standard'}, {value: 'large', label: 'settings.textSize.large'}]}},

@@ -44,7 +44,7 @@ const audioSource = (itemId: string) => {
 };
 
 const server = new FakePlaybackServer({audioSource, audioItem: id => id.startsWith('fx-') || id.startsWith('long-') || id.startsWith('book-') || id.startsWith('song'),
-  itemKind: id => id.startsWith('book-') ? 'audiobook_file' : undefined, autoplayNext: true});
+  itemKind: id => id.startsWith('book-') ? 'audiobook_file' : undefined});
 const failures: {match: string; outcome: number | 'offline' | 'lost'}[] = [];
 const outages: {match: string; until: number}[] = [];
 const log: {at: number; method: string; path: string; status: number | 'offline' | 'lost'}[] = [];

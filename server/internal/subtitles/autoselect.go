@@ -16,7 +16,11 @@ import (
 
 // AutoChoice is what the viewer wants without being asked.
 type AutoChoice struct {
-	ForeignAudio bool
+	ForeignAudio          bool
+	PreferSDH             bool
+	DisableUntaggedForced bool
+	FullFallback          bool
+	NoLanguage            bool
 	// Enabled is the viewer's "always show subtitles" preference.
 	Enabled bool
 	// Off is the viewer's "never choose subtitles for me": no track is chosen, not even
@@ -102,10 +106,10 @@ func hearingImpairedTitle(title string) bool {
 // off: a forced track in the language of the audio, because that is the part of
 // the film the audio does not carry. Otherwise nothing.
 func ChooseAutomatic(choice AutoChoice, candidates []AutoCandidate) *AutoCandidate {
-	if choice.Off {
+	if choice.Off || choice.NoLanguage {
 		return nil
 	}
-	if choice.Enabled || choice.ForeignAudio {
+	full := func() *AutoCandidate {
 		for _, want := range choice.Languages {
 			key := subtitleLanguageKey(want)
 			if key == "" {
@@ -117,7 +121,8 @@ func ChooseAutomatic(choice AutoChoice, candidates []AutoCandidate) *AutoCandida
 				if c.Forced || subtitleLanguageKey(c.Language) != key {
 					continue
 				}
-				if !c.HearingImpaired && !hearingImpairedTitle(c.Title) {
+				sdh := c.HearingImpaired || hearingImpairedTitle(c.Title)
+				if sdh == choice.PreferSDH {
 					return c
 				}
 				if fallback == nil {
@@ -128,23 +133,12 @@ func ChooseAutomatic(choice AutoChoice, candidates []AutoCandidate) *AutoCandida
 				return fallback
 			}
 		}
-		// An explicitly enabled track with no language preferences follows the
-		// file's sole default. A known viewer language is never overridden.
-		if choice.Enabled && len(choice.Languages) == 0 {
-			var selected *AutoCandidate
-			for i := range candidates {
-				c := &candidates[i]
-				if c.Default && !c.Forced {
-					if selected != nil {
-						return nil
-					}
-					selected = c
-				}
-			}
-			return selected
-		}
 		return nil
 	}
+	if choice.Enabled || choice.ForeignAudio {
+		return full()
+	}
+
 	audio := subtitleLanguageKey(choice.AudioLanguage)
 	if audio == "" {
 		return nil
@@ -159,14 +153,20 @@ func ChooseAutomatic(choice AutoChoice, candidates []AutoCandidate) *AutoCandida
 	var untagged *AutoCandidate
 	for i := range candidates {
 		c := &candidates[i]
-		if c.Forced && subtitleLanguageKey(c.Language) == "" {
+		if !choice.DisableUntaggedForced && c.Forced && subtitleLanguageKey(c.Language) == "" {
 			if untagged != nil {
 				return nil
 			}
 			untagged = c
 		}
 	}
-	return untagged
+	if untagged != nil {
+		return untagged
+	}
+	if choice.FullFallback {
+		return full()
+	}
+	return nil
 }
 
 // ViewerKey is the key a viewer's personal subtitle tracks are stored under.
