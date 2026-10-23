@@ -39,7 +39,7 @@ export type DashboardBindings = Readonly<{
   effects: Readonly<{
     transport: (id: string, command: 'pause' | 'resume') => Promise<void>;
     stop: (id: string, message?: string) => Promise<void>;
-    openHistory: () => void; openSettings: (section: string) => void;
+    openHistory: () => void; openHome: () => void; openSettings: (section: string) => void;
     /** Supplied by the action owner; mutation must retain its existing revision/idempotency guard. */
     alert?: (alert: DashboardAlert) => Promise<void>;
     reportError: (error: unknown) => void;
@@ -49,7 +49,7 @@ export type DashboardBindings = Readonly<{
 }>;
 export type DashboardBindingOptions = Pick<DashboardBindings, 'scope' | 'role' | 'context' | 'isCurrent' | 'isMainProfile' | 'events' | 'artwork' | 'subscribeAuthority'> & {
   api: Pick<HttpLocalApi, 'request' | 'requestRaw'>;
-  effects: Pick<DashboardBindings['effects'], 'openSettings' | 'reportError' | 'alert'> & {openHistory: (context: ReportContext) => void};
+  effects: Pick<DashboardBindings['effects'], 'openSettings' | 'openHome' | 'reportError' | 'alert'> & {openHistory: (context: ReportContext) => void};
 };
 
 /** Captures one selected-server/main-profile lifetime. All asynchronous reads and writes recheck it. */
@@ -90,6 +90,7 @@ export function createDashboardBindings(options: DashboardBindingOptions): Dashb
     },
     effects: {...options.effects,
       openHistory: () => {assert(true); options.effects.openHistory(context);},
+      openHome: () => {assert(); options.effects.openHome();},
       transport: async (id, command) => {assert(); await sendTransport(controls, id, command); assert();},
       stop: async (id, message) => {assert(true); await sessions.terminate(id, message); assert(true);},
       alert: options.effects.alert ? alert => ownerRead(() => options.effects.alert!(alert)) : undefined,

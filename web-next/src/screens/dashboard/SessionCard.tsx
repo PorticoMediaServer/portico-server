@@ -26,7 +26,7 @@ function DeviceGlyph({platform, device}: Pick<AdminSession, 'platform' | 'device
 }
 export function SessionCard({session: s, bindings: b, refresh}: {session: AdminSession; bindings: DashboardBindings; refresh: (removedId?: string) => void}) {
   const [menu, setMenu] = useState(false), [stop, setStop] = useState(false), [message, setMessage] = useState(''), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), [leaving, setLeaving] = useState(false);
-  const messageId = useId(), opener = useRef<HTMLButtonElement>(null), item = s.item, square = s.kind === 'audio' || item?.kind === 'audiobook_file';
+  const messageId = useId(), cancel = useRef<HTMLButtonElement>(null), opener = useRef<HTMLButtonElement>(null), item = s.item, square = s.kind === 'audio' || item?.kind === 'audiobook_file';
   const art = s.itemId ? b.artwork(s.itemId, square ? 'square' : 'poster', item?.art.find(a => a.role === (square ? 'square' : 'poster'))?.revision) : undefined;
   const backdrop = s.itemId ? b.artwork(s.itemId, 'backdrop', item?.art.find(a => a.role === 'backdrop')?.revision) : undefined;
   const act = async (action: () => Promise<void>, depart = false) => {if (!b.isCurrent() || busy) return; setBusy(true); setFailed(false); try {await action(); if (b.isCurrent()) {setStop(false); if (depart && !matchMedia('(prefers-reduced-motion: reduce)').matches) {setLeaving(true); await new Promise(resolve => setTimeout(resolve, 230));} if (b.isCurrent()) refresh(depart ? s.id : undefined);}} catch (error) {if (b.isCurrent()) {setFailed(true); setLeaving(false); b.effects.reportError(error);}} finally {if (b.isCurrent()) setBusy(false);}};
@@ -57,8 +57,8 @@ export function SessionCard({session: s, bindings: b, refresh}: {session: AdminS
       ]} />
     </div>
     {failed && <p className={styles.actionError} role="alert">{t('next.dashboard.error')}</p>}
-    <Dialog open={stop} onOpenChange={value => {if (!busy) setStop(value);}} title={t('next.dashboard.stopTitle', {title: s.title || title})} description={t('next.dashboard.stopDetail', {user: s.user, device: s.device})} returnFocusRef={opener} showCloseButton={false} className={styles.stopDialog} bodyClassName={styles.stopBody} footerClassName={styles.stopFooter}
-      footer={<><Button size="compact" disabled={busy} onClick={() => setStop(false)}>{t('next.dashboard.cancel')}</Button><Button size="compact" className={styles.stopButton} loading={busy} onClick={() => {void act(() => b.effects.stop(s.id, message.trim() || undefined), true);}}>{t('next.dashboard.stopPlayback')}</Button></>}>
+    <Dialog open={stop} onOpenChange={value => {if (!busy) setStop(value);}} title={t('next.dashboard.stopTitle', {title: s.title || title})} description={t('next.dashboard.stopDetail', {user: s.user, device: s.device})} returnFocusRef={opener} initialFocusRef={cancel} width={560} showCloseButton={false} className={styles.stopDialog} bodyClassName={styles.stopBody} footerClassName={styles.stopFooter}
+      footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setStop(false)}>{t('next.dashboard.cancel')}</Button><Button size="small" className={styles.stopButton} loading={busy} onClick={() => {void act(() => b.effects.stop(s.id, message.trim() || undefined), true);}}>{t('next.dashboard.stopPlayback')}</Button></>}>
       <div className={styles.viewerMessage}><label htmlFor={messageId}>{t('next.dashboard.message')}</label><textarea id={messageId} value={message} maxLength={500} placeholder={t('next.dashboard.messagePlaceholder')} aria-describedby={`${messageId}-help`} disabled={busy} onChange={event => setMessage(event.target.value)} /><small id={`${messageId}-help`}><span>{t('next.dashboard.messageHelp')}</span><span>{defaultI18n.number(message.length)}</span></small></div>{failed && <p role="alert">{t('next.dashboard.error')}</p>}
     </Dialog>
   </article>;

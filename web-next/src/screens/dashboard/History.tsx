@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {PlayHistoryEntry, PlayHistoryPeriod} from '@core/play-history.ts';
-import {SettingsTable, type TableQuery} from '../../kit/settings';
+import {SettingsTable, type SettingsTableRow, type TableQuery} from '../../kit/settings';
 import type {DashboardBindings, DashboardFilters} from './bindings';
 import {useDashboardAccounts, useDashboardAuthority, useDashboardRead} from './use-read';
 import {mediaKinds} from './model';
@@ -27,7 +27,7 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
   }, [state.value, cursor]);
   const people = useDashboardAccounts(b);
   useEffect(() => {const reset = () => setCursor(''); const offs = ['session.updated', 'playback.history'].map(type => b.events?.on(type, reset)); return () => offs.forEach(off => off?.());}, [b]);
-  const tableRows = useMemo(() => rows.map(entry => {
+  const tableRows = useMemo(() => rows.map((entry): SettingsTableRow => {
     const artwork = entry.itemId ? b.artwork(entry.itemId, entry.kind === 'song' || entry.kind === 'audiobook_file' ? 'square' : 'poster') : undefined;
     return {id: entry.id, label: entry.title, cells: {
       title: {title: entry.kind === 'episode' && entry.parentTitle ? entry.parentTitle : entry.title, meta: entry.kind === 'episode' ? [entry.episode !== undefined && (entry.season === undefined ? t('title.episodeOnly', {episode: entry.episode}) : t('title.episodeCode', {season: entry.season, episode: entry.episode})), entry.title].filter(Boolean).join(' ') : entry.parentTitle, image: artwork},
@@ -39,7 +39,7 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
       ...(entry.location === 'local' || entry.location === 'remote' ? {where: {title: t(entry.location === 'local' ? 'next.dashboard.home' : 'next.dashboard.away'), tone: 'quiet' as const}} : {}),
     }};
   }), [rows, b]);
-  return <Section title={t('next.dashboard.playsHeading')}><ReadFeedback state={state} />{!state.failed && <SettingsTable label={t('next.dashboard.history')} searchLabel={t('next.dashboard.search')} rows={tableRows}
+  return <Section title={t('next.dashboard.playsHeading')}><ReadFeedback openHome={b.effects.openHome} state={state} />{!state.failed && <SettingsTable label={t('next.dashboard.history')} searchLabel={t('next.dashboard.search')} rows={tableRows}
     columns={[
       {id: 'title', label: t('next.dashboard.titleColumn'), kind: 'main', sortable: true, width: '27%'},
       {id: 'person', label: t('next.dashboard.person'), kind: 'main', sortable: true, width: '15%'},

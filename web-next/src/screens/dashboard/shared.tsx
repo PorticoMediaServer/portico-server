@@ -13,6 +13,6 @@ export function Range({value, onChange, values, load = false}: {load?: boolean; 
 export function Section({title, extra, actions, children, id}: {title: string; extra?: ReactNode; actions?: ReactNode; children: ReactNode; id?: string}) {
   return <section className={styles.section} id={id}><div className={styles.heading}><h3>{title}</h3>{extra}<div className={styles.filters}>{actions}</div></div>{children}</section>;
 }
-export function ReadFeedback({state}: {state: ReadState<unknown> & {refresh: () => void}}) {
-  return state.failed ? <div role="alert"><StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} icon="i-alert" tone="error" primary={{id: 'retry', label: t('next.dashboard.retry'), icon: 'i-refresh', onPress: state.refresh}} /></div> : state.loading && !state.value ? <p className={styles.empty} role="status">{t('next.dashboard.loading')}</p> : null;
+export function ReadFeedback({state, openHome}: {openHome: () => void; state: ReadState<unknown> & {refresh: () => void}}) {
+  return state.failed ? <div role="alert"><StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} icon="i-alert" tone="warning" secondary={{id: 'home', label: t('next.states.goHome'), onPress: openHome}} primary={{id: 'retry', label: t('next.dashboard.retry'), icon: 'i-refresh', onPress: state.refresh}} /></div> : state.loading && !state.value ? <p className={styles.empty} role="status">{t('next.dashboard.loading')}</p> : null;
 }

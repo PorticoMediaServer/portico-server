@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {fmtDur, fmtHrs, fmtMbps, fmtPct, formatAudioSource, formatDeliveryTarget, formatHistoryDuration, formatHistoryStarted, formatQuietHours, formatStreamRate, formatSubtitleSource, formatTrackRoute, formatVideoSource, loadScale, niceScale} from '../src/screens/dashboard/format.ts';
-import {curveSegments, historyAxisTicks, plotLine, thinTicks, trackRoute, sessionTracks, clock, mediaKinds} from '../src/screens/dashboard/model.ts';
+import {curveSegments, loadAxisTicks, historyAxisTicks, plotLine, thinTicks, trackRoute, sessionTracks, clock, mediaKinds} from '../src/screens/dashboard/model.ts';
 import type {DashboardSession} from '../src/screens/dashboard/bindings.ts';
 const referenceRepo = process.env.PORTICO_DASHBOARD_DESIGN_REPO;
 const reference = referenceRepo && execFileSync('git', ['-C', referenceRepo, 'show', '812dacacc70e296ac870ec36d1a37a485eaeb8ed:design/ui-v1/settings/dashboard.js'], {encoding: 'utf8'});
@@ -95,4 +95,15 @@ test('axis label thinning matches the checked drawing', {skip: !reference}, () =
   const drawing = vm.runInNewContext(reference!.slice(a, b) + '; thin');
   const ticks = Array.from({length: 30}, (_, i) => ({f: i / 29, text: `Oct ${i + 1}`}));
   assert.equal(JSON.stringify(thinTicks(ticks, 854)), JSON.stringify(drawing(ticks, 854)));
+});
+
+test('load axes keep returned bucket identities, viewer zone, and exact Live labels', () => {
+  const live = {period: 'live', timeZone: 'Asia/Kathmandu', from: '2026-10-22T12:13:00Z', until: '2026-10-22T12:15:00Z', buckets: []};
+  assert.deepEqual(loadAxisTicks(live, 0, 120000, 840).map(t => t.text), ['2m', '1m 40s', '1m 20s', '1m', '40s', '20s', 'Now']);
+  const daily = {period: '7d', timeZone: 'Asia/Kathmandu', from: '2026-10-18T18:15:00Z', until: '2026-10-20T12:15:00Z', buckets: [{start: '2026-10-18T18:15:00Z', end: '2026-10-19T18:15:00Z', partial: false}, {start: '2026-10-19T18:15:00Z', end: '2026-10-20T12:15:00Z', partial: true}]};
+  assert.deepEqual(loadAxisTicks(daily, Date.parse(daily.buckets[0].start), Date.parse(daily.buckets[1].start), 840), [{f: 0, text: 'Mon'}, {f: 1, text: 'Tue'}]);
+  const repeated = {period: '12h', timeZone: 'America/Halifax', from: '2026-11-01T02:00:00Z', until: '2026-11-01T08:00:00Z', buckets: ['2026-11-01T03:00:00Z', '2026-11-01T04:00:00Z'].map(start => ({start, end: '2026-11-01T05:00:00Z', partial: false}))};
+  assert.equal(repeated.buckets.length, 2); // repeated 1 AM instants stay distinct, even though neither is a drawn even-hour tick.
+  assert.deepEqual(loadAxisTicks(repeated, Date.parse(repeated.from), Date.parse(repeated.until), 840), []);
+  assert.equal(repeated.buckets[0].start, '2026-11-01T03:00:00Z');
 });

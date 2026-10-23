@@ -16,7 +16,8 @@
 .session > * { position: relative; }
 .session { transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out); }
 .session[data-leaving] { opacity: 0; transform: scale(.98); }
-.stopButton { background: var(--color-danger); color: var(--color-action-ink); }
+.stopButton.stopButton { background: color-mix(in srgb, var(--color-danger) 12%, transparent); color: var(--color-danger); }
+.stopButton.stopButton:hover:not(:disabled) { background: color-mix(in srgb, var(--color-danger) 20%, transparent); }
 .ambient { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; }
 .ambient img { position: absolute; inset: -50px; width: calc(100% + 100px); height: calc(100% + 100px); object-fit: cover; filter: blur(30px) saturate(1.45); opacity: .5; mask-image: linear-gradient(100deg, black 0%, color-mix(in srgb, black 60%, transparent) 38%, transparent 82%); }
 .ambient::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--color-raised) 55%, transparent) 55%, color-mix(in srgb, var(--color-raised) 80%, transparent) 100%); }
@@ -209,17 +210,20 @@
 .dashboard [data-series='other'] { --series-color: var(--color-text-tertiary); color: var(--color-text-tertiary); }
 
 /* Section17: the phone4 content is shared with the desktop dialog. Canonical type projections are steward-owned. */
-.stopDialog { font-family: var(--font); }
-.stopDialog h2 { font-size: var(--type-stop-title-size); line-height: var(--type-stop-title-line); font-weight: var(--type-stop-title-weight); letter-spacing: var(--type-stop-title-tracking); margin-right: 0; }
+.stopDialog { font-family: var(--font); padding-inline: 28px; }
+.stopDialog h2 { font-size: var(--type-stop-title-size); line-height: var(--type-stop-title-line); font-weight: var(--type-stop-title-weight); letter-spacing: var(--type-stop-title-tracking); margin-right: 44px; }
 .stopDialog > p, .stopDialog > div:first-child > p { font-size: var(--type-stop-body-size); line-height: var(--type-stop-body-line); font-weight: var(--type-stop-body-weight); }
 .stopBody { overflow: auto; }
-.viewerMessage { margin-top: 16px; }
+.viewerMessage { margin-top: 18px; }
 .viewerMessage label { display: block; color: var(--color-text-secondary); font-size: var(--type-chip-size); line-height: var(--type-chip-line); font-weight: var(--type-chip-weight); }
-.viewerMessage textarea { display: block; width: 100%; min-height: 88px; box-sizing: border-box; resize: vertical; margin-top: 8px; padding: 12px 14px; border: 0; border-radius: var(--radius-panel); color: var(--color-text); background: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line); font-family: var(--font); font-size: var(--type-stop-field-size); line-height: var(--type-stop-field-line); font-weight: var(--type-stop-field-weight); }
-.viewerMessage textarea::placeholder { color: var(--color-text-tertiary); }
-.viewerMessage textarea:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-.viewerMessage > small { display: flex; justify-content: space-between; gap: 12px; margin-top: 7px; color: var(--color-text-tertiary); font-size: var(--type-report-detail-size); line-height: var(--type-report-detail-line); font-weight: var(--type-report-detail-weight); }
+.viewerMessage textarea { display: block; width: 100%; min-height: 88px; box-sizing: border-box; height: 88px; resize: none; margin-top: 8px; padding: 12px 14px; border: 0; border-radius: var(--radius-panel); color: var(--color-text); background: color-mix(in srgb, var(--color-ink) 70%, transparent); box-shadow: inset 0 0 0 1px var(--color-line-strong); font-family: var(--font); font-size: var(--type-stop-field-size); line-height: var(--type-stop-field-line); font-weight: var(--type-stop-field-weight); }
+.viewerMessage textarea::placeholder { color: var(--color-text-tertiary); font-weight: 500; }
+.viewerMessage textarea:focus-visible { outline: 0; box-shadow: inset 0 0 0 1px var(--color-line-strong), 0 0 0 3px var(--color-focus); }
+.viewerMessage > small { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; color: var(--color-text-tertiary); font-size: var(--type-stop-help-size); line-height: var(--type-stop-help-line); font-weight: var(--type-stop-help-weight); }
+.stopFooter.stopFooter { margin-top: 24px; }
+.viewerMessage > small > span:last-child { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; }
 @media (max-width: 650px) {
+  .stopDialog { padding-inline: 0; }
   .stopBody .viewerMessage { margin: 16px 20px 0; }
   .stopDialog .stopFooter { padding: 18px 20px 0; position: relative; margin-top: 0; background: none; }
   .stopFooter > button { flex: 1; }
