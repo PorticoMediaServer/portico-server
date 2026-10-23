@@ -26,6 +26,8 @@ def main():
         # this existing lane's labelled containers are in our custody.
         for received in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
             signal.signal(received, signal.SIG_IGN)
+        if os.getpgrp() == os.getpid():
+            os.killpg(os.getpid(), signal.SIGTERM)
         found = subprocess.run(['docker', 'ps', '-q', '--filter', 'label=portico.lane=hardware-r29'],
                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=10)
         ids = found.stdout.split()
