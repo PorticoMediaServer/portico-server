@@ -1,8 +1,7 @@
-/** The drawn native-caption palette. Media preferences are independent of the app theme. */
-export type CaptionAppearance = Readonly<{
-  size:'small'|'medium'|'large'|'extra-large'; color:'white'|'yellow'|'cyan'|'green'|'pink';
-  background:'none'|'outline'|'shadow'|'translucent'|'opaque';font:'default'|'serif'|'mono'|'rounded';
-}>;
+import type {SubtitlePreferences} from '@core/preference-effects.ts';
+
+/** The canonical app-caption preferences, independent of the app theme. */
+export type CaptionAppearance = Pick<SubtitlePreferences, 'size' | 'color' | 'background' | 'font'>;
 /** key is created internally by SubtitleSurface, never provided by a user or a subtitle. */
 export function captionStyle(key: string, preferences: CaptionAppearance): string {
   const sizes = {small:'80%',medium:'100%',large:'125%','extra-large':'150%'};
