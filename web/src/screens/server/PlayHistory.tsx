@@ -10,6 +10,8 @@ import {present} from '../../app/errors';
 import {Button, Freshness, Notice, Select, Surface, Table, Text} from '../../ui';
 import s from './PlayHistory.module.css';
 import {dependsOn} from '@core/freshness-hub.ts';
+import {captureReportContext, type ReportContext} from '@core/report-context.ts';
+import {useReportView} from './report-context';
 
 // A play is recorded as it starts and ends, which is when the list of sessions moves.
 const HISTORY_MOVES = [dependsOn.event('admin.sessions')];
@@ -21,30 +23,57 @@ const HISTORY_MOVES = [dependsOn.event('admin.sessions')];
  * history is.
  */
 export function PlayHistoryPanel() {
+  const view = useReportView();
+  return <PlayHistoryReport key={view.key} context={view.context} />;
+}
+
+function PlayHistoryReport({context}: {context: {current: ReportContext}}) {
   const i18n = useI18n();
   const {t} = i18n;
   const {api} = useSession();
   const client = useConsole();
   const libraries = useLibrariesContext();
   const accounts = useRead(() => client.accountOptions(), [client]);
-  const [filters, setFilters] = useState<PlayHistoryFilters>({period: 'all'});
+  const [filters, setFilters] = useState<PlayHistoryFilters>({...context.current, period: 'all'});
   const [state, setState] = useState<{entries: readonly PlayHistoryEntry[]; total?: number; next: string; loading: boolean; error?: string; at?: number; /** The filters `entries` were read with: until a new answer arrives they stay on screen. */ shown?: PlayHistoryFilters}>({entries: [], next: '', loading: true});
-  const run = useRef(0);
+  const lifetime = useRef({run: 0, pending: undefined as AbortController | undefined}).current;
+  const shown = useRef(state);
+  shown.current = state;
+  const changeFilters = (update: (filters: PlayHistoryFilters) => PlayHistoryFilters) => {
+    ++lifetime.run;
+    lifetime.pending?.abort();
+    shown.current = {...shown.current, next: '', loading: true, error: undefined};
+    setState(shown.current);
+    setFilters(update);
+  };
+  const refresh = () => {
+    context.current = captureReportContext(context.current.timeZone);
+    changeFilters(previous => ({...previous, ...context.current}));
+  };
   const load = useCallback((cursor: string) => {
-    const n = ++run.current;
+    // A cursor only belongs to the successfully displayed filter/context, never its replacement.
+    if (cursor && (shown.current.shown !== filters || shown.current.next !== cursor || shown.current.loading)) return;
+    lifetime.pending?.abort();
+    const controller = new AbortController();
+    lifetime.pending = controller;
+    const n = ++lifetime.run;
     // What is on screen stays until the answer arrives: a filter or Refresh never empties the table first.
-    setState(prev => ({...prev, loading: true, error: undefined}));
-    fetchPlayHistory(api, filters, cursor).then(
-      page => { if (n === run.current) setState(prev => ({entries: cursor ? [...prev.entries, ...page.entries] : page.entries, total: page.total ?? (cursor ? prev.total : undefined), next: page.nextCursor, loading: false, at: Date.now(), shown: filters})); },
-      error => { if (n === run.current) setState(prev => ({...prev, loading: false, error: present(error, 'server-console').body})); },
+    shown.current = {...shown.current, loading: true, error: undefined};
+    setState(shown.current);
+    fetchPlayHistory(api, filters, cursor, controller.signal).then(
+      page => { if (n === lifetime.run && !controller.signal.aborted) setState(prev => ({entries: cursor ? [...prev.entries, ...page.entries] : page.entries, total: page.total ?? (cursor ? prev.total : undefined), next: page.nextCursor, loading: false, at: Date.now(), shown: filters})); },
+      error => { if (n === lifetime.run && !controller.signal.aborted) setState(prev => ({...prev, loading: false, error: present(error, 'server-console').body})); },
     );
-  }, [api, filters]);
-  useEffect(() => load(''), [load]);
+  }, [api, filters, lifetime]);
+  useEffect(() => {
+    load('');
+    return () => { ++lifetime.run; lifetime.pending?.abort(); };
+  }, [load, lifetime]);
   // New plays arrive at the top by themselves; pages already asked for stay under them.
   useQuietly(async () => {
-    const n = run.current;
+    const n = lifetime.run;
     const page = await fetchPlayHistory(api, filters, '');
-    if (n !== run.current) return;
+    if (n !== lifetime.run) return;
     setState(prev => (prev.loading || prev.shown !== filters ? prev : {...prev, entries: mergeRevalidatedList(prev.entries, page.entries, e => e.id, {complete: !page.nextCursor && !prev.next, same: (a, b) => JSON.stringify(a) === JSON.stringify(b)}), total: page.total ?? prev.total, next: prev.entries.length > page.entries.length ? prev.next : page.nextCursor, at: Date.now()}));
   }, () => state.shown === filters && !state.loading, {on: HISTORY_MOVES});
   const libraryName = useMemo(() => new Map(libraries.items.map(l => [l.id, l.name])), [libraries.items]);
@@ -53,15 +82,15 @@ export function PlayHistoryPanel() {
   return (
     <Surface padless>
       <div className={s.filters}>
-        <Select hideLabel label={t('server.plays.filterLibrary')} value={filters.libraryId ?? ''} onChange={e => setFilters(f => ({...f, libraryId: e.target.value || undefined}))}
+        <Select hideLabel label={t('server.plays.filterLibrary')} value={filters.libraryId ?? ''} onChange={e => changeFilters(f => ({...f, libraryId: e.target.value || undefined}))}
           options={[{value: '', label: t('server.plays.allLibraries')}, ...libraries.items.map(l => ({value: l.id, label: l.name}))]} />
-        <Select hideLabel label={t('server.plays.filterUser')} value={filters.accountId ?? ''} onChange={e => setFilters(f => ({...f, accountId: e.target.value || undefined}))}
+        <Select hideLabel label={t('server.plays.filterUser')} value={filters.accountId ?? ''} onChange={e => changeFilters(f => ({...f, accountId: e.target.value || undefined}))}
           options={[{value: '', label: t('server.plays.allUsers')}, ...(accounts.data ?? []).map(a => ({value: a.id, label: a.label}))]} />
-        <Select hideLabel label={t('server.plays.filterPeriod')} value={filters.period} onChange={e => setFilters(f => ({...f, period: e.target.value as PlayHistoryPeriod}))}
+        <Select hideLabel label={t('server.plays.filterPeriod')} value={filters.period} onChange={e => changeFilters(f => ({...f, period: e.target.value as PlayHistoryPeriod}))}
           options={PLAY_HISTORY_PERIODS.map(p => ({value: p, label: t(playHistoryPeriodLabel(p))}))} />
         {state.total !== undefined ? <Text variant="caption" tone="secondary" className={s.total}>{t('server.plays.total', {count: state.total})}</Text> : null}
         {/* The page's one Refresh asks this list again. */}
-        <Freshness at={state.at} verb="Updated" refreshing={state.loading} onRefresh={() => load('')} />
+        <Freshness at={state.at} verb="Updated" refreshing={state.loading} onRefresh={refresh} />
       </div>
       {state.error ? <div className={s.note}><Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: () => load(state.entries.length ? state.next : '')}}>{state.error}</Notice></div> : null}
       {state.entries.length ? (
