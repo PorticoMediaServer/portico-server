@@ -1,11 +1,11 @@
 {
-  "patchSha256": "203def9de6d9fe1b359f5c42e3c14984ea8f69316a2447ffb181a583e03856b8",
-  "cSha256": "e55459f2397592f4a9363e4b5abc06dc30a7af0aaa23445c4a25b4e0c097ad7d",
+  "patchSha256": "b15d70a2872174a6c10373c1bff26131513e8995b4b946b20896aec49607c569",
+  "cSha256": "ef8c77136faa566b0fc4b2896c525e6e8d679c16f48cd9bf2b235b95c14546d8",
   "hSha256": "e334781d9d89e238a03c721e08a587d10ce79535df551b415950c98554345b3f",
-  "fixtureManifestSha256": "6e5e331ddd4a7e99f7f09db63ec8b6427fb182e74dd82afcd24e07ca21d193e1",
-  "fixtures": 17,
-  "bytes": 800596,
-  "repeatMembersIdentical": 17,
+  "fixtureManifestSha256": "b4487880ab55c4c8f663445b56d66061166ee05e9f360b4e26055784942f94ae",
+  "fixtures": 20,
+  "bytes": 946108,
+  "repeatMembersIdentical": 20,
   "schema": 1,
   "source": {
     "ffmpegCommit": "253db2a7b0a8045c54ce68ce33d7f601229b1822",
@@ -26,17 +26,18 @@
     "privateToolchainFact": "DolbyVisionDualLayerJoin",
     "factDefault": false,
     "owner": "Hardware",
-    "raiseOnly": "exact canonical bundle option plus real dual-PID fixture gate"
+    "raiseOnly": "exact canonical bundle option plus real dual-PID fixture gate",
+    "genericPrivatePES": "EL stream_type0x06 requires DOVI registration+HEVC descriptor before HEVC parser; explicit DOVI P7/compat6 dependency still mandatory"
   },
   "gate": {
     "testSource": "tests/dovi-join-packets.c",
     "fixtures": "fixtures/video/dovi-dual-pid",
     "script": "scripts/qualify-dovi-join.py",
-    "positive": 6,
-    "refused": 10,
+    "positive": 7,
+    "refused": 12,
     "unjoined": 1,
     "packetsPerPositive": 24,
-    "asanUbsan": "owned join C object only; all17 cases passed"
+    "asanUbsan": "owned join C object only; all20 cases passed"
   },
   "limits": {
     "accessUnitBytes": 8388608,
@@ -50,5 +51,6 @@
     "remote root/read-session composition",
     "material PMT reconfiguration beyond identical-content version updates",
     "mastered FEL residual imagery and reconstruction"
-  ]
+  ],
+  "mpegtsSha256": "b33daa36579e5398d6138d833809e59cf745b78e03e1c62c9ebd903bfdd8e82e"
 }
