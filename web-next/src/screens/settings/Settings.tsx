@@ -78,7 +78,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
     const found = selected.row && settingsRowIndex.get(selected.row);
     if (!found) return;
     if (found.advanced) setAdvanced(true);
-    if (found.panelId) setPanel(current => ({id: found.panelId!, tab: found.tabId, ...(current?.id === found.panelId ? {recordId: current.recordId} : {})}));
+    if (found.panelId) setPanel(current => ({id: found.panelId!, tab: found.tabId, ...(current && current.id === found.panelId ? {recordId: current.recordId} : {})}));
     setCompactPage(true);
     const frame = requestAnimationFrame(() => document.getElementById(found.row.id)?.scrollIntoView({block: 'center', behavior: 'instant'}));
     return () => cancelAnimationFrame(frame);

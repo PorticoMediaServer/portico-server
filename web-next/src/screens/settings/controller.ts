@@ -21,6 +21,12 @@ type DocumentForm = Readonly<{
   error: () => unknown;
   patch: (values: Readonly<Record<string, unknown>>) => Promise<void>;
 }>;
+function settingValue(value: unknown): SettingsValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number' && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return value.map(settingValue);
+  if (typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) return Object.fromEntries(Object.entries(value).map(([key, next]) => [key, settingValue(next)]));
+  throw new Error('settings_value_unavailable');
+}
 function documentForm<T extends object, S>(form: DraftForm<T, S>): DocumentForm {
   return {
     load: form.load.bind(form), dispose: form.dispose.bind(form),
@@ -177,7 +183,7 @@ export class SettingsController {
         if (!target || !this.eligible(target, context)) throw new Error('settings_binding_unavailable');
         const location = settingsRowIndex.get(id)!;
         if (location.section.scope === 'account' && location.section.id === 'reading') {
-          const patch = this.options.reading.patch(id, reset ? null : next, this.preferences);
+          const patch = this.options.reading.patch(id, reset ? null : settingValue(next), this.preferences);
           for (const [key, value] of Object.entries(patch)) {
             const scope = this.preferenceScope(target, key);
             preferencePatches.set(scope, {...preferencePatches.get(scope), [key]: value});
