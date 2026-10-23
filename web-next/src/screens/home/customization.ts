@@ -52,6 +52,7 @@ export class HomeCustomization {
   show = (id: string, shown: boolean) => this.edit(draft => showHomeDraftRow(draft, id, shown));
   add = (resource: PersonalResource) => this.edit(draft => addHomeDraftView(draft, resource));
   remove = (id: string) => this.edit(draft => removeHomeDraftView(draft, id));
+  restoreDraft = (draft: HomeLayoutDraft) => this.edit(current => current.view === draft.view ? draft : current);
   save = async (): Promise<boolean> => {
     if (!this.current() || this.state.phase !== 'ready' || !this.state.draft || this.state.pending || this.state.conflict) return false;
     const intent = homeDraftIntent(this.state.draft), epoch = this.epoch;

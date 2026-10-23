@@ -21,6 +21,7 @@ import {useShellWidth} from '../../shell/viewport';
 import {currentHomeLive, homeCardModel, homeLiveDeadline, homePlaybackTarget, homeSpotlights} from './model';
 import {PagedShelf} from '../browse/PagedShelf';
 import styles from './home.module.css';
+import type {HomeCustomizationBindings} from './customization';
 
 export type HomeSelection = Readonly<{
   /** The canonical selection owner supplies its real bar and controls. */
@@ -43,7 +44,7 @@ export type HomeEffects = Readonly<{
   reportError: (error: unknown) => void;
   openHome?: () => void;
 }>;
-export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; serverName?: string}>;
+export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; serverName?: string; customization?: HomeCustomizationBindings}>;
 type HomePresentation = Pick<HomeBindings, 'artwork' | 'effects' | 'selection' | 'time' | 'reducedMotion'>;
 const t = defaultI18n.t;
 const dependencies = [dependsOn.libraries, dependsOn.content(), dependsOn.order(), dependsOn.personal(), dependsOn.progress(), dependsOn.settings('preferences'), dependsOn.settings('server'), dependsOn.list('recommendations'), dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.event('stream.resync')];
