@@ -150,12 +150,30 @@ def inside():
         for path in sorted(stage.rglob('*')):
             if not path.is_file() or path.is_symlink() or '.git' in path.parts:
                 continue
-            if path.name.lower().startswith(('license', 'licence', 'copying', 'copyright', 'notice')):
+            if (path.name.lower().startswith(('license', 'licence', 'copying', 'copyright', 'notice')) or
+                    any(part.lower() in ('license', 'licenses', 'licence', 'licences') for part in path.relative_to(stage).parts[:-1])):
                 relative = path.relative_to(stage)
                 destination = work / 'licenses' / name / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(path, destination)
                 licenses[str(relative)] = digest(path)
+        if name == '50-ffnvcodec':
+            # NVIDIA's pinned headers carry separate MIT/BSD notices in their
+            # opening comments, without a root LICENSE file. Preserve every
+            # actual header notice, including its source path and byte hash.
+            for header in sorted(stage.glob('ffnvcodec*/include/ffnvcodec/*.h')):
+                raw = header.read_bytes()
+                match = re.match(rb'/\*.*?\*/', raw, flags=re.S)
+                if not match or b'copyright' not in match[0].lower():
+                    raise ValueError('Missing NVIDIA header copyright: ' + str(header))
+                notice = match[0] + b'\n'
+                if not any(word in notice.lower() for word in (b'permission', b'redistribution', b'license')):
+                    raise ValueError('Missing NVIDIA header licence: ' + str(header))
+                relative = header.relative_to(stage)
+                destination = work / 'licenses' / name / relative.parent / ('LICENSE-' + header.name + '.txt')
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(notice)
+                licenses[str(relative) + '#opening-comment'] = hashlib.sha256(notice).hexdigest()
         if not licenses:
             raise ValueError('No actual dependency licence found for ' + name)
         print('BUILD ' + name, flush=True)
