@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TARGET="${1:?usage: build-ffmpeg.sh TARGET [WORK_DIRECTORY]}"
 PHASE="${PORTICO_FFMPEG_PHASE:-full}"
-case "$PHASE" in full) ;; compile|package) [[ "$TARGET" == linux-x64 ]] || { echo 'Split compile/package phases currently require linux-x64' >&2; exit 1; };; *) echo 'Unknown source build phase' >&2; exit 1;; esac
+case "$PHASE" in full) ;; working|compile|package) [[ "$TARGET" == linux-x64 ]] || { echo 'Split compile/package phases currently require linux-x64' >&2; exit 1; };; *) echo 'Unknown source build phase' >&2; exit 1;; esac
 LANE_SCRATCH="${PORTICO_LANE_SCRATCH:?Set PORTICO_LANE_SCRATCH to the workspace .scratch/hardware-r29 directory}"
 [[ "$LANE_SCRATCH" == /*/.scratch/hardware-r29 ]] || { echo 'Use the lane scratch directory on disk' >&2; exit 1; }
 mkdir -p "$LANE_SCRATCH"
@@ -131,9 +131,18 @@ PYLICENSE
     # dependency job exits; never overlap two compiler pools.
     python3 "$ROOT/scripts/build-linux-libdovi.py" --work "$WORK"
     # The source-built binaries use the exact immutable dependency prefix.
-    python3 "$ROOT/scripts/build-linux-ffmpeg.py" --work "$WORK" --source "$SOURCE"
+    compile_options=()
+    [[ "$PHASE" != working ]] || compile_options+=(--first-build-only)
+    python3 "$ROOT/scripts/build-linux-ffmpeg.py" --work "$WORK" --source "$SOURCE" "${compile_options[@]}"
     fi
     INPUT="$WORK/linux-output"
+    if [[ "$PHASE" == working ]]; then
+      "$INPUT/bin/ffmpeg" -version
+      "$INPUT/bin/ffprobe" -version
+      echo "Working source-built tools: $INPUT/bin"
+      echo 'Repeat and full bundle qualification remain; this is not a release bundle.'
+      exit 0
+    fi
     if [[ "$PHASE" == compile ]]; then
       echo "Repeated source compilation finished; bundle packaging and runtime qualification remain: $INPUT"
       exit 0

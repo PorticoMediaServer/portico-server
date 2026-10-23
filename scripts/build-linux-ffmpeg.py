@@ -16,11 +16,27 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def first_working_build(output, input_record, source_sha):
+    record = output / 'first-build.json'
+    if not record.exists():
+        return None
+    first = json.loads(record.read_text())
+    if json.loads((output / 'linux-build-inputs.json').read_text()) != input_record:
+        raise ValueError('First working build inputs changed; preserve its output')
+    binaries = {name: digest(output / 'bin' / name)
+                for name in ('ffmpeg', 'ffprobe', 'portico-disc')}
+    if first['round'] != 1 or first['sourceArchiveSHA256'] != source_sha or first['binaries'] != binaries:
+        raise ValueError('First working build changed')
+    return first
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--work', required=True, type=Path)
     parser.add_argument('--source', required=True, type=Path)
     parser.add_argument('--verify-completed-only', action='store_true')
+    parser.add_argument('--first-build-only', action='store_true',
+                        help='publish the first working tools before repeat/HDR qualification')
     parser.add_argument('--recover-first-round', type=Path,
                         help='captured exact Docker identity for a compiler whose host wrapper was interrupted')
     parser.add_argument('--recover-exit-status', type=Path)
@@ -164,14 +180,21 @@ def main():
                 any(r['sourceArchiveSHA256'] != source_sha or r['binaries'] != binaries for r in rounds)):
             raise ValueError('Completed repeated executable proof changed')
         print('Reused two identical source-built executable rounds with unchanged inputs')
-        if not args.verify_completed_only:
+        if not args.verify_completed_only and not args.first_build_only:
             subprocess.run(['python3', str(root / 'scripts/qualify-linux-ffmpeg-hdr.py'), '--work', str(work)], check=True)
         return
     if args.verify_completed_only:
         raise ValueError('Packaging requires a completed two-round source build')
+    first = first_working_build(work / 'linux-output', input_record, source_sha)
+    if first is not None and args.first_build_only:
+        print('Reused the first working source build; repeat/HDR qualification remains')
+        return
     (work / 'linux-build-inputs.json').write_text(json.dumps(input_record, indent=2) + '\n')
     results = []
     for index in (1, 2):
+        if index == 1 and first is not None:
+            results.append(first)
+            continue
         build = work / 'linux-compile'
         recover_round = recovery is not None and index == 1
         if not recover_round:
@@ -290,6 +313,12 @@ cat /ffbuild/dovi-profile-packets.json
             shutil.copyfile(deps / 'dependency-inputs.json', output / 'dependency-inputs.json')
             shutil.copyfile(deps / 'license-inventory.json', output / 'license-inventory.json')
             shutil.copyfile(deps / 'compiler.txt', output / 'compiler.txt')
+            shutil.copyfile(work / 'linux-build-inputs.json', output / 'linux-build-inputs.json')
+            (output / 'first-build.json').write_text(json.dumps(results[0], indent=2) + '\n')
+            if args.first_build_only:
+                print('First source-built ffmpeg, ffprobe and portico-disc are ready: ' + str(output / 'bin'))
+                print('Repeat, HDR fixture and full bundle qualification have not run')
+                return
         elif binaries != results[0]['binaries']:
             raise ValueError('Source-built executable bytes differ between repeat builds')
     (work / 'linux-output/dovi-profile-build.json').write_text(json.dumps({
