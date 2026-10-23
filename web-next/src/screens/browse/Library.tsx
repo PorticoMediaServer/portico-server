@@ -15,9 +15,9 @@ import {BrowseScopeChips} from './ScopeChips';
 import type {BrowseController, BrowseMember} from './controller';
 import type {BrowseItemActions} from './EntryCard';
 import styles from './browse.module.css';
+import {browsePresentation, type BrowsePresentation, type ScreenAppearance} from './appearance';
 
-/** Live values are projected by the parent from the checked appearance facade. */
-export type BrowsePresentation = Readonly<{view: 'grid' | 'list'; cardWidth: number; backdrops: boolean; cardSize: 'small' | 'medium' | 'large'}>;
+export type {BrowsePresentation} from './appearance';
 export type LibraryBindings = Readonly<{
   controller: BrowseController;
   libraries: readonly LibraryChoice[];
@@ -25,6 +25,9 @@ export type LibraryBindings = Readonly<{
   pivot: string;
   tabs: readonly Readonly<{value: string; label: string}>[];
   appearance: BrowsePresentation;
+  preferences?: ScreenAppearance;
+  /** Only an actual per-library choice overrides the confirmed device default. */
+  libraryViewOverride?: 'grid' | 'list';
   onAppearanceChange: (change: Partial<Pick<BrowsePresentation, 'view' | 'cardSize'>>) => void;
   onLibrary: (id: string) => void;
   onLibraries: () => void;
@@ -60,7 +63,8 @@ export function LibraryScreen(bindings: LibraryBindings) {
     {state.phase === 'ready' && state.capabilities && state.sort ? <LibraryBrowse {...bindings}/> : <GridSkeleton elapsedMs={300} window={{width, height: window.innerHeight, scrollTop: 0}} itemCount={21}/>}
   </div>;
 }
-function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLibrary, onLibraries, libraryMenu, appearance, artwork}: LibraryBindings) {
+function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLibrary, onLibraries, libraryMenu, appearance: base, preferences, libraryViewOverride, artwork}: LibraryBindings) {
+  const appearance = browsePresentation(base, preferences, libraryViewOverride);
   const compact = useShellWidth() < 600;
   const switcher = <LibrarySwitcher libraries={libraries} value={library.id} onValueChange={onLibrary} compact={compact}/>;
   const navigation = <Tabs className={compact ? styles.phoneTabs : styles.headerTabs} value={pivot} onValueChange={onPivot} items={tabs} phone={compact}/>;
@@ -69,7 +73,8 @@ function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLibrary, o
     <LibraryHeader name={library.name} switcher={switcher} menu={libraryMenu} ambient={ambient}>{navigation}</LibraryHeader>;
 }
 export function LibraryBrowse(bindings: LibraryBindings) {
-  const {controller, appearance, library, env, selection, reportError} = bindings;
+  const {controller, library, env, selection, reportError} = bindings;
+  const appearance = browsePresentation(bindings.appearance, bindings.preferences, bindings.libraryViewOverride);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const snapshot = useSyncExternalStore(controller.collection.subscribe, controller.collection.getSnapshot, controller.collection.getSnapshot);
   const [filtersOpen, setFiltersOpen] = useState(false), width = useShellWidth(), compact = width < 600;
@@ -95,7 +100,7 @@ export function LibraryBrowse(bindings: LibraryBindings) {
       actions={<BrowseScopeChips controller={controller} reportError={reportError}/>} save={bindings.showSaveView === false ? undefined : {canSave: bindings.canSaveView, onSave: bindings.onSaveView}} applied={chips}
       onRemoveFilter={id => setPredicates(state.predicates.filter(node => node !== model.applied[Number(id)]))} onClearFilters={() => setPredicates([])} selection={selection.toolbar}/>
     <BrowseResults controller={controller} label={library.name} view={view} cardWidth={appearance.cardWidth} shape={shape} artwork={bindings.artwork} env={env} backdrops={appearance.backdrops}
-      reducedMotion={bindings.reducedMotion} actions={selection.actions} familyForEntry={bindings.familyForEntry} onVisibleRange={selection.registerWindow} onSort={sort}
+      reducedMotion={bindings.preferences?.reducedMotion ?? bindings.reducedMotion} actions={selection.actions} familyForEntry={bindings.familyForEntry} onVisibleRange={selection.registerWindow} onSort={sort}
       empty={state.predicates.length ? <FilteredEmpty onClear={() => setPredicates([])}/> : bindings.empty}/>
     <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} open={filtersOpen} resultCount={resultCount} canSaveView={bindings.canSaveView} onSaveView={bindings.onSaveView} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>
   </>;
