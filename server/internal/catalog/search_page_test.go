@@ -141,10 +141,22 @@ func TestSearchCatalogPageRanksBeforeHydrating(t *testing.T) {
 		if !ok || group.TotalCount != want.count || len(group.Items) != want.count {
 			t.Fatalf("mixed group: %+v", group)
 		}
-		if want.subtitle != "" {
-			for _, entry := range group.Items {
-				if entry.Subtitle != want.subtitle {
-					t.Fatalf("%s subtitle: %+v", group.ID, entry)
+		for _, entry := range group.Items {
+			if entry.Subtitle != "" {
+				t.Fatalf("unstructured Search subtitle: %+v", entry)
+			}
+			switch group.ID {
+			case "episodes":
+				if entry.Show == nil || entry.Show.ID != show.Public || entry.Show.Name != "Harbor Show" || entry.AbsoluteNumber == nil || *entry.AbsoluteNumber != 1 || entry.EpisodeNumber == nil || *entry.EpisodeNumber != 1 {
+					t.Fatalf("episode identity: %+v", entry)
+				}
+			case "albums":
+				if entry.Artist == nil || entry.Artist.ID != artist.Public || entry.Artist.Name != "Harbor Artist" || entry.Year == nil {
+					t.Fatalf("album identity/year: %+v", entry)
+				}
+			case "songs":
+				if entry.Artist == nil || entry.Artist.ID != artist.Public || entry.Album == nil || entry.Album.ID != newAlbum.Public {
+					t.Fatalf("song identity: %+v", entry)
 				}
 			}
 		}

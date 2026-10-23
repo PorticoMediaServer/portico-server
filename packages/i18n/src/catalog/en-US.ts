@@ -668,6 +668,8 @@ export const enUS = {
   'search.chip.songs': 'Songs',
   'search.chip.audiobooks': 'Audiobooks',
   'search.chip.liveTV': 'Live TV',
+  'search.chip.programmes': 'Programmes',
+  'search.sort.channelTitle': 'Channel and title',
   'search.topResult': 'Top result',
   'search.kind.movie': 'Movie',
   'search.kind.show': 'Show',

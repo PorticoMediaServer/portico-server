@@ -3826,6 +3826,8 @@ CREATE TABLE catalog_terms(
  key TEXT NOT NULL,
  label TEXT NOT NULL,
  UNIQUE(vocab,key)) STRICT;
+CREATE INDEX catalog_terms_search_label ON catalog_terms(vocab,label COLLATE NOCASE,label,id);
+CREATE INDEX catalog_term_sources_search_label ON catalog_term_sources(label_override COLLATE NOCASE,label_override,entity_id,term_id) WHERE label_override IS NOT NULL;
 CREATE TABLE catalog_entity_terms(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  term_id INTEGER NOT NULL REFERENCES catalog_terms(id),
@@ -8399,3 +8401,7 @@ CREATE TRIGGER owner_change_account_insert BEFORE INSERT ON accounts WHEN EXISTS
 CREATE TRIGGER owner_change_account_rename BEFORE UPDATE OF username ON accounts WHEN NEW.username<>OLD.username COLLATE NOCASE AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND approved_username=NEW.username COLLATE NOCASE) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
 CREATE TRIGGER owner_change_link_insert BEFORE INSERT ON account_portico_links WHEN EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
 CREATE TRIGGER owner_change_link_update BEFORE UPDATE OF hosted_account_id ON account_portico_links WHEN NEW.hosted_account_id<>OLD.hosted_account_id AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
+
+CREATE INDEX live_programmes_search_group ON live_programmes(generation_id,channel_id,lower(title),start_utc,id,end_utc);
+
+CREATE INDEX lc_entries_search_group ON lc_entries(generation_id,channel_id,lower(title),start_ms,occurrence_id,end_ms);

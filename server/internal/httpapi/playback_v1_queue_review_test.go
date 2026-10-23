@@ -64,8 +64,8 @@ func TestPlaybackV1DeleteQueueIsNoExistenceOracle(t *testing.T) {
 }
 
 // Review P18: a create's key is answered by replay. A 128-character key still
-// starts its playback; a late replay after a newer Play gets its original
-// answer and leaves the newer queue alone; a create that committed without
+// starts its playback; a late replay after a newer Play purged its queue returns no metadata
+// and leaves the newer queue alone; a create that committed without
 // keeping its answer is finished by the replay (the same session); two
 // concurrent requests with one key make one queue.
 func TestPlaybackV1QueueCreateIdempotency(t *testing.T) {
@@ -81,10 +81,11 @@ func TestPlaybackV1QueueCreateIdempotency(t *testing.T) {
 	}
 	var b playbackv1.QueueReply
 	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "idem-newer-play-001"}, body(f.items[1]), 201, &b)
-	var late playbackv1.QueueReply
-	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": long}, body(f.items[0]), 201, &late)
-	if late.Queue.ID != a.Queue.ID {
-		t.Fatalf("a late replay made queue %s (first %s)", late.Queue.ID, a.Queue.ID)
+	// A completed receipt is not a permission to resurrect the purged queue's
+	// JSON/session. The same-key retry must leave the newer accepted mutation alone.
+	late := f.raw("POST", "/v1/queues", f.owner.AccessToken, map[string]string{"Idempotency-Key": long}, body(f.items[0]))
+	if late.Code != 404 || strings.Contains(late.Body.String(), a.Queue.ID) || strings.Contains(late.Body.String(), a.Session.ID) || strings.Contains(late.Body.String(), f.items[0]) {
+		t.Fatalf("purged queue replay leaked stored answer: %d %s", late.Code, late.Body.String())
 	}
 	f.call("GET", "/v1/queues/"+b.Queue.ID, nil, nil, 200, nil)
 	// Committed, answer not kept: the replay finishes it with the same session.

@@ -33,7 +33,7 @@ type searchGroupDefinition struct {
 	sorts                         []string
 }
 
-var searchSorts = []string{"relevance", "title", "releaseYear", "dateAdded"}
+var searchSorts = []string{"relevance", "title", "releaseYear", "dateAdded", "channelTitle"}
 var catalogSorts = []string{"relevance", "title", "releaseYear", "dateAdded"}
 var nameSorts = []string{"relevance", "title"}
 var searchGroups = []searchGroupDefinition{
@@ -48,9 +48,11 @@ var searchGroups = []searchGroupDefinition{
 	{"authors", "author", "Authors", "author", "catalog", nameSorts},
 	{"people", "person", "People", "person", "people", nameSorts},
 	{"live-tv", "channel", "Live TV", "channel", "live", nameSorts},
+	{"programmes", "programme", "Programmes", "programme", "live", []string{"channelTitle"}},
 }
 
 type SearchGroupCapability struct {
+	Directions []string `json:"directions"`
 	ID         string   `json:"id"`
 	LabelKey   string   `json:"labelKey"`
 	Title      string   `json:"title"`
@@ -67,6 +69,11 @@ type SearchCapabilities struct {
 	GroupBudgetMs int                     `json:"groupBudgetMs"`
 }
 type SearchGroupResult struct {
+	SourceRevision  string         `json:"sourceRevision,omitempty"`
+	WindowStart     string         `json:"windowStart,omitempty"`
+	WindowEnd       string         `json:"windowEnd,omitempty"`
+	Sort            string         `json:"sort"`
+	Direction       string         `json:"direction"`
 	ID              string         `json:"id"`
 	LabelKey        string         `json:"labelKey"`
 	Title           string         `json:"title"`
@@ -90,7 +97,36 @@ type SearchQueryEcho struct {
 	SearchMode string   `json:"searchMode"`
 	Recorded   bool     `json:"recorded"`
 }
+type SearchMatch struct {
+	Field string `json:"field"`
+	Text  string `json:"text"`
+}
+type SearchChannel struct {
+	ID         string `json:"id"`
+	SourceID   string `json:"sourceId"`
+	Generation string `json:"generation"`
+	Name       string `json:"name"`
+	Number     string `json:"number"`
+	Group      string `json:"group"`
+	Provenance string `json:"provenance"`
+}
+type SearchProgramme struct {
+	ID               string `json:"id"`
+	Title            string `json:"title"`
+	Subtitle         string `json:"subtitle,omitempty"`
+	Start            string `json:"start"`
+	End              string `json:"end"`
+	Live             bool   `json:"live"`
+	MoreAirings      int    `json:"moreAirings"`
+	MoreAiringsExact bool   `json:"moreAiringsExact"`
+}
+type SearchTopResult struct {
+	Group   string        `json:"group"`
+	Entry   ContentEntry  `json:"entry"`
+	Primary *ContentEntry `json:"primary,omitempty"`
+}
 type SearchEnvelope struct {
+	Top          *SearchTopResult    `json:"top,omitempty"`
 	Scope        ContentScope        `json:"scope"`
 	Revision     ContentRevision     `json:"revision"`
 	Heading      ContentHeading      `json:"heading"`
@@ -109,8 +145,10 @@ type SearchRequest struct {
 	Groups                                                            []string
 	// LiveTV is a server-resolved viewer permission, never client input or
 	// service presence alone. It gates all live search, including future programme results.
-	LiveTV bool
-	Record bool
+	LiveLookup     func(context.Context, string, string, string, int) (SearchGroupResult, error)
+	LiveConfigured bool
+	LiveTV         bool
+	Record         bool
 	// Restrictions is applied to the catalog groups; people and live channels
 	// carry no content rating and are governed by their own policies.
 	Restrictions identity.ContentRestrictions
@@ -260,7 +298,7 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 		return out, e
 	}
 	if !r.LiveTV {
-		if r.Group == "live-tv" {
+		if r.Group == "live-tv" || r.Group == "programmes" {
 			if r.Cursor != "" {
 				return out, ErrCursor
 			}
@@ -356,7 +394,7 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 				}
 			}
 			// Live channels count exactly; people say for themselves.
-			if groupErr := failures[index]; groupErr == nil && g.source == "live" {
+			if groupErr := failures[index]; groupErr == nil && g.source == "live" && g.id != "programmes" {
 				result.TotalCountExact = true
 			}
 			results[index] = result
@@ -375,10 +413,22 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 			return out, groupErr
 		}
 	}
+	for i := range results {
+		results[i].Sort = resolveSearchSort(selected[i], r.Sort)
+		results[i].Direction = r.Direction
+		if selected[i].id == "programmes" {
+			results[i].Direction = "asc"
+		}
+	}
 	out.Groups = results
 	total := 0
 	for _, group := range out.Groups {
 		total += len(group.Items)
+	}
+	if r.Cursor == "" && r.Group == "" {
+		if e = s.searchTop(r, &out); e != nil {
+			return out, e
+		}
 	}
 	if total == 0 {
 		out.Empty = &ContentHeading{Key: "search.empty", Fallback: "No matching titles"}
@@ -444,18 +494,21 @@ func searchSelection(r SearchRequest) ([]searchGroupDefinition, error) {
 
 func (s *Service) searchCapabilities(ctx context.Context, r SearchRequest) SearchCapabilities {
 	out := SearchCapabilities{Groups: []SearchGroupCapability{}, Sorts: searchSorts, Directions: []string{"asc", "desc"}, MaxLimit: 40, GroupBudgetMs: int(SearchGroupBudget / time.Millisecond)}
-	live := r.LiveTV && s.tableExists(ctx, "live_channel_versions")
+	live := r.LiveTV && r.LiveConfigured && s.tableExists(ctx, "live_channel_versions")
 	people := s.tableExists(ctx, "catalog_people_names")
 	for _, g := range searchGroups {
 		if g.source == "live" && !r.LiveTV {
 			continue
 		}
-		capability := SearchGroupCapability{ID: g.id, LabelKey: searchGroupLabelKey(g.id), Title: g.label, EntityKind: g.kind, Available: true, Sorts: g.sorts}
+		capability := SearchGroupCapability{ID: g.id, LabelKey: searchGroupLabelKey(g.id), Title: g.label, EntityKind: g.kind, Available: true, Sorts: g.sorts, Directions: []string{"asc", "desc"}}
+		if g.id == "programmes" {
+			capability.Directions = []string{"asc"}
+		}
 		switch g.source {
 		case "live":
 			if !live {
 				capability.Available = false
-				capability.Reason = "Live TV is not configured on this server."
+				capability.Reason = "Live TV is not available to this profile."
 			}
 		case "people":
 			if !people {
@@ -502,6 +555,12 @@ func (s *Service) searchGroup(ctx context.Context, r SearchRequest, g searchGrou
 	case "people":
 		return s.searchPeopleGroup(ctx, r, g, match, scopeHash, fingerprint, rev, pageSize, out)
 	case "live":
+		if r.LiveLookup != nil {
+			return s.searchLiveLookup(ctx, r, g, scopeHash, rev, pageSize, out)
+		}
+		if g.id == "programmes" {
+			return nil
+		}
 		return s.searchLiveGroup(ctx, r, g, scopeHash, fingerprint, rev, pageSize, out)
 	}
 	return s.searchCatalogGroup(ctx, r, g, match, scopeHash, fingerprint, rev, pageSize, out)
@@ -613,8 +672,10 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	prefix = prefix && sortID == "relevance"
 	var prefixCursor *cursorValue
 	if r.Cursor != "" {
-		if c, err := s.decodeRevisionCursor(r.Cursor, s.groupCursorScope(r, g, scopeHash, "relevance_prefix"), rev); err == nil {
+		if c, err := s.decodeSearchCursor(r.Cursor, s.groupCursorScope(r, g, scopeHash, "relevance_prefix"), rev); err == nil {
 			prefixCursor = &c
+		} else if errors.Is(err, ErrStaleContinuation) {
+			return err
 		} else {
 			prefix = false
 		}
@@ -700,12 +761,12 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		scope.Sort = "relevance_prefix"
 	}
 	if r.Cursor != "" {
-		c, e := s.decodeRevisionCursor(r.Cursor, scope, rev)
+		c, e := s.decodeSearchCursor(r.Cursor, scope, rev)
 		if e != nil {
 			return e
 		}
 		if c.Fingerprint != fingerprint {
-			c.Total = 0
+			return ErrStaleContinuation
 		}
 		value, e := cursorOrderValue(c.Value, order.numeric)
 		if e != nil {
@@ -832,9 +893,12 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		out.TotalCount = len(entries)
 		out.TotalCountExact = true
 		out.Items = entries
-		return nil
+		return s.enrichSearchEntries(r, entries)
 	}
 	out.Items = entries
+	if e = s.enrichSearchEntries(r, entries); e != nil {
+		return e
+	}
 	if e = countGroup(); e != nil {
 		return e
 	}
@@ -908,12 +972,12 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 	scope := s.groupCursorScope(r, g, scopeHash, sortID)
 	offset := 0
 	if r.Cursor != "" {
-		c, e := s.decodeRevisionCursor(r.Cursor, scope, rev)
+		c, e := s.decodeSearchCursor(r.Cursor, scope, rev)
 		if e != nil {
 			return e
 		}
 		if c.Fingerprint != fingerprint {
-			c.Total = 0
+			return ErrStaleContinuation
 		}
 		if offset, e = strconv.Atoi(c.ID); e != nil || offset < 0 || offset > 100000 {
 			return ErrCursor
@@ -936,6 +1000,9 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 		entries = append(entries, ContentEntry{ID: person.ID, Kind: g.kind, Title: person.Name, Subtitle: strings.Join(person.Roles, " · "), PosterURL: person.PortraitURL, Count: &count, Navigation: &ContentNavigation{View: g.view, EntityID: person.ID}})
 	}
 	out.Items = entries
+	if e = s.enrichSearchPeople(r, entries); e != nil {
+		return e
+	}
 	if more {
 		out.HasMore = true
 		out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: "offset", ID: strconv.Itoa(offset + pageSize), Fingerprint: fingerprint, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
@@ -993,12 +1060,12 @@ func (s *Service) searchLiveGroup(ctx context.Context, r SearchRequest, g search
 	scope := s.groupCursorScope(r, g, scopeHash, sortID)
 	offset := 0
 	if r.Cursor != "" {
-		c, e := s.decodeRevisionCursor(r.Cursor, scope, rev)
+		c, e := s.decodeSearchCursor(r.Cursor, scope, rev)
 		if e != nil {
 			return e
 		}
 		if c.Fingerprint != fingerprint {
-			c.Total = 0
+			return ErrStaleContinuation
 		}
 		if offset, e = strconv.Atoi(c.ID); e != nil || offset < 0 || offset > 100000 {
 			return ErrCursor
@@ -1077,4 +1144,27 @@ func searchCJKPredicate(column, q string) (string, []any) {
 		}
 	}
 	return clause, args
+}
+
+func (s *Service) searchLiveLookup(ctx context.Context, r SearchRequest, g searchGroupDefinition, scopeHash string, rev ContentRevision, limit int, out *SearchGroupResult) error {
+	scope := s.groupCursorScope(r, g, scopeHash, resolveSearchSort(g, r.Sort))
+	inner := ""
+	if r.Cursor != "" {
+		c, err := s.decodeSearchCursor(r.Cursor, scope, rev)
+		if err != nil {
+			return err
+		}
+		inner = c.Value
+	}
+	page, err := r.LiveLookup(ctx, g.id, inner, resolveSearchSort(g, r.Sort), limit)
+	if err != nil {
+		return err
+	}
+	out.Items, out.TotalCount, out.TotalCountExact = page.Items, page.TotalCount, page.TotalCountExact
+	out.SourceRevision, out.WindowStart, out.WindowEnd = page.SourceRevision, page.WindowStart, page.WindowEnd
+	if page.NextCursor != "" {
+		out.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: page.NextCursor, ID: "live", Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
+		out.HasMore = out.NextCursor != ""
+	}
+	return err
 }

@@ -239,7 +239,9 @@ index catalog_term_source_membership
 index catalog_term_sources_name_seek
 index catalog_term_sources_overrides
 index catalog_term_sources_provider
+index catalog_term_sources_search_label
 index catalog_term_sources_term
+index catalog_terms_search_label
 index catalog_title_tombstones_expiry
 index catalog_visibility_sort_edge_entity
 index catalogue_failures_recent
@@ -355,6 +357,7 @@ index lc_candidate_episode
 index lc_candidate_item
 index lc_candidate_order
 index lc_directory
+index lc_entries_search_group
 index lc_jobs
 index lc_one_job
 index lc_ref_channel
@@ -377,6 +380,7 @@ index live_programme_icons_url
 index live_programme_images_digest
 index live_programmes_lineage
 index live_programmes_provider_key
+index live_programmes_search_group
 index live_programmes_window
 index live_reminders_owner
 index live_remote_due

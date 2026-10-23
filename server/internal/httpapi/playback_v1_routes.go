@@ -89,6 +89,9 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 		if held, ok := ctx.Value(queueHomeRowsKey{}).(queueHomeRows); ok {
 			homeRows, labels = held.members, held.titles
 		}
+		if source.Search != nil {
+			return d.Catalog.SearchQueueKeysTx(ctx, tx, viewer, *source.Search)
+		}
 		selection, err := d.Catalog.QueueKeysTx(ctx, tx, viewer, catalog.ResourceActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, source.Query, saved, homeRows)
 		if err == nil && source.Query != nil {
 			// A Home row's queue is named after the row.

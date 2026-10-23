@@ -16,7 +16,7 @@ import (
 func (s *Service) prefixSearchCandidates(ctx context.Context, r SearchRequest, kind int, terms []string, where string, filterArgs []any, limit int, scope cursorScope, rev ContentRevision) (string, []any, string, error) {
 	frozenLead := ""
 	if r.Cursor != "" {
-		c, err := s.decodeRevisionCursor(r.Cursor, scope, rev)
+		c, err := s.decodeSearchCursor(r.Cursor, scope, rev)
 		if err != nil {
 			return "", nil, "", err
 		}
@@ -89,7 +89,7 @@ func (s *Service) prefixSearchCandidates(ctx context.Context, r SearchRequest, k
 	var cursorTier float64
 	var cursorID int64
 	if r.Cursor != "" {
-		cursor, err := s.decodeRevisionCursor(r.Cursor, scope, rev)
+		cursor, err := s.decodeSearchCursor(r.Cursor, scope, rev)
 		if err != nil {
 			return "", nil, "", err
 		}

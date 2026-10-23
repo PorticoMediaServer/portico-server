@@ -7159,6 +7159,34 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_search_discovery",
+    "method": "GET",
+    "path": "/v1/search/discovery",
+    "summary": "Read video genres and permitted On now channels for Search",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal",
+      "invalid_cursor",
+      "stale_continuation",
+      "search_busy",
+      "search_unavailable"
+    ],
+    "status": 200,
+    "admission": "expensive"
+  },
+  {
     "id": "get_search_history",
     "method": "GET",
     "path": "/v1/search/history",
@@ -14573,7 +14601,11 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
-      "internal"
+      "internal",
+      "invalid_cursor",
+      "stale_continuation",
+      "search_busy",
+      "search_unavailable"
     ],
     "status": 200,
     "admission": "expensive"
@@ -17491,6 +17523,7 @@ export const routePaths = {
   "get_saved_resources_id_content": "/v1/saved-resources/{id}/content",
   "get_saved_resources_id_share_candidates": "/v1/saved-resources/{id}/share-candidates",
   "get_scan_issues": "/v1/admin/libraries/{id}/scans/{job}/issues",
+  "get_search_discovery": "/v1/search/discovery",
   "get_search_history": "/v1/search/history",
   "get_seasons_id_episodes": "/v1/seasons/{id}/episodes",
   "get_server": "/v1/server",

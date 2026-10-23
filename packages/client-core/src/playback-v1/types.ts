@@ -205,7 +205,9 @@ export function parsePreparedNext(v: unknown): PreparedNext {
 
 // ── Queues (spec §8, ARCH-MEDIA-03) ─────────────────────────────────
 export type QueueBrowseSelector = Readonly<{libraryId: string; pivot?: string; query?: BrowseNode; sort?: readonly BrowseSortSelection[]}>;
+export type SearchQueueSelector=Readonly<{q:string;group:"songs";sort?:"relevance"|"title"|"releaseYear"|"dateAdded";direction?:"asc"|"desc";libraryIds?:readonly string[]}>;
 export type Selector =
+ | Readonly<{search:SearchQueueSelector}>
   | Readonly<{container: Readonly<{kind: string; id: string}>}>
   | Readonly<{query: QueueBrowseSelector}>
   | Readonly<{saved: Readonly<{id: string}>}>

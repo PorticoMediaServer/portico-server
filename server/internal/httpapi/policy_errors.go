@@ -9,6 +9,8 @@ import (
 
 func policyErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "search_busy", Status: 429, Message: "Too many searches are already running. Try again in a moment.", Retry: apierror.SameRequest},
+		{Code: "search_unavailable", Status: 503, Message: "Search timed out or was canceled. Refine the query and retry.", Retry: apierror.SameRequest},
 		{Code: "invalid_query", Status: 400, Message: publicErrorMessage("invalid_request"), Retry: apierror.Never},
 		{Code: "home_layout_conflict", Status: 409, Message: publicErrorMessage("home_layout_conflict"), Retry: apierror.AfterRefresh},
 		{Code: "stale_continuation", Status: 409, Message: "This list changed. Refresh it to continue.", Retry: apierror.AfterRefresh},

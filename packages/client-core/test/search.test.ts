@@ -1,14 +1,14 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {SearchService,parseSearchHistory,searchQueryProblem,type SearchGroup} from '../src/search.ts';
+import {SearchService,SEARCH_DRAWN_GROUPS,parseSearchHistory,searchQueryProblem,type SearchGroup} from '../src/search.ts';
 const scope={serverId:'server',viewerId:JSON.stringify(['hosted','account','profile'])};
-const kinds={movies:'movie',shows:'show',episodes:'episode',artists:'artist',albums:'album',songs:'song',books:'book',collections:'collection',authors:'author',people:'person','live-tv':'channel'} as const;
+const kinds={movies:'movie',shows:'show',episodes:'episode',artists:'artist',albums:'album',songs:'song',books:'book',collections:'collection',authors:'author',people:'person','live-tv':'channel',programmes:'programme'} as const;
 const all=Object.keys(kinds) as SearchGroup[];
-const mediaGroups=all.filter(g=>g!=='people'&&g!=='live-tv');
-const capabilities=(unavailable:SearchGroup[]=['live-tv'])=>({groups:all.map(id=>({id,title:id,entityKind:kinds[id],available:!unavailable.includes(id),...(unavailable.includes(id)?{reason:'Not configured on this server.'}:{}),sorts:['relevance','title']})),sorts:['relevance','title','releaseYear','dateAdded'],directions:['asc','desc'],maxLimit:40,groupBudgetMs:600});
+const mediaGroups=all.filter(g=>g!=='people'&&g!=='live-tv'&&g!=='programmes');
+const capabilities=(unavailable:SearchGroup[]=['live-tv','programmes'])=>({groups:all.map(id=>({id,title:id,entityKind:kinds[id],available:!unavailable.includes(id),...(unavailable.includes(id)?{reason:'Not configured on this server.'}:{}),sorts:['relevance','title']})),sorts:['relevance','title','releaseYear','dateAdded'],directions:['asc','desc'],maxLimit:40,groupBudgetMs:600});
 function group(id:SearchGroup,ids=['one'],nextCursor=''):any{
  const entityKind=kinds[id];
  const view=['movies','episodes','songs'].includes(id)?'item':entityKind;
- const items=ids.map(entity=>id==='people'||id==='live-tv'
+ const items=ids.map(entity=>id==='programmes'?{id:'live-source:source:'+entity,kind:'programme',title:'Server '+entity,channel:{id:'channel',sourceId:'source',generation:'generation',name:'Channel',number:'1',group:'',provenance:'live-source'},programme:{id:entity,title:'Server '+entity,start:'2026-10-22T12:00:00Z',end:'2026-10-22T13:00:00Z',live:false,moreAirings:0,moreAiringsExact:true},navigation:{view:'programme',entityId:'live-source:source:'+entity}}:id==='people'||id==='live-tv'
   ?{id:entity,kind:entityKind,title:'Server '+entity,navigation:{view,entityId:entity}}
   :{id:entity,libraryId:'library',kind:entityKind,title:'Server '+entity,navigation:{view,entityId:entity}});
  return {id,title:id,entityKind,status:'success',errorCode:'',items,totalCount:20,hasMore:!!nextCursor,nextCursor};
@@ -19,15 +19,15 @@ function result(path:string,changes:Record<string,unknown>={}):any{
  const restrict=url.searchParams.get('groups');
  const echoed=selected?[selected]:restrict?restrict.split(','):all;
  return {scope:{serverId:'server',libraryId:'',libraryKind:'mixed',view:'search',entityId:'',viewerFence:'fence'},revision:{catalog:4,viewer:5},heading:{key:'search.title',fallback:'Search'},
-  query:{q:url.searchParams.get('q'),sort:url.searchParams.get('sort')??'relevance',direction:url.searchParams.get('direction')??'desc',group:selected??'',groups:echoed,libraryIds:url.searchParams.get('libraryIds')?.split(',')??[],limit:Number(url.searchParams.get('limit')),searchMode:'normalized_prefix',recorded:url.searchParams.get('record')==='1'},
-  groups:echoed.map(id=>group(id as SearchGroup)),capabilities:capabilities(),...changes};
+  query:{q:url.searchParams.get('q'),sort:url.searchParams.get('sort')??'relevance',direction:url.searchParams.get('direction')??'desc',group:selected??'',groups:echoed,libraryIds:url.searchParams.get('libraryIds')?.split(',')??['library'],limit:Number(url.searchParams.get('limit')),searchMode:'normalized_prefix',recorded:url.searchParams.get('record')==='1'},
+  groups:echoed.map(id=>{const g=group(id as SearchGroup);for(const e of g.items){if(e.libraryId)e.libraryId=url.searchParams.get('libraryIds')?.split(',')[0]??'library';}return g;}),capabilities:capabilities(),...changes};
 }
 function service(fn:(path:string,signal?:AbortSignal)=>Promise<unknown>,timeoutMs=1000){return new SearchService({scope,timeoutMs,api:{request:<T>(path:string,_m?:string,_b?:unknown,signal?:AbortSignal)=>fn(path,signal) as Promise<T>}});}
 function deferred(){let resolve!:(value:unknown)=>void;const promise=new Promise<unknown>(r=>resolve=r);return {promise,resolve};}
 
 test('preserves server group order and publishes per-group capabilities',async()=>{
  const s=service(async path=>result(path,{groups:[group('books'),group('shows'),group('movies')],query:{...result(path).query,groups:['books','shows','movies']}}));
- await s.select('harbor');
+ await s.select('harbor',{groups:['books','shows','movies']});
  assert.equal(s.getSnapshot().phase,'ready');
  assert.deepEqual(s.getSnapshot().groups.map(g=>g.id),['books','shows','movies']);
  const published=new Map(s.getSnapshot().data!.capabilities.groups.map(g=>[g.id,g.available]));
@@ -59,7 +59,7 @@ test('a failed group shows only its failure, and what a group does not say reads
  assert.deepEqual([(await movies(r=>{r.groups[0]={...group('movies'),status:'partial'};})).status,(await movies(r=>{r.groups[0]={...failed('movies'),status:'throttled',errorCode:'made_up'};})).errorCode,(await movies(r=>{r.groups[0]={...failed('movies'),errorCode:'made_up'};})).errorCode],['success','search_group_unavailable','search_group_unavailable']);
  // An unavailable group that does not say why is still listed, without a reason.
  const quiet=(await read(r=>{r.capabilities.groups=r.capabilities.groups.map((g:any)=>g.id==='live-tv'?{id:'live-tv',sorts:['relevance','popularity']}:g);})).capabilities.groups.find(g=>g.id==='live-tv')!;
- assert.deepEqual(quiet,{id:'live-tv',title:'',entityKind:'channel',available:false,reason:'',sorts:['relevance']});
+ assert.deepEqual(quiet,{id:'live-tv',title:'',entityKind:'channel',available:false,reason:'',sorts:['relevance'],directions:['asc','desc']});
 });
 test('one group or result that cannot be read is left out and the rest of the answer is kept',async()=>{
  const read=async(change:(r:any)=>void,options:any={})=>{const s=service(async path=>{const raw=result(path);change(raw);return raw;});await s.select('harbor',options);assert.equal(s.getSnapshot().phase,'ready');const data=s.getSnapshot().data!;s.dispose();return data;};
@@ -74,7 +74,7 @@ test('one group or result that cannot be read is left out and the rest of the an
  assert.deepEqual(groups.groups.map(g=>[g.id,g.title]),[['books','books']]);
  // An order the server chose and this app does not know reads as relevance, best first; unknown capabilities are not offered.
  const order=await read(r=>{r.query.sort='popularity';r.query.direction='random';r.query.groups=[...r.query.groups,'podcasts'];r.capabilities.sorts=['relevance','popularity'];r.capabilities.directions=['desc','random'];r.capabilities.groups.push({id:'podcasts',title:'Podcasts',entityKind:'podcast',available:true,sorts:[]});});
- assert.deepEqual([order.query.sort,order.query.direction,order.query.groups.length,order.capabilities.sorts,order.capabilities.directions,order.capabilities.groups.length],['relevance','desc',all.length,['relevance'],['desc'],all.length]);
+ assert.deepEqual([order.query.sort,order.query.direction,order.query.groups.length,order.capabilities.sorts,order.capabilities.directions,order.capabilities.groups.length],['relevance','desc',SEARCH_DRAWN_GROUPS.length,['relevance'],['desc'],all.length]);
  // An answer none of whose groups can be read is refused rather than shown as no results.
  const none=service(async path=>{const raw=result(path);raw.groups=['nope',{id:'podcasts'}];return raw;});await none.select('harbor');assert.equal(none.getSnapshot().phase,'error');assert.equal(none.getSnapshot().error!.code,'invalid_search');none.dispose();
 });
@@ -108,7 +108,7 @@ test('a server that answers a different sort fails closed; a group that was not 
 });
 test('people and channel rows carry no library, playback or availability',async()=>{
  const s=service(async p=>result(p,{groups:[group('people')],query:{...result(p).query,groups:['people']}}));
- await s.select('harbor');
+ await s.select('harbor',{group:'people'});
  const person=s.getSnapshot().groups[0].items[0] as any;
  assert.equal(person.kind,'person');
  assert.equal(person.navigation.view,'person');
@@ -116,7 +116,7 @@ test('people and channel rows carry no library, playback or availability',async(
  s.dispose();
  // Whatever else arrives with a person, the row never carries playback, availability or a library.
  const leaking=service(async p=>{const raw=result(p,{groups:[group('people')],query:{...result(p).query,groups:['people']}});Object.assign(raw.groups[0].items[0],{playback:{itemId:'one'},available:true,libraryId:'library',subtitle:7});return raw;});
- await leaking.select('harbor');
+ await leaking.select('harbor',{group:'people'});
  assert.deepEqual(leaking.getSnapshot().groups[0].items[0],{id:'one',kind:'person',title:'Server one',navigation:{view:'person',entityId:'one'}});
  leaking.dispose();
 });
@@ -162,13 +162,13 @@ test('history is recorded only when the caller asks for it',async()=>{
  declined.dispose();
 });
 test('search history parses as the viewer own bounded list', ()=>{
- const page=parseSearchHistory({serverId:'server',viewerFence:'fence',maxEntries:50,entries:[{q:'harbor',updatedAt:'2026-09-16T00:00:00Z',uses:3}]},scope);
+ const page=parseSearchHistory({serverId:'server',viewerFence:'fence',remembered:true,maxEntries:20,entries:[{q:'harbor',updatedAt:'2026-09-16T00:00:00Z'}]},scope);
  assert.equal(page.entries[0].q,'harbor');
- assert.throws(()=>parseSearchHistory({serverId:'other',viewerFence:'fence',maxEntries:50,entries:[]},scope));
- assert.throws(()=>parseSearchHistory({serverId:'server',viewerFence:'',maxEntries:50,entries:[]},scope));
- assert.throws(()=>parseSearchHistory({serverId:'server',viewerFence:'fence',maxEntries:1,entries:[{q:'a',updatedAt:'x',uses:1},{q:'b',updatedAt:'y',uses:1}]},scope));
+ assert.throws(()=>parseSearchHistory({serverId:'other',viewerFence:'fence',remembered:true,maxEntries:20,entries:[]},scope));
+ assert.throws(()=>parseSearchHistory({serverId:'server',viewerFence:'',remembered:true,maxEntries:20,entries:[]},scope));
+ assert.throws(()=>parseSearchHistory({serverId:'server',viewerFence:'fence',remembered:true,maxEntries:1,entries:[{q:'a',updatedAt:'x'},{q:'b',updatedAt:'y'}]},scope));
  // An entry that cannot be read is left out alone; a repeated search keeps its first appearance.
- assert.deepEqual(parseSearchHistory({serverId:'server',viewerFence:'fence',maxEntries:50,future:1,entries:[{q:'a',updatedAt:'x',uses:1},{q:'a',updatedAt:'y',uses:1},{q:''},'nope',{q:'b',future:true}]},scope).entries,[{q:'a',updatedAt:'x',uses:1},{q:'b',updatedAt:'',uses:1}]);
+ assert.deepEqual(parseSearchHistory({serverId:'server',viewerFence:'fence',remembered:true,maxEntries:20,future:1,entries:[{q:'a',updatedAt:'x'},{q:'a',updatedAt:'y'},{q:''},'nope',{q:'b',future:true}]},scope).entries,[{q:'a',updatedAt:'x'},{q:'b',updatedAt:''}]);
 });
 test('group continuation and Previous preserve exact query and server page; no accumulation',async()=>{const paths:string[]=[];const s=service(async p=>{paths.push(p);const page=new URL(p,'https://x').searchParams.get('cursor');const raw=result(p);raw.groups=raw.groups.map((g:any)=>g.id==='movies'?group('movies',page?['six']:['one'],page?'':'next-page'):g);return raw;});await s.select('title');await s.next('movies');const movies=s.getSnapshot().groups.find(g=>g.id==='movies')!;assert.equal(movies.items[0].id,'six');assert.equal(movies.items.length,1);assert.equal(s.getSnapshot().pagination.canPrevious,true);await s.previous();assert.equal(new URL(paths.at(-1)!,'https://x').searchParams.has('group'),false);assert.equal(s.getSnapshot().groups.find(g=>g.id==='movies')!.items[0].id,'one');s.dispose();});
 test('every published group is a server request, preserving typed navigation',async()=>{const s=service(async p=>result(p));for(const selected of all){await s.select('test',{group:selected});assert.equal(s.getSnapshot().phase,'ready');assert.equal(s.getSnapshot().query?.group,selected);}s.dispose();});
@@ -177,14 +177,14 @@ test('same in-flight command is singleflight, cancel clears even ignored abort',
 test('scope change clears query and pending data before a new principal binds',async()=>{const d=deferred();const s=service(async()=>d.promise);const pending=s.select('private');s.setScope({...scope,viewerId:'different-profile'},{request:async<T>()=>{throw new Error('unused');}});await pending;d.resolve({});await Promise.resolve();assert.equal(s.getSnapshot().scope.viewerId,'different-profile');assert.equal(s.getSnapshot().query,null);assert.deepEqual(s.getSnapshot().groups,[]);s.dispose();});
 test('timeout settles transport ignoring abort and explicit retry can recover',async()=>{let calls=0;const s=service(async p=>{calls++;return calls===1?new Promise(()=>{}):result(p);},5);await s.select('test');assert.equal(s.getSnapshot().error?.code,'timeout');await s.retry();assert.equal(s.getSnapshot().phase,'ready');s.dispose();});
 test('denied read clears previously visible data and never offers stale results',async()=>{let denied=false;const s=service(async p=>{if(denied)throw Object.assign(new Error('Permission removed'),{code:'forbidden'});return result(p);});await s.select('test');denied=true;await s.refresh();assert.equal(s.getSnapshot().phase,'error');assert.equal(s.getSnapshot().data,null);assert.deepEqual(s.getSnapshot().groups,[]);s.dispose();});
-test('a later page read after the library moved is still a page; another viewer\'s answer restarts the search quietly',async()=>{for(const change of ['catalog','viewer','fence']){let second=false,calls=0;const s=service(async p=>{calls++;const raw=result(p);raw.groups=raw.groups.map((g:any)=>g.id==='movies'?group('movies',['one'],p.includes('cursor=')?'':'next'):g);if(second&&p.includes('cursor=')){if(change==='fence')raw.scope.viewerFence='new-fence';else raw.revision[change]++;}return raw;});await s.select('test');second=true;await s.next('movies');assert.equal(s.getSnapshot().phase,'ready');assert.notEqual(s.getSnapshot().data,null);assert.equal(calls,change==='fence'?3:2);assert.equal(s.getSnapshot().pagination.cursor,change==='fence'?null:'next');s.dispose();}});
+test('a changed catalogue, viewer revision or fence requires explicit refresh',async()=>{for(const change of ['catalog','viewer','fence']){let second=false,calls=0;const s=service(async p=>{calls++;const raw=result(p);raw.groups=raw.groups.map((g:any)=>g.id==='movies'?group('movies',['one'],p.includes('cursor=')?'':'next'):g);if(second&&p.includes('cursor=')){if(change==='fence')raw.scope.viewerFence='new-fence';else raw.revision[change]++;}return raw;});await s.select('test');second=true;await s.next('movies');assert.equal(s.getSnapshot().phase,'refresh-required');assert.equal(s.getSnapshot().data,null);assert.equal(calls,2);await s.refresh();assert.equal(s.getSnapshot().phase,'ready');assert.equal(s.getSnapshot().pagination.cursor,null);assert.equal(calls,3);s.dispose();}});
 test('wrong scope, query, revision or limit fail closed',async()=>{const changes=[(r:any)=>r.scope.serverId='wrong',(r:any)=>r.scope.viewerFence='',(r:any)=>r.query.q='other',(r:any)=>r.query.limit=41,(r:any)=>r.query.group='movies',(r:any)=>r.revision.catalog=-1,(r:any)=>r.groups=Array(65).fill(r.groups[0]),(r:any)=>r.capabilities.maxLimit=0];for(const change of changes){const s=service(async p=>{const raw=result(p);change(raw);return raw;});await s.select('test');assert.equal(s.getSnapshot().phase,'error');assert.equal(s.getSnapshot().data,null);s.dispose();}});
-test('pagination history is bounded to 64 prior pages and a repeated cursor ends the group',async()=>{const s=service(async p=>{const u=new URL(p,'https://x'),index=Number(u.searchParams.get('cursor')??0);const raw=result(p);raw.groups=raw.groups.map((g:any)=>g.id==='movies'?group('movies',[String(index)],String(index+1)):g);return raw;});await s.select('test',{group:'movies'});for(let i=0;i<70;i++)await s.next('movies');for(let i=0;i<64;i++)await s.previous();assert.equal(s.getSnapshot().pagination.canPrevious,false);assert.equal(s.getSnapshot().groups[0].items[0].id,'6');s.dispose();const repeated=service(async p=>{const raw=result(p);raw.groups=raw.groups.map((g:any)=>g.id==='movies'?group('movies',['one'],'same'):g);return raw;});await repeated.select('test');await repeated.next('movies');assert.equal(repeated.getSnapshot().phase,'ready');assert.equal(repeated.getSnapshot().groups.find(g=>g.id==='movies')!.nextCursor,'');repeated.dispose();});
-test('a stale server cursor restarts the search from its first page without a refresh state',async()=>{const paths:string[]=[];const phases:string[]=[];const s=service(async p=>{paths.push(p);if(p.includes('cursor='))throw Object.assign(new Error('Expired continuation'),{code:'stale_continuation',retryable:true});const raw=result(p);raw.groups=raw.groups.map((g:any)=>g.id==='movies'?group('movies',['one'],'next'):g);return raw;});await s.select('test');s.subscribe(()=>phases.push(s.getSnapshot().phase));await s.next('movies');assert.equal(s.getSnapshot().phase,'ready');assert(!phases.includes('refresh-required')&&!phases.includes('error'));assert(!paths.at(-1)!.includes('cursor='));assert.equal(paths.length,3);s.dispose();});
+test('pagination history is bounded to 64 prior pages and a repeated cursor requires refresh',async()=>{const s=service(async p=>{const u=new URL(p,'https://x'),index=Number(u.searchParams.get('cursor')??0);const raw=result(p);raw.groups=raw.groups.map((g:any)=>g.id==='movies'?group('movies',[String(index)],String(index+1)):g);return raw;});await s.select('test',{group:'movies'});for(let i=0;i<70;i++)await s.next('movies');for(let i=0;i<64;i++)await s.previous();assert.equal(s.getSnapshot().pagination.canPrevious,false);assert.equal(s.getSnapshot().groups[0].items[0].id,'6');s.dispose();const repeated=service(async p=>{const raw=result(p);raw.groups=raw.groups.map((g:any)=>g.id==='movies'?group('movies',['one'],'same'):g);return raw;});await repeated.select('test');await repeated.next('movies');assert.equal(repeated.getSnapshot().phase,'refresh-required');assert.equal(repeated.getSnapshot().error?.code,'invalid_cursor');assert.equal(repeated.getSnapshot().data,null);repeated.dispose();});
+test('a stale server cursor is reported and restarts only after explicit refresh',async()=>{const paths:string[]=[];const phases:string[]=[];const s=service(async p=>{paths.push(p);if(p.includes('cursor='))throw Object.assign(new Error('Expired continuation'),{code:'stale_continuation',retryable:true});const raw=result(p);raw.groups=raw.groups.map((g:any)=>g.id==='movies'?group('movies',['one'],'next'):g);return raw;});await s.select('test');s.subscribe(()=>phases.push(s.getSnapshot().phase));await s.next('movies');assert.equal(s.getSnapshot().phase,'refresh-required');assert(phases.includes('refresh-required'));assert.equal(paths.length,2);await s.refresh();assert.equal(s.getSnapshot().phase,'ready');assert(!paths.at(-1)!.includes('cursor='));assert.equal(paths.length,3);s.dispose();});
 test('same-query transient refresh retains results but a new query never inherits them',async()=>{
  let fail=false;const s=service(async p=>{if(fail)throw new TypeError('Failed to fetch');return result(p);});
  await s.select('harbor');fail=true;const refresh=s.refresh();assert.equal(s.getSnapshot().groups[0].items[0].id,'one');await refresh;
- assert.equal(s.getSnapshot().phase,'error');assert.equal(s.getSnapshot().error?.retryable,true);assert.equal(s.getSnapshot().groups.length,mediaGroups.length+2);
+ assert.equal(s.getSnapshot().phase,'error');assert.equal(s.getSnapshot().error?.retryable,true);assert.equal(s.getSnapshot().groups.length,SEARCH_DRAWN_GROUPS.length);
  await s.select('different');assert.equal(s.getSnapshot().groups.length,0);s.dispose();
 });
 
@@ -203,7 +203,7 @@ test('searchQueryProblem says why a query would not be sent (CD-30)', () => {
 
 test('preserves count accuracy while keeping unknown totals pageable',async()=>{
  const s=service(async path=>result(path,{groups:[{...group('movies',['one'],'next'),totalCount:1,totalCountExact:false},{...group('shows'),totalCountExact:true}],query:{...result(path).query,groups:['movies','shows']}}));
- await s.select('Title 000000');
+ await s.select('Title 000000',{groups:['movies','shows']});
  assert.equal(s.getSnapshot().phase,'ready');
  const [movies,shows]=s.getSnapshot().groups;
  assert.equal(movies.totalCountExact,false);

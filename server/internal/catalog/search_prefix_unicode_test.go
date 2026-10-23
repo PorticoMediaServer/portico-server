@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/dbwork"
@@ -50,7 +51,7 @@ func TestAmbiguousLabelsNeverClaimPermissionCounts(t *testing.T) {
 	}
 }
 
-func TestPrefixCursorSurvivesDictionaryGrowth(t *testing.T) {
+func TestPrefixCursorRequiresRestartAfterDictionaryPublication(t *testing.T) {
 	c := catalogtest.Open(t)
 	lib := c.Library("m", "Movies", "movie", "/m")
 	for i := 0; i < 10; i++ {
@@ -69,18 +70,13 @@ func TestPrefixCursorSurvivesDictionaryGrowth(t *testing.T) {
 	}
 	c.Drain()
 	request.Cursor = first.Groups[0].NextCursor
-	next, err := s.Search(context.Background(), request)
-	if err != nil || next.Groups[0].Status != "success" || len(next.Groups[0].Items) != 3 {
-		t.Fatalf("next=%+v err=%v", next.Groups, err)
+	if _, err := s.Search(context.Background(), request); !errors.Is(err, ErrStaleContinuation) {
+		t.Fatalf("dictionary publication must reject old Search cursor: %v", err)
 	}
-	seen := map[string]bool{}
-	for _, item := range first.Groups[0].Items {
-		seen[item.ID] = true
-	}
-	for _, item := range next.Groups[0].Items {
-		if seen[item.ID] {
-			t.Fatal("dictionary growth repeated a result")
-		}
+	request.Cursor = ""
+	restarted, err := s.Search(context.Background(), request)
+	if err != nil || restarted.Groups[0].Status != "success" || len(restarted.Groups[0].Items) != 3 {
+		t.Fatalf("explicit restart failed: %+v %v", restarted.Groups, err)
 	}
 	for _, direction := range []string{"asc", "desc"} {
 		ctx, trace := dbwork.TraceQueryPlans(context.Background())

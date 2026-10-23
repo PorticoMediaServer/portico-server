@@ -347,6 +347,7 @@ var routeLanes = map[string]string{
 	"GET /v1/saved-resources/{id}/content":                                       "browsing",
 	"GET /v1/saved-resources/{id}/share-candidates":                              "browsing",
 	"GET /v1/search":                                                             "expensive",
+	"GET /v1/search/discovery":                                                   "expensive",
 	"GET /v1/search/history":                                                     "expensive",
 	"GET /v1/seasons/{id}/episodes":                                              "browsing",
 	"GET /v1/server":                                                             "default",
