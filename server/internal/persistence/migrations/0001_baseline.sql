@@ -3433,7 +3433,7 @@ CREATE TABLE dvr_cleanup_work(recording_id TEXT PRIMARY KEY REFERENCES dvr_recor
 CREATE TABLE dvr_storage_policy(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,
  retention_days INTEGER NOT NULL,episode_limit INTEGER NOT NULL,floor_bytes INTEGER NOT NULL,cap_bytes INTEGER NOT NULL) STRICT;
 CREATE TABLE remote_sources(
- id TEXT PRIMARY KEY,kind TEXT NOT NULL,name TEXT NOT NULL,root TEXT NOT NULL UNIQUE,
+ id TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN('rclone','webdav','sftp','smb')),name TEXT NOT NULL,root TEXT NOT NULL UNIQUE,
  generation INTEGER NOT NULL DEFAULT 1,config BLOB,state TEXT NOT NULL DEFAULT 'ready',error_code TEXT NOT NULL DEFAULT '',
  range_support TEXT NOT NULL DEFAULT 'unknown',origin TEXT NOT NULL DEFAULT '',insecure INTEGER NOT NULL DEFAULT 0,
  credential_present INTEGER NOT NULL DEFAULT 0,mount_id TEXT NOT NULL DEFAULT '',removed INTEGER NOT NULL DEFAULT 0) STRICT;
