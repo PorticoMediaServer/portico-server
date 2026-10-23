@@ -10,6 +10,7 @@ import {StateView} from '../../kit/states';
 import {sameSavedDownloadsScope, type SavedDownloadsPort, type SavedDownloadRules, type SavedDownloadsSnapshot, type SavedLocalDownload, type SavedLocalDownloadGroup, type SavedOtherDownloadsConfirmation} from './downloads-port.ts';
 import {diskFractions, downloadShape, localDownloadGroups, localGroupPercent, measuredPercent, preparationPercent} from './downloads-model.ts';
 import type {SavedOperations} from './operations.ts';
+import type {SaveReadyPreparation} from './ready-downloads.ts';
 import {savedText as s} from './text.ts';
 import styles from './saved.module.css';
 
@@ -20,7 +21,7 @@ export type SavedDownloadEffects = Readonly<{
   saveFile(preparation: DownloadPreparation, signal: AbortSignal): Promise<void>;
   /** Optional native handoff, closed over this runtime's preparation service and
    * genuine authenticated coordinator by the parent. Never a browser store. */
-  saveReadyPreparation?: (preparation: DownloadPreparation, signal: AbortSignal) => Promise<void>;
+  saveReadyPreparation?: SaveReadyPreparation;
   reportError(error: unknown): void;
   openServerSettings?: () => void;
 }>;
@@ -217,17 +218,17 @@ function DownloadRules({snapshot, busy, onChange, onChooseFolder}: {snapshot: Sa
   </div>;
 }
 
-export function ServerDownloads({service, operations, effects, artwork, online, embedded = false}: {service: DownloadsService; operations: SavedOperations; effects: SavedDownloadEffects; artwork: ArtworkForPreparation; online: boolean; embedded?: boolean}) {
+export function ServerDownloads({service, operations, effects, artwork, online, embedded = false, managed = false}: {service: DownloadsService; operations: SavedOperations; effects: SavedDownloadEffects; artwork: ArtworkForPreparation; online: boolean; embedded?: boolean; managed?: boolean}) {
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const [qualities, setQualities] = useState<ReadonlyMap<string, string>>(new Map()), [confirmation, setConfirmation] = useState<Readonly<{item: DownloadPreparation; action: 'remove' | 'cancel'}>>();
   const pendingSaves = useRef(new Set<string>()), [saving, setSaving] = useState<readonly string[]>([]);
   const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!online || !operations.current) return;
-    service.start(); const controller = new AbortController();
+    if (!managed) service.start(); const controller = new AbortController();
     void service.qualities(controller.signal).then(choices => { if (!controller.signal.aborted && operations.current) setQualities(new Map(choices.map(choice => [choice.quality, choice.label]))); }).catch(() => {});
-    return () => { controller.abort(); service.stop(); };
-  }, [service, operations, online]);
+    return () => { controller.abort(); if (!managed) service.stop(); };
+  }, [service, operations, online, managed]);
   const act = (item: DownloadPreparation, action: DownloadAction) => {
     if (!online || !operations.current) return;
     void operations.run(async () => {
@@ -259,7 +260,7 @@ export function ServerDownloads({service, operations, effects, artwork, online, 
       <div className={styles.title}><b>{item.title.title}</b><DownloadFacts title={item.title} quality={item.quality === 'original' ? t('web.downloads.original') : qualities.get(item.quality)} bytes={item.artifact.bytes} browser /></div>
       <ServerStatus item={item} service={service} />
       <span className={styles.actions}>
-        {item.state === 'ready' && <Button variant="primary" className={styles.rowButton} size="small" icon="i-download" disabled={!online} loading={saving.includes(item.id)} onClick={() => saveFile(item)}>{t('web.downloads.save')}</Button>}
+        {!embedded && item.state === 'ready' && <Button variant="primary" className={styles.rowButton} size="small" icon="i-download" disabled={!online} loading={saving.includes(item.id)} onClick={() => saveFile(item)}>{t('web.downloads.save')}</Button>}
         {item.actions.filter(action => action !== 'remove').map(action => <Button key={action} className={styles.rowButton} size="small" disabled={!online} loading={snapshot.busy.includes(item.id)} onClick={() => { if (action === 'cancel') setConfirmation({item, action}); else act(item, action); }}>{t(action === 'pause' ? 'action.pause' : action === 'resume' ? 'web.downloads.resume' : action === 'cancel' ? 'web.downloads.stop' : 'action.tryAgain')}</Button>)}
         <DownloadMenu><MenuRow onClick={() => effects.openItem(item.itemId)}>{t('web.downloads.goToTitle')}</MenuRow>{item.actions.includes('remove') && <MenuRow destructive onClick={() => setConfirmation({item, action: 'remove'})}>{t('action.removeShort')}</MenuRow>}</DownloadMenu>
       </span>

@@ -88,6 +88,10 @@ export function SavedScreen(bindings: SavedBindings) {
   useQuietRefresh('saved', refresh, () => runtime.operations.current, {dependencies: [dependsOn.personal(), dependsOn.progress(), dependsOn.content(), dependsOn.settings('preferences')], everyMs: 0});
   const localSnapshot = useSyncExternalStore(bindings.localDownloads?.subscribe ?? noSubscribe, bindings.localDownloads?.getSnapshot ?? noLocalSnapshot, noLocalSnapshot);
   const localUsable = !!bindings.localDownloads && sameSavedDownloadsScope(bindings.localDownloads.scope, runtime.scope) && !!localSnapshot?.available;
+  useEffect(() => {
+    if (localUsable && effects.saveReadyPreparation) runtime.installReadyDownloads(effects.saveReadyPreparation, effects.reportError);
+    // The captured runtime, rather than this route's effect, owns retirement.
+  }, [runtime, localUsable, effects.saveReadyPreparation, effects.reportError]);
   if (!runtime.operations.current) return null;
   if (route.view === 'playlist' || route.view === 'resource') return <SavedResourceScreen key={viewKey} bindings={viewBindings} />;
   const active = route.view;
@@ -99,7 +103,7 @@ export function SavedScreen(bindings: SavedBindings) {
     <Tabs className={styles.tabs} listClassName={styles.tabsList} value={active} aria-label={t('web.saved.sections')} onValueChange={value => { if (value in tabLabels) effects.selectRoute({view: value as keyof typeof tabLabels}); }}
       items={tabs.map(tab => ({value: tab, label: t(tabLabels[tab])}))} />
     {route.view === 'downloads' ? localUsable && bindings.localDownloads
-      ? <LocalDownloads key={viewKey} port={bindings.localDownloads} operations={operations} effects={effects} /> : server
+      ? <LocalDownloads key={viewKey} port={bindings.localDownloads} operations={operations} effects={effects} server={<ServerDownloads service={runtime.downloads} operations={operations} effects={effects} artwork={bindings.preparationArtwork} online={bindings.online} embedded managed={!!effects.saveReadyPreparation} />} /> : server
       : route.view === 'history' ? <SavedHistory key={viewKey} bindings={viewBindings} />
         : route.view === 'collections' || route.view === 'views' ? <PersonalResources key={viewKey} {...viewBindings} onCreate={() => setCreating({viewKey, kind: 'collection'})} />
           : <SavedLists key={viewKey} {...viewBindings} onCreate={() => setCreating({viewKey, kind: 'playlist'})} />}
@@ -143,7 +147,7 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
   </>;
 }
 
-export function SavedSection(bindings: SavedViewBindings & {service: SavedService; section: SavedProjection['sections'][number]; heading: boolean}) {
+export function SavedSection(bindings: SavedViewBindings & {service: SavedService; section: SavedProjection['sections'][number]; heading: boolean; onMore?: (entry: SavedEntry, anchor: HTMLButtonElement) => void}) {
   const {service, section, artwork, effects, presentation, selection} = bindings;
   const collection = useMemo(() => savedSectionWindow(service, section.id), [service, section.id]);
   const cleanup = useRef<(() => void) | undefined>(undefined);
@@ -174,7 +178,7 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
         const common = {model: homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), artwork: artwork.foreground(media.posterUrl, presentation.cardWidth * devicePixelRatio, ratio),
           selection: cardSelection, context: 'grid' as const, watched: media.watched, onNavigate: () => effects.openEntry(media),
           onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(() => effects.playEntry(media)).catch(effects.reportError); } : undefined,
-          onMore: (anchor: HTMLButtonElement) => effects.openMore(service, section.id, entry, anchor)};
+          onMore: (anchor: HTMLButtonElement) => bindings.onMore ? bindings.onMore(entry, anchor) : effects.openMore(service, section.id, entry, anchor)};
         if (presentation.view === 'list') return <div className={styles.mediaListRow}><PosterCard {...common} /></div>;
         return square ? <SquareCard {...common} /> : <PosterCard {...common} />;
       }} />

@@ -4,6 +4,7 @@ import {DownloadsService} from '@core/downloads-service.ts';
 import {randomId} from '@core/random-id.ts';
 import type {SavedDownloadsScope} from './downloads-port.ts';
 import {SavedOperations} from './operations.ts';
+import {SavedReadyDownloads, type SaveReadyPreparation} from './ready-downloads.ts';
 
 export type SavedScreenRoute = SavedRoute | Readonly<{view: 'downloads'}>;
 
@@ -29,9 +30,17 @@ export function createSavedRuntime(input: Readonly<{api: SavedApi; scope: SavedD
   const serverScope = Object.freeze({serverId: scope.serverId, viewerId: JSON.stringify([scope.authority, scope.accountId, scope.profileId, scope.sessionFamilyId])});
   const makeSaved = () => new SavedService({api, scope: serverScope, requestId: async () => randomId()});
   const saved = makeSaved(), posters = makeSaved(), squares = makeSaved(), personal = new PersonalSavedService(api, serverScope, async () => randomId()), downloads = new DownloadsService(api);
+  let readyDownloads: SavedReadyDownloads | undefined;
   if (input.deviceId) downloads.followDevice(input.deviceId);
   return {
     scope, operations, saved, posters, squares, personal, downloads,
+    /** Install once for this captured parent lifetime. Route unmounts do not
+     * cancel an accepted native queue; parent retirement closes the observer. */
+    installReadyDownloads(save: SaveReadyPreparation, reportError: (error: unknown) => void): void {
+      if (!operations.current || readyDownloads) return;
+      readyDownloads = new SavedReadyDownloads(downloads, scope, operations, save, reportError);
+      downloads.start();
+    },
     async select(route: SavedScreenRoute, restore?: SavedRestore): Promise<void> {
       if (!operations.current || route.view === 'downloads') return;
       if (isPersonalSavedRoute(route)) { await personal.select(route, restore); return; }
@@ -40,6 +49,7 @@ export function createSavedRuntime(input: Readonly<{api: SavedApi; scope: SavedD
       } else await saved.select(route, restore);
     },
     dispose(): void {
+      readyDownloads?.dispose();
       operations.dispose(); for (const controller of controllers) controller.abort(); controllers.clear();
       saved.dispose(); posters.dispose(); squares.dispose(); personal.dispose(); downloads.dispose();
     },

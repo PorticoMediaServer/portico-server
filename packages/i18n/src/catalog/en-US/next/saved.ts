@@ -1,6 +1,7 @@
 /** collections.html 34–36, desktop-app.html f7 and their drawn state frames. */
 export const savedMessages = {
   'next.saved.sections': 'Saved sections',
+  'next.saved.removedPlaylist': 'Removed “{title}” from the playlist.',
   'next.saved.prepared': 'Prepared for you',
   'next.saved.browserNote': 'The server prepares each title, then Save file hands it to this browser. To watch offline inside Portico, with your place remembered, use the phone app.',
   'next.saved.downloaded': 'Downloaded',

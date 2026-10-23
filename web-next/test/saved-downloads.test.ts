@@ -5,8 +5,19 @@ import {sameSavedDownloadsScope, type SavedDownloadsScope, type SavedLocalDownlo
 import {diskFractions, localDownloadGroups, localGroupPercent, measuredPercent} from '../src/screens/saved/downloads-model.ts';
 import {createSavedRuntime} from '../src/screens/saved/runtime.ts';
 import {sameSavedRoute, savedViewKey} from '../src/screens/saved/route.ts';
+import {playlistRemovalUndo} from '../src/screens/saved/removal.ts';
+import type {SavedReceipt} from '@core/saved.ts';
 
 const scope: SavedDownloadsScope = {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', sessionFamilyId: 'family'};
+test('Undo accepts only the committed current-viewer removal receipt for this exact occurrence', () => {
+  const expected = {serverId: 'server', viewerFence: 'viewer', playlistId: 'playlist', entryId: 'occurrence'};
+  const now = Date.parse('2026-10-23T12:00:00Z');
+  const receipt: SavedReceipt = {...expected, operationId: 'operation', revision: 4, deleted: false, undoToken: 'opaque-token', undoUntil: '2026-10-23T12:01:00Z'};
+  assert.deepEqual(playlistRemovalUndo(receipt, expected, 'Exact title', now), {token: 'opaque-token', until: now + 60_000, title: 'Exact title'});
+  for (const field of ['serverId', 'viewerFence', 'playlistId', 'entryId'] as const) assert.equal(playlistRemovalUndo({...receipt, [field]: 'different'}, expected, 'Exact title', now), undefined, field);
+  for (const changed of [{deleted: true}, {undoToken: undefined}, {undoUntil: 'invalid'}, {undoUntil: '2026-10-23T12:00:00Z'}]) assert.equal(playlistRemovalUndo({...receipt, ...changed}, expected, 'Exact title', now), undefined);
+  assert.equal(playlistRemovalUndo(null, expected, 'Exact title', now), undefined);
+});
 test('every captured identity boundary distinguishes the binding', () => {
   assert.equal(sameSavedDownloadsScope(scope, {...scope}), true);
   for (const field of ['serverId', 'authority', 'accountId', 'profileId', 'sessionFamilyId'] as const) {
