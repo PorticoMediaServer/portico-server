@@ -60,7 +60,7 @@ func (s *ServeEndpoint) OpenFromStart(ctx context.Context, relative, etag string
 		return nil, ErrObservationChanged
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, safeResponseError(resp)
+		return nil, serveResponseError(resp)
 	}
 	if resp.ContentLength != size || resp.Header.Get("Content-Range") != "" || resp.Header.Get("Content-Encoding") != "" || etag != "" && resp.Header.Get("ETag") != etag {
 		return nil, ErrRepresentationRange

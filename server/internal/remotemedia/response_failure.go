@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// ResponseFailure describes only the response Portico actually observed. On a
-// serve endpoint this is rclone's response, not proof of the provider's status
-// or requested delay. It deliberately contains no raw headers, URL or log text.
+// ResponseFailure describes a response observed directly from an upstream
+// origin. A local rclone serve/RC response cannot supply these provider facts.
+// It deliberately contains no raw headers, URL or log text.
 type ResponseFailure struct {
 	Status  int
 	Kind    string
@@ -17,6 +17,16 @@ type ResponseFailure struct {
 }
 
 func (e *ResponseFailure) Error() string { return "remote source request could not complete" }
+
+// Rclone's local HTTP status and Retry-After do not establish the upstream
+// provider's throttle, quota or deadline. Only its separate observed reports
+// can supply provider state. Authentication failure still closes this channel.
+func serveResponseError(resp *http.Response) error {
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return ErrDenied
+	}
+	return ErrUnavailable
+}
 
 func responseFailure(resp *http.Response, now time.Time) error {
 	kind := "unavailable"

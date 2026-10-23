@@ -125,7 +125,7 @@ func (s *ServeEndpoint) ReadRange(ctx context.Context, relative, etag string, si
 		return nil, ErrObservationChanged
 	}
 	if resp.StatusCode != http.StatusPartialContent {
-		return nil, safeResponseError(resp)
+		return nil, serveResponseError(resp)
 	}
 	start, end, total, err := parseRepresentationRange(resp.Header.Get("Content-Range"))
 	if err != nil || start != offset || end != offset+length-1 || total != size || resp.ContentLength != length || resp.Header.Get("Content-Encoding") != "" || resp.Header.Get("ETag") != etag {

@@ -63,7 +63,7 @@ func (s *ServeEndpoint) VisitSnapshot(ctx context.Context, relative string, reco
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusMultiStatus {
-		return safeResponseError(response)
+		return serveResponseError(response)
 	}
 	if response.Header.Get("Content-Encoding") != "" {
 		return ErrDAVResponse

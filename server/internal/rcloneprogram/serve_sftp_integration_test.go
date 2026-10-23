@@ -177,6 +177,14 @@ func TestLockedSFTPMixedOperationBudget(t *testing.T) {
 		}
 		tags[name] = entry.ETag
 	}
+	metadata, err := process.Metadata(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer, err := process.ObservationEndpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	start := make(chan struct{})
 	read := func(name string) error {
 		got, err := endpoint.ReadRange(ctx, name, tags[name], int64(len(payload)), 1500001, 127, process.Check)
@@ -186,6 +194,20 @@ func TestLockedSFTPMixedOperationBudget(t *testing.T) {
 		return err
 	}
 	load := []func() error{
+		func() error {
+			fresh, err := metadata.Stat(ctx, "one.mkv", process.Check)
+			if err == nil && (fresh.Size != int64(len(payload)) || !fresh.Modified.Equal(modified) || len(fresh.Hashes) != 0) {
+				err = fmt.Errorf("fresh SFTP metadata differs")
+			}
+			return err
+		},
+		func() error {
+			entry, err := observer.Stat(ctx, "two.mkv", process.Check)
+			if err == nil && entry.Size != int64(len(payload)) {
+				err = fmt.Errorf("SFTP observer facts differ")
+			}
+			return err
+		},
 		func() error {
 			return endpoint.VisitSnapshot(ctx, "", process.Check, func(remotemedia.DAVEntry) error { return nil })
 		},
@@ -223,10 +245,6 @@ func TestLockedSFTPMixedOperationBudget(t *testing.T) {
 	t.Logf("controlled_sftp_admission=%+v observed_upstream_socket_peak=%d", counts, peak)
 	if counts.Capacity != 2 || counts.Active != 0 || counts.Peak != 2 || peak < 1 || peak > 2 {
 		t.Fatal("SFTP operation/pool ceiling", counts, peak)
-	}
-	metadata, err := process.Metadata(ctx)
-	if err != nil {
-		t.Fatal(err)
 	}
 	fresh, err := metadata.Stat(ctx, "one.mkv", process.Check)
 	if err != nil || fresh.Size != int64(len(payload)) || !fresh.Modified.Equal(modified) || len(fresh.Hashes) != 0 {

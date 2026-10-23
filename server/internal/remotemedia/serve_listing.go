@@ -74,7 +74,7 @@ func (s *ServeEndpoint) requestSnapshot(ctx context.Context, relative, depth str
 		return DAVPage{}, ErrObservationChanged
 	}
 	if resp.StatusCode != http.StatusMultiStatus {
-		return DAVPage{}, safeResponseError(resp)
+		return DAVPage{}, serveResponseError(resp)
 	}
 	if resp.Header.Get("Content-Encoding") != "" {
 		return DAVPage{}, ErrDAVResponse

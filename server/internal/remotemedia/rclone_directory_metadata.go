@@ -69,7 +69,7 @@ func (m *RcloneMetadata) VisitDirectory(ctx context.Context, relative string, ch
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return safeResponseError(response)
+		return serveResponseError(response)
 	}
 	if response.Header.Get("Content-Encoding") != "" {
 		return ErrDAVResponse

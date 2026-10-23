@@ -89,7 +89,7 @@ func (m *RcloneMetadata) request(ctx context.Context, operation string, paramete
 	if response.StatusCode != http.StatusOK {
 		// RC's text may contain provider URLs or configuration. It is never
 		// surfaced as a provider quota/deadline or copied into errors/logs.
-		return safeResponseError(response)
+		return serveResponseError(response)
 	}
 	if response.Header.Get("Content-Encoding") != "" {
 		return ErrDAVResponse
