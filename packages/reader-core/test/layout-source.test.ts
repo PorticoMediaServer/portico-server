@@ -24,7 +24,7 @@ test('cover offset, RTL visual ordering, next/previous bounds and narrow/vertica
 });
 test('range source enforces exact length, bounds, per-read budget and cancellation', async () => {
   const signal = new AbortController().signal;
-  const source = sourceFromBlob(new Blob([new Uint8Array([2,3,4,5])]), 'local');
+  const source = sourceFromBlob(new Blob([new Uint8Array([2,3,4,5])]), 'local', 'immutable-fixture-v1');
   assert.deepEqual([...await readRange(source, {start: 1, endExclusive: 3}, signal)], [3,4]);
   await assert.rejects(readRange(source, {start: -1, endExclusive: 1}, signal));
   await assert.rejects(readRange(source, {start: 0, endExclusive: 5}, signal));

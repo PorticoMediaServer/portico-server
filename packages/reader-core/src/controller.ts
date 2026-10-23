@@ -55,7 +55,7 @@ export class ReaderController<P extends object> {
     const session: Session<P> = {abort: new AbortController(), tail: Promise.resolve()};
     this.session = session;
     this.overrides = {};
-    this.publish({status: 'opening', format: options.format, sourceId: options.source.id, metadata: undefined,
+    this.publish({status: 'opening', format: options.format, sourceId: options.source.id, sourceRevision: options.source.revision, metadata: undefined,
       toc: empty, location: null, selection: null, error: undefined, preferences: this.base, overriddenKeys: empty});
     try {
       await this.disposeSession(previous);
@@ -69,7 +69,7 @@ export class ReaderController<P extends object> {
       const document = await adapter.open({source: options.source, signal: session.abort.signal});
       if (!this.current(session)) { await document.dispose(); return; }
       session.document = document;
-      if (document.format !== options.format || document.id !== options.source.id) throw new ReaderError('invalid_book');
+      if (document.format !== options.format || document.id !== options.source.id || document.revision !== options.source.revision) throw new ReaderError('invalid_book');
       const view = await document.mount({container: options.container, preferences: this.snapshot.preferences,
         viewport: this.viewport, signal: session.abort.signal,
         onLocation: location => {

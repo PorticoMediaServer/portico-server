@@ -5,7 +5,7 @@ import type {ReaderAdapter, ReaderDocument, ReaderMount, ReaderView} from '../sr
 
 type Prefs = {theme: string; textSize: number; twoPages: boolean};
 const defaults: Prefs = {theme: 'dark', textSize: 5, twoPages: true};
-const source = {id: 'lawful-local', size: 1, async read() { return new Uint8Array([1]); }};
+const source = {id: 'lawful-local', revision: 'immutable-fixture-v1', size: 1, async read() { return new Uint8Array([1]); }};
 const location = {format: 'epub' as const, cfi: 'epubcfi(/6/2!/4/2)', progression: 0};
 const container = {clientWidth: 1180, clientHeight: 820} as HTMLElement;
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => {resolve = r;}); return {promise, resolve}; }
@@ -17,7 +17,7 @@ function fixture() {
     async navigate() {}, async applyPreferences(p) {seen.push(p);}, async resize() {},
     getLocation() {return location;}, dispose() {viewsDisposed++;}
   };
-  const document: ReaderDocument<Prefs> = {id: source.id, format: 'epub', metadata: {title: 'Actual local book'},
+  const document: ReaderDocument<Prefs> = {id: source.id, revision: source.revision, format: 'epub', metadata: {title: 'Actual local book'},
     toc: [{id: 'chapter-1', label: 'I', location}],
     async mount(options) {mount = options; return view;},
     async *search(_query, options) {

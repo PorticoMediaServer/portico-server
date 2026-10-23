@@ -3,8 +3,15 @@
 export type ReaderRange = Readonly<{start: number; endExclusive: number}>;
 export interface ReaderSource {
   readonly id: string;
+  readonly revision: string;
   readonly size: number;
-  read(range: ReaderRange, signal: AbortSignal): Promise<Uint8Array>;
+  readonly resources?: ReaderResources;
+  read?(range: ReaderRange, signal: AbortSignal): Promise<Uint8Array>;
+}
+export type ReaderResource = Readonly<{path: string; mime: string; size: number}>;
+export interface ReaderResources {
+  readonly entries: readonly ReaderResource[];
+  read(path: string, signal: AbortSignal): Promise<Uint8Array>;
 }
 export type ReaderFormat = 'epub' | 'pdf' | 'cbz';
 export type ReaderViewport = Readonly<{width: number; height: number}>;
@@ -66,6 +73,7 @@ export type ReaderMount<Preferences extends object> = Readonly<{
 export interface ReaderDocument<Preferences extends object> {
   readonly id: string;
   readonly format: ReaderFormat;
+  readonly revision: string;
   readonly metadata: ReaderMetadata;
   readonly toc: readonly ReaderTocItem[];
   mount(options: ReaderMount<Preferences>): Promise<ReaderView<Preferences>>;
@@ -80,7 +88,7 @@ export interface ReaderAdapter<Preferences extends object> {
 }
 export type ReaderSnapshot<Preferences extends object> = Readonly<{
   status: 'closed' | 'opening' | 'ready' | 'error';
-  format?: ReaderFormat; sourceId?: string; metadata?: ReaderMetadata;
+  format?: ReaderFormat; sourceId?: string; sourceRevision?: string; metadata?: ReaderMetadata;
   toc: readonly ReaderTocItem[]; location: ReaderLocation | null;
   selection: ReaderSelection | null; preferences: Readonly<Preferences>;
   overriddenKeys: readonly (keyof Preferences)[]; error?: ReaderErrorCode;
