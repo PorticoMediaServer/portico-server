@@ -83,10 +83,14 @@ func TestContentOwnsSemanticsAndFencesContinuations(t *testing.T) {
 	if _, e = db.Exec(`INSERT INTO viewer_revisions(profile_id,library_id,revision) VALUES('p','a',1)`); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.Content(r); e != nil {
-		t.Fatal("personal publication failed continuation", e)
+	if _, e = s.Content(r); !errors.Is(e, ErrStaleContinuation) {
+		t.Fatal("personal publication did not require a typed restart", e)
 	}
 	r.Cursor = ""
+	page, e = s.Content(r)
+	if e != nil || len(page.Sections) != 1 || page.Sections[0].TotalCount != 23 || len(page.Sections[0].Entries) != 5 {
+		t.Fatal("fresh browse after personal publication", page, e)
+	}
 	r.View = "discover"
 	page, e = s.Content(r)
 	if e != nil || page.Query.Sort != "server" || page.Query.SearchMode != "none" || len(page.Sorts) != 0 || len(page.Filters) != 0 || len(page.Sections) != 0 {
