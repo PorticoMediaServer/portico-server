@@ -35,12 +35,15 @@ original copyrights. Notices are rendered as UTF-8; the few Windows-1252 source
 files retain their copyright symbols and quotation marks. Corresponding
 source/vendor URLs and hashes are in the lock.
 
-The minimum custom version is 1.71.0. The source egress policy requires
-`--http-proxy` / `RCLONE_HTTP_PROXY`, introduced in that release. Its explicit
+The minimum custom version is 1.71.1. The source egress policy requires
+`--http-proxy` / `RCLONE_HTTP_PROXY`, introduced in 1.71.0. Its explicit
 proxy uses `http.ProxyURL`; environment-only discovery uses
 `http.ProxyFromEnvironment`, which bypasses loopback destinations. Custom
-1.70.x programs therefore cannot enforce the required policy route.
-Sources: [1.71.0 release notes](https://github.com/rclone/rclone/blob/v1.71.0/docs/content/changelog.md),
+1.70.x programs therefore cannot enforce the required policy route. Version
+1.71.1 additionally fixes the pacer deadlock with `--max-connections`, used
+by the source cap; 1.71.0 is not a supported custom version.
+Sources: [1.71.1 cap fix](https://github.com/rclone/rclone/blob/v1.71.1/docs/content/changelog.md),
+[1.71.0 release notes](https://github.com/rclone/rclone/blob/v1.71.0/docs/content/changelog.md),
 [option registration](https://github.com/rclone/rclone/blob/v1.71.0/fs/config.go),
 and [transport selection](https://github.com/rclone/rclone/blob/v1.71.0/fs/fshttp/http.go).
 The remaining flag inventory predates that release: `--max-connections` was

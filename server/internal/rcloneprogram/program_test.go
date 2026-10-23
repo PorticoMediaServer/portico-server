@@ -50,7 +50,7 @@ func TestPlatformPaths(t *testing.T) {
 }
 func TestVersionResults(t *testing.T) {
 	for _, tc := range []struct{ line, version, code string }{
-		{"rclone v1.71.0", "1.71.0", ""}, {"rclone v1.70.0", "", "rclone_too_old"}, {"rclone v1.70.99", "", "rclone_too_old"}, {"rclone v1.75.2", "1.75.2", ""}, {"rclone v2.0.0", "2.0.0", ""}, {"rclone v1.69.9", "", "rclone_too_old"}, {"rclone v1.58", "", "rclone_too_old"}, {"rclone vfixture", "", "not_rclone"}, {"rclone v1.75.2evil", "", "not_rclone"}, {"rclone v1.75.2-beta", "1.75.2-beta", ""}, {"other v9.0.0", "", "not_rclone"},
+		{"rclone v1.71.1", "1.71.1", ""}, {"rclone v1.71.0", "", "rclone_too_old"}, {"rclone v1.71", "", "rclone_too_old"}, {"rclone v1.72.0", "1.72.0", ""}, {"rclone v1.70.0", "", "rclone_too_old"}, {"rclone v1.70.99", "", "rclone_too_old"}, {"rclone v1.75.2", "1.75.2", ""}, {"rclone v2.0.0", "2.0.0", ""}, {"rclone v1.69.9", "", "rclone_too_old"}, {"rclone v1.58", "", "rclone_too_old"}, {"rclone vfixture", "", "not_rclone"}, {"rclone v1.75.2evil", "", "not_rclone"}, {"rclone v1.75.2-beta", "1.75.2-beta", ""}, {"other v9.0.0", "", "not_rclone"},
 	} {
 		t.Run(tc.line, func(t *testing.T) {
 			v, err := parseVersion(tc.line)
@@ -81,9 +81,9 @@ func TestOnlyVersionAndChangedWrappers(t *testing.T) {
 	}
 	// Old custom versions must fail before a source can start, even when the
 	// wrapper itself starts successfully and accepts the version-only command.
-	write("1.70.99")
+	write("1.71.0")
 	if _, err := CheckCustom(context.Background(), path); err == nil {
-		t.Fatal("custom program without explicit HTTP proxy support accepted")
+		t.Fatal("custom program below the supported proxy/cap version accepted")
 	} else {
 		var checkError *CheckError
 		if !errors.As(err, &checkError) || checkError.Code != "rclone_too_old" {
@@ -107,7 +107,7 @@ func TestOnlyVersionAndChangedWrappers(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = CheckCustom(context.Background(), path)
-	if err == nil || err.Error() != "This rclone is too old (1.58.0). Choose 1.71.0 or newer." {
+	if err == nil || err.Error() != "This rclone is too old (1.58.0). Choose 1.71.1 or newer." {
 		t.Fatalf("%v", err)
 	}
 }
