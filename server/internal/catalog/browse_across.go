@@ -198,6 +198,9 @@ func (s *Service) BrowseAcross(viewer Viewer, request AcrossRequest) (BrowseResu
 		if err = s.nameEntryLibraries(rows, entries); err != nil {
 			return out, err
 		}
+		if err = s.EnrichListeningEntries(viewer, entries); err != nil {
+			return out, err
+		}
 		out.Entries = entries
 	}
 	out.PageInfo.DurationMs, out.PageInfo.DurationIsLowerBound, err = s.browseQueryDuration(viewer, FacetRequest{Pivot: out.Pivot, Query: request.Query, Rows: request.Rows, RowSources: request.RowSources})

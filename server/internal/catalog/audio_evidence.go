@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -125,14 +126,16 @@ type AudioSeries struct {
 	Position string `json:"position,omitempty"`
 }
 type LocalBookMetadata struct {
-	Authors     []string          `json:"authors"`
-	Narrators   []string          `json:"narrators"`
-	Series      []AudioSeries     `json:"series"`
-	Identifiers []AudioIdentifier `json:"identifiers"`
-	Edition     string            `json:"edition,omitempty"`
-	Publisher   string            `json:"publisher,omitempty"`
-	Language    string            `json:"language,omitempty"`
-	Sources     map[string]string `json:"sources"`
+	Description   string            `json:"description,omitempty"`
+	PublishedYear *int              `json:"publishedYear,omitempty"`
+	Authors       []string          `json:"authors"`
+	Narrators     []string          `json:"narrators"`
+	Series        []AudioSeries     `json:"series"`
+	Identifiers   []AudioIdentifier `json:"identifiers"`
+	Edition       string            `json:"edition,omitempty"`
+	Publisher     string            `json:"publisher,omitempty"`
+	Language      string            `json:"language,omitempty"`
+	Sources       map[string]string `json:"sources"`
 }
 
 func audioNames(tags map[string]string, multi, single string) []string {
@@ -154,6 +157,13 @@ func audioNames(tags map[string]string, multi, single string) []string {
 }
 func bookLocalMetadata(tags, sources map[string]string) LocalBookMetadata {
 	out := LocalBookMetadata{Authors: audioNames(tags, "authors", "author"), Narrators: audioNames(tags, "narrators", "narrator"), Edition: tags["edition"], Publisher: tags["publisher"], Language: tags["language"], Sources: map[string]string{}, Series: []AudioSeries{}, Identifiers: []AudioIdentifier{}}
+	out.Description = tags["description"]
+	date := firstTag(tags, "date", "year")
+	if len(date) >= 4 {
+		if year, err := strconv.Atoi(date[:4]); err == nil && year > 0 && year <= 9999 {
+			out.PublishedYear = &year
+		}
+	}
 	if len(out.Narrators) == 0 {
 		out.Narrators = audioNames(tags, "composers", "composer")
 	}
@@ -199,7 +209,7 @@ func bookLocalMetadata(tags, sources map[string]string) LocalBookMetadata {
 		}
 		out.Sources["authors"] = source
 	}
-	for _, key := range []string{"author", "authors", "narrator", "narrators", "series", "series_list", "series_position", "identifiers", "isbn", "asin", "edition", "publisher", "language"} {
+	for _, key := range []string{"author", "authors", "narrator", "narrators", "series", "series_list", "series_position", "identifiers", "isbn", "asin", "edition", "publisher", "language", "description", "date", "year"} {
 		if tags[key] != "" {
 			source := sources[key]
 			if source == "" {
@@ -235,6 +245,12 @@ func saveLocalBookMetadata(tx *sql.Tx, book int64, tags, sources map[string]stri
 		}
 		if len(value.Identifiers) == 0 {
 			value.Identifiers = old.Identifiers
+		}
+		if value.Description == "" {
+			value.Description = old.Description
+		}
+		if value.PublishedYear == nil {
+			value.PublishedYear = old.PublishedYear
 		}
 		if value.Edition == "" {
 			value.Edition = old.Edition

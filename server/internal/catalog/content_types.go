@@ -77,11 +77,23 @@ type ContentEntityRef struct {
 	Name string `json:"name"`
 }
 type ContentEntry struct {
-	Removed     bool         `json:"removed,omitempty"`
-	YearMin     *int         `json:"yearMin,omitempty"`
-	YearMax     *int         `json:"yearMax,omitempty"`
-	Origin      string       `json:"origin,omitempty"`
-	HomeActions *HomeActions `json:"homeActions,omitempty"`
+	Removed       bool          `json:"removed,omitempty"`
+	YearMin       *int          `json:"yearMin,omitempty"`
+	YearMax       *int          `json:"yearMax,omitempty"`
+	Origin        string        `json:"origin,omitempty"`
+	HomeActions   *HomeActions  `json:"homeActions,omitempty"`
+	Favorite      *bool         `json:"favorite,omitempty"`
+	ReleaseDate   string        `json:"releaseDate,omitempty"`
+	ArtistType    string        `json:"artistType,omitempty"`
+	AlbumCount    *int          `json:"albumCount,omitempty"`
+	DisplayTitle  string        `json:"displayTitle,omitempty"`
+	Narrators     []string      `json:"narrators,omitempty"`
+	Series        []AudioSeries `json:"series,omitempty"`
+	Publisher     string        `json:"publisher,omitempty"`
+	Language      string        `json:"language,omitempty"`
+	Edition       string        `json:"edition,omitempty"`
+	PublishedYear *int          `json:"publishedYear,omitempty"`
+	BookProgress  *BookProgress `json:"bookProgress,omitempty"`
 	// HomeTitleContext contains authorized parent-show facts for a Home episode.
 	// The episode's own identity, metadata and playback target remain separate.
 	HomeTitleContext *HomeTitleContext `json:"homeTitleContext,omitempty"`

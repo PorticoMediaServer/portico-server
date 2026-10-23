@@ -3168,6 +3168,7 @@ music_acoustid_health.observed_at
 music_acoustid_health.reason
 music_acoustid_health.singleton
 music_artist_evidence.artist_id
+music_artist_evidence.artist_type
 music_artist_evidence.attempts
 music_artist_evidence.begin_year
 music_artist_evidence.bio

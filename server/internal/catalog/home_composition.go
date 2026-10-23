@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -671,40 +672,23 @@ func (s *Service) homeAudioResume(r HomeRequest, entries []ContentEntry) ([]Home
 		if entry.Kind != "book" {
 			continue
 		}
-		restriction, args := r.Viewer.itemVisibilitySQL("file.id")
-		rows, err := s.read().Query(`SELECT pid(file.public_id),(SELECT max(NULLIF(COALESCE(link.end_seconds,a.duration)-link.start_seconds,0)) FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=file.id AND link.available=1 AND a.available=1) FROM catalog_entities book CROSS JOIN catalog_book_files f ON f.book_id=book.id CROSS JOIN catalog_entities file ON file.id=f.entity_id WHERE book.public_id=pid_blob(?) AND `+homeVisible("file.id")+` AND `+restriction+` ORDER BY COALESCE(f.disc_number,1),COALESCE(f.part_number,0),file.sort_key,file.id LIMIT 513`, append([]any{entry.ID}, args...)...)
-		if err != nil {
+		if err := s.enrichBookProgress(r.Viewer, entry, v.item, int64(math.Round(v.position*1000))); err != nil {
 			return nil, err
 		}
-		total, position := 0.0, 0.0
-		known, found := true, false
-		n := 0
-		for rows.Next() {
-			var id string
-			var duration sql.NullFloat64
-			if err = rows.Scan(&id, &duration); err != nil {
-				break
+		if progress := entry.BookProgress; progress != nil {
+			if progress.DurationMs != nil {
+				n := float64(*progress.DurationMs) / 1000
+				entry.Duration = &n
 			}
-			n++
-			if !duration.Valid || duration.Float64 <= 0 {
-				known = false
+			if progress.PositionMs != nil {
+				n := float64(*progress.PositionMs) / 1000
+				entry.ProgressSeconds = &n
 			}
-			if id == v.item {
-				position = total + v.position
-				found = true
+			for i := range out {
+				if out[i].EntryID == entry.ID {
+					out[i].Target.BookProgress = progress
+				}
 			}
-			total += duration.Float64
-		}
-		if e := rows.Err(); err == nil {
-			err = e
-		}
-		rows.Close()
-		if err != nil {
-			return nil, err
-		}
-		if known && found && n <= 512 {
-			entry.Duration = &total
-			entry.ProgressSeconds = &position
 		}
 	}
 	return out, nil

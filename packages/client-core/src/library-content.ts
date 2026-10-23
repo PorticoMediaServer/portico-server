@@ -2,7 +2,7 @@ import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations,wireDisplayDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
-import {parseListeningJourney,type ListeningJourney} from './listening.ts';
+import {listeningData,parseBookProgress,type BookProgress,parseListeningJourney,type ListeningJourney} from './listening.ts';
 import {parseBrowseNode,type BrowseNode,type BrowseSortSelection} from './browse.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 import {mergeRevalidatedList} from './freshness-actions.ts';
@@ -12,11 +12,12 @@ export type ContentSurface = ContentView;
 export type ContentRoute = Readonly<{ sort?: string; direction?: 'asc' | 'desc'; category?: string; q?: string } & { libraryId: string; view: ContentView; entityId?: string }>;
 export type ContentScope = Readonly<{ viewerId: string; serverId: string }>;
 export interface LibraryContentApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
-export type ContentEntryKind = 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'song' | 'book' | 'audiobook_file' | 'chapter' | 'collection' | 'category' | 'author' | 'book_series' | 'disc' | 'extra';
+export type ContentEntryKind = 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'song' | 'book' | 'audiobook_file' | 'chapter' | 'collection' | 'category' | 'author' | 'book_series' | 'disc' | 'extra' | 'playlist';
 /** `params` fill a parameterised heading (a Discover personal row: "{genre} for you"); name it with `serverTextLabel`. */
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;
 export type ContentEntry = Readonly<{
   dateBased?:boolean;special?:boolean;new?:boolean; show?:Readonly<{id:string;name:string}>;
+  favorite?:boolean;releaseDate?:string;artistType?:'Group'|'Person';albumCount?:number;displayTitle?:string;narrators?:readonly string[];series?:readonly Readonly<{name:string;position?:string}>[];publisher?:string;language?:string;edition?:string;publishedYear?:number;bookProgress?:BookProgress;
   id: string; libraryId?: string; kind: ContentEntryKind; title: string; subtitle?: string; posterUrl?: string; backdropUrl?: string; /** An episode's own still, never inherited from the season or show (absent when it has none). */ stillUrl?: string; overview?: string;
   /** The letter a browse page files the entry under (its sort title's, articles already set aside): a key of the page's `positionIndex`. */
   sortLetter?: string;
@@ -38,7 +39,7 @@ export type ContentEntry = Readonly<{
   removed?:boolean;
   artworkPaths?: readonly string[];
   yearMin?:number; yearMax?:number; origin?:'automatic'|'owner';
-  navigation?: Readonly<{ view: ContentView | 'item'; entityId?: string; category?: string }>;
+  navigation?: Readonly<{ view: ContentView | 'item' | 'playlist'; entityId?: string; category?: string }>;
   playback?: Readonly<{ itemId: string; startSeconds?: number }>;
   /** An episode's air date (YYYY-MM-DD): show workspace pages, and episode rows of a browse page. */
   airDate?: string;
@@ -103,7 +104,7 @@ export type LibraryContentSnapshot = Readonly<{
 }>;
 const views: readonly string[] = ['discover','browse','collections','categories','show','season','artist','album','book','collection','releases','songs','authors','series','author','book_series','disc'];
 const entityViews = new Set(['show','season','artist','album','book','collection','author','book_series','disc']);
-const entryKinds: readonly string[] = ['movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','author','book_series','disc','extra'];
+const entryKinds: readonly string[] = ['movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','author','book_series','disc','extra','playlist'];
 /** Unknown string kinds are future server cards; only their entries are omitted. */
 export const unknownContentEntryKind = (v: unknown): boolean => record(v) && typeof v.kind === 'string' && !entryKinds.includes(v.kind);
 const optional = <K extends string, V>(key: K, value: V | undefined): Partial<Record<K, V>> => (value === undefined ? {} : { [key]: value } as Record<K, V>);
@@ -188,6 +189,14 @@ function entry(v: unknown): ContentEntry {
     const genres = (v.genres as unknown[]).filter(g => string(g, 128) && (g as string).length > 0) as string[];
     if (genres.length) row.genres = Object.freeze(genres);
   }
+  if(typeof v.favorite==='boolean')row.favorite=v.favorite;else left('entry.favorite',v.favorite);
+  if(typeof v.albumCount==='number'&&count(v.albumCount))row.albumCount=v.albumCount;else left('entry.albumCount',v.albumCount);
+  for(const key of ['releaseDate','displayTitle','publisher','language','edition'] as const){if(string(v[key],2048)&&v[key])row[key]=v[key] as string;else left('entry.'+key,v[key]);}
+  if(v.artistType==='Group'||v.artistType==='Person')row.artistType=v.artistType;else left('entry.artistType',v.artistType);
+  if(count(v.publishedYear)&&v.publishedYear>0&&v.publishedYear<=9999)row.publishedYear=v.publishedYear;else left('entry.publishedYear',v.publishedYear);
+  if(Array.isArray(v.narrators))row.narrators=Object.freeze(v.narrators.filter((n):n is string=>string(n,1024)&&!!n).slice(0,128));
+  if(Array.isArray(v.series)){row.series=Object.freeze(v.series.filter(n=>record(n)&&string(n.name,1024)&&!!n.name&&(n.position===undefined||string(n.position,128))).slice(0,64).map(n=>Object.freeze({name:n.name as string,...(n.position?{position:n.position as string}:{})})));}
+  if(v.bookProgress!==undefined){try{row.bookProgress=parseBookProgress(v.bookProgress);if(row.kind==='book'&&row.bookProgress.bookId!==row.id||row.kind==='audiobook_file'&&row.bookProgress.itemId!==row.id)throw new Error('Wrong book identity');}catch{delete row.bookProgress;left('entry.bookProgress',v.bookProgress);}}
   if (typeof v.watchlisted === 'boolean') row.watchlisted = v.watchlisted; else left('entry.watchlisted', v.watchlisted);
   // M24 (behind presence): album artist link, release role and category mosaic
   // paths. All three are optional; malformed or unknown values are dropped,
@@ -240,8 +249,8 @@ function entry(v: unknown): ContentEntry {
   // Where the entry leads is exact: an entry that cannot say it is not shown.
   if (v.navigation !== undefined && v.navigation !== null) {
     const n = v.navigation;
-    if (!record(n) || !(views.includes(n.view as string) || n.view === 'item') || (n.entityId !== undefined && !string(n.entityId, 256)) || (n.category !== undefined && !string(n.category, 256))) invalid();
-    row.navigation = Object.freeze({ view: n.view as ContentView | 'item', ...(n.entityId === undefined ? {} : { entityId: n.entityId as string }), ...(n.category === undefined ? {} : { category: n.category as string }) });
+    if (!record(n) || !(views.includes(n.view as string) || n.view === 'item' || n.view === 'playlist') || (n.entityId !== undefined && !string(n.entityId, 256)) || (n.category !== undefined && !string(n.category, 256))) invalid();
+    row.navigation = Object.freeze({ view: n.view as ContentView | 'item' | 'playlist', ...(n.entityId === undefined ? {} : { entityId: n.entityId as string }), ...(n.category === undefined ? {} : { category: n.category as string }) });
   }
   // Playback that cannot be read is left out when the entry still opens something; otherwise the entry is refused.
   if (v.playback !== undefined && v.playback !== null) {
@@ -519,3 +528,12 @@ export { entry as validateContentEntry };
 
 /** A See all destination (`{pivot, query?, sort}`), or undefined when it is absent or cannot be read. Never throws. */
 export { seeAll as parseContentSeeAll };
+
+/** A bounded server ranking, read lazily when its title/artist page asks for it. */
+export async function readListeningSimilar(api:LibraryContentApi,scope:import('./queues.ts').QueueScope,itemId:string,options:{limit?:number;signal?:AbortSignal}={}){
+ const q=new URLSearchParams();if(options.limit!==undefined)q.set('limit',String(options.limit));
+ const raw=listeningData(await api.request(encodedRoutePath('get_items_id_similar',{id:encodeURIComponent(itemId)})+(q.size?'?'+q:''),'GET',undefined,options.signal),scope);
+ if(!record(raw)||raw.itemId!==itemId||!id(raw.libraryId)||!record(raw.revision)||!count(raw.revision.catalog)||!count(raw.revision.viewer)||!Array.isArray(raw.entries)||raw.entries.length>24)invalid();
+ const entries=raw.entries.map(entry);if(entries.some(e=>!['artist','album','book'].includes(e.kind)||e.playback!==undefined))invalid();
+ return Object.freeze({itemId,libraryId:raw.libraryId,revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),entries:Object.freeze(entries)});
+}

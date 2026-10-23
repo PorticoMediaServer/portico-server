@@ -179,7 +179,7 @@ test('a song advances before the listening preferences are known', async t => {
 
 test('a long audiobook pause rewinds once, while short pauses and music do not',async t=>{
  const f=setup({context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book'})});t.after(()=>f.service.dispose());const seeks:number[]=[];(f.engine as any).seek=(position:number)=>seeks.push(position);await settle();
- f.engine.update({positionSeconds:300,intent:'paused'});f.setNow(300001);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[285]);f.engine.update({positionSeconds:286});assert.deepEqual(seeks,[285]);
+ f.engine.update({positionSeconds:300,intent:'paused'});f.setNow(300001);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[285]);assert.deepEqual(f.service.getSnapshot().rewind,{seconds:15,fromSeconds:300,toSeconds:285,messageKey:'listening.rewound'});f.engine.update({positionSeconds:286});assert.deepEqual(seeks,[285]);
  f.engine.update({intent:'paused'});f.setNow(300100);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[285]);
 });
 

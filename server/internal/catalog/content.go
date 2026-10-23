@@ -518,6 +518,9 @@ func (s *Service) Content(request ContentRequest) (ContentEnvelope, error) {
 	for _, section := range out.Sections {
 		pages = append(pages, section.Entries)
 	}
+	if err = s.EnrichListeningEntries(request.Viewer, pages...); err != nil {
+		return out, err
+	}
 	return out, s.attachViewerRatings(request.Viewer.Profile, pages...)
 }
 

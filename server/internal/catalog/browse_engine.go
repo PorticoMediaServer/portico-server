@@ -392,6 +392,9 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 				return out, err
 			}
 		}
+		if err = s.EnrichListeningEntries(viewer, entries); err != nil {
+			return out, err
+		}
 		out.Entries = entries
 	}
 	if out.PageInfo.Revision != "" {

@@ -22,6 +22,13 @@ import {connectionTrustMessages} from './en-US/connection-trust.ts';
 import {secureConnectionMessages} from './en-US/secure-connection.ts';
 
 export const enUS = {
+  'listening.rewound': 'Rewound {seconds} seconds',
+  'section.recently_played': 'Recently played',
+  'section.new_albums': 'New albums',
+  'section.most_played_songs': 'Songs you play most',
+  'section.playlists': 'Playlists',
+  'section.artists': 'Artists',
+  'section.genres': 'Genres',
   'browse.field.search': 'Search',
   'browse.field.library': 'Library',
   'browse.field.match': 'Match',

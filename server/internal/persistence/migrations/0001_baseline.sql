@@ -1625,6 +1625,7 @@ CREATE TABLE metadata_details(item_id INTEGER NOT NULL REFERENCES catalog_entiti
 CREATE TABLE metadata_ratings(item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,provider TEXT NOT NULL,value REAL NOT NULL,scale REAL NOT NULL,votes INTEGER NOT NULL,source_url TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(item_id,provider)) STRICT;
 CREATE TABLE detail_jobs(item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,provider_id INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE playlist_shares(playlist_id TEXT NOT NULL REFERENCES catalog_playlists(token) ON DELETE CASCADE,authority TEXT NOT NULL,account_id TEXT NOT NULL,profile_id TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN('viewer','editor')),PRIMARY KEY(playlist_id,authority,account_id,profile_id)) STRICT;
+CREATE INDEX playlist_shares_listen_actor ON playlist_shares(authority,account_id,profile_id,playlist_id);
 CREATE TABLE playlist_receipts(authority TEXT NOT NULL,account_id TEXT NOT NULL,profile_id TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,response TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(authority,account_id,profile_id,operation_id)) STRICT;
 CREATE TABLE playlist_directory_revisions(authority TEXT NOT NULL,account_id TEXT NOT NULL,profile_id TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(authority,account_id,profile_id)) STRICT;
 CREATE TABLE metadata_provider_cooldowns(provider TEXT PRIMARY KEY,next_attempt TEXT NOT NULL) STRICT;
@@ -4202,6 +4203,7 @@ CREATE TABLE music_artist_evidence(
  mbid TEXT NOT NULL,
  observed_at TEXT NOT NULL,
  name TEXT NOT NULL DEFAULT '',
+ artist_type TEXT CHECK(artist_type IS NULL OR artist_type IN('Group','Person')),
  country TEXT NOT NULL DEFAULT '',
  begin_year INTEGER CHECK(begin_year IS NULL OR (begin_year>=1000 AND begin_year<=9999)),
  end_year INTEGER CHECK(end_year IS NULL OR (end_year>=1000 AND end_year<=9999)),
@@ -6887,6 +6889,8 @@ CREATE TABLE play_history(
  completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN(0,1)), converted INTEGER NOT NULL DEFAULT 0 CHECK(converted IN(0,1))) STRICT;
 
 CREATE INDEX play_history_recent ON play_history(started_ms DESC,id DESC);
+
+CREATE INDEX play_history_listen_profile ON play_history(authority,account_id,profile_id,started_ms DESC,id DESC);
 
 CREATE INDEX play_history_account ON play_history(account_id,started_ms DESC,id DESC);
 
