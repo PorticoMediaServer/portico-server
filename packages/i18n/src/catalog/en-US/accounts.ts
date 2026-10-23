@@ -1,6 +1,8 @@
 /** Canonical account/session language from design 14a9a19: auth, connect,
  * account and Settings spec. Names and counts always come from the live authority. */
 export const accountMessages = {
+  'accounts.provider.google': 'Google',
+  'accounts.provider.apple': 'Apple',
   'accounts.signIn.portico': 'Sign in with Portico Account',
   'accounts.signIn.local': 'Use a local server',
   'accounts.signIn.usesPortico': '{server} uses Portico Accounts',

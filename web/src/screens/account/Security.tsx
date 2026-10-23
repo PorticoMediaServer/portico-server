@@ -21,7 +21,7 @@ const statusOf = (e: unknown) => (e && typeof e === 'object' && typeof (e as {st
 /** A proof that failed means the password or code was wrong; anything else goes through the presenter. */
 const say = (e: unknown, wrong: string) => (statusOf(e) === 401 || statusOf(e) === 403 ? wrong : errorText(e, 'portico-account', 'save'));
 const codeOf = (e: unknown) => (e && typeof e === 'object' && typeof (e as {code?: unknown}).code === 'string' ? (e as {code: string}).code : '');
-const providerName = (p: IdentityProvider | string) => (p === 'google' ? 'Google' : 'Apple');
+const providerName = (p: IdentityProvider | string) => currentI18n().t(p === 'google' ? 'accounts.provider.google' : 'accounts.provider.apple');
 /** Connect and Disconnect: the refusals people can act on get their own words. Called when a request fails, not while drawing. */
 const providerError = (e: unknown) => (codeOf(e) === 'last_method' ? currentI18n().t('web.hostedSecurity.lastMethod') : codeOf(e) === 'provider_unavailable' ? currentI18n().t('web.hostedSecurity.providerInUse') : errorText(e, 'portico-account', 'save'));
 
