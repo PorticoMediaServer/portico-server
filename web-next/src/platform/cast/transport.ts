@@ -4,6 +4,21 @@ import type {CastContext, CastFramework, CastMessageListener, CastSession, CastS
 export type ConfirmedCastDevice = Readonly<{name: string; id?: string}>;
 export type CastReceiverStatus = Extract<CastEvent, {type: 'status'}>;
 
+/** The controller tolerates missing status numbers as zero. A confirmed playback fact cannot. */
+function reportedStatus(raw: string): CastReceiverStatus | undefined {
+  if (raw.length > 65536) return undefined;
+  let payload: unknown;
+  try { payload = JSON.parse(raw); } catch { return undefined; }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return undefined;
+  const fields = payload as Record<string, unknown>;
+  if (fields.type !== 'status' || typeof fields.itemId !== 'string' || !fields.itemId.trim()
+      || typeof fields.positionSeconds !== 'number' || !Number.isFinite(fields.positionSeconds) || fields.positionSeconds < 0
+      || typeof fields.durationSeconds !== 'number' || !Number.isFinite(fields.durationSeconds) || fields.durationSeconds < 0
+      || typeof fields.paused !== 'boolean') return undefined;
+  const event = parseCastEvent(payload);
+  return event?.type === 'status' ? event : undefined;
+}
+
 /** Only a selected SDK session supplies a receiver's name and id. */
 export function confirmedCastDevice(session: CastSession): ConfirmedCastDevice | undefined {
   const device = session.getCastDevice();
@@ -20,8 +35,8 @@ export function castTransportFor(session: CastSession, context: CastContext, fra
     send: command => session.sendMessage(CAST_NAMESPACE, command).then(() => undefined),
     onMessage: receive => {
       const listener: CastMessageListener = (_namespace, raw) => {
-        const event = parseCastEvent(raw);
-        if (event?.type === 'status') observeStatus?.(event);
+        const status = reportedStatus(raw);
+        if (status) observeStatus?.(status);
         receive(raw);
       };
       session.addMessageListener(CAST_NAMESPACE, listener);
