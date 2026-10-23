@@ -153891,6 +153891,80 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAuthPorticoReturnPrepareRequest": {
+    "properties": {
+      "nonce": {
+        "type": "string"
+      },
+      "origin": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "origin",
+      "nonce"
+    ],
+    "type": "object"
+  },
+  "PostAuthPorticoReturnPrepareResponse": {
+    "properties": {
+      "challenge": {
+        "type": "string"
+      },
+      "claimOperationId": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "hostedOrigin": {
+        "type": "string"
+      },
+      "proof": {
+        "properties": {
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "registration": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "origin"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "hostedOrigin",
+      "claimOperationId",
+      "registration",
+      "challenge",
+      "expiresAt",
+      "proof"
+    ],
+    "type": "object"
+  },
   "PostAuthRefreshRequest": {
     "properties": {
       "installationId": {

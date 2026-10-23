@@ -3,7 +3,7 @@ import {routePath as hostedRoutePath, encodedRoutePath as hostedEncodedRoutePath
 /**
  * The Portico Account's in-app notification feed and data export (BE-hosted, `be/hosted` da0a9db):
  * no push and no alert email any more. Parsers are strict about the shapes and lenient about
- * unknown kinds (a newer Hosted can add one; it shows as a generic row). One item of a page that
+ * unknown kinds. Retired server-private events never become generic account rows. One item of a page that
  * cannot be read is left out and the rest of the page is kept.
  *
  * - `GET /v1/account/notifications[?cursor=]` → `{items, unread, nextCursor?}` (newest first, 50 a page)
@@ -16,15 +16,19 @@ import {routePath as hostedRoutePath, encodedRoutePath as hostedEncodedRoutePath
 import {keepReadable, noteSkipped} from './tolerant.ts';
 
 export type AccountNotificationKind =
-  | 'server_offline' | 'storage_nearly_full' | 'invitation_accepted'
+  | 'server_offline'
   | 'new_device' | 'security_event' | 'account_export_ready' | 'signing_key_expiring';
-export const ACCOUNT_NOTIFICATION_KINDS: readonly AccountNotificationKind[] = ['server_offline', 'storage_nearly_full', 'invitation_accepted', 'new_device', 'security_event', 'account_export_ready', 'signing_key_expiring'];
+export const ACCOUNT_NOTIFICATION_KINDS: readonly AccountNotificationKind[] = ['server_offline', 'new_device', 'security_event', 'account_export_ready', 'signing_key_expiring'];
+/** Four ordinary kinds plus the real operator key alert in the same account
+ * feed. The producer scopes that alert to its recipient, not a client role. */
+export type AccountFeedKind='new_device'|'account_export_ready'|'security_event'|'server_offline'|'signing_key_expiring';
+export function isAccountFeedNotification(item:AccountNotification):item is AccountNotification&{kind:AccountFeedKind}{return (ACCOUNT_NOTIFICATION_KINDS as readonly string[]).includes(item.kind);}
 export const ACCOUNT_SECURITY_EVENTS = ['password_changed', 'password_reset', 'recovery_codes_replaced', 'sign_in_method_removed', 'provider_linked', 'two_step_enabled', 'two_step_disabled', 'contact_email_changed', 'contact_email_verified'] as const;
 export type AccountSecurityEvent = (typeof ACCOUNT_SECURITY_EVENTS)[number];
 
 export type AccountNotification = Readonly<{
   id: string;
-  /** A kind this client doesn't know yet is kept (shown generically), never dropped. */
+  /** Unknown non-retired kinds are kept for caller-specific handling. */
   kind: AccountNotificationKind | 'other';
   rawKind: string;
   occurredAt: string;
@@ -45,6 +49,7 @@ const instant = (v: unknown): v is string => typeof v === 'string' && v.length <
 
 export function parseAccountNotification(v: unknown): AccountNotification {
   if (!obj(v) || !str(v.id, 128) || !str(v.kind, 64) || !instant(v.occurredAt) || typeof v.read !== 'boolean') bad();
+  if(v.kind==='storage_nearly_full'||v.kind==='invitation_accepted')bad();
   let server: {id: string; name: string} | undefined;
   if (v.server !== undefined && v.server !== null) {
     // A server reference or detail that cannot be read is left off; the item still says what happened and when.
