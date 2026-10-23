@@ -77,6 +77,10 @@ export function LibraryBrowse(bindings: LibraryBindings) {
     [state.capabilities, state.sort, state.predicates, library.kind, env, bindings.owner, controller]);
   const sort = useCallback((sort: BrowseSortSelection) => {try {controller.setQuery(controller.getSnapshot().predicates, sort);} catch (error) {reportError(error);}}, [controller, reportError]);
   if (!model) return null;
+  const pivot = state.capabilities?.resolvedPivot ?? state.capabilities?.pivots.find(pivot => pivot.id === controller.source.pivot);
+  const views = (pivot?.supportedViews ?? []).filter((view): view is BrowsePresentation['view'] => view === 'grid' || view === 'list');
+  const view = views.find(view => view === appearance.view) ?? views[0];
+  if (!view) return null;
   const chips = model.applied.flatMap((node, index) => 'field' in node ? [{id: String(index), parts: appliedFilterParts(node, id => {const field = state.capabilities!.fields.find(field => field.id === id);return field ? browseLabels.field(field) : id;}, env)}] : []);
   const setPredicates = (nodes: readonly BrowseNode[]) => {try {controller.setQuery(nodes);} catch (error) {bindings.reportError(error);}};
   const resultCount = snapshot.total === undefined || snapshot.refreshing ? undefined : t(snapshot.totalIsLowerBound ? 'lib.countAtLeast' : 'lib.count', {count: snapshot.total, pivot: controller.source.pivot});
@@ -86,11 +90,11 @@ export function LibraryBrowse(bindings: LibraryBindings) {
       onQuickChange={(id, checked) => {const quick = [...model.quick, ...model.filterQuick].find(quick => quick.id === id);if (quick) setPredicates(checked ? [...state.predicates, quick.query] : state.predicates.filter(node => JSON.stringify(node) !== JSON.stringify(quick.query)));}}
       onFilters={() => setFiltersOpen(true)} filtersOpen={filtersOpen} onSortChange={sort}
       onReshuffle={() => sort({...model.sort, seed: crypto.getRandomValues(new Uint32Array(1))[0]})}
-      view={{value: appearance.view, onValueChange: view => bindings.onAppearanceChange({view})}}
-      cardSize={!compact ? {value: appearance.cardSize, options: (['small', 'medium', 'large'] as const).map(value => ({value, label: t(`next.browse.${value}`)})), onValueChange: value => {if (value === 'small' || value === 'medium' || value === 'large') bindings.onAppearanceChange({cardSize: value});}} : undefined}
+      view={views.includes('grid') && views.includes('list') ? {value: view, onValueChange: view => bindings.onAppearanceChange({view})} : undefined}
+      cardSize={!compact && view === 'grid' ? {value: appearance.cardSize, options: (['small', 'medium', 'large'] as const).map(value => ({value, label: t(`next.browse.${value}`)})), onValueChange: value => {if (value === 'small' || value === 'medium' || value === 'large') bindings.onAppearanceChange({cardSize: value});}} : undefined}
       actions={<BrowseScopeChips controller={controller} reportError={reportError}/>} save={bindings.showSaveView === false ? undefined : {canSave: bindings.canSaveView, onSave: bindings.onSaveView}} applied={chips}
       onRemoveFilter={id => setPredicates(state.predicates.filter(node => node !== model.applied[Number(id)]))} onClearFilters={() => setPredicates([])} selection={selection.toolbar}/>
-    <BrowseResults controller={controller} label={library.name} view={appearance.view} cardWidth={appearance.cardWidth} shape={shape} artwork={bindings.artwork} env={env} backdrops={appearance.backdrops}
+    <BrowseResults controller={controller} label={library.name} view={view} cardWidth={appearance.cardWidth} shape={shape} artwork={bindings.artwork} env={env} backdrops={appearance.backdrops}
       reducedMotion={bindings.reducedMotion} actions={selection.actions} familyForEntry={bindings.familyForEntry} onVisibleRange={selection.registerWindow} onSort={sort}
       empty={state.predicates.length ? <FilteredEmpty onClear={() => setPredicates([])}/> : bindings.empty}/>
     <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} open={filtersOpen} resultCount={resultCount} canSaveView={bindings.canSaveView} onSaveView={bindings.onSaveView} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>

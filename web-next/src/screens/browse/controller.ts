@@ -37,7 +37,7 @@ export class BrowseController {
       if (!this.current() || epoch !== this.epoch) return;
       const pivot = caps.resolvedPivot ?? caps.pivots.find(pivot => pivot.id === this.source.pivot);
       const sort = this.source.sort ?? pivot?.defaultSort[0];
-      if (!pivot?.browsable || !sort || caps.queryLimits.maximumLimit < 60) throw new Error('browse-capability-required');
+      if (!pivot?.browsable || !pivot.supportedViews.some(view => view === 'grid' || view === 'list') || !sort || caps.queryLimits.maximumLimit < 60) throw new Error('browse-capability-required');
       this.publish({phase: 'ready', capabilities: caps, sort});
       this.reset();
     } catch (error) { if (epoch === this.epoch) this.publish({phase: 'error', error}); }
