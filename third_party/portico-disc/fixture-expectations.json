@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "status": "recipes and expectations only; no fixtures generated or tests run",
+  "publication": "New mathematical pictures and authored navigation metadata are repo eligible; no supplied licensed disc or media bytes",
+  "fixtures": [
+    {
+      "id": "bdmv-two-clip",
+      "kind": "bluray",
+      "packaging": "folder",
+      "encryption": "none",
+      "titles": [{"playlist": 1, "playlistFile": "00001.mpls", "durationMs": 72000, "angleCount": 1, "clipsInOrder": ["00001.m2ts", "00002.m2ts"], "clipDurationMs": [36000, 36000], "chapterStartsMs": [0, 36000]}],
+      "seek": {"requestedMs": 36500, "mustCrossClipBoundaryMs": 36000, "landingTolerance": "at most one encoded GOP", "byteOffset": "observed library entry point; not hard-coded concatenated file sizes"},
+      "required": ["Every STN PID retained", "TrueHD+AC3 shared PID language retention when a separately generated fixture supports it", "Repackaged/Converted only", "chapter ffmetadata readback"]
+    },
+    {
+      "id": "video-ts-two-title",
+      "kind": "dvd",
+      "packaging": "folder",
+      "encryption": "none",
+      "titles": [{"title": 1, "durationMs": 72000, "chapterStartsMs": [0, 36000]}, {"title": 2, "durationMs": 66000, "chapterStartsMs": [0, 33000]}],
+      "required": ["No loose VOB assembly", "Title 1 remains named Title 1 after owner selects Title 2 as main", "Runtime follows main title", "Other title remains selectable as version", "First angle", "Seek across DVD cell boundary within one GOP"]
+    },
+    {
+      "id": "bluray-udf250",
+      "kind": "bluray",
+      "packaging": "iso",
+      "udfRevision": "2.50",
+      "generationPrerequisite": "Qualified authoring tool must create actual UDF2.50, validated independently; a filename or version flag alone is insufficient",
+      "sameNavigationAs": "bdmv-two-clip",
+      "required": ["Library's UDF reader opens ISO without a mount", "same ordered title/clip/stream/chapter facts as folder", "one read-only ISO sandbox path"]
+    }
+  ],
+  "negativeProofs": ["AACS/BD+/CSS never decoded and exact Files skipped wording", "oversized JSON fails closed", "malformed title/PGC/clip tables fail", "one-GOP seek cross-boundary", "source replaced before/after probe or during stream fails old generation", "unknown enhancement-layer fact never infers DV", "separate-PID DV stays HDR10 with loss until joined and qualified", "remote discs retain exact Not supported yet wording until checked remote reader", "helper cannot read database/network/unrelated paths"],
+  "bundleVerifier": "Hardware runs probe and schema/expectation comparison per target once stage cleared; no current target binary claim"
+}

@@ -49,7 +49,11 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if old.AudioStream >= 0 {
 		explicit = &old.AudioStream
 	}
-	if err = s.completeDeliveryInputTx(ctx, tx, p, &input, values, true, explicit); err != nil {
+	var item string
+	if err = tx.QueryRowContext(ctx, `SELECT pid(e.public_id) FROM playback_sessions ps JOIN catalog_entities e ON e.id=ps.item_id WHERE ps.id=?`, session).Scan(&item); err != nil {
+		return err
+	}
+	if err = s.completeDeliveryInputTx(ctx, tx, p, &input, values, true, explicit, item); err != nil {
 		return err
 	}
 	plan, err := planDelivery(input)

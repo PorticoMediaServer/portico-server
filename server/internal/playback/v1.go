@@ -160,7 +160,7 @@ func (s *Service) PlanV1(ctx context.Context, p identity.Principal, item string,
 		// A remote source is played as-is once it has been prepared at start.
 		return DeliveryPlan{SourceID: aid, Mode: "remote", Strategy: DeliveryOriginal, VideoAction: "copy", AudioAction: "copy", AudioStream: -1, Duration: duration}, nil
 	}
-	inputs, e := s.planInputsTx(ctx, tx, p, aid, container, video, audio, duration, false, true, choice.AudioStream, &choice)
+	inputs, e := s.planInputsTx(ctx, tx, p, item, aid, container, video, audio, duration, false, true, choice.AudioStream, &choice)
 	if e != nil {
 		return DeliveryPlan{}, e
 	}

@@ -200,6 +200,8 @@ type DeliveryInput struct {
 	AudioStream             int
 	HasAudioChoice          bool
 	PreferredAudioLanguages []string
+	// OriginalLanguage is read only from published catalogue metadata by the server.
+	OriginalLanguage string
 	// CarriedAudioLanguage is the language of the audio track picked in the
 	// player earlier in this playback (a queue continued); it outranks the
 	// preferred list.

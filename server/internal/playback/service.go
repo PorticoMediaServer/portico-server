@@ -91,7 +91,7 @@ func New(db *sql.DB) *Service { return &Service{db: db} }
 // device has already reported broken for it. All of it belongs to the same
 // immutable decision, so first play, a rung change and an audio change read it
 // through this one function.
-func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p identity.Principal, input *DeliveryInput, values DeliveryPreferenceReader, catalogued bool, explicitAudio *int) error {
+func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p identity.Principal, input *DeliveryInput, values DeliveryPreferenceReader, catalogued bool, explicitAudio *int, item ...string) error {
 	device := capabilityDocumentFor(ctx, tx, p)
 	input.Device = &device
 	input.PreferredAudioLanguages = preferredAudioLanguages(values)
@@ -109,6 +109,12 @@ func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p ide
 		return err
 	}
 	input.Source = &source
+	if len(item) == 1 {
+		input.OriginalLanguage, err = originalAudioLanguageTx(ctx, tx, item[0])
+		if err != nil {
+			return err
+		}
+	}
 	input.ExcludedByEngine, err = routeFailuresTx(ctx, tx, p, input.SourceID)
 	return err
 }
@@ -170,7 +176,7 @@ type planInputs struct {
 // records every input. Sessions (legacy and v1) and the v1 plan preview share it,
 // which is what makes "the same request and profile always produce the same plan"
 // true across them.
-func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, aid, container, video, audio string, duration float64, remote, catalogued bool, explicitAudio *int, v1 *V1Choice) (planInputs, error) {
+func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, aid, container, video, audio string, duration float64, remote, catalogued bool, explicitAudio *int, v1 *V1Choice) (planInputs, error) {
 	cfg := deliveryConfiguration(s.deliverySettings)
 	edge := DeliveryContextFrom(ctx)
 	values := s.viewerPreferences(tx, p, edge)
@@ -191,7 +197,7 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	target := v1.target(policy, cfg)
 	input := DeliveryInput{SourceID: aid, Container: container, VideoCodec: video, AudioCodec: audio, Duration: duration, Height: sourceHeight, ColorTransfer: transfer, ColorPrimaries: primaries, Remote: remote, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: ownerTranscoding, Hardware: hardware}
 	input.Engine, input.SubtitleKind, input.SubtitleBesideStream, input.CarriedAudioLanguage = v1.Engine, v1.SubtitleKind, v1.SubtitleBesideStream, v1.CarriedAudioLanguage
-	if e := s.completeDeliveryInputTx(ctx, tx, p, &input, values, catalogued, explicitAudio); e != nil {
+	if e := s.completeDeliveryInputTx(ctx, tx, p, &input, values, catalogued, explicitAudio, item); e != nil {
 		return planInputs{}, e
 	}
 	if rung, ok := LadderPreset(strings.TrimPrefix(v1.QualityID, "automatic:")); ok && input.Source.Video != nil {
@@ -363,7 +369,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		}
 	}
 	explicitAudio := v1.AudioStream
-	inputs, e := s.planInputsTx(ctx, tx, p, aid, container, video, audio, duration, mode == "remote", derivative == nil && mode != "remote", explicitAudio, v1)
+	inputs, e := s.planInputsTx(ctx, tx, p, item, aid, container, video, audio, duration, mode == "remote", derivative == nil && mode != "remote", explicitAudio, v1)
 	if e != nil {
 		return Session{}, e
 	}

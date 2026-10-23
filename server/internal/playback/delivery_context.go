@@ -3,8 +3,11 @@ package playback
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"portico.local/server/internal/capabilityreport"
+	"strings"
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
@@ -178,4 +181,44 @@ func automaticSubtitles(values DeliveryPreferenceReader, trace *DecisionTrace) s
 		out.Languages = lister.List("playback.preferredSubtitleLanguages")
 	}
 	return out
+}
+
+// originalAudioLanguageTx reads the published original language of the exact
+// selected title. Episodic and season titles inherit their show's fact; a
+// shared file is never used to guess which title's metadata should win.
+// metadata_language is the editor/provider locale and is deliberately not read.
+func originalAudioLanguageTx(ctx context.Context, tx *sql.Tx, item string) (string, error) {
+	if item == "" {
+		return "", nil
+	}
+	var raw string
+	err := tx.QueryRowContext(ctx, `SELECT f.value
+ FROM catalog_entities e
+ LEFT JOIN catalog_episodes ep ON ep.entity_id=e.id
+ LEFT JOIN catalog_seasons se ON se.entity_id=e.id
+ JOIN screen_metadata_fields f ON f.target_kind=CASE WHEN ep.show_id IS NOT NULL OR se.show_id IS NOT NULL THEN 'show' ELSE 'item' END
+ AND f.target_id=COALESCE(ep.show_id,se.show_id,e.id) AND f.field='language'
+ WHERE e.public_id=pid_blob(?) AND e.retired=0`, item).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var value string
+	if json.Unmarshal([]byte(raw), &value) != nil {
+		return "", nil
+	}
+	// Publication owns canonicalisation. Refuse unknown or malformed values
+	// rather than treating the client locale or an untagged stream as evidence.
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "und" || value == "xx" || len(value) < 2 || len(value) > 3 {
+		return "", nil
+	}
+	for _, ch := range value {
+		if ch < 'a' || ch > 'z' {
+			return "", nil
+		}
+	}
+	return value, nil
 }
