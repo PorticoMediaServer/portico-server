@@ -2,6 +2,7 @@ package remotesources
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"portico.local/server/internal/storage"
@@ -21,6 +22,8 @@ type sourceRangeRead struct {
 	data  []byte
 	err   error
 }
+
+var errSharedSourceRangeInterrupted = errors.New("shared remote extent ended before completion")
 
 // readSharedSourceRange shares only the same captured observation, profile,
 // physical process and bounded extent. Each caller checks its own retained
@@ -102,6 +105,12 @@ func (s *Service) readSharedSourceRange(ctx context.Context, reader *SourceRange
 		return 0, err
 	}
 	if shared.err != nil && shared.err != io.EOF {
+		if !leader {
+			// A different reader's actor/request can end the shared transfer.
+			// Its error never revokes this reader's still-current authority.
+			// The child fails without retry; the caller rechecks its own lease.
+			return 0, errSharedSourceRangeInterrupted
+		}
 		return 0, shared.err
 	}
 	if err := reader.session.Check(ctx); err != nil {

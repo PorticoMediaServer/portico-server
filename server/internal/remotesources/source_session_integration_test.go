@@ -545,6 +545,19 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				case <-ctx.Done():
 					t.Fatal(ctx.Err())
 				}
+				joinedBeforeClose := f.s.sharedRangeJoiners.Load()
+				otherReader := readLease(rangeB)
+				closeDeadline := time.NewTimer(2 * time.Second)
+				closeTick := time.NewTicker(time.Millisecond)
+				for f.s.sharedRangeJoiners.Load() == joinedBeforeClose {
+					select {
+					case <-closeDeadline.C:
+						t.Fatal("other retained viewer did not join before leader close")
+					case <-closeTick.C:
+					}
+				}
+				closeTick.Stop()
+				closeDeadline.Stop()
 				rangeA.Close()
 				releaseClosed()
 				if e := <-closing; e == nil {
@@ -552,6 +565,12 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				}
 				if e := leaseA.Check(ctx); e != nil {
 					t.Fatal("closing active child retired parent", e)
+				}
+				if e := <-otherReader; e == nil {
+					t.Fatal("aborted shared transfer exposed bytes to another reader")
+				}
+				if e := leaseB.Check(ctx); e != nil {
+					t.Fatal("leader child-close retired another reader's authority", e)
 				}
 			}
 			for _, closedBeforeError := range []bool{false, true} {
