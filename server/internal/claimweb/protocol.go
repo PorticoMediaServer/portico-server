@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"portico.local/server/internal/serverreturn"
 	"regexp"
 	"time"
 )
@@ -37,13 +38,18 @@ type Signed struct {
 	Signature string `json:"signature"`
 }
 type Pending struct {
-	Code        string    `json:"code"`
-	ServerID    string    `json:"serverId"`
-	Name        string    `json:"name"`
-	Address     string    `json:"address"`
-	RequestedAt time.Time `json:"requestedAt"`
-	ExpiresAt   time.Time `json:"expiresAt"`
-	Status      string    `json:"status"`
+	Purpose              string                     `json:"purpose"`
+	CurrentOwnerUsername string                     `json:"currentOwnerUsername,omitempty"`
+	PreviousOwnerRole    string                     `json:"previousOwnerRole,omitempty"`
+	ReturnRegistration   *serverreturn.Registration `json:"returnRegistration,omitempty"`
+	Code                 string                     `json:"code"`
+	ServerID             string                     `json:"serverId"`
+	Name                 string                     `json:"name"`
+	Address              string                     `json:"address"`
+	RequestedAt          time.Time                  `json:"requestedAt"`
+	ExpiresAt            time.Time                  `json:"expiresAt"`
+	Status               string                     `json:"status"`
+	OwnerTransactionID   string                     `json:"ownerTransactionId,omitempty"`
 }
 
 var ErrInvalid = errors.New("invalid pending claim")
