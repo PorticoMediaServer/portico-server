@@ -8151,7 +8151,18 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "conversionMode" TEXT CHECK("conversionMode" IN('all','sound','never')),
  "outputFormat" TEXT CHECK("outputFormat" IN('auto','h264')),
  "downloadMaxQuality" TEXT,
- "musicAwayQuality" TEXT NOT NULL DEFAULT 'original' CHECK("musicAwayQuality" IN('original','cd-quality','320','96'))) STRICT;
+ "musicAwayQuality" TEXT NOT NULL DEFAULT 'original' CHECK("musicAwayQuality" IN('original','cd-quality','320','96')),
+ "webhookRetries" TEXT NOT NULL DEFAULT 'long' CHECK("webhookRetries" IN('long','short','none')),
+ "webhookTimeoutSeconds" INTEGER NOT NULL DEFAULT 15 CHECK("webhookTimeoutSeconds" BETWEEN 5 AND 60),
+ "webhookQueueSize" INTEGER NOT NULL DEFAULT 1000 CHECK("webhookQueueSize" BETWEEN 100 AND 5000),
+ "webhookLogSize" INTEGER NOT NULL DEFAULT 200 CHECK("webhookLogSize" BETWEEN 50 AND 1000),
+ "webhookHTTPSOnly" INTEGER NOT NULL DEFAULT 0 CHECK("webhookHTTPSOnly" IN(0,1)),
+ "credentialMaxDays" INTEGER NOT NULL DEFAULT 0 CHECK("credentialMaxDays" BETWEEN 0 AND 365),
+ "memberTokenScope" TEXT NOT NULL DEFAULT 'same' CHECK("memberTokenScope" IN('same','play','read')),
+ "tokensPerMember" INTEGER NOT NULL DEFAULT 25 CHECK("tokensPerMember" BETWEEN 5 AND 50),
+ "apiKeysMax" INTEGER NOT NULL DEFAULT 100 CHECK("apiKeysMax" BETWEEN 10 AND 250),
+ "keyInAddress" INTEGER NOT NULL DEFAULT 1 CHECK("keyInAddress" IN(0,1)),
+ "assistantsEnabled" INTEGER NOT NULL DEFAULT 1 CHECK("assistantsEnabled" IN(0,1))) STRICT;
 
 CREATE TABLE server_setting_lists(setting TEXT NOT NULL,position INTEGER NOT NULL CHECK(position>=0),value TEXT NOT NULL,PRIMARY KEY(setting,position)) WITHOUT ROWID, STRICT;
 
