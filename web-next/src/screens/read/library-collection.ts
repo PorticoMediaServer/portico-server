@@ -31,7 +31,7 @@ export function createReadingCollection(client: ReadingClient, libraryId: string
       const next = await cursor(start, signal);
       if (ended !== undefined && start >= ended) return {items: [], total: ended};
       const response = await client.list({libraryId, cursor: next, limit: count}, signal);
-      if (response.items.some(item => item.libraryId !== libraryId) || response.nextCursor && response.items.length !== count)
+      if (response.items.some(item => item.libraryId !== libraryId) || response.nextCursor && (response.items.length !== count || [...cursors.values()].includes(response.nextCursor)))
         throw new ReadingError('invalid_document');
       if (response.nextCursor) {
         cursors.set(start + count, response.nextCursor); frontier = Math.max(frontier, start + count);

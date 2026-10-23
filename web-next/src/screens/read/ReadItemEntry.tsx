@@ -31,8 +31,9 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     else void (async () => {
       const session = await bindings.open({itemId: eligibility.itemId, sourceId});
       const progress = await session.progress();
+      await bindings.close().catch(captured.binding.home.effects.reportError);
       if (active && bindings.authority.isCurrent()) setDetail({manifest: session.manifest, progress});
-    })().catch(error => {if (active && bindings.authority.isCurrent()) {captured.binding.home.effects.reportError(error); setDetail({failed: true});}});
+    })().catch(error => {if (active && bindings.authority.isCurrent()) {captured.binding.home.effects.reportError(error); setDetail({failed: true});} void bindings.close().catch(() => {});});
     return () => {active = false; off(); void bindings.dispose().catch(() => {});};
   }, [captured.context, eligibility.itemId, sourceId, retry]);
   if (detail.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
