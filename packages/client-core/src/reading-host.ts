@@ -9,7 +9,7 @@ export type ReadingHostTransport = Readonly<{send: (message: string) => void; su
 type RecordValue = Record<string, unknown>;
 const record = (v: unknown): v is RecordValue => typeof v === 'object' && v !== null && !Array.isArray(v);
 const integer = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
-const fail = (code = 'invalid_bridge'): never => {throw new ReadingError(code);};
+function fail(code = 'invalid_bridge'): never {throw new ReadingError(code);}
 const CHUNK = 48 * 1024, CONTROL = 2 * 1024 * 1024;
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 function encode(bytes: Uint8Array): string {
