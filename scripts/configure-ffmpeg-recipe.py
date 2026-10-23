@@ -34,6 +34,14 @@ if target.startswith('macos'):
     sys.exit(0)
 
 # BtbN disables Linux ARM VAAPI by default, although libva supports it.
+# Shaderc's install staging predates TMPDIR support. Keep even that temporary
+# tree in the job's on-disk bind mount, including inside the compiler container.
+path = recipe / 'scripts.d/47-vulkan/50-shaderc.sh'
+text = path.read_text()
+if '"/tmp/staging$FFBUILD_DESTDIR"' not in text:
+    raise ValueError('Shaderc staging boundary changed')
+path.write_text(text.replace('"/tmp/staging$FFBUILD_DESTDIR"', '"${TMPDIR:?}/staging$FFBUILD_DESTDIR"'))
+
 # Its GPL recipe normally adds CSS decryption. Keep navigation/readers, with
 # no decryption library stage or dvdread decryption dependency.
 (recipe / 'scripts.d/50-dvd/30-libdvdcss.sh').unlink(missing_ok=True)
