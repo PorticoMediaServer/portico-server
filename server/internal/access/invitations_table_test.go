@@ -280,3 +280,57 @@ func TestInvitationTableSearchesActualPorticoRecipientWithoutInventingEmail(t *t
 		t.Fatalf("genuine bound recipient: %d/%d %+v %v", total, matched, page, err)
 	}
 }
+
+// The join card takes library categories from the same genuine rows as names;
+// misleading names and subsequent renames cannot invent a film/TV/book icon.
+func TestInvitationPreviewCarriesOnlyActualLibraryKinds(t *testing.T) {
+	s, db, _ := localFixture(t)
+	ctx := context.Background()
+	if _, err := db.Exec(`UPDATE libraries SET name='TV shows',kind='movie' WHERE id='lib';UPDATE libraries SET name='Films',kind='show' WHERE id='other';INSERT INTO libraries(id,name,kind,root) VALUES('music-preview','Books','music','/music-preview'),('books-preview','Music','book','/books-preview')`); err != nil {
+		t.Fatal(err)
+	}
+	issuer, err := identity.New(db, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, authorize := invitationTableActor(t, db, issuer, "owner", "owner-profile", identity.TierOwner)
+	invite, err := s.Invite(ctx, authorize, owner, InvitationRequest{OperationID: "preview-actual-kinds", Role: identity.TierMember, AllowedLibraries: []string{"lib", "other", "music-preview", "books-preview"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := s.Preview(ctx, invite.Code)
+	if err != nil || len(preview.Libraries) != 4 {
+		t.Fatalf("preview %+v: %v", preview, err)
+	}
+	kinds := map[string]string{"TV shows": "movie", "Films": "show", "Books": "music", "Music": "book"}
+	for _, library := range preview.Libraries {
+		if kinds[library.Name] != library.Kind {
+			t.Fatalf("category inferred from display name: %+v", library)
+		}
+	}
+	if _, err = db.Exec(`UPDATE libraries SET name='Not a category label' WHERE id='lib'`); err != nil {
+		t.Fatal(err)
+	}
+	preview, err = s.Preview(ctx, invite.Code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, library := range preview.Libraries {
+		if library.Name == "Not a category label" {
+			found = true
+			if library.Kind != "movie" {
+				t.Fatal("rename changed genuine kind")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("preview did not read current genuine library row")
+	}
+	if _, err = db.Exec(`UPDATE access_invitations SET allowed_libraries='["unresolvable-library"]' WHERE id=?`, invite.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Preview(ctx, invite.Code); !errors.Is(err, ErrInvitationNotFound) {
+		t.Fatalf("missing library was fabricated: %v", err)
+	}
+}

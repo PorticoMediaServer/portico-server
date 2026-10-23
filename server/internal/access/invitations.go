@@ -71,6 +71,8 @@ type InvitationPreview struct {
 }
 type InvitationLibrary struct {
 	Name string `json:"name"`
+	// Kind is the actual library category, never inferred from its name.
+	Kind string `json:"kind,omitempty"`
 }
 
 type InvitationPreviewRequest struct {
@@ -145,14 +147,14 @@ func (s *Store) Preview(ctx context.Context, code string) (out InvitationPreview
 		}
 		out.Libraries = []InvitationLibrary{}
 		for _, library := range ids {
-			var name string
-			if e = tx.QueryRowContext(ctx, `SELECT name FROM libraries WHERE id=?`, library).Scan(&name); e != nil {
+			var name, kind string
+			if e = tx.QueryRowContext(ctx, `SELECT name,kind FROM libraries WHERE id=?`, library).Scan(&name, &kind); e != nil {
 				if errors.Is(e, sql.ErrNoRows) {
 					return ErrInvitationNotFound
 				}
 				return e
 			}
-			out.Libraries = append(out.Libraries, InvitationLibrary{Name: name})
+			out.Libraries = append(out.Libraries, InvitationLibrary{Name: name, Kind: kind})
 		}
 		out.AllLibraries = len(ids) == 0
 		out.SignInMethod = "local"
