@@ -24,3 +24,18 @@ test('trusted Literata loader omits credentials, verifies pinned bytes and cance
     await assert.rejects(loadLiterataFont({signal:abort.signal}),{code:'aborted'});
   } finally {globalThis.fetch=original;}
 });
+test('Literata verifies the pinned font on self-host HTTP without WebCrypto subtle',async()=>{
+  const originalFetch=globalThis.fetch,cryptoDescriptor=Object.getOwnPropertyDescriptor(globalThis,'crypto');
+  try {
+    Object.defineProperty(globalThis,'crypto',{configurable:true,value:{}});
+    const bytes=await readFile(new URL('../assets/Literata[opsz,wght].ttf',import.meta.url));
+    globalThis.fetch=async()=>new Response(bytes);
+    assert.equal((await loadLiterataFont()).size,955132);
+    const corrupted=bytes.slice();corrupted[500]^=1;
+    globalThis.fetch=async()=>new Response(corrupted);
+    await assert.rejects(loadLiterataFont(),{code:'invalid_source'});
+  } finally {
+    globalThis.fetch=originalFetch;
+    if(cryptoDescriptor)Object.defineProperty(globalThis,'crypto',cryptoDescriptor);else Reflect.deleteProperty(globalThis,'crypto');
+  }
+});
