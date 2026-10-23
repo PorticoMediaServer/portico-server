@@ -390,8 +390,9 @@ func run() (runErr error) {
 		return e
 	}
 	defer db.Close()
+	backupPolicy := backup.NewPolicyStore(db, state)
 	configurationStore := operations.New(db)
-	configurationStore.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}}
+	configurationStore.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}, backup.Configuration{Store: backupPolicy}}
 	if e = configurationStore.InitializeConfiguration(ctx, layout.Config); e != nil {
 		return e
 	}
@@ -1129,7 +1130,7 @@ func run() (runErr error) {
 	if e = backup.CleanupScratch(state); e != nil {
 		return e
 	}
-	backupPolicy := backup.NewPolicyStore(db, state)
+	backupPolicy.ConfigurationCommitted = configurationStore.FlushConfiguration
 	backupService.SetPolicyStore(backupPolicy)
 	// A backup holds no sessions: each database copy is scrubbed as it is written.
 	backupService.SetCopyScrubber(identity.ScrubBackupCopy)

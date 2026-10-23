@@ -46,8 +46,9 @@ var policyMaterialMagic = []byte("PBAKEY\x00\x02")
 func (s Snapshot) clear() { s.material.clear() }
 
 type PolicyStore struct {
-	db    *sql.DB
-	state string
+	db                     *sql.DB
+	state                  string
+	ConfigurationCommitted func(context.Context) error
 }
 
 func NewPolicyStore(db *sql.DB, state string) *PolicyStore { return &PolicyStore{db: db, state: state} }
@@ -116,11 +117,24 @@ func (p *PolicyStore) Update(ctx context.Context, patch SettingsPatch) (Settings
 		return Settings{}, e
 	}
 	defer w.Rollback()
+	before, e := p.ReadTx(ctx, w.Tx())
+	if e != nil {
+		return Settings{}, e
+	}
 	out, e := p.UpdateTx(ctx, w.Tx(), patch)
 	if e != nil {
 		return out, e
 	}
-	return out, w.Commit()
+	if e = (Configuration{Store: p}).queueChange(ctx, w.Tx(), before, out); e != nil {
+		return out, e
+	}
+	if e = w.Commit(); e != nil {
+		return out, e
+	}
+	if p.ConfigurationCommitted != nil {
+		e = p.ConfigurationCommitted(context.WithoutCancel(ctx))
+	}
+	return out, e
 }
 func (p *PolicyStore) UpdateTx(ctx context.Context, tx *sql.Tx, patch SettingsPatch) (Settings, error) {
 	s, sealed, e := p.read(ctx, tx)
