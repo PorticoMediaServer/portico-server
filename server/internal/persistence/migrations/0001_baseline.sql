@@ -8095,7 +8095,7 @@ CREATE TABLE backup_settings(
  include_artwork INTEGER NOT NULL DEFAULT 0 CHECK(include_artwork IN(0,1)),
  passphrase_protected INTEGER NOT NULL DEFAULT 0 CHECK(passphrase_protected IN(0,1)),
  passphrase_sealed BLOB,
- CHECK((passphrase_protected=0 AND passphrase_sealed IS NULL) OR (passphrase_protected=1 AND length(passphrase_sealed)>=40))
+ CHECK((passphrase_protected=0 AND passphrase_sealed IS NULL) OR (passphrase_protected=1 AND passphrase_sealed IS NOT NULL AND length(passphrase_sealed)>=40))
 ) STRICT;
 INSERT INTO backup_settings(singleton) VALUES(1);
 
