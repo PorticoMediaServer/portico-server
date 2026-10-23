@@ -59,7 +59,11 @@ func (c *Coordinator) ReconcilePreinstallCancellation(parent context.Context) (I
 	}
 	ctx, cancel := context.WithTimeout(parent, c.timeout)
 	defer cancel()
-	v, _, err := store.QueuePreinstallCancellation(ctx, c.operation)
+	v, item, err := store.QueuePreinstallCancellation(ctx, c.operation)
+	if err != nil {
+		return Intent{}, err
+	}
+	ctx, err = store.preinstallCancellationContext(ctx, v, item)
 	if err != nil {
 		return Intent{}, err
 	}
@@ -91,11 +95,21 @@ func (s *SQLiteStore) preinstallCancellationContext(ctx context.Context, v Inten
 			if id.generation != v.LocalGeneration+1 || !id.active.Valid || id.active.String != v.OperationID || id.pending.Valid {
 				return ErrStale
 			}
+		case Cancelled:
+			// Only the exact acknowledgement writer may reach this state. A
+			// successor pointer or generation fences even this deny-only guard.
+			if id.generation != v.LocalGeneration+1 || id.active.Valid || id.pending.Valid {
+				return ErrStale
+			}
 		default:
 			return ErrStale
 		}
+		state := "pending"
+		if current.Stage == Cancelled {
+			state = "acknowledged"
+		}
 		var exact bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_claim_cancellations WHERE operation_id=? AND request_id=? AND payload=? AND signature=? AND state='pending')`, v.OperationID, item.RequestID, item.Proof.Payload, item.Proof.Signature).Scan(&exact); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_claim_cancellations WHERE operation_id=? AND request_id=? AND payload=? AND signature=? AND state=?)`, v.OperationID, item.RequestID, item.Proof.Payload, item.Proof.Signature, state).Scan(&exact); err != nil {
 			return err
 		}
 		if !exact {

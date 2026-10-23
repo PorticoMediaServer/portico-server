@@ -265,6 +265,20 @@ func (s *Service) AbandonOwnerReturnTx(ctx context.Context, tx *sql.Tx, operatio
 	return s.endOwnerReturnTx(ctx, tx, c, "superseded")
 }
 
+// CancelOwnerReturnTx ends only this live browser continuation. The installed
+// claim, managed route, linked owner and move data remain installed. Reversing
+// that installation still requires the explicit signed-leave operation.
+func (s *Service) CancelOwnerReturnTx(ctx context.Context, tx *sql.Tx, expected Principal, operation string) error {
+	c, _, err := s.currentOwnerCompletionTx(ctx, tx, expected, operation, "")
+	if err != nil {
+		return err
+	}
+	if c.phase != "installed" {
+		return ErrForbidden
+	}
+	return s.endOwnerReturnTx(ctx, tx, c, "cancelled")
+}
+
 // RetireOwnerCompletionForClaimTx composes the existing deny-only claim hook.
 // The caller has already fenced this exact claim in the same writer. It cannot
 // retire a live claim or touch a successor's family; no positive owner proof or

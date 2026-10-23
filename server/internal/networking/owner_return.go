@@ -12,6 +12,33 @@ import (
 	"portico.local/server/internal/serverreturn"
 )
 
+// cancelOwnerReturn recognizes the captured operation before considering the
+// older central-claim cancellation path. Once captured, a missing callback or
+// stale guard refuses; it can never fall through to CancelClaim.
+func (h *ClaimHandler) cancelOwnerReturn(ctx context.Context, expected Intent, actor ClaimRequestOwner) (bool, error) {
+	g, err := h.store.tx(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer g.Rollback()
+	var captured bool
+	if err = g.Tx().QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_owner_completions WHERE operation_id=?)`, expected.OperationID).Scan(&captured); err != nil || !captured {
+		return false, err
+	}
+	if actor.CancelOwnerReturnTx == nil {
+		return true, ErrUnavailable
+	}
+	if _, err = h.store.positive(ctx, g.Tx(), expected); err != nil {
+		return true, err
+	}
+	if err = actor.CancelOwnerReturnTx(ctx, g.Tx(), expected.OperationID); err != nil {
+		return true, err
+	}
+	// The callback rechecked the exact captured owner and installed operation
+	// in this writer, then retired its family. Only the lifecycle may now commit.
+	return true, commitClaimTx(ctx, g.Commit)
+}
+
 // ownerReturnRouteTx checks real currently serving TLS and local route state.
 // The derived ID is only a comparison fence. First binding must still obtain
 // its ID from the actual installed-server-authenticated Hosted resolver.

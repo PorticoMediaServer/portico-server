@@ -36,6 +36,9 @@ type ClaimRequestOwner struct {
 	// ResolveOwnerReturn is a captured same-origin local-owner callback. It
 	// obtains the actual installed HTTPS resolver fact after installation.
 	ResolveOwnerReturn func(context.Context) error
+	// CancelOwnerReturnTx can retire only the captured installed continuation.
+	// It never authorizes cancelling the installed central claim.
+	CancelOwnerReturnTx func(context.Context, *sql.Tx, string) error
 }
 type ClaimRequestAuthorizer func(*http.Request) (ClaimRequestOwner, error)
 type ClaimExpected struct {
@@ -130,6 +133,7 @@ func (h *ClaimHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	var result ClaimStatus
+	denied := false
 	e = h.runner.Do(ctx, func(ctx context.Context) error {
 		ctx, e = guardedClaimRequest(ctx, h.store, actor.Guard)
 		if e != nil {
@@ -138,9 +142,14 @@ func (h *ClaimHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if e = checkClaimRequest(ctx); e != nil {
 			return e
 		}
-		result, e = h.handle(ctx, w, r, actor)
+		result, e = h.handle(ctx, w, r, actor, &denied)
 		if e != nil {
 			return e
+		}
+		if denied {
+			// The exact denial committed under this lifecycle lease and retired
+			// its initiating family. It cannot authorize a second positive read.
+			return nil
 		}
 		return checkClaimRequest(ctx)
 	})
@@ -181,7 +190,7 @@ func readClaimBody(w http.ResponseWriter, r *http.Request, out any) error {
 	// envelope string remains byte-for-byte unchanged after JSON string decoding.
 	return canonicalApprovalJSON(raw, out)
 }
-func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *http.Request, actor ClaimRequestOwner) (ClaimStatus, error) {
+func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *http.Request, actor ClaimRequestOwner, denied *bool) (ClaimStatus, error) {
 	owner := actor.Owner
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/networking/claim" {
 		return h.snapshot(ctx)
@@ -306,12 +315,31 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 	if r.URL.Path != "/v1/networking/claim/continue" && r.URL.Path != "/v1/networking/claim/cancel" {
 		return ClaimStatus{}, ErrInvalid
 	}
+	if r.URL.Path == "/v1/networking/claim/cancel" && expected.Stage == Installed {
+		ended, err := h.cancelOwnerReturn(ctx, expected, actor)
+		if err != nil {
+			return ClaimStatus{}, err
+		}
+		if ended {
+			*denied = true
+			return h.snapshotAfterOwnerDenial(ctx)
+		}
+	}
 	coordinator, e := NewCoordinator(expected.OperationID, h.store.audience, claimExpectedStore{Store: h.store, expected: expected}, h.transport, h.signer)
 	if e != nil {
 		return ClaimStatus{}, e
 	}
 	if r.URL.Path == "/v1/networking/claim/cancel" {
-		_, e = coordinator.Cancel(ctx)
+		if expected.Purpose == "switch" && expected.CurrentOwnerAccountID == "" && (expected.Stage == Finalizing || expected.Stage == Retrieving) {
+			// FINALIZE may already have committed remotely. Use only the
+			// original-key proof armed before it, never a fresh cancellation.
+			coordinator, e = NewCoordinator(expected.OperationID, h.store.audience, h.store, h.transport, h.signer)
+			if e == nil {
+				_, e = coordinator.ReconcilePreinstallCancellation(ctx)
+			}
+		} else {
+			_, e = coordinator.Cancel(ctx)
+		}
 	} else {
 		var next Intent
 		next, e = coordinator.Step(ctx)
@@ -330,7 +358,29 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 	if e != nil {
 		return ClaimStatus{}, e
 	}
+	if r.URL.Path == "/v1/networking/claim/cancel" {
+		// A never-installed captured switch is withdrawn locally or fenced by
+		// its original-key outbox. Only that completed denial skips the now
+		// retired family's final positive check.
+		var ended bool
+		if e = h.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_owner_completions c JOIN networking_claim_intents i ON i.operation_id=c.operation_id WHERE c.operation_id=? AND c.phase='cancelled' AND i.stage='cancelled' AND i.server_id=? AND i.local_generation=?)`, expected.OperationID, expected.ServerID, expected.LocalGeneration).Scan(&ended); e != nil {
+			return ClaimStatus{}, e
+		}
+		*denied = ended
+	}
+	if *denied {
+		return h.snapshotAfterOwnerDenial(ctx)
+	}
 	return h.snapshot(ctx)
+}
+
+// snapshotAfterOwnerDenial is reachable only after the exact captured denial
+// committed and retired the initiating family. It exposes bounded progress,
+// never new actions or signed proof. The process lifecycle remains required.
+func (h *ClaimHandler) snapshotAfterOwnerDenial(ctx context.Context) (ClaimStatus, error) {
+	status, err := h.snapshot(context.WithValue(ctx, claimRequestKey{}, nil))
+	status.Actions = []string{}
+	return status, err
 }
 func (h *ClaimHandler) expected(ctx context.Context, want ClaimExpected) (Intent, error) {
 	gated2, e := h.store.tx(ctx)
@@ -408,6 +458,9 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 			continuation.ReturnRegistration = &serverreturn.Registration{ID: registration, Origin: origin}
 		}
 		result.OwnerContinuation = &continuation
+		if continuation.Phase != "prepared" && continuation.Phase != "installed" {
+			return result, nil
+		}
 	}
 	if v.Stage == CancelPending {
 		result.Actions = []string{"continue"}
@@ -425,7 +478,7 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 			return result, nil
 		}
 		if result.OwnerContinuation != nil && result.OwnerContinuation.Phase == "installed" {
-			result.Actions = []string{"continue"}
+			result.Actions = []string{"continue", "cancel"}
 			return result, nil
 		}
 		if !v.InstallationAcknowledged {

@@ -74,6 +74,58 @@ func ownerReturnIdentity(f ownerCaptureFixture, q serverreturn.OwnerExchange) id
 	return identity.PorticoIdentity{AccountID: "account-approved", Username: "approved_owner", DisplayName: "Approved owner", Consent: "verified-unchanged-envelope-fixture", SignerKeyID: "current-document-key", Return: &identity.PorticoReturnBinding{Purpose: "switch", InstallationID: q.InstallationID, RegistrationID: q.RegistrationID, OperationID: f.intent.OperationID, ClaimGeneration: 1, CredentialGeneration: 1, ExpiresAt: time.Now().Add(45 * time.Second)}}
 }
 
+func TestOwnerReturnCancellationRetiresOnlyInstalledContinuation(t *testing.T) {
+	for _, rollback := range []bool{false, true} {
+		t.Run(map[bool]string{false: "cancel", true: "callback rollback"}[rollback], func(t *testing.T) {
+			ctx := context.Background()
+			f, p, q, route := ownerReturnFixture(t)
+			bindOwnerReturn(t, f, p, route)
+			callbackErr := errors.New("retirement callback refused")
+			if rollback {
+				f.s.OnFamilyRevokedTx = func(context.Context, *sql.Tx, identity.FamilyState) error { return callbackErr }
+			}
+			cancel := func(operation string) error {
+				return dbwork.WithWriteTx(ctx, f.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+					return f.s.CancelOwnerReturnTx(ctx, tx, p, operation)
+				})
+			}
+			if err := cancel(identity.Token()); err == nil {
+				t.Fatal("different operation cancelled current continuation")
+			}
+			if err := cancel(f.intent.OperationID); rollback {
+				if !errors.Is(err, callbackErr) {
+					t.Fatal("retirement failure ignored", err)
+				}
+				if _, err = f.s.OwnerClaimAuthority(ctx, f.bearer); err != nil {
+					t.Fatal("failed denial spent continuation", err)
+				}
+				f.s.OnFamilyRevokedTx = nil
+				if err = cancel(f.intent.OperationID); err != nil {
+					t.Fatal("cancel retry", err)
+				}
+			} else if err != nil {
+				t.Fatal("cancel", err)
+			}
+			var phase, kind, claim, link string
+			var revoked, enabled bool
+			var credentials, outbox, challenges int
+			err := f.db.QueryRow(`SELECT c.phase,s.sign_in_kind,i.stage,l.hosted_account_id,a.revoked,r.enabled,(SELECT count(*) FROM networking_claim_credentials),(SELECT count(*) FROM networking_claim_cancellations),(SELECT count(*) FROM hosted_identity_challenges) FROM identity_owner_completions c JOIN identity_state s JOIN networking_claim_intents i ON i.operation_id=c.operation_id JOIN account_portico_links l ON l.account_id=c.owner_id JOIN authorization_session_families a ON a.id=c.family_id JOIN identity_managed_route r`).Scan(&phase, &kind, &claim, &link, &revoked, &enabled, &credentials, &outbox, &challenges)
+			if err != nil || phase != "cancelled" || kind != "portico" || claim != "installed" || link != "account-approved" || !revoked || !enabled || credentials != 1 || outbox != 0 || challenges != 0 {
+				t.Fatal("continuation cancellation changed installed authority", err, phase, kind, claim, revoked, enabled, credentials, outbox, challenges)
+			}
+			if _, err = f.s.OwnerClaimAuthority(ctx, f.bearer); err == nil {
+				t.Fatal("cancelled continuation restored")
+			}
+			who := ownerReturnIdentity(f, q)
+			who.Return = nil
+			in, err := f.s.PorticoSignIn(ctx, who)
+			if err != nil || in.Session == nil || in.Account.ID != f.p.AccountID {
+				t.Fatal("fresh ordinary identity lost installed owner", err)
+			}
+		})
+	}
+}
+
 func TestOwnerReturnRegistrationFreezesAndSupersedesWithoutLocalRollback(t *testing.T) {
 	f, p, _, route := ownerReturnFixture(t)
 	bindOwnerReturn(t, f, p, route)

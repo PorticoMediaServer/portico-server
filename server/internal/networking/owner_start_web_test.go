@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -113,6 +114,16 @@ func TestOwnerWebPendingFollowsAtomicCaptureAndFencesLateRevocation(t *testing.T
 	}, BindTx: func(ctx context.Context, tx *sql.Tx, op, transaction string) error {
 		return id.BindOwnerClaimTransactionTx(ctx, tx, p, op, transaction)
 	}}
+	h.authorize = func(r *http.Request) (ClaimRequestOwner, error) {
+		if r.Header.Get("Authorization") != "Bearer "+setup.Envelope.AccessToken || r.Header.Get("Origin") != "https://server.example" {
+			return ClaimRequestOwner{}, ErrClaimOwnerRequired
+		}
+		current, err := id.AuthenticateContext(r.Context(), setup.Envelope.AccessToken)
+		if err != nil || current.AccountID != p.AccountID || current.ProfileID != p.ProfileID || current.Hash != p.Hash {
+			return ClaimRequestOwner{}, ErrClaimOwnerRequired
+		}
+		return ClaimRequestOwner{Owner: LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, Guard: guard, WebOrigin: "https://server.example", OwnerStart: authority}, nil
+	}
 	stateBytes, pkce := sha256.Sum256([]byte(identity.Token())), sha256.Sum256([]byte(identity.Token()))
 	state, challenge := base64.RawURLEncoding.EncodeToString(stateBytes[:]), base64.RawURLEncoding.EncodeToString(pkce[:])
 	calls, revoke := 0, false
@@ -162,7 +173,40 @@ func TestOwnerWebPendingFollowsAtomicCaptureAndFencesLateRevocation(t *testing.T
 		})
 		return
 	}
-	out, err := begin()
+	// Exercise the actual public decoder, installation header and response. The
+	// approval watcher is independently covered; do not start a background wait
+	// against this bounded pending-only transport fixture.
+	h.webWatches.Store(v.OperationID, &webClaimWatch{})
+	t.Cleanup(func() { h.webWatches.Delete(v.OperationID) })
+	serve := func(installationHeader string) *httptest.ResponseRecorder {
+		body, err := json.Marshal(ClaimActionRequest{Expected: ClaimExpected{OperationID: v.OperationID, LocalGeneration: v.LocalGeneration, Revision: v.Revision}, OwnerStart: &ClaimOwnerStartRequest{State: state, CodeChallenge: challenge, InstallationID: installation}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest(http.MethodPost, "https://server.example/v1/networking/claim/web-approval", bytes.NewReader(body)).WithContext(ctx)
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Authorization", "Bearer "+setup.Envelope.AccessToken)
+		r.Header.Set("Origin", "https://server.example")
+		if installationHeader != "" {
+			r.Header.Set("X-Portico-Installation-Id", installationHeader)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := serve(""); w.Code != http.StatusBadRequest || calls != 0 {
+		t.Fatal("missing installation initiated private pending", w.Code, calls)
+	}
+	w := serve(installation)
+	var status ClaimStatus
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &status) != nil || status.OwnerContinuation == nil || status.OwnerContinuation.Claim == nil || status.OwnerContinuation.Start == nil {
+		t.Fatal("served owner initiation", w.Code)
+	}
+	expires, err := time.Parse(time.RFC3339Nano, status.OwnerContinuation.ExpiresAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := localWebClaim{Signed: *status.OwnerContinuation.Claim, OwnerStart: status.OwnerContinuation.Start, OwnerTransactionID: status.OwnerContinuation.TransactionID, URL: status.ApprovalURL, Code: status.ClaimCode, ExpiresAt: expires}
 	if err != nil || out.OwnerStart == nil || out.OwnerTransactionID != "actual_owner_transaction" || calls != 1 {
 		t.Fatal("initiation", err, calls)
 	}
