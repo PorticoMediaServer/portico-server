@@ -112,3 +112,14 @@ test('provider creation keeps the drawn ready step and refuses Continue after a 
   assert.equal(p.completed(), 0); assert.equal((flow.getSnapshot().error as ApiError).code, 'account_changed');
   flow.dispose();
 });
+
+test('restored provider completion never supplies return consent; explicit credential Continue does', async () => {
+  const restored = port(), reasons: (boolean | undefined)[] = [];
+  restored.value.client.transaction = async () => ({transactionId: 'current', provider: 'apple', mode: 'login', status: 'verified', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: true, needsUsername: false, mfaRequired: false});
+  restored.value.client.complete = async () => ({} as never);
+  const resumed = new ServicesAuthFlow(restored.value, gesture => reasons.push(gesture));
+  await resumed.initialize(); assert.deepEqual(reasons, [false]); resumed.dispose();
+  const direct = port(), clicked = new ServicesAuthFlow(direct.value, gesture => reasons.push(gesture));
+  await clicked.signIn('account', 'memory-only-test-input', '');
+  assert.deepEqual(reasons, [false, true]); clicked.dispose();
+});
