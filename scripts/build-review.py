@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build exact published server MAIN and web-next on the temporary Netcup runner."""
+"""Build exact published server MAIN and web-next on the temporary remote runner."""
 import argparse
 import base64
 from pathlib import Path
@@ -18,6 +18,7 @@ def public_root(path):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('commit')
+    p.add_argument('--web-only', action='store_true', help='build only the web client for a compatible existing server')
     p.add_argument('--host', choices=['netcup', 'contabo'], default='netcup')
     p.add_argument('--repo', required=True, type=Path)
     p.add_argument('--output', required=True, type=Path)
@@ -41,8 +42,9 @@ def main():
     build = ['bash', '-c', 'set -euo pipefail; export GOMAXPROCS=2 GOMEMLIMIT=1400MiB GOTOOLCHAIN="$1"; '
              'go version; go build -p=2 -tags release -trimpath -buildvcs=false -mod=readonly '
              '-ldflags "$2" -o "$PORTICO_RUNNER_OUTPUT/portico-server" ./cmd/server', 'review', 'go' + go, flags]
-    subprocess.run(common + ['--lane', 'release-server', '--cwd', 'server', '--output', str(a.output / 'server'),
-                             '--artifact', 'portico-server', '--artifact-output', str(a.artifacts), '--'] + build, check=True)
+    if not a.web_only:
+        subprocess.run(common + ['--lane', 'release-server', '--cwd', 'server', '--output', str(a.output / 'server'),
+                                 '--artifact', 'portico-server', '--artifact-output', str(a.artifacts), '--'] + build, check=True)
     host = {'netcup': 'portico-runner-g12', 'contabo': 'portico-runner'}[a.host]
     remote_artifact = '/home/runner/work/artifacts/release-r40/' + a.commit + '-web'
     web_script = """set -euo pipefail
