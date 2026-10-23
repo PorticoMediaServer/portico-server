@@ -88,20 +88,21 @@ const (
 // HardwareProbe is the cached result of one bounded encode. NativeFilters says
 // whether the backend's own tone-map/scale filters ran, not merely its encoder.
 type HardwareProbe struct {
-	DecodeCodecs     map[string]bool `json:"-"`
-	SelectedDeviceID string          `json:"-"`
-	Backend          HardwareBackend `json:"backend"`
-	Available        bool            `json:"available"`
-	Reason           string          `json:"reason"`
-	Encoder          string          `json:"encoder,omitempty"`
-	NativeFilters    bool            `json:"nativeFilters"`
-	ScaleFilters     bool            `json:"scaleFilters"`
-	ToneMapFilters   bool            `json:"toneMapFilters"`
-	OutputEncoders   map[string]bool `json:"outputEncoders,omitempty"`
-	OutputQuality    map[string]bool `json:"outputQuality,omitempty"`
-	Device           string          `json:"device,omitempty"`
-	Identity         string          `json:"identity"`
-	DurationMS       int64           `json:"durationMs"`
+	DeinterlaceFilters bool            `json:"-"`
+	DecodeCodecs       map[string]bool `json:"-"`
+	SelectedDeviceID   string          `json:"-"`
+	Backend            HardwareBackend `json:"backend"`
+	Available          bool            `json:"available"`
+	Reason             string          `json:"reason"`
+	Encoder            string          `json:"encoder,omitempty"`
+	NativeFilters      bool            `json:"nativeFilters"`
+	ScaleFilters       bool            `json:"scaleFilters"`
+	ToneMapFilters     bool            `json:"toneMapFilters"`
+	OutputEncoders     map[string]bool `json:"outputEncoders,omitempty"`
+	OutputQuality      map[string]bool `json:"outputQuality,omitempty"`
+	Device             string          `json:"device,omitempty"`
+	Identity           string          `json:"identity"`
+	DurationMS         int64           `json:"durationMs"`
 }
 
 type backendSpec struct {
@@ -459,10 +460,12 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 			}
 		}
 		out.DecodeCodecs = d.probeDecodeCodecs(ctx, executable, backend, device, timeout)
+		out.DeinterlaceFilters = d.probeDeinterlace(ctx, executable, spec, backend, device, timeout)
 	}
 	if ctx.Err() != nil {
 		out.Available, out.Reason = false, ProbeTimedOut
 		out.OutputEncoders, out.OutputQuality, out.DecodeCodecs = nil, nil, nil
+		out.DeinterlaceFilters = false
 		return out // Cancelled/incomplete observations never enter the cache.
 	}
 	d.mu.Lock()
@@ -816,6 +819,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 				native = false
 			}
 		}
+		useNativeDeinterlace := native && r.Deinterlace && r.Probe.DeinterlaceFilters && nativeDeinterlace(backend) != "" && r.MaxFrameRate == 0
 		decode := ExecutionSoftware
 		qualifiedDecode := !r.SoftwareDecode && !r.DisableHardwareDecode && r.Probe.DecodeCodecs[hardwareDecodeKey(r.SourceVideoCodec, r.SourceBitDepth)]
 		if backend != BackendSoftware && spec.device != nil {
@@ -830,14 +834,14 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		}
 		filters := []string{}
 		hardwareFrames := decode == ExecutionHardware
-		if hardwareFrames && (!native || r.Deinterlace || r.MaxFrameRate > 0) {
+		if hardwareFrames && (!native || r.Deinterlace && !useNativeDeinterlace || r.MaxFrameRate > 0) {
 			filters = append(filters, "hwdownload", "format="+hardwareDownloadFormat(r.SourceBitDepth))
 			hardwareFrames = false
 		}
 		// Deinterlacing and the frame-rate ceiling run on system frames, ahead of
 		// any upload, so they are the same graph on every backend. Only frames the
 		// decoder flags as interlaced are touched: mixed content stays sharp.
-		if r.Deinterlace {
+		if r.Deinterlace && !useNativeDeinterlace {
 			filter := "yadif"
 			if r.Toolchain != nil {
 				if r.Toolchain.Filters["bwdif"] {
@@ -854,6 +858,9 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		pre := len(filters)
 		toneExecution, scaleExecution := ExecutionSoftware, ExecutionSoftware
 		if native {
+			if useNativeDeinterlace {
+				filters = append(filters, nativeDeinterlace(backend))
+			}
 			if r.ToneMap {
 				filters = append(filters, spec.toneMap(algorithm))
 				toneExecution = ExecutionHardware
@@ -994,7 +1001,11 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		}
 		out.Stages = append(out.Stages, HardwareStage{StageDecode, decode})
 		if r.Deinterlace {
-			out.Stages = append(out.Stages, HardwareStage{StageDeinterlace, ExecutionSoftware})
+			execution := ExecutionSoftware
+			if useNativeDeinterlace {
+				execution = ExecutionHardware
+			}
+			out.Stages = append(out.Stages, HardwareStage{StageDeinterlace, execution})
 		}
 		if r.ToneMap {
 			out.Stages = append(out.Stages, HardwareStage{StageToneMap, toneExecution})
