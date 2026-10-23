@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -129,22 +130,28 @@ func TestRepairCapabilitiesModeHTTP(t *testing.T) {
 			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &caps) != nil {
 				t.Fatal("actual capabilities route")
 			}
-			hasPassword := false
+			hasPassword, hasPortico := false, false
 			for _, m := range caps.Methods {
 				if m == "password" {
 					hasPassword = true
 				}
 				if m == "hosted" {
-					t.Fatal("unconfigured claim advertised account sign-in")
+					hasPortico = true
 				}
 			}
-			if hasPassword != (mode == "local") || caps.ServerName == "" || caps.SetupRequired != (mode == "fresh" || strings.HasPrefix(mode, "pending")) {
+			// Canonical selected kind describes the sign-in family; an unrelated
+			// Hosted configuration or claim observation cannot replace it. An
+			// unfinished Portico setup still has no usable member sign-in method.
+			if hasPassword != (mode == "local") || hasPortico != (mode == "hosted") || caps.HostedAttach != (mode != "local") || caps.ServerName == "" || caps.SetupRequired != (mode == "fresh" || strings.HasPrefix(mode, "pending")) {
 				t.Fatal("method/mode/setup facts")
 			}
 			if mode == "local" || mode == "hosted" {
 				_, e = id.DirectLogin(context.Background(), "owner", "Local-long-password")
 				if (e == nil) != (mode == "local") {
 					t.Fatal("advertised password disagrees with actual authority")
+				}
+				if mode == "hosted" && !errors.Is(e, identity.ErrSignInKindPortico) {
+					t.Fatal("Portico password refusal lost its kind fence", e)
 				}
 			}
 			if strings.Contains(w.Body.String(), "fixture-portico-owner") || strings.Contains(w.Body.String(), "owner@") {

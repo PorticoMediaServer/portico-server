@@ -52,13 +52,9 @@ func (s *Service) PINRecovery(ctx context.Context, bearer string) (PINRecoveryMe
 	return out, nil
 }
 
-// Hosted reports whether this server signs people in with Portico Accounts,
-// which is what its own sign-in and invitation pages ask before offering that
-// sign-in. The answer is whether the server's claim is installed: a Portico
-// Account can only sign in to a server Hosted knows, and Hosted knows a
-// server by its claim, however the server was first set up. A server set up
-// for direct sign-in and never claimed answers false and is never shown the
-// Portico Account hand-off.
+// Hosted reports the canonical selected sign-in kind. Claim, route and Services
+// availability are separate authorities; none can introduce a password fallback
+// or turn a Local server into a Portico sign-in producer.
 func (s *Service) Hosted() bool {
 	kind, err := s.SignInKind(context.Background())
 	return err == nil && kind == SignInPortico
