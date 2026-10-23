@@ -95,32 +95,16 @@ func (s *Service) ExchangeRegisteredReturn(ctx context.Context, q RegisteredRetu
 	return s.verifyRegisteredReturn(ctx, grant.Assertion, q)
 }
 func (s *Service) verifyRegisteredReturn(ctx context.Context, signed Signed, q RegisteredReturnExchange) (identity.PorticoIdentity, error) {
-	var none identity.PorticoIdentity
-	raw, e := s.verifyEnvelope(ctx, signed)
-	if e != nil || len(raw) > 8192 {
-		return none, identity.ErrUnauthorized
-	}
-	var c serverReturnAssertion
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.DisallowUnknownFields()
-	if d.Decode(&c) != nil {
-		return none, identity.ErrUnauthorized
-	}
-	encoded, _ := json.Marshal(c)
-	if !bytes.Equal(encoded, raw) {
-		return none, identity.ErrUnauthorized
+	who, nonce, e := s.parseRegisteredReturn(ctx, signed, q)
+	if e != nil {
+		return identity.PorticoIdentity{}, e
 	}
 	now := time.Now()
-	if c.Kind != "portico.server-return.v1" || c.ServerID != s.identity.ID() || c.AccountID == "" || c.Username == "" || c.Challenge != q.ServerChallenge || c.InstallationID != q.InstallationID || c.RegistrationID != q.RegistrationID || c.Purpose != q.Purpose || len(c.Nonce) < 22 || !c.ExpiresAt.After(now) || c.IssuedAt.After(now.Add(time.Minute)) || !c.ExpiresAt.After(c.IssuedAt) || c.ExpiresAt.Sub(c.IssuedAt) > time.Minute {
-		return none, identity.ErrUnauthorized
-	}
-	consent, _ := json.Marshal(signed)
-	who := identity.PorticoIdentity{AccountID: c.AccountID, Username: c.Username, DisplayName: c.DisplayName, Email: c.Email, Consent: string(consent), SignerKeyID: signed.KeyID, Return: &identity.PorticoReturnBinding{ExpiresAt: c.ExpiresAt, Purpose: c.Purpose, InstallationID: c.InstallationID, RegistrationID: c.RegistrationID, OperationID: c.ClaimOperationID, ClaimGeneration: c.ClaimGeneration, CredentialGeneration: c.CredentialGeneration, CurrentOwnerAccountID: c.CurrentOwnerAccountID, PreviousOwnerRole: c.PreviousOwnerRole}}
 	e = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
 		if e := identity.CheckPorticoReturnTx(ctx, tx, who); e != nil {
 			return e
 		}
-		result, e := tx.ExecContext(ctx, `DELETE FROM hosted_identity_challenges WHERE challenge_hash=? AND installation_id=? AND expires_ms>?`, identity.Digest(c.Challenge), q.InstallationID, now.UnixMilli())
+		result, e := tx.ExecContext(ctx, `DELETE FROM hosted_identity_challenges WHERE challenge_hash=? AND installation_id=? AND expires_ms>?`, identity.Digest(q.ServerChallenge), q.InstallationID, now.UnixMilli())
 		if e != nil {
 			return e
 		}
@@ -128,7 +112,7 @@ func (s *Service) verifyRegisteredReturn(ctx context.Context, signed Signed, q R
 		if n != 1 {
 			return identity.ErrUnauthorized
 		}
-		result, e = tx.ExecContext(ctx, `INSERT INTO hosted_identity_nonces(nonce,expires_ms) VALUES(?,?) ON CONFLICT(nonce) DO NOTHING`, c.Nonce, c.ExpiresAt.UnixMilli())
+		result, e = tx.ExecContext(ctx, `INSERT INTO hosted_identity_nonces(nonce,expires_ms) VALUES(?,?) ON CONFLICT(nonce) DO NOTHING`, nonce, who.Return.ExpiresAt.UnixMilli())
 		if e != nil {
 			return e
 		}
@@ -139,7 +123,35 @@ func (s *Service) verifyRegisteredReturn(ctx context.Context, signed Signed, q R
 		return identity.CheckPorticoReturnTx(ctx, tx, who)
 	})
 	if e != nil {
-		return none, e
+		return identity.PorticoIdentity{}, e
 	}
 	return who, nil
+}
+
+// parseRegisteredReturn verifies the unchanged signed producer document. It
+// deliberately spends nothing: owner completion must spend proof and admit
+// the exact bound owner together in its final identity writer.
+func (s *Service) parseRegisteredReturn(ctx context.Context, signed Signed, q RegisteredReturnExchange) (identity.PorticoIdentity, string, error) {
+	var none identity.PorticoIdentity
+	raw, e := s.verifyEnvelope(ctx, signed)
+	if e != nil || len(raw) > 8192 {
+		return none, "", identity.ErrUnauthorized
+	}
+	var c serverReturnAssertion
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.DisallowUnknownFields()
+	if d.Decode(&c) != nil {
+		return none, "", identity.ErrUnauthorized
+	}
+	encoded, _ := json.Marshal(c)
+	if !bytes.Equal(encoded, raw) {
+		return none, "", identity.ErrUnauthorized
+	}
+	now := time.Now()
+	if c.Kind != "portico.server-return.v1" || c.ServerID != s.identity.ID() || c.AccountID == "" || c.Username == "" || c.Challenge != q.ServerChallenge || c.InstallationID != q.InstallationID || c.RegistrationID != q.RegistrationID || c.Purpose != q.Purpose || len(c.Nonce) < 22 || !c.ExpiresAt.After(now) || c.IssuedAt.After(now.Add(time.Minute)) || !c.ExpiresAt.After(c.IssuedAt) || c.ExpiresAt.Sub(c.IssuedAt) > time.Minute {
+		return none, "", identity.ErrUnauthorized
+	}
+	consent, _ := json.Marshal(signed)
+	who := identity.PorticoIdentity{AccountID: c.AccountID, Username: c.Username, DisplayName: c.DisplayName, Email: c.Email, Consent: string(consent), SignerKeyID: signed.KeyID, Return: &identity.PorticoReturnBinding{ExpiresAt: c.ExpiresAt, Purpose: c.Purpose, InstallationID: c.InstallationID, RegistrationID: c.RegistrationID, OperationID: c.ClaimOperationID, ClaimGeneration: c.ClaimGeneration, CredentialGeneration: c.CredentialGeneration, CurrentOwnerAccountID: c.CurrentOwnerAccountID, PreviousOwnerRole: c.PreviousOwnerRole}}
+	return who, c.Nonce, nil
 }

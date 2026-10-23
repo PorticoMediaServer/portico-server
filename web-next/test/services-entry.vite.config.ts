@@ -1,19 +1,16 @@
-/** Isolated proof input. Settings remains the writer of the actual shared main/Vite selection. */
+/** Compatibility wrapper around the actual production input; no second entry selector. */
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import type {Plugin} from 'vite';
+import {defineConfig} from 'vite';
 import base from '../vite.config';
 
 const scratch = process.env.TMPDIR;
 if (!scratch || !path.isAbsolute(scratch)) throw new Error('TMPDIR must name the owned build scratch.');
-const selectEntry: Plugin = {
-  name: 'services-entry-proof-only',
-  transformIndexHtml: {order: 'pre', handler: html => html.replace('/src/main.tsx', '/src/services/main.tsx')},
-};
-export default {
-  ...base,
+export default defineConfig(async env => {
+  const config = await (typeof base === 'function' ? base(env) : base);
+  return {
+  ...config,
   root: fileURLToPath(new URL('../', import.meta.url)),
   cacheDir: path.join(scratch, 'services-vite-cache'),
-  plugins: [...(base.plugins ?? []), selectEntry],
-  build: {...base.build, outDir: path.join(scratch, 'services-dist'), emptyOutDir: true, manifest: true},
-};
+  build: {...config.build, outDir: path.join(scratch, 'services-dist'), emptyOutDir: true, manifest: true},
+}; });
