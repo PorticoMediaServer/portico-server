@@ -4,7 +4,8 @@ import type {ReaderMountAuthority} from './mount';
 
 export type ReadBindingContext = Readonly<{
   api: Pick<HttpLocalApi, 'reading'>; session: () => Pick<LocalSession, 'viewer' | 'sessionFamilyId'>;
-  isCurrent: () => boolean; preferences?: ReadPreferenceSource; facts: Readonly<{preferences: PreferenceSnapshot}>;
+  isCurrent: () => boolean; preferences?: Omit<ReadPreferenceSource, 'getSnapshot'> & Readonly<{getSnapshot: () => PreferenceSnapshot | undefined}>;
+  facts: Readonly<{preferences: PreferenceSnapshot}>;
 }>;
 export type ReadBindings = Readonly<{
   client: ReadingClient; authority: ReaderMountAuthority; preferences: ReadPreferenceSource;
