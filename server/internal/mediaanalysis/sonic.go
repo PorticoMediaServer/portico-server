@@ -186,7 +186,7 @@ func (s *Service) QueueSonicRefresh(ctx context.Context) error {
 	if !s.SonicCanAttempt() {
 		return nil
 	}
-	model := s.options.Sonic.Identity()
-	_, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `INSERT INTO inventory_policy_pending(library_id,revision) SELECT l.id,p.revision FROM libraries l JOIN library_scan_policies p ON p.library_id=l.id WHERE l.kind='music' AND p.tier<>'file_list_only' AND COALESCE((SELECT enabled FROM library_sonic_settings WHERE library_id=l.id),1)=1 AND EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources src ON src.id=o.source_id WHERE src.library_id=l.id AND src.enabled=1 AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=src.incarnation AND EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_asset_links link INDEXED BY catalog_asset_links_asset ON link.asset_id=a.id JOIN catalog_entities item ON item.id=link.entity_id WHERE a.token=o.asset_id AND item.kind=7 AND item.retired=0) AND NOT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results r ON r.id=h.result_id JOIN music_sonic_embeddings e ON e.result_id=r.id WHERE h.object_id=o.id AND h.source_revision=o.revision AND h.stage='sonic' AND r.retired_ms=0 AND r.root_incarnation=src.incarnation AND r.configuration_generation=src.generation AND e.model_id=? AND e.model_version=? AND e.model_sha256=?)) ON CONFLICT(library_id) DO UPDATE SET revision=excluded.revision`, model.ID, model.Version, model.SHA256)
-	return err
+	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+		return catalog.QueueSonicRefreshTx(ctx, tx)
+	})
 }

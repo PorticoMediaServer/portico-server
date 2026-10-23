@@ -216,3 +216,23 @@ func (s *Service) ListeningSimilarBySound(viewer Viewer, id string, limit int) (
 	out.BySound = true
 	return out, nil
 }
+
+// QueueSonicRefreshTx marks only the existing inventory policy queue. A single
+// analyzed song in a shared CUE file cannot hide another missing song/range.
+// It does not read recordings, start jobs or grant source authority.
+func QueueSonicRefreshTx(ctx context.Context, tx *sql.Tx) error {
+	if tx == nil {
+		return ErrAdminQuery
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO inventory_policy_pending(library_id,revision)
+	 SELECT configured.id,policy.revision FROM libraries configured
+	 JOIN library_scan_policies policy ON policy.library_id=configured.id
+	 JOIN catalog_libraries library ON library.library_id=configured.id AND library.retired=0
+	 WHERE configured.kind='music' AND policy.tier<>'file_list_only'
+	 AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=configured.id),1)=1
+	 AND EXISTS(SELECT 1 FROM catalog_entities item WHERE item.library_id=library.id AND item.kind=7 AND item.retired=0
+	 AND EXISTS(SELECT 1 FROM catalog_item_availability available WHERE available.entity_id=item.id AND available.available=1 AND available.retired=0)
+	 AND `+currentSonicVectorSQL+` IS NULL)
+	 ON CONFLICT(library_id) DO UPDATE SET revision=excluded.revision`, sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256)
+	return err
+}

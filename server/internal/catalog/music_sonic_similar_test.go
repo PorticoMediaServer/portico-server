@@ -44,6 +44,19 @@ func TestMusicSonicMeansUseOnlyCurrentProfilePermittedSongs(t *testing.T) {
 	sonicStoredFixture(t, c, hidden, 0, 1)
 	c.Attributes(hidden.ID, "label", "private")
 	c.Drain()
+	queue := func() int {
+		t.Helper()
+		c.Exec(`DELETE FROM inventory_policy_pending`)
+		c.Write(func(ctx context.Context, tx *sql.Tx) error { return QueueSonicRefreshTx(ctx, tx) })
+		var count int
+		if err := c.DB.QueryRow(`SELECT count(*) FROM inventory_policy_pending WHERE library_id='music'`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	if queue() != 0 {
+		t.Fatal("complete library requeued")
+	}
 	s := New(c.DB)
 	read := func(viewer Viewer, kind int) []sonicGroup {
 		t.Helper()
@@ -72,6 +85,9 @@ func TestMusicSonicMeansUseOnlyCurrentProfilePermittedSongs(t *testing.T) {
 		t.Fatal("artist mean crossed visibility", artists)
 	}
 	c.Exec(`UPDATE music_sonic_embeddings SET model_sha256='old' WHERE entity_id=?`, one.ID)
+	if queue() != 1 {
+		t.Fatal("one completed song hid a missing current-model song")
+	}
 	if actual := read(viewer, 6); len(actual) != 0 {
 		t.Fatal("partially analyzed album claimed a current mean", actual)
 	}
@@ -82,6 +98,9 @@ func TestMusicSonicMeansUseOnlyCurrentProfilePermittedSongs(t *testing.T) {
 	}
 	c.Exec(`UPDATE inventory_objects SET revision='r' WHERE id=?`, fmt.Sprint(one.ID))
 	c.Exec(`INSERT INTO library_sonic_settings(library_id,enabled,revision) VALUES('music',0,1)`)
+	if queue() != 0 {
+		t.Fatal("disabled library requeued")
+	}
 	if actual := read(viewer, 6); len(actual) != 0 {
 		t.Fatal("off library influenced sound selection", actual)
 	}
