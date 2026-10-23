@@ -188,6 +188,10 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	if err != nil {
 		return nil, err
 	}
+	slot.capabilities, err = sourceBackendCapabilities(backend, host)
+	if err != nil {
+		return nil, err
+	}
 	var proxy *remotemedia.PolicyProxy
 	if backend == "sftp" || backend == "smb" {
 		// Direct native-scheme approval from this saved source only. Rechecks
