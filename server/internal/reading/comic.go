@@ -36,7 +36,17 @@ func OpenComic(ctx context.Context, r io.ReaderAt, size int64) (*Comic, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Comic{archive: a, Metadata: Metadata{Direction: "ltr"}}
+	return openComicArchive(ctx, a)
+}
+func OpenSequentialComic(ctx context.Context, source SequentialSource) (*Comic, error) {
+	a, err := openSequentialArchive(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	return openComicArchive(ctx, a)
+}
+func openComicArchive(ctx context.Context, a *archive) (*Comic, error) {
+	c := &Comic{archive: a}
 	for _, name := range a.order {
 		switch extension(name) {
 		case ".jpg", ".jpeg", ".png", ".webp":
@@ -57,6 +67,9 @@ func OpenComic(ctx context.Context, r io.ReaderAt, size int64) (*Comic, error) {
 			return nil, err
 		}
 		c.Metadata.Title, c.Metadata.Author, c.Metadata.Language = info.Title, info.Writer, info.LanguageISO
+		if len(c.Metadata.Title) > 4096 || len(c.Metadata.Author) > 4096 || len(c.Metadata.Language) > 64 {
+			return nil, ErrLimit
+		}
 		if info.Manga == "YesAndRightToLeft" {
 			c.Metadata.Direction = "rtl"
 		}

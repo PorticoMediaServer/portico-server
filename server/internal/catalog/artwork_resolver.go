@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"strconv"
 )
 
 type artworkTarget struct {
@@ -15,6 +16,19 @@ type artworkTarget struct {
 // itself), never inherited: an episode without one has none, and clients draw
 // a placeholder rather than repeat the show's art (Spec — Page Content §0.2).
 type resolvedArtwork struct{ PosterURL, BackdropURL, LogoURL, StillURL string }
+
+// selectedArtworkURL describes bytes already selected by an authorized read.
+// The version is the full selected object, independent of the requested width.
+func selectedArtworkURL(kind, id, role, subject, digest string, width int) string {
+	if digest == "" {
+		return ""
+	}
+	path := "/v1/metadata/" + url.PathEscape(kind) + "/" + url.PathEscape(id) + "/art/" + role + "?v=" + url.QueryEscape(digest) + "&w=" + strconv.Itoa(width)
+	if subject != "" {
+		path += "&subject=" + url.QueryEscape(subject)
+	}
+	return path
+}
 
 // resolveArtwork resolves a page, including container inheritance, in one read.
 // Targets have already passed the caller's visibility checks; no library scan
@@ -40,13 +54,13 @@ func (s *Service) resolveArtworkContext(ctx context.Context, targets []artworkTa
 		if err = rows.Scan(&t.Kind, &t.ID, &kind, &id, &role, &digest); err != nil {
 			return nil, err
 		}
-		width := "400"
+		width := 400
 		if role == "backdrop" {
-			width = "1920"
+			width = 1920
 		} else if role == "logo" || role == "still" || role == "thumbnail" {
-			width = "800"
+			width = 800
 		}
-		path := "/v1/metadata/" + url.PathEscape(kind) + "/" + url.PathEscape(id) + "/art/" + role + "?v=" + url.QueryEscape(digest) + "&w=" + width
+		path := selectedArtworkURL(kind, id, role, "", digest, width)
 		art := out[t]
 		if role == "backdrop" {
 			art.BackdropURL = path
