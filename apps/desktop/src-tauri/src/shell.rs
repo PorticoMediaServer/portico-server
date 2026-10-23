@@ -19,6 +19,44 @@ fn caller(window:&WebviewWindow)->Result<()> {
     if window.state::<ShutdownState>().0.load(Ordering::Acquire)!=0{return Err(Error::EngineUnavailable)}
     boundary::local_origin(window.label(),window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str(),cfg!(debug_assertions))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{download_commands::{Bytes,DownloadOperation as O,DownloadReply as R,DownloadsSession,LocalLoadRequest,LocalSelection,ViewerScope},download_store::DownloadTitle,mpv::VideoTarget};
+    #[test]
+    #[ignore="requires explicit native libmpv and an owned PCM fixture"]
+    fn verified_local_load_ack_and_journal_follow_actual_native_observations(){
+        let bytes=std::fs::read(std::env::var_os("PORTICO_TEST_PCM_FIXTURE").expect("owned PCM fixture")).unwrap();
+        let sha=ring::digest::digest(&ring::digest::SHA256,&bytes).as_ref().iter().map(|b|format!("{b:02x}")).collect::<String>();
+        let root=std::env::temp_dir().join(format!("desktop-local-real-{}",std::process::id()));
+        let mut session=DownloadsSession::open(&root).unwrap();
+        let scope=ViewerScope{authority:"local".into(),server_id:"server".into(),account_id:"account".into(),profile_id:"profile".into(),session_family_id:"family".into()};
+        let lease=session.bind(scope.clone()).unwrap();
+        let R::Entry(mut row)=session.execute(&lease,O::Enroll{preparation_id:"preparation".into(),item_id:"item".into(),quality:"original".into(),sha256:sha.clone(),bytes:bytes.len() as u64,
+            title:DownloadTitle{kind:"song".into(),title:"Owned PCM".into(),artist:String::new(),parent_id:String::new(),parent_title:String::new(),group_id:String::new(),group_title:String::new(),group_number:None,number:None,year:2026,duration_ms:2000,on_server:false}}).unwrap()else{panic!("native enrollment")};
+        for chunk in bytes.chunks(262144){let R::Entry(next)=session.execute(&lease,O::Append{id:row.id.clone(),expected_revision:row.revision,offset:row.bytes_done,bytes:Bytes(chunk.to_vec())}).unwrap()else{panic!("native append")};row=next;}
+        let R::Entry(row)=session.execute(&lease,O::Seal{id:row.id,expected_revision:row.revision}).unwrap()else{panic!("native seal")};
+        let viewer=crate::download_receipt::DownloadViewer{authority:scope.authority.clone(),server_id:scope.server_id.clone(),account_id:scope.account_id.clone(),profile_id:scope.profile_id.clone()};
+        let (receipt,key)=crate::download_receipt::tests::signed(&viewer,&sha,bytes.len() as u64);
+        session.execute(&lease,O::ReceiptKey{key_id:"key".into(),public_key:key}).unwrap();session.execute(&lease,O::Receipt{id:row.id.clone(),envelope:receipt}).unwrap();
+        let R::LocalQueue(prepared)=session.execute(&lease,O::PrepareLocalQueue{selection:LocalSelection::Entry{entry_id:row.id.clone(),expected_revision:row.revision}}).unwrap()else{panic!("native preparation")};
+        let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native libmpv");
+        let engine=Mpv::new(Api::open(std::path::Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
+        let request=LocalLoadRequest{preparation_id:prepared.preparation_id,local_source_id:prepared.items[0].local_source_id.clone(),generation:1,start_position_ms:0.0,autoplay:true};
+        let ack=session.load_local(&lease,&request,&engine.observation(),|path|engine.load_local(path,1,0.0,true)).unwrap();
+        assert_eq!(ack.artifact.sha256,sha);assert_eq!(ack.artifact.bytes,bytes.len() as u64);
+        let until=std::time::Instant::now()+std::time::Duration::from_secs(5);
+        let observed=loop{let reading=engine.observation();if reading.state=="playing"&&reading.position_ms>10.0{break reading}assert_ne!(reading.state,"error");assert!(std::time::Instant::now()<until,"native local file did not advance");std::thread::sleep(std::time::Duration::from_millis(10));};
+        session.record_observation(&observed,true).unwrap();
+        let R::PendingPlays(plays)=session.execute(&lease,O::PendingPlays{}).unwrap()else{panic!("native journal")};
+        assert_eq!(plays.len(),1);assert_eq!(plays[0].play_id,ack.play_id);assert_eq!(plays[0].position_ms,observed.position_ms.round() as u64);
+        session.retire_local_load(&lease,1,&observed,||engine.execute(Command::Stop{generation:1})).unwrap();
+        assert_eq!(engine.observation().state,"idle");assert_eq!(session.active_generation(),None);
+        let result=serde_json::to_string(&ack).unwrap();assert!(!result.contains("path"));assert!(!result.contains("url"));assert!(!result.contains(root.to_str().unwrap()));
+        drop(engine);drop(session);std::fs::remove_dir_all(root).unwrap();
+    }
+}
 #[tauri::command]
 async fn desktop_network_cost(window:WebviewWindow)->Result<crate::network::NetworkCost>{
     caller(&window)?;
