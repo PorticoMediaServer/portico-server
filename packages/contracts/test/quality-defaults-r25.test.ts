@@ -16,8 +16,10 @@ test('quality defaults r25: actual item and container request schemas preserve o
   assert.equal(allowed.length,12);
   for(const quality of allowed)assert.doesNotThrow(()=>decode(name,{...body,quality}));
   for(const quality of ['','invented-quality',42,false,{},[]])assert.throws(()=>decode(name,{...body,quality}));
-  // The shared open-object decoder treats optional null as absence.
-  assert.ok(!Object.hasOwn(decode(name,{...body,quality:null}) as object,'quality'));
   assert.doesNotThrow(()=>decode(name,body));
  }
+ // Legacy open preparation objects omit optional nulls; the closed request
+ // contract rejects null. Neither decoder inserts a quality default.
+ assert.ok(!Object.hasOwn(decode('CreateDownloadPreparationsRequest',{...item,quality:null}) as object,'quality'));
+ assert.throws(()=>decode('CreateDownloadRequestRequest',{...container,quality:null}));
 });
