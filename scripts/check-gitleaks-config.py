@@ -13,15 +13,18 @@ import tempfile
 def main():
     binary = Path(sys.argv[1]).resolve()
     config = Path(".gitleaks.toml").resolve()
-    expression = "this.api,proof=this.moveProof;"
+    expression = "this.api," + "proof=this.moveProof;"
     account = "web-next/src/platform/account-entry.ts"
+    helper = "scripts/check-gitleaks-config.py"
     with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as scratch:
         root = Path(scratch)
         (root / account).parent.mkdir(parents=True)
         # Runtime-generated specimen keys never leave this disposable fixture.
-        for name in (account, "other.ts"):
+        for name in (account, "other.ts", helper):
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            first_line = 'expression = "' + expression + '"' if name == helper else expression
             (root / name).write_text(
-                expression + '\nconst apiKey="' + secrets.token_urlsafe(32) + '";\n'
+                first_line + '\nconst apiKey="' + secrets.token_urlsafe(32) + '";\n'
             )
         report = root / "findings.json"
         result = subprocess.run(
@@ -40,6 +43,7 @@ def main():
             ("generic-api-key", account, 2),
             ("generic-api-key", "other.ts", 1),
             ("generic-api-key", "other.ts", 2),
+            ("generic-api-key", helper, 2),
         }
         if actual != expected:
             print(json.dumps({"expectedLocations": sorted(expected), "actualLocations": sorted(actual)}))

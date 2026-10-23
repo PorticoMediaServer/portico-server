@@ -13,6 +13,15 @@ paths = ['''^web-next/src/platform/account-entry\.ts$''']
 regexTarget = "match"
 regexes = ['''^this\.api,proof=this\.moveProof;$''']
 
+# Earlier commits of the regression fixture quote that same non-secret code.
+# Keep the exception on that one literal line; real keys in the helper still fail.
+[[rules.allowlists]]
+description = "Literal account assignment in its scanner regression fixture"
+condition = "AND"
+paths = ['''^scripts/check-gitleaks-config\.py$''']
+regexTarget = "line"
+regexes = ['''^\s*expression = "this\.api,proof=this\.moveProof;"$''']
+
 # Portico ships built-in application credentials for its metadata providers on
 # purpose (see THIRD-PARTY-NOTICES.md). They identify Portico to TMDB and
 # TheTVDB and are not user or server secrets.
