@@ -53,10 +53,13 @@ import (
 	"portico.local/server/internal/social"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
+	"portico.local/server/internal/telemetry"
 	"portico.local/server/internal/webhooks"
 )
 
 type Dependencies struct {
+	TelemetryContext  context.Context
+	streamTraffic     *telemetry.Traffic
 	RcloneProgram     *rcloneprogram.Status
 	StorageLayout     *storagepaths.Layout
 	ConnectionUsage   func() ConnectionUsage
@@ -271,6 +274,14 @@ func failure(w http.ResponseWriter, e error) {
 	}
 	if errors.Is(e, preparedmedia.ErrInput) || errors.Is(e, preparedmedia.ErrConflict) || errors.Is(e, preparedmedia.ErrUnavailable) || errors.Is(e, preparedmedia.ErrSourceChanged) {
 		preparedFailure(w, e)
+		return
+	}
+	if errors.Is(e, identity.ErrSignInKindPortico) || errors.Is(e, identity.ErrSignInKindLocal) {
+		code := "sign_in_kind_portico"
+		if errors.Is(e, identity.ErrSignInKindLocal) {
+			code = "sign_in_kind_local"
+		}
+		write(w, 403, map[string]any{"error": map[string]any{"code": code, "message": e.Error(), "retryable": false}})
 		return
 	}
 	status, code := 500, "internal"
@@ -722,6 +733,7 @@ func (d Dependencies) itemAccess(ctx context.Context, p identity.Principal, id s
 	return d.restrictedItem((&http.Request{}).WithContext(ctx), p, id)
 }
 func New(d Dependencies) http.Handler {
+	d.streamTraffic = &telemetry.Traffic{}
 	d.configurePlaybackEvidence()
 	if d.Storage == nil {
 		if binary, e := os.Executable(); e == nil {
@@ -795,6 +807,9 @@ func New(d Dependencies) http.Handler {
 		})
 	}
 	d.v1 = newPlaybackV1(d)
+	if d.v1 != nil {
+		d.v1.Traffic = d.streamTraffic
+	}
 	d.social = d.Social()
 	if registry, err := FoundationRegistry(d); err != nil {
 		panic(err)
@@ -878,7 +893,12 @@ func New(d Dependencies) http.Handler {
 	// maintenance document; published here it tells a scanner which servers
 	// carry a known flaw.
 	d.httpHandle(mux, "GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
-		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"]})
+		kind, err := d.Identity.SignInKind(r.Context())
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		write(w, 200, SystemInfo{ID: d.Identity.ID(), Name: d.Identity.Name(), SignIn: kind, SetupRequired: d.Identity.SetupRequired(), HostedConfigured: d.Hosted != nil && d.Hosted.Configured(), HostedAttached: d.Identity.Hosted(), Version: buildinfo.Info()["version"]})
 	})
 	d.httpHandle(mux, "GET /v1/me", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
