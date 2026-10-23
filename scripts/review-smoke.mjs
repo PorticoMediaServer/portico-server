@@ -39,8 +39,8 @@ finally {
   try {
    await page.locator('input').evaluateAll(nodes=>nodes.forEach(node=>{node.value='';node.removeAttribute('value');}));
    const document=await page.evaluate(()=>{const clone=document.documentElement.cloneNode(true);clone.querySelectorAll('input,textarea').forEach(node=>{node.removeAttribute('value');node.textContent='';});return clone.outerHTML;});
-   fs.writeFileSync(out+'/failure-dom.html',document);await page.screenshot({path:out+'/final-page.png'});
-   await Promise.allSettled(pendingResponses);console.log(JSON.stringify({diagnosis:{responses,visibility:await page.evaluate(()=>document.visibilityState),url:new URL(page.url()).origin+new URL(page.url()).pathname,title:await page.title(),console:consoleEvents,requests,failures}}));
+   fs.writeFileSync(out+'/failure-dom.html',document);
+   await Promise.allSettled(pendingResponses);console.log(JSON.stringify({diagnosis:{responses,visibility:await page.evaluate(()=>document.visibilityState),url:new URL(page.url()).origin+new URL(page.url()).pathname,title:await page.title(),console:consoleEvents,requests,failures}}));try{await page.screenshot({path:out+'/final-page.png',timeout:5000});}catch{console.log('Diagnostic screenshot unavailable; DOM and console retained.');}
   }catch{console.log('Diagnostic page unavailable after browser failure');}
  }
  if(browser)await browser.close();
