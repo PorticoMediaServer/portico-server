@@ -40,6 +40,17 @@ try{
  });
  const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++next;const timer=setTimeout(()=>{requests.delete(id);reject(new Error(`CDP timeout ${method}`));},25000);requests.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});
  const evaluate=async expression=>{const value=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(value.exceptionDetails)throw new Error(JSON.stringify(value.exceptionDetails));return value.result.value;};
+ const capture=async clip=>{
+  let previous;
+  // Establish stability independently on each side. Never choose a capture by
+  // whether it resembles the other side, and never relax the pixel comparison.
+  for(let attempt=0;attempt<4;attempt++){
+   await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+   const current=(await send('Page.captureScreenshot',{format:'png',clip,captureBeyondViewport:true})).data;
+   if(current===previous)return current;previous=current;
+  }
+  throw new Error('caption_capture_unstable');
+ };
  await send('Page.enable');await send('Runtime.enable');
  await send('Emulation.setDeviceMetricsOverride',{width:1520,height:1100,deviceScaleFactor:1,mobile:false});
  const cases=[['f2',0,'normal'],['f2s',0,'close-hover'],['f2s',1,'maximize-hover'],['f2s',2,'maximized']];
@@ -49,12 +60,12 @@ try{
   const url=new URL(reference);url.searchParams.set('f',frame);await send('Page.navigate',{url:url.href});await loaded;
   await evaluate(`document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))`);
   const target=await evaluate(`(()=>{const cap=document.querySelectorAll('#${frame} .capw')[${index}];if(!cap)throw Error('reference caption absent');const box=cap.getBoundingClientRect();if(Math.abs(box.width-138)>0.01||Math.abs(box.height-32)>0.01)throw Error('scaled reference');window.__referenceCaption=cap;return {clip:{x:box.x,y:box.y,width:box.width,height:box.height,scale:1},native:{os:'windows',focused:!cap.classList.contains('off'),fullscreen:false,maximized:cap.closest('.win').classList.contains('max'),captionHover:[...cap.children].findIndex(s=>s.classList.contains('hov'))+1,captions:{minimize:'Minimize',maximize:'Maximize',restore:'Restore',close:'Close'}}};})()`);
-  const expected=(await send('Page.captureScreenshot',{format:'png',clip:target.clip,captureBeyondViewport:true})).data;
+  const expected=await capture(target.clip);
   await evaluate(`(async()=>{const link=document.createElement('link');link.rel='stylesheet';link.href=${JSON.stringify(origin+'/caption.css')};const ready=new Promise((r,j)=>{link.onload=r;link.onerror=j;});document.head.append(link);await ready;const {mountCaption}=await import(${JSON.stringify(origin+'/caption.js')});window.__referenceCaption.style.visibility='hidden';window.__captionFixture=mountCaption(window.__referenceCaption.closest('.app'),${JSON.stringify(target.native)});await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));})()`);
   const geometry=await evaluate(`window.__captionFixture.geometry()`);
-  const styles=await evaluate(`(()=>{const original=window.__referenceCaption.children[1],actual=document.querySelector('[data-window-no-drag] button:nth-child(2)');const a=getComputedStyle(original),b=getComputedStyle(actual);const differences={};for(const property of a){if(a.getPropertyValue(property)!==b.getPropertyValue(property))differences[property]=[a.getPropertyValue(property),b.getPropertyValue(property)];}const rect=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}};return {differences,referenceSvg:rect(original.querySelector('svg')),componentSvg:rect(actual.querySelector('svg'))};})()`);
+  const styles=await evaluate(`(()=>{const original=window.__referenceCaption.children[1],actual=document.querySelector('[data-window-no-drag] button:nth-child(2)');const differences=(x,y)=>{const a=getComputedStyle(x),b=getComputedStyle(y),changed={};for(const property of a){if(a.getPropertyValue(property)!==b.getPropertyValue(property))changed[property]=[a.getPropertyValue(property),b.getPropertyValue(property)];}return changed;};const rect=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}};const a=original.querySelector('use'),b=actual.querySelector('use');return {differences:differences(original,actual),useDifferences:differences(a,b),symbolDifferences:differences(document.getElementById(a.href.baseVal.slice(1)).firstElementChild,document.getElementById(b.href.baseVal.slice(1)).firstElementChild),referenceSvg:rect(original.querySelector('svg')),componentSvg:rect(actual.querySelector('svg'))};})()`);
   if(!geometry||Object.values(geometry).some(r=>r.width!==46||r.height!==32))throw new Error('production caption hit area mismatch');
-  const actual=(await send('Page.captureScreenshot',{format:'png',clip:target.clip,captureBeyondViewport:true})).data;
+  const actual=await capture(target.clip);
   const blank=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('blank navigation timeout')),10000);events.set('Page.loadEventFired',()=>{clearTimeout(timer);resolve();});});
   await send('Page.navigate',{url:'about:blank'});await blank;
   const difference=await evaluate(`(async()=>{const load=src=>new Promise((r,j)=>{const i=new Image();i.onload=()=>r(i);i.onerror=j;i.src=src;});const [a,b]=await Promise.all([load('data:image/png;base64,${expected}'),load('data:image/png;base64,${actual}')]);document.documentElement.style.margin='0';document.body.replaceChildren();document.body.style.cssText='margin:0;display:flex;gap:0;line-height:0';document.body.append(a,b);const c=document.createElement('canvas');c.width=138;c.height=32;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(a,0,0);const x=ctx.getImageData(0,0,138,32).data;ctx.clearRect(0,0,138,32);ctx.drawImage(b,0,0);const y=ctx.getImageData(0,0,138,32).data;let pixels=0,max=0,referenceBright=0,componentBright=0;const locations=[];for(let p=0;p<x.length;p+=4){let changed=false;for(let k=0;k<4;k++){const d=Math.abs(x[p+k]-y[p+k]);max=Math.max(max,d);changed ||= d!==0;}if(changed){pixels++;if(locations.length<24)locations.push({x:p/4%138,y:Math.floor(p/4/138),reference:[...x.slice(p,p+4)],component:[...y.slice(p,p+4)]});}if(x[p]>180&&x[p+1]>180&&x[p+2]>180)referenceBright++;if(y[p]>180&&y[p+1]>180&&y[p+2]>180)componentBright++;}return {pixels,max,referenceBright,componentBright,locations};})()`);
