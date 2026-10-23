@@ -31,3 +31,13 @@ test('ordinary device intake is scrubbed before Services can start storage or ac
   assert.equal(result.invalidContinuation, false);
   assert.equal(page.hash, ''); assert.equal(calls.length, 1);
 });
+
+test('a canonical invitation is scrubbed and retained only in this document', () => {
+  const code = 'a'.repeat(32), href = 'https://web.getportico.tv/join#code=' + code + '&server=https%3A%2F%2Fserver.example';
+  const page = {href, pathname: '/join', hash: new URL(href).hash, search: '', replace() { throw new Error('no app handoff'); }};
+  const history = {state: null, replaceState: (_state: unknown, _unused: string, path?: string | URL | null) => { page.href = new URL(String(path), page.href).href; page.hash = ''; }};
+  const result = captureServicesEntry(page, history, 'https://web.getportico.tv');
+  assert.deepEqual(result.join, {code, server: 'https://server.example'});
+  assert.equal(result.invalidContinuation, false); assert.equal(page.hash, '');
+  assert.equal(captureServicesEntry(page, history, 'https://web.getportico.tv').invalidContinuation, true, 'a document opened after the scrub must require the invitation again');
+});

@@ -64,9 +64,9 @@ export function ServicesDangerAction({children, onClick, disabled = false, loadi
   return <Button className={styles.dangerAction} size={compact ? 'xs' : 'small'} onClick={onClick} disabled={disabled} loading={loading}>{children}</Button>;
 }
 
-export function ServicesWorkspace({header, account, section, onSection, onSignOut, description, actions, children}: {
+export function ServicesWorkspace({header, account, section, onSection, onSignOut, description, actions, phoneActions, unread = 0, children}: {
   header: ReactNode; account: {name: string; email?: string; initial: string}; section: ServicesSection;
-  onSection: (section: ServicesSection) => void; onSignOut: () => void; description?: ReactNode; actions?: ReactNode; children: ReactNode;
+  onSection: (section: ServicesSection) => void; onSignOut: () => void; description?: ReactNode; actions?: ReactNode; phoneActions?: ReactNode; unread?: number; children: ReactNode;
 }) {
   const selected = sections.find(item => item.id === section)!;
   return <div className={styles.workspace}>{header}<div className={styles.glow} aria-hidden="true" />
@@ -76,8 +76,9 @@ export function ServicesWorkspace({header, account, section, onSection, onSignOu
     </aside><main className={styles.pane}>
       <span className={styles.pill}><Icon name="i-person" size={16} />{t('services.workspace.title')}<span>{t('services.workspace.subtitle')}</span></span>
       <div className={styles.heading}><h2>{selected.label}</h2>{actions && <div>{actions}</div>}</div>{description && <p className={styles.lead}>{description}</p>}
-      <nav className={styles.phoneTabs} aria-label={t('services.workspace.sections')}>{sections.map(item => <button key={item.id} type="button" aria-current={item.id === section ? 'page' : undefined} onClick={() => onSection(item.id)}>{item.label}</button>)}</nav>
+      <nav className={styles.phoneTabs} aria-label={t('services.workspace.sections')}>{sections.map(item => <button key={item.id} type="button" aria-current={item.id === section ? 'page' : undefined} onClick={() => onSection(item.id)}>{item.label}{item.id === 'notifications' && unread > 0 && <span className={styles.tabCount}>{unread}</span>}</button>)}</nav>
       {children}
+      {phoneActions && <div className={styles.phoneActions}>{phoneActions}</div>}
     </main></div>
   </div>;
 }
@@ -91,6 +92,9 @@ export function ServicesWorkspaceRow({title, help, children, icon, badge}: {titl
 }
 export function ServicesRowNote({children}: {children: ReactNode}) { return <p className={styles.rowNote}>{children}</p>; }
 export function ServicesInlineFacts({items}: {items: readonly string[]}) { return <span className={styles.inlineFacts}>{items.filter(Boolean).map((item, index) => <span key={index}>{item}</span>)}</span>; }
+export function ServicesDeviceFacts({desktop, phone}: {desktop: readonly string[]; phone: readonly string[]}) {
+  return <><span className={styles.factDesktop}><ServicesInlineFacts items={desktop} /></span><span className={styles.factPhone}><ServicesInlineFacts items={phone} /></span></>;
+}
 export function ServicesBadge({children, tone = 'default'}: {children: ReactNode; tone?: 'default' | 'accent' | 'healthy'}) { return <span className={styles.badge} data-tone={tone}>{children}</span>; }
 export function ServicesEmpty({title, description, actions}: {title: ReactNode; description: ReactNode; actions?: ReactNode}) { return <div className={styles.empty}><b>{title}</b><p>{description}</p>{actions}</div>; }
 export function ServicesFeedRow({unread, icon, tone = 'blue', title, body, when, actions}: {unread: boolean; icon: IconName; tone?: 'blue' | 'green' | 'amber'; title: ReactNode; body: ReactNode; when: ReactNode; actions?: ReactNode}) {

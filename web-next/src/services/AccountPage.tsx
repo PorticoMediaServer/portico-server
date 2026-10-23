@@ -37,7 +37,7 @@ function BoundAccount({account, session, section}: {account: ServicesAccount; se
   const signOut = () => { void account.service.logout().catch(setError); };
   const header = <ServicesHeader unread={state.unread > 0} avatar={<ProfileAvatar appearance="session" initial={initial} name={name} onClick={() => select('devices')} />} />;
   const frame = (children: ReactNode, actions?: ReactNode, description?: ReactNode) => <ServicesWorkspace header={header} account={{name, email: contact, initial}} section={section}
-    onSection={select} onSignOut={signOut} actions={actions} description={description}>{error ? <HostedError error={error} /> : null}{children}</ServicesWorkspace>;
+    onSection={select} onSignOut={signOut} actions={actions} phoneActions={section === 'devices' ? actions : undefined} unread={state.unread} description={description}>{error ? <HostedError error={error} /> : null}{children}</ServicesWorkspace>;
   if (section === 'devices') return <DevicesPanel api={api} frame={(children, actions) => frame(children, actions, t('services.workspace.devicesBody'))} />;
   if (section === 'notifications') return frame(<FeedPanel feed={feed} onReviewDevices={() => select('devices')} />,
     <Button size="small" disabled={state.busy || !state.unread} onClick={() => void feed.markRead('all')}>{t('web.account.notif.markAll')}</Button>);

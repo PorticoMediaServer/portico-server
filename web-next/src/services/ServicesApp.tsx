@@ -1,5 +1,6 @@
 import {useEffect, useState, useSyncExternalStore} from 'react';
 import {createRootRouteWithContext, createRoute, createRouter, Outlet, RouterProvider} from '@tanstack/react-router';
+import type {JoinLink} from '@core/join-link.ts';
 import {IconSprite} from '../kit/Icon';
 import {StateView} from '../kit/states';
 import {ServicesAuthStage, ServicesActions, ServicesHeading, ServicesNotice} from '../kit/accounts/ServicesAuth';
@@ -13,7 +14,7 @@ import {DevicePage} from './DevicePage';
 import {ResetPage, VerifyPage} from './LinkPages';
 import {AccountPage} from './AccountPage';
 
-type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean};
+type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink};
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
 const home = createRoute({getParentRoute: () => root, path: '/', component: HomeRoute});
 const workspace = createRoute({getParentRoute: () => root, path: '/account', component: AccountRoute,
@@ -32,12 +33,12 @@ function makeRouter(context: Context) {
   return createRouter({routeTree: root.addChildren([home, workspace, device, reset, verify, claim]), context});
 }
 // This router's types stay local. The server app remains the only global TanStack Register.
-export function ServicesApp({capture, invalidContinuation}: {capture?: LinkCapture; invalidContinuation?: boolean} = {}) {
+export function ServicesApp({capture, invalidContinuation, join}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink} = {}) {
   const [value] = useState(() => {
     const captured = capture ?? captureServicesLink(location, history);
     const invalid = invalidContinuation ?? scrubUnsupportedServicesFragment(location, history);
     const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, captured);
-    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalid})};
+    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalid, join})};
   });
   useEffect(() => { void value.bootstrap.start(); return () => value.bootstrap.dispose(); }, [value]);
   return <><IconSprite /><RouterProvider router={value.router} /></>;
