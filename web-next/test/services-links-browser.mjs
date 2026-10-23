@@ -1,5 +1,6 @@
 // Disposable, account-free presentation/interaction proof. Real API/mail acceptance is separate.
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import net from 'node:net';
@@ -10,7 +11,7 @@ import {ChromeDriver} from '../../web/test/integration/chrome-driver.mjs';
 const repository = fileURLToPath(new URL('../../', import.meta.url));
 const scratch = process.env.TMPDIR;
 const output = process.env.PORTICO_SERVICES_OUTPUT;
-const browser = process.env.PORTICO_CHROME_BIN ?? '/usr/bin/google-chrome';
+const browser = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? process.env.PORTICO_CHROME_BIN ?? '/usr/bin/google-chrome';
 assert(scratch && path.isAbsolute(scratch), 'TMPDIR must name the owned on-disk job scratch.');
 assert(output && path.isAbsolute(output), 'PORTICO_SERVICES_OUTPUT must name the owned artifact directory.');
 assert(existsSync(browser), 'An installed system Chrome is required; this test never downloads one.');
@@ -61,7 +62,11 @@ export default {...base, root:${JSON.stringify(path.join(repository, 'web-next')
   assert(driver, 'Owned system Chrome did not start.');
   const capture = async name => {
     const shot = await driver.send('Page.captureScreenshot', {format: 'jpeg', quality: 92, captureBeyondViewport: false});
-    writeFileSync(path.join(output, name + '-build.jpg'), Buffer.from(shot.data, 'base64'));
+    const bytes = Buffer.from(shot.data, 'base64');
+    writeFileSync(path.join(output, name + '-build.jpg'), bytes);
+    // This optional stdout artifact is only for these four account-free JPEG fixtures. It
+    // neither returns executable binaries nor copies a profile, token or real account state.
+    if (process.env.PORTICO_SERVICES_STDOUT_IMAGES === 'true') console.log(JSON.stringify({artifact: 'services-fixture-jpeg-v1', name, mime: 'image/jpeg', bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), base64: shot.data}));
   };
   await driver.viewport(1440, 874);
   await driver.navigate(`http://127.0.0.1:${port}/test/services-links.html`);
