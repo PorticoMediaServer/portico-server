@@ -61,7 +61,7 @@ export function AccountProfilesView({binding, onSwitchServer}: {binding: Profile
   // This picker cannot offer profiles until the actual controller clears it.
   if (state.phase !== 'profiles' || snapshot.twoStepSetupRequired) return null;
   const pinError = Boolean(state.error && ['profile_pin_invalid', 'profile_pin'].includes(String((state.error as {code?: unknown}).code)));
-  const seconds = lock?.error === state.error ? Math.max(0, Math.ceil((lock.until - now) / 1000)) : 0;
+  const seconds = lock && lock.error === state.error ? Math.max(0, Math.ceil((lock.until - now) / 1000)) : 0;
   const otherProfiles = () => {closeRecovery(); setSelectedId(undefined); setRemember(false); void binding.loadProfiles();};
   return <>
     {selected ? <ServerProfilePIN key={JSON.stringify([selected.id, selected.pinRevision])} serverName={server.name} profile={selected} remember={remember} onRememberChange={setRemember}
