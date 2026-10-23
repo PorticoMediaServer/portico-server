@@ -51,7 +51,7 @@ WORKDIR /src/web
 RUN node --input-type=module -e "import {build} from 'vite'; await build({build:{outDir:'/out/web',sourcemap:false}})"
 RUN cp /out/portico-build.json /out/web/portico-build.json
 
-FROM golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c AS build
+FROM golang:1.26.10-bookworm@sha256:632dff7351799a5a9954a48dc06670ade72ee44e8c351cdc0e5a57af2fea21af AS build
 WORKDIR /src/server
 COPY trust/hosted-root-public-key.pem /identity/root-public-key.pem
 COPY scripts/inspect-hosted-root.go /identity/inspect-hosted-root.go
@@ -76,8 +76,14 @@ ARG TARGETARCH
 COPY third_party/ffmpeg/bundle/ /bundle/
 RUN if [ -d "/bundle/${TARGETOS}-${TARGETARCH}" ]; then mv "/bundle/${TARGETOS}-${TARGETARCH}" /ffmpeg; else mv /bundle /ffmpeg; fi
 
-COPY scripts/verify-ffmpeg-manifest.py scripts/verify-ffmpeg-bundle.sh /tmp/
-RUN bash /tmp/verify-ffmpeg-bundle.sh /ffmpeg full
+COPY scripts/verify-ffmpeg-*.py scripts/verify-disc-bundle.py scripts/verify-ffmpeg-bundle.sh /tmp/
+COPY fixtures/discs/ /fixtures/discs/
+COPY packages/reader-core/assets/Literata[[]opsz,wght].ttf /fixtures/Literata.ttf
+ENV PORTICO_DISC_FIXTURES=/fixtures/discs/manifest.json \
+    PORTICO_DISC_FIXTURES_SHA256=d531e2332adb16261add1fca78f3670be0b4ec2385453018a45fa96c6add77fa \
+    PORTICO_FFMPEG_TEST_FONT=/fixtures/Literata.ttf \
+    TMPDIR=/tmp/portico-verify
+RUN mkdir -p "$TMPDIR" && bash /tmp/verify-ffmpeg-bundle.sh /ffmpeg full
 
 # Fetch only the pinned architecture, verify the upstream signature and every payload byte.
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS rclone

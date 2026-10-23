@@ -197,7 +197,7 @@ func (s *Service) SessionProgress(ctx context.Context, p identity.Principal, id 
 		return nil, err
 	}
 	defer f.Close()
-	return s.Progress(f.ctx, p, f.ItemID, f.SourceID)
+	return f.Progress()
 }
 func (s *Service) SaveSessionProgress(ctx context.Context, p identity.Principal, id string, expected int64, location Location) (*Progress, bool, error) {
 	f, err := s.OpenSession(ctx, p, id)
@@ -205,7 +205,7 @@ func (s *Service) SaveSessionProgress(ctx context.Context, p identity.Principal,
 		return nil, false, err
 	}
 	defer f.Close()
-	return s.SaveProgress(f.ctx, p, f.ItemID, f.SourceID, f.Revision, expected, location)
+	return f.SaveProgress(expected, location)
 }
 
 func (s *Service) findSession(p identity.Principal, id string) (*Session, error) {

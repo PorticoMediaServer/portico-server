@@ -30,6 +30,9 @@ func (d Dependencies) httpHandler(mux *http.ServeMux, pattern string, handler ht
 }
 
 func registerHTTPContracts(registry *apikit.Registry) error {
+	if err := registerReadingHTTPContracts(registry); err != nil {
+		return err
+	}
 	if err := registerLibrariesHTTPContracts(registry); err != nil {
 		return err
 	}

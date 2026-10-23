@@ -1,0 +1,51 @@
+import type {ReactNode} from 'react';
+import type {FactPart} from '@portico/client-core/kit-model';
+import {generatedCoverTint} from '@design';
+import {Artwork, GeneratedCover, type ArtworkSource} from '../artwork';
+import styles from './book.module.css';
+
+/** A presentation model, not a transport DTO. Unknown fields remain absent. */
+export type ReadBookHeroProps = Readonly<{
+  title: string; author?: Readonly<{name: string; onOpen?: () => void; face?: ReactNode}>;
+  series?: Readonly<{label: string; onOpen: () => void}>; facts: readonly FactPart[];
+  cover?: ArtworkSource; periodical?: boolean; generatedFontScale?: number; ambient?: ReactNode;
+  titleStyle?: 'standard' | 'long' | 'sparse';
+  description?: string; opening?: Readonly<{label: string; text: string}>;
+  actions: ReactNode; under?: ReactNode;
+}>;
+
+/** desktop-read 3/3c/5; phone-read 3/3c/12; tablet-read 2/2c. */
+export function ReadBookHero({title, author, series, facts, cover, periodical = false, generatedFontScale, ambient, titleStyle = 'standard', description, opening, actions, under}: ReadBookHeroProps) {
+  const generated = <GeneratedCover title={title} author={author?.name} glyph={Array.from(title.trim())[0] ?? ''} tint={generatedCoverTint(title)} fontScale={generatedFontScale} />;
+  return <div className={styles.heroRegion}>
+    {ambient && <div className={styles.ambient} aria-hidden="true">{ambient}</div>}
+    <header className={styles.hero}>
+      <div className={styles.cover} data-periodical={periodical || undefined}>
+        <Artwork source={cover} alt={title} fallback={generated} fit="cover" className={styles.coverImage} />
+      </div>
+      <div className={styles.copy}>
+        {series && <button type="button" className={styles.series} onClick={series.onOpen}>{series.label}</button>}
+        <h1 className={styles.title} data-style={titleStyle}>{title}</h1>
+        {(author || facts.length > 0) && <div className={styles.facts}>
+          {author && (author.onOpen ? <button type="button" className={styles.author} onClick={author.onOpen}>{author.face}{author.name}</button> : <span className={styles.author}>{author.face}{author.name}</span>)}
+          {facts.map(fact => <span key={fact.id} data-fact={fact.id}>{fact.text}</span>)}
+        </div>}
+        {description && <p className={styles.description}>{description}</p>}
+        {!description && opening && <div className={styles.opening}><span>{opening.label}</span><p>{opening.text}</p></div>}
+        <div className={styles.actions}>{actions}</div>
+        {under && <div className={styles.under}>{under}</div>}
+      </div>
+    </header>
+  </div>;
+}
+
+export type ReadDetailFact = Readonly<{id: string; label: string; value: ReactNode; source?: string}>;
+export function ReadBookFacts({heading, facts}: Readonly<{heading: string; facts: readonly ReadDetailFact[]}>) {
+  if (facts.length === 0) return null;
+  return <section className={styles.details}><h2>{heading}</h2><dl>{facts.map(fact => <div key={fact.id}><dt>{fact.label}</dt><dd>{fact.value}{fact.source && <small>{fact.source}</small>}</dd></div>)}</dl></section>;
+}
+
+export function ReadBookSections({contents, details}: Readonly<{contents?: ReactNode; details?: ReactNode}>) {
+  if (!contents && !details) return null;
+  return <div className={styles.sections}>{contents && <section>{contents}</section>}{details}</div>;
+}

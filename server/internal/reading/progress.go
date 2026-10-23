@@ -82,6 +82,14 @@ func (s *Service) Progress(ctx context.Context, p identity.Principal, item, sour
 		return nil, err
 	}
 	defer f.Close()
+	return f.Progress()
+}
+
+// Progress uses this acquisition's captured principal, source and lifetime.
+// It never opens another reader while this one owns source custody.
+func (f *Source) Progress() (*Progress, error) {
+	s, ctx, p := f.service, f.ctx, f.p
+	var err error
 	if err = f.Validate(); err != nil {
 		return nil, err
 	}
@@ -90,14 +98,19 @@ func (s *Service) Progress(ctx context.Context, p identity.Principal, item, sour
 		return nil, err
 	}
 	defer g.Rollback()
-	v, err := s.selectTx(ctx, g.Tx(), p, item, sourceID)
+	v, err := s.selectTx(ctx, g.Tx(), p, f.ItemID, f.SourceID)
 	if err != nil {
 		return nil, err
 	}
 	if v.Revision != f.Revision {
 		return nil, ErrChanged
 	}
-	return progressTx(ctx, g.Tx(), identity.PersonalKey(p.Viewer), v)
+	progress, err := progressTx(ctx, g.Tx(), identity.PersonalKey(p.Viewer), v)
+	g.Rollback()
+	if err == nil {
+		err = f.Validate()
+	}
+	return progress, err
 }
 
 // SaveProgress validates actual source bytes outside the writer, then checks
@@ -115,6 +128,20 @@ func (s *Service) SaveProgress(ctx context.Context, p identity.Principal, item, 
 		return nil, false, err
 	}
 	defer f.Close()
+	return f.SaveProgress(expected, location)
+}
+
+// SaveProgress retains the same observed source through format validation and
+// the location writer. This also avoids nested source leases on cap-1 remotes.
+func (f *Source) SaveProgress(expected int64, location Location) (*Progress, bool, error) {
+	s, ctx, p := f.service, f.ctx, f.p
+	if expected < 0 {
+		return nil, false, ErrInvalid
+	}
+	if err := location.Validate(); err != nil {
+		return nil, false, err
+	}
+	var err error
 	if location.Format != f.Format {
 		return nil, false, ErrInvalid
 	}
@@ -162,11 +189,11 @@ func (s *Service) SaveProgress(ctx context.Context, p identity.Principal, item, 
 	}
 	defer g.Rollback()
 	tx := g.Tx()
-	v, err := s.selectTx(ctx, tx, p, item, sourceID)
+	v, err := s.selectTx(ctx, tx, p, f.ItemID, f.SourceID)
 	if err != nil {
 		return nil, false, err
 	}
-	if v.Revision != sourceRevision {
+	if v.Revision != f.Revision {
 		return nil, false, ErrChanged
 	}
 	owner := identity.PersonalKey(p.Viewer)
@@ -201,6 +228,9 @@ func (s *Service) SaveProgress(ctx context.Context, p identity.Principal, item, 
 	revision++
 	_, err = tx.ExecContext(ctx, `INSERT INTO reading_progress(owner_key,item_id,asset_id,source_revision,format,cfi,section,page_index,progression,revision,observed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_key,item_id,asset_id) DO UPDATE SET source_revision=excluded.source_revision,format=excluded.format,cfi=excluded.cfi,section=excluded.section,page_index=excluded.page_index,progression=excluded.progression,revision=excluded.revision,observed_at=excluded.observed_at`, owner, v.Entity, v.Asset, v.Revision, location.Format, cfi, section, page, location.Progression, revision, observed)
 	if err != nil {
+		return nil, false, err
+	}
+	if err = ctx.Err(); err != nil {
 		return nil, false, err
 	}
 	if err = g.Commit(); err != nil {
