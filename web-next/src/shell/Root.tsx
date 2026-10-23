@@ -5,7 +5,7 @@ import {useRouteFade} from '../platform/route-motion';
 import {Shell} from './Shell';
 import {useShellBindings} from './bindings';
 import {finishRouteMotion, routeMotionOwnedByBrowser} from './route-motion';
-import {webScreens} from '../route-registry-view';
+import {webScreens, WebRetainedScreenHosts} from '../route-registry-view';
 import {webScreenIdForRoute} from '../route-registry';
 import {BootstrapContent} from './BootstrapState';
 
@@ -21,9 +21,10 @@ export function ShellRoot() {
   const binding = useShellBindings();
   const routeId = useRouterState({select: state => state.matches.at(-1)?.routeId ?? ''});
   const screenId = webScreenIdForRoute(routeId);
-  if (!binding || screenId && webScreens.chrome(screenId) !== 'shell') return <RouteContent />;
-  const viewer = binding.shell.identity.viewer;
-  return <FreshnessProvider key={binding.scopeKey} api={binding.api} events={binding.events} serverId={viewer.serverId} viewerId={JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}>
-    <Shell {...binding.shell}><RouteContent /></Shell>
-  </FreshnessProvider>;
+  const viewer = binding?.shell.identity.viewer;
+  const content = !binding || !viewer || screenId && webScreens.chrome(screenId) !== 'shell' ? <RouteContent />
+    : <FreshnessProvider key={binding.scopeKey} api={binding.api} events={binding.events} serverId={viewer.serverId} viewerId={JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}>
+      <Shell {...binding.shell}><RouteContent /></Shell>
+    </FreshnessProvider>;
+  return <>{content}<WebRetainedScreenHosts /></>;
 }
