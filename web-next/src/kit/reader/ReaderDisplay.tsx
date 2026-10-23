@@ -55,6 +55,7 @@ function moveChoice(event: KeyboardEvent<HTMLDivElement>) {
 export function ReaderDisplayControls({themes, fonts, size, rows, copy, onOpenSettings, layout = 'desktop', twoPages}: ReaderDisplayControlsProps) {
   const id = useId();
   const fraction = size.max > size.min ? Math.max(0, Math.min(1, (size.value - size.min) / (size.max - size.min))) : 0;
+  const markerPercent = Math.trunc(fraction * 100);
   const changeSize = (value: number) => {
     if (!size.disabled && Number.isFinite(value)) size.onChange(Math.max(size.min, Math.min(size.max, value)));
   };
@@ -78,9 +79,9 @@ export function ReaderDisplayControls({themes, fonts, size, rows, copy, onOpenSe
     <section className={styles.group} aria-labelledby={`${id}-size`}><h3 id={`${id}-size`}>{size.label}{size.summary && <span>{size.summary}</span>}</h3>
       <div className={styles.sizer}>
         <button type="button" className={styles.smaller} aria-label={size.smallerLabel} disabled={size.disabled || size.value <= size.min} onClick={() => changeSize(size.value - size.step)}>{copy.sizeSample}</button>
-        <div className={styles.range}><span className={styles.track} aria-hidden="true"><i style={{width: `${fraction * 100}%`}} />
+        <div className={styles.range}><span className={styles.track} aria-hidden="true"><i style={{width: `${markerPercent}%`}} />
           {size.ticks?.filter(value => Number.isFinite(value) && value >= size.min && value <= size.max).map(value => <u key={value} style={{left: `${size.max > size.min ? (value - size.min) / (size.max - size.min) * 100 : 0}%`}} />)}
-          <b style={{left: `${fraction * 100}%`}} /></span>
+          <b style={{left: `${markerPercent}%`}} /></span>
           <input type="range" min={size.min} max={size.max} step={size.step} value={size.value} disabled={size.disabled || size.max <= size.min} aria-label={size.sliderLabel} aria-valuetext={size.valueText} onChange={event => changeSize(event.currentTarget.valueAsNumber)} />
         </div>
         <button type="button" className={styles.larger} aria-label={size.largerLabel} disabled={size.disabled || size.value >= size.max} onClick={() => changeSize(size.value + size.step)}>{copy.sizeSample}</button>
