@@ -43,7 +43,11 @@ export class ReaderController<P extends object> {
   };
   refreshViewState() {
     const view = this.session?.view;
-    this.publish({zoom: view?.getZoom?.() ?? null, canTurnAtFit: view?.canTurnAtFit?.() ?? true});
+    const zoom = view?.getZoom?.() ?? null, canTurnAtFit = view?.canTurnAtFit?.() ?? true;
+    const prior = this.snapshot.zoom;
+    if (canTurnAtFit === this.snapshot.canTurnAtFit && (zoom === null ? prior === null
+      : prior !== null && zoom.scale === prior.scale && zoom.fit === prior.fit)) return;
+    this.publish({zoom: zoom === null ? null : copy(zoom), canTurnAtFit});
   }
   private publish(patch: Partial<ReaderSnapshot<P>>) {
     this.snapshot = Object.freeze({...this.snapshot, ...patch});
@@ -88,7 +92,14 @@ export class ReaderController<P extends object> {
           this.publish({location: copy(location)});
         },
         onSurfaceInput: event => {
-          if (this.current(session)) for (const listener of this.surfaceListeners) listener(event);
+          if (!this.current(session)) return;
+          // Fixed views may zoom internally before reporting gesture activity.
+          // Chrome must observe measured fit/zoom before deciding edge taps.
+          if (event.kind === 'activity') this.refreshViewState();
+          for (const listener of this.surfaceListeners) {
+            if (!this.current(session)) break;
+            listener(event);
+          }
         },
         onSelection: selection => {
           if (!this.current(session)) return;
