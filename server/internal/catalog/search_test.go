@@ -90,7 +90,8 @@ func TestSearchGroupsPagingAndIndexUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Groups) != len(searchGroups) || out.Query.Q != "Harbor" || out.Groups[0].TotalCount != 43 || len(out.Groups[0].Items) != SearchPreviewLimit {
+	// A request without Live TV permission publishes only nonlive groups.
+	if len(out.Groups) != len(searchGroups)-1 || out.Query.Q != "Harbor" || out.Groups[0].TotalCount != 43 || len(out.Groups[0].Items) != SearchPreviewLimit {
 		t.Fatalf("groups %+v", out)
 	}
 	for _, group := range out.Groups {

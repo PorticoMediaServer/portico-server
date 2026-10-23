@@ -56,15 +56,18 @@ func homeRecentPhases(r HomeRequest, class *recentClass) ([]string, [][]any) {
 	// member metrics carry an added time only while that member is available.
 	memberRestriction, memberArgs := ItemRestrictionSQL("member.item_id", r.Restrictions)
 	ownRestriction, ownArgs := ItemRestrictionSQL("br.entity_id", r.Restrictions)
-	// A work's newest 64 available members are probed, so a denied show with
-	// thousands of episodes costs 64 checks, not all of them.
-	workRestriction := `(CASE WHEN i.kind IN(2,6,8) THEN EXISTS(SELECT 1 FROM (SELECT item_id FROM catalog_browse_member_metrics INDEXED BY catalog_browse_metric_added
-	  WHERE entity_id=br.entity_id AND added IS NOT NULL ORDER BY added DESC LIMIT 64) member WHERE ` + memberRestriction + `) ELSE ` + ownRestriction + ` END)`
+	// A work needs one member that is both currently permitted and available.
+	// Probe its indexed membership range until EXISTS finds that member;
+	// truncating before policy evaluation can hide a valid late member. This
+	// check also fences a published class's potentially stale global metrics.
+	workRestriction := `(CASE WHEN i.kind IN(2,6,8) THEN EXISTS(
+	 SELECT 1 FROM catalog_browse_member_metrics member INDEXED BY catalog_browse_metric_added
+	 CROSS JOIN catalog_item_availability available ON available.entity_id=member.item_id
+	 WHERE member.entity_id=br.entity_id AND member.added IS NOT NULL
+	 AND available.available=1 AND available.retired=0 AND ` + memberRestriction + recordingsClause("member.item_id", r.Restrictions) + `
+	 AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=member.item_id)) ELSE ` + ownRestriction + ` END)`
 	workArgs := append(append([]any{}, memberArgs...), ownArgs...)
 	itemRestriction, itemArgs := ItemRestrictionSQL("i.id", r.Restrictions)
-	if class != nil {
-		workRestriction, workArgs = EntityRestrictionSQL("br.entity_id", r.Restrictions)
-	}
 	// Each phase reads a raw window of its index and says per row whether the
 	// viewer may see it; the walk advances over every row, so what a viewer
 	// cannot see is inspected once and counted against the budget.
@@ -292,4 +295,43 @@ func (s *Service) homeRecentAddition(r HomeRequest, show int64) (string, error) 
 		return season, nil
 	}
 	return "", nil
+}
+
+// homeRecentPageTargets preserves the established delivery card (one episode,
+// one season, or the whole show), while SQL pages canonical works. Only the
+// requested page is inspected; no source member list is built in memory.
+func (s *Service) homeRecentPageTargets(r HomeRequest, ids []string) ([]string, error) {
+	out := append([]string{}, ids...)
+	rows, err := s.read().Query(`SELECT pid(e.public_id),e.id FROM json_each(?) requested JOIN catalog_entities e ON e.public_id=pid_blob(requested.value) WHERE e.kind=2`, idsJSON(ids))
+	if err != nil {
+		return nil, err
+	}
+	shows := map[string]int64{}
+	for rows.Next() {
+		var id string
+		var entity int64
+		if err = rows.Scan(&id, &entity); err != nil {
+			break
+		}
+		shows[id] = entity
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	for i, id := range ids {
+		if entity, ok := shows[id]; ok {
+			target, e := s.homeRecentAddition(r, entity)
+			if e != nil {
+				return nil, e
+			}
+			if target != "" {
+				out[i] = target
+			}
+		}
+	}
+	return out, nil
 }

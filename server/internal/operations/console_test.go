@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"portico.local/server/internal/apiwire"
 	"strings"
@@ -511,5 +512,115 @@ func TestDeviceApprovalSwitchIsTheIdentityPolicy(t *testing.T) {
 	}
 	if got := stored(); got != identity.DeviceApprovalAuto {
 		t.Fatalf("the identity policy after turning the switch off is %q", got)
+	}
+}
+
+func TestActivityAlertParamsAreSourceBackedAndBounded(t *testing.T) {
+	s, _, auth := consoleFixture(t)
+	ctx := context.Background()
+	params := map[string]string{"title": "Library scan", "reason": "source-unavailable", "time": "2026-10-22T19:00:00Z"}
+	if e := s.Alert(ctx, "job-failed-library-scan", "warning", true, params); e != nil {
+		t.Fatal(e)
+	}
+	out, e := s.Alerts(ctx, auth)
+	if e != nil || len(out) != 1 || out[0].Params["reason"] != "source-unavailable" || out[0].Params["title"] != "Library scan" {
+		t.Fatal(out, e)
+	}
+	for _, bad := range []map[string]string{{"email": "private@example.invalid"}, {"token": "secret"}, {"reason": "raw diagnostic\nsecret"}, {"time": "yesterday"}, {"title": strings.Repeat("x", 4097)}} {
+		if e = s.Alert(ctx, "job-failed-library-scan", "warning", true, bad); e == nil {
+			t.Fatal("private/unbounded params accepted", bad)
+		}
+	}
+	if e = s.Alert(ctx, "job-failed-library-scan", "warning", false); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Alert(ctx, "job-failed-library-scan", "warning", true, map[string]string{"reason": "another-failure"}); e != nil {
+		t.Fatal(e)
+	}
+	out, e = s.Alerts(ctx, auth)
+	if e != nil || out[0].Params["title"] != "" || out[0].Params["reason"] != "another-failure" {
+		t.Fatal("old failure params retained", out, e)
+	}
+}
+
+func TestActivityProgressHintsBoundCadenceAndNeverCarryPrivateJobData(t *testing.T) {
+	s, _, _ := consoleFixture(t)
+	tx, e := s.DB.Begin()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback()
+	for n := 0; n < 20; n++ {
+		if e = AppendActivityProgressTx(tx, "job.updated", "job", "job", fmt.Sprint(n), false); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if e = AppendActivityProgressTx(tx, "job.updated", "job", "job", "terminal", true); e != nil {
+		t.Fatal(e)
+	}
+	var count int
+	if e = tx.QueryRow(`SELECT count(*) FROM api_events WHERE audience='admin' AND type='job.updated' AND data=''`).Scan(&count); e != nil || count != 2 {
+		t.Fatal("unbounded progress or missing terminal hint", count, e)
+	}
+}
+
+func TestConsoleBackupAlertUsesExistingEmptyAdminHints(t *testing.T) {
+	s, _, _ := consoleFixture(t)
+	ctx := context.Background()
+	for _, active := range []bool{true, true, false, false} {
+		if err := s.Alert(ctx, "backup-failed", "warning", active); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var count int
+	if err := s.DB.QueryRow(`SELECT count(*) FROM api_events WHERE audience='admin' AND type='server.updated' AND resource_kind='alert' AND data=''`).Scan(&count); err != nil || count != 2 {
+		t.Fatal(count, err)
+	}
+}
+
+func TestActivityTaskTotalFollowsProducerAndInvalidObservationRollsBack(t *testing.T) {
+	store, owner, auth := consoleFixture(t)
+	scheduler := NewScheduler(store)
+	processed, total := int64(2), int64(8)
+	observation := JobObservation{State: "running", Phase: "analysis", Processed: &processed}
+	if err := scheduler.Register(Adapter{Kind: "total-test", Lane: "maintenance", ValidateTx: func(context.Context, *sql.Tx, string) error { return nil }, Step: func(context.Context, string) (JobObservation, error) { return observation, nil }}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	job, err := scheduler.Enqueue(ctx, owner, auth, RunJob{Kind: "total-test", IdempotencyKey: "known-total"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() Job {
+		t.Helper()
+		page, err := scheduler.Jobs(ctx, auth, "")
+		if err != nil || len(page.Items) != 1 {
+			t.Fatal(page, err)
+		}
+		return page.Items[0]
+	}
+	scheduler.advance(ctx, job)
+	job = read()
+	if job.Total != nil || job.Processed == nil || *job.Processed != 2 {
+		t.Fatal("unknown total was invented", job)
+	}
+	observation.Total = &total
+	scheduler.advance(ctx, job)
+	job = read()
+	if job.Total == nil || *job.Total != 8 || *job.Processed != 2 {
+		t.Fatal("known producer total lost", job)
+	}
+	revision := job.Revision
+	tooSmall := int64(1)
+	observation.Total = &tooSmall
+	scheduler.advance(ctx, job)
+	job = read()
+	if job.Revision != revision || job.Total == nil || *job.Total != 8 {
+		t.Fatal("invalid producer count partially committed", job)
+	}
+	observation.Total = nil
+	scheduler.advance(ctx, job)
+	if job = read(); job.Total != nil {
+		t.Fatal("unknown producer total retained a stale value", job)
 	}
 }

@@ -84,14 +84,14 @@ func TestHomeRoutesComposePageAndCustomise(t *testing.T) {
 	}
 	var recent *catalog.HomeRow
 	for index := range document.Rows {
-		if document.Rows[index].ID == "recent_movies" {
+		if document.Rows[index].ID == "new_on_server" {
 			recent = &document.Rows[index]
 		}
 	}
-	if recent == nil || !recent.Deferred || len(recent.Entries) != 0 || recent.Endpoint != "/v1/home/rows/recent_movies" {
+	if recent == nil || !recent.Deferred || len(recent.Entries) != 0 || recent.Endpoint != "/v1/home/rows/new_on_server" {
 		t.Fatalf("recent row: %+v", recent)
 	}
-	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/recent_movies?limit=2", "")
+	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/new_on_server?limit=2", "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -99,7 +99,7 @@ func TestHomeRoutesComposePageAndCustomise(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), recent); err != nil || recent.Deferred || len(recent.Entries) != 2 || recent.Total != 3 {
 		t.Fatalf("preview %+v %v", recent, err)
 	}
-	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/recent_movies?limit=2&cursor="+recent.NextCursor, "")
+	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/new_on_server?limit=2&cursor="+recent.NextCursor, "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -113,11 +113,11 @@ func TestHomeRoutesComposePageAndCustomise(t *testing.T) {
 	if w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/trending", ""); w.Code != 404 {
 		t.Fatal("gated community row reachable", w.Code)
 	}
-	w = homeAPIRequest(t, handler, owner.AccessToken, "PUT", "/v1/home/layout", `{"expectedRevision":1,"idempotencyKey":"k1","rowOrder":["recent_movies"],"hiddenRowIds":["continue"]}`)
+	w = homeAPIRequest(t, handler, owner.AccessToken, "PUT", "/v1/home/layout", `{"expectedRevision":1,"idempotencyKey":"k1","rowOrder":["new_on_server"],"hiddenRowIds":["continue"]}`)
 	if w.Code != 400 || !strings.Contains(w.Body.String(), "invalid_home_layout") {
 		t.Fatal("required row hidden", w.Code, w.Body.String())
 	}
-	w = homeAPIRequest(t, handler, owner.AccessToken, "PUT", "/v1/home/layout", `{"expectedRevision":1,"idempotencyKey":"k2","rowOrder":["trending_now","watchlist"],"hiddenRowIds":["recent_movies"]}`)
+	w = homeAPIRequest(t, handler, owner.AccessToken, "PUT", "/v1/home/layout", `{"expectedRevision":1,"idempotencyKey":"k2","rowOrder":["trending_now","listen_next"],"hiddenRowIds":["new_on_server"]}`)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -135,7 +135,7 @@ func TestHomeRoutesComposePageAndCustomise(t *testing.T) {
 		t.Fatalf("saved layout not applied: %+v", document.Layout)
 	}
 	for _, row := range document.Rows {
-		if row.ID == "recent_movies" {
+		if row.ID == "new_on_server" {
 			t.Fatal("hidden row published over HTTP")
 		}
 	}
@@ -170,7 +170,7 @@ func TestHomeRoutesComposePageAndCustomise(t *testing.T) {
 // (trending_now here), in the saved order, and marks the hidden ones.
 func TestHomeLayoutListsEveryArrangeableRow(t *testing.T) {
 	handler, owner, _ := homeAPIFixture(t)
-	w := homeAPIRequest(t, handler, owner.AccessToken, "PUT", "/v1/home/layout", `{"expectedRevision":1,"idempotencyKey":"k1","rowOrder":["trending_now","recent_movies"],"hiddenRowIds":["recommended"]}`)
+	w := homeAPIRequest(t, handler, owner.AccessToken, "PUT", "/v1/home/layout", `{"expectedRevision":1,"idempotencyKey":"k1","rowOrder":["trending_now","new_on_server"],"hiddenRowIds":["recommended"]}`)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -190,13 +190,13 @@ func TestHomeLayoutListsEveryArrangeableRow(t *testing.T) {
 	for _, row := range view.Rows {
 		ids[row.ID] = row
 	}
-	if len(view.Rows) < 2 || view.Rows[0].ID != "trending_now" || view.Rows[1].ID != "recent_movies" {
+	if len(view.Rows) < 2 || view.Rows[0].ID != "trending_now" || view.Rows[1].ID != "new_on_server" {
 		t.Fatalf("saved order first: %+v", view.Rows)
 	}
 	if _, ok := ids["trending_now"]; !ok {
 		t.Fatal("an empty row is missing from the layout")
 	}
-	if !ids["recommended"].Hidden || ids["continue"].Hidden || !ids["continue"].Required || ids["recent_movies"].LibraryID != "movies" || ids["recent_movies"].Hidden {
+	if !ids["recommended"].Hidden || ids["continue"].Hidden || !ids["continue"].Required || ids["new_on_server"].LibraryID != "" || ids["new_on_server"].Hidden {
 		t.Fatalf("row flags: %+v", ids)
 	}
 	// Home publishes the endpoint independently of its empty preview.
@@ -218,7 +218,7 @@ func TestHomeLayoutListsEveryArrangeableRow(t *testing.T) {
 // My List state, so the hero can show its meta line and a My List toggle.
 func TestHomeEntriesCarryHeroFields(t *testing.T) {
 	handler, owner, names := homeAPIFixture(t)
-	w := homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/recent_movies", "")
+	w := homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/new_on_server", "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -278,5 +278,48 @@ func TestHomeHasOneComposedEndpoint(t *testing.T) {
 		if row.SeeAll == nil {
 			t.Fatal("missing explicit destination", row.ID)
 		}
+	}
+}
+
+func TestHomeSavedSummaryShapeAndLayoutConflictHTTP(t *testing.T) {
+	handler, owner, _ := homeAPIFixture(t)
+	w := homeAPIRequest(t, handler, "", "GET", "/v1/me/saved/summary", "")
+	if w.Code != 401 {
+		t.Fatal("anonymous summary", w.Code)
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/me/saved/summary", "")
+	var summary catalog.SavedSummary
+	if err := json.Unmarshal(w.Body.Bytes(), &summary); err != nil || w.Code != 200 || summary.MyList.Posters != 3 || summary.MyList.Squares != 0 {
+		t.Fatal(w.Code, w.Body.String(), err)
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/content?view=watchlist&shape=squares&limit=1", "")
+	var content catalog.ContentEnvelope
+	if err := json.Unmarshal(w.Body.Bytes(), &content); err != nil || w.Code != 200 || len(content.Sections) != 0 || content.ShapeCounts == nil || content.ShapeCounts.Posters != 3 {
+		t.Fatal(w.Code, w.Body.String(), err)
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "PUT", "/v1/home/layout", `{"expectedRevision":1,"idempotencyKey":"first-layout","rowOrder":["continue_books"],"hiddenRowIds":[]}`)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "PUT", "/v1/home/layout", `{"expectedRevision":1,"idempotencyKey":"stale-layout","rowOrder":["continue"],"hiddenRowIds":[]}`)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "home_layout_conflict") {
+		t.Fatal("layout conflict", w.Code, w.Body.String())
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/layout", "")
+	var layout catalog.HomeLayoutView
+	if err := json.Unmarshal(w.Body.Bytes(), &layout); err != nil || w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String(), err)
+	}
+	found := false
+	for _, row := range layout.Rows {
+		if row.ID == "continue_books" {
+			found = true
+			if row.AvailabilityText == nil || row.AvailabilityText.Fallback != "Shown when a book is in progress" {
+				t.Fatal(row)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("empty books descriptor absent")
 	}
 }

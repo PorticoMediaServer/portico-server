@@ -48,7 +48,7 @@ func TestPublishedProfileDecidesDeliveryAndIsExplained(t *testing.T) {
 	})
 
 	// Nothing published: the baseline cannot take HEVC, so the title converts.
-	session, err := s.Create(p, item, "auto", "baseline")
+	session, err := s.Create(p, item, "automatic", "baseline")
 	if err != nil || session.Mode != "hls" {
 		t.Fatal(session, err)
 	}
@@ -73,7 +73,7 @@ func TestPublishedProfileDecidesDeliveryAndIsExplained(t *testing.T) {
 	if held := s.CapabilityDocumentFor(ctx, p); held.Revision != document.Revision || held.Client.Family != "apple" {
 		t.Fatal("the stored document was not read back", held.Profile(EngineNative).Summary())
 	}
-	session, err = s.Create(p, item, "auto", "apple")
+	session, err = s.Create(p, item, "automatic", "apple")
 	if err != nil || session.Mode != "direct" {
 		t.Fatal(session, err)
 	}
@@ -99,7 +99,7 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	db, s, p, _, item, _ := activityFixture(t)
 	ctx := context.Background()
 	s.ConfigureHLS(&HLS{})
-	first, err := s.Create(p, item, "auto", "first")
+	first, err := s.Create(p, item, "automatic", "first")
 	if err != nil || first.Mode != "direct" {
 		t.Fatal(first, err)
 	}
@@ -107,7 +107,7 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	if err != nil || out.Route != string(DeliveryOriginal) || out.Engine != EngineNative || !out.Escalates {
 		t.Fatal(out, err)
 	}
-	second, err := s.Create(p, item, "auto", "second")
+	second, err := s.Create(p, item, "automatic", "second")
 	if err != nil || second.Mode != "hls" {
 		t.Fatal("the failed route was offered again", second, err)
 	}
@@ -121,7 +121,7 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	third, err := s.Create(p, item, "auto", "third")
+	third, err := s.Create(p, item, "automatic", "third")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	if _, err = s.RecordRouteFailure(ctx, p, third.ID, "decode_error", ""); err != nil {
 		t.Fatal(err)
 	}
-	fourth, err := s.Create(p, item, "auto", "fourth")
+	fourth, err := s.Create(p, item, "automatic", "fourth")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestAudioTrackChoiceReachesThePlan(t *testing.T) {
 	s.ConfigureDelivery(nil, func(_ *sql.Tx, _ identity.Viewer, _ string) (DeliveryPreferenceReader, error) {
 		return listPreferences{"playback.preferredAudioLanguages": {"ja", "en"}}, nil
 	}, nil, "")
-	session, err := s.Create(p, item, "auto", "preferred")
+	session, err := s.Create(p, item, "automatic", "preferred")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestUncertainRouteFailuresLapseSooner(t *testing.T) {
 	db, s, p, _, item, _ := activityFixture(t)
 	ctx := context.Background()
 	s.ConfigureHLS(&HLS{})
-	first, err := s.Create(p, item, "auto", "first")
+	first, err := s.Create(p, item, "automatic", "first")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestUncertainRouteFailuresLapseSooner(t *testing.T) {
 	}
 	modeOfNext := func(request string) string {
 		t.Helper()
-		next, err := s.Create(p, item, "auto", request)
+		next, err := s.Create(p, item, "automatic", request)
 		if err != nil {
 			t.Fatal(err)
 		}

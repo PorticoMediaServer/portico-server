@@ -33,14 +33,23 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 		if !strings.HasPrefix(header, "Bearer ") || strings.ContainsAny(strings.TrimPrefix(header, "Bearer "), " ,\r\n") {
 			return networking.ClaimRequestOwner{}, identity.ErrUnauthorized
 		}
-		p, e := id.Authenticate(strings.TrimPrefix(header, "Bearer "))
-		if e == nil {
-			e = id.CheckRecoveryRoute(r.Context(), p, d.privateSetupPeer(r))
+
+		secret := strings.TrimPrefix(header, "Bearer ")
+		p, e := id.Authenticate(secret)
+		if e != nil && (r.URL.Path == "/v1/networking/claim" || strings.HasPrefix(r.URL.Path, "/v1/networking/claim/")) {
+			pending, proof, setupErr := id.SetupClaimAuthority(r.Context(), secret)
+			if setupErr == nil {
+				resume, _ := json.Marshal(claimResume{SetupOperationID: pending.RequestID, SetupRevision: pending.Revision, SetupProof: proof})
+				return networking.ClaimRequestOwner{Owner: networking.LocalOwner{SetupOperationID: pending.RequestID, Epoch: pending.Revision}, Resume: string(resume), Guard: func(ctx context.Context, tx *sql.Tx) error {
+					return id.CheckSetupClaimTx(ctx, tx, pending.RequestID, pending.Revision, proof)
+				}}, nil
+			}
 		}
+
 		if e != nil || p.Authority != "local" || p.Role != "owner" {
 			return networking.ClaimRequestOwner{}, identity.ErrUnauthorized
 		}
-		resume, _ := json.Marshal(claimResume{p.Hash, p.AccountID, p.ProfileID, p.Epoch})
+		resume, _ := json.Marshal(claimResume{Digest: p.Hash, AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch})
 		return networking.ClaimRequestOwner{Owner: networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, Guard: func(ctx context.Context, tx *sql.Tx) error {
 			_, e := id.SessionFamilyTx(ctx, tx, p)
 			if errors.Is(e, identity.ErrUnauthorized) {
@@ -55,10 +64,13 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 // digest the session store already keeps for its current token, and who it
 // belonged to.
 type claimResume struct {
-	Digest    string `json:"digest"`
-	AccountID string `json:"accountId"`
-	ProfileID string `json:"profileId"`
-	Epoch     int    `json:"epoch"`
+	SetupOperationID string `json:"setupOperationId,omitempty"`
+	SetupRevision    int64  `json:"setupRevision,omitempty"`
+	SetupProof       string `json:"setupProof,omitempty"`
+	Digest           string `json:"digest"`
+	AccountID        string `json:"accountId"`
+	ProfileID        string `json:"profileId"`
+	Epoch            int    `json:"epoch"`
 }
 
 // NetworkingClaimResume rebuilds, after a restart, the guard of the owner who
@@ -67,7 +79,15 @@ type claimResume struct {
 func NetworkingClaimResume(id *identity.Service) func(string) networking.ClaimRequestGuard {
 	return func(note string) networking.ClaimRequestGuard {
 		var r claimResume
-		if id == nil || json.Unmarshal([]byte(note), &r) != nil || r.Digest == "" {
+		if id == nil || json.Unmarshal([]byte(note), &r) != nil {
+			return nil
+		}
+		if r.SetupOperationID != "" && r.SetupProof != "" && r.SetupRevision > 0 {
+			return func(ctx context.Context, tx *sql.Tx) error {
+				return id.CheckSetupClaimTx(ctx, tx, r.SetupOperationID, r.SetupRevision, r.SetupProof)
+			}
+		}
+		if r.Digest == "" {
 			return nil
 		}
 		return func(ctx context.Context, tx *sql.Tx) error {

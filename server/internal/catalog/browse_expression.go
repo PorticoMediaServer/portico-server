@@ -312,7 +312,8 @@ type browseCompiler struct {
 	itemPivot bool
 	// rows are the Home rows the request names, resolved by the caller to the
 	// row's titles in its order (homeRow).
-	rows map[string][]int64
+	rows       map[string][]int64
+	rowSources map[string]HomeRowMembership
 	// kinds are the pivot's kinds, which bound a value-side candidate list.
 	kinds []int
 	// perTitle tests a member condition on each title it is asked of, never
@@ -399,6 +400,9 @@ func (c *browseCompiler) predicate(node BrowseNode) (string, error) {
 	field, ok := browseFieldByID(node.Field)
 	if !ok {
 		return "", browseIssue("query.field", "field is not supported")
+	}
+	if field.ID == "match" {
+		return c.matchPredicate(node)
 	}
 	if field.ID == "durationMs" {
 		if value, ok := node.Value.(float64); ok {
@@ -1420,4 +1424,63 @@ func (c *browseCompiler) factGapCandidates(field browseField, having bool) (stri
 	raw, _ := json.Marshal(ids)
 	c.args = append(c.args, string(raw))
 	return `e.entity_id IN(SELECT value FROM json_each(?)) AND `, nil
+}
+
+// A current attention relation is selected once by its indexed identities. Keep
+// as is only changes dismissal, so it deliberately does not remove this fact.
+func (c *browseCompiler) matchPredicate(node BrowseNode) (string, error) {
+	visible, args := EntityRestrictionSQL("attention.entity_id", c.restrictions)
+	current := `SELECT attention.entity_id FROM (
+ SELECT a.entity_id FROM screen_metadata_attention a JOIN screen_metadata_work w ON w.target_id=a.entity_id AND w.target_kind=a.target_kind AND w.generation=a.generation WHERE a.retired=0 AND a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')
+ UNION SELECT a.entity_id FROM listening_metadata_attention a WHERE a.retired=0 AND a.kind IN('album','song') AND a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')
+ ) attention JOIN catalog_entities target ON target.id=attention.entity_id JOIN catalog_libraries library ON library.id=target.library_id JOIN libraries l ON l.id=library.library_id LEFT JOIN library_metadata_agents agent ON agent.library_id=l.id
+ WHERE l.kind IN('movie','tv','anime','music') AND COALESCE(agent.agent,'online')='online' AND target.retired=0 AND ` + visible
+	// Expand only direct membership edges: an artist can inherit an unmatched
+	// album/song, and a season an unmatched episode. The matching member itself
+	// must be visible, so a hidden member never reveals a parent's match status.
+	unmatched := `e.entity_id IN(WITH attention AS MATERIALIZED (` + current + `)
+ SELECT entity_id FROM attention
+ UNION SELECT bm.entity_id FROM attention CROSS JOIN catalog_browse_memberships bm INDEXED BY catalog_browse_membership_item ON bm.item_id=attention.entity_id
+ UNION SELECT album.artist_id FROM attention JOIN catalog_albums album ON album.entity_id=attention.entity_id)`
+	c.args = append(c.args, args...)
+	value := `CASE WHEN ` + unmatched + ` THEN 'unmatched' ELSE 'matched' END`
+	result, err := c.comparison(browseField{ID: "match", Type: valueEnum}, value, node.Operator, node.Value)
+	eligible := `e.kind IN(1,2,3,4,5,6,7) AND e.library_id IN(SELECT cl.id FROM catalog_libraries cl JOIN libraries l ON l.id=cl.library_id LEFT JOIN library_metadata_agents a ON a.library_id=l.id WHERE l.kind IN('movie','tv','anime','music') AND COALESCE(a.agent,'online')='online')`
+	return "(" + eligible + " AND " + result + ")", err
+}
+
+// ValidateHomeRowDisplay binds a display projection to its positive current
+// source. Alternatives and negations never confer row membership authority.
+func ValidateHomeRowDisplay(query *BrowseNode, rowID string) error {
+	if rowID == "" {
+		return nil
+	}
+	if len(rowID) > 256 {
+		return browseIssue("homeRowDisplay", "invalid row id")
+	}
+	found := 0
+	var walk func(*BrowseNode)
+	walk = func(node *BrowseNode) {
+		if node == nil {
+			return
+		}
+		if node.Field == "homeRow" && node.Operator == "equals" && node.Value == rowID {
+			found++
+		}
+		for i := range node.All {
+			walk(&node.All[i])
+		}
+	}
+	walk(query)
+	if found != 1 {
+		return browseIssue("homeRowDisplay", "display projection needs the same positive Home row condition")
+	}
+	return nil
+}
+
+func ValidateHomeRowDisplayQueryLimit(rowID string, limit int) error {
+	if rowID != "" && limit > HomeRowMaxLimit {
+		return browseIssue("limit", "Home display projection accepts at most 60 entries")
+	}
+	return nil
 }

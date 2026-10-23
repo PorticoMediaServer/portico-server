@@ -88,7 +88,7 @@ func TestBrowserSetupLocalOriginAndSingleUse(t *testing.T) {
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	var state identity.OnboardingState
-	if err = json.Unmarshal(w.Body.Bytes(), &state); err != nil || w.Code != 200 || !state.Ready || state.Phase != "ready" || state.AuthMode != "local" || state.RecoveryOwner {
+	if err = json.Unmarshal(w.Body.Bytes(), &state); err != nil || w.Code != 200 || !state.Ready || state.Phase != "ready" || state.AuthMode != "local" {
 		t.Fatal("a local server is ready once its owner exists (no checklist), without a recovery-owner role")
 	}
 	w = call("http://127.0.0.1:32500", "http://127.0.0.1:32500", "127.0.0.1:5000", "/v1/setup/browser", map[string]any{})

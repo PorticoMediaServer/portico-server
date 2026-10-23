@@ -49,6 +49,9 @@ func restrictRecording(r *Recording, allowed func(string) bool) {
 	r.Programme.Restricted()
 	r.SeriesID, r.SeriesTitle, r.ItemID, r.LibraryID = "", "", "", ""
 	r.Watched = nil
+	r.PositionMs = 0
+	r.DurationMs = 0
+	r.Overlaps = []Overlap{}
 }
 func restrictRecordingTx(ctx context.Context, tx *sql.Tx, o livechannels.Owner, r *Recording) error {
 	allowed, err := programmePredicateTx(ctx, tx, o)

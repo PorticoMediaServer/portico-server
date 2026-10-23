@@ -75,7 +75,11 @@ func groupFromRule(r dvr.Rule, o livechannels.Owner) RecordingGroup {
 	} else if r.Config.Options.RetentionDays > 0 {
 		keep = KeepPolicy{Mode: "keep-days", KeepDays: r.Config.Options.RetentionDays}
 	}
-	return RecordingGroup{Owner: o, Status: r.ReconcileState, ID: r.ID, Kind: "series", Name: r.Config.Name, Match: r.Config.SeriesID, SourceID: r.Config.SourceID, Enabled: r.Config.Enabled, Revision: r.Revision, Options: GroupOptions{PrePaddingMs: &before, PostPaddingMs: &after, Keep: &keep, NewEpisodesOnly: r.Config.Episodes == "new", Priority: r.Config.Options.Priority}, UpdatedAt: r.UpdatedAt}
+	kind, match := "series", r.Config.SeriesID
+	if r.Config.MatchKind == "title" {
+		kind, match = "title", r.Config.Title
+	}
+	return RecordingGroup{Owner: o, Status: r.ReconcileState, ID: r.ID, Kind: kind, Name: r.Config.Name, Match: match, SourceID: r.Config.SourceID, Enabled: r.Config.Enabled, Revision: r.Revision, Options: GroupOptions{PrePaddingMs: &before, PostPaddingMs: &after, Keep: &keep, NewEpisodesOnly: r.Config.Episodes == "new", Priority: r.Config.Options.Priority}, UpdatedAt: r.UpdatedAt}
 }
 func (s *Service) runtimeRecordingGroups(ctx context.Context, auth Authorize, token string, limit int) (RecordingGroupPage, error) {
 	out := RecordingGroupPage{Items: []RecordingGroup{}}
@@ -165,7 +169,7 @@ func (s *Service) saveRuntimeRecordingGroup(ctx context.Context, auth Authorize,
 	if err := validateGroup(&c); err != nil {
 		return out, err
 	}
-	if c.Kind != "series" || c.Options.FolderTemplate != "" {
+	if (c.Kind != "series" && c.Kind != "title") || c.Options.FolderTemplate != "" {
 		return out, invalid("kind", "options.folderTemplate")
 	}
 	if c.Options.Keep != nil && c.Options.Keep.KeepUntilWatched {
@@ -209,6 +213,24 @@ func (s *Service) saveRuntimeRecordingGroup(ctx context.Context, auth Authorize,
 			episodes = "new"
 		}
 		in := dvr.RuleInput{ID: target, Mutation: dvr.Mutation{ExpectedRevision: c.ExpectedRevision, RequestID: digestOf([]string{"admin-rule-request", c.OperationID})[:48]}, Anchor: c.Anchor, Config: dvr.RuleConfig{Name: c.Name, SourceID: c.SourceID, SeriesID: c.Match, Enabled: c.Enabled, Episodes: episodes, AllowedChannels: []string{}, BlockedChannels: []string{}, BlockedKeywords: []string{}, Keywords: []string{}, Options: opts}}
+		if c.Kind == "title" {
+			in.Config.MatchKind = "title"
+			in.Config.Title = c.Match
+			in.Config.SeriesID = ""
+			in.Config.ChannelID = c.Anchor.ChannelID
+			if c.ExpectedRevision > 0 {
+				var prior string
+				if err = tx.QueryRowContext(ctx, `SELECT config_json FROM dvr_rules WHERE owner_key=? AND id=? AND deleted=0`, c.Owner.Key(), target).Scan(&prior); err != nil {
+					return mapDVRError(err)
+				}
+				var config dvr.RuleConfig
+				if json.Unmarshal([]byte(prior), &config) != nil {
+					return ErrUnavailable
+				}
+				in.Config.ChannelID = config.ChannelID
+			}
+		}
+
 		r, err := s.DVR.SaveRule(dbwork.WithWrite(ctx, tx, dbwork.ClassInteractive), groupAuthority(auth), c.Owner, in)
 		if err != nil {
 			return mapDVRError(err)

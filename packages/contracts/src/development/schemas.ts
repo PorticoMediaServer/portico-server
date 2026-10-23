@@ -169,6 +169,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "resetFileOwnerSession": {
+        "type": "boolean"
+      },
       "serverId": {
         "type": "string"
       },

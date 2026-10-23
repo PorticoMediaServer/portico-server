@@ -396,6 +396,36 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
+		"DELETE /v1/me/removed-titles/{id}": perHidden("DELETE", "/v1/me/removed-titles/ID", "", "item"),
+		"POST /v1/home/destination-picker": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for _, kind := range []string{"playlist", "collection"} {
+				for _, id := range m.hiddenItemSamples() {
+					out = append(out, idProbe{hidden: id, method: "POST", path: "/v1/home/destination-picker", body: fmt.Sprintf(`{"kind":%q,"limit":40,"itemIds":[%q]}`, kind, id)})
+				}
+			}
+			return out
+		}),
+		"POST /v1/home/destination-receipt": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for kind, destination := range map[string]string{"playlist": m.playlist, "collection": m.savedResource} {
+				for _, id := range m.hiddenSamples() {
+					out = append(out,
+						idProbe{hidden: id, method: "POST", path: "/v1/home/destination-receipt", body: fmt.Sprintf(`{"kind":%q,"destinationId":%q,"jobIds":[%q]}`, kind, destination, id)},
+						idProbe{hidden: id, method: "POST", path: "/v1/home/destination-receipt", body: fmt.Sprintf(`{"kind":%q,"destinationId":%q,"jobIds":["matrix-foreign-job"]}`, kind, id)},
+					)
+				}
+			}
+			return out
+		}),
+		"POST /v1/metadata/bulk/preview": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for _, library := range []string{"private-library", "matrix-movies"} {
+				body := fmt.Sprintf(`{"targets":[{"kind":"item","contentKind":"movie","id":"ID","libraryId":%q}]}`, library)
+				out = append(out, perHidden("POST", "/v1/metadata/bulk/preview", body, "item").probes(m)...)
+			}
+			return out
+		}),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.mks": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.sub": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
@@ -475,7 +505,6 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/quick-connect/token":               writeExempt(reasonSignIn),
 		"POST /v1/saved-resources":                   writeExempt(reasonOwnObject),
 		"POST /v1/setup/finish":                      writeExempt(reasonSignIn),
-		"POST /v1/setup/remote-recovery":             writeExempt(reasonSignIn),
 		"POST /v1/shows/{id}/metadata/screen/retry":  writeExempt("owner-only metadata/analysis/preparation mutation; member refused (manual_metadata_test, musicbrainz_test and analysis owner checks)"),
 		"POST /v1/shows/{id}/metadata/screen/search": writeExempt("owner-only metadata/analysis/preparation mutation; member refused (manual_metadata_test, musicbrainz_test and analysis owner checks)"),
 		"POST /v1/storage/mounts":                    writeExempt("owner-only storage configuration; no member catalogue mutation (mounts_test and owner checks in router.go)"),
@@ -540,8 +569,18 @@ func restrictionWriteRoutes() map[string]writeRoute {
 			}
 			return out
 		}),
-		"POST /v1/downloads/preparations":             perHidden("POST", "/v1/downloads/preparations", `{"operationId":"OP","mediaId":"ID","quality":"original"}`, "item"),
-		"POST /v1/playback/sessions":                  perHidden("POST", "/v1/playback/sessions", `{"itemId":"ID","startFrom":"beginning"}`, "item"),
+		"POST /v1/downloads/preparations":      perHidden("POST", "/v1/downloads/preparations", `{"operationId":"OP","mediaId":"ID","quality":"original"}`, "item"),
+		"POST /v1/playback/sessions":           perHidden("POST", "/v1/playback/sessions", `{"itemId":"ID","startFrom":"beginning"}`, "item"),
+		"POST /v1/playback/controls/{id}:stop": writeExempt("account-scoped opaque playback session stop; no catalogue ID or title response (TestPlaybackV1AccountPlaybackListHidesRestrictedTitlesAndStopsOwnSlots)"),
+		"POST /v1/downloads/options": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for _, kind := range []string{"show", "season", "album", "book"} {
+				body := fmt.Sprintf(`{"target":{"kind":%q,"id":"ID"},"deviceId":%q,"policy":{"episodes":"all"}}`, kind, m.device)
+				out = append(out, perHidden("POST", "/v1/downloads/options", body, kind).probes(m)...)
+			}
+			return out
+		}),
+		"POST /v1/queues/{id}/batch":                  perHidden("POST", "/v1/queues/matrix-unknown/batch", `{"placement":"end","source":{"items":{"ids":["ID"]}}}`, "item"),
 		"POST /v1/queues":                             perHidden("POST", "/v1/queues", `{"segments":[{"source":{"items":{"ids":["ID"]}}}],"startPlayback":{"state":"playing"}}`, "item"),
 		"PATCH /v1/dvr/recordings/{id}":               perHidden("PATCH", "/v1/dvr/recordings/ID", `{"expectedRevision":0}`, "item"),
 		"DELETE /v1/dvr/recordings/{id}":              perHidden("DELETE", "/v1/dvr/recordings/ID", "", "item"),
@@ -550,7 +589,9 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"PUT /v1/me/library-navigation":               perHidden("PUT", "/v1/me/library-navigation", `{"expectedRevision":0,"pinnedLibraryIds":["ID"]}`, "library"),
 		"POST /v1/libraries":                          writeExempt("owner-only library creation (library_routes tests); names no existing catalogue id"),
 		"POST /v1/libraries/{id}/browse":              perHidden("POST", "/v1/libraries/ID/browse", `{"pivot":"movies","limit":20}`, "library"),
+		"POST /v1/libraries/{id}/browse/counts":       perHidden("POST", "/v1/libraries/ID/browse/counts", `{"pivot":"movies","queries":[{"id":"x"}]}`, "library"),
 		"POST /v1/browse":                             perHidden("POST", "/v1/browse", `{"pivot":"titles","query":{"field":"savedCollection","operator":"equals","value":"ID"},"limit":20}`, "item"),
+		"POST /v1/browse/counts":                      perHidden("POST", "/v1/browse/counts", `{"pivot":"titles","queries":[{"id":"x","query":{"field":"savedCollection","operator":"equals","value":"ID"}}]}`, "item"),
 		"POST /v1/libraries/{id}/collections":         perHidden("POST", "/v1/libraries/ID/collections", `{"name":"x"}`, "library"),
 		"POST /v1/libraries/{id}/episode-assignments": perHidden("POST", "/v1/libraries/ID/episode-assignments", `{}`, "library"),
 		"POST /v1/libraries/{id}/lyrics/fetch":        perHidden("POST", "/v1/libraries/ID/lyrics/fetch", `{}`, "library"),
@@ -616,6 +657,8 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/topshelf/token":                           writeExempt(reasonOwnSession),
 
 		// Live TV and DVR.
+		"PUT /v1/guide/reminders":               perHidden("PUT", "/v1/guide/reminders", `{"sourceId":"matrix-unknown","channelId":"matrix-unknown","generation":"matrix-unknown","programmeId":"ID","kind":"library-channel","expectedRevision":0}`, "item"),
+		"DELETE /v1/guide/reminders/{id}":       perHidden("DELETE", "/v1/guide/reminders/ID", `{"expectedRevision":1}`, "item"),
 		"POST /v1/dvr/recordings":               writeExempt(reasonLiveChannel),
 		"POST /v1/dvr/rules/preview":            writeExempt(reasonLiveChannel),
 		"PUT /v1/dvr/rules/{id}":                writeExempt(reasonLiveChannel),
@@ -652,6 +695,12 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/setup":                                    writeExempt(reasonSignIn),
 		"POST /v1/setup/app":                                writeExempt(reasonSignIn),
 		"POST /v1/setup/browser":                            writeExempt(reasonSignIn),
+		"POST /v1/auth/portico-return/exchange":             writeExempt(reasonSignIn),
+		"POST /v1/setup/account/complete":                   writeExempt(reasonSignIn),
+		"POST /v1/auth/owner-reset/request":                 writeExempt(reasonSignIn),
+		"POST /v1/auth/owner-reset/verify":                  writeExempt(reasonSignIn),
+		"POST /v1/direct/password/reset":                    writeExempt(reasonSignIn),
+		"POST /v1/direct/members/{id}/reset-code":           writeExempt("authorized local member password reset; no catalogue ids"),
 		"POST /v1/setup/resume":                             writeExempt(reasonSignIn),
 		"POST /v1/hosted/wake":                              writeExempt(reasonNetworking),
 		"POST /v1/direct/members":                           writeExempt("owner member management (admin_access_test); no catalogue ids"),

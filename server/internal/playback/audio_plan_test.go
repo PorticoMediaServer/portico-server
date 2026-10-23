@@ -29,7 +29,7 @@ func TestConversionAdmissionFollowsOwnerCeilings(t *testing.T) {
 	// Unlimited by default: a household's worth of conversions is admitted.
 	updateCatalogAsset(t, db, asset, func(a *compactcatalog.Asset) { a.Container, a.VideoCodec, a.AudioCodec = "mkv", "vp9", "opus" })
 	for _, request := range []string{"one", "two", "three", "four"} {
-		if _, e := s.Create(p, item, "auto", request); e != nil {
+		if _, e := s.Create(p, item, "automatic", request); e != nil {
 			t.Fatal(request, e)
 		}
 	}
@@ -37,7 +37,7 @@ func TestConversionAdmissionFollowsOwnerCeilings(t *testing.T) {
 	cfg := DefaultDeliveryConfiguration()
 	cfg.MaxConversions = 4
 	s.ConfigureDelivery(fixedSettings{cfg}, nil, nil, "")
-	if _, e := s.Create(p, item, "auto", "five"); !errors.Is(e, ErrConversionCapacity) {
+	if _, e := s.Create(p, item, "automatic", "five"); !errors.Is(e, ErrConversionCapacity) {
 		t.Fatal("owner conversion ceiling ignored", e)
 	}
 	var n int
@@ -46,31 +46,31 @@ func TestConversionAdmissionFollowsOwnerCeilings(t *testing.T) {
 	}
 	// ...but never for a session that only repackages.
 	updateCatalogAsset(t, db, asset, func(a *compactcatalog.Asset) { a.VideoCodec, a.AudioCodec = "h264", "aac" })
-	session, e := s.Create(p, item, "auto", "remux")
+	session, e := s.Create(p, item, "automatic", "remux")
 	if e != nil || session.Mode != "hls" {
 		t.Fatal("a repackaging session was refused by the conversion ceiling", session, e)
 	}
 	for _, request := range []string{"remux-two", "remux-three", "remux-four"} {
-		if _, err := s.Create(p, item, "auto", request); err != nil {
+		if _, err := s.Create(p, item, "automatic", request); err != nil {
 			t.Fatal("remux counted as transcode", err)
 		}
 	}
 	updateCatalogAsset(t, db, asset, func(a *compactcatalog.Asset) { a.AudioCodec = "opus" })
-	if _, err := s.Create(p, item, "auto", "audio-only"); err != nil {
+	if _, err := s.Create(p, item, "automatic", "audio-only"); err != nil {
 		t.Fatal("audio-only counted as video transcode", err)
 	}
 	// The software ceiling counts software picture conversions only.
 	cfg.MaxConversions, cfg.MaxSoftwareConversions = 0, 2
 	s.ConfigureDelivery(fixedSettings{cfg}, nil, nil, "")
 	updateCatalogAsset(t, db, asset, func(a *compactcatalog.Asset) { a.VideoCodec, a.AudioCodec = "vp9", "opus" })
-	if _, e = s.Create(p, item, "auto", "software"); !errors.Is(e, ErrConversionCapacity) {
+	if _, e = s.Create(p, item, "automatic", "software"); !errors.Is(e, ErrConversionCapacity) {
 		t.Fatal("software ceiling ignored", e)
 	}
 	// An unexpected query error cannot admit work as if nothing were running.
 	mustAudioExec(t, db, `DROP TABLE playback_hls_reservations`)
 	cfg.MaxSoftwareConversions = 0
 	s.ConfigureDelivery(fixedSettings{cfg}, nil, nil, "")
-	if _, e = s.Create(p, item, "auto", "query-failed"); e == nil {
+	if _, e = s.Create(p, item, "automatic", "query-failed"); e == nil {
 		t.Fatal("a failed admission write admitted the session")
 	}
 }
@@ -80,7 +80,7 @@ func TestAudioReservationSurvivesFailedCleanupAndSessionDeletion(t *testing.T) {
 	s.ConfigureHLS(&HLS{})
 	asset := firstCatalogAssetToken(t, db)
 	updateCatalogAsset(t, db, asset, func(a *compactcatalog.Asset) { a.Container = "mkv" })
-	session, e := s.Create(p, item, "auto", "cleanup")
+	session, e := s.Create(p, item, "automatic", "cleanup")
 	if e != nil {
 		t.Fatal(e)
 	}

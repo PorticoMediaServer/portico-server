@@ -22,7 +22,7 @@ if (!bin) { console.error('Set PORTICO_SERVER_BIN to a Portico server binary.');
 async function withServer(port, run) {
   // The server insists on canonical paths (macOS tmp is behind a symlink).
   const state = realpathSync(mkdtempSync(path.join(tmpdir(), 'portico-setup-')));
-  const child = spawn(bin, [], {env: {...process.env, PORTICO_STATE_DIR: state, PORTICO_BIND: `127.0.0.1:${port}`}, stdio: ['ignore', 'pipe', 'pipe']});
+  const child = spawn(bin, [], {env: {...process.env, PORTICO_DATA_DIR: state, PORTICO_BIND: `127.0.0.1:${port}`}, stdio: ['ignore', 'pipe', 'pipe']});
   let log = '';
   child.stderr.on('data', d => { log += d; });
   child.stdout.on('data', d => { log += d; });

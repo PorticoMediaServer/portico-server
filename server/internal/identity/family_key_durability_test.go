@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 
 	"portico.local/server/internal/persistence"
@@ -34,7 +35,7 @@ func TestSetupHashKeyStoredInConfiguration(t *testing.T) {
 	if len(s.setupHashKey) != 32 {
 		t.Fatal("setup hash key not loaded")
 	}
-	if _, e := os.Stat(filepath.Join(dir, "authorization-replay.key")); !errors.Is(e, os.ErrNotExist) {
+	if _, e := os.Stat(storagepaths.Path(dir, "authorization-replay.key")); !errors.Is(e, os.ErrNotExist) {
 		t.Fatal("key file created")
 	}
 	// A restart keeps the same key: code hashes stay stable.
@@ -84,7 +85,7 @@ func TestSealedFactorsMigrateToPlain(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO identity_account_factors(account_id,secret,confirmed,last_step,enrolled_at) VALUES('account',?,0,0,'2026-01-01T00:00:00Z')`, sealed); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(dir, "authorization-replay.key"), key, 0600); err != nil {
+	if err = writePathFixture(storagepaths.Path(dir, "authorization-replay.key"), key, 0600); err != nil {
 		t.Fatal(err)
 	}
 	s, err := New(db, dir)
@@ -99,7 +100,7 @@ func TestSealedFactorsMigrateToPlain(t *testing.T) {
 	if err != nil || secret != "TOPSECRET" {
 		t.Fatalf("migrated factor unreadable: %q %v", secret, err)
 	}
-	if _, err = os.Stat(filepath.Join(dir, "authorization-replay.key")); !errors.Is(err, os.ErrNotExist) {
+	if _, err = os.Stat(storagepaths.Path(dir, "authorization-replay.key")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("key file left behind")
 	}
 }

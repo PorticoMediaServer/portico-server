@@ -16,7 +16,7 @@ func TestRichRecipeKeepsHDRAndSurroundForDevicesThatPlayThem(t *testing.T) {
 	if !richGains(hdr) || richGains(sdr) {
 		t.Fatal("gains")
 	}
-	recipe, err := preparedmedia.ProfileByID(preparedmedia.RichProfileFor(1080))
+	recipe, err := preparedmedia.ProfileByID(preparedmedia.RichProfileFor("1080p-low"))
 	if err != nil {
 		t.Fatal(err)
 	}

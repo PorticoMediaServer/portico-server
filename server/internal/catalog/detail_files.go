@@ -3,12 +3,14 @@ package catalog
 import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
+	"strconv"
+	"time"
 )
 
 // TitleFile is one file of a title as its Files list reads: where it is (owners only), how big
-// it is and every track in it. It rides on the detail response only; browse rows keep the short
-// assets.Source.
+// it is and every track in it. Only the lazy File info read carries it.
 type TitleFile struct {
+	ItemID    string  `json:"itemId,omitempty"`
 	ID        string  `json:"id"`
 	Path      string  `json:"path,omitempty"`
 	Size      int64   `json:"size"`
@@ -144,4 +146,157 @@ func (s *Service) titleFiles(item string, owner bool) ([]TitleFile, error) {
 		}
 	}
 	return out, nil
+}
+
+// DetailLanguages is the union across versions, without file identity or facts.
+type DetailLanguages struct {
+	Audio     []string `json:"audio"`
+	Subtitles []string `json:"subtitles"`
+}
+
+type FileInfoManage struct {
+	Delete bool `json:"delete"`
+	Split  bool `json:"split"`
+	Merge  bool `json:"merge"`
+}
+
+type FileInfo struct {
+	Scope      DetailScope     `json:"scope"`
+	Revision   ContentRevision `json:"revision"`
+	Kind       string          `json:"kind"`
+	Files      []TitleFile     `json:"files"`
+	Manage     *FileInfoManage `json:"manage,omitempty"`
+	NextCursor string          `json:"nextCursor,omitempty"`
+}
+
+func (s *Service) detailLanguages(item string) (DetailLanguages, error) {
+	out := DetailLanguages{Audio: []string{}, Subtitles: []string{}}
+	rows, err := s.read().Query(`SELECT DISTINCT type,language FROM (SELECT st.type,st.language FROM catalog_asset_links l JOIN asset_streams st ON st.asset_id=(SELECT token FROM catalog_assets WHERE id=l.asset_id) WHERE l.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?1)) AND st.type='audio' UNION SELECT 'subtitle',st.language FROM catalog_asset_links l JOIN asset_subtitles st ON st.asset_id=(SELECT token FROM catalog_assets WHERE id=l.asset_id) WHERE l.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?1))) WHERE language<>'' ORDER BY type,language`, item)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var kind, language string
+		if err = rows.Scan(&kind, &language); err != nil {
+			return out, err
+		}
+		if kind == "audio" {
+			out.Audio = append(out.Audio, language)
+		} else {
+			out.Subtitles = append(out.Subtitles, language)
+		}
+	}
+	return out, rows.Err()
+}
+
+// FileInfo reads technical facts only when asked. Album/book reads page their
+// child titles; every child's visibility is checked before its files are read.
+func (s *Service) FileInfo(viewer Viewer, server, item, cursor string, limit int, owner bool) (FileInfo, error) {
+	out := FileInfo{Files: []TitleFile{}}
+	var library, kind string
+	if err := s.read().QueryRow(`SELECT l.library_id,k.name FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id JOIN catalog_kinds k ON k.id=e.kind WHERE e.public_id=pid_blob(?) AND e.retired=0 AND l.retired=0`, item).Scan(&library, &kind); err != nil {
+		return out, err
+	}
+	namespace := "item"
+	if kind == "album" || kind == "book" {
+		namespace = kind
+	}
+	if err := s.VisibleEntity(s.Context(), viewer, namespace, item); err != nil {
+		return out, err
+	}
+	revision, err := s.ContentRevision(library, viewer.Profile)
+	if err != nil {
+		return out, err
+	}
+	out.Scope = DetailScope{server, library, item, viewer.Fence}
+	out.Revision = revision
+	out.Kind = kind
+	if owner {
+		out.Manage = &FileInfoManage{Delete: true, Split: kind == "movie" || kind == "song" || kind == "audiobook_file", Merge: true}
+	}
+	ids := []string{item}
+	if namespace != "item" {
+		if limit == 0 {
+			limit = 100
+		}
+		if limit < 1 || limit > 200 {
+			return out, ErrCursor
+		}
+		scope := cursorScope{Library: library, Profile: viewer.Profile, Viewer: viewer.Fence, View: "file_info", Entity: item, Limit: limit}
+		var after int64
+		if cursor != "" {
+			c, e := s.decodeDetailCursor(cursor, scope, revision)
+			if e != nil {
+				return out, e
+			}
+			after, e = strconv.ParseInt(c.Value, 10, 64)
+			if e != nil || after < 0 {
+				return out, ErrCursor
+			}
+		}
+		visible, args := viewer.itemVisibilitySQL("e.id")
+		values := append([]any{item, after}, args...)
+		values = append(values, limit+1)
+		rows, e := s.read().Query(`SELECT pid(e.public_id),e.id FROM catalog_entities e WHERE e.parent_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND e.id>? AND `+visible+` ORDER BY e.id LIMIT ?`, values...)
+		if e != nil {
+			return out, e
+		}
+		ids = []string{}
+		keys := []int64{}
+		for rows.Next() {
+			var id string
+			var key int64
+			if e = rows.Scan(&id, &key); e != nil {
+				rows.Close()
+				return out, e
+			}
+			ids = append(ids, id)
+			keys = append(keys, key)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return out, e
+		}
+		if len(ids) > limit {
+			ids = ids[:limit]
+			out.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.FormatInt(keys[limit-1], 10), Expires: time.Now().Add(30 * time.Minute).Unix()}, revision)
+			if err != nil {
+				return out, err
+			}
+		}
+	} else if cursor != "" {
+		return out, ErrCursor
+	}
+	for _, id := range ids {
+		files, e := s.titleFiles(id, owner)
+		if e != nil {
+			return out, e
+		}
+		for i := range files {
+			files[i].ItemID = id
+		}
+		out.Files = append(out.Files, files...)
+	}
+	after, err := s.ContentRevision(library, viewer.Profile)
+	if err != nil {
+		return out, err
+	}
+	if after != revision {
+		return out, ErrStaleContinuation
+	}
+	return out, nil
+}
+
+// Detail rows never silently reuse an old ordering after a publication.
+func (s *Service) decodeDetailCursor(raw string, scope cursorScope, revision ContentRevision) (cursorValue, error) {
+	value, err := s.decodeRevisionCursor(raw, scope, revision)
+	if err != nil {
+		return value, err
+	}
+	if value.CatalogRevision != revision.Catalog || value.ViewerRevision != revision.Viewer {
+		return cursorValue{}, ErrStaleContinuation
+	}
+	return value, nil
 }

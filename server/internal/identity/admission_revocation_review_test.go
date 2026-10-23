@@ -129,7 +129,7 @@ func TestMemberDeviceDecisionRechecksLiveAuthority(t *testing.T) {
 			actorSession := *owner.Session
 			adminID := ""
 			if change == "demote" {
-				admin, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "admin", Password: "Testing3!", Name: "Admin", AllowedLibraries: []string{}})
+				admin, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "admin", Password: "Testing3!", Name: "Admin", AllowedLibraries: []string{}})
 				if err != nil {
 					t.Fatal(err)
 				}

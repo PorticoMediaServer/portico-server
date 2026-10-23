@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"portico.local/server/internal/testtier"
 	"runtime"
 	"sync"
@@ -93,7 +94,7 @@ func timeToFirstAnswer(t *testing.T, state string) time.Duration {
 	port := freePort(t)
 	server := exec.Command(binary)
 	server.Env = append(os.Environ(),
-		"PORTICO_STATE_DIR="+state,
+		"PORTICO_DATA_DIR="+state, "HOME="+filepath.Dir(state),
 		fmt.Sprintf("PORTICO_BIND=127.0.0.1:%d", port),
 		"PORTICO_DISCOVERY=0",
 	)
@@ -200,7 +201,7 @@ func TestALargeLibraryAnswersWithinTheStartupBudget(t *testing.T) {
 	if state == "" {
 		t.Skip("set PORTICO_STARTUP_FIXTURE_STATE to a writable copy of a large state directory")
 	}
-	if _, err := os.Stat(filepath.Join(state, "server.sqlite")); err != nil {
+	if _, err := os.Stat(storagepaths.Path(state, "server.sqlite")); err != nil {
 		t.Fatalf("PORTICO_STARTUP_FIXTURE_STATE has no server.sqlite: %v", err)
 	}
 	// The first launch may still have a schema version to record; the budget is
@@ -238,7 +239,7 @@ func TestHealthCheckAgreesWithReadiness(t *testing.T) {
 		state = resolved
 	}
 	server := exec.Command(binary)
-	server.Env = append(os.Environ(), "PORTICO_STATE_DIR="+state, "PORTICO_BIND="+address, "PORTICO_DISCOVERY=0")
+	server.Env = append(os.Environ(), "PORTICO_DATA_DIR="+state, "HOME="+filepath.Dir(state), "PORTICO_BIND="+address, "PORTICO_DISCOVERY=0")
 	log, err := os.Create(filepath.Join(t.TempDir(), "server.log"))
 	if err != nil {
 		t.Fatal(err)

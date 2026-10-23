@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 	"time"
@@ -95,11 +96,11 @@ func newNativeFixture(t *testing.T) nativeFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	control := filepath.Join(state, "provider")
+	control := storagepaths.Path(state, "provider")
 	if err = os.Mkdir(control, 0700); err != nil {
 		t.Fatal(err)
 	}
-	db, err := persistence.Open(filepath.Join(state, "db"))
+	db, err := persistence.Open(storagepaths.Path(state, "db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +158,10 @@ func waitNative(t *testing.T, f nativeFixture, predicate func() bool) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("native producer did not reach expected state")
+	var state, code string
+	var entries int
+	_ = f.db.QueryRow(`SELECT state,error_code,entries FROM remote_native_listings LIMIT 1`).Scan(&state, &code, &entries)
+	t.Fatalf("native producer did not reach expected state: state=%s code=%s entries=%d", state, code, entries)
 }
 func (f nativeFixture) count(t *testing.T, query string, args ...any) int {
 	t.Helper()

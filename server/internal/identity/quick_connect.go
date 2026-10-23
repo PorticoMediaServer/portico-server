@@ -47,6 +47,7 @@ type QuickAuthorization struct {
 	Interval                int    `json:"interval"`
 }
 type QuickPreview struct {
+	ServerName string `json:"serverName"`
 	RequestID  string `json:"requestId"`
 	UserCode   string `json:"userCode"`
 	DeviceName string `json:"deviceName"`
@@ -222,6 +223,7 @@ func (s *Service) ReviewQuick(ctx context.Context, code string) (QuickPreview, e
 	if errors.Is(e, sql.ErrNoRows) {
 		return p, &SetupProtocolError{Code: "invalid_grant"}
 	}
+	p.ServerName = s.Name()
 	p.UserCode = normalized[:4] + "-" + normalized[4:]
 	p.ExpiresAt = time.Unix(expiry, 0).UTC().Format(time.RFC3339)
 	return p, e
@@ -268,7 +270,7 @@ func (s *Service) DecideQuick(ctx context.Context, p Principal, id, code, decisi
 		return ErrConflict
 	}
 	approver := familyForTokenTx(ctx, tx, p.Hash)
-	if e = s.recoveryAllowedTx(ctx, tx, p.AccountID, approver, private); e != nil {
+	if e = refuseResetDescendantTx(ctx, tx, approver); e != nil {
 		return e
 	}
 	// The approval only records who approved. The session is issued when the new

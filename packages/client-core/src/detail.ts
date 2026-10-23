@@ -8,6 +8,7 @@ import type { MediaItem } from './index.ts';
 import {validateRelatedMovies,type RelatedMovieProjection} from './related-movies.ts';
 import {parseSegmentMarkers,type SegmentMarker} from './segment-markers.ts';
 import {validateContentEntry,type ContentEntry} from './library-content.ts';
+import {validateHomeRow,type HomeRow} from './home.ts';
 import {firstOfEach,keepReadable,noteSkipped} from './tolerant.ts';
 export type DetailExtraType = 'trailer' | 'featurette' | 'deleted_scene' | 'behind_the_scenes' | 'interview' | 'scene' | 'short' | 'other';
 export type DetailExtra = Readonly<{ type: DetailExtraType; label: string; items: readonly ContentEntry[] }>;
@@ -31,19 +32,19 @@ export type DetailMetadata = Readonly<{
 }>;
 export type DetailCredit = Readonly<{ id: string; name: string; role: string; department: string; provider: string; portraitUrl?:string; personId?:string}>;
 /** One page of a title's cast or crew (GET /v1/items/{id}/credits). */
-export type CreditPage = Readonly<{ group: 'cast' | 'crew'; credits: readonly DetailCredit[]; total: number; nextCursor?: string }>;
+export type CreditPage = Readonly<{ revision: Readonly<{catalog:number;viewer:number}>; group: 'cast' | 'crew'; credits: readonly DetailCredit[]; total: number; nextCursor?: string }>;
 export type DetailEpisodeInfo = Readonly<{ showId: string; showTitle: string; seasonId?: string; /** When it first aired (YYYY-MM-DD), when known. */ airDate?: string; seasonNumber?: number | null; numbering: string; number: number; localIdentityStatus: string; providerMatchStatus: string; orderingBasis: string; sourceBoundary: string }>;
 export type DetailSongInfo = Readonly<{ albumId: string; albumTitle: string; albumArtist: string; artist: string; discNumber?: number | null; trackNumber?: number | null; providerMatchStatus: string; localMetadataIssue?: string; providerTitle?:string;providerArtist?:string;providerRecordingId?:string;providerReleaseId?:string;providerReleaseGroupId?:string;providerTrackId?:string;providerReleaseStatus?:string;providerObservedAt?:string }>;
 export type DetailBookFileInfo = Readonly<{ bookId: string; bookTitle: string; discNumber?: number | null; partNumber?: number | null; sourceBoundary: string; localMetadataIssue?: string;localMetadata?:LocalBookMetadata;localPolicy?:LocalAudioPolicy }>;
 export type DetailSource = NonNullable<MediaItem['sources']>[number] & { duration?: number };
 export type DetailItem = Omit<MediaItem, 'sources'> & { /** An episode's own still, never inherited. */ stillUrl?: string; addedAt?: string | null; sources?: DetailSource[]; episode?: DetailEpisodeInfo; song?: DetailSongInfo; bookFile?: DetailBookFileInfo };
 /** The title's own facts (the editor's General fields): the facts line and the Details section. */
-export type TitleFacts = Readonly<{ contentRating?: string; studio?: string; network?: string; tagline?: string; releaseDate?: string; originalTitle?: string; country?: string; edition?: string }>;
+export type TitleFacts = Readonly<{ contentRating?: string; studio?: string; network?: string; tagline?: string; releaseDate?: string; originalTitle?: string; country?: string; originalLanguage?: string; edition?: string }>;
 /** One audio or subtitle track of a file. `external` is a subtitle file beside the media. */
 export type TitleFileTrack = Readonly<{ language?: string; codec: string; title?: string; channels?: number; channelLayout?: string; objectAudio?: string; bitRate?: number; default?: boolean; forced?: boolean; external?: boolean }>;
-/** One file of a title with every track in it (the page's Files list). `path` is sent to owners only. */
+/** One file returned by lazy File info. `path` is sent to owners only. */
 export type TitleFile = Readonly<{
-  id: string; path?: string; size: number; container: string; duration: number; bitRate?: number; available: boolean;
+  id: string; itemId?:string; path?: string; size: number; container: string; duration: number; bitRate?: number; available: boolean;
   /** 0 for a whole title. Files with the same part are versions of one another; the first listed is played when none is chosen. */
   partIndex?: number;
   /** The version's edition label, where its name or local metadata gave one. */
@@ -53,7 +54,9 @@ export type TitleFile = Readonly<{
 }>;
 export type DetailProjection = Readonly<{
   facts?: TitleFacts;
-  files?: readonly TitleFile[];
+  collections?: readonly Readonly<{id:string;name:string;memberCount:number;position:number;yearFrom?:number;yearTo?:number;posterUrls:readonly string[]}>[];
+  episodeDetails?: Readonly<{contentRating?:string;previous?:Readonly<{id:string;number:number;title:string}>;next?:Readonly<{id:string;number:number;title:string}>}>;
+  languages: Readonly<{audio: readonly string[]; subtitles: readonly string[]}>;
   /** When the title's last file went from disk (RFC 3339). Present only while the title has no file: it is shown, cannot be played, and comes back when a file that is the same title appears. */
   missingSince?: string;
   scope: Readonly<{ serverId: string; libraryId: string; itemId: string; viewerFence: string }>;
@@ -127,7 +130,7 @@ function titleFile(value: unknown): TitleFile {
     if (!obj(v) || !str(v.codec, 64) || !integer(v.width) || !integer(v.height)) invalid();
     return Object.freeze({ codec: v.codec, width: v.width, height: v.height, ...(str(v.dynamicRange, 32) && v.dynamicRange ? { dynamicRange: v.dynamicRange } : {}), ...(v.hdr10Plus === true ? { hdr10Plus: true } : {}), ...(finite(v.frameRate) && v.frameRate > 0 ? { frameRate: v.frameRate } : {}), ...(integer(v.bitDepth) && v.bitDepth > 0 ? { bitDepth: v.bitDepth } : {}), ...(integer(v.bitRate) && v.bitRate > 0 ? { bitRate: v.bitRate } : {}) });
   });
-  return Object.freeze({ id: value.id, ...(path ? { path } : {}), size: integer(value.size) ? value.size : 0, container: (value.container ?? '') as string, duration: finite(value.duration) ? value.duration : 0, ...(integer(value.bitRate) && value.bitRate > 0 ? { bitRate: value.bitRate } : {}), available: value.available === true, ...(integer(value.partIndex) ? { partIndex: value.partIndex } : {}), ...(str(value.edition, 512) && value.edition ? { edition: value.edition } : {}), ...(video ? { video } : {}), audio: Object.freeze(keepReadable('detail', 'file.audio', array(value.audio ?? [], 128), fileTrack)), subtitles: Object.freeze(keepReadable('detail', 'file.subtitles', array(value.subtitles ?? [], 256), fileTrack)) });
+  return Object.freeze({ id: value.id, ...(id(value.itemId)?{itemId:value.itemId}:{}),...(path ? { path } : {}), size: integer(value.size) ? value.size : 0, container: (value.container ?? '') as string, duration: finite(value.duration) ? value.duration : 0, ...(integer(value.bitRate) && value.bitRate > 0 ? { bitRate: value.bitRate } : {}), available: value.available === true, ...(integer(value.partIndex) ? { partIndex: value.partIndex } : {}), ...(str(value.edition, 512) && value.edition ? { edition: value.edition } : {}), ...(video ? { video } : {}), audio: Object.freeze(keepReadable('detail', 'file.audio', array(value.audio ?? [], 128), fileTrack)), subtitles: Object.freeze(keepReadable('detail', 'file.subtitles', array(value.subtitles ?? [], 256), fileTrack)) });
 }
 function checkScope(value: DetailScope): DetailScope {
   if (!obj(value) || !id(value.serverId) || !str(value.viewerId, 1024) || !value.viewerId) throw new Error('A bound detail viewer/server scope is required.');
@@ -184,12 +187,6 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
   for (const key of ['overview','posterUrl','backdropUrl','stillUrl'] as const) { const v = item[key]; if (key === 'overview' ? typeof v === 'string' && v.length <= 65536 && !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v) : str(v, 4096)) media[key] = v as string; else left('item.' + key, v); }
   if (integer(item.year)) media.year = item.year; else left('item.year', item.year);
   if (item.addedAt === null || str(item.addedAt, 128)) media.addedAt = item.addedAt as string | null; else left('item.addedAt', item.addedAt);
-  if (item.sources !== undefined && item.sources !== null) media.sources = keepReadable('detail', 'item.sources', array(item.sources, 64), source => {
-    source=wireDisplayDurations(source,{duration:"durationMs"},left);
-    if (!obj(source) || !id(source.id) || !str(source.container ?? '') || !str(source.videoCodec ?? '') || !str(source.audioCodec ?? '')) invalid();
-    return Object.freeze({ ...(finite(source.duration) ? { duration: source.duration } : {}), id: source.id, container: (source.container ?? '') as string, videoCodec: (source.videoCodec ?? '') as string, audioCodec: (source.audioCodec ?? '') as string, width: integer(source.width) ? source.width : 0, height: integer(source.height) ? source.height : 0 });
-  });
-  if (media.sources) Object.freeze(media.sources);
   const episode = part('item.episode', item.episode, value => {
     const fields = hierarchy(value, ['showId','showTitle','numbering','localIdentityStatus','providerMatchStatus','orderingBasis','sourceBoundary'], ['seasonId','airDate'], ['seasonNumber','number']);
     if (!integer(fields.number) || !id(fields.showId) || fields.seasonId !== undefined && !id(fields.seasonId)) invalid();
@@ -235,12 +232,14 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
   let markers: readonly SegmentMarker[] = [];
   try { markers = parseSegmentMarkers(raw.markers ?? [], media.duration); } catch { noteSkipped('detail', 'markers'); }
   let facts: TitleFacts | undefined;
-  if (obj(raw.facts)) { const f: {-readonly [K in keyof TitleFacts]: TitleFacts[K]} = {}; for (const key of ['contentRating','studio','network','tagline','releaseDate','originalTitle','country','edition'] as const) { const v = raw.facts[key]; if (str(v, 2048) && v) f[key] = v; } if (Object.keys(f).length) facts = Object.freeze(f); }
-  const files = raw.files === undefined || raw.files === null ? undefined : Object.freeze(keepReadable('detail', 'files', array(raw.files, 64), titleFile));
+  if (obj(raw.facts)) { const f: {-readonly [K in keyof TitleFacts]: TitleFacts[K]} = {}; for (const key of ['contentRating','studio','network','tagline','releaseDate','originalTitle','country','originalLanguage','edition'] as const) { const v = raw.facts[key]; if (str(v, 2048) && v) f[key] = v; } if (Object.keys(f).length) facts = Object.freeze(f); }
+  const languages = Object.freeze({audio: Object.freeze(obj(raw.languages) ? array(raw.languages.audio ?? [],256).filter((v): v is string => str(v,64)) : []), subtitles: Object.freeze(obj(raw.languages) ? array(raw.languages.subtitles ?? [],256).filter((v): v is string => str(v,64)) : [])});
+  const collections=keepReadable('detail','collections',array(raw.collections??[],2),c=>{if(!obj(c)||!id(c.id)||!str(c.name,2048)||!integer(c.memberCount)||!integer(c.position))invalid();return Object.freeze({id:c.id,name:c.name,memberCount:c.memberCount,position:c.position,...(integer(c.yearFrom)&&c.yearFrom?{yearFrom:c.yearFrom}:{}),...(integer(c.yearTo)&&c.yearTo?{yearTo:c.yearTo}:{}),posterUrls:Object.freeze(array(c.posterUrls??[],4).filter((p):p is string=>str(p,4096)&&p.startsWith('/')))});});
+  const episodeDetails=part('episodeDetails',raw.episodeDetails,d=>{if(!obj(d))invalid();const neighbours:Record<string,Readonly<{id:string;number:number;title:string}>>={};for(const key of ['previous','next'] as const){const n=d[key];if(n!==undefined){if(!obj(n)||!id(n.id)||!integer(n.number)||!str(n.title,2048))invalid();neighbours[key]=Object.freeze({id:n.id,number:n.number,title:n.title});}}return Object.freeze({...neighbours,...(str(d.contentRating,256)&&d.contentRating?{contentRating:d.contentRating}:{})});});
   const missingSince = str(raw.missingSince, 64) && raw.missingSince ? raw.missingSince : undefined;
   const related = part('related', raw.related, value => validateRelatedMovies(value, {...target,kind:media.kind}));
   const extra = part('extras', raw.extras, value => extras(value, target));
-  return Object.freeze({ ...(facts ? { facts } : {}), ...(files?.length ? { files } : {}), ...(missingSince ? { missingSince } : {}), markers, scope: Object.freeze({ serverId: scope.serverId, libraryId: target.libraryId, itemId: target.itemId, viewerFence: s.viewerFence }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), item: Object.freeze(media), personal: personal(raw.personal), actions: Object.freeze(actions), ...(related?{related}:{}), ...(extra?{extras:extra}:{}), metadata: Object.freeze({ ...(m.sources===undefined?{}:{sources:Object.freeze(sources)}), ...(m.attributions===undefined?{}:{attributions:Object.freeze(attributions)}),status, ratings: Object.freeze(ratings), genres: Object.freeze(genres), credits: Object.freeze(credits), ...(creditTotals?{creditTotals}:{}) }) });
+  return Object.freeze({ ...(facts ? { facts } : {}), ...(collections.length?{collections:Object.freeze(collections)}:{}),...(episodeDetails?{episodeDetails}:{}),languages, ...(missingSince ? { missingSince } : {}), markers, scope: Object.freeze({ serverId: scope.serverId, libraryId: target.libraryId, itemId: target.itemId, viewerFence: s.viewerFence }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), item: Object.freeze(media), personal: personal(raw.personal), actions: Object.freeze(actions), ...(related?{related}:{}), ...(extra?{extras:extra}:{}), metadata: Object.freeze({ ...(m.sources===undefined?{}:{sources:Object.freeze(sources)}), ...(m.attributions===undefined?{}:{attributions:Object.freeze(attributions)}),status, ratings: Object.freeze(ratings), genres: Object.freeze(genres), credits: Object.freeze(credits), ...(creditTotals?{creditTotals}:{}) }) });
 }
 function receipt(raw: unknown, operationId: string, data: DetailProjection): Receipt {
   if (!obj(raw) || raw.operationId !== operationId || raw.serverId !== data.scope.serverId || raw.libraryId !== data.scope.libraryId || raw.itemId !== data.scope.itemId || raw.viewerFence !== data.scope.viewerFence) invalid();
@@ -414,7 +413,52 @@ export class DetailService {
 
 /** Validates one page of GET /v1/items/{itemId}/credits. The group asked for, the cursor and the bound are exact; a credit that cannot be read is left out alone and the total is at least the credits kept. */
 export function parseCreditPage(raw: unknown, itemId: string, group: 'cast' | 'crew'): CreditPage {
-  if (!obj(raw) || raw.group !== group || raw.nextCursor !== undefined && (!str(raw.nextCursor, 4096) || !raw.nextCursor)) invalid();
+  if (!obj(raw) || !obj(raw.revision) || !integer(raw.revision.catalog) || !integer(raw.revision.viewer) || raw.group !== group || raw.nextCursor !== undefined && (!str(raw.nextCursor, 4096) || !raw.nextCursor)) invalid();
   const credits = keepReadable('credits', 'credits', array(raw.credits, 10000), row => creditRow(row, itemId));
-  return Object.freeze({ group, credits: Object.freeze(credits), total: Math.max(integer(raw.total) ? raw.total : 0, credits.length), ...(raw.nextCursor ? { nextCursor: raw.nextCursor as string } : {}) });
+  return Object.freeze({ revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),group, credits: Object.freeze(credits), total: Math.max(integer(raw.total) ? raw.total : 0, credits.length), ...(raw.nextCursor ? { nextCursor: raw.nextCursor as string } : {}) });
+}
+
+/** A detail row retains its whole loaded prefix through exhaustion. */
+export function appendCreditPage(current: CreditPage, next: CreditPage): CreditPage {
+ if(current.group!==next.group) invalid();
+ if(current.revision.catalog!==next.revision.catalog || current.revision.viewer!==next.revision.viewer) throw new Failure('stale_continuation','Reload credits after the title changes.');
+ const seen=new Set(current.credits.map(credit=>credit.id));
+ return Object.freeze({...next,credits:Object.freeze([...current.credits,...next.credits.filter(credit=>!seen.has(credit.id))])});
+}
+export async function readCreditPage(api:DetailApi,itemId:string,group:'cast'|'crew',options:{cursor?:string;limit?:number}={},signal?:AbortSignal):Promise<CreditPage> {
+ const query=new URLSearchParams({group,limit:String(options.limit??37)});if(options.cursor)query.set('cursor',options.cursor);
+ return parseCreditPage(await api.request<RouteResponse<'get_items_id_credits'>>(encodedRoutePath('get_items_id_credits',{id:encodeURIComponent(itemId)})+'?'+query,'GET',undefined,signal),itemId,group);
+}
+export async function readDetailMoreLike(api:DetailApi,itemId:string,options:{cursor?:string;limit?:number}={},signal?:AbortSignal):Promise<HomeRow> {
+ const query=new URLSearchParams({limit:String(options.limit??37)});if(options.cursor)query.set('cursor',options.cursor);
+ const row=validateHomeRow(await api.request<RouteResponse<'get_items_id_recommendations_row'>>(encodedRoutePath('get_items_id_recommendations_row',{id:encodeURIComponent(itemId),row:'more_like'})+'?'+query,'GET',undefined,signal));
+ if(row.id!=='more_like:local:'+itemId || row.evidenceId!==itemId)invalid();
+ return row;
+}
+export function appendDetailRecommendationPage(current:HomeRow,next:HomeRow):HomeRow {
+ if(current.id!==next.id || current.endpoint!==next.endpoint || current.viewerFence!==next.viewerFence)invalid();
+ if(current.revision.catalog!==next.revision.catalog || current.revision.viewer!==next.revision.viewer)throw new Failure('stale_continuation','Reload recommendations after the title changes.');
+ const seen=new Set(current.entries.map(entry=>entry.id));
+ return Object.freeze({...current,entries:Object.freeze([...current.entries,...next.entries.filter(entry=>!seen.has(entry.id))]),nextCursor:next.nextCursor,hasMore:next.hasMore,total:next.total});
+}
+
+
+export type FileInfoProjection = Readonly<{
+ scope: DetailProjection['scope']; revision: DetailProjection['revision']; kind: string;
+ files: readonly TitleFile[]; nextCursor?: string;
+ manage?: Readonly<{delete: boolean; split: boolean; merge: boolean}>;
+}>;
+/** The lazy read shares the detail scope but grants no mutation authority. */
+export function parseFileInfo(raw: unknown, scope: DetailScope, target: DetailTarget): FileInfoProjection {
+ if (!obj(raw) || !obj(raw.scope) || raw.scope.serverId !== scope.serverId || raw.scope.itemId !== target.itemId || raw.scope.libraryId !== target.libraryId || !id(raw.scope.viewerFence) || !obj(raw.revision) || !integer(raw.revision.catalog) || !integer(raw.revision.viewer) || !id(raw.kind) || !Array.isArray(raw.files) || !str(raw.nextCursor ?? '',4096)) invalid();
+ let manage: FileInfoProjection['manage'];
+ if(raw.manage !== undefined) { const permissions=raw.manage;if(!obj(permissions) || ['delete','split','merge'].some(key=>typeof permissions[key] !== 'boolean')) invalid(); manage=Object.freeze({delete:permissions.delete as boolean,split:permissions.split as boolean,merge:permissions.merge as boolean}); }
+ const files=raw.files.map(value=>titleFile(value));
+ if(!manage && files.some(file=>file.path!==undefined)) invalid();
+ return Object.freeze({scope:Object.freeze({...raw.scope}) as FileInfoProjection['scope'],revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),kind:raw.kind,files:Object.freeze(files),...(raw.nextCursor?{nextCursor:raw.nextCursor as string}:{}),...(manage?{manage}:{})});
+}
+export async function readFileInfo(api: DetailApi, scope: DetailScope, target: DetailTarget, options: {cursor?: string; limit?: number} = {}, signal?: AbortSignal): Promise<FileInfoProjection> {
+ const query=new URLSearchParams(); if(options.cursor)query.set('cursor',options.cursor);if(options.limit!==undefined)query.set('limit',String(options.limit));
+ const path=encodedRoutePath('get_items_id_file_info',{id:encodeURIComponent(target.itemId)});
+ return parseFileInfo(await api.request(path+(query.size?'?'+query:''),'GET',undefined,signal),scope,target);
 }

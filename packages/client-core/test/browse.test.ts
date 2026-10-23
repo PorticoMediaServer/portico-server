@@ -301,3 +301,70 @@ test('a list across libraries names its group for its filter counts', () => {
   assert.deepEqual(facetGroupOf([{field: 'favorite', operator: 'equals', value: true}]), {group: 'favorite', value: ''});
   assert.equal(facetGroupOf([{field: 'genre', operator: 'equals', value: 'Drama'}]), undefined);
 });
+
+test('CB-1/2/3/5/6: contextual facets, batch counts, owner sort and remembered totals stay honest', async () => {
+ const {browseContextFacetsPath,browseCountsRequest,parseBrowseCounts,browseCountsPath,BrowseTotalsMemory}=await import('../src/browse.ts');
+ const query={all:[{field:'year',operator:'at-least' as const,value:2000},{field:'genre',operator:'contains' as const,value:'Drama'}]};
+ const url=new URL(browseContextFacetsPath('lib','genre','movies',query,'com',10),'https://private.invalid');
+ assert.equal(url.pathname,'/v1/libraries/lib/facets');
+ assert.deepEqual(JSON.parse(url.searchParams.get('query')!),query);
+ assert.equal(url.searchParams.get('pivot'),'movies');
+ assert.equal(url.searchParams.get('q'),'com');
+ const facets=parseBrowseFacets({field:'actor',total:500,totalIsLowerBound:true,revision:'revision',values:[{value:'a',label:'An actor',count:10000,countIsLowerBound:true}]},'actor');
+ assert.equal(facets.totalIsLowerBound,true);assert.equal(facets.values[0].countIsLowerBound,true);
+ assert.deepEqual(browseCountsRequest('movies',[{id:'relax',query}]),{pivot:'movies',queries:[{id:'relax',query}]});
+ assert.equal(browseCountsPath('lib'),'/v1/libraries/lib/browse/counts');assert.equal(browseCountsPath('*'),'/v1/browse/counts');
+ assert.throws(()=>browseCountsRequest('movies',Array.from({length:9},(_,i)=>({id:String(i),query:null}))));
+ assert.throws(()=>parseBrowseCounts({counts:[{id:'wrong',total:10,totalIsLowerBound:true,revision:'r'}]},['wanted']));
+ const counts=parseBrowseCounts({counts:[{id:'relax',total:10000,totalIsLowerBound:true,revision:'r'}]},['relax']);assert.equal(counts[0].totalIsLowerBound,true);
+ const owner=parseBrowseCapabilities(capabilitiesPayload({sorts:[{id:'fileSize',labelKey:'sort.fileSize',directions:['asc','desc'],defaultDirection:'desc',ownerOnly:true,applicableKinds:['movie']}]}));
+ assert.equal(owner.sorts[0].ownerOnly,true);
+ const memory=new BrowseTotalsMemory();const base=parseBrowseResult(resultPayload({applied:{query:null,sort:[]},pageInfo:{start:0,total:80,totalIsLowerBound:false,revision:'a',hasMore:true,nextCursor:'c'}}));
+ assert.deepEqual(memory.observe('viewer:library',base,true),{total:80,totalIsLowerBound:false});
+ const filtered=parseBrowseResult(resultPayload({pageInfo:{start:0,total:10,revision:'b',hasMore:true,nextCursor:'c',durationMs:9120000,durationIsLowerBound:true}}));
+ assert.deepEqual(memory.observe('viewer:library',filtered,false),{total:80,totalIsLowerBound:false});assert.equal(memory.observe('other-viewer:library',filtered,false),undefined);
+ assert.equal(filtered.pageInfo.durationMs,9120000);assert.equal(filtered.pageInfo.durationIsLowerBound,true);
+ memory.clear();assert.equal(memory.observe('viewer:library',filtered,false),undefined);
+});
+
+test('Home display pages keep exact membership order and actual entry identity',async()=>{
+ const {browseMembershipId,browseMembershipAnchor}=await import('../src/browse.ts');
+ const page=parseBrowseResult(resultPayload({entries:[{id:'ep',kind:'episode',title:'Actual episode'},{id:'season',kind:'season',title:'Actual season'}],displayTargets:[{membershipId:'show1',entryId:'ep'},{membershipId:'show2',entryId:'season'}],pageInfo:{start:0,total:2,revision:'r',hasMore:false,nextCursor:''}}));
+ assert.equal(page.entries[0].id,'ep');assert.equal(browseMembershipId(page,0),'show1');assert.equal(browseMembershipId(page,1),'show2');assert.equal(browseMembershipAnchor(page,'ep'),'show1');
+ assert.equal(browseMembershipAnchor(page,'missing'),undefined);
+ assert.throws(()=>parseBrowseResult(resultPayload({displayTargets:[{membershipId:'show',entryId:'different'}]})));
+ assert.throws(()=>parseBrowseResult(resultPayload({displayTargets:[]})));
+ assert.throws(()=>parseBrowseResult(resultPayload({entries:[{id:'ep',kind:'episode',title:'Actual episode'},{id:'broken',kind:'not-a-known-kind',title:''}],displayTargets:[{membershipId:'show1',entryId:'ep'},{membershipId:'show2',entryId:'broken'}]})));
+});
+
+test('capped totals never hide Unicode rail keys beyond the count or invent an exact empty end',()=>{
+ const index=Array.from({length:300},(_,i)=>({key:String.fromCodePoint(0x4e00+i),index:10000+i}));
+ const page=parseBrowseResult(resultPayload({pageInfo:{start:0,total:10000,totalIsLowerBound:true,revision:'r',hasMore:true,nextCursor:'c'},positionIndex:index}));
+ assert.deepEqual(page.positionIndex,index);assert.equal(page.pageInfo.total,10300);assert.equal(page.pageInfo.totalIsLowerBound,true);
+ const empty=parseBrowseResult(resultPayload({entries:[],pageInfo:{start:99999,total:10000,totalIsLowerBound:true,revision:'r',hasMore:false,nextCursor:''},positionIndex:[]}));
+ assert.equal(empty.pageInfo.totalIsLowerBound,true);assert.equal(empty.pageInfo.total,10000);
+});
+
+test('GP-CB-1 and CB-6: member/TV toolbar consumes match and ownerOnly capabilities',async()=>{
+ const {toolbarModel}=await import('../src/presentation/browse-toolbar.ts');
+ const caps=parseBrowseCapabilities(capabilitiesPayload({fields:[{id:'match',labelKey:'browse.field.match',type:'enum',operators:['equals'],controlHint:'select',complexity:'standard',cost:'indexed-join',applicableKinds:['movie'],allowedValues:['matched','unmatched']},{id:'actor',labelKey:'browse.field.actor',type:'identity-set',operators:['equals'],controlHint:'facet-multi-select',complexity:'advanced',cost:'indexed-join',applicableKinds:['movie'],facetSource:{endpoint:'/v1/libraries/{id}/facets',field:'actor'}}],sorts:[{id:'fileSize',labelKey:'sort.fileSize',directions:['desc'],defaultDirection:'desc',ownerOnly:true,applicableKinds:['movie']},{id:'title',labelKey:'sort.title',directions:['asc'],defaultDirection:'asc',applicableKinds:['movie']}]}));
+ const member=toolbarModel(caps,'movie',[],{field:'title',direction:'asc'},{owner:false,textEntry:false});
+ assert.deepEqual(member.groups.flatMap(g=>g.fields).map(f=>f.id).sort(),['actor','match']);assert.deepEqual(member.sorts.map(s=>s.id),['title']);
+ const owner=toolbarModel(caps,'movie',[],{field:'title',direction:'asc'},{owner:true});assert.equal(owner.sorts.some(s=>s.id==='fileSize'),true);
+});
+
+test('public music Unmatched navigation follows actual capabilities for member, owner and TV',async()=>{
+ const {libraryTabs,canBrowseMusicUnmatched}=await import('../src/presentation/library-tabs.ts');
+ const {browsePath}=await import('../src/browse.ts');
+ const caps=parseBrowseCapabilities(capabilitiesPayload({library:{id:'music',name:'Music',kind:'music',defaultView:'discover'},pivots:[{id:'albums',labelKey:'library.albums',entityKinds:['album'],defaultSort:[{field:'title',direction:'asc'}],supportedViews:['grid'],browsable:true,filters:['match']}],resolvedPivot:{id:'albums',labelKey:'library.albums',entityKinds:['album'],defaultSort:[{field:'title',direction:'asc'}],supportedViews:['grid'],browsable:true,filters:['match']},fields:[{id:'match',labelKey:'browse.field.match',type:'enum',operators:['equals'],controlHint:'select',complexity:'standard',cost:'indexed-join',applicableKinds:['album'],allowedValues:['matched','unmatched']}]}));
+ assert.equal(canBrowseMusicUnmatched(caps),true);
+ for(const caller of ['member','owner','tv']){
+  const tabs=libraryTabs('music',{owner:caller==='owner',unmatched:canBrowseMusicUnmatched(caps)});const tab=tabs.find(t=>t.id==='unmatched')!;
+  assert.equal(tab.pivot,'albums');assert.deepEqual(tab.fixedFilter,[{field:'match',operator:'equals',value:'unmatched'}]);assert.equal(browsePath(caps.library.id),'/v1/libraries/music/browse');
+ }
+ const local={...caps,fields:caps.fields.filter(f=>f.id!=='match'),pivots:caps.pivots.map(p=>({...p,filters:[]}))};
+ for(const unavailable of [undefined,local])for(const owner of [false,true])assert.equal(libraryTabs('music',{owner,unmatched:canBrowseMusicUnmatched(unavailable)}).some(t=>t.id==='unmatched'),false);
+ assert.equal(canBrowseMusicUnmatched({...caps,library:{...caps.library,kind:'audiobook'}}),false);
+ assert.equal(canBrowseMusicUnmatched({...caps,pivots:caps.pivots.map(p=>({...p,filters:undefined}))}),false);
+ assert.equal(canBrowseMusicUnmatched({...caps,pivots:caps.pivots.map(p=>({...p,filters:[]}))}),false);
+});

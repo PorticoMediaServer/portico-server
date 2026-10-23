@@ -13,6 +13,7 @@ import (
 	_ "image/png"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"sort"
 	"strings"
 	"time"
@@ -458,7 +459,7 @@ func (s *Service) logoRoot() (string, error) {
 	if s.StateDirectory() == "" {
 		return "", ErrUnavailable
 	}
-	root := filepath.Join(s.StateDirectory(), "channel-logos")
+	root := storagepaths.Path(s.StateDirectory(), "channel-logos")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return "", ErrUnavailable
 	}

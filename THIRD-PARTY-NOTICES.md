@@ -88,6 +88,30 @@ alone is not a complete source bundle.
 Font file origins and digests are in each folder's provenance file. The
 browser fallback set is not a claim of coverage for every script.
 
+## Server rclone
+
+Portico ships rclone **1.75.2** (MIT), upstream source revision
+`be8d6044eacb843b74d335db0c5fbe09222031fe`, as a separate executable.
+[The lock](third_party/rclone/bundle.lock.json) pins all six Linux, macOS and
+Windows amd64/arm64 archives, their signed checksums, source and vendor archives.
+The build authenticates the release with upstream key
+`FBF737ECE9F8AB18604BD2AC93935E02FF3B54FA` and verifies every extracted byte.
+[The MIT licence](third_party/rclone/LICENSE) and
+[dependency notices](third_party/rclone/DEPENDENCY-NOTICES.txt) travel with every
+payload, installer and image. The latter preserves the vendor module inventory
+and all 341 upstream licence/copyright/notice files (a platform-inclusive superset);
+the upstream binary archives carry README/manual and git history, not a separate
+complete module notices file. All of those archive files are retained too.
+The lock records the corresponding source and vendor URLs and SHA-256 digests.
+
+The custom-program minimum is **1.70.0**: `--max-connections` first appears there;
+`--vfs-read-chunk-streams` requires 1.68.0 and `--vfs-cache-min-free-space` 1.64.0.
+The pinned help/flag audit and release changelog establish that the remaining
+read-only serve, range, cache, retry, logging, pacing and environment-credential
+options predate 1.70.0. See [the bundle contract](third_party/rclone/README.md).
+Build provenance hashes authenticate distributed artifacts; custom programs are
+checked only by running `version` for at most five seconds, without file approval.
+
 ## Server FFmpeg and FFprobe
 
 The server invokes these as separate processes. The qualified server build is

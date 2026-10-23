@@ -30,7 +30,7 @@ func TestDownloadMenuUsesDeviceDocumentAndConverterInventory(t *testing.T) {
 		if option.Quality == "480p" {
 			saw480 = true
 		}
-		if option.Quality != "original" && option.TargetHeight > 480 {
+		if option.Available && option.EffectiveQuality != "original" && option.TargetHeight > 480 {
 			t.Fatal("offered a file this decoder cannot play", option)
 		}
 	}
@@ -41,7 +41,7 @@ func TestDownloadMenuUsesDeviceDocumentAndConverterInventory(t *testing.T) {
 	decoder.ConfigureToolchain(decoder.ToolchainFacts{Encoders: map[string]bool{"libx265": true, "aac": true}})
 	defer decoder.RestoreToolchain(old)
 	view, err = h.service.Options(ctx, h.viewer, h.item, true)
-	if err != nil || len(view.Options) != 1 || view.Options[0].Quality != "original" {
+	if err != nil || len(view.Options) != 9 || view.Options[0].Quality != "original" {
 		t.Fatal(view, err)
 	}
 }
@@ -68,7 +68,13 @@ func TestDownloadMenuOffersOnlyTheOriginalForDolbyVisionWithoutABaseLayer(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(before.Options) < 2 || len(view.Options) != 1 || view.Options[0].Quality != "original" {
+	if len(before.Options) != 9 || len(view.Options) != 9 || view.Options[0].Quality != "original" {
 		t.Fatalf("offered before %d, for profile 5: %+v", len(before.Options), view.Options)
 	}
+	for _, o := range view.Options[1:] {
+		if o.Kind == "optimized" && o.Available {
+			t.Fatalf("Dolby Vision without base layer offered conversion %+v", o)
+		}
+	}
+
 }

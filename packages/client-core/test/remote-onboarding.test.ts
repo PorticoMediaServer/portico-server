@@ -111,7 +111,7 @@ test('initialization always reconciles the saved operation before creating; pass
  const session={accessToken:'private',expiresAt:new Date(Date.now()+60000).toISOString(),authorizationHorizon:new Date(Date.now()+60000).toISOString(),sessionFamilyId:'family',tokenGeneration:'1',viewer:{serverId:pin.serverId,accountId:'local-owner',profileId:'profile',role:'owner',authority:'local'}};
  const api={getRouteConnection:()=>({pin}),request:async(path:string,_method:string,body:any)=>{paths.push(path);assert.equal(draft?.requestId,requestId);assert.ok(!Object.hasOwn(draft!,'password'));if(path.endsWith('/resume')){if(!committed)throw new ApiError(404,'not_found','not found');return session;}committed=true;assert.equal(body.requestId,requestId);return session;}} as unknown as HttpLocalApi;
  const store={read:async()=>draft,change:async(update:(v:SetupDraft|undefined)=>SetupDraft|undefined)=>{draft=update(draft);}};
- const input={setupToken:'s'.repeat(43),name:'Media',username:'owner',password:'a strong private password 123!',authMode:'hosted' as const,recoverySaved:true};
+ const input={setupToken:'s'.repeat(43),name:'Media',username:'owner',password:'a strong private password 123!',authMode:'local' as const};
  await initializeServer(api,store,input,new AbortController().signal,async()=>requestId);await initializeServer(api,store,input,new AbortController().signal,async()=>requestId);
  assert.deepEqual(paths,['/v1/setup/resume','/v1/setup','/v1/setup/resume']);
 });

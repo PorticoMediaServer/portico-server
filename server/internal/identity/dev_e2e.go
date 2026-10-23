@@ -69,6 +69,6 @@ func init() {
 }
 
 func devE2EState(s *Service) bool {
-	name := strings.ToLower(filepath.Base(filepath.Dir(s.setupPath)))
+	name := strings.ToLower(filepath.Base(filepath.Dir(filepath.Dir(s.setupPath))))
 	return strings.Contains(name, "e2e") || strings.Contains(name, "test")
 }

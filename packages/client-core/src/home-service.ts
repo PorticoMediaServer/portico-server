@@ -6,17 +6,18 @@
  *   it runs; an error with rows on screen keeps the rows.
  * - `revalidate()` is the quiet read the freshness hub asks for when a library, the profile's
  *   watched state or a playback position moved. The answer is merged into what is shown: a row
- *   that did not change is the same object (its cards do not re-render), a row that did keeps the
- *   pages the person had already scrolled into, and the order of rows follows the server.
+ *   that did not change is the same object (its cards do not re-render), and the order of rows
+ *   follows the server. Membership-fenced rows replace their pages and cursor together; rows
+ *   whose server supports reanchoring may retain their bounded tail.
  * - A row's next page that the server refuses as out of date is not the person's problem: the
  *   whole document is read again quietly and the row continues from there.
  * - Saving the layout carries the revision that was read; when the layout moved elsewhere first,
- *   it is read again and the same arrangement is sent with the new revision.
+ *   the conflict is surfaced for an explicit Reload layout before saving again.
  *
  * No React and no timers of its own beyond the read deadline: tested under Node.
  */
-import {appendHomeRowPage, fetchHome, fetchHomeLayout, fetchHomeRow, resetHomeLayout, saveHomeLayout, type HomeApi, type HomeDocument, type HomeLayout, type HomeLayoutView, type HomeRow} from './home.ts';
-import {ALREADY_DONE, isStaleAnswer, mergeRevalidatedList, retryWhenStale} from './freshness-actions.ts';
+import {appendHomeRowPage, fetchHome, fetchHomeLayout, fetchHomeRow, hasFencedHomeMembership, hasHomeRowContent, resetHomeLayout, saveHomeLayout, type HomeApi, type HomeDocument, type HomeLayout, type HomeLayoutView} from './home.ts';
+import {isStaleAnswer, mergeRevalidatedList} from './freshness-actions.ts';
 
 export type HomeSnapshot = Readonly<{
   phase: 'idle' | 'loading' | 'ready' | 'error';
@@ -27,10 +28,24 @@ export type HomeSnapshot = Readonly<{
   paging: ReadonlySet<string>;
 }>;
 
+/** A receipt belongs only to this call's row and cursor, never to a quiet refresh. */
+export type HomePageOutcome = Readonly<{rowId: string; requestedCursor: string | undefined} & (
+  /** Raw entry.id of the first new retained card; null for a page without new cards (including Live rows). */
+  | {status: 'applied'; applied: true; firstItemId: string | null}
+  | {status: 'failed'; applied: false}
+  | {status: 'refused'; applied: false; reason: 'not_ready' | 'row_missing' | 'no_cursor' | 'already_paging' | 'permission_denied'}
+  /** The server rejected the continuation and the recovery read failed. */
+  | {status: 'stale'; applied: false}
+  /** Recovery read succeeded; its entries are not a receipt for the rejected page. */
+  | {status: 'revalidated'; applied: false}
+  | {status: 'ignored'; applied: false; reason: 'disposed' | 'superseded' | 'aborted' | 'row_changed' | 'viewer_changed' | 'no_progress'}
+)>;
+
 const none: ReadonlySet<string> = Object.freeze(new Set<string>());
 const sameJson = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+const permissionDenied=(error:unknown):boolean=>typeof error==='object'&&error!==null&&('status' in error&&[401,403,404].includes(Number(error.status))||'code' in error&&['unauthorized','forbidden','not_found'].includes(String(error.code)));
 
-/** `fresh` merged into `shown`: unchanged rows keep their identity, paged rows keep their tail. Returns `shown` when nothing changed. */
+/** `fresh` merged into `shown`: only reanchorable rows may keep a bounded tail. Returns `shown` when nothing changed. */
 export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): HomeDocument {
   if (shown.serverId !== fresh.serverId || shown.viewerFence !== fresh.viewerFence) return fresh;
   const before = new Map(shown.rows.map(row => [row.id, row]));
@@ -43,7 +58,14 @@ export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): Hom
     const old = before.get(row.id);
     if (!old) { changed = true; return [row]; }
     if (row.deferred) { if (shown.rows[index] !== old) changed = true; return [old]; }
-    const entries = mergeRevalidatedList(old.entries, row.entries, e => e.id, {same: sameJson, complete: !row.nextCursor});
+    if(row.live||old.live){
+      if(sameJson(old,row)){if(shown.rows[index]!==old)changed=true;return [old];}
+      changed=true;return [row];
+    }
+    // No membership fingerprint is exposed to the client. Even overlapping first
+    // pages cannot prove that a retained tail or its signed cursor is still valid.
+    const refreshed = mergeRevalidatedList(old.entries, row.entries, e => e.id, {same: sameJson, complete: hasFencedHomeMembership(row.id) || !row.nextCursor});
+    const entries = refreshed;
     const keptTail = entries.length > row.entries.length;
     const {entries: _a, revision: _b, nextCursor: _c, hasMore: _d, ...oldRest} = old;
     const {entries: _e, revision: _f, nextCursor: _g, hasMore: _h, ...freshRest} = row;
@@ -55,9 +77,8 @@ export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): Hom
     changed = true;
     return [Object.freeze({...row, entries, nextCursor, hasMore: keptTail ? old.hasMore : row.hasMore})];
   });
-  const hero = fresh.hero ?? (fresh.rows.some(row => row.deferred && (row.id === 'continue' || row.id === 'continue_listening')) ? shown.hero : undefined);
-  if (!changed && sameJson(shown.layout, fresh.layout) && sameJson(shown.hero, hero)) return shown;
-  return Object.freeze({...fresh, rows: Object.freeze(rows), hero});
+  if (!changed && sameJson(shown.layout, fresh.layout) && sameJson(shown.spotlight, fresh.spotlight)) return shown;
+  return Object.freeze({...fresh, rows: Object.freeze(rows)});
 }
 
 export class HomeService {
@@ -83,7 +104,8 @@ export class HomeService {
   private publish(patch: Partial<HomeSnapshot>): void {
     if (this.disposed) return;
     this.state = Object.freeze({...this.state, ...patch});
-    for (const listener of [...this.listeners]) listener();
+    const listeners = [...this.listeners];
+    for (const listener of listeners) listener();
   }
 
   private hydrateRows(fresh: HomeDocument): void {
@@ -113,13 +135,10 @@ export class HomeService {
           const replacements = row.children ?? [row];
           const rows = shown.rows.flatMap(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you' ? [] : [old]);
           const at = shown.rows.findIndex(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you');
-          rows.splice(Math.max(0, at), 0, ...replacements.filter(next => next.entries.length > 0 || next.critical));
-          const validHero = rows.flatMap(next => {
-            const candidate = next.hero ?? (shown.hero?.rowId === next.id ? shown.hero : undefined);
-            return candidate && next.entries.some(entry => entry.id === candidate.entryId) ? [candidate] : [];
-          }).reduce<typeof shown.hero>((best, candidate) => !best || (candidate.selectionKey ?? '') > (best.selectionKey ?? '') ? candidate : best, undefined);
-          this.publish({document: mergeHomeDocument(shown, Object.freeze({...shown, rows: Object.freeze(rows), hero: validHero})), error: undefined});
-        } catch {
+          rows.splice(Math.max(0, at), 0, ...replacements.filter(next => hasHomeRowContent(next) || next.critical));
+          this.publish({document: mergeHomeDocument(shown, Object.freeze({...shown, rows: Object.freeze(rows)})), error: undefined});
+        } catch (error) {
+          if(permissionDenied(error)&&epoch===this.hydrationGeneration&&mine===this.generation)this.removeRow(descriptor.id);
           // A failed shelf keeps its previous cards. Other shelves continue;
           // the next quiet Home refresh retries the deferred endpoint.
         } finally { if (timer) clearTimeout(timer); controller.signal.removeEventListener('abort', abort); this.hydrations.delete(controller); }
@@ -127,6 +146,11 @@ export class HomeService {
     };
     void consume();
     void consume();
+  }
+
+  private removeRow(id:string):void {
+    const document=this.state.document;
+    if(document)this.publish({document:Object.freeze({...document,rows:Object.freeze(document.rows.filter(row=>row.id!==id))})});
   }
 
   private async read(signal: AbortSignal): Promise<HomeDocument> {
@@ -196,45 +220,95 @@ export class HomeService {
     } finally { context?.signal?.removeEventListener('abort', stop); }
   }
 
-  /** The next page of one row. */
-  async more(rowId: string): Promise<void> {
-    const row = this.state.document?.rows.find(r => r.id === rowId);
-    if (this.disposed || !row?.nextCursor || this.pages.has(rowId) || this.state.phase !== 'ready') return;
+  /** The next page of one row. Only an applied outcome may fulfil that exact cursor's wait. */
+  async more(rowId: string): Promise<HomePageOutcome> {
+    const shown = this.state.document;
+    const row = shown?.rows.find(r => r.id === rowId);
+    const request = {rowId, requestedCursor: row?.nextCursor};
+    if (this.disposed) return {...request, status: 'ignored', applied: false, reason: 'disposed'};
+    if (this.state.phase !== 'ready') return {...request, status: 'refused', applied: false, reason: 'not_ready'};
+    if (!shown || !row) return {...request, status: 'refused', applied: false, reason: 'row_missing'};
+    if (!row.nextCursor) return {...request, status: 'refused', applied: false, reason: 'no_cursor'};
+    if (this.pages.has(rowId)) return {...request, status: 'refused', applied: false, reason: 'already_paging'};
     const mine = this.generation, controller = new AbortController(), cursor = row.nextCursor;
+    const ignored = (reason: Extract<HomePageOutcome, {status: 'ignored'}>['reason']): HomePageOutcome => ({...request, status: 'ignored', applied: false, reason});
+    const cancelled = (): HomePageOutcome | undefined => this.disposed ? ignored('disposed') : mine !== this.generation ? ignored('superseded') : controller.signal.aborted ? ignored('aborted') : undefined;
+    const opposed = (): HomePageOutcome | undefined => {
+      const stopped = cancelled();
+      if (stopped) return stopped;
+      const current = this.state.document;
+      if (!current || current.serverId !== shown.serverId || current.viewerFence !== shown.viewerFence) return ignored('viewer_changed');
+      // Even an equal cursor cannot authorize a page against a replaced membership or Live observation.
+      if (current.rows.find(r => r.id === rowId) !== row) return ignored('row_changed');
+    };
     this.pages.set(rowId, controller);
     this.publish({paging: new Set(this.state.paging).add(rowId)});
     const done = () => {
-      if (this.pages.get(rowId) === controller) this.pages.delete(rowId);
+      if (this.pages.get(rowId) !== controller) return;
+      this.pages.delete(rowId);
       if (this.disposed || mine !== this.generation) return;
       const paging = new Set(this.state.paging); paging.delete(rowId);
       this.publish({paging: paging.size ? paging : none});
     };
+    let abort = () => {};
     try {
-      const page = await fetchHomeRow(this.api(), rowId, {cursor}, controller.signal);
-      if (this.disposed || mine !== this.generation || controller.signal.aborted) return;
-      const document = this.state.document;
-      // The row moved on while this page was read (a quiet read replaced it): this page belongs to the older row.
-      if (document && page.viewerFence === document.viewerFence && document.rows.find(r => r.id === rowId)?.nextCursor === cursor) this.publish({document: Object.freeze({...document, rows: Object.freeze(document.rows.map(r => (r.id === rowId ? appendHomeRowPage(r, page) : r)))})});
+      const stopped = opposed();
+      if (stopped) return stopped;
+      // Settle on cancellation even when the transport ignores its signal.
+      const cancellation = new Promise<never>((_, reject) => {
+        abort = () => reject(Object.assign(new Error('home_page_cancelled'), {name: 'AbortError'}));
+        controller.signal.addEventListener('abort', abort, {once: true});
+      });
+      const page = await Promise.race([fetchHomeRow(this.api(), rowId, {cursor,limit:row.limit||undefined,group:row.live?.group||undefined,sourceId:row.seeAll?.type==='guide'?row.seeAll.sourceId:undefined}, controller.signal), cancellation]);
+      const outdated = opposed();
+      if (outdated) return outdated;
+      if (page.viewerFence !== shown.viewerFence) return ignored('viewer_changed');
+      const next = appendHomeRowPage(row, page);
+      const seen = new Set(row.entries.map(entry => entry.id));
+      const firstItemId = next.entries.find(entry => !seen.has(entry.id))?.id ?? null;
+      if (firstItemId === null && next.nextCursor === cursor && (next.live?.channels.length ?? 0) === (row.live?.channels.length ?? 0)) return ignored('no_progress');
+      const document = this.state.document!;
+      this.publish({document: Object.freeze({...document, rows: Object.freeze(document.rows.map(r => r.id === rowId ? next : r))})});
       done();
+      const superseded = cancelled();
+      if (superseded) return superseded;
+      if (this.state.document?.rows.find(r => r.id === rowId) !== next) return ignored('row_changed');
+      return {...request, status: 'applied', applied: true, firstItemId};
     } catch (error) {
-      if (this.disposed || mine !== this.generation || controller.signal.aborted) return;
+      const outdated = opposed();
+      if (outdated) return outdated;
       done();
+      const replaced = opposed();
+      if (replaced) return replaced;
+      if(permissionDenied(error)){this.removeRow(rowId);return {...request, status: 'refused', applied: false, reason: 'permission_denied'};}
       // Out of date, not broken: bring the whole of Home up to date in place and let the row continue from there.
-      if (isStaleAnswer(error)) { await this.revalidate().catch(() => {}); return; }
+      if (isStaleAnswer(error)) {
+        const document = this.state.document;
+        if (hasFencedHomeMembership(rowId) && document && document.rows.find(r => r.id === rowId)?.nextCursor === cursor) {
+          this.publish({document: Object.freeze({...document, rows: Object.freeze(document.rows.map(r => r.id === rowId ? Object.freeze({...r, nextCursor: ''}) : r))})});
+        }
+        try {
+          await this.revalidate();
+          return cancelled() ?? {...request, status: 'revalidated', applied: false};
+        } catch {
+          return cancelled() ?? {...request, status: 'stale', applied: false};
+        }
+      }
       // Any other failed page leaves the row as it is; reaching its end again asks again.
+      return {...request, status: 'failed', applied: false};
+    } finally {
+      controller.signal.removeEventListener('abort', abort);
+      done();
     }
   }
 
   loadLayout = (signal?: AbortSignal): Promise<HomeLayoutView> => fetchHomeLayout(this.api(), signal);
 
-  /** Saves the arrangement. A layout that moved elsewhere first is read again and the same arrangement sent once more. */
+  /** A conflicting save is surfaced for Reload layout; it never overwrites another device silently. */
   async saveLayout(rowOrder: readonly string[], hiddenRowIds: readonly string[], idempotencyKey: () => string, expectedRevision?: number): Promise<HomeLayout> {
-    let revision = expectedRevision ?? this.state.document?.layout.revision;
+    const revision = expectedRevision ?? this.state.document?.layout.revision;
     if (revision === undefined) throw new Error('Home is not loaded.');
-    const saved = await retryWhenStale(() => saveHomeLayout(this.api(), {expectedRevision: revision!, rowOrder, hiddenRowIds, idempotencyKey: idempotencyKey()}), {
-      reread: async () => { revision = (await fetchHomeLayout(this.api())).revision; },
-    });
-    if (saved === ALREADY_DONE) throw new Error('Home is not loaded.');
+    const saved = await saveHomeLayout(this.api(), {expectedRevision: revision, rowOrder, hiddenRowIds, idempotencyKey: idempotencyKey()});
     await this.afterLayout();
     return saved;
   }

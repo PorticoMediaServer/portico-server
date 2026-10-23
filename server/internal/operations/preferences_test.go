@@ -116,8 +116,8 @@ func TestSavedQualityDefaults(t *testing.T) {
 			t.Fatal("a per-network quality preset survived", gone)
 		}
 	}
-	out, e := s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "television", ExpectedRevision: 1, IdempotencyKey: "tv", Values: PreferencePatch{"quality.remote": "automatic", "quality.home": "1080p"}})
-	if e != nil || out.Effective.Text("quality.remote") != "automatic" || out.Effective.Text("quality.home") != "1080p" || len(out.ClampedFields) != 0 {
+	out, e := s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "television", ExpectedRevision: 1, IdempotencyKey: "tv", Values: PreferencePatch{"quality.remote": "automatic", "quality.home": "1080p-low"}})
+	if e != nil || out.Effective.Text("quality.remote") != "automatic" || out.Effective.Text("quality.home") != "1080p-low" || len(out.ClampedFields) != 0 {
 		t.Fatalf("%v %+v", e, out.Effective)
 	}
 	// Another device class keeps its own.
@@ -242,7 +242,7 @@ func TestPreferenceConsumersAndSemanticDomains(t *testing.T) {
 	}{
 		{"region.locale", "fr-CA", "not_a_real_locale"},
 		{"playback.preferredAudioLanguages", []string{"en", "fr-CA"}, []string{"en", "EN"}},
-		{"quality.remote", "720p", "data-saver"},
+		{"quality.remote", "720p-high", "data-saver"},
 	}
 	for _, c := range cases {
 		f, _ := PreferenceFieldFor(c.key)
@@ -265,5 +265,42 @@ func TestPreferenceConsumersAndSemanticDomains(t *testing.T) {
 	effects := values.AudioEffects()
 	if effects.Gapless || effects.CrossfadeMs != 6000 || effects.Normalization != "album" {
 		t.Fatal(effects)
+	}
+}
+
+func TestQualityDefaultsR25StoredOriginalProvenance(t *testing.T) {
+	s, p, a := consoleFixture(t)
+	ctx := context.Background()
+	out, err := s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "mobile", ExpectedRevision: 1, IdempotencyKey: "explicit-original", Values: PreferencePatch{"quality.remote": "original"}})
+	if err != nil || out.Effective.Text("quality.remote") != "original" {
+		t.Fatal(out, err)
+	}
+	tx, err := s.DB.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	values, sources, _, err := EffectivePreferences(tx, p.Viewer, "mobile")
+	if err != nil || values.Text("quality.home") != "original" || sources["quality.home"] != "default" || sources["quality.remote"] != ScopeDeviceClass {
+		t.Fatal(values, sources, err)
+	}
+}
+
+func TestQualityDefaultsR25ServerCapRegistry(t *testing.T) {
+	defaults := DefaultSettings()
+	if defaults.RemoteBitrateLimitKbps != 0 || defaults.UploadCapacityKbps != 0 {
+		t.Fatal(defaults)
+	}
+	found := 0
+	for _, field := range Registry() {
+		if field.ID == "remoteBitrateLimitKbps" || field.ID == "uploadCapacityKbps" {
+			found++
+			if field.Default != 0 {
+				t.Fatal(field)
+			}
+		}
+	}
+	if found != 2 {
+		t.Fatal(found)
 	}
 }

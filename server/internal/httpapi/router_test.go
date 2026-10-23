@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 	"time"
@@ -92,11 +93,11 @@ func TestSetupRangePlaybackStopAndOrigin(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	secret, e := os.ReadFile(filepath.Join(root, "setup-token"))
+	secret, e := os.ReadFile(storagepaths.Path(root, "setup-token"))
 	if e != nil {
 		t.Fatal(e)
 	}
-	w := request("POST", "/v1/setup", "", map[string]string{"setupToken": string(secret), "username": "owner", "password": "long-test-password", "name": "Test"})
+	w := request("POST", "/v1/setup", "", map[string]string{"authMode": "local", "setupToken": string(secret), "username": "owner", "password": "long-test-password", "name": "Test"})
 	if w.Code != 201 {
 		t.Fatalf("setup %d %s", w.Code, w.Body.String())
 	}
@@ -104,7 +105,7 @@ func TestSetupRangePlaybackStopAndOrigin(t *testing.T) {
 	if e = json.Unmarshal(w.Body.Bytes(), &auth); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = os.Stat(filepath.Join(root, "setup-token")); !os.IsNotExist(e) {
+	if _, e = os.Stat(storagepaths.Path(root, "setup-token")); !os.IsNotExist(e) {
 		t.Fatal("setup token retained")
 	}
 	lib, e := cat.Create("Movies", "movie", root)

@@ -413,9 +413,6 @@ func (s *Service) CompleteSignInChallenge(ctx context.Context, token, code strin
 		return DirectSignIn{}, e
 	}
 	if !portico {
-		if e = s.recoveryPasswordAllowedTx(ctx, tx, account, private); e != nil {
-			return DirectSignIn{}, e
-		}
 	}
 	out, e := s.directSignInTx(ctx, tx, c, private)
 	if e != nil {

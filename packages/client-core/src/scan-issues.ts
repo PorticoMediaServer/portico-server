@@ -2,8 +2,8 @@ import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {encodedRoutePath} from "../../contracts/src/routes.ts";
 /** Owner-only scan diagnostics. Paths stay scoped to this response and are not
  * added to viewer library status or persistent client caches. */
-export type ScanIssue=Readonly<{sequence:number;line:number;path:string;reason:string;messageKey:string;warning:boolean}>;
-export type ScanIssues=Readonly<{jobId:string;items:readonly ScanIssue[];nextSequence:number;hasMore:boolean}>;
+export type ScanIssue=Readonly<{sequence:number;line:number;path:string;reason:string;category?:'damaged'|'unsupported'|'not-media';messageKey:string;warning:boolean}>;
+export type ScanIssues=Readonly<{jobId:string;items:readonly ScanIssue[];nextSequence:number;hasMore:boolean;count?:number}>;
 export type InventoryChanges=Readonly<{sourceId:string;items:readonly Readonly<{sequence:number;sourceId:string;jobId:string;objectId:string;assetId:string;revision:string;kind:string;createdAt:string}>[];nextSequence:number;hasMore:boolean;resetRequired:boolean;oldestSequence:number}>;
 type Transport={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -12,9 +12,9 @@ const integer=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger
 function assert(v:unknown):asserts v {if(!v)throw new Error('Invalid scan diagnostics response.');}
 export function parseScanIssues(raw:unknown,jobId:string):ScanIssues{
  assert(record(raw)&&raw.jobId===jobId&&integer(raw.nextSequence)&&typeof raw.hasMore==='boolean'&&Array.isArray(raw.items)&&raw.items.length<=128);
- let previous=0;const items=raw.items.map(v=>{assert(record(v)&&integer(v.sequence)&&v.sequence>previous&&integer(v.line)&&text(v.path)&&text(v.reason,128)&&text(v.messageKey,256)&&v.messageKey.startsWith('scan.issue.')&&typeof v.warning==='boolean');previous=v.sequence;return Object.freeze({sequence:v.sequence,line:v.line,path:v.path,reason:v.reason,messageKey:v.messageKey,warning:v.warning});});
+ let previous=0;const items=raw.items.map(v=>{assert(record(v)&&integer(v.sequence)&&v.sequence>previous&&integer(v.line)&&text(v.path)&&text(v.reason,128)&&text(v.messageKey,256)&&v.messageKey.startsWith('scan.issue.')&&typeof v.warning==='boolean');previous=v.sequence;return Object.freeze({sequence:v.sequence,line:v.line,path:v.path,reason:v.reason,...(v.category==='damaged'||v.category==='unsupported'||v.category==='not-media'?{category:v.category}:{}),messageKey:v.messageKey,warning:v.warning});});
  assert(!items.length||raw.nextSequence===previous);
- return Object.freeze({jobId,items:Object.freeze(items),nextSequence:raw.nextSequence,hasMore:raw.hasMore});
+ return Object.freeze({jobId,items:Object.freeze(items),nextSequence:raw.nextSequence,hasMore:raw.hasMore,...(integer(raw.count)?{count:raw.count}:{})});
 }
 export async function readScanIssues(api:Transport,libraryId:string,jobId:string,after=0,signal?:AbortSignal):Promise<ScanIssues>{
  assert(text(libraryId,256)&&libraryId&&text(jobId,256)&&jobId&&integer(after));

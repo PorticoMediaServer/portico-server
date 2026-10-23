@@ -2,10 +2,10 @@ import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable,noteSkipped} from './tolerant.ts';
 export type AttentionIdentity=Readonly<{provider:'tmdb'|'tvdb'|'anilist';type:'movie'|'show'|'anime'|'episode';id:string}>;
-export type AttentionCandidate=Readonly<{key:string;identity:AttentionIdentity;title:string;year:number;confidence:number;reasons:readonly string[];orders:readonly Readonly<{id:string;name:string}>[]}>;
+export type AttentionCandidate=Readonly<{posterUrl?:string;key:string;identity:AttentionIdentity;title:string;year:number;confidence:number;reasons:readonly string[];orders:readonly Readonly<{id:string;name:string}>[]}>;
 /** Film and TV titles are 'item' or 'show'; music and audiobooks are 'album', 'song' or 'book'. */
 export type AttentionKind='item'|'show'|'album'|'song'|'book';
-export type AttentionEntry=Readonly<{libraryId:string;entityId:string;kind:AttentionKind;itemKind:string;parentId:string;actions:readonly string[];title:string;revision:number;reason:string;confidence:number;candidates:readonly AttentionCandidate[]}>;
+export type AttentionEntry=Readonly<{parentTitle?:string;parentArtist?:string;libraryId:string;entityId:string;kind:AttentionKind;itemKind:string;parentId:string;actions:readonly string[];title:string;revision:number;reason:string;confidence:number;candidates:readonly AttentionCandidate[]}>;
 export type AttentionPage=Readonly<{libraryId:string;total:number;entries:readonly AttentionEntry[];nextCursor:string}>;
 export type AttentionCommand=Readonly<{kind:AttentionKind;entityId:string;expectedRevision:number;action:'accept'|'search'|'id'|'dismiss'|'retry';candidateKey?:string;provider?:AttentionIdentity['provider'];providerId?:string;query?:string;order?:string}>;
 const object=(v:unknown):v is Record<string,unknown>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
@@ -31,9 +31,10 @@ export function parseMetadataAttention(raw:unknown,libraryId:string):AttentionPa
    if(!object(c)||!text(c.key,64)||!/^[0-9a-f]{64}$/.test(c.key)||!object(c.identity)||!['tmdb','tvdb','anilist'].includes(c.identity.provider as string)||!['movie','show','anime','episode'].includes(c.identity.type as string)||!text(c.identity.id,16)||!/^[1-9][0-9]{0,15}$/.test(c.identity.id)||!Number.isSafeInteger(Number(c.identity.id))||(c.identity.provider==='anilist'?(c.identity.type!=='anime'||Number(c.identity.id)>2147483647):c.identity.type==='anime')||!text(c.title,2048)||!integer(c.year)||c.year>9999||!score(c.confidence)||!Array.isArray(c.reasons)||c.reasons.length>16||!Array.isArray(c.orders)||c.orders.length>64)invalid();
    const orders=keepReadable('metadata-attention','entries.candidates.orders',c.orders,o=>{if(!object(o)||!text(o.id,160)||!text(o.name,2048))invalid();return Object.freeze({id:o.id,name:o.name});});
    const reasons=c.reasons.filter((v):v is string=>text(v,256));
-   return Object.freeze({key:c.key,identity:Object.freeze({...c.identity}) as AttentionIdentity,title:c.title,year:c.year,confidence:c.confidence,reasons:Object.freeze(reasons),orders:Object.freeze(orders)});
+   const posterUrl=text(c.posterUrl,4096)&&/^\/v1\/metadata\/(?:item|show)\/[^/]+\/art\/poster\?/.test(c.posterUrl)?c.posterUrl:undefined;
+   return Object.freeze({...(posterUrl?{posterUrl}:{}),key:c.key,identity:Object.freeze({...c.identity}) as AttentionIdentity,title:c.title,year:c.year,confidence:c.confidence,reasons:Object.freeze(reasons),orders:Object.freeze(orders)});
   }),c=>c.key);
-  return Object.freeze({libraryId:text(e.libraryId,128)?e.libraryId:libraryId,entityId:e.entityId,kind:e.kind as AttentionKind,itemKind:e.itemKind as string,parentId:e.parentId as string,actions:Object.freeze(actions),title:e.title,revision:e.revision,reason:e.reason,confidence:e.confidence,candidates:Object.freeze(candidates)});
+  return Object.freeze({...(text(e.parentTitle,2048)&&e.parentTitle?{parentTitle:e.parentTitle}:{}),...(text(e.parentArtist,2048)&&e.parentArtist?{parentArtist:e.parentArtist}:{}),libraryId:text(e.libraryId,128)?e.libraryId:libraryId,entityId:e.entityId,kind:e.kind as AttentionKind,itemKind:e.itemKind as string,parentId:e.parentId as string,actions:Object.freeze(actions),title:e.title,revision:e.revision,reason:e.reason,confidence:e.confidence,candidates:Object.freeze(candidates)});
  }),e=>e.entityId);
  return Object.freeze({libraryId,total:raw.total as number,entries:Object.freeze(entries),nextCursor:raw.nextCursor});
 }

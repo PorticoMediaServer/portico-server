@@ -68,3 +68,23 @@ test('sign-in and the account snapshot still refuse a profile list with an unrea
  }
  await assert.rejects(new ManagedProfilesClient(apiFor({...raw,profiles:[p()],serverId:'another'},[]),scope).list());
 });
+
+
+test('Forgot PIN uses and retires a temporary account sign-in without adopting a viewer',async()=>{
+ const {resetProfilePINWithFreshSignIn}=await import('../src/profile-management.ts');
+ const calls:any[]=[];const fresh:any={kind:'signed-in',snapshot:{account:{id:'account'},serverId:'server',profiles:[{id:'profile'}]},session:{accessToken:'fresh-only'}};
+ const viewer={accessToken:'installed-viewer'};
+ await resetProfilePINWithFreshSignIn(async()=>fresh,session=>{assert.equal(session.accessToken,'fresh-only');return {request:async<T>(path:string,method?:string,body?:unknown)=>{calls.push({path,method,body});return {} as T;}};},scope,'profile','4821');
+ assert.deepEqual(calls,[{path:'/v1/direct/profiles/profile/pin-reset',method:'POST',body:{pin:'4821'}},{path:'/v1/sessions/current',method:'DELETE',body:undefined}]);
+ assert.equal(viewer.accessToken,'installed-viewer');
+ calls.length=0;
+ await assert.rejects(resetProfilePINWithFreshSignIn(async()=>({...fresh,snapshot:{...fresh.snapshot,account:{id:'wrong'}}}),()=>apiFor({},calls),scope,'profile',''));
+ assert.equal(calls.length,1);assert.equal(calls[0].path,'/v1/sessions/current');
+ await assert.rejects(resetProfilePINWithFreshSignIn(async()=>({kind:'challenge',token:'challenge',expiresAt:'2026-11-01T00:00:00Z'}),()=>{throw Error('must not create a transport');},scope,'profile','4821'));
+});
+
+test('Highest rating options are only actual contentRatings and never a country or kids preset',async()=>{
+ const {highestRatingChoices}=await import('../src/profile-limits.ts');
+ assert.deepEqual(highestRatingChoices(['PG','Custom rating','PG','']),['PG','Custom rating']);
+ assert.deepEqual(highestRatingChoices([]),[]);
+});

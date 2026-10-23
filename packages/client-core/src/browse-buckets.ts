@@ -152,3 +152,12 @@ export function bucketIndexFor(
 export function titleBucketValue(entry: Readonly<{title?: unknown; sortLetter?: unknown}>): unknown {
   return typeof entry.sortLetter === 'string' && entry.sortLetter ? entry.sortLetter : entry.title;
 }
+
+/** The complete title rail, with missing Latin keys disabled by their absent
+ * index, followed by every additional server key in its original order. */
+export function browseLetterRail(anchors:readonly BrowsePositionAnchor[]):readonly Readonly<{key:string;index?:number}>[]{
+ const keys=['#',...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'];const seen=new Set(keys);
+ for(const anchor of anchors)if(!seen.has(anchor.key)){seen.add(anchor.key);keys.push(anchor.key);}
+ const byKey=anchorMap(anchors);
+ return Object.freeze(keys.map(key=>Object.freeze({key,...(byKey.has(key)?{index:byKey.get(key)!}:{})})));
+}

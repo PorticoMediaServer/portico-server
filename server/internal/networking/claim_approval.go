@@ -8,22 +8,31 @@ import (
 	"encoding/json"
 	"io"
 	"portico.local/server/internal/hostedtrust"
+	"regexp"
 	"time"
 )
 
 type approvalWire struct {
-	Kind             string `json:"kind"`
-	Version          string `json:"version"`
-	Audience         string `json:"audience"`
-	OperationID      string `json:"operationId"`
-	ServerID         string `json:"serverId"`
-	AccountID        string `json:"accountId"`
-	PublicKey        string `json:"publicKey"`
-	LocalGeneration  int64  `json:"localGeneration,string"`
-	ApprovalRevision int64  `json:"approvalRevision,string"`
-	IssuedAt         string `json:"issuedAt"`
-	ExpiresAt        string `json:"expiresAt"`
+	TargetUsername        string `json:"targetUsername,omitempty"`
+	Kind                  string `json:"kind"`
+	Version               string `json:"version"`
+	Audience              string `json:"audience"`
+	OperationID           string `json:"operationId"`
+	ServerID              string `json:"serverId"`
+	AccountID             string `json:"accountId"`
+	PublicKey             string `json:"publicKey"`
+	LocalGeneration       int64  `json:"localGeneration,string"`
+	ApprovalRevision      int64  `json:"approvalRevision,string"`
+	Purpose               string `json:"purpose"`
+	CurrentOwnerAccountID string `json:"currentOwnerAccountId"`
+	PreviousOwnerRole     string `json:"previousOwnerRole"`
+	ReturnRegistrationID  string `json:"returnRegistrationId"`
+	IssuedAt              string `json:"issuedAt"`
+	ExpiresAt             string `json:"expiresAt"`
 }
+
+var claimUsername = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$`)
+
 type approvalEnvelope = trust.Envelope
 
 // NewApprovalVerifier pins one Hosted signing identity. It grants no current
@@ -88,7 +97,7 @@ func verifyApprovalAt(ctx context.Context, audience, keyID string, pin ed25519.P
 	}
 
 	var wire approvalWire
-	if canonicalApprovalJSON(raw, &wire) != nil || wire.Kind != "portico.claim.approval" || wire.Version != "1" || wire.Audience != audience || wire.ApprovalRevision < 1 {
+	if canonicalApprovalJSON(raw, &wire) != nil || wire.Kind != "portico.claim.approval" || wire.Version != "2" || wire.Audience != audience || wire.ApprovalRevision < 1 {
 		return ApprovalFacts{}, ErrInvalid
 	}
 	public, e := approvalBase64(wire.PublicKey, ed25519.PublicKeySize)
@@ -96,7 +105,8 @@ func verifyApprovalAt(ctx context.Context, audience, keyID string, pin ed25519.P
 		return ApprovalFacts{}, ErrInvalid
 	}
 	b := Binding{OperationID: wire.OperationID, ServerID: wire.ServerID, AccountID: wire.AccountID, PublicKey: public, LocalGeneration: wire.LocalGeneration}
-	if !validBinding(b) {
+	purpose := ClaimPurpose{wire.Purpose, wire.CurrentOwnerAccountID, wire.PreviousOwnerRole, wire.ReturnRegistrationID}
+	if !purpose.Valid() || !validBinding(b) || (wire.Purpose == "change-owner" && !claimUsername.MatchString(wire.TargetUsername)) || (wire.Purpose != "change-owner" && wire.TargetUsername != "") {
 		return ApprovalFacts{}, ErrInvalid
 	}
 	issued, e := time.Parse(time.RFC3339Nano, wire.IssuedAt)
@@ -110,5 +120,5 @@ func verifyApprovalAt(ctx context.Context, audience, keyID string, pin ed25519.P
 	if e = ctx.Err(); e != nil {
 		return ApprovalFacts{}, e
 	}
-	return ApprovalFacts{Binding: b, Revision: wire.ApprovalRevision, IssuedAt: issued, ExpiresAt: expires}, nil
+	return ApprovalFacts{TargetUsername: wire.TargetUsername, ClaimPurpose: purpose, Binding: b, Revision: wire.ApprovalRevision, IssuedAt: issued, ExpiresAt: expires}, nil
 }

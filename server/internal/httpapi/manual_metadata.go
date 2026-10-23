@@ -46,16 +46,8 @@ func (d Dependencies) manualMetadataAdministrator(ctx context.Context, r *http.R
 
 // Recheck the live administrative membership and token family in the metadata transaction.
 func (d Dependencies) manualMetadataAuthorize(ctx context.Context, tx *sql.Tx, p identity.Principal) error {
-	if p.Authority == "local" {
-		if _, err := d.Identity.ReauthorizeTx(ctx, tx, p); err != nil {
-			return err
-		}
-		if err := d.Identity.CheckRecoveryRouteTx(ctx, tx, p); err != nil {
-			return err
-		}
-		return manualMetadataAuthorize(ctx, tx, p)
-	}
-	return identity.ErrForbidden
+	_, err := d.tierAuthorityTx(ctx, tx, p, identity.TierAdmin)
+	return err
 }
 
 func (d Dependencies) manualMetadataRoutes(mux *http.ServeMux) {

@@ -121,6 +121,11 @@ func (s *Service) IssueAPICredentialTx(ctx context.Context, tx *sql.Tx, maker Pr
 	if tx == nil || maker.Authority != "local" || maker.Role == "account" || !validFamilyID(maker.AccountID) || !validFamilyID(maker.ProfileID) || maker.Epoch < 1 || !validFamilyID(credentialID) {
 		return out, ErrUnauthorized
 	}
+	if maker.Hash != "" {
+		if e := refuseResetDescendantTx(ctx, tx, familyForTokenTx(ctx, tx, maker.Hash)); e != nil {
+			return out, e
+		}
+	}
 	prefix := ""
 	switch kind {
 	case CredentialKindKey:

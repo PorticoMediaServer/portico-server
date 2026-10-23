@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -119,6 +120,10 @@ var ErrBrowseHomeRow = browseIssue("query.value", "that Home row is not availabl
 // the row through Home itself (ResolveHomeRows), so it is the viewer's row.
 func (c *browseCompiler) homeRowPredicate(node BrowseNode) (string, error) {
 	id, _ := node.Value.(string)
+	if source, ok := c.rowSources[id]; ok {
+		c.args = append(c.args, source.args...)
+		return `e.entity_id IN(SELECT id FROM (` + source.query + `))`, nil
+	}
 	ids, ok := c.rows[id]
 	if !ok {
 		return "", ErrBrowseHomeRow
@@ -157,12 +162,8 @@ func BrowseHomeRows(node *BrowseNode) []string {
 	return out
 }
 
-// homeRowMembersMaximum bounds the titles a Home row's See all sorts and
-// filters. Rows are recommendation shelves well under it.
-const homeRowMembersMaximum = 500
-
 // HomeRowMembers reads a Home row's titles in the row's order, as its See all
-// page pages them, up to homeRowMembersMaximum.
+// page pages them. Queue capture only; browse uses ResolveHomeRowMembership.
 func (s *Service) HomeRowMembers(r HomeRequest, id string) ([]int64, error) {
 	out, _, err := s.HomeRowSnapshot(r, id)
 	return out, err
@@ -174,25 +175,25 @@ func (s *Service) HomeRowSnapshot(r HomeRequest, id string) ([]int64, string, er
 	out := []int64{}
 	public := []string{}
 	cursor, title := "", ""
-	for len(public) < homeRowMembersMaximum {
-		row, err := s.HomeSingleRow(r, id, HomeRowPage{Cursor: cursor, Limit: HomeRowMaxLimit})
+	revision := ""
+	for {
+		row, err := s.HomeSingleRow(r, id, HomeRowPage{Cursor: cursor, Revision: revision, Limit: HomeRowMaxLimit})
 		if err != nil {
 			return nil, "", err
 		}
 		if title == "" {
+			revision = fmt.Sprintf("%d:%d", row.Revision.Catalog, row.Revision.Viewer)
 			title = row.Title
 		}
 		for _, entry := range row.Entries {
 			public = append(public, entry.ID)
 		}
-		if row.NextCursor == "" || len(row.Entries) == 0 {
+		if row.NextCursor == "" {
 			break
 		}
 		cursor = row.NextCursor
 	}
-	if len(public) > homeRowMembersMaximum {
-		public = public[:homeRowMembersMaximum]
-	}
+
 	if len(public) == 0 {
 		return out, title, nil
 	}
@@ -255,7 +256,7 @@ var ErrBrowseGroupOrder = browseIssue("sort[0].field", "groupOrder needs a colle
 // taking its first member's place; so a show's place in a collection is its
 // first collected episode's, and an album's place on an artist's page its
 // first song's.
-func (s *Service) groupOrderSource(target *BrowseNode, rows map[string][]int64) (string, []any, error) {
+func (s *Service) groupOrderSource(target *BrowseNode, rows map[string][]int64, sources ...map[string]HomeRowMembership) (string, []any, error) {
 	if target == nil {
 		return "", nil, ErrBrowseGroupOrder
 	}
@@ -269,6 +270,11 @@ func (s *Service) groupOrderSource(target *BrowseNode, rows map[string][]int64) 
 	case "list":
 		return up(`SELECT entry.item_id AS id,ROW_NUMBER() OVER (ORDER BY entry.order_key,entry.id) AS pos FROM catalog_playlists list JOIN catalog_playlist_entries entry ON entry.playlist_id=list.id WHERE list.token=? AND list.deleted=0 AND entry.item_id IS NOT NULL`), []any{value}, nil
 	case "homeRow":
+		if len(sources) > 0 {
+			if source, ok := sources[0][value]; ok {
+				return source.query, source.args, nil
+			}
+		}
 		ids, ok := rows[value]
 		if !ok {
 			return "", nil, ErrBrowseHomeRow
@@ -360,7 +366,7 @@ func (s *Service) groupOrderPage(p pageShape) ([]browseRow, error) {
 // browseGroupFence is what a query's groups add to its revision: a playlist's
 // and a personal collection's own revisions (their entries are not catalogue
 // facts), and a Home row's current titles.
-func (s *Service) browseGroupFence(node *BrowseNode, rows map[string][]int64) (string, error) {
+func (s *Service) browseGroupFence(node *BrowseNode, rows map[string][]int64, sources ...map[string]HomeRowMembership) (string, error) {
 	lists, saved := []string{}, []string{}
 	var walk func(*BrowseNode)
 	walk = func(n *BrowseNode) {
@@ -408,6 +414,12 @@ func (s *Service) browseGroupFence(node *BrowseNode, rows map[string][]int64) (s
 		parts = append(parts, "saved="+fence.String+":"+strconv.FormatInt(shares, 10))
 	}
 	for _, id := range BrowseHomeRows(node) {
+		if len(sources) > 0 {
+			if source, ok := sources[0][id]; ok {
+				parts = append(parts, "row="+id+":"+source.fence)
+				continue
+			}
+		}
 		raw, _ := json.Marshal(rows[id])
 		parts = append(parts, "row="+id+":"+string(raw))
 	}

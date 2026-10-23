@@ -66,7 +66,11 @@ func (s *Service) detailOnce(viewer Viewer, server, item string, owner bool) (De
 	if out.Facts, e = s.titleFacts(item); e != nil {
 		return out, e
 	}
-	if out.Files, e = s.titleFiles(item, owner); e != nil {
+	out.Item.Sources = nil
+	if out.Languages, e = s.detailLanguages(item); e != nil {
+		return out, e
+	}
+	if out.Collections, e = s.detailCollections(viewer, item); e != nil {
 		return out, e
 	}
 	if out.MissingSince, e = s.MissingSince(s.Context(), item); e != nil {
@@ -120,6 +124,12 @@ func (s *Service) detailOnce(viewer Viewer, server, item string, owner bool) (De
 		return out, e
 	}
 	out.Metadata.Credits, out.Metadata.CreditTotals = credits, totals
+	if out.Item.Episode != nil {
+		out.EpisodeDetails, e = s.episodeDetails(viewer, out.Item)
+		if e != nil {
+			return out, e
+		}
+	}
 	rows, e = s.read().Query(`SELECT provider,source_url,observed_at FROM metadata_details WHERE item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) ORDER BY provider LIMIT 16`, item)
 	if e != nil {
 		return out, e
@@ -200,8 +210,8 @@ func (s *Service) Detail(viewer Viewer, server, item string, owner bool) (Detail
 // no details row or every field is empty.
 func (s *Service) titleFacts(item string) (*TitleFacts, error) {
 	var f TitleFacts
-	err := s.read().QueryRow(`SELECT COALESCE(original_title,''),COALESCE(edition,''),COALESCE(tagline,''),COALESCE(release_date,''),COALESCE(content_rating,''),COALESCE(studio,''),COALESCE(network,''),COALESCE(country,'')
-	 FROM catalog_item_details WHERE entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, item).Scan(&f.OriginalTitle, &f.Edition, &f.Tagline, &f.ReleaseDate, &f.ContentRating, &f.Studio, &f.Network, &f.Country)
+	err := s.read().QueryRow(`SELECT COALESCE(original_title,''),COALESCE(edition,''),COALESCE(tagline,''),COALESCE(release_date,''),COALESCE(content_rating,''),COALESCE(studio,''),COALESCE(network,''),COALESCE(country,''),COALESCE((SELECT json_extract(value,'$') FROM screen_metadata_fields WHERE target_kind='item' AND target_id=entity_id AND field='language'),'')
+	 FROM catalog_item_details WHERE entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, item).Scan(&f.OriginalTitle, &f.Edition, &f.Tagline, &f.ReleaseDate, &f.ContentRating, &f.Studio, &f.Network, &f.Country, &f.OriginalLanguage)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -212,4 +222,56 @@ func (s *Service) titleFacts(item string) (*TitleFacts, error) {
 		return nil, nil
 	}
 	return &f, nil
+}
+
+// Neighbours use the server's episode order and the caller's visibility. The
+// SQL reads two indexed neighbours, not every episode for a focused TV tile.
+func (s *Service) episodeDetails(viewer Viewer, item Item) (*EpisodeDetails, error) {
+	info := item.Episode
+	if info == nil {
+		return nil, nil
+	}
+	out := &EpisodeDetails{}
+	if err := s.read().QueryRow(`SELECT COALESCE(NULLIF(d.content_rating,''),sh.content_rating,'') FROM catalog_entities item JOIN catalog_item_details d ON d.entity_id=item.id JOIN catalog_episodes ep ON ep.entity_id=item.id LEFT JOIN catalog_shows sh ON sh.entity_id=ep.show_id WHERE item.public_id=pid_blob(?)`, item.ID).Scan(&out.ContentRating); err != nil {
+		return nil, err
+	}
+	settings, err := readShowSettings(s.read(), info.ShowID)
+	if err != nil {
+		return nil, err
+	}
+	keySeason := 1
+	if info.SeasonNumber != nil {
+		keySeason = *info.SeasonNumber
+	}
+	if keySeason == 0 {
+		keySeason = 10000
+	}
+	for _, previous := range []bool{true, false} {
+		before := previous
+		if settings.NewestFirst {
+			before = !before
+		}
+		op, direction := ">", "ASC"
+		if before {
+			op, direction = "<", "DESC"
+		}
+		visible, args := viewer.itemVisibilitySQL("item.id")
+		values := append([]any{info.ShowID}, args...)
+		values = append(values, keySeason, info.Number, item.ID)
+		order := `CASE WHEN COALESCE(sd.number,1)=0 THEN 10000 ELSE COALESCE(sd.number,1) END`
+		var neighbour EpisodeNeighbour
+		err = s.read().QueryRow(`SELECT pid(item.public_id),ep.number,item.title FROM catalog_episodes ep JOIN catalog_entities item ON item.id=ep.entity_id LEFT JOIN catalog_seasons sd ON sd.entity_id=ep.season_id WHERE ep.show_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND `+visible+` AND (`+order+`,ep.number,item.id)`+op+`(?,?,(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))) ORDER BY `+order+` `+direction+`,ep.number `+direction+`,item.id `+direction+` LIMIT 1`, values...).Scan(&neighbour.ID, &neighbour.Number, &neighbour.Title)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if previous {
+			out.Previous = &neighbour
+		} else {
+			out.Next = &neighbour
+		}
+	}
+	return out, nil
 }

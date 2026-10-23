@@ -1,0 +1,9 @@
+.home { min-height: 100dvh; }
+.rows { position: relative; z-index: var(--layer-content); padding-bottom: 72px; }
+.rows[data-with-hero='true'] { margin-top: -40px; }
+.collection { margin: 44px var(--shell-gutter, var(--gutter-desktop)) 0; }
+@media (max-width: 1023px) {
+  .rows { padding-bottom: 32px; }
+  .rows[data-with-hero='true'] { margin-top: 0; }
+  .collection { margin: 28px 20px 0; }
+}

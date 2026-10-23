@@ -16,9 +16,6 @@ func (d Dependencies) libraryAdministrationAuthorize(ctx context.Context, tx *sq
 	if _, err := d.tierAuthorityTx(ctx, tx, p, identity.TierAdmin); err != nil {
 		return err
 	}
-	if err := d.Identity.CheckRecoveryRouteTx(ctx, tx, p); err != nil {
-		return err
-	}
 	// The owner keeps the pre-existing administrative view, including library
 	// configuration belonging to private recordings. Admins use viewer visibility.
 	if p.Role == identity.TierOwner {

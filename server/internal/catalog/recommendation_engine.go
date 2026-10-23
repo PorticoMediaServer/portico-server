@@ -22,7 +22,7 @@ import (
 const recCandidateLimit = 960
 const recMinimumShelf = 3
 const recMinimumTrend = 3
-const communityWindow = 7 * 24 * time.Hour
+const communityWindow = 30 * 24 * time.Hour
 const communityViewers = 3
 
 // Normalize descriptive text only. Provider and local entity identifiers are

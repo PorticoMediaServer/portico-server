@@ -186,7 +186,7 @@ class Exercise:
     def start(self):
         env = {k:v for k,v in os.environ.items() if not k.startswith('PORTICO_')}
         self.base = f'http://127.0.0.1:{port()}'
-        env.update(PORTICO_STATE_DIR=str(self.directory/'state'), PORTICO_BIND=self.base.split('//')[1],
+        env.update(PORTICO_DATA_DIR=str(self.directory/'state'), PORTICO_BIND=self.base.split('//')[1],
                    PORTICO_DISCOVERY='0', PORTICO_FFMPEG=shutil.which('ffmpeg'), PORTICO_FFPROBE=shutil.which('ffprobe'))
         self.log = open(self.directory/'server.log','wb')
         self.process = subprocess.Popen([str(self.binary)], cwd=ROOT/'server', env=env, stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True)

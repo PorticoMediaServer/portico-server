@@ -41,7 +41,7 @@ func TestRecommendationsBaselineDoesNotInventPeopleOrRepeatWork(t *testing.T) {
 	if _, err = db.Exec(`CREATE TRIGGER forbid_backfill BEFORE INSERT ON catalog_related_facets BEGIN SELECT RAISE(ABORT,'unexpected repeated backfill'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if err = migrate(context.Background(), db); err != nil {
+	if err = installBaseline(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 	var after int

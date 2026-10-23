@@ -3,11 +3,8 @@
 <plist version="1.0"><dict>
  <key>Label</key><string>tv.getportico.server.service</string>
  <key>ProgramArguments</key><array><string>/Applications/Portico Media Server.app/Contents/Resources/server/portico-server</string></array>
- <key>UserName</key><string>_portico</string>
- <key>GroupName</key><string>_portico</string>
  <key>EnvironmentVariables</key><dict>
   <key>PORTICO_BIND</key><string>[::]:32500</string>
-  <key>PORTICO_STATE_DIR</key><string>/Library/Application Support/Portico Media Server</string>
   <key>PORTICO_WEB_DIR</key><string>/Applications/Portico Media Server.app/Contents/Resources/server/web</string>
   <key>PORTICO_LOG_STDERR</key><string>off</string>
  </dict>

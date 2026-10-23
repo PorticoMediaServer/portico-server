@@ -24,6 +24,7 @@ import (
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"syscall"
 	"testing"
@@ -172,7 +173,7 @@ func TestMetadataBrowserFixture(t *testing.T) {
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	defer server.Close()
 	go func() { _ = server.Serve(listener) }()
-	raw, _ := json.MarshalIndent(map[string]any{"fixture": true, "upstream": "controlled TVDB HTTPS transport only; no live providers", "serverUrl": "http://127.0.0.1:19422", "serverId": ident.ID(), "libraryId": lib.ID, "showId": show, "seasonId": season, "manualEpisodeId": manual, "setupTokenPath": filepath.Join(root, "setup-token"), "retryFlagPath": filepath.Join(root, "allow-retry"), "pid": os.Getpid()}, "", "  ")
+	raw, _ := json.MarshalIndent(map[string]any{"fixture": true, "upstream": "controlled TVDB HTTPS transport only; no live providers", "serverUrl": "http://127.0.0.1:19422", "serverId": ident.ID(), "libraryId": lib.ID, "showId": show, "seasonId": season, "manualEpisodeId": manual, "setupTokenPath": storagepaths.Path(root, "setup-token"), "retryFlagPath": filepath.Join(root, "allow-retry"), "pid": os.Getpid()}, "", "  ")
 	if e = os.WriteFile(filepath.Join(root, "fixture.json"), raw, 0600); e != nil {
 		t.Fatal(e)
 	}

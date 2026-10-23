@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/administration"
+	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 )
@@ -84,6 +86,31 @@ func (d Dependencies) administrationAuthority(expected identity.Principal) admin
 			return identity.ErrUnauthorized
 		}
 		return d.ownerAuthorityTx(ctx, tx, current)
+	}
+}
+
+// A selection delete is confined to one library, under the same snapshot and
+// owner fence used to build its preview and apply the confirmed operation.
+func (d Dependencies) deletionAuthority(expected identity.Principal, ids []string) administration.Authorize {
+	owner := d.administrationAuthority(expected)
+	raw, _ := json.Marshal(ids)
+	return func(ctx context.Context, tx *sql.Tx) error {
+		if err := owner(ctx, tx); err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if _, valid := entityid.Decode(id); !valid {
+				return administration.ErrNotFound
+			}
+		}
+		var libraries int
+		if err := tx.QueryRowContext(ctx, `SELECT count(DISTINCT library_id) FROM catalog_entities WHERE public_id IN(SELECT pid_blob(value) FROM json_each(?))`, string(raw)).Scan(&libraries); err != nil {
+			return err
+		}
+		if libraries > 1 {
+			return administration.ErrInput
+		}
+		return nil
 	}
 }
 
@@ -187,7 +214,7 @@ func (d Dependencies) administrationRoutes(mux *http.ServeMux) {
 
 func (d Dependencies) deletionRoutes(mux *http.ServeMux) {
 	preview := func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal, ids []string) (any, error) {
-		return d.Administration.PreviewDelete(ctx, d.administrationAuthority(p), ids)
+		return d.Administration.PreviewDelete(ctx, d.deletionAuthority(p, ids), ids)
 	}
 	d.httpHandle(mux, "POST /v1/items/{id}/delete/preview", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
@@ -214,14 +241,14 @@ func (d Dependencies) deletionRoutes(mux *http.ServeMux) {
 			return nil, administration.ErrInput
 		}
 		body.ItemIDs = []string{r.PathValue("id")}
-		return d.Administration.Delete(ctx, d.administrationAuthority(p), administrationActor(p), body)
+		return d.Administration.Delete(ctx, d.deletionAuthority(p, body.ItemIDs), administrationActor(p), body)
 	}))
 	d.httpHandle(mux, "POST /v1/admin/media/delete", d.administrationHandler(300*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body administration.DeleteRequest
 		if err := decodeLegacyRevision(w, r, &body); err != nil {
 			return nil, errors.Join(administration.ErrInput, err)
 		}
-		return d.Administration.Delete(ctx, d.administrationAuthority(p), administrationActor(p), body)
+		return d.Administration.Delete(ctx, d.deletionAuthority(p, body.ItemIDs), administrationActor(p), body)
 	}))
 }
 
@@ -229,7 +256,7 @@ func (d Dependencies) deletionRoutes(mux *http.ServeMux) {
 
 func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
 	d.httpHandle(mux, "GET /v1/admin/filesystem", d.libraryAdministrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
-		query, err := administrationQuery(r, "path", "cursor", "limit", "includeFiles")
+		query, err := administrationQuery(r, "path", "cursor", "limit", "includeFiles", "showHidden", "prefix", "checkWritable")
 		if err != nil {
 			return nil, err
 		}
@@ -237,10 +264,17 @@ func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
 		if err != nil {
 			return nil, err
 		}
-		if query["includeFiles"] != "" && query["includeFiles"] != "true" && query["includeFiles"] != "false" {
-			return nil, administration.ErrInput
+		for _, key := range []string{"includeFiles", "showHidden", "checkWritable"} {
+			if v := query[key]; v != "" && v != "true" && v != "false" && v != "1" && v != "0" {
+				return nil, administration.ErrInput
+			}
 		}
-		return d.Administration.Browse(ctx, query["path"], query["cursor"], limit, query["includeFiles"] == "true")
+		flag := func(key string) bool { return query[key] == "true" || query[key] == "1" }
+		page, err := d.Administration.Browse(ctx, query["path"], query["cursor"], limit, flag("includeFiles"), administration.BrowseOptions{ShowHidden: flag("showHidden"), Prefix: query["prefix"], CheckWritable: flag("checkWritable")})
+		if page.Reason != "" && (errors.Is(err, administration.ErrDenied) || errors.Is(err, administration.ErrNotFound)) {
+			return page, nil
+		}
+		return page, err
 	}))
 	d.httpHandle(mux, "GET /v1/admin/library-settings", d.libraryAdministrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "cursor", "limit")

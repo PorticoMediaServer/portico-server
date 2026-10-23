@@ -30,7 +30,7 @@ export type DirectSnapshot=Readonly<{authority:'local';serverId:string;account:D
  * - `device-pending`: the owner must approve this device first; nothing was issued.
  */
 export type DirectSignIn=
- Readonly<{kind:'signed-in';snapshot:DirectSnapshot;session:LocalSession;accountScoped:boolean;passwordChangeRequired:boolean}>
+ Readonly<{kind:'signed-in';snapshot:DirectSnapshot;session:LocalSession;accountScoped:boolean;passwordChangeRequired:boolean;resetFileOwnerSession?:true}>
  |Readonly<{kind:'challenge';token:string;expiresAt:string}>
  |Readonly<{kind:'device-pending';deviceId:string;installationId:string}>;
 export type ProfileScope=Readonly<{authority:ProfileAuthority;accountId:string;serverId?:string}>;
@@ -82,9 +82,13 @@ export function parseDirectSignIn(raw:unknown):DirectSignIn{
  const passwordChangeRequired=raw.passwordChangeRequired===true;
  const session=parseLocalSession(raw.session,{authority:'local',accountId:snapshot.account.id,serverId:snapshot.serverId,profileId:snapshot.account.primaryProfileId});
  const accountScoped=session.viewer.role==='account';
+ if(raw.resetFileOwnerSession!==undefined&&raw.resetFileOwnerSession!==true)invalid();
+ const resetFileOwnerSession=raw.resetFileOwnerSession===true;
+ if(resetFileOwnerSession&&(accountScoped||passwordChangeRequired||snapshot.account.role!=='owner'||session.viewer.role!=='owner'||session.refreshToken))invalid();
+
  // A viewer session straight from sign-in only for one unprotected profile and no forced password change.
- if(!accountScoped&&(passwordChangeRequired||snapshot.profiles.length!==1||snapshot.profiles[0]!.pinRequired))invalid();
- return Object.freeze({kind:'signed-in',snapshot,session,accountScoped,passwordChangeRequired});
+ if(!accountScoped&&!resetFileOwnerSession&&(passwordChangeRequired||snapshot.profiles.length!==1||snapshot.profiles[0]!.pinRequired))invalid();
+ return Object.freeze({kind:'signed-in',snapshot,session,accountScoped,passwordChangeRequired,...(resetFileOwnerSession?{resetFileOwnerSession:true as const}:{})});
 }
 /** `POST /v1/direct/sign-in`. */
 export async function directSignIn(api:ProfileAPI,username:string,password:string,signal?:AbortSignal):Promise<DirectSignIn>{
@@ -169,4 +173,20 @@ export class ManagedProfilesClient {
  * A direct sign-in may already be the viewer session, and deleting that bearer signs the viewer out. */
 export function shouldRetireAccountSession(account:Pick<LocalSession,'accessToken'|'sessionFamilyId'>|undefined,viewer:Pick<LocalSession,'accessToken'|'sessionFamilyId'>):boolean {
  return !!account && !!account.accessToken && !!account.sessionFamilyId && !!viewer.sessionFamilyId && account.accessToken!==viewer.accessToken && account.sessionFamilyId!==viewer.sessionFamilyId;
+}
+
+/** A fresh sign-in proves Forgot PIN without replacing the installed viewer session.
+ * `authenticate` completes local/Portico sign-in and any configured second factor.
+ * The temporary transport is used only for this reset and then signed out.
+ */
+export async function resetProfilePINWithFreshSignIn(authenticate:()=>Promise<DirectSignIn>,temporaryAPI:(session:LocalSession)=>ProfileAPI,scope:ProfileScope&{serverId:string},profileId:string,pin:string,signal?:AbortSignal):Promise<void>{
+ if(scope.authority!=='local'||!text(profileId,128)||pin!==''&&!/^\d{4}$/.test(pin))throw new CodedError('pin_format','Enter the four-digit profile PIN.');
+ const signIn=await authenticate();if(signIn.kind!=='signed-in')throw new CodedError('authentication_required','Complete account sign-in first.');
+ const api=temporaryAPI(signIn.session);
+ try{
+  if(signIn.snapshot.account.id!==scope.accountId||signIn.snapshot.serverId!==scope.serverId||!signIn.snapshot.profiles.some(p=>p.id===profileId))throw new CodedError('invalid_scope','Sign in to the account that owns this profile.');
+  await api.request(routePath('post_direct_profile_pin_reset',{id:profileId}),'POST',routeBody('post_direct_profile_pin_reset',{pin}),signal);
+ }finally{
+  try{await api.request(routePath('delete_sessions_current'),'DELETE');}catch(e){if(!(e instanceof CodedError)||!['unauthorized','authentication_required','session_ended'].includes(e.code))throw e;}
+ }
 }

@@ -43,7 +43,30 @@ type Binding struct {
 	PublicKey       []byte
 	LocalGeneration int64
 }
+type ClaimPurpose struct {
+	Purpose               string `json:"purpose"`
+	CurrentOwnerAccountID string `json:"currentOwnerAccountId"`
+	PreviousOwnerRole     string `json:"previousOwnerRole"`
+	ReturnRegistrationID  string `json:"returnRegistrationId"`
+}
+
+func (p ClaimPurpose) Valid() bool {
+	if p.ReturnRegistrationID != "" && !validID(p.ReturnRegistrationID) {
+		return false
+	}
+	switch p.Purpose {
+	case "setup":
+		return p.CurrentOwnerAccountID == "" && p.PreviousOwnerRole == ""
+	case "switch":
+		return validID(p.CurrentOwnerAccountID) && p.PreviousOwnerRole == ""
+	case "change-owner":
+		return validID(p.CurrentOwnerAccountID) && (p.PreviousOwnerRole == "admin" || p.PreviousOwnerRole == "member" || p.PreviousOwnerRole == "remove")
+	}
+	return false
+}
+
 type Intent struct {
+	ClaimPurpose
 	Binding
 	Revision                 int64
 	Stage                    Stage
@@ -265,6 +288,10 @@ func (c *Coordinator) Step(parent context.Context) (Intent, error) {
 	}
 }
 
+type replacementWithdrawer interface {
+	WithdrawReplacement(context.Context, Intent) (Intent, bool, error)
+}
+
 // Cancel is deliberately independent of Step's busy guard. A reset must fence
 // local installation while finalization/retrieval is in flight. Network failure
 // leaves a durable CancelPending outbox, never an invented global success.
@@ -283,6 +310,15 @@ func (c *Coordinator) Cancel(parent context.Context) (Intent, error) {
 	}
 	if v.Stage == CancelPending {
 		return c.deliverCancellation(ctx, v)
+	}
+	if store, ok := c.store.(replacementWithdrawer); ok {
+		withdrawn, handled, e := store.WithdrawReplacement(ctx, v)
+		if e != nil {
+			return v, e
+		}
+		if handled {
+			return withdrawn, nil
+		}
 	}
 	assertion, e := c.cancellation(ctx, v)
 	if e != nil {

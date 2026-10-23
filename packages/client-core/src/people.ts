@@ -5,9 +5,9 @@ import {unreadableServerResponse} from './server-messages.ts';
 import {validateContentEntry,type ContentEntry,type ContentScope,type LibraryContentApi} from './library-content.ts';
 import {firstOfEach,keepReadable} from './tolerant.ts';
 export type PersonRole='cast'|'crew'|'all';
-export type Person=Readonly<{id:string;name:string;sortName:string;biography:string;birthDate:string;deathDate:string;portraitUrl:string;roles:readonly string[];knownFor:readonly ContentEntry[];providerIds:Readonly<Record<string,string>>;revision:number}>;
-export type PersonCredit=Readonly<{media:ContentEntry;role:string;character:string;department:string;creditKind:'cast'|'crew'}>;
-export type PersonPage=Readonly<{serverId:string;viewerFence:string;revision:Readonly<{catalog:number;viewer:number}>;person:Person;credits:readonly PersonCredit[];pageInfo:Readonly<{total:number;nextCursor:string}>}>;
+export type Person=Readonly<{birthPlace?:string;biographySource?:string;id:string;name:string;sortName:string;biography:string;birthDate:string;deathDate:string;portraitUrl:string;roles:readonly string[];knownFor:readonly ContentEntry[];providerIds:Readonly<Record<string,string>>;revision:number}>;
+export type PersonCredit=Readonly<{roles:readonly Readonly<{role:string;department:string}>[];media:ContentEntry;role:string;character:string;department:string;creditKind:'cast'|'crew'}>;
+export type PersonPage=Readonly<{groups:readonly Readonly<{id:string;kind?:string;department?:string;total:number}>[];serverId:string;viewerFence:string;revision:Readonly<{catalog:number;viewer:number}>;person:Person;credits:readonly PersonCredit[];pageInfo:Readonly<{total:number;nextCursor:string}>}>;
 export type PersonSummary=Readonly<{id:string;name:string;sortName:string;portraitUrl:string;roles:readonly string[];creditCount:number}>;
 export type PeopleDirectory=Readonly<{serverId:string;viewerFence:string;revision:Readonly<{catalog:number;viewer:number}>;q:string;people:readonly PersonSummary[]}>;
 export const MAX_PERSON_CREDITS=100;
@@ -39,7 +39,7 @@ function words(v:unknown,max:number,body=false):string{if(v===undefined||v===nul
 function person(v:unknown):Person{
  if(!object(v)||!id(v.id)||!line(v.name,1024)||!v.name||!count(v.revision))invalid();
  const knownFor=firstOfEach('people','knownFor',keepReadable('people','knownFor',array(v.knownFor??[],MAX_KNOWN_FOR),validateContentEntry),e=>e.id);
- return Object.freeze({id:v.id,name:v.name,sortName:words(v.sortName,1024),biography:words(v.biography,20000,true),birthDate:words(v.birthDate,64),deathDate:words(v.deathDate,64),portraitUrl:words(v.portraitUrl,4096),roles:labels(v.roles,16),knownFor:Object.freeze(knownFor),providerIds:providers(v.providerIds),revision:v.revision});
+ return Object.freeze({...(line(v.birthPlace,2048)&&v.birthPlace?{birthPlace:v.birthPlace}:{}),...(line(v.biographySource,256)&&v.biographySource?{biographySource:v.biographySource}:{}),id:v.id,name:v.name,sortName:words(v.sortName,1024),biography:words(v.biography,20000,true),birthDate:words(v.birthDate,64),deathDate:words(v.deathDate,64),portraitUrl:words(v.portraitUrl,4096),roles:labels(v.roles,16),knownFor:Object.freeze(knownFor),providerIds:providers(v.providerIds),revision:v.revision});
 }
 /**
  * One page of a person's credits. The server, the viewer fence, the revisions, the person asked
@@ -47,7 +47,7 @@ function person(v:unknown):Person{
  * app does not know, or is not of the role asked for is left out alone, and the total is at least
  * the credits kept.
  */
-export function parsePersonPage(raw:unknown,scope:ContentScope,request:Readonly<{role?:PersonRole;limit:number;personId:string}>):PersonPage{
+export function parsePersonPage(raw:unknown,scope:ContentScope,request:Readonly<{role?:PersonRole;department?:string;kind?:string;limit:number;personId:string}>):PersonPage{
  if(!object(raw)||raw.serverId!==scope.serverId||!id(raw.viewerFence)||!object(raw.revision)||!object(raw.pageInfo))invalid();
  if(!count(raw.revision.catalog)||!count(raw.revision.viewer))invalid();
  const subject=person(raw.person);
@@ -58,13 +58,15 @@ export function parsePersonPage(raw:unknown,scope:ContentScope,request:Readonly<
   // The server classifies the credit; a client that guessed from department
   // would disagree with the server's own role filter.
   if(request.role==='cast'&&v.creditKind!=='cast'||request.role==='crew'&&v.creditKind!=='crew')invalid();
-  return Object.freeze({media:validateContentEntry(v.media),role:words(v.role,512),character:words(v.character,512),department:words(v.department,256),creditKind:v.creditKind});
+  const roles=keepReadable('people','credit.roles',array(v.roles??[],128),role=>{if(!object(role)||!line(role.role,512)||!line(role.department,256))invalid();return Object.freeze({role:role.role,department:role.department});});
+  return Object.freeze({roles:Object.freeze(roles),media:validateContentEntry(v.media),role:words(v.role,512),character:words(v.character,512),department:words(v.department,256),creditKind:v.creditKind});
  });
  const info=raw.pageInfo;
  if(!line(info.nextCursor??'',4096))invalid();
  // A cursor only follows a full page, so a server cannot keep a client paging through empty ones.
  if(info.nextCursor&&sent.length<request.limit)invalid();
- return Object.freeze({serverId:raw.serverId as string,viewerFence:raw.viewerFence,revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),person:subject,credits:Object.freeze(credits),pageInfo:Object.freeze({total:Math.max(count(info.total)?info.total:0,credits.length),nextCursor:(info.nextCursor??'') as string})});
+ const groups=keepReadable('people','groups',array(raw.groups??[],256),g=>{if(!object(g)||!id(g.id)||!count(g.total))invalid();return Object.freeze({id:g.id,total:g.total,...(line(g.kind,128)&&g.kind?{kind:g.kind}:{}),...(line(g.department,128)&&g.department?{department:g.department}:{})});});
+ return Object.freeze({groups:Object.freeze(groups),serverId:raw.serverId as string,viewerFence:raw.viewerFence,revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),person:subject,credits:Object.freeze(credits),pageInfo:Object.freeze({total:Math.max(count(info.total)?info.total:0,credits.length),nextCursor:(info.nextCursor??'') as string})});
 }
 /** People matching a name. The server, the viewer fence, the revisions and the page bound are exact; a person who cannot be read is left out alone and a repeated one keeps the first appearance. */
 export function parsePeopleDirectory(raw:unknown,scope:ContentScope,limit:number):PeopleDirectory{
@@ -76,12 +78,14 @@ export function parsePeopleDirectory(raw:unknown,scope:ContentScope,limit:number
  }),p=>p.id);
  return Object.freeze({serverId:raw.serverId as string,viewerFence:raw.viewerFence,revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),q:words(raw.q,512),people:Object.freeze(people)});
 }
-export function personPath(personId:string,options:Readonly<{role?:PersonRole;limit?:number;cursor?:string|null}>={}):string{
+export function personPath(personId:string,options:Readonly<{role?:PersonRole;department?:string;kind?:string;limit?:number;cursor?:string|null}>={}):string{
  if(!id(personId))throw new Error('A person id is required.');
  const limit=options.limit??40;
  if(!Number.isInteger(limit)||limit<1||limit>MAX_PERSON_CREDITS)throw new Error('Person credits page 1 to 100 rows.');
  if(options.role!==undefined&&!roles.includes(options.role))throw new Error('Unknown credit role.');
  const params=new URLSearchParams({limit:String(limit)});
+ if(options.department&&options.kind||options.role&&(options.department||options.kind))throw new Error('Choose one person credit group.');
+ if(options.department)params.set('department',options.department);if(options.kind)params.set('kind',options.kind);
  if(options.role)params.set('role',options.role);
  if(options.cursor)params.set('cursor',options.cursor);
  return encodedRoutePath("get_people_id", {"id": encodeURIComponent(personId)}) + "?" + (params);
@@ -96,9 +100,9 @@ export function personPortraitPath(personId:string,size:'thumbnail'|'full'='thum
  if(!id(personId))throw new Error('A person id is required.');
  return encodedRoutePath("get_people_id_portrait", {"id": encodeURIComponent(personId)})+(size==='thumbnail'?'?size=thumbnail':'');
 }
-export async function readPerson(api:LibraryContentApi,scope:ContentScope,personId:string,options:Readonly<{role?:PersonRole;limit?:number;cursor?:string|null;signal?:AbortSignal}>={}):Promise<PersonPage>{
+export async function readPerson(api:LibraryContentApi,scope:ContentScope,personId:string,options:Readonly<{role?:PersonRole;department?:string;kind?:string;limit?:number;cursor?:string|null;signal?:AbortSignal}>={}):Promise<PersonPage>{
  const limit=options.limit??40;
- const raw=await api.request<unknown>(personPath(personId,{role:options.role,limit,cursor:options.cursor}),'GET',undefined,options.signal);
+ const raw=await api.request<unknown>(personPath(personId,{role:options.role,department:options.department,kind:options.kind,limit,cursor:options.cursor}),'GET',undefined,options.signal);
  return parsePersonPage(raw,scope,{role:options.role,limit,personId});
 }
 export async function readPeople(api:LibraryContentApi,scope:ContentScope,q:string,limit=25,signal?:AbortSignal):Promise<PeopleDirectory>{

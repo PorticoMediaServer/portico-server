@@ -14,6 +14,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storagepaths"
 )
 
 // The backup and state-permissions routes are owner-only; backups list,
@@ -123,7 +124,7 @@ func TestBackupRoutesOwnerBoundaryAndLifecycle(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if _, err = os.Stat(filepath.Join(root, "restore-staged", "restore.json")); err != nil {
+	if _, err = os.Stat(storagepaths.Path(root, "restore-staged", "restore.json")); err != nil {
 		t.Fatal("restore not staged", err)
 	}
 	bad := request("POST", "/v1/admin/backups/restore", owner.AccessToken, `{"operationId":"op-restore-2","source":{"backupId":"2026-01-01T000000Z"}}`)

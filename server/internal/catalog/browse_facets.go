@@ -1,14 +1,17 @@
 package catalog
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"portico.local/server/internal/requestinput"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/sorttext"
@@ -19,17 +22,26 @@ import (
 // excluded by construction, and the result is cached per catalog revision.
 
 type FacetValue struct {
-	Value string `json:"value"`
-	Label string `json:"label"`
-	Count int    `json:"count"`
+	Value             string `json:"value"`
+	Label             string `json:"label"`
+	Count             int    `json:"count"`
+	CountIsLowerBound bool   `json:"countIsLowerBound"`
 }
 type FacetPage struct {
-	Field  string       `json:"field"`
-	Total  int          `json:"total"`
-	Values []FacetValue `json:"values"`
+	// Private aggregate payload reuses the bounded revision/single-flight cache;
+	// it is never serialized as a facet response.
+	durationMs        int64
+	durationLower     bool
+	Field             string       `json:"field"`
+	TotalIsLowerBound bool         `json:"totalIsLowerBound"`
+	Revision          string       `json:"revision,omitempty"`
+	Total             int          `json:"total"`
+	Values            []FacetValue `json:"values"`
 }
 type FacetRequest struct {
 	Library string
+	Pivot   string
+	Query   *BrowseNode
 	Profile string
 	Field   string
 	Q       string
@@ -43,8 +55,9 @@ type FacetRequest struct {
 	// person, playlist, collection, Home row, My List, Favorites or the
 	// history): values are counted over the list's own titles. Rows are the
 	// Home rows it names, resolved by the caller.
-	Group *BrowseNode
-	Rows  map[string][]int64
+	Group      *BrowseNode
+	Rows       map[string][]int64
+	RowSources map[string]HomeRowMembership
 }
 
 // facetSource describes how one facet is counted. Join is appended after
@@ -68,6 +81,10 @@ var facetSources = map[string]facetSource{
 	"tag":           {Join: attributeFacetJoin("tag"), Value: "ca.source_value", Label: "ca.source_value"},
 	"label":         {Join: attributeFacetJoin("label"), Value: "ca.source_value", Label: "ca.source_value"},
 	"series":        {Join: attributeFacetJoin("series"), Value: "ca.source_value", Label: "ca.source_value"},
+	"library":       {Join: `JOIN catalog_libraries library_key ON library_key.id=e.library_id JOIN libraries library ON library.id=library_key.library_id`, Value: "library.id", Label: "library.name"},
+	"actor":         {Join: `JOIN catalog_credits cc ON cc.entity_id IN(e.item_id,e.entity_id) JOIN catalog_credit_labels department ON department.id=cc.department_id AND department.label='Acting'`, Value: "cc.credited_name", Label: "cc.credited_name"},
+	"director":      {Join: `JOIN catalog_credits cc ON cc.entity_id IN(e.item_id,e.entity_id) JOIN catalog_credit_labels role ON role.id=cc.role_id JOIN catalog_credit_labels department ON department.id=cc.department_id AND (role.label='Director' OR department.label='Directing')`, Value: "cc.credited_name", Label: "cc.credited_name"},
+	"writer":        {Join: `JOIN catalog_credits cc ON cc.entity_id IN(e.item_id,e.entity_id) JOIN catalog_credit_labels role ON role.id=cc.role_id JOIN catalog_credit_labels department ON department.id=cc.department_id AND (role.label IN('Writer','Screenplay') OR department.label='Writing')`, Value: "cc.credited_name", Label: "cc.credited_name"},
 	"collection":    {Join: `JOIN catalog_collection_members cim ON cim.item_id=e.item_id JOIN catalog_entities col ON col.id=cim.collection_id`, Value: "pid(col.public_id)", Label: "col.title"},
 }
 
@@ -78,6 +95,9 @@ func attributeFacetJoin(field string) string {
 // Facets returns the counted values of one field under the viewer's visibility.
 func (s *Service) Facets(viewer Viewer, request FacetRequest) (FacetPage, error) {
 	out := FacetPage{Field: request.Field, Values: []FacetValue{}}
+	if request.Query != nil || request.Pivot != "" || request.Field == "library" || request.Field == "actor" || request.Field == "director" || request.Field == "writer" {
+		return s.contextualFacets(viewer, request)
+	}
 	if !viewer.AllowsLibrary(request.Library) {
 		return out, sql.ErrNoRows
 	}
@@ -392,3 +412,250 @@ func browseCategoryPredicate(category string) (*BrowseNode, error) {
 	}
 	return nil, requestinput.New("unknown category")
 }
+
+// withoutFacet removes only the counted field. A branch made empty becomes
+// true, including within an alternative, so removing a condition never narrows
+// the result. The immutable group source is attached separately by the caller.
+func withoutFacet(node *BrowseNode, field string) *BrowseNode {
+	if node == nil || node.Field == field {
+		return nil
+	}
+	copy := *node
+	if node.Not != nil {
+		copy.Not = withoutFacet(node.Not, field)
+		if copy.Not == nil {
+			return nil
+		}
+		return &copy
+	}
+	if node.All != nil || node.Any != nil {
+		children := node.All
+		any := node.Any != nil
+		if any {
+			children = node.Any
+		}
+		kept := []BrowseNode{}
+		for i := range children {
+			child := withoutFacet(&children[i], field)
+			if child == nil {
+				if any {
+					return nil
+				}
+				continue
+			}
+			kept = append(kept, *child)
+		}
+		if len(kept) == 0 {
+			return nil
+		}
+		if len(kept) == 1 {
+			return &kept[0]
+		}
+		if any {
+			copy.Any = kept
+		} else {
+			copy.All = kept
+		}
+		return &copy
+	}
+	return &copy
+}
+
+// browseMeasureScope is the same canonical entity selection as browse. It
+// keeps the source as SQL through filtering and aggregation, with no ID list
+// ceiling. Only the subsequent count/aggregate may be bounded.
+func (s *Service) browseMeasureScope(viewer Viewer, request FacetRequest) (string, []any, string, error) {
+	query := request.Query
+	if request.Group != nil {
+		query = browseAnd(request.Group, query)
+	}
+	var pivot browsePivot
+	var where string
+	var args []any
+	if request.Library != "" {
+		if !viewer.AllowsLibrary(request.Library) {
+			return "", nil, "", sql.ErrNoRows
+		}
+		lib, err := s.library(request.Library)
+		if err != nil {
+			return "", nil, "", err
+		}
+		if err := s.browseReady(request.Library); err != nil {
+			return "", nil, "", err
+		}
+		id := request.Pivot
+		if id == "" {
+			id = defaultPivot(lib.Kind)
+		}
+		var ok bool
+		pivot, ok = pivotForKind(lib.Kind, id)
+		if !ok {
+			return "", nil, "", ErrBrowsePivot
+		}
+		if pivot.Aggregate != "" {
+			pivot, _ = pivotForKind(lib.Kind, defaultPivot(lib.Kind))
+		}
+		where, args = browseScopeSQL(request.Library, pivot)
+	} else {
+		var ok bool
+		pivot, ok = acrossPivot(request.Pivot)
+		if !ok {
+			return "", nil, "", ErrBrowsePivot
+		}
+		ks, err := acrossKinds(pivot)
+		if err != nil {
+			return "", nil, "", err
+		}
+		where = `e.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND e.kind IN(` + placeholders(len(ks)) + `)`
+		args = append([]any{viewer.librariesJSON()}, ks...)
+		if anchor := acrossAnchor(query); anchor != nil {
+			members, ma, _, err := acrossMembers(anchor, viewer.Profile, request.Rows, request.RowSources)
+			if err != nil {
+				return "", nil, "", err
+			}
+			where += ` AND e.entity_id IN(WITH anchor AS MATERIALIZED (` + members + `) SELECT id FROM anchor UNION SELECT bm.entity_id FROM anchor CROSS JOIN catalog_browse_memberships bm INDEXED BY catalog_browse_membership_item ON bm.item_id=anchor.id UNION SELECT bm.item_id FROM anchor CROSS JOIN catalog_browse_memberships bm ON bm.entity_id=anchor.id)`
+			args = append(args, ma...)
+		}
+	}
+	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: request.Rows, rowSources: request.RowSources, itemPivot: playablePivot(pivot), count: s.countRows, ids: s.entityIDs}
+	for _, member := range entityKindMembers(pivot) {
+		if kind, err := compactcatalog.ParseKind(member); err == nil {
+			compiler.kinds = append(compiler.kinds, int(kind))
+		}
+	}
+	clause, err := compiler.compile(query)
+	if err != nil {
+		return "", nil, "", err
+	}
+	where += " AND " + clause
+	args = append(args, compiler.args...)
+	visibility, va := EntityRestrictionSQL("e.entity_id", viewer.Restrictions)
+	where += " AND " + visibility
+	args = append(args, va...)
+	ar := AcrossRequest{Query: query, Rows: request.Rows, RowSources: request.RowSources, profile: viewer.Profile, fence: viewer.Fence + ":" + RestrictionFence(viewer.Restrictions), libraries: viewer.Libraries}
+	revision, err := s.acrossRevision(ar, pivot, titleAscending())
+	if err != nil {
+		return "", nil, "", err
+	}
+	// The revision also binds the library and query vocabulary when used inside
+	// one library, so a cached aggregate cannot cross its pivot or source.
+	revision += ":" + request.Library + ":" + queryFingerprint(query)
+	return `SELECT e.entity_id,e.library_id,e.year FROM catalog_browse_rows e WHERE ` + where, args, revision, nil
+}
+
+func browseAnd(a, b *BrowseNode) *BrowseNode {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	return &BrowseNode{All: []BrowseNode{*a, *b}}
+}
+
+func (s *Service) contextualFacets(viewer Viewer, request FacetRequest) (FacetPage, error) {
+	out := FacetPage{Field: request.Field, Values: []FacetValue{}}
+	if dbwork.Snapshot(s.Context()) == nil {
+		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
+			var err error
+			out, err = s.WithContext(ctx).contextualFacets(viewer, request)
+			return err
+		})
+		return out, err
+	}
+	if err := s.prepareViewer(viewer); err != nil {
+		return out, err
+	}
+	source, ok := facetSources[request.Field]
+	if !ok {
+		return out, browseIssue("field", "field is not a counted facet")
+	}
+	if len(request.Q) > 100 {
+		return out, browseIssue("q", "facet filter exceeds 100 characters")
+	}
+	if request.Limit < 1 || request.Limit > browseFacetLimit {
+		request.Limit = browseFacetLimit
+	}
+	if err := validateMeasureNode(request.Query); err != nil {
+		return out, err
+	}
+	request.Query = withoutFacet(request.Query, request.Field)
+	scope, args, revision, err := s.browseMeasureScope(viewer, request)
+	if err != nil {
+		return out, err
+	}
+	out.Revision = revision
+	key := fmt.Sprintf("context:%s:%s:%s:%s:%d:%d:%s:%s", revision, viewer.Profile, RestrictionFence(viewer.Restrictions), request.Field, request.Limit, request.Offset, request.Sort, sorttext.Fold(request.Q))
+	if hit, ok := s.state.facetCache.get(key, 0); ok {
+		return hit, nil
+	}
+	return s.state.facetCache.do(key, func() (FacetPage, error) {
+		if hit, ok := s.state.facetCache.get(key, 0); ok {
+			return hit, nil
+		}
+		// Keep the full SQL source through the value join and name search. A
+		// rare actor/genre or a library after the first 10,000 members must remain
+		// discoverable. Only each reported count and the returned value window are
+		// capped; the revision cache bounds repeated panel/typeahead work.
+		prefix := `WITH targets AS MATERIALIZED (` + scope + `)`
+		// Expand only current visible members before reading values, so one hidden
+		// episode cannot advertise its actor/genre/language via a visible sibling.
+		memberVisible, memberArgs := viewer.itemVisibilitySQL("member.item_id")
+		prefix += `, e AS MATERIALIZED (SELECT DISTINCT target.entity_id,target.library_id,target.year,member.item_id FROM targets target JOIN catalog_browse_memberships member ON member.entity_id=target.entity_id WHERE ` + memberVisible + `)`
+		bound := append(append([]any{}, args...), memberArgs...)
+		where := source.Value + ` IS NOT NULL AND CAST(` + source.Value + ` AS TEXT)<>''`
+		if request.Field == "year" || request.Field == "decade" {
+			where += ` AND e.year BETWEEN 1800 AND 2199`
+		}
+		if request.Q != "" {
+			where += ` AND instr(portico_fold_text(` + source.Label + `),?)>0`
+			bound = append(bound, sorttext.Fold(request.Q))
+		}
+		counted := ` SELECT CAST(` + source.Value + ` AS TEXT) AS value,` + source.Label + ` AS label,count(DISTINCT e.entity_id) AS total FROM e ` + source.Join + ` WHERE ` + where + ` GROUP BY value`
+		order := `total DESC,label COLLATE NOCASE,value`
+		if strings.HasPrefix(request.Sort, "title:") {
+			order = `label COLLATE NOCASE,value`
+			if request.Sort == "title:desc" {
+				order = `label COLLATE NOCASE DESC,value DESC`
+			}
+		}
+		// SQL bounds both the response and Go memory. A missing further value is
+		// true end; the distinct-value count is capped just like entity counts.
+		rows, err := s.read().Query(prefix+counted+` ORDER BY `+order+` LIMIT ? OFFSET ?`, append(bound, request.Limit+1, max(0, request.Offset))...)
+		if err != nil {
+			return out, err
+		}
+		for rows.Next() {
+			var value FacetValue
+			if err = rows.Scan(&value.Value, &value.Label, &value.Count); err != nil {
+				break
+			}
+			if value.Count > browseTotalThreshold {
+				value.Count = browseTotalThreshold
+				value.CountIsLowerBound = true
+			}
+			out.Values = append(out.Values, value)
+		}
+		if err == nil {
+			err = rows.Err()
+		}
+		rows.Close()
+		if err != nil {
+			return out, err
+		}
+		if len(out.Values) > request.Limit {
+			out.Values = out.Values[:request.Limit]
+		}
+		if err = s.read().QueryRow(prefix+` SELECT count(*) FROM (`+counted+` LIMIT `+strconv.Itoa(browseTotalThreshold+1)+`)`, bound...).Scan(&out.Total); err != nil {
+			return out, err
+		}
+		if out.Total > browseTotalThreshold {
+			out.Total = browseTotalThreshold
+			out.TotalIsLowerBound = true
+		}
+		s.state.facetCache.put(key, facetCacheEntry{revision: 0, publications: dbwork.Publications(), expires: time.Now().Add(time.Minute), page: out})
+		return out, nil
+	})
+}
+
+func BrowseConjunction(a, b *BrowseNode) *BrowseNode { return browseAnd(a, b) }

@@ -12,14 +12,14 @@ fixture=$1
 scratch=$2
 binary=${3:-"$scratch/srv"}
 
-mkdir -p "$scratch/state"
+mkdir -p "$scratch/state/Database"
 # A copy-on-write clone where the filesystem has one: a deep fixture is twelve
 # gigabytes and this measurement is about opening it, not about copying it.
-cp -c "$fixture" "$scratch/state/server.sqlite" 2>/dev/null || cp "$fixture" "$scratch/state/server.sqlite"
-rm -f "$scratch/state/server.sqlite-wal" "$scratch/state/server.sqlite-shm"
-printf 'database %s MB\n' "$(( $(wc -c < "$scratch/state/server.sqlite") / 1048576 ))"
+cp -c "$fixture" "$scratch/state/Database/server.sqlite" 2>/dev/null || cp "$fixture" "$scratch/state/Database/server.sqlite"
+rm -f "$scratch/state/Database/server.sqlite-wal" "$scratch/state/Database/server.sqlite-shm"
+printf 'database %s MB\n' "$(( $(wc -c < "$scratch/state/Database/server.sqlite") / 1048576 ))"
 
-PORTICO_STATE_DIR="$scratch/state" PORTICO_BIND=127.0.0.1:32599 "$binary" > "$scratch/server.log" 2>&1 &
+PORTICO_DATA_DIR="$scratch/state" PORTICO_BIND=127.0.0.1:32599 "$binary" > "$scratch/server.log" 2>&1 &
 pid=$!
 trap 'kill "$pid" 2>/dev/null || true' EXIT
 

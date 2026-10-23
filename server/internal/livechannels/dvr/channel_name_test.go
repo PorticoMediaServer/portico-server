@@ -91,6 +91,8 @@ func TestRecordingWatchedFollowsPersonalState(t *testing.T) {
 	watched := c.Movie(films, "/rec/one.mkv", "One", 0)
 	fresh := c.Movie(films, "/rec/two.mkv", "Two", 0)
 	c.Drain()
+	c.Exec(`INSERT INTO progress(profile_id,item_id,position,playback_id) VALUES(?,?,15000,'')`, key, fresh.ID)
+	c.Exec(`UPDATE catalog_assets SET duration=3600 WHERE id IN(SELECT asset_id FROM catalog_asset_links WHERE entity_id=?)`, fresh.ID)
 	c.Exec(`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) VALUES(?,?,1,'2026-09-24T00:00:00Z')`, key, watched.ID)
 	c.Exec(`INSERT INTO personal_items(profile_id,item_id,watched,revision) VALUES(?,?,1,1)`, key, watched.ID)
 	tx, err := db.BeginTx(ctx, nil)
@@ -105,6 +107,9 @@ func TestRecordingWatchedFollowsPersonalState(t *testing.T) {
 		r := Recording{ItemID: v.item}
 		if err = decorateTx(ctx, tx, owner, &r); err != nil {
 			t.Fatal(err)
+		}
+		if v.item == fresh.Public && (r.PositionMs != 15000 || r.DurationMs != 3600000) {
+			t.Fatalf("recording progress/duration lost: %+v", r)
 		}
 		if (r.Watched == nil) != (v.want == nil) || r.Watched != nil && *r.Watched != *v.want {
 			t.Fatalf("%q watched = %v, want %v", v.item, r.Watched, v.want)

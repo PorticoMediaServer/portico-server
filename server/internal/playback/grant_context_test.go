@@ -14,7 +14,7 @@ import (
 
 func TestGrantResolutionHonorsRequestCancellationWithoutRevokingGrant(t *testing.T) {
 	_, s, p, _, item, _ := activityFixture(t)
-	session, err := s.Create(p, item, "auto", "grant-context")
+	session, err := s.Create(p, item, "automatic", "grant-context")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestGrantResolutionHonorsRequestCancellationWithoutRevokingGrant(t *testing
 
 func TestProgressAbandonsWriterQueueAtRequestDeadline(t *testing.T) {
 	_, s, p, _, item, _ := activityFixture(t)
-	session, err := s.Create(p, item, "auto", "progress-context")
+	session, err := s.Create(p, item, "automatic", "progress-context")
 	if err != nil {
 		t.Fatal(err)
 	}

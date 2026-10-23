@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/storage"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"syscall"
 	"testing"
@@ -155,7 +156,7 @@ func TestPlainConfigLifecycleAndDurableIntent(t *testing.T) {
 	if _, err = s.Action(row.ID, "start"); err != nil {
 		t.Fatal(err)
 	}
-	restarted, err := New(s.db, filepath.Dir(s.private), s.root, s.helper, s.storage)
+	restarted, err := New(s.db, filepath.Dir(filepath.Dir(s.private)), s.root, s.helper, s.storage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +237,7 @@ func TestSealedConfigsMigrateToPlain(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 	binary := fixtureExecutable(t)
-	private := filepath.Join(root, "managed-storage")
+	private := storagepaths.Path(root, "managed-storage")
 	if err = os.MkdirAll(private, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -285,27 +286,37 @@ func TestInspectPrivateDirectoryRefusesWhatNewWould(t *testing.T) {
 	if err := InspectPrivateDirectory(state); err != nil {
 		t.Fatalf("a state folder with no mount configuration yet was refused: %v", err)
 	}
-	if _, err := os.Lstat(filepath.Join(state, "managed-storage")); !os.IsNotExist(err) {
+	if _, err := os.Lstat(storagepaths.Path(state, "managed-storage")); !os.IsNotExist(err) {
 		t.Fatalf("inspecting created the folder: %v", err)
 	}
-	if err := os.Mkdir(filepath.Join(state, "managed-storage"), 0700); err != nil {
+	if err := os.MkdirAll(storagepaths.Path(state, "managed-storage"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := InspectPrivateDirectory(state); err != nil {
 		t.Fatalf("an ordinary folder was refused: %v", err)
 	}
 	asFile := canonicalFixtureDir(t)
-	if err := os.WriteFile(filepath.Join(asFile, "managed-storage"), []byte("x"), 0600); err != nil {
+	if err := writeMountFixture(storagepaths.Path(asFile, "managed-storage"), []byte("x"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := InspectPrivateDirectory(asFile); err == nil {
 		t.Fatal("a file in place of the folder was accepted")
 	}
 	asLink := canonicalFixtureDir(t)
-	if err := os.Symlink(state, filepath.Join(asLink, "managed-storage")); err != nil {
+	if err := os.MkdirAll(filepath.Join(asLink, "Keys"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(state, storagepaths.Path(asLink, "managed-storage")); err != nil {
 		t.Fatal(err)
 	}
 	if err := InspectPrivateDirectory(asLink); err == nil {
 		t.Fatal("a link in place of the folder was accepted")
 	}
+}
+
+func writeMountFixture(path string, data []byte, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, mode)
 }

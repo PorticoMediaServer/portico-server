@@ -440,7 +440,7 @@ type RecordingGroupChange struct {
 
 func validateGroup(c *RecordingGroupChange) error {
 	fields := []string{}
-	if !oneOf(c.Kind, "series", "keyword") {
+	if !oneOf(c.Kind, "series", "title", "keyword") {
 		fields = append(fields, "kind")
 	}
 	if c.Name == "" || !safeText(c.Name, 160) {

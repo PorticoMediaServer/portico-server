@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"testing"
@@ -166,5 +167,34 @@ func TestMusicArtistChainFailuresRetryFiveTimes(t *testing.T) {
 	}
 	if calls["mb"] != 5 || calls["wikidata"] != 0 {
 		t.Fatal("retry bound", calls)
+	}
+}
+
+func TestMusicArtistTypeStoresObservedValueOrNull(t *testing.T) {
+	for _, kind := range []string{"Group", "Person", "", "Unknown"} {
+		name := kind
+		if name == "" {
+			name = "Absent"
+		}
+		t.Run(name, func(t *testing.T) {
+			svc := musicArtistDB(t)
+			calls := map[string]int{}
+			mb, wd, wp, co := musicArtistFakes(calls)
+			mb.artist = func(context.Context, string) (metadataprovider.MusicArtist, error) {
+				return metadataprovider.MusicArtist{ID: mbArtistID, Name: "Artist", Type: kind}, nil
+			}
+			svc.mb, svc.wikidata, svc.wikipedia, svc.commons = mb, wd, wp, co
+			if err := svc.musicArtistStep(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			var actual sql.NullString
+			if err := svc.db.QueryRow(`SELECT artist_type FROM music_artist_evidence WHERE artist_id=?`, mbIntID(t, svc.db, "Artist")).Scan(&actual); err != nil {
+				t.Fatal(err)
+			}
+			known := kind == "Group" || kind == "Person"
+			if actual.Valid != known || known && actual.String != kind {
+				t.Fatalf("kind %q stored %+v", kind, actual)
+			}
+		})
 	}
 }

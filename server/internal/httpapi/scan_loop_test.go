@@ -25,6 +25,11 @@ func TestTypedScanSettingsDiagnosticsAndChangeExpiry(t *testing.T) {
 	if _, err = d.DB.Exec(`INSERT INTO inventory_scan_issues(job_id,relative_path,reason,line,warning) VALUES(?,'Folder/file.mkv','entry_unreadable',0,1)`, job.ID); err != nil {
 		t.Fatal(err)
 	}
+	// GP-LB-5: an unreadable-path diagnostic does not establish unplayable
+	// media. Keep it as an exclusion control alongside a genuine damaged file.
+	if _, err = d.DB.Exec(`INSERT INTO inventory_scan_issues(job_id,relative_path,reason,line,warning) VALUES(?,'Folder/truncated.mkv','file_truncated',0,1)`, job.ID); err != nil {
+		t.Fatal(err)
+	}
 	h := New(d)
 	call := func(method, path, body, token string) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -42,13 +47,22 @@ func TestTypedScanSettingsDiagnosticsAndChangeExpiry(t *testing.T) {
 	if response := call("GET", path, "", ""); response.Code != 401 {
 		t.Fatalf("anonymous diagnostics: %d", response.Code)
 	}
-	if response := call("GET", path, "", owner.AccessToken); response.Code != 200 || !strings.Contains(response.Body.String(), `"messageKey":"scan.issue.entry_unreadable"`) {
+	response := call("GET", path, "", owner.AccessToken)
+	var issues ingestion.ScanIssues
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &issues) != nil || issues.Count != 1 || len(issues.Items) != 1 {
 		t.Fatalf("diagnostics: %d %s", response.Code, response.Body.String())
+	}
+	issue := issues.Items[0]
+	if issue.Category != "damaged" || issue.Reason != "file_truncated" || issue.MessageKey != "scan.issue.file_truncated" || issue.Path != "Folder/truncated.mkv" || issue.Warning {
+		t.Fatalf("allowed skipped file: %+v", issue)
+	}
+	if strings.Contains(response.Body.String(), "Folder/file.mkv") || strings.Contains(response.Body.String(), "scan.issue.entry_unreadable") {
+		t.Fatalf("unreadable diagnostic escaped the Files skipped filter: %s", response.Body.String())
 	}
 	if response := call("GET", path+"?limit=129", "", owner.AccessToken); response.Code != 400 {
 		t.Fatalf("unbounded issue list: %d %s", response.Code, response.Body.String())
 	}
-	response := call("GET", "/v1/admin/libraries/films/settings", "", owner.AccessToken)
+	response = call("GET", "/v1/admin/libraries/films/settings", "", owner.AccessToken)
 	var document administration.LibraryDocument
 	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &document) != nil || !document.Settings.MonitorChanges {
 		t.Fatalf("settings: %d %s", response.Code, response.Body.String())

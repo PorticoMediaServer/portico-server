@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/storagepaths"
 	"portico.local/server/internal/worker"
 	"strconv"
 	"strings"
@@ -69,7 +70,7 @@ func New(db *sql.DB, state string, managed *mounts.Service) (*Service, error) {
 	if db == nil || managed == nil {
 		return nil, storage.ErrRemoteConfig
 	}
-	private := filepath.Join(state, "remote-sources")
+	private := storagepaths.Path(state, "remote-sources")
 	if err := os.MkdirAll(private, 0700); err != nil {
 		return nil, err
 	}

@@ -9,12 +9,13 @@ import (
 	"unicode/utf8"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/qualityladder"
 )
 
 // PreferenceRegistryRevision changes whenever a field is added, removed, or its
 // domain moves. Clients render settings from the published registry, so the
 // revision is the only thing they have to compare between releases.
-const PreferenceRegistryRevision = "p40.Q2.B5"
+const PreferenceRegistryRevision = "p40.Q2.B5.QL1"
 
 const (
 	HomeLayoutMaxRows        = 64
@@ -122,7 +123,7 @@ var (
 // original file, automatic (starts at the original and moves down and back up
 // as the connection requires), and each step of the server's quality ladder.
 // It mirrors playback.SavedQualities; a test holds the two together.
-var SavedQualities = []string{"original", "automatic", "2160p", "1440p", "1080p", "720p", "480p", "360p"}
+var SavedQualities = qualityladder.IDs()
 
 // qualityFields are a viewer's saved default qualities, one for the owner's
 // home networks and one for everywhere else. Both default to the original. A

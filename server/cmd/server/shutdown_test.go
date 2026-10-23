@@ -37,7 +37,7 @@ func TestSIGTERMDrainsInsideItsBudgetAndLeavesNoChildren(t *testing.T) {
 	port := freePort(t)
 	server := exec.Command(binary)
 	server.Env = append(os.Environ(),
-		"PORTICO_STATE_DIR="+state,
+		"PORTICO_DATA_DIR="+state, "HOME="+filepath.Dir(state),
 		fmt.Sprintf("PORTICO_BIND=127.0.0.1:%d", port),
 		"PORTICO_DISCOVERY=0",
 	)

@@ -37,3 +37,18 @@ test('the server’s own recent kind opens the library newest first until the ro
   assert.deepEqual(homeRowSeeAll(row({seeAll: {type: 'row', rowId: 'another_row'}}), 'movie'), {to: 'row', rowId: 'another_row'});
   assert.deepEqual(homeRowSeeAll(row({seeAll: {type: 'saved_view', resourceId: 'my_view'}}), 'movie'), {to: 'saved_view', resourceId: 'my_view'});
  });
+
+test('collection See all names the existing collection content route without a library fallback',()=>{
+  assert.deepEqual(homeRowSeeAll(row({libraryId:undefined,seeAll:{type:'collection',resourceId:'selected-collection',libraryId:'selected-library'}}),undefined),{
+    to:'/library/$libraryId/$view/$entityId',params:{libraryId:'selected-library',view:'collection',entityId:'selected-collection'},search:{},
+  });
+});
+
+test('guide See all retains its actual source and group in existing channel routing',()=>{
+  assert.deepEqual(homeRowSeeAll(row({libraryId:undefined,seeAll:{type:'guide',sourceId:'actual-source',group:'Sports'}}),undefined),{
+    to:'/channels/$entry',params:{entry:'actual-source'},search:{view:'guide',group:'Sports'},
+  });
+  assert.deepEqual(homeRowSeeAll(row({seeAll:{type:'guide'}}),undefined),{
+    to:'/channels/$entry',params:{entry:'all'},search:{view:'guide'},
+  });
+});

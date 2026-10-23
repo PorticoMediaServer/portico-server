@@ -145,8 +145,10 @@ func (s *Service) CreateReplacingContext(ctx context.Context, p identity.Princip
 // namedQualityChoice is the choice a quality id stands for.
 func namedQualityChoice(id string) (V1Choice, bool) {
 	switch id {
-	case "", "auto", "original":
+	case "", "original":
 		return V1Choice{QualityID: "original"}, true
+	case "automatic":
+		return V1Choice{QualityID: "automatic"}, true
 	}
 	preset, ok := LadderPreset(id)
 	if !ok {
@@ -191,6 +193,20 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	input.Engine, input.SubtitleKind, input.SubtitleBesideStream, input.CarriedAudioLanguage = v1.Engine, v1.SubtitleKind, v1.SubtitleBesideStream, v1.CarriedAudioLanguage
 	if e := s.completeDeliveryInputTx(ctx, tx, p, &input, values, catalogued, explicitAudio); e != nil {
 		return planInputs{}, e
+	}
+	if rung, ok := LadderPreset(strings.TrimPrefix(v1.QualityID, "automatic:")); ok && input.Source.Video != nil {
+		rate := input.Source.BitRate
+		if input.Source.Video.BitRate > 0 {
+			rate = input.Source.Video.BitRate
+		}
+		if rung.SameAsSource(input.Source.Video.Height, rate) {
+			original := *v1
+			original.Limit = false
+			original.MaxVideoBitrateBPS = 0
+			original.MaxAudioBitrateBPS = 0
+			original.MaxVideoHeight = 0
+			input.Target = original.target(policy, cfg)
+		}
 	}
 	return planInputs{input: input, cfg: cfg, values: values, ownerTranscoding: ownerTranscoding}, nil
 }

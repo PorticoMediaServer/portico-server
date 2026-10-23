@@ -5,11 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/qualityladder"
 	"strconv"
 )
 
 // QualityRung kinds. Exactly one automatic rung exists in a published set; it is
-// the server deciding, and it is always first.
+// the server deciding. Original precedes it in the published menu.
 const (
 	QualityAutomatic = "automatic"
 	QualityOriginal  = "original"
@@ -20,37 +21,23 @@ const (
 // ceilings; automatic and original carry none, because their ceiling is the
 // resolved policy and the source respectively.
 type QualityRung struct {
-	ID                  string `json:"id"`
-	Kind                string `json:"kind"`
-	Label               string `json:"label"`
-	MaxVideoBitrateBPS  int    `json:"maxVideoBitrateBps,omitempty"`
-	MaxAudioBitrateBPS  int    `json:"maxAudioBitrateBps,omitempty"`
-	TargetDisplayHeight int    `json:"targetDisplayHeight,omitempty"`
-	Enabled             bool   `json:"enabled"`
-	Reason              string `json:"reason,omitempty"`
+	ID                  string  `json:"id"`
+	Kind                string  `json:"kind"`
+	Label               string  `json:"label"`
+	MaxVideoBitrateBPS  int     `json:"maxVideoBitrateBps,omitempty"`
+	MaxAudioBitrateBPS  int     `json:"maxAudioBitrateBps,omitempty"`
+	TargetDisplayHeight int     `json:"targetDisplayHeight,omitempty"`
+	Enabled             bool    `json:"enabled"`
+	Reason              string  `json:"reason,omitempty"`
+	SameAsOriginal      bool    `json:"sameAsOriginal"`
+	DataGBPerHour       float64 `json:"dataGBPerHour,omitempty"`
 }
 
-// QualityPreset is one ladder step. Audio budgets step down with the video
-// budget: the top three rungs keep 192 kbps, 720p and 480p take 128, and the
-// smallest rung takes 96.
-type QualityPreset struct {
-	ID                 string `json:"id"`
-	Label              string `json:"label"`
-	Height             int    `json:"targetDisplayHeight"`
-	VideoBitrateBPS    int    `json:"maxVideoBitrateBps"`
-	MaxAudioBitrateBPS int    `json:"maxAudioBitrateBps"`
-}
+// QualityPreset is one canonical video ceiling and its portable audio budget.
+type QualityPreset = qualityladder.Preset
 
-// QualityLadder is the published ladder, widest first. It is a fixed table, not
-// a computation: a client renders exactly these names.
-var QualityLadder = []QualityPreset{
-	{"2160p", "4K 2160p", 2160, 20_000_000, 192_000},
-	{"1440p", "1440p", 1440, 12_000_000, 192_000},
-	{"1080p", "1080p", 1080, 8_000_000, 192_000},
-	{"720p", "720p", 720, 4_000_000, 128_000},
-	{"480p", "480p", 480, 2_000_000, 96_000},
-	{"360p", "360p", 360, 1_000_000, 96_000},
-}
+// QualityLadder derives from the one canonical vocabulary.
+var QualityLadder = qualityladder.Fixed()
 
 // LadderPreset finds a rung by id.
 func LadderPreset(id string) (QualityPreset, bool) {
@@ -73,56 +60,43 @@ const (
 
 // QualityOffers builds the published rung set for one source.
 //
-// sourceHeight caps the ladder: a rung taller than the source is dropped rather
-// than offered as an upscale. When the owner has turned transcoding off, only
-// rungs the source already satisfies remain — in practice automatic and
-// original — and every fixed rung is published disabled with its reason, so the
-// client can explain the empty menu instead of inventing one.
-func QualityOffers(sourceHeight int, available bool, transcoding bool, policy ResolvedDeliveryPolicy) []QualityRung {
-	out := []QualityRung{{ID: "auto", Kind: QualityAutomatic, Label: "Automatic", Enabled: available}}
-	if !available {
-		out[0].Reason = RungReasonSourceUnusable
+// Every canonical step remains visible. A step the source already satisfies
+// keeps the original bytes; other steps require conversion support and remain
+// subject to the resolved owner/member network policy.
+func QualityOffers(sourceHeight int, available bool, transcoding bool, policy ResolvedDeliveryPolicy, sourceBitrateBPS ...int64) []QualityRung {
+	rate := int64(0)
+	if len(sourceBitrateBPS) > 0 {
+		rate = sourceBitrateBPS[0]
 	}
-	original := QualityRung{ID: "original", Kind: QualityOriginal, Label: "Original", Enabled: available}
-	switch {
-	case !available:
-		original.Reason = RungReasonSourceUnusable
-	case policy.MaxVideoHeight > 0 && sourceHeight > 0 && sourceHeight > policy.MaxVideoHeight && !transcoding:
-		original.Enabled, original.Reason = false, RungReasonOriginalRefused
-	}
-	out = append(out, original)
-	for _, preset := range QualityLadder {
-		if sourceHeight > 0 && preset.Height > sourceHeight {
-			continue
+	out := []QualityRung{{ID: "original", Kind: QualityOriginal, Label: "Original", Enabled: available}, {ID: "automatic", Kind: QualityAutomatic, Label: "Automatic", Enabled: available}}
+	for i := range out {
+		if !available {
+			out[i].Reason = RungReasonSourceUnusable
 		}
-		rung := QualityRung{ID: preset.ID, Kind: QualityFixed, Label: preset.Label, MaxVideoBitrateBPS: preset.VideoBitrateBPS, MaxAudioBitrateBPS: preset.MaxAudioBitrateBPS, TargetDisplayHeight: preset.Height, Enabled: true}
+	}
+	for _, preset := range QualityLadder {
+		same := preset.SameAsSource(sourceHeight, rate)
+		rung := QualityRung{ID: preset.ID, Kind: QualityFixed, Label: preset.Label, MaxVideoBitrateBPS: preset.VideoBitrateBPS, MaxAudioBitrateBPS: preset.MaxAudioBitrateBPS, TargetDisplayHeight: preset.Height, Enabled: available, SameAsOriginal: same, DataGBPerHour: preset.DataGBPerHour}
 		switch {
 		case !available:
-			rung.Enabled, rung.Reason = false, RungReasonSourceUnusable
-		case !transcoding:
+			rung.Reason = RungReasonSourceUnusable
+		case !transcoding && !same:
 			rung.Enabled, rung.Reason = false, RungReasonTranscodeOff
-		case policy.MaxVideoHeight > 0 && preset.Height > policy.MaxVideoHeight:
+		// A same-as-source row still cannot evade a narrower owner/member lane.
+		case policy.MaxVideoHeight > 0 && minPositive(sourceHeight, preset.Height) > policy.MaxVideoHeight:
 			rung.Enabled, rung.Reason = false, RungReasonExceedsPolicy
-		case policy.MaxVideoBitrateBPS > 0 && preset.VideoBitrateBPS > policy.MaxVideoBitrateBPS:
+		case policy.MaxVideoBitrateBPS > 0 && (!same && preset.VideoBitrateBPS > policy.MaxVideoBitrateBPS || same && rate > int64(policy.MaxVideoBitrateBPS)):
 			rung.Enabled, rung.Reason = false, RungReasonExceedsPolicy
-		}
-		out = append(out, rung)
-	}
-	// A source shorter than the smallest rung would otherwise offer nothing to
-	// convert to. Keep the smallest rung so a constrained lane still has a
-	// target it can actually reach.
-	if sourceHeight > 0 && len(out) == 2 {
-		smallest := QualityLadder[len(QualityLadder)-1]
-		rung := QualityRung{ID: smallest.ID, Kind: QualityFixed, Label: smallest.Label, MaxVideoBitrateBPS: smallest.VideoBitrateBPS, MaxAudioBitrateBPS: smallest.MaxAudioBitrateBPS, TargetDisplayHeight: sourceHeight, Enabled: available && transcoding}
-		if !rung.Enabled {
-			rung.Reason = RungReasonTranscodeOff
-			if !available {
-				rung.Reason = RungReasonSourceUnusable
-			}
 		}
 		out = append(out, rung)
 	}
 	return out
+}
+func minPositive(a, b int) int {
+	if a > 0 && a < b {
+		return a
+	}
+	return b
 }
 
 // OffersRevision fences a rung selection. A client that names a rung also names
@@ -138,7 +112,7 @@ func OffersRevision(sourceID string, rungs []QualityRung, policy ResolvedDeliver
 // disabled id is refused; the caller republishes the set rather than guessing.
 func SelectedRung(rungs []QualityRung, id string) (QualityRung, bool) {
 	if id == "" {
-		id = "auto"
+		id = "original"
 	}
 	for _, r := range rungs {
 		if r.ID == id {
@@ -174,8 +148,16 @@ func (r QualityRung) Target(policy ResolvedDeliveryPolicy, sourceHeight int) Qua
 	}
 	switch r.Kind {
 	case QualityOriginal:
-		out.MaxVideoBitrateBPS, out.MaxAudioBitrateBPS, out.MaxVideoHeight = 0, 0, 0
+		out.MaxVideoBitrateBPS, out.MaxAudioBitrateBPS, out.MaxVideoHeight = policy.MaxVideoBitrateBPS, policy.MaxAudioBitrateBPS, policy.MaxVideoHeight
 	case QualityFixed:
+		// Fixed choices are ceilings. They never force a conversion by name.
+		out.Kind = QualityAutomatic
+		if r.SameAsOriginal {
+			out.MaxVideoBitrateBPS = policy.MaxVideoBitrateBPS
+			out.MaxAudioBitrateBPS = policy.MaxAudioBitrateBPS
+			out.MaxVideoHeight = policy.MaxVideoHeight
+			return out
+		}
 		out.MaxVideoBitrateBPS = narrow(r.MaxVideoBitrateBPS, policy.MaxVideoBitrateBPS)
 		out.MaxAudioBitrateBPS = narrow(r.MaxAudioBitrateBPS, policy.MaxAudioBitrateBPS)
 		out.MaxVideoHeight = narrow(r.TargetDisplayHeight, policy.MaxVideoHeight)
@@ -201,7 +183,7 @@ var ErrQualityUnavailable = errors.New("The selected quality is no longer availa
 
 // validQualitySelection accepts only the published rung identifiers.
 func validQualitySelection(id string) bool {
-	if id == "auto" || id == "original" {
+	if id == "automatic" || id == "original" {
 		return true
 	}
 	_, ok := LadderPreset(id)

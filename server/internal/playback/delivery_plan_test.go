@@ -185,11 +185,11 @@ func TestDeliveryPolicyResolutionMatrix(t *testing.T) {
 			"delivery.directStream": "prefer",
 			"delivery.transcode":    "allow",
 			"quality.home":          "automatic",
-			"quality.remote":        "720p",
+			"quality.remote":        "720p-high",
 		}
 		cfg := DefaultDeliveryConfiguration()
 		open := ResolveDeliveryPolicy(values, NetworkRemote, LocalityRemote, "cellular", cfg)
-		if open.PreferenceLane != QualityRemote || open.QualityMode != "720p" || open.DirectPlay != "never" || open.DirectStream != "prefer" {
+		if open.PreferenceLane != QualityRemote || open.QualityMode != "720p-high" || open.DirectPlay != "never" || open.DirectStream != "prefer" {
 			t.Fatal(open)
 		}
 		// A saved quality is a default for starts, not a ceiling on the policy.
@@ -207,10 +207,11 @@ func TestDeliveryPolicyResolutionMatrix(t *testing.T) {
 			t.Fatal(fallback.QualityMode)
 		}
 		// The owner's ceilings are the policy's. The video bitrate ceiling is a
-		// limit on connections from outside the home networks only.
+		// limit on connections from outside the home networks only. The canonical
+		// 4 Mbit/s preset also narrows a remote viewer to its 720p height.
 		cfg.MaxVideoBitrateBPS, cfg.MaxVideoHeight, cfg.AllowHDR = 4_000_000, 1080, false
 		clamped := ResolveDeliveryPolicy(values, NetworkRemote, LocalityRemote, "cellular", cfg)
-		if clamped.MaxVideoBitrateBPS != 4_000_000 || clamped.MaxVideoHeight != 1080 || clamped.AllowHDR {
+		if clamped.MaxVideoBitrateBPS != 4_000_000 || clamped.MaxVideoHeight != 720 || clamped.AllowHDR {
 			t.Fatal("owner ceilings not applied", clamped)
 		}
 		if len(clamped.Clamps) != 1 || clamped.Clamps[0].Field != "allowHDR" {
@@ -353,7 +354,7 @@ func TestDeliverySessionSnapshotRestartPinAndLegacy(t *testing.T) {
 	}
 	_, item, token := catalogFixture(t, db, "lib", "/test", compactcatalog.Movie, "item", "Film", compactcatalog.Asset{Path: "/test/file.mp4", Size: 20, ModifiedNS: 30, Container: "mp4", VideoCodec: "h264", AudioCodec: "aac", Width: 1920, Height: 1080, Duration: 100})
 	principal := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
-	session, err := New(db).Create(principal, item, "auto", "request")
+	session, err := New(db).Create(principal, item, "automatic", "request")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +365,7 @@ func TestDeliverySessionSnapshotRestartPinAndLegacy(t *testing.T) {
 	if plan.SourceSize != 20 || plan.SourceModifiedNS != 30 || plan.SourceID != token || plan.FactsRevision != 0 || plan.Strategy != DeliveryOriginal {
 		t.Fatal(plan)
 	}
-	if plan.QualityID != "original" || plan.Engine != EngineNative || plan.Policy == nil || plan.Policy.NetworkClass != NetworkUnknown {
+	if plan.QualityID != "automatic" || plan.Engine != EngineNative || plan.Policy == nil || plan.Policy.NetworkClass != NetworkUnknown {
 		t.Fatal("resolved policy not persisted with the plan", plan.QualityID, plan.Policy)
 	}
 	// Later descriptive reprobe cannot rewrite the decision for an existing session.
@@ -381,7 +382,7 @@ func TestDeliverySessionSnapshotRestartPinAndLegacy(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(plan, after) {
 		t.Fatal(after, err)
 	}
-	repeated, err := New(db).Create(principal, item, "auto", "request")
+	repeated, err := New(db).Create(principal, item, "automatic", "request")
 	if err != nil || repeated.ID != session.ID || repeated.Mode != "direct" {
 		t.Fatal(repeated, err)
 	}

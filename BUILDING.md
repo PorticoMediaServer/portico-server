@@ -17,7 +17,7 @@ npm ci
 make build-web
 GOFLAGS=-p=2 make build-server
 mkdir -p .scratch/state
-PORTICO_STATE_DIR="$PWD/.scratch/state" PORTICO_WEB_DIR="$PWD/web/dist" \
+PORTICO_DATA_DIR="$PWD/.scratch/state" PORTICO_WEB_DIR="$PWD/web/dist" \
   PORTICO_BIND=127.0.0.1:32500 ./dist/portico-server
 ```
 

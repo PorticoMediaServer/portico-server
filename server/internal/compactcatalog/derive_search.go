@@ -7,7 +7,7 @@ import (
 
 const searchLiveSQL = `e.retired=0 AND EXISTS(SELECT 1 FROM catalog_kinds k WHERE k.id=e.kind AND k.searchable=1)
  AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=e.id)
- AND (e.kind<>4 OR EXISTS(SELECT 1 FROM catalog_episodes ep JOIN catalog_entities parent ON parent.id=ep.show_id AND parent.library_id=e.library_id AND parent.retired=0 WHERE ep.entity_id=e.id))
+ AND (e.kind<>4 OR (e.parent_id IS NULL AND NOT EXISTS(SELECT 1 FROM catalog_episodes loose WHERE loose.entity_id=e.id)) OR EXISTS(SELECT 1 FROM catalog_episodes ep JOIN catalog_entities parent ON parent.id=ep.show_id AND parent.library_id=e.library_id AND parent.retired=0 WHERE ep.entity_id=e.id))
  AND (e.kind<>7 OR EXISTS(SELECT 1 FROM catalog_songs so JOIN catalog_entities parent ON parent.id=so.album_id AND parent.library_id=e.library_id AND parent.retired=0 WHERE so.entity_id=e.id))`
 
 // Each context lookup is keyed by entity. Provider aliases are already accepted

@@ -6,6 +6,7 @@ import {routePath, encodedRoutePath} from "../../../contracts/src/routes.ts";
  * on `admin.sessions` events (coalesced), never on a timer.
  */
 import {call, enc, idempotencyKey, type V1Http} from './http.ts';
+import {parseDashboardSessions} from '../admin/activity-summary/parser.ts';
 import {parseAdminSession, parsePage, type AdminSession} from './types.ts';
 
 export class AdminSessionsClient {
@@ -13,10 +14,12 @@ export class AdminSessionsClient {
   private key: () => string;
   constructor(http: V1Http, key: () => string = () => idempotencyKey()) { this.http = http; this.key = key; }
 
-  async list(cursor?: string, limit = 50, signal?: AbortSignal) {
+  async list(cursor?: string, limit = 10, signal?: AbortSignal) {
     const q = new URLSearchParams({limit: String(Math.max(1, Math.min(limit, 200)))});
     if (cursor) q.set('cursor', cursor);
-    return parsePage((await call(this.http, {method: 'GET', path: routePath("list_admin_sessions") + "?" + (q), signal})).body, parseAdminSession);
+    const raw=(await call(this.http,{method:'GET',path:routePath('list_admin_sessions')+'?'+q,signal})).body;
+    const document=parseDashboardSessions(raw);
+    return {...parsePage(raw,parseAdminSession),totals:document.totals,scope:document.scope};
   }
 
   /** End a viewer's session; the optional `message` is shown to them. */
@@ -27,7 +30,7 @@ export class AdminSessionsClient {
 
 }
 
-export type NowPlayingSnapshot = Readonly<{sessions: readonly AdminSession[]; loading: boolean; error?: unknown; updatedAt?: number}>;
+export type NowPlayingSnapshot = Readonly<{sessions: readonly AdminSession[]; loading: boolean; error?: unknown; updatedAt?: number;nextCursor?:string;totals?:Awaited<ReturnType<AdminSessionsClient['list']>>['totals']}>;
 
 /**
  * The live Now Playing list for the admin console. Active sessions are few (bounded by stream
@@ -40,12 +43,10 @@ export class NowPlayingStore {
   private inFlight?: Promise<void>;
   private again = false;
   private now: () => number;
-  private maxPages: number;
 
-  constructor(client: AdminSessionsClient, options: {now?: () => number; maxPages?: number} = {}) {
+  constructor(client: AdminSessionsClient, options: {now?: () => number} = {}) {
     this.client = client;
     this.now = options.now ?? Date.now;
-    this.maxPages = options.maxPages ?? 10;
   }
 
   getSnapshot = (): NowPlayingSnapshot => this.state;
@@ -60,15 +61,8 @@ export class NowPlayingStore {
         this.again = false;
         this.publish({loading: true});
         try {
-          const all: AdminSession[] = [];
-          let cursor: string | undefined;
-          for (let i = 0; i < this.maxPages; i++) {
-            const page = await this.client.list(cursor);
-            all.push(...page.items);
-            if (!page.nextCursor) break;
-            cursor = page.nextCursor;
-          }
-          this.publish({sessions: Object.freeze(all), loading: false, error: undefined, updatedAt: this.now()});
+          const page=await this.client.list();
+          this.publish({sessions:Object.freeze(page.items),nextCursor:page.nextCursor,totals:page.totals,loading:false,error:undefined,updatedAt:this.now()});
         } catch (e) {
           this.publish({loading: false, error: e});
         }
@@ -77,6 +71,13 @@ export class NowPlayingStore {
     return this.inFlight;
   }
 
+  /** Windowed consumers ask for only the next page they intend to display. */
+  async loadMore():Promise<void>{
+    if(!this.state.nextCursor || this.state.loading)return;
+    const cursor=this.state.nextCursor;this.publish({loading:true});
+    try{const page=await this.client.list(cursor);this.publish({sessions:Object.freeze([...this.state.sessions,...page.items]),nextCursor:page.nextCursor,totals:page.totals,loading:false,error:undefined,updatedAt:this.now()});}
+    catch(error){this.publish({loading:false,error});}
+  }
   async terminate(sessionId: string, message?: string): Promise<void> {
     await this.client.terminate(sessionId, message);
     this.publish({sessions: Object.freeze(this.state.sessions.filter(s => s.id !== sessionId))});

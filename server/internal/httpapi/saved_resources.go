@@ -50,9 +50,60 @@ func (d Dependencies) shareTargetTx(tx *sql.Tx, authority, account, profile stri
 	return requestinput.New("invalid share authority")
 }
 func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
+	d.httpHandle(mux, "GET /v1/me/saved/summary", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery != "" {
+			failure(w, catalog.ErrCursor)
+			return
+		}
+		p, libraries, fence, err := d.homeScope(r)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		viewer, err := d.catalogViewer(r, p, libraries, fence)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		out, err := d.Catalog.WithContext(r.Context()).SavedSummary(d.Identity.ID(), viewer, resourceActor(p))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		d.savedResponse(w, r, fence, out)
+	})
+	for _, method := range []string{"GET", "DELETE"} {
+		d.httpHandle(mux, method+" /v1/me/removed-titles/{id}", func(w http.ResponseWriter, r *http.Request) {
+			p, libraries, fence, err := d.homeScope(r)
+			if err != nil {
+				failure(w, err)
+				return
+			}
+			viewer, err := d.catalogViewer(r, p, libraries, fence)
+			if err != nil {
+				failure(w, err)
+				return
+			}
+			if r.Method == "DELETE" {
+				if err = d.Catalog.WithContext(r.Context()).DismissRemovedTitle(viewer, r.PathValue("id"), func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }); err != nil {
+					failure(w, err)
+					return
+				}
+				d.savedResponse(w, r, fence, map[string]bool{"removed": true})
+				return
+			}
+			out, err := d.Catalog.WithContext(r.Context()).RemovedTitle(viewer, r.PathValue("id"))
+			if err != nil {
+				failure(w, err)
+				return
+			}
+			d.savedResponse(w, r, fence, out)
+		})
+	}
+
 	rate := &personalLimiter{}
 	d.httpHandle(mux, "GET /v1/saved-resources", func(w http.ResponseWriter, r *http.Request) {
-		limit, e := savedPageQuery(r, "kind", "pinned")
+		limit, e := savedPageQuery(r, "kind", "pinned", "shape")
 		if e != nil {
 			failure(w, e)
 			return
@@ -65,12 +116,35 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			failure(w, catalog.ErrCursor)
 			return
 		}
-		p, _, fence, e := d.homeScope(r)
+		p, libraries, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.WithContext(r.Context()).SavedResources(d.Identity.ID(), fence, resourceActor(p), q.Get("kind"), q.Get("cursor"), pinned == "true" || pinned == "1", limit)
+		viewer, e := d.catalogViewer(r, p, libraries, fence)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		_, request, e := d.homeRequest(r)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		homeRows := []string{}
+		for _, row := range request.RowOrder {
+			hidden := false
+			for _, id := range request.HiddenRowIDs {
+				if id == row {
+					hidden = true
+					break
+				}
+			}
+			if !hidden {
+				homeRows = append(homeRows, row)
+			}
+		}
+		out, e := d.Catalog.WithContext(r.Context()).SavedResourcesForViewer(d.Identity.ID(), viewer, resourceActor(p), q.Get("kind"), q.Get("cursor"), pinned == "true" || pinned == "1", limit, q.Get("shape"), homeRows)
 		if e != nil {
 			failure(w, e)
 			return

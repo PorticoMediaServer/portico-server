@@ -12,7 +12,7 @@ export {ShufflePermutation} from './shuffle.ts';
 export {ContractError, consecutiveOnAlbum, parseAdminSession, parseDevice, parseEntry, parseEvent, parseOptions, parsePage, parseQueue, parseSession, parseSessionEnd, type AdminSession, type AudioStream, type Chapter, type ControllableDevice, type Decision, type Marker, type MediaVersion, type PlanStream, type PlaybackOptions, type PlaybackPlan, type Presentation, type QueueEntry, type QueueHeader, type QueueSegment, type QueueBrowseSelector, type Selector, type ServerEvent, type Session, type SessionEnd, type SessionKind, type StreamAction, type SubtitleStream, type Trickplay, type VersionPart, type VideoStream} from './types.ts';
 export {CapabilityPublisher, PlaybackOptionsClient, defaultSelection, markerAt, summarizePlan, type OptionsPreview, type PlanSummary} from './options.ts';
 export {PlaybackSessionController, SessionsClient, seekNeedsServer, type ControllerOptions, type ControllerPhase, type ControllerSnapshot, type SessionChange, type StartOptions, type StartTarget, type Timers} from './sessions.ts';
-export {QUEUE_WINDOW_MAX, QueueClient, QueueView, parseQueuePlaylistSave, queueSaveMessage, saveQueueAsPlaylist, type QueuePlaylistSave, type CreateResult, type Placement, type QueueAnchor, type QueueOrder, type SegmentInput} from './queue.ts';
+export {QUEUE_WINDOW_MAX, QueueClient, QueueView, parseQueuePlaylistSave, queueSaveMessage, saveQueueAsPlaylist, type QueuePlaylistSave, type CreateResult, type QueueCreateOptions, type Placement, type QueueAnchor, type QueueOrder, type SegmentInput} from './queue.ts';
 export {EventsClient, type EventsClientOptions, type EventsStatus, type RawStreamEvent, type StreamOpener} from './events.ts';
 export {AdminSessionsClient, NowPlayingStore, type NowPlayingSnapshot} from './admin-sessions.ts';
 export {localV1Http} from './local-http.ts';
@@ -22,4 +22,6 @@ export {V1QueuePlayer, movedEntry, playbackV1ForKind, serverSupportsPlaybackV1, 
 export {AutomaticQuality, audioStreamIndex, audioTrackId, fixedQualities, fixedQuality, fixedQualityOf, heightClass, isQualityChoice, offeredQualities, qualityChoiceOf, qualityChoiceOrder, qualityRequest, type AutomaticOptions, type FixedQuality, type FixedQualityId, type PlaybackChoices, type QualityChoice} from './choices.ts';
 export {sessionEndMessage} from '../session-end.ts';
 export {audioGainLinear, audioSeconds, audioTrimWindow, parseAudioRenderV2, playableAudio, type AudioDecodeCapability, type AudioGain, type AudioRenderMode, type AudioRenderV2, type AudioTrim, type Normalization, type PlayableAudioRender} from './audio-render.ts';
-export {V1ChannelControl, serverSupportsV1Channels, channelView, parseChannelSession, v1ChannelId, type ChannelPlayback, type ChannelView, type ChannelViewSink, type V1ChannelOptions} from './channel-control.ts';
+export {V1ChannelControl, serverSupportsV1Channels, channelView, parseChannelSession, v1ChannelId, type ChannelPlayback, type ChannelStartOptions, type ChannelView, type ChannelViewSink, type V1ChannelOptions} from './channel-control.ts';
+
+export {qualityPresentation, qualityLimitKbps, qualityLimit} from './quality-presentation.ts';

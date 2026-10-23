@@ -11,11 +11,12 @@ import (
 	"time"
 
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storagepaths"
 )
 
 func TestConsoleMeasurementsUseServerRatesAndMediaVolumes(t *testing.T) {
 	root := t.TempDir()
-	db, err := persistence.Open(filepath.Join(root, "server.sqlite"))
+	db, err := persistence.Open(storagepaths.Path(root, "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +56,11 @@ func TestConsoleMeasurementsUseServerRatesAndMediaVolumes(t *testing.T) {
 	storage, err := m.Read(context.Background(), "storage")
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, key := range []string{"databaseBytes", "databaseWALBytes"} {
+		if storage.Facts[key].State != "available" {
+			t.Fatalf("mapped database fact %s: %+v", key, storage.Facts[key])
+		}
 	}
 	volumes, ok := storage.Facts["mediaVolumes"].Value.([]mediaVolumeSpace)
 	if !ok || len(volumes) != 1 || len(volumes[0].LibraryIDs) != 2 || volumes[0].AvailableBytes == 0 {

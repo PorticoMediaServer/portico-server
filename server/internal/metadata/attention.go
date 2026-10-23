@@ -2,17 +2,26 @@ package metadata
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"net/url"
+	"os"
+	"portico.local/server/internal/thirdparty/sqlite"
 	"strconv"
+	"strings"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/metadataprovider"
 )
 
 type AttentionCandidate struct {
+	PosterURL  string                         `json:"posterUrl,omitempty"`
 	Key        string                         `json:"key"`
 	Identity   metadataprovider.ScreenID      `json:"identity"`
 	Title      string                         `json:"title"`
@@ -22,17 +31,19 @@ type AttentionCandidate struct {
 	Orders     []metadataprovider.ScreenOrder `json:"orders"`
 }
 type AttentionEntry struct {
-	LibraryID  string               `json:"libraryId"`
-	ItemKind   string               `json:"itemKind"`
-	ParentID   string               `json:"parentId"`
-	Actions    []string             `json:"actions"`
-	EntityID   string               `json:"entityId"`
-	Kind       string               `json:"kind"`
-	Title      string               `json:"title"`
-	Revision   int64                `json:"revision"`
-	Reason     string               `json:"reason"`
-	Confidence float64              `json:"confidence"`
-	Candidates []AttentionCandidate `json:"candidates"`
+	ParentTitle  string               `json:"parentTitle,omitempty"`
+	ParentArtist string               `json:"parentArtist,omitempty"`
+	LibraryID    string               `json:"libraryId"`
+	ItemKind     string               `json:"itemKind"`
+	ParentID     string               `json:"parentId"`
+	Actions      []string             `json:"actions"`
+	EntityID     string               `json:"entityId"`
+	Kind         string               `json:"kind"`
+	Title        string               `json:"title"`
+	Revision     int64                `json:"revision"`
+	Reason       string               `json:"reason"`
+	Confidence   float64              `json:"confidence"`
+	Candidates   []AttentionCandidate `json:"candidates"`
 }
 type AttentionPage struct {
 	Total      int64            `json:"total"`
@@ -75,10 +86,7 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
 	if library != "" && !exists {
 		return out, sql.ErrNoRows
 	}
-	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(sum(a.total),0) FROM libraries l JOIN catalog_libraries cl ON cl.library_id=l.id AND cl.retired=0
- LEFT JOIN screen_metadata_attention_counts a ON a.library_id=l.id WHERE (?='' OR l.id=?)`, library, library).Scan(&out.Total); err != nil {
-		return out, err
-	}
+
 	scope, listeningScope := "", ""
 	args := []any{after, includeInProgress}
 	if library != "" {
@@ -90,18 +98,32 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
 	args = append(args, limit+1)
 	// Film and TV titles come from the matcher's list, music and audiobooks
 	// from their own; one entity is only ever on one of them.
-	rows, err := tx.QueryContext(ctx, `SELECT library_id,entity_id,target_kind,title,generation,reason,confidence,kind_name,parent,enabled,confirmed,public FROM (
+	listSQL := `SELECT library_id,entity_id,target_kind,title,generation,reason,confidence,kind_name,parent,enabled,confirmed,public FROM (
  SELECT a.library_id,a.entity_id,a.target_kind,e.title,w.generation,a.reason,a.confidence,k.name kind_name,COALESCE(pid(parent.public_id),'') parent,p.enabled,c.confirmed,pid(e.public_id) public FROM screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id JOIN screen_metadata_work w ON w.target_kind=a.target_kind AND w.target_id=a.entity_id
  JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_entities parent ON parent.id=w.parent_id
  JOIN screen_metadata_policies p ON p.library_id=a.library_id CROSS JOIN screen_metadata_consent c
  JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0
- WHERE e.retired=0 AND a.retired=0 AND c.singleton=1 AND a.entity_id>?1 AND a.dismissed_generation<>a.generation AND (?2 OR a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply'))`+scope+`
+ WHERE e.retired=0 AND a.retired=0 AND c.singleton=1 AND a.entity_id>?1 AND NOT EXISTS(SELECT 1 FROM metadata_kept_files kept WHERE kept.entity_id=e.id AND kept.files_fingerprint=` + attentionFileFingerprint("e.id") + `) AND EXISTS(SELECT 1 FROM library_metadata_agents agent WHERE agent.library_id=a.library_id AND agent.agent='online') AND (?2 OR a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply'))` + scope + `
  UNION ALL
  SELECT l.library_id,l.entity_id,l.kind,e.title,l.generation,l.reason,0,k.name,COALESCE(pid(parent.public_id),''),1,1,pid(e.public_id) FROM listening_metadata_attention l JOIN catalog_entities e ON e.id=l.entity_id
  JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_entities parent ON parent.id=e.parent_id
  JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0
- WHERE e.retired=0 AND l.retired=0 AND l.entity_id>?1 AND l.dismissed_generation<>l.generation`+listeningScope+`
-) ORDER BY entity_id LIMIT ?4`, args...)
+ WHERE e.retired=0 AND l.retired=0 AND l.entity_id>?1 AND l.kind<>'book' AND l.reason<>'no_author' AND NOT EXISTS(SELECT 1 FROM metadata_kept_files kept WHERE kept.entity_id=e.id AND kept.files_fingerprint=` + attentionFileFingerprint("e.id") + `) AND EXISTS(SELECT 1 FROM library_metadata_agents agent WHERE agent.library_id=l.library_id AND agent.agent='online')` + listeningScope + `
+ UNION ALL
+ SELECT cl.library_id,e.id,'item',e.title,portico_metadata_files_revision(` + attentionFileFingerprint("e.id") + `),'unmatched',0,'episode','',1,1,pid(e.public_id)
+ FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id
+ WHERE e.kind=4 AND e.parent_id IS NULL AND e.retired=0 AND cl.retired=0 AND e.id>?1
+ AND EXISTS(SELECT 1 FROM catalog_asset_links a WHERE a.entity_id=e.id AND a.available=1)
+ AND NOT EXISTS(SELECT 1 FROM catalog_episodes ep WHERE ep.entity_id=e.id)
+ AND NOT EXISTS(SELECT 1 FROM metadata_kept_files kept WHERE kept.entity_id=e.id AND kept.files_fingerprint=` + attentionFileFingerprint("e.id") + `)
+ AND EXISTS(SELECT 1 FROM library_metadata_agents agent WHERE agent.library_id=cl.library_id AND agent.agent='online')
+ AND (?3='' OR cl.library_id=?3)
+) ORDER BY entity_id LIMIT ?4`
+	countSQL := listSQL[:strings.LastIndex(listSQL, " ORDER BY entity_id")]
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM (`+countSQL+`)`, 0, false, library).Scan(&out.Total); err != nil {
+		return out, err
+	}
+	rows, err := tx.QueryContext(ctx, listSQL, args...)
 	if err != nil {
 		return out, err
 	}
@@ -131,6 +153,20 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
 			}
 		} else if enabled && confirmed {
 			e.Actions = append(e.Actions, "accept", "search", "id")
+		}
+		if e.ParentID != "" {
+			if err = tx.QueryRowContext(ctx, `SELECT title FROM catalog_entities WHERE public_id=pid_blob(?)`, e.ParentID).Scan(&e.ParentTitle); err != nil {
+				rows.Close()
+				return out, err
+			}
+		}
+		if e.ItemKind == "song" {
+			var artist sql.NullString
+			if err = tx.QueryRowContext(ctx, `SELECT artist.title FROM catalog_entities song JOIN catalog_songs d ON d.entity_id=song.id JOIN catalog_albums album ON album.entity_id=d.album_id JOIN catalog_entities artist ON artist.id=album.artist_id WHERE song.public_id=pid_blob(?)`, e.EntityID).Scan(&artist); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				rows.Close()
+				return out, err
+			}
+			e.ParentArtist = artist.String
 		}
 		e.Candidates = []AttentionCandidate{}
 		out.Entries = append(out.Entries, e)
@@ -182,6 +218,9 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
 		}
 		c.Identity, c.Title, c.Year = record.Identity, record.Title, record.Year
 		c.Orders = screenRecordOrders(record)
+		if record.PosterPath != "" {
+			c.PosterURL = "/v1/metadata/" + url.PathEscape(out.Entries[i].Kind) + "/" + url.PathEscape(out.Entries[i].EntityID) + "/art/poster?candidate=" + url.QueryEscape("attention:"+c.Key) + "&w=400"
+		}
 		out.Entries[i].Candidates = append(out.Entries[i].Candidates, c)
 	}
 	err = rows.Err()
@@ -223,6 +262,12 @@ func listeningAttentionKind(kind string) bool {
 func (s *Service) AttentionAction(ctx context.Context, library string, in AttentionCommand, actor MBActor, authorize func(*sql.Tx) error) error {
 	if listeningAttentionKind(in.Kind) && in.ExpectedRevision >= 1 {
 		return s.listeningAttentionAction(ctx, library, in, authorize)
+	}
+	if in.Kind == "item" && in.Action == "dismiss" {
+		handled, err := s.keepLooseEpisode(ctx, library, in, authorize)
+		if err != nil || handled {
+			return err
+		}
 	}
 	if (in.Kind != "item" && in.Kind != "show") || in.ExpectedRevision < 1 {
 		return ErrRepairInput
@@ -289,7 +334,7 @@ func (s *Service) AttentionAction(ctx context.Context, library string, in Attent
 		return ErrScreenConflict
 	}
 	if in.Action == "dismiss" {
-		_, e = tx.ExecContext(ctx, `UPDATE screen_metadata_attention SET dismissed_generation=generation WHERE entity_id=?`, b.Entity)
+		_, e = tx.ExecContext(ctx, `INSERT INTO metadata_kept_files(entity_id,files_fingerprint) SELECT e.id,`+attentionFileFingerprint("e.id")+` FROM catalog_entities e WHERE e.id=? ON CONFLICT(entity_id) DO UPDATE SET files_fingerprint=excluded.files_fingerprint`, b.Entity)
 	} else {
 		if b.ItemKind == "episode" {
 			return ErrRepairInput
@@ -391,21 +436,33 @@ type AttentionCounts struct {
 
 func (s *Service) AttentionCounts(ctx context.Context) (AttentionCounts, error) {
 	out := AttentionCounts{Libraries: []AttentionLibraryCount{}}
-	rows, err := s.db.QueryContext(ctx, `SELECT l.id,COALESCE(a.total,0) FROM libraries l JOIN catalog_libraries cl ON cl.library_id=l.id AND cl.retired=0
- LEFT JOIN screen_metadata_attention_counts a ON a.library_id=l.id ORDER BY l.id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT library_id FROM catalog_libraries WHERE retired=0 ORDER BY library_id`)
 	if err != nil {
 		return out, err
 	}
-	defer rows.Close()
+	ids := []string{}
 	for rows.Next() {
-		var v AttentionLibraryCount
-		if err = rows.Scan(&v.LibraryID, &v.Total); err != nil {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
 			return out, err
 		}
-		out.Total += v.Total
-		out.Libraries = append(out.Libraries, v)
+		ids = append(ids, id)
 	}
-	return out, rows.Err()
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
+	}
+	for _, id := range ids {
+		page, err := s.AttentionFiltered(ctx, id, "", 1, false)
+		if err != nil {
+			return out, err
+		}
+		out.Total += page.Total
+		out.Libraries = append(out.Libraries, AttentionLibraryCount{LibraryID: id, Total: page.Total})
+	}
+	return out, nil
 }
 
 // listeningAttentionAction dismisses a music or audiobook entry, or looks an
@@ -437,7 +494,7 @@ func (s *Service) listeningAttentionAction(ctx context.Context, library string, 
 			return ErrScreenConflict
 		}
 		if in.Action == "dismiss" {
-			_, err = tx.ExecContext(ctx, `UPDATE listening_metadata_attention SET dismissed_generation=generation WHERE entity_id=?`, entity)
+			_, err = tx.ExecContext(ctx, `INSERT INTO metadata_kept_files(entity_id,files_fingerprint) SELECT e.id,`+attentionFileFingerprint("e.id")+` FROM catalog_entities e WHERE e.id=? ON CONFLICT(entity_id) DO UPDATE SET files_fingerprint=excluded.files_fingerprint`, entity)
 			return err
 		}
 		return tx.QueryRowContext(ctx, `SELECT revision FROM mb_jobs WHERE kind=? AND entity_id=?`, in.Kind, entity).Scan(&mbRevision)
@@ -449,4 +506,104 @@ func (s *Service) listeningAttentionAction(ctx context.Context, library string, 
 		return ErrScreenConflict
 	}
 	return err
+}
+
+// The exact file set and evidence decide when Keep as is expires. Provider
+// retries and new matches do not alter this fingerprint.
+func attentionFileFingerprint(entity string) string {
+	return `(SELECT COALESCE(json_group_array(json(f.file)),'[]') FROM (WITH RECURSIVE members(id) AS(SELECT ` + entity + ` UNION ALL SELECT child.id FROM catalog_entities child JOIN members parent ON child.parent_id=parent.id) SELECT DISTINCT a.id,json_array(a.id,a.path,a.size,a.modified_ns) file FROM members JOIN catalog_asset_links l ON l.entity_id=members.id JOIN catalog_assets a ON a.id=l.asset_id ORDER BY a.id) f)`
+}
+
+func (s *Service) keepLooseEpisode(ctx context.Context, library string, in AttentionCommand, authorize func(*sql.Tx) error) (bool, error) {
+	handled := false
+	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		if authorize != nil {
+			if err := authorize(tx); err != nil {
+				return err
+			}
+		}
+		var entity, revision int64
+		err := tx.QueryRowContext(ctx, `SELECT e.id,portico_metadata_files_revision(`+attentionFileFingerprint("e.id")+`) FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?) AND cl.library_id=? AND e.kind=4 AND e.parent_id IS NULL AND NOT EXISTS(SELECT 1 FROM catalog_episodes ep WHERE ep.entity_id=e.id)`, in.EntityID, library).Scan(&entity, &revision)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		handled = true
+		if revision != in.ExpectedRevision {
+			return ErrScreenConflict
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO metadata_kept_files(entity_id,files_fingerprint) SELECT e.id,`+attentionFileFingerprint("e.id")+` FROM catalog_entities e WHERE e.id=? ON CONFLICT(entity_id) DO UPDATE SET files_fingerprint=excluded.files_fingerprint`, entity)
+		return err
+	})
+	return handled, err
+}
+
+// Candidate previews use the existing allowlisted artwork worker. Listing a
+// candidate never fetches its image or makes a browser contact the provider.
+func (s *Service) PreviewAttentionArtwork(ctx context.Context, t RepairTarget, key string, width int, authorize func(*sql.Tx) error) (*os.File, string, error) {
+	var candidate string
+	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		if authorize == nil {
+			return ErrRepairInput
+		}
+		if err := authorize(tx); err != nil {
+			return err
+		}
+		entity, err := artworkEntity(ctx, tx, t.ID)
+		if err != nil {
+			return err
+		}
+		base, err := readScreenBase(ctx, tx, t.Kind, t.ID)
+		if err != nil {
+			return err
+		}
+		var raw, digest string
+		if err = tx.QueryRowContext(ctx, `SELECT payload,input_digest FROM screen_metadata_candidates WHERE candidate_key=? AND target_kind=? AND target_id=?`, key, t.Kind, entity).Scan(&raw, &digest); err != nil {
+			return err
+		}
+		if digest != screenInputDigest(base) {
+			return ErrScreenConflict
+		}
+		var record metadataprovider.ScreenRecord
+		if err = json.Unmarshal([]byte(raw), &record); err != nil {
+			return err
+		}
+		if !base.Confirmed || !base.Enabled || !screenProviderEnabled(base, record.Identity.Provider) {
+			return ErrRepairInput
+		}
+		origin := record.PosterPath
+		if record.Identity.Provider == "tmdb" {
+			origin = imageURL(origin, "original")
+		}
+		if !artworkURLAllowed(origin, record.Identity.Provider) {
+			return ErrRepairInput
+		}
+		fence, err := artworkFence(ctx, tx, t)
+		if err != nil {
+			return err
+		}
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		candidate, err = insertArtworkCandidate(ctx, tx, t, "poster", "", record.Identity.Provider, publicationDigest(origin), origin, "", artworkAttribution(record.Identity.Provider), fence, now, 0)
+		if err != nil {
+			return err
+		}
+		return queueArtworkPreview(ctx, tx, t, candidate, "", now)
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return s.PreviewArtwork(ctx, t, candidate, width)
+}
+
+func init() {
+	sqlite.MustRegisterDeterministicScalarFunction("portico_metadata_files_revision", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		raw, ok := args[0].(string)
+		if !ok {
+			return nil, ErrRepairInput
+		}
+		sum := sha256.Sum256([]byte(raw))
+		return int64(binary.BigEndian.Uint64(sum[:8])%((1<<53)-1)) + 1, nil
+	})
 }

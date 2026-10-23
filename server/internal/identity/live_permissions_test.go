@@ -13,7 +13,7 @@ func memberWithSession(t *testing.T) (*Service, DirectSignIn, DirectAccount, Dir
 	t.Helper()
 	ctx := context.Background()
 	s, _, owner := directFixture(t)
-	member, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "member", Password: "Testing2!", Name: "Member", AllowedLibraries: []string{"movies"}})
+	member, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "member", Password: "Testing2!", Name: "Member", AllowedLibraries: []string{"movies"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestGivingOrTakingALibraryAppliesWithoutSigningTheMemberOut(t *testing.T) {
 func TestTurningAMemberOffOrReplacingTheirPasswordStillSignsThemOut(t *testing.T) {
 	ctx := context.Background()
 	s, owner, member, login := memberWithSession(t)
-	if err := s.UpdateDirectMember(ctx, owner.AccountToken, member.ID, DirectMemberInput{ExpectedRevision: member.Revision, AllowedLibraries: []string{"movies"}, Password: "Replaced-3!"}); err != nil {
+	if _, err := s.MakeMemberResetCode(ctx, owner.AccountToken, member.ID, MemberResetRequest{ExpectedRevision: member.Revision}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Authenticate(login.Session.AccessToken); !errors.Is(err, ErrUnauthorized) {
@@ -89,7 +89,7 @@ func TestTurningAMemberOffOrReplacingTheirPasswordStillSignsThemOut(t *testing.T
 func TestOnlyAnAdministratorMayEditAMemberAndTheRefusalIsNotASignOut(t *testing.T) {
 	ctx := context.Background()
 	s, owner, member, login := memberWithSession(t)
-	other, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "other", Password: "Testing3!", Name: "Other", AllowedLibraries: []string{}})
+	other, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "other", Password: "Testing3!", Name: "Other", AllowedLibraries: []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}

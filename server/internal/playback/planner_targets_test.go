@@ -76,7 +76,7 @@ func TestCodecQualityLaddersAndOriginalQualityMode(t *testing.T) {
 		for _, step := range []struct {
 			height, ceiling, rate int
 			id                    string
-		}{{360, 1000000, 1000000, "360p"}, {480, 2000000, 1500000, "480p"}, {720, 4000000, 3000000, "720p"}, {1080, 8000000, 8000000, "1080p"}, {1440, 12000000, 12000000, "1440p"}, {2160, 20000000, 20000000, "2160p"}} {
+		}{{360, 1000000, 1000000, "240p"}, {480, 2000000, 1500000, "480p"}, {720, 4000000, 3000000, "720p-high"}, {1080, 8000000, 8000000, "1080p-low"}, {1440, 12000000, 12000000, "1080p-high"}, {2160, 20000000, 20000000, "2160p"}} {
 			t.Run(codec+step.id, func(t *testing.T) {
 				client := allOutputClient()
 				client.Video = []ClientVideoCodec{{Codec: codec, BitDepths: []int{8, 10}, DynamicRanges: []string{"sdr"}, MaxWidth: 4096, MaxHeight: 2160}}

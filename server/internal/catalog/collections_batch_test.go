@@ -1,7 +1,10 @@
 package catalog
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
+	"portico.local/server/internal/catalogtest"
 	"testing"
 )
 
@@ -103,5 +106,91 @@ func TestLibraryCollectionBatchReportsEachItem(t *testing.T) {
 	}
 	if _, e = s.SetCollectionItems(collection.ID, []string{pub("a"), pub("a")}, nil); e == nil {
 		t.Fatal("duplicate item accepted")
+	}
+}
+
+func TestHomeAutomaticCollectionsKeepOwnerDecisionsThroughRescans(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("auto", "Films", "movie", "/auto")
+	a := c.Movie(lib, "/auto/a.mkv", "One", 2001)
+	b := c.Movie(lib, "/auto/b.mkv", "Two", 2002)
+	extra := c.Movie(lib, "/auto/extra.mkv", "Owner addition", 2003)
+	late := c.Movie(lib, "/auto/late.mkv", "Late addition", 2004)
+	s := New(c.DB)
+	publish := func(item catalogtest.Item, name string) {
+		c.Exec(`INSERT INTO screen_metadata_work(target_kind,target_id,library_id,title_seed)VALUES('item',?,'auto','Film') ON CONFLICT DO NOTHING`, item.ID)
+		raw := fmt.Sprintf(`[{"kind":"collection","target":{"provider":"tmdb","type":"collection","id":"42"},"name":%q}]`, name)
+		c.Exec(`INSERT INTO screen_metadata_fields(target_kind,target_id,field,value,provider,source_kind,source_url,confidence,observed_at,language,region,selection_revision)VALUES('item',?,'relations',?,'tmdb','provider','',1,'now','en','US',1) ON CONFLICT(target_kind,target_id,field) DO UPDATE SET value=excluded.value`, item.ID, raw)
+	}
+	sync := func() {
+		for i := 0; i < 20; i++ {
+			more, err := s.SyncAutomaticCollections(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !more {
+				c.Drain()
+				return
+			}
+		}
+		t.Fatal("automatic job did not settle")
+	}
+	publish(a, "Space Collection")
+	sync()
+	var count int
+	c.DB.QueryRow(`SELECT count(*) FROM catalog_collections`).Scan(&count)
+	if count != 0 {
+		t.Fatal("one film created an automatic collection")
+	}
+	publish(b, "Space Collection")
+	sync()
+	var id string
+	if err := c.DB.QueryRow(`SELECT pid(e.public_id) FROM catalog_entities e JOIN catalog_collections col ON col.entity_id=e.id`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	collection, err := s.Collection(id)
+	if err != nil || collection.Name != "Space" || collection.ItemCount != 2 || collection.Origin != "automatic" {
+		t.Fatal(collection, err)
+	}
+	if _, err = s.RenameCollection(id, "Owner name"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SetCollectionItem(id, a.Public, false); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SetCollectionItem(id, extra.Public, true); err != nil {
+		t.Fatal(err)
+	}
+	collection, _ = s.Collection(id)
+	if _, err = s.ReorderCollection(id, collection.Revision, []string{extra.Public, b.Public}, nil); err != nil {
+		t.Fatal(err)
+	}
+	publish(a, "Provider renamed Collection")
+	publish(b, "Provider renamed Collection")
+	publish(late, "Provider renamed Collection")
+	sync()
+	collection, err = s.Collection(id)
+	if err != nil || collection.Name != "Owner name" || collection.ItemCount != 3 {
+		t.Fatal("owner decisions lost", collection, err)
+	}
+	var contains bool
+	c.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_collection_members WHERE collection_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND item_id=?)`, id, a.ID).Scan(&contains)
+	if contains {
+		t.Fatal("removed film re-added by rescan")
+	}
+	c.Exec(`DELETE FROM screen_metadata_fields WHERE target_id=?`, b.ID)
+	sync()
+	collection, _ = s.Collection(id)
+	if collection.ItemCount != 2 {
+		t.Fatal("stale automatic member retained or owner addition removed", collection)
+	}
+	if err = s.DeleteCollection(id); err != nil {
+		t.Fatal(err)
+	}
+	publish(b, "Space Collection")
+	sync()
+	c.DB.QueryRow(`SELECT count(*) FROM catalog_collections`).Scan(&count)
+	if count != 0 {
+		t.Fatal("owner-hidden collection recreated")
 	}
 }

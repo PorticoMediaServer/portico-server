@@ -15,9 +15,10 @@ PAYLOAD="$OUT/payload-$OS-$FILE_ARCH"
 mkdir -p "$OUT"
 rm -rf "${PAYLOAD:?}"
 mkdir -p "$PAYLOAD/web"
-for required in "$STAGE/$EXE" "$STAGE/manifest.json" "$STAGE/manifest.sig" "$STAGE/third_party/ffmpeg/toolchain-manifest.json" "$WEB/index.html"; do
+for required in "$STAGE/$EXE" "$STAGE/manifest.json" "$STAGE/manifest.sig" "$STAGE/third_party/ffmpeg/toolchain-manifest.json" "$STAGE/third_party/rclone/bundle-manifest.json" "$WEB/index.html"; do
   [[ -s "$required" ]] || { echo "missing release input: $required" >&2; exit 1; }
 done
+python3 "$ROOT/scripts/rclone-bundle.py" verify-release "$STAGE" --target "$OS-$ARCH" --public-key "${PORTICO_RELEASE_PUBLIC_KEY_FILE:?A pinned release public key is required}"
 cp "$STAGE/$EXE" "$STAGE/manifest.json" "$STAGE/manifest.sig" "$PAYLOAD/"
 if [[ -f "$STAGE/race-qualification.json" ]]; then
   cp "$STAGE/race-qualification.json" "$STAGE/race-qualification.sig" "$PAYLOAD/"
@@ -26,6 +27,8 @@ cp -R "$STAGE/third_party" "$PAYLOAD/third_party"
 cp -R "$WEB/." "$PAYLOAD/web/"
 cp "$ROOT/LICENSE" "$ROOT/THIRD-PARTY-NOTICES.md" "$PAYLOAD/"
 mkdir -p "$PAYLOAD/licenses"
+cp "$STAGE/third_party/rclone/LICENSE" "$PAYLOAD/licenses/rclone.txt"
+cp "$STAGE/third_party/rclone/DEPENDENCY-NOTICES.txt" "$PAYLOAD/licenses/rclone-dependencies.txt"
 cp "$ROOT/server/internal/imagework/SCALE_LICENSE" "$PAYLOAD/licenses/image-scaling.txt"
 cp "$ROOT/server/internal/thirdparty/sqlite/LICENSE" "$PAYLOAD/licenses/sqlite-driver.txt"
 cp "$ROOT/server/internal/mediaexec/fonts/LICENSE" "$PAYLOAD/licenses/decoder-fonts.txt"

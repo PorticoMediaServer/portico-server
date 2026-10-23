@@ -77,6 +77,28 @@ type ContentEntityRef struct {
 	Name string `json:"name"`
 }
 type ContentEntry struct {
+	Removed       bool          `json:"removed,omitempty"`
+	YearMin       *int          `json:"yearMin,omitempty"`
+	YearMax       *int          `json:"yearMax,omitempty"`
+	Origin        string        `json:"origin,omitempty"`
+	HomeActions   *HomeActions  `json:"homeActions,omitempty"`
+	Favorite      *bool         `json:"favorite,omitempty"`
+	ReleaseDate   string        `json:"releaseDate,omitempty"`
+	ArtistType    string        `json:"artistType,omitempty"`
+	AlbumCount    *int          `json:"albumCount,omitempty"`
+	DisplayTitle  string        `json:"displayTitle,omitempty"`
+	Narrators     []string      `json:"narrators,omitempty"`
+	Series        []AudioSeries `json:"series,omitempty"`
+	Publisher     string        `json:"publisher,omitempty"`
+	Language      string        `json:"language,omitempty"`
+	Edition       string        `json:"edition,omitempty"`
+	PublishedYear *int          `json:"publishedYear,omitempty"`
+	BookProgress  *BookProgress `json:"bookProgress,omitempty"`
+	// HomeTitleContext contains authorized parent-show facts for a Home episode.
+	// The episode's own identity, metadata and playback target remain separate.
+	HomeTitleContext *HomeTitleContext `json:"homeTitleContext,omitempty"`
+	New              bool              `json:"new,omitempty"`
+	Show             *ContentEntityRef `json:"show,omitempty"`
 	// SortLetter is the letter the server files a browse entry under (its
 	// sort title's, articles and an owner's sort title already applied): the
 	// key of the page's positionIndex it belongs to.
@@ -87,6 +109,8 @@ type ContentEntry struct {
 	UnwatchedCount *int64        `json:"unwatchedCount,omitempty"`
 	Watched        *bool         `json:"watched,omitempty"`
 	TrackNumber    *int          `json:"trackNumber,omitempty"`
+	DateBased      bool          `json:"dateBased,omitempty"`
+	Special        bool          `json:"special,omitempty"`
 	EpisodeNumber  *int          `json:"episodeNumber,omitempty"`
 	SeasonNumber   *int          `json:"seasonNumber,omitempty"`
 	Hidden         *bool         `json:"hidden,omitempty"`
@@ -194,7 +218,12 @@ type ContentQuery struct {
 	Limit      int    `json:"limit"`
 	SearchMode string `json:"searchMode"`
 }
+type SavedShapeCounts struct {
+	Posters int `json:"posters"`
+	Squares int `json:"squares"`
+}
 type ContentEnvelope struct {
+	ShapeCounts      *SavedShapeCounts `json:"shapeCounts,omitempty"`
 	Entity           *ContentEntry     `json:"entity,omitempty"`
 	Listening        *ListeningJourney `json:"listening,omitempty"`
 	Actions          *[]string         `json:"actions,omitempty"`
@@ -215,6 +244,7 @@ type ContentRequest struct {
 	// Filter is a named server-defined predicate (saved lists: all, unwatched,
 	// inProgress). Clients pick a published name; they never send a predicate.
 	Filter string
+	Shape  string
 	Limit  int
 	// Start opens a grid section (views browse, collection, collections,
 	// artist) at this index instead of the top; 0 is the top. Other views

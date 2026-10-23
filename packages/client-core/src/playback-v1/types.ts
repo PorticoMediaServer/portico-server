@@ -55,6 +55,8 @@ export type PlaybackPlan = Readonly<{versionId: string; mode: 'direct' | 'stream
 export type PlaybackOptions = Readonly<{
   itemId: string; kind: string;
   resume?: Readonly<{positionMs: number; partIndex: number}>;
+  alternatives?: readonly Readonly<{versionId: string; label: string}>[];
+  collection?: Readonly<{id: string; title: string; next: Readonly<{id: string; title: string; year?: number; genres: readonly string[]; backdropUrl?: string}>}>;
   versions: readonly MediaVersion[]; chapters: readonly Chapter[]; markers: readonly Marker[]; trickplay?: Trickplay;
   /** The quality menu for the preferred (or previewed) version: the original, automatic, then the ladder steps no taller than its picture. */
   qualities: readonly QualityOption[];
@@ -97,10 +99,12 @@ export function parseOptions(v: unknown): PlaybackOptions {
     itemId: id(v.itemId, 'item id'), kind: str(v.kind, 'other'),
     resume: obj(v.resume) ? Object.freeze({positionMs: num(v.resume.positionMs), partIndex: num(v.resume.partIndex)}) : undefined,
     versions: Object.freeze(versions),
+    collection: obj(v.collection) && obj(v.collection.next) ? Object.freeze({id: id(v.collection.id, 'collection id'), title: str(v.collection.title), next: Object.freeze({id: id(v.collection.next.id, 'collection successor'), title: str(v.collection.next.title), year: optNum(v.collection.next.year), genres: Object.freeze(arr(v.collection.next.genres).filter((g): g is string => typeof g==='string')), ...(artworkPath(v.collection.next.backdropUrl)?{backdropUrl:v.collection.next.backdropUrl as string}:{})})}) : undefined,
+    alternatives: Object.freeze(arr(v.alternatives).filter(obj).map(a => Object.freeze({versionId: id(a.versionId, 'alternative version'), label: str(a.label)}))),
     chapters: Object.freeze(arr(v.chapters).filter(obj).map(c => Object.freeze({startMs: num(c.startMs), title: str(c.title), thumbnail: typeof c.thumbnail === 'string' ? c.thumbnail : undefined}))),
     markers: Object.freeze(arr(v.markers).filter(obj).map(m => Object.freeze({id: str(m.id), type: oneOf(m.type, ['intro', 'recap', 'credits', 'preview', 'commercial'] as const, 'other' as never), startMs: num(m.startMs), endMs: num(m.endMs), confidence: oneOf(m.confidence, ['detected', 'manual', 'embedded'] as const, 'other' as never), automaticSafe: bool(m.automaticSafe)}))),
     trickplay: t ? Object.freeze({url: url(t.url, 'trickplay url'), intervalMs: num(t.intervalMs), tileWidth: num(t.tileWidth), tileHeight: num(t.tileHeight), columns: num(t.columns), rows: num(t.rows)}) : undefined,
-    qualities: Object.freeze(arr(v.qualities).filter(obj).filter(q => q.mode === 'original' || q.mode === 'automatic' || q.mode === 'fixed' && typeof q.id === 'string').map(q => Object.freeze({mode: q.mode as 'original' | 'automatic' | 'fixed', ...(typeof q.id === 'string' && q.id ? {id: q.id as QualityOption['id']} : {}), maxHeight: optNum(q.maxHeight), maxVideoBitrateKbps: optNum(q.maxVideoBitrateKbps), maxAudioBitrateKbps: optNum(q.maxAudioBitrateKbps)}))),
+    qualities: Object.freeze(arr(v.qualities).filter(obj).filter(q => q.mode === 'original' || q.mode === 'automatic' || q.mode === 'fixed' && typeof q.id === 'string').map(q => Object.freeze({mode: q.mode as 'original' | 'automatic' | 'fixed', ...(typeof q.id === 'string' && q.id ? {id: q.id as QualityOption['id']} : {}), sameAsOriginal: q.sameAsOriginal === true, applicable: q.applicable !== false, dataGBPerHour: optNum(q.dataGBPerHour), maxHeight: optNum(q.maxHeight), maxVideoBitrateKbps: optNum(q.maxVideoBitrateKbps), maxAudioBitrateKbps: optNum(q.maxAudioBitrateKbps)}))),
     preferred: obj(v.preferred) ? Object.freeze({versionId: id(v.preferred.versionId, 'preferred version'), audioId: optId(v.preferred.audioId, 'preferred audio'), reason: str(v.preferred.reason), quality: parseQuality(v.preferred.quality)}) : undefined,
     plan,
   });
@@ -208,7 +212,7 @@ export type Selector =
   | Readonly<{items: Readonly<{ids: readonly string[]}>}>;
 export type QueueSegment = Readonly<{id: string; kind: 'items' | 'selector' | 'other'; sourceRevision?: string; label: string; count: number; state: 'building' | 'ready' | 'failed' | 'other'}>;
 export type QueueHeader = Readonly<{
-  id: string; revision: string; total: number; current?: Readonly<{entryId: string; position: number}>;
+  id: string; revision: string; total: number; remainingCount?: number; totalDurationMs?: number; durationKnown?: boolean; current?: Readonly<{entryId: string; position: number}>;
   repeat: 'off' | 'one' | 'all'; shuffle?: Readonly<{seed: string; lap: number}>; segments: readonly QueueSegment[];
   /** What plays after the current entry, through the viewer's fence (spec §18.5). */
   next?: Readonly<{entryId: string | null; available: boolean; reason: 'ready' | 'end' | 'unavailable'}>;
@@ -218,7 +222,7 @@ export type QueueHeader = Readonly<{
 
 /** A private preparation of the next entry's audio (spec §18.2): frame 0 only until committed. */
 export type PreparedNext = Readonly<{token: string; expiresAt: string; entryId: string; itemId: string; presentation: Presentation}>;
-export type QueueEntry = Readonly<{entryId: string; position: number; itemId: string; kind: string; title: string; durationMs?: number; available: boolean;
+export type QueueEntry = Readonly<{entryId: string; position: number; itemId: string; kind: string; title: string; durationMs?: number; available: boolean; segmentId?: string; album?: string; artistId?: string; artist?: string; showId?: string; seasonId?: string; episode?: Readonly<{seasonNumber: number; number: number}>; backdropUrl?: string;
   /** A song's album (a book file's book), with its disc and track (spec §18.5); absent when unknown. */
   albumId?: string; disc?: number; track?: number;
   /** The title's poster (inherited from its season, show, album or book) and an episode's own still, when they exist. */
@@ -241,7 +245,7 @@ export function parseQueue(v: unknown): QueueHeader {
   const total = v.total;
   if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0) throw new ContractError('queue total');
   return Object.freeze({
-    id: id(v.id, 'queue id'), revision: revision(v.revision), total,
+    id: id(v.id, 'queue id'), revision: revision(v.revision), total, remainingCount: optNum(v.remainingCount), totalDurationMs: optNum(v.totalDurationMs), durationKnown: bool(v.durationKnown),
     current: obj(v.current) ? Object.freeze({entryId: id(v.current.entryId, 'current entry'), position: num(v.current.position)}) : undefined,
     repeat: oneOf(v.repeat, ['off', 'one', 'all'] as const, 'off'),
     shuffle: obj(v.shuffle) ? Object.freeze({seed: str(v.shuffle.seed), lap: num(v.shuffle.lap)}) : undefined,
@@ -260,6 +264,13 @@ export function parseEntry(v: unknown): QueueEntry {
   // A placeholder carries no item: one that became unavailable, or (kind "pending") one still
   // being snapshotted in a large queue that fills in shortly (P16).
   return Object.freeze({entryId: id(v.entryId, 'entry id'), position: num(v.position), itemId: available ? id(v.itemId, 'item id') : typeof v.itemId === 'string' ? v.itemId : '', kind: str(v.kind, 'other'), title: str(v.title), durationMs: optNum(v.durationMs), available,
+    ...(typeof v.segmentId === 'string' ? {segmentId: id(v.segmentId, 'segment id')} : {}),
+    ...(typeof v.album === 'string' ? {album: v.album} : {}), ...(typeof v.artist === 'string' ? {artist: v.artist} : {}),
+    ...(typeof v.artistId === 'string' && v.artistId ? {artistId: id(v.artistId, 'artist id')} : {}),
+    ...(typeof v.showId === 'string' && v.showId ? {showId: id(v.showId, 'show id')} : {}),
+    ...(typeof v.seasonId === 'string' && v.seasonId ? {seasonId: id(v.seasonId, 'season id')} : {}),
+    ...(obj(v.episode) ? {episode: Object.freeze({seasonNumber: num(v.episode.seasonNumber), number: num(v.episode.number)})} : {}),
+    ...(artworkPath(v.backdropUrl) ? {backdropUrl: v.backdropUrl as string} : {}),
     ...(artworkPath(v.posterUrl) ? {posterUrl: v.posterUrl as string} : {}), ...(artworkPath(v.stillUrl) ? {stillUrl: v.stillUrl as string} : {}),
     ...(typeof v.albumId === 'string' && v.albumId ? {albumId: v.albumId} : {}), ...(optNum(v.disc) ? {disc: v.disc as number} : {}), ...(optNum(v.track) ? {track: v.track as number} : {})});
 }
@@ -287,12 +298,13 @@ export type AdminSession = Readonly<{
   decision: Readonly<{video?: Decision; audio?: Decision; subtitles?: Decision}>; bitrateKbps?: number; bandwidthKbps?: number;
   /** The player engine the device is playing with and the quality in force (absent for a channel). */
   engine?: PlaybackEngine; quality?: QualityInForce;
-  transcode?: Readonly<{speed?: number; hardware: boolean; throttled: boolean}>; location: 'local' | 'remote' | 'other'; startedAt?: string;
+  problem?:'buffering'|'behind';bufferingSince?:string;
+  transcode?: Readonly<{speed?: number;observedAt?:string;cadenceMs?:number;hardware?: boolean; throttled?: boolean}>; location: 'local' | 'remote' | 'other'; startedAt?: string;
 }>;
 export function parseAdminSession(v: unknown): AdminSession {
   if (!obj(v)) throw new ContractError('admin session');
   const d = obj(v.decision) ? v.decision : {};
-  const named = (x: unknown) => (obj(x) ? str(x.name, str(x.id)) : str(x));
+  const named = (x: unknown) => (obj(x) ? str(x.name) : str(x));
   return Object.freeze({
     id: id(v.id, 'session id'), user: named(v.user), profile: named(v.profile), device: named(v.device),
     itemId: obj(v.item) && typeof v.item.id === 'string' ? v.item.id : typeof v.itemId === 'string' ? v.itemId : undefined,
@@ -302,7 +314,8 @@ export function parseAdminSession(v: unknown): AdminSession {
     decision: Object.freeze({video: decision(d.video), audio: decision(d.audio), subtitles: decision(d.subtitles)}),
     bitrateKbps: optNum(v.bitrateKbps), bandwidthKbps: optNum(v.bandwidthKbps),
     engine: typeof v.engine === 'string' && v.engine ? engineOf(v.engine) : undefined, quality: obj(v.quality) ? parseQuality(v.quality) : undefined,
-    transcode: obj(v.transcode) ? Object.freeze({speed: optNum(v.transcode.speed), hardware: bool(v.transcode.hardware), throttled: bool(v.transcode.throttled)}) : undefined,
+    transcode: obj(v.transcode) ? Object.freeze({speed: optNum(v.transcode.speed),observedAt:typeof v.transcode.observedAt==='string'?v.transcode.observedAt:undefined,cadenceMs:optNum(v.transcode.cadenceMs), ...(typeof v.transcode.hardware==='boolean'?{hardware:v.transcode.hardware}:{}),...(typeof v.transcode.throttled==='boolean'?{throttled:v.transcode.throttled}:{})}) : undefined,
+    problem: v.problem==='buffering' || v.problem==='behind'?v.problem:undefined,bufferingSince:typeof v.bufferingSince==='string'?v.bufferingSince:undefined,
     location: oneOf(v.location, ['local', 'remote'] as const, 'other' as never), startedAt: typeof v.startedAt === 'string' ? v.startedAt : undefined,
   });
 }

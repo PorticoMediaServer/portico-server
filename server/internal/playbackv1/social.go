@@ -89,3 +89,25 @@ func (s *Service) EndSessionTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 		}
 	}, nil
 }
+
+// SourceSession is the committed identity used by source readers. It is internal:
+// source tokens, media IDs and device ownership never appear in a public DTO.
+// PresentationGeneration fences player reports; MediaGeneration fences bytes.
+type SourceSession struct {
+	SessionID, DeviceID, ItemID, VersionID, MediaID   string
+	Revision, PresentationGeneration, MediaGeneration int
+	Live                                              bool
+}
+
+// SourceSessionTx returns only the caller profile's committed session. A
+// missing session and another profile's session are indistinguishable.
+func (s *Service) SourceSessionTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string) (SourceSession, error) {
+	r, err := loadRow(ctx, tx, id)
+	if errors.Is(err, ErrNotFound) || err == nil && !sameProfile(p, r) {
+		return SourceSession{}, sql.ErrNoRows
+	}
+	if err != nil {
+		return SourceSession{}, err
+	}
+	return SourceSession{SessionID: r.id, DeviceID: r.device, ItemID: r.item, VersionID: r.version, MediaID: r.media, Revision: r.revision, PresentationGeneration: r.generation, MediaGeneration: r.mediaGeneration, Live: r.ended == 0 && r.lease > s.now().UnixMilli()}, nil
+}

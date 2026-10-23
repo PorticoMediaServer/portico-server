@@ -18,7 +18,9 @@
 package downloads
 
 import (
+	"encoding/json"
 	"errors"
+	"portico.local/server/internal/qualityladder"
 	"regexp"
 	"time"
 )
@@ -193,15 +195,40 @@ type Preparation struct {
 	ExpiresAt string   `json:"expiresAt,omitempty"`
 }
 
+// RequestQuality is optional only at input. Its zero value means omission;
+// any explicitly supplied value must be a canonical quality, including Original.
+type RequestQuality string
+
+func (q *RequestQuality) UnmarshalJSON(raw []byte) error {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	if err := preparationQuality(value); err != nil {
+		return err
+	}
+	*q = RequestQuality(value)
+	return nil
+}
+func (RequestQuality) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": qualityladder.IDs(), "default": QualityOriginal}
+}
+func (q RequestQuality) withDefault() RequestQuality {
+	if q == "" {
+		return QualityOriginal
+	}
+	return q
+}
+
 // Request is one preparation request of explicit items. Exactly one target form
 // is accepted; containers are durable requests (ContainerRequest).
 type Request struct {
-	VersionID        string   `json:"versionId,omitempty"`
-	OperationID      string   `json:"operationId"`
-	MediaID          string   `json:"mediaId,omitempty"`
-	MediaIDs         []string `json:"mediaIds,omitempty"`
-	NextAfterMediaID string   `json:"nextAfterMediaId,omitempty"`
-	Quality          string   `json:"quality"`
+	VersionID        string         `json:"versionId,omitempty"`
+	OperationID      string         `json:"operationId"`
+	MediaID          string         `json:"mediaId,omitempty"`
+	MediaIDs         []string       `json:"mediaIds,omitempty"`
+	NextAfterMediaID string         `json:"nextAfterMediaId,omitempty"`
+	Quality          RequestQuality `json:"quality,omitempty"`
 }
 
 // Rejection explains one target a batch could not accept. The rest of the batch

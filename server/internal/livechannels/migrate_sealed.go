@@ -7,7 +7,7 @@ import (
 	"database/sql"
 	"log"
 	"os"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"unicode/utf8"
 
 	"portico.local/server/internal/dbwork"
@@ -23,7 +23,7 @@ const sourceKeyFileName = "live-sources.v1.key"
 // blocks startup. A row that fails to open under the old key is left sealed
 // and fails at use, exactly as a wrong key did before.
 func MigrateSealedToPlain(db *sql.DB, state string) {
-	raw, err := os.ReadFile(filepath.Join(state, "keys", sourceKeyFileName))
+	raw, err := os.ReadFile(storagepaths.Path(state, "keys", sourceKeyFileName))
 	if err != nil || len(raw) != 32 {
 		return
 	}
@@ -74,7 +74,7 @@ func MigrateSealedToPlain(db *sql.DB, state string) {
 		return
 	}
 	// Best effort: a leftover file is inert and migrates again next start.
-	_ = os.Remove(filepath.Join(state, "keys", sourceKeyFileName))
+	_ = os.Remove(storagepaths.Path(state, "keys", sourceKeyFileName))
 }
 
 // migrateSealedTable tries the old open on every row: success stores the

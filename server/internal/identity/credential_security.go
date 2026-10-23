@@ -218,6 +218,7 @@ func (s *Service) passwordAttempt(ctx context.Context, account string, outcome c
 }
 
 type currentPasswordProof struct {
+	reset   bool
 	account string
 	hash    []byte
 }
@@ -232,6 +233,22 @@ func (s *Service) proveCurrentPassword(ctx context.Context, bearer, password str
 		return proof, err
 	}
 	caller, err := s.directCallerTx(ctx, read.Tx(), bearer, true)
+	if err == nil && password == "" {
+		required, e := passwordChangeRequired(ctx, read.Tx(), caller.account.ID)
+		if e != nil {
+			read.Rollback()
+			return proof, e
+		}
+		kind, e := resetSessionTx(ctx, read.Tx(), caller.familyID)
+		if e != nil {
+			read.Rollback()
+			return proof, e
+		}
+		if required && kind == "password" {
+			proof.reset = true
+		}
+	}
+
 	if err == nil {
 		proof.account = caller.account.ID
 		err = read.Tx().QueryRowContext(ctx, `SELECT password_hash FROM accounts WHERE id=?`, proof.account).Scan(&proof.hash)
@@ -241,6 +258,9 @@ func (s *Service) proveCurrentPassword(ctx context.Context, bearer, password str
 	}
 	if err != nil {
 		return currentPasswordProof{}, err
+	}
+	if proof.reset {
+		return proof, nil
 	}
 	if err = s.credentialCooloff(ctx, proof.account); err != nil {
 		return currentPasswordProof{}, err
@@ -266,6 +286,21 @@ func (s *Service) checkCurrentPasswordProofTx(ctx context.Context, tx *sql.Tx, b
 	c, err := s.directCallerTx(ctx, tx, bearer, true)
 	if err != nil || c.account.ID != proof.account {
 		return directCaller{}, ErrUnauthorized
+	}
+
+	if proof.reset {
+		required, e := passwordChangeRequired(ctx, tx, c.account.ID)
+		if e != nil {
+			return directCaller{}, e
+		}
+		kind, e := resetSessionTx(ctx, tx, c.familyID)
+		if e != nil {
+			return directCaller{}, e
+		}
+		if !required || kind != "password" {
+			return directCaller{}, ErrUnauthorized
+		}
+		return c, nil
 	}
 	var live []byte
 	if err = tx.QueryRowContext(ctx, `SELECT password_hash FROM accounts WHERE id=?`, c.account.ID).Scan(&live); err != nil {

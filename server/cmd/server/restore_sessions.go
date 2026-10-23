@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"time"
 
@@ -41,7 +41,7 @@ func signOutAfterRestore(ctx context.Context, ident *identity.Service, state str
 	}
 	// A previous start may have signed the live database out before a copy
 	// scrub failed. Retry those copies without ending any newer sign-ins.
-	entries, err := os.ReadDir(filepath.Join(state, backup.BackupsDir))
+	entries, err := os.ReadDir(storagepaths.Path(state, backup.BackupsDir))
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -52,7 +52,7 @@ func signOutAfterRestore(ctx context.Context, ident *identity.Service, state str
 		if !entry.IsDir() || !strings.HasSuffix(entry.Name(), "-pre-restore") {
 			continue
 		}
-		folder := filepath.Join(state, backup.BackupsDir, entry.Name())
+		folder := storagepaths.Path(state, backup.BackupsDir, entry.Name())
 		if err = backup.ScrubPreRestoreCopy(ctx, folder, identity.ScrubBackupCopy); err != nil {
 			return fmt.Errorf("remove sign-ins from pre-restore backup %s: %w", entry.Name(), err)
 		}

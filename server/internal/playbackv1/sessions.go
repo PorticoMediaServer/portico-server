@@ -181,6 +181,9 @@ type Presentation struct {
 	// Quality is the quality in force: what was asked for, or the viewer's
 	// saved default for this network, with automatic's current step in id.
 	Quality *Quality `json:"quality,omitempty"`
+	// VideoHeight is the effective converted display height from the committed
+	// delivery plan and its source geometry; absent for copy or unknown geometry.
+	VideoHeight int `json:"videoHeight,omitempty"`
 	// AudioTrackID is the audio track being played ("a1").
 	AudioTrackID string `json:"audioTrackId,omitempty"`
 	// Subtitle is the subtitle track in force and how it reaches the screen;
@@ -221,8 +224,10 @@ type PresentationSubtitle struct {
 // Caller is who is asking: the admitted principal, its device, and admission's
 // clamps (spec §5.3).
 type Caller struct {
-	Principal identity.Principal
-	DeviceID  string
+	// TransportClass is the actual normalized client link declaration, independent of Remote.
+	TransportClass string
+	Principal      identity.Principal
+	DeviceID       string
 	// AuthorizeItem checks visibility without taking a stream slot.
 	AuthorizeItem func(context.Context, string) error
 	// AdminMaxVideoBitrateBPS is the member's remote cap when this request is remote.
@@ -243,21 +248,21 @@ type Caller struct {
 	Ceiling func(ctx context.Context, session string) (int, error)
 	// SavedQuality reads the viewer's saved default quality for this
 	// connection (quality.home or quality.remote): "original", "automatic" or
-	// a ladder id. Nil, or an error: the original.
+	// a ladder id. Empty means registry default; an error retains Original.
 	SavedQuality func(ctx context.Context) (string, error)
 }
 
 // defaultQuality is the quality of a start that names none: the viewer's
 // saved default for where the request comes from.
-func (c *Caller) defaultQuality(ctx context.Context) Quality {
+func (c *Caller) defaultQuality(ctx context.Context, audioOnly bool) Quality {
 	if c.SavedQuality == nil {
-		return Quality{Mode: QualityOriginal}
+		return savedQuality(playback.DefaultSavedQuality("", c.TransportClass, audioOnly))
 	}
 	name, err := c.SavedQuality(ctx)
 	if err != nil {
 		return Quality{Mode: QualityOriginal}
 	}
-	return savedQuality(name)
+	return savedQuality(playback.DefaultSavedQuality(name, c.TransportClass, audioOnly))
 }
 
 type replanKey struct{}
@@ -655,11 +660,14 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	}
 	video := kind != "song" && kind != "track" && kind != "audiobook_file"
 	request := t.request.normalized()
+	if !video && request.Quality.Mode == QualityFixed {
+		return playback.Session{}, Presentation{}, &FieldError{Path: "quality"}
+	}
 	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation}
 	request.Quality.apply(&base)
 	version := t.version
 	if version == "" && video && t.part == 0 {
-		version = s.bestVersion(ctx, c.Principal, t.item, base)
+		version = s.bestVersion(ctx, c.Principal, t.item, base, t.throughputKbps)
 	}
 	asset, err := s.partAsset(ctx, t.item, version, t.part)
 	if err != nil {
@@ -782,6 +790,7 @@ func (s *Service) describe(view *Presentation, plan playback.DeliveryPlan, choic
 	view.Decision = decisions(plan, choice, plan.SourceVideoCodec != "")
 	view.BitrateKbps = planKbps(plan)
 	view.Container = plan.OutputContainer
+	view.VideoHeight = playback.ActivityVideoHeight(plan)
 	if plan.AudioStream >= 0 {
 		view.AudioTrackID = streamID("a", plan.AudioStream)
 	}
@@ -807,7 +816,7 @@ func (s *Service) adoptReplaced(ctx context.Context, view *Presentation, media s
 // the taller picture, then the larger file), which is the order the versions
 // are listed in. A title with one version, or one whose versions cannot be
 // compared, returns "", and the catalogue's best version is played.
-func (s *Service) bestVersion(ctx context.Context, p identity.Principal, item string, choice playback.V1Choice) string {
+func (s *Service) bestVersion(ctx context.Context, p identity.Principal, item string, choice playback.V1Choice, throughputKbps int) string {
 	tx, done, err := dbwork.BeginRead(ctx, s.DB)
 	if err != nil {
 		return ""
@@ -842,6 +851,11 @@ func (s *Service) bestVersion(ctx context.Context, p identity.Principal, item st
 			cost = 1
 		case playback.DeliveryAudioConversion:
 			cost = 2
+		}
+		if throughputKbps > 0 {
+			if need := planKbps(plan); need > 0 && throughputKbps*5 < need*4 {
+				cost += 100
+			}
 		}
 		if cost < bestCost {
 			best, bestCost = head.id, cost
@@ -993,7 +1007,7 @@ func (s *Service) startItem(ctx context.Context, c Caller, key, startDigest stri
 	if kind == "song" || kind == "audiobook_file" || kind == "track" {
 		sessionKind = "audio"
 	}
-	stored := storedRequest{VersionID: req.VersionID, Quality: c.defaultQuality(ctx), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
+	stored := storedRequest{VersionID: req.VersionID, Quality: c.defaultQuality(ctx, sessionKind == "audio"), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
 	if req.Quality != nil {
 		stored.Quality = *req.Quality
 	}

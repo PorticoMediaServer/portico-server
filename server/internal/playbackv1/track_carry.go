@@ -125,16 +125,28 @@ func (s *Service) carryChoice(ctx context.Context, p identity.Principal, item, m
 	return &next
 }
 
-// queueCarry is what a queue's next start carries from the session the queue
-// last played: a playback continued (an advance, Up Next, a restart in place)
-// keeps the tracks picked in the player. A new queue has no session, so a
-// playback started afresh carries nothing.
-func (s *Service) queueCarry(ctx context.Context, c Caller, session string) *TrackCarry {
-	if session == "" {
+// queueContinuation is Advance's explicit lineage when it starts the next
+// session. Unlike a device's replacesSessionId, an authorized queue advance
+// can continue a session playing on another device. It still goes through
+// Start's normal validation, idempotency and admission.
+type queueContinuation struct{ queue, session string }
+type queueContinuationKey struct{}
+
+// queueCarry carries choices only along an explicit continuation of the
+// queue's current session: a device replacement (replay, retry, recovery), or
+// Advance. A fresh start, including a paused restore on this same queue,
+// returns to Settings. Ended is not a freshness signal: completion and replay
+// can continue the playback after the predecessor has ended.
+func (s *Service) queueCarry(ctx context.Context, c Caller, q queueRow, replaces string) *TrackCarry {
+	if q.session == "" {
 		return nil
 	}
-	old, err := loadRow(ctx, s.DB, session)
-	if err != nil || !owns(c, old) {
+	continuation, _ := ctx.Value(queueContinuationKey{}).(queueContinuation)
+	if replaces != q.session && (continuation.queue != q.id || continuation.session != q.session) {
+		return nil
+	}
+	old, err := loadRow(ctx, s.DB, q.session)
+	if err != nil || !owns(c, old) || old.queueID != q.id {
 		return nil
 	}
 	carry := old.stored().Carry

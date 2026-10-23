@@ -72,9 +72,6 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 	if err = s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
 		return Envelope{}, err
 	}
-	if err = s.checkRecoveryContextTx(ctx, tx, p, family); err != nil {
-		return Envelope{}, err
-	}
 	// Outside the member's allowed hours the renewal is refused before anything
 	// rotates: the refresh credential stays valid and works again later.
 	if err = admitAccountTx(ctx, tx, p.AccountID); err != nil {
@@ -144,9 +141,6 @@ func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, 
 		return Envelope{}, "", err
 	}
 	if err == nil {
-		if err = s.checkRecoveryContextTx(ctx, tx, p, knownFamily); err != nil {
-			return Envelope{}, "", err
-		}
 	}
 
 	var family, storedRequest, until string
@@ -186,9 +180,6 @@ func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, 
 		return Envelope{}, "", ErrUnauthorized
 	}
 	if err = s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
-		return Envelope{}, "", err
-	}
-	if err = s.checkRecoveryContextTx(ctx, tx, p, family); err != nil {
 		return Envelope{}, "", err
 	}
 	if err = admitAccountTx(ctx, tx, p.AccountID); err != nil {

@@ -47,6 +47,11 @@ type Driver struct {
 }
 
 func New(root, ffmpeg, ffprobe string, libraries []string) (*Driver, error) {
+	if root == "" {
+		capabilityreport.Report(capabilityreport.Recording, false, "recording_folder_not_selected", nil)
+		return &Driver{stores: map[string]*mediaartifact.Store{}, reserved: map[string]int64{}}, nil
+	}
+
 	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return nil, dvr.ErrInvalid
 	}

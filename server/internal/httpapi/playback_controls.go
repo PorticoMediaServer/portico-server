@@ -18,7 +18,7 @@ func registerPlaybackControls(registry *apikit.Registry, d Dependencies) {
 	v1Route(registry, apikit.Metadata{Admission: laneMedia, ID: "control_admin_session", Method: "POST", Path: "/v1/admin/sessions/{id}/controls", Summary: "Pause, resume or seek any administrable session using its current revision", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "playback", Lane: apikit.Media, Cost: apikit.Constant, Status: 200, BodyLimit: 4096, Errors: failures}, func(ctx context.Context, r *http.Request, in playbackv1.ControlCommand) (playbackv1.SessionControls, error) {
 		return d.playbackV1().AdminControl(ctx, r.PathValue("id"), in)
 	})
-	v1Route(registry, apikit.Metadata{Admission: laneMedia, ID: "get_remote_playback_controls", Method: "GET", Path: "/v1/playback/controls", Summary: "Read what this profile is playing on each device and the controls it may use", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (playbackv1.RemoteControlsDocument, error) {
+	v1Route(registry, apikit.Metadata{Admission: laneMedia, ID: "get_remote_playback_controls", Method: "GET", Path: "/v1/playback/controls", Summary: "Read this account’s playback on each device and the controls it may use", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (playbackv1.RemoteControlsDocument, error) {
 		p, err := d.foundationCaller(r)
 		if err != nil {
 			return playbackv1.RemoteControlsDocument{}, err
@@ -40,10 +40,21 @@ func registerPlaybackControls(registry *apikit.Registry, d Dependencies) {
 			if v.Item != nil {
 				if e := d.itemAccess(ctx, p, v.Item.ID); e != nil {
 					out.Items[i].Item = nil
-					out.Items[i].Actions = []string{}
+					out.Items[i].Actions = []string{"stop"}
+					out.Items[i].Next = nil
+					out.Items[i].DurationMs = 0
+					out.Items[i].PositionMs = 0
 				}
 			}
 		}
 		return out, nil
+	})
+	v1Route(registry, apikit.Metadata{Admission: laneSecurityFence, ID: "stop_account_playback", Method: "POST", Path: "/v1/playback/controls/{id}:stop", Summary: "Stop playback belonging to this account without disclosing a hidden title", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, Status: 204, BodyLimit: 4096, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (noBody, error) {
+		p, err := d.foundationCaller(r)
+		if err != nil {
+			return noBody{}, err
+		}
+		err = d.playbackV1().StopAccountSession(ctx, playbackv1.Caller{Principal: p, DeviceID: p.DeviceID}, r.PathValue("id"))
+		return noBody{}, err
 	})
 }

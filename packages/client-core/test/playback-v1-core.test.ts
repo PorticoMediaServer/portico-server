@@ -78,12 +78,12 @@ test('options: tolerant parse, plan summary, default selection, markers and prev
   assert.equal(s.convertsVideo, true);
   assert.equal(s.convertsAudio, false);
   // The quality menu, the saved default and the engine come with the options.
-  assert.deepEqual(o.qualities.map(q => q.mode === 'fixed' ? q.id : q.mode), ['original', 'automatic', '2160p', '1080p', '720p']);
+  assert.deepEqual(o.qualities.map(q => q.mode === 'fixed' ? q.id : q.mode), ['original','automatic','2160p','1080p-high','1080p-low','720p-high','720p-low','480p','240p']);
   assert.equal(o.preferred?.quality.mode, 'original');
   assert.equal(o.plan?.engine, 'native');
   assert.equal(o.plan?.streams[1]?.to, 'eac3');
-  const fixed = await client.options('movie-1', {quality: {mode: 'fixed', id: '720p'}});
-  assert.deepEqual(fixed.plan?.quality, {mode: 'fixed', id: '720p'});
+  const fixed = await client.options('movie-1', {quality: {mode: 'fixed', id: '720p-high'}});
+  assert.deepEqual(fixed.plan?.quality, {mode: 'fixed', id: '720p-high'});
   assert.equal(summarizePlan(fixed.plan!, sel.version).convertsVideo, true);
   // The capability document goes up only when it changes, and never when the server would refuse it.
   const publisher = new CapabilityPublisher(fakeHttp(server));
@@ -506,4 +506,22 @@ test('a re-plan starts the new presentation where the picture is now, and a loca
   assert.deepEqual(player.seeks, [90_000]);
   assert.equal(requests.filter(r => r.startsWith('PATCH')).length, patches);
   ctl.dispose();
+});
+
+
+test('batch queue uses the committed route, revision and whole mixed selection',async()=>{
+ const sent: unknown[]=[];
+ const client=new QueueClient({async send(r){sent.push(r);return {status:200,headers:{},body:{queue:{id:'queue',revision:'2',total:3,remainingCount:2,totalDurationMs:3000,durationKnown:true,repeat:'off',segments:[]},window:[]}};}});
+ const source={items:{ids:['film','song']}} as const;
+ const result=await client.batch('queue','1',source,'next');
+ assert.deepEqual(sent,[{method:'POST',path:'/v1/queues/queue/batch',headers:{'If-Match':'1'},body:{placement:'next',source},signal:undefined}]);
+ assert.equal(result.queue.totalDurationMs,3000);assert.equal(result.queue.remainingCount,2);
+});
+
+test('playback options retain verified alternatives and collection successor facts',async()=>{
+ const {parseOptions}=await import('../src/playback-v1/types.ts');
+ const out=parseOptions({itemId:'film',kind:'movie',versions:[],chapters:[],markers:[],qualities:[],alternatives:[{versionId:'v1',label:'1080p-low'}],collection:{id:'collection',title:'Films',next:{id:'next',title:'Next film',year:2026,genres:['Drama'],backdropUrl:'/v1/items/next/art/backdrop'}}});
+ assert.deepEqual(out.alternatives,[{versionId:'v1',label:'1080p-low'}]);assert.equal(out.collection?.next.id,'next');assert.equal(out.collection?.next.backdropUrl,'/v1/items/next/art/backdrop');
+ const error=new PlaybackApiError(409,'stream_limit_reached','after_refresh',{scope:'account',limit:2,playing:2});assert.deepEqual(error.streamLimit,{scope:'account',limit:2,playing:2});
+ assert.equal(new PlaybackApiError(409,'stream_limit_reached','after_refresh',{scope:'account',limit:-1,playing:2}).streamLimit,undefined);
 });

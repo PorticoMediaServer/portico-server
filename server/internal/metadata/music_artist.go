@@ -61,6 +61,7 @@ type musicArtistClaim struct {
 
 type musicArtistFacts struct {
 	name, country, wikidata string
+	artistType              string
 	begin, end              int
 	bio, bioSource, bioURL  string
 	imageURL, imageLicence  string
@@ -171,7 +172,11 @@ func (s *Service) musicArtistStep(ctx context.Context) error {
 			if f.end > 0 {
 				end = f.end
 			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO music_artist_evidence(artist_id,mbid,observed_at,name,country,begin_year,end_year,wikidata_id,bio,bio_source,bio_source_url,image_url,image_licence,complete,attempts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(artist_id,mbid) DO UPDATE SET observed_at=excluded.observed_at,name=excluded.name,country=excluded.country,begin_year=excluded.begin_year,end_year=excluded.end_year,wikidata_id=excluded.wikidata_id,bio=excluded.bio,bio_source=excluded.bio_source,bio_source_url=excluded.bio_source_url,image_url=excluded.image_url,image_licence=excluded.image_licence,complete=excluded.complete,attempts=0`, c.artist, c.mbid, stamp, f.name, f.country, begin, end, f.wikidata, f.bio, f.bioSource, f.bioURL, f.imageURL, f.imageLicence, complete); err != nil {
+			var artistType any
+			if f.artistType == "Group" || f.artistType == "Person" {
+				artistType = f.artistType
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO music_artist_evidence(artist_id,mbid,observed_at,name,artist_type,country,begin_year,end_year,wikidata_id,bio,bio_source,bio_source_url,image_url,image_licence,complete,attempts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(artist_id,mbid) DO UPDATE SET observed_at=excluded.observed_at,name=excluded.name,artist_type=excluded.artist_type,country=excluded.country,begin_year=excluded.begin_year,end_year=excluded.end_year,wikidata_id=excluded.wikidata_id,bio=excluded.bio,bio_source=excluded.bio_source,bio_source_url=excluded.bio_source_url,image_url=excluded.image_url,image_licence=excluded.image_licence,complete=excluded.complete,attempts=0`, c.artist, c.mbid, stamp, f.name, artistType, f.country, begin, end, f.wikidata, f.bio, f.bioSource, f.bioURL, f.imageURL, f.imageLicence, complete); err != nil {
 				return err
 			}
 			if f.imageURL != "" {
@@ -192,7 +197,7 @@ func (s *Service) fetchMusicArtist(ctx context.Context, mb musicArtistSource, mb
 	if err != nil {
 		return out, err
 	}
-	out = musicArtistFacts{name: artist.Name, country: artist.Country, begin: artist.BeginYear, end: artist.EndYear, wikidata: artist.WikidataID, complete: true}
+	out = musicArtistFacts{artistType: artist.Type, name: artist.Name, country: artist.Country, begin: artist.BeginYear, end: artist.EndYear, wikidata: artist.WikidataID, complete: true}
 	if artist.WikidataID == "" {
 		return out, nil
 	}

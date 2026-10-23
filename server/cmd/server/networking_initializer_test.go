@@ -9,13 +9,13 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/hostedtrust"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 	"time"
 )
@@ -29,7 +29,7 @@ func TestCurrentNetworkingStartupOwnerAndRestart(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -53,7 +53,7 @@ func TestCurrentNetworkingStartupOwnerAndRestart(t *testing.T) {
 	if server != derived || ident.ID() != derived {
 		t.Fatal("detached identities")
 	}
-	setup, e := os.ReadFile(filepath.Join(state, "setup-token"))
+	setup, e := os.ReadFile(storagepaths.Path(state, "setup-token"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -119,7 +119,7 @@ func TestCurrentNetworkingStartupOwnerAndRestart(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	db, e = persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e = persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -138,7 +138,7 @@ func TestCurrentNetworkingStartupOwnerAndRestart(t *testing.T) {
 }
 func TestCurrentNetworkingMissingIncarnationRefused(t *testing.T) {
 	state := t.TempDir()
-	if e := os.WriteFile(filepath.Join(state, "server.sqlite"), nil, 0600); e != nil {
+	if e := writePathFixture(storagepaths.Path(state, "server.sqlite"), nil, 0600); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := openCurrentAuthority(state); e == nil {

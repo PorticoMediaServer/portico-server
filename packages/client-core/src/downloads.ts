@@ -1,3 +1,4 @@
+import {canonicalQualityLadder} from '../../contracts/src/types.ts';
 import {routePrefix, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
@@ -82,7 +83,7 @@ export type DownloadBundle = Readonly<{
 export type DownloadQualityOption = Readonly<{
   quality: string; label: string; kind: 'source'|'optimized'; targetDisplayHeight: number;
   maxVideoBitrateBps: number; maxAudioBitrateBps: number; estimatedBytes: number; estimated: boolean;
-  available: boolean; reason: string; requiresPreparation: boolean;
+  available: boolean; reason: string; requiresPreparation: boolean;sameAsOriginal?:boolean;dataGBPerHour?:number;effectiveQuality?:string;
   preparedProfileId: string; preparedVersionId: string; preparationId: string; preparationState: string;
 }>;
 export type DownloadSource = Readonly<{container: string; videoCodec: string; audioCodec: string; height: number; durationSeconds: number; bytes: number; available: boolean}>;
@@ -326,7 +327,7 @@ function qualityOption(raw: unknown): DownloadQualityOption {
   const preparationState = oneOf(raw.preparationState, downloadStates) ?? '';
   if (!preparationState && raw.preparationState !== undefined && raw.preparationState !== '') noteSkipped('download-options', 'option.preparationState');
   return Object.freeze({
-    quality: String(raw.quality), label: raw.label, kind: String(raw.kind) as 'source'|'optimized',
+    quality: String(raw.quality), label: raw.label,sameAsOriginal:raw.sameAsOriginal===true,dataGBPerHour:typeof raw.dataGBPerHour==='number'?raw.dataGBPerHour:undefined,effectiveQuality:typeof raw.effectiveQuality==='string'?raw.effectiveQuality:undefined, kind: String(raw.kind) as 'source'|'optimized',
     targetDisplayHeight: Number(raw.targetDisplayHeight ?? 0), maxVideoBitrateBps: Number(raw.maxVideoBitrateBps ?? 0), maxAudioBitrateBps: Number(raw.maxAudioBitrateBps ?? 0),
     estimatedBytes: raw.estimatedBytes, estimated: raw.estimated, available: raw.available, reason: String(raw.reason ?? ''),
     requiresPreparation: raw.requiresPreparation, preparedProfileId: String(raw.preparedProfileId ?? ''), preparedVersionId: String(raw.preparedVersionId ?? ''),
@@ -518,7 +519,7 @@ export function parseDownloadSettings(raw: unknown): DownloadSettings {
     if (v.targetDisplayHeight !== undefined && !count(v.targetDisplayHeight)) invalid();
     return Object.freeze({quality: v.quality, label: v.label, kind: String(v.kind) as 'source'|'optimized', targetDisplayHeight: Number(v.targetDisplayHeight ?? 0)});
   }), v => v.quality);
-  if (qualities[0]?.quality !== originalQuality) qualities = [original, ...qualities.filter(v => v.quality !== originalQuality)];
+  if(qualities.length!==canonicalQualityLadder.length||qualities.some((v,i)=>v.quality!==canonicalQualityLadder[i].id))invalid();
   return Object.freeze({maxPreparedBytes: raw.maxPreparedBytes, retentionDays: raw.retentionDays, revision: raw.revision, qualities: Object.freeze(qualities)});
 }
 

@@ -5,7 +5,7 @@
  *
  * The menu, in order: Original (the default: the file as it is, converted only when the device
  * cannot play it), Automatic (starts at Original and moves down, and back up, as the connection
- * requires; see `AutomaticQuality`), then the fixed qualities below the source.
+ * requires; see `AutomaticQuality`), then all seven canonical fixed ceilings.
  */
 import {qualityLadder, type QualityId, type QualityInForce, type QualityRequest} from './quality.ts';
 
@@ -31,16 +31,16 @@ export type PlaybackChoices = Readonly<{
   throughputKbps?: number;
 }>;
 
-export type FixedQualityId = '2160' | '1440' | '1080' | '720' | '480' | '360';
+export type FixedQualityId = QualityId;
 export type QualityChoice = 'original' | 'automatic' | FixedQualityId;
 
 /** A fixed quality: the tallest picture and the video bit rate a stream at that height is given. */
 export type FixedQuality = Readonly<{id: FixedQualityId; height: number; videoKbps: number; audioKbps?: number}>;
 
 /** Fixed qualities, best first: the server's ladder (`quality.ts` `qualityLadder`), one for one. */
-export const fixedQualities: readonly FixedQuality[] = Object.freeze(qualityLadder.map(step => Object.freeze({id: String(step.height) as FixedQualityId, height: step.height, videoKbps: step.videoKbps, audioKbps: step.audioKbps})));
+export const fixedQualities: readonly FixedQuality[] = Object.freeze(qualityLadder.map(step => Object.freeze({id: step.id, height: step.height, videoKbps: step.videoKbps, audioKbps: step.audioKbps})));
 
-const serverId = (fixed: FixedQuality): QualityId => (fixed.id + 'p') as QualityId;
+const serverId = (fixed: FixedQuality): QualityId => fixed.id;
 
 export const qualityChoiceOrder: readonly QualityChoice[] = Object.freeze(['original', 'automatic', ...fixedQualities.map(q => q.id)]);
 
@@ -52,25 +52,14 @@ export function fixedQuality(id: string | undefined): FixedQuality | undefined {
   return fixedQualities.find(q => q.id === id);
 }
 
-/**
- * The fixed qualities worth offering for a source: those that are really lower than it. A step at
- * the source's own height is offered only when the source's bit rate is well above the step's (a
- * 1080p disc copy at 30 Mbps has a meaningful "1080p" below it); with nothing known, all are offered.
- */
+/** Automatic uses only genuinely smaller evidenced targets. Menus use the
+ * full qualityLadder / server qualities, never this adaptation subset. */
 export function offeredQualities(source: Readonly<{height?: number; bitrateKbps?: number}> = {}): readonly FixedQuality[] {
-  const height = source.height && source.height > 0 ? source.height : undefined;
-  const kbps = source.bitrateKbps && source.bitrateKbps > 0 ? source.bitrateKbps : undefined;
-  if (height === undefined && kbps === undefined) return fixedQualities;
-  return fixedQualities.filter(q => {
-    // Sources are rarely exactly 1080 lines tall (a 1920x800 film is "1080p"): compare by class.
-    const sourceClass = height === undefined ? Infinity : heightClass(height);
-    if (q.height < sourceClass) return true;
-    if (q.height > sourceClass) return false;
-    return kbps !== undefined && kbps >= q.videoKbps * 1.5;
-  });
+ if (!(source.height && source.height > 0) || !(source.bitrateKbps && source.bitrateKbps > 0)) return Object.freeze([]);
+ return Object.freeze(fixedQualities.filter(q => (q.height <= source.height! || source.height! < fixedQualities[fixedQualities.length-1].height && q.id===fixedQualities[fixedQualities.length-1].id) && q.videoKbps + (q.audioKbps ?? 0) < source.bitrateKbps!));
 }
 
-/** The fixed-quality class a picture height belongs to (800 lines of a 1920-wide film is 1080). */
+/** Existing source-resolution classification; it never selects a quality preset. */
 export function heightClass(height: number): number {
   if (height > 1500) return 2160;
   if (height > 1100) return 1440;
@@ -95,8 +84,8 @@ export function qualityRequest(choice: QualityChoice, step?: FixedQuality): Qual
 export function fixedQualityOf(request: QualityRequest | QualityInForce | undefined): FixedQuality | undefined {
   if (!request) return undefined;
   if ((request.mode === 'fixed' || request.mode === 'automatic') && 'id' in request && request.id) return fixedQualities.find(q => serverId(q) === request.id);
-  if (request.mode !== 'limit' || !request.maxHeight) return undefined;
-  return fixedQualities.find(q => q.height === request.maxHeight) ?? fixedQualities.find(q => q.height <= request.maxHeight!);
+  if (request.mode !== 'limit' || !request.maxVideoBitrateKbps) return undefined;
+  return fixedQualities.find(q => q.videoKbps === request.maxVideoBitrateKbps && (!request.maxHeight || q.height === request.maxHeight) && (!request.maxAudioBitrateKbps || q.audioKbps === request.maxAudioBitrateKbps));
 }
 
 /** The menu choice a quality request or the quality in force on a session stands for. */
@@ -172,7 +161,7 @@ export class AutomaticQuality {
   private upHoldMs: number;
 
   constructor(options: AutomaticOptions) {
-    this.steps = options.steps;
+    this.steps = options.originalKbps && options.originalKbps > 0 ? options.steps.filter(q => q.videoKbps + (q.audioKbps ?? 0) < options.originalKbps!) : [];
     this.originalKbps = options.originalKbps && options.originalKbps > 0 ? options.originalKbps : undefined;
     this.now = options.now ?? Date.now;
     this.shortfallMs = options.shortfallMs ?? 10_000;
@@ -188,7 +177,7 @@ export class AutomaticQuality {
   get estimate(): number | undefined { return this.estimateKbps; }
 
   private needs(index: number): number | undefined {
-    return index < 0 ? this.originalKbps : this.steps[index]?.videoKbps;
+    return index < 0 ? this.originalKbps : (this.steps[index] ? this.steps[index].videoKbps + (this.steps[index].audioKbps ?? 0) : undefined);
   }
 
   /** One media download: how many kilobits a second it managed. Smoothed, falling faster than it rises. */
@@ -220,7 +209,7 @@ export class AutomaticQuality {
     if ((short || this.stalls.length >= 2) && this.index < this.steps.length - 1) {
       let next = this.index + 1;
       const usable = this.estimateKbps === undefined ? undefined : this.estimateKbps * 0.8;
-      if (usable !== undefined) while (next < this.steps.length - 1 && this.steps[next]!.videoKbps > usable) next++;
+      if (usable !== undefined) while (next < this.steps.length - 1 && this.needs(next)! > usable) next++;
       return this.move(next, at);
     }
     if (this.index >= 0 && this.roomSince !== undefined && at - this.roomSince >= this.upHoldMs && this.stalls.length === 0) {

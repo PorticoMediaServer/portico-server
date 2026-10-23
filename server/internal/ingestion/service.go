@@ -46,6 +46,7 @@ type Service struct {
 	mu            sync.Mutex
 	active        map[string]context.CancelFunc
 	activeSources map[string]bool
+	activityFiles map[string]*activityFileObservation
 	listingMu     sync.Mutex
 	listings      map[string]*scanListing
 	ignoreScopes  map[string]map[string]remoteIgnoreScope

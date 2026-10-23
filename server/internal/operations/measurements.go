@@ -8,9 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"portico.local/server/internal/apiwire"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/storagepaths"
 	"portico.local/server/internal/supervise"
 	"portico.local/server/internal/telemetry"
 	"sort"
@@ -562,7 +562,7 @@ func (m *Measurements) Read(ctx context.Context, name string) (Measurement, erro
 				out.Facts[key] = unavailable("State directory not registered.")
 				continue
 			}
-			f, e := os.Stat(filepath.Join(m.StateDirectory, file))
+			f, e := os.Stat(storagepaths.Path(m.StateDirectory, file))
 			if e != nil {
 				out.Facts[key] = unavailable("File measurement unavailable.")
 			} else {

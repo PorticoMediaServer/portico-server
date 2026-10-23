@@ -31,10 +31,11 @@ type CreditTotals struct {
 
 // CreditPage is one page of a title's cast or crew.
 type CreditPage struct {
-	Group      string   `json:"group"`
-	Credits    []Credit `json:"credits"`
-	Total      int      `json:"total"`
-	NextCursor string   `json:"nextCursor,omitempty"`
+	Revision   ContentRevision `json:"revision"`
+	Group      string          `json:"group"`
+	Credits    []Credit        `json:"credits"`
+	Total      int             `json:"total"`
+	NextCursor string          `json:"nextCursor,omitempty"`
 }
 
 // A credit is cast when its department says so; everything else is crew.
@@ -146,9 +147,14 @@ func (s *Service) ItemCredits(viewer Viewer, item, group, cursor string, limit i
 		limit = creditPageMax
 	}
 	scope := cursorScope{Library: library, Profile: viewer.Profile, Viewer: viewer.Fence, View: "credits", Entity: item, Section: group, Limit: limit}
+	revision, err := s.ContentRevision(library, viewer.Profile)
+	if err != nil {
+		return out, err
+	}
+	out.Revision = revision
 	offset := 0
 	if cursor != "" {
-		value, err := s.decodeCursor(cursor, scope)
+		value, err := s.decodeDetailCursor(cursor, scope, revision)
 		if err != nil {
 			return out, err
 		}
@@ -164,11 +170,18 @@ func (s *Service) ItemCredits(viewer Viewer, item, group, cursor string, limit i
 	if group == "cast" {
 		out.Total = totals.Cast
 	}
-	if out.Credits, err = s.queryCredits(item, `SELECT `+creditColumns+creditFrom+creditGroupClause(group)+` ORDER BY c.ord LIMIT ? OFFSET ?`, limit, offset); err != nil {
+	if out.Credits, err = s.queryCredits(item, `SELECT `+creditColumns+creditFrom+creditGroupClause(group)+` ORDER BY c.ord,c.credit_id LIMIT ? OFFSET ?`, limit, offset); err != nil {
 		return out, err
 	}
 	if next := offset + len(out.Credits); next < out.Total && len(out.Credits) > 0 {
-		out.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(next), Expires: time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()})
+		out.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(next), Expires: time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()}, revision)
+	}
+	after, e := s.ContentRevision(library, viewer.Profile)
+	if err == nil && e != nil {
+		err = e
+	}
+	if err == nil && after != revision {
+		err = ErrStaleContinuation
 	}
 	return out, err
 }

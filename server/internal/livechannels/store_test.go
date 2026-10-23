@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 	"time"
@@ -313,10 +314,10 @@ func TestSealedPreviewMigratesToPlain(t *testing.T) {
 	if _, e = db.Exec(`INSERT INTO live_remote_previews(id,source_id,expected_revision,fence,sealed,expires_ms) VALUES('preview-one','source-one',1,'',?,0)`, sealed); e != nil {
 		t.Fatal(e)
 	}
-	if e = os.MkdirAll(filepath.Join(dir, "keys"), 0700); e != nil {
+	if e = os.MkdirAll(storagepaths.Path(dir, "keys"), 0700); e != nil {
 		t.Fatal(e)
 	}
-	if e = os.WriteFile(filepath.Join(dir, "keys", "live-sources.v1.key"), key, 0600); e != nil {
+	if e = os.WriteFile(storagepaths.Path(dir, "keys", "live-sources.v1.key"), key, 0600); e != nil {
 		t.Fatal(e)
 	}
 	MigrateSealedToPlain(db, dir)
@@ -327,7 +328,7 @@ func TestSealedPreviewMigratesToPlain(t *testing.T) {
 	if string(stored) != "https://provider.invalid/guide" {
 		t.Fatal("sealed preview not migrated to plaintext")
 	}
-	if _, e = os.Stat(filepath.Join(dir, "keys", "live-sources.v1.key")); !os.IsNotExist(e) {
+	if _, e = os.Stat(storagepaths.Path(dir, "keys", "live-sources.v1.key")); !os.IsNotExist(e) {
 		t.Fatal("key file left behind")
 	}
 }

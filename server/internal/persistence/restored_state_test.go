@@ -10,7 +10,7 @@ import (
 )
 
 // The list of tables every install starts with rows in is derived from the
-// migrations' text. It is only right if it is exactly the tables a fresh
+// baseline text. It is only right if it is exactly the tables a fresh
 // install leaves populated, so a new seeded table can never be forgotten here:
 // it either joins the list by itself or this fails until someone says the
 // owner's settings replace it.
@@ -50,15 +50,13 @@ func TestSeededTablesMatchAFreshInstall(t *testing.T) {
 		}
 		return false
 	}
-	// Not seeds: the migration runner's own ledger, whose absence Open refuses.
-	runner := map[string]bool{"schema_migrations": true}
 	var populated []string
 	for _, name := range tables {
 		var present bool
 		if err = db.QueryRow(`SELECT EXISTS(SELECT 1 FROM "` + name + `")`).Scan(&present); err != nil {
 			t.Fatal(err)
 		}
-		if present && !runner[name] && !ownerReplacedSeeds[name] && !owned(name) {
+		if present && !ownerReplacedSeeds[name] && !owned(name) {
 			populated = append(populated, name)
 		}
 		if ownerReplacedSeeds[name] && !present {
@@ -127,6 +125,7 @@ func TestVerifySchemaObjectsNamesAMissingObjectOfEachKind(t *testing.T) {
 	ctx := context.Background()
 	for _, object := range []struct{ kind, name, statement string }{
 		{"table", "dvr_retention_retry", `DROP TABLE dvr_retention_retry`},
+		{"table", "personal_job_membership_outcomes", `DROP TABLE personal_job_membership_outcomes`},
 		{"index", "dvr_recordings_due", `DROP INDEX dvr_recordings_due`},
 		{"trigger", "networking_identity_no_delete", `DROP TRIGGER networking_identity_no_delete`},
 		{"view", "inventory_item_availability", `DROP VIEW inventory_item_availability`},
@@ -134,6 +133,7 @@ func TestVerifySchemaObjectsNamesAMissingObjectOfEachKind(t *testing.T) {
 		// column fails all the same.
 		{"column", "dvr_retention_retry.not_before_ms", `ALTER TABLE dvr_retention_retry RENAME COLUMN not_before_ms TO later_ms`},
 		{"column", "managed_mounts.observed", `ALTER TABLE managed_mounts RENAME COLUMN observed TO seen`},
+		{"column", "personal_job_membership_outcomes.code", `ALTER TABLE personal_job_membership_outcomes RENAME COLUMN code TO missing_code`},
 	} {
 		t.Run(object.kind+" "+object.name, func(t *testing.T) {
 			db, err := OpenFresh(filepath.Join(t.TempDir(), "fresh.sqlite"))

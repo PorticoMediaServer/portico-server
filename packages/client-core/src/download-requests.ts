@@ -1,3 +1,4 @@
+import {canonicalQualityLadder} from '../../contracts/src/types.ts';
 import {routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseDownloadPreparation,type DownloadPreparation} from './downloads.ts';
@@ -92,7 +93,7 @@ export function parseDownloadRequest(raw:unknown):DownloadRequest{
 export type DownloadRequestInput=Readonly<{
  operationId:string;
  target:Readonly<{kind:DownloadRequestKind;id:string}>;
- deviceId:string;quality:string;policy:DownloadRequestPolicy;
+ deviceId:string;quality?:string;policy:DownloadRequestPolicy;
 }>;
 
 /**
@@ -105,13 +106,14 @@ export async function createDownloadRequest(api:DownloadRequestsApi,input:Downlo
  const target=input.target;
  if(!object(target)||target.kind!=='show'&&target.kind!=='season'&&target.kind!=='album'&&target.kind!=='book'&&target.kind!=='playlist'||!id(target.id))throw new Error('Downloads cover shows, seasons, albums, books and playlists.');
  if(!id(input.deviceId))throw new Error('A download request needs the authenticated device id.');
- if(typeof input.quality!=='string'||!input.quality||input.quality.length>64)throw new Error('Choose a download quality.');
+ const quality=input.quality===undefined?'original':input.quality;
+ if(typeof quality!=='string'||!canonicalQualityLadder.some(q=>q.id===quality))throw new Error('Choose a download quality.');
  const checkedPolicy=policy(input.policy);
  try{
   return parseDownloadRequest(await api.request<unknown>(DOWNLOAD_REQUESTS_PATH,'POST',{
    operationId:input.operationId,
    target:{kind:target.kind,id:target.id},
-   deviceId:input.deviceId,quality:input.quality,policy:{...checkedPolicy},
+   deviceId:input.deviceId,quality,policy:{...checkedPolicy},
   },signal));
  }catch(e){
   const v=e as {status?:unknown;code?:unknown};

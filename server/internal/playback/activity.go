@@ -313,3 +313,13 @@ func (s *Service) ActivityStop(ctx context.Context, p identity.Principal, scope 
 	}
 	return out, gated2.Commit()
 }
+
+// ActivityVideoHeight is the converted display height of a committed plan.
+// Unknown source geometry cannot turn a ceiling into a measured picture size.
+func ActivityVideoHeight(plan DeliveryPlan) int {
+	if plan.VideoAction != "convert" || plan.Trace == nil || plan.Trace.Video == nil || plan.Trace.Video.Width <= 0 || plan.Trace.Video.Height <= 0 {
+		return 0
+	}
+	_, height := convertedDimensions(plan)
+	return height
+}

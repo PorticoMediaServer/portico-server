@@ -36,3 +36,19 @@ func TestListeningArtistEntityBiographyCountryYears(t *testing.T) {
 		t.Fatalf("owner text did not win: %+v", page.Entity)
 	}
 }
+
+func TestListeningArtistTypeAndAlbumCountAreRealFacts(t *testing.T) {
+	s, c, n := phase34ListeningFixture(t)
+	page, err := s.Content(phase34ListeningRequest("music", "artist", n["artist"].Public))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Entity.ArtistType != "" || page.Entity.AlbumCount == nil || *page.Entity.AlbumCount != 1 {
+		t.Fatalf("unknown type or album count: %+v", page.Entity)
+	}
+	c.Exec(`INSERT INTO music_artist_evidence(artist_id,mbid,observed_at,artist_type) VALUES(?,'11111111-1111-1111-1111-111111111111','now','Group')`, n["artist"].ID)
+	page, err = s.Content(phase34ListeningRequest("music", "artist", n["artist"].Public))
+	if err != nil || page.Entity.ArtistType != "Group" {
+		t.Fatal(page.Entity, err)
+	}
+}

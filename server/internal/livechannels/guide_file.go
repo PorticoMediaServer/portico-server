@@ -47,7 +47,7 @@ func readGuideFile(ctx context.Context, locator string, policy remotemedia.Polic
 		defer g.Close()
 		reader = g
 	}
-	file, e := os.CreateTemp("", "portico-guide-*.xml")
+	file, e := os.CreateTemp(os.TempDir(), "portico-guide-*.xml")
 	if e != nil {
 		return "", "", e
 	}

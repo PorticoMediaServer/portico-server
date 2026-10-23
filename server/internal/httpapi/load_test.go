@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/playbackv1"
+	"portico.local/server/internal/storagepaths"
 	"sort"
 	"strings"
 	"sync"
@@ -159,12 +160,12 @@ func newLoadFixture(t *testing.T, tier performanceTier) *loadFixture {
 	watchdog := dbwork.NewWatchdog(db)
 	handler := New(Dependencies{DB: db, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: host, Watchdog: watchdog})
 
-	secret, err := os.ReadFile(filepath.Join(root, "setup-token"))
+	secret, err := os.ReadFile(storagepaths.Path(root, "setup-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	body, _ := json.Marshal(map[string]string{"setupToken": string(secret), "username": "owner", "password": "long-test-password", "name": "Load"})
+	body, _ := json.Marshal(map[string]string{"authMode": "local", "setupToken": string(secret), "username": "owner", "password": "long-test-password", "name": "Load"})
 	setup := httptest.NewRequest("POST", "/v1/setup", bytes.NewReader(body))
 	setup.Header.Set("Content-Type", "application/json")
 	handler.ServeHTTP(w, setup)

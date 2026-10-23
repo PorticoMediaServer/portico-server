@@ -28,6 +28,9 @@ export function decodeAccountSecurityMfaConfirmResponse(input: unknown): types.A
 export function decodeAccountSecurityProofResponse(input: unknown): types.AccountSecurityProofResponse { return decode("AccountSecurityProofResponse", input) as types.AccountSecurityProofResponse; }
 export function decodeAccountSessionDeleteResponse(input: unknown): types.AccountSessionDeleteResponse { return decode("AccountSessionDeleteResponse", input) as types.AccountSessionDeleteResponse; }
 export function decodeAccountSessionsListResponse(input: unknown): types.AccountSessionsListResponse { return decode("AccountSessionsListResponse", input) as types.AccountSessionsListResponse; }
+export function decodeAppAuthorizationDecideResponse(input: unknown): types.AppAuthorizationDecideResponse { return decode("AppAuthorizationDecideResponse", input) as types.AppAuthorizationDecideResponse; }
+export function decodeAppAuthorizationExchangeResponse(input: unknown): types.AppAuthorizationExchangeResponse { return decode("AppAuthorizationExchangeResponse", input) as types.AppAuthorizationExchangeResponse; }
+export function decodeAppAuthorizationReviewResponse(input: unknown): types.AppAuthorizationReviewResponse { return decode("AppAuthorizationReviewResponse", input) as types.AppAuthorizationReviewResponse; }
 export function decodeAppstoreNotificationResponse(input: unknown): types.AppstoreNotificationResponse { return decode("AppstoreNotificationResponse", input) as types.AppstoreNotificationResponse; }
 export function decodeDeviceAuthorizationCancelResponse(input: unknown): types.DeviceAuthorizationCancelResponse { return decode("DeviceAuthorizationCancelResponse", input) as types.DeviceAuthorizationCancelResponse; }
 export function decodeDeviceAuthorizationCreateResponse(input: unknown): types.DeviceAuthorizationCreateResponse { return decode("DeviceAuthorizationCreateResponse", input) as types.DeviceAuthorizationCreateResponse; }
@@ -85,6 +88,9 @@ export function decodeServerLeaveResponse(input: unknown): types.ServerLeaveResp
 export function decodeServerListVersionResponse(input: unknown): types.ServerListVersionResponse { return decode("ServerListVersionResponse", input) as types.ServerListVersionResponse; }
 export function decodeServerMembersPushResponse(input: unknown): types.ServerMembersPushResponse { return decode("ServerMembersPushResponse", input) as types.ServerMembersPushResponse; }
 export function decodeServerRemoveResponse(input: unknown): types.ServerRemoveResponse { return decode("ServerRemoveResponse", input) as types.ServerRemoveResponse; }
+export function decodeServerReturnCompleteResponse(input: unknown): types.ServerReturnCompleteResponse { return decode("ServerReturnCompleteResponse", input) as types.ServerReturnCompleteResponse; }
+export function decodeServerReturnExchangeResponse(input: unknown): types.ServerReturnExchangeResponse { return decode("ServerReturnExchangeResponse", input) as types.ServerReturnExchangeResponse; }
+export function decodeServerReturnStartResponse(input: unknown): types.ServerReturnStartResponse { return decode("ServerReturnStartResponse", input) as types.ServerReturnStartResponse; }
 export function decodeServerRoutesGetResponse(input: unknown): types.ServerRoutesGetResponse { return decode("ServerRoutesGetResponse", input) as types.ServerRoutesGetResponse; }
 export function decodeServerRoutesObserveResponse(input: unknown): types.ServerRoutesObserveResponse { return decode("ServerRoutesObserveResponse", input) as types.ServerRoutesObserveResponse; }
 export function decodeServerRoutesProveResponse(input: unknown): types.ServerRoutesProveResponse { return decode("ServerRoutesProveResponse", input) as types.ServerRoutesProveResponse; }

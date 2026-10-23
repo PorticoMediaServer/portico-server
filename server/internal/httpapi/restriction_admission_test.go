@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 
@@ -51,11 +52,11 @@ func newTL11AdmissionFixture(t *testing.T, kind string) *tl11AdmissionFixture {
 	}
 	d := Dependencies{DB: db, Identity: ident, Catalog: catalog.New(db), Playback: playback.New(db), Hosted: host, PlaybackV1: &playbackv1.Service{}}
 	h := New(d)
-	secret, err := os.ReadFile(filepath.Join(root, "setup-token"))
+	secret, err := os.ReadFile(storagepaths.Path(root, "setup-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	setup := httptest.NewRequest("POST", "/v1/setup", bytes.NewBufferString(`{"setupToken":"`+string(secret)+`","username":"owner","password":"long-test-password","name":"Test"}`))
+	setup := httptest.NewRequest("POST", "/v1/setup", bytes.NewBufferString(`{"authMode":"local","setupToken":"`+string(secret)+`","username":"owner","password":"long-test-password","name":"Test"}`))
 	setup.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, setup)

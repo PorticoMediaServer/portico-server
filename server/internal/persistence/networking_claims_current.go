@@ -45,10 +45,7 @@ func VerifyNetworkingClaims(ctx context.Context, db *sql.DB) error {
 // declaration of the shape: the claim tables, their index and triggers, and the
 // server identity table with its immutability and storage-bound triggers.
 func networkingClaimsSQL() string {
-	baseline, err := MigrationSQL(baselineSchemaVersion)
-	if err != nil {
-		panic(err)
-	}
+	baseline := BaselineSQL()
 	re := regexp.MustCompile(`(?m)^CREATE (?:UNIQUE )?(?:TABLE|INDEX|TRIGGER) ([a-z_]+)`)
 	var out strings.Builder
 	for _, m := range re.FindAllStringSubmatchIndex(baseline, -1) {

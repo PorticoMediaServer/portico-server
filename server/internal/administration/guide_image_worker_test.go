@@ -18,6 +18,7 @@ import (
 
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storagepaths"
 )
 
 const guideImageFixtureHost = "img.invalid"
@@ -131,7 +132,7 @@ func TestGuideImageImportStoresValidatesAndCleansUp(t *testing.T) {
 	if digest != hex.EncodeToString(sum[:]) || mime != "image/png" || width != 64 || height != 64 {
 		t.Fatalf("stored image row: %q %q %dx%d", digest, mime, width, height)
 	}
-	if _, err = os.Stat(filepath.Join(state, "guide-images", digest+".png")); err != nil {
+	if _, err = os.Stat(storagepaths.Path(state, "guide-images", digest+".png")); err != nil {
 		t.Fatal(err)
 	}
 	got, gotMime, err := admin.GuideImageBytes(context.Background(), digest)
@@ -166,7 +167,7 @@ func TestGuideImageImportStoresValidatesAndCleansUp(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO live_programme_images(url,digest,media_type,width,height,stored_ms) VALUES(?,?,?,?,?,?)`, "https://img.invalid/orphan.png", orphanDigest, "image/png", 16, 16, time.Now().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
-	root := filepath.Join(state, "guide-images")
+	root := storagepaths.Path(state, "guide-images")
 	if err = os.WriteFile(filepath.Join(root, strayDigest+".png"), []byte("stale"), 0600); err != nil {
 		t.Fatal(err)
 	}

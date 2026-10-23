@@ -32,7 +32,7 @@ func TestVerifiedDeviceFairnessSurvivesRefreshProfileAndGrant(t *testing.T) {
 	if first.DeviceID != f.owner.DeviceID {
 		t.Fatal("authenticated device did not match issued binding")
 	}
-	session, err := f.deps.Playback.CreateContext(context.Background(), first, f.items[0], "auto", "device-accounting-grant")
+	session, err := f.deps.Playback.CreateContext(context.Background(), first, f.items[0], "automatic", "device-accounting-grant")
 	if err != nil {
 		t.Fatal(err)
 	}

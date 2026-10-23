@@ -91,7 +91,7 @@ func renditionFixtureAudio(t *testing.T, mixed bool) (context.Context, *Service,
 			t.Fatal(err)
 		}
 	}
-	session, e := s.Create(p, item, "auto", "renditions")
+	session, e := s.Create(p, item, "automatic", "renditions")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -317,6 +317,9 @@ func TestAudioRenditionLabelMatchesManifestContract(t *testing.T) {
 		raw, _ := json.Marshal(r)
 		if issues := doc.ValidateJSON(schema, raw); len(issues) > 0 {
 			t.Fatal(issues)
+		}
+		if r.Title != "Director \"A\"\\B" || r.Commentary != source.Audio[r.Ordinal].Commentary {
+			t.Fatalf("rendition facts lost: %+v", r)
 		}
 		if r.Label != manifestQuoted(r.Label) || !strings.Contains(manifest, `NAME="`+r.Label+`"`) {
 			t.Fatalf("label %q differs from manifest %s", r.Label, manifest)

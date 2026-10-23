@@ -79,7 +79,7 @@ const capacity=(overrides:Record<string,unknown>={})=>({
  hdrToneMapping:{status:'disabled',detail:'HDR sources are delivered without tone mapping.'},
  directStreamRemux:true,x264Preset:'veryfast',planningPolicy:'maximum_fidelity',throttleBufferMs:60000,playedRetentionMs:180000,
  temporaryDirectory:{path:'/var/portico/hls',ready:true,freeBytes:1024},
- presets:[{id:'1080p',label:'1080p',height:1080,videoKbps:10000,audioKbps:256}],
+ presets:[{id:'1080p-low',label:'1080p-low',height:1080,videoKbps:10000,audioKbps:256}],
  dependencies:{ffmpeg:{path:'/usr/bin/ffmpeg',version:'ffmpeg version 7.1',ok:true},ffprobe:{path:'/usr/bin/ffprobe',version:'ffprobe version 7.1',ok:true}},
  warnings:[],observedAt:1758000000000,...overrides});
 
@@ -107,7 +107,7 @@ test('capacity leaves out a probe, preset, tool or warning it cannot read and ke
  resetSkippedParts();
  const raw=capacity({
   hdrToneMapping:{status:'maybe',detail:'Depends on the display.',engine:'new'},
-  presets:[{id:'1080p',label:'1080p',height:1080,videoKbps:10000,audioKbps:256,codec:'new'},{id:'8k',label:'8K',height:'tall',videoKbps:1,audioKbps:1},'preset'],
+  presets:[{id:'1080p-low',label:'1080p-low',height:1080,videoKbps:10000,audioKbps:256,codec:'new'},{id:'8k',label:'8K',height:'tall',videoKbps:1,audioKbps:1},'preset'],
   dependencies:{ffmpeg:{path:'/usr/bin/ffmpeg',version:'ffmpeg version 7.1',ok:true},ffprobe:{path:'/usr/bin/ffprobe',version:7,ok:true},vmaf:'present'},
   warnings:['Disk is nearly full.',7,'x'.repeat(513)],queueDepth:4});
  (raw.hardware as any).probes=[{backend:'software',supported:true,detail:'Always available.'},{backend:'vulkan',supported:'partly',detail:''},null];
@@ -115,7 +115,7 @@ test('capacity leaves out a probe, preset, tool or warning it cannot read and ke
  assert.deepEqual(parsed.hardware.probes.map(p=>p.backend),['software']);
  assert.equal(parsed.hardware.effective,'software');
  assert.deepEqual(parsed.hdrToneMapping.status,'unavailable');assert.equal(parsed.hdrToneMapping.detail,'Depends on the display.');
- assert.deepEqual(parsed.presets.map(p=>p.id),['1080p']);
+ assert.deepEqual(parsed.presets.map(p=>p.id),['1080p-low']);
  assert.deepEqual(Object.keys(parsed.dependencies),['ffmpeg']);
  assert.deepEqual(parsed.warnings,['Disk is nearly full.']);
  assert.equal(parsed.sessions.active,null);assert.equal(parsed.throttleBufferMs,60000);

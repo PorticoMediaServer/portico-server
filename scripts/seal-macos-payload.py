@@ -10,6 +10,7 @@ import subprocess
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+RCLONE = runpy.run_path(str(ROOT / "scripts/rclone-bundle.py"))
 artifact_identity = runpy.run_path(str(ROOT / "scripts/build-server-release.py"))["artifact_identity"]
 
 
@@ -35,6 +36,10 @@ def verify_payload(directory, public_key):
     subprocess.run(["python3", str(ROOT / "scripts/verify-ffmpeg-manifest.py"), str(bundle)], check=True)
     if json.loads((bundle / "toolchain-manifest.json").read_text())["target"] != "macos-arm64":
         raise ValueError("Toolchain target does not match the server")
+    rclone = directory / "third_party/rclone"
+    if digest(rclone / "bundle-manifest.json") != manifest["rcloneManifestSha256"]:
+        raise ValueError("rclone manifest changed")
+    RCLONE["verify"](rclone, "darwin-arm64", codesigned="sourceSeal" in manifest)
     embedded, settings = artifact_identity(binary)
     prefix = "portico.local/server/internal/buildinfo."
     for symbol, field in [("SourceDigest", "sourceDigest"), ("BuildID", "buildId"), ("Version", "version")]:
@@ -46,10 +51,10 @@ def verify_payload(directory, public_key):
         raise ValueError("Official trust root changed")
     if "sourceSeal" in manifest:
         original = directory / "source-seal"
-        if set(manifest["sourceSeal"]) != {"manifest.json", "manifest.sig", "toolchain-manifest.json"}:
+        if set(manifest["sourceSeal"]) != {"manifest.json", "manifest.sig", "toolchain-manifest.json", "rclone-manifest.json"}:
             raise ValueError("Incomplete source seal inventory")
         for name, expected in manifest["sourceSeal"].items():
-            if name not in ("manifest.json", "manifest.sig", "toolchain-manifest.json"):
+            if name not in ("manifest.json", "manifest.sig", "toolchain-manifest.json", "rclone-manifest.json"):
                 raise ValueError("Invalid source seal inventory")
             if digest(original / name) != expected:
                 raise ValueError("Original source seal changed")
@@ -59,10 +64,13 @@ def verify_payload(directory, public_key):
         comparable.pop("sourceSeal")
         comparable["artifact"]["sha256"] = source_manifest["artifact"]["sha256"]
         comparable["toolchainManifestSha256"] = source_manifest["toolchainManifestSha256"]
+        comparable["rcloneManifestSha256"] = source_manifest["rcloneManifestSha256"]
         if comparable != source_manifest:
             raise ValueError("Original source seal describes a different build")
         if digest(original / "toolchain-manifest.json") != source_manifest["toolchainManifestSha256"]:
             raise ValueError("Original toolchain provenance does not match the source seal")
+        if digest(original / "rclone-manifest.json") != source_manifest["rcloneManifestSha256"]:
+            raise ValueError("Original rclone provenance does not match the source seal")
     return manifest, (embedded, settings)
 
 
@@ -76,11 +84,14 @@ def seal_payload(directory, key, identity):
     bundle = directory / "third_party/ffmpeg"
     for name, source in [("manifest.json", directory / "manifest.json"),
                          ("manifest.sig", directory / "manifest.sig"),
-                         ("toolchain-manifest.json", bundle / "toolchain-manifest.json")]:
+                         ("toolchain-manifest.json", bundle / "toolchain-manifest.json"),
+                         ("rclone-manifest.json", directory / "third_party/rclone/bundle-manifest.json")]:
         (original / name).write_bytes(source.read_bytes())
     # Source provenance is authenticated before the first platform mutation.
     # App signing later must not re-sign these already sealed nested binaries.
-    binaries = [directory / "portico-server"] + sorted((bundle / "bin").iterdir())
+    media_binaries = sorted((bundle / "bin").iterdir())
+    rclone = directory / "third_party/rclone"
+    binaries = [directory / "portico-server"] + media_binaries + [rclone / "rclone"]
     for binary in binaries:
         subprocess.run(["codesign", "--force", "--options", "runtime", "--timestamp=none",
                         "--sign", identity, str(binary)], check=True)
@@ -89,14 +100,20 @@ def seal_payload(directory, key, identity):
         raise ValueError("Codesigning changed the compiler/source identity")
     toolchain_path = bundle / "toolchain-manifest.json"
     toolchain = json.loads(toolchain_path.read_text())
-    for binary in binaries[1:]:
+    for binary in media_binaries:
         toolchain["files"][str(binary.relative_to(bundle))] = digest(binary)
     toolchain["sourceManifestSha256"] = digest(original / "toolchain-manifest.json")
     toolchain_path.write_text(json.dumps(toolchain, indent=2) + "\n")
+    rclone_manifest_path = rclone / "bundle-manifest.json"
+    rclone_manifest = json.loads(rclone_manifest_path.read_text())
+    rclone_manifest["upstreamBinarySha256"] = rclone_manifest["files"]["rclone"]
+    rclone_manifest["files"]["rclone"] = digest(rclone / "rclone")
+    rclone_manifest_path.write_text(json.dumps(rclone_manifest, indent=2) + "\n")
+    manifest["rcloneManifestSha256"] = digest(rclone_manifest_path)
     manifest["artifact"]["sha256"] = digest(directory / "portico-server")
     manifest["toolchainManifestSha256"] = digest(toolchain_path)
     manifest["sourceSeal"] = {name: digest(original / name) for name in
-                              ("manifest.json", "manifest.sig", "toolchain-manifest.json")}
+                              ("manifest.json", "manifest.sig", "toolchain-manifest.json", "rclone-manifest.json")}
     raw = (json.dumps(manifest, indent=2) + "\n").encode()
     (directory / "manifest.json").write_bytes(raw)
     (directory / "manifest.sig").write_bytes(key.sign(raw))

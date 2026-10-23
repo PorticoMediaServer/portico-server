@@ -57,7 +57,7 @@ func finiteFixture(t *testing.T) (context.Context, *sql.DB, *Service, *HLS, iden
 	s := New(db)
 	s.ConfigureHLS(h)
 	p := identity.Principal{Hash: "login", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}, Epoch: 1}
-	session, err := s.Create(p, item, "auto", "finite")
+	session, err := s.Create(p, item, "automatic", "finite")
 	if err != nil {
 		t.Fatal(err)
 	}

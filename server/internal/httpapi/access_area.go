@@ -100,10 +100,7 @@ func (d Dependencies) bearerPrincipal(r *http.Request) (identity.Principal, erro
 	if err != nil {
 		return p, err
 	}
-	err = d.Identity.CheckRecoveryRoute(r.Context(), p, d.privateSetupPeer(r))
-	if err == nil {
-		d.admission.rememberCredential(secret, p)
-	}
+	d.admission.rememberCredential(secret, p)
 	return p, err
 }
 

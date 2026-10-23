@@ -1,0 +1,235 @@
+import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {defaultI18n} from '@i18n';
+import {heroSpec} from '@design';
+import {HomeService, type HomeSnapshot} from '@core/home-service.ts';
+import type {HomeChannel, HomeDocument, HomeReason, HomeRow, HomeSeeAll, HomeSpotlight} from '@core/home.ts';
+import type {ContentEntry} from '@core/library-content.ts';
+import type {GuideChannel} from '@core/channel-guide.ts';
+import {dependsOn} from '@core/freshness-hub.ts';
+import {serverTextLabel} from '@core/presentation/server-text.ts';
+import {homeChannelSelection, homeEntryCapabilities} from '@core/home-selection.ts';
+import {homeCollectionCaption} from '@core/presentation/home-spotlight.ts';
+import {channelMonograms, programmeFactParts, type TimeEnvironment} from '@portico/client-core/kit-model';
+import {useFreshness, usePooledService, useQuietRefresh} from '../../platform/freshness';
+import {Artwork, AmbientArt, GeneratedArt} from '../../kit/artwork';
+import {Hero, HeroFacts, Shelf, type HeroCandidate, type LayoutPlatform} from '../../kit/layout';
+import {Button} from '../../kit/controls';
+import {CollectionBanner, LiveCard, PosterCard, RankedCard, SquareCard, WideCard, type CardSelection} from '../../kit/cards';
+import {HomeSkeleton, StateView} from '../../kit/states';
+import type {ShellArtwork} from '../../shell/artwork';
+import {useShellWidth} from '../../shell/viewport';
+import {currentHomeLive, homeCardModel, homeLiveDeadline, homePlaybackTarget, homeSpotlights} from './model';
+import styles from './home.module.css';
+
+export type HomeSelection = Readonly<{
+  /** The canonical selection owner supplies its real bar and controls. */
+  toolbar: ReactNode;
+  card: (row: HomeRow, entry: ContentEntry) => CardSelection | undefined;
+  channel: (row: HomeRow, channel: HomeChannel) => CardSelection | undefined;
+  collection: (row: HomeRow) => CardSelection | undefined;
+  registerWindow: (row: HomeRow, sectionOrder: number, first: number, last: number) => (() => void) | undefined;
+  registerSpotlight: (spotlight: HomeSpotlight) => (() => void) | undefined;
+  moreAvailable: (entry: ContentEntry) => boolean;
+  moreExpanded: (row: HomeRow, entry: ContentEntry) => boolean;
+}>;
+export type HomeEffects = Readonly<{
+  play: (entry: ContentEntry, target: ContentEntry) => Promise<void>;
+  playChannel: (channel: GuideChannel) => Promise<void>;
+  openEntry: (entry: ContentEntry) => void;
+  openSeeAll: (target: HomeSeeAll) => void;
+  openMore: (row: HomeRow, entry: ContentEntry, anchor: HTMLElement) => void;
+  setMyList: (spotlight: HomeSpotlight) => Promise<void>;
+  reportError: (error: unknown) => void;
+}>;
+export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean}>;
+type HomePresentation = Pick<HomeBindings, 'artwork' | 'effects' | 'selection' | 'time' | 'reducedMotion'>;
+const t = defaultI18n.t;
+const dependencies = [dependsOn.libraries, dependsOn.content(), dependsOn.order(), dependsOn.personal(), dependsOn.progress(), dependsOn.settings('preferences'), dependsOn.settings('server'), dependsOn.list('recommendations'), dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.event('stream.resync')];
+const pageSubscribe = (listener: () => void) => { document.addEventListener('visibilitychange', listener); return () => document.removeEventListener('visibilitychange', listener); };
+
+function useVisible() {
+  const ref = useRef<HTMLDivElement>(null), [intersects, setIntersects] = useState(false);
+  const foreground = useSyncExternalStore(pageSubscribe, () => document.visibilityState !== 'hidden', () => false);
+  useEffect(() => {
+    const target = ref.current; if (!target) return;
+    const observer = new IntersectionObserver(entries => setIntersects(entries.some(entry => entry.isIntersecting)));
+    observer.observe(target); return () => observer.disconnect();
+  }, []);
+  return {ref, visible: intersects && foreground};
+}
+
+export function HomeScreen(bindings: HomeBindings) {
+  const {service, snapshot} = usePooledService<HomeService, HomeSnapshot>('home', () => bindings.service, dependencies);
+  useEffect(() => { if (service.getSnapshot().phase === 'idle') void service.load(); }, [service]);
+  const pending = useRef<{document: HomeDocument; controller: AbortController; promise: Promise<void>} | undefined>(undefined);
+  const refresh = useCallback((context?: Parameters<HomeService['revalidate']>[0]): Promise<void> => {
+    const shown = service.getSnapshot().document;
+    if (!shown || context?.signal?.aborted) return Promise.resolve();
+    if (pending.current?.document === shown && !pending.current.controller.signal.aborted) return pending.current.promise;
+    pending.current?.controller.abort();
+    const controller = new AbortController(), stop = () => controller.abort();
+    context?.signal?.addEventListener('abort', stop, {once: true});
+    const request = {document: shown, controller, promise: Promise.resolve()};
+    pending.current = request;
+    request.promise = service.revalidate({signal: controller.signal, settle: async () => {
+      await context?.settle?.();
+      // A newer Home read or authority handover wins over this window refresh.
+      if (service.getSnapshot().document !== shown) controller.abort();
+    }}).finally(() => {
+      context?.signal?.removeEventListener('abort', stop);
+      if (pending.current === request) pending.current = undefined;
+    });
+    return request.promise;
+  }, [service]);
+  useEffect(() => {
+    const off = service.subscribe(() => { if (pending.current?.document !== service.getSnapshot().document) pending.current?.controller.abort(); });
+    return () => { off(); pending.current?.controller.abort(); pending.current = undefined; };
+  }, [service]);
+  useQuietRefresh('home-time', refresh, () => !!service.getSnapshot().document, {everyMs: 60000});
+  const refreshLive = useCallback(() => { void refresh().catch(bindings.effects.reportError); }, [refresh, bindings.effects.reportError]);
+  const [now, setNow] = useState(Date.now);
+  const document = snapshot.document;
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const update = () => {
+      if (timer) clearTimeout(timer);
+      if (globalThis.document.hidden) return;
+      const time = Date.now(); setNow(time);
+      if (document?.rows.some(row => row.live && !currentHomeLive(row.live, time))) refreshLive();
+      const deadline = document && homeLiveDeadline(document.rows, time);
+      if (deadline !== undefined) timer = setTimeout(() => {
+        setNow(Date.now()); refreshLive();
+      }, Math.min(60000, Math.max(1, deadline - time)));
+    };
+    update(); globalThis.document.addEventListener('visibilitychange', update);
+    window.addEventListener('resize', update);
+    return () => { if (timer) clearTimeout(timer); globalThis.document.removeEventListener('visibilitychange', update); window.removeEventListener('resize', update); };
+  }, [document, refreshLive]);
+  const width = useShellWidth(), [started] = useState(Date.now), [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (snapshot.document) return;
+    const timers = [300, 8000].map(delay => setTimeout(() => setElapsed(Date.now() - started), Math.max(0, delay - (Date.now() - started))));
+    return () => timers.forEach(clearTimeout);
+  }, [snapshot.document, started]);
+  if (!document && snapshot.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}} />;
+  if (!document) return <HomeSkeleton elapsedMs={elapsed} window={{width, height: window.innerHeight, scrollTop: window.scrollY}} />;
+  return <HomeView {...bindings} document={document} nowMs={now} refreshLive={refreshLive} onMore={rowId => { void service.more(rowId); }} />;
+}
+
+type Spotlight = Omit<ReturnType<typeof homeSpotlights>[number], 'reason'> & HeroCandidate & {causalReason: HomeReason; source: HomeSpotlight};
+export function HomeView({document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
+  const width = useShellWidth(), platform: LayoutPlatform = width >= 1024 ? 'desktop' : 'phone-web';
+  const heroPixels = Math.max(width, heroSpec.backdropWidth[platform === 'desktop' ? 'web' : 'phone']) * devicePixelRatio;
+  const hero = useVisible(), env = useMemo(() => ({t, locale: time.locale}), [time.locale]);
+  const candidates: Spotlight[] = useMemo(() => homeSpotlights(document, env).map((slide, index) => ({...slide, source: document.spotlight[index], causalReason: slide.reason, reason: serverTextLabel(defaultI18n, slide.reason.text)})), [document, env]);
+  useEffect(() => {
+    if (!hero.visible) return;
+    const cleanups = document.spotlight.map(selection.registerSpotlight);
+    return () => { for (const cleanup of cleanups) cleanup?.(); };
+  }, [document.spotlight, hero.visible, selection]);
+  const rows = document.rows.filter(row => !row.platforms || row.platforms.includes('web'));
+  const play = (entry: ContentEntry, resume: ContentEntry) => {
+    const target = homePlaybackTarget(entry, resume);
+    if (target) void effects.play(entry, resume).catch(effects.reportError);
+  };
+  return <div className={styles.home} data-home-document={document.viewerFence}>
+    {candidates.length > 0 && <div ref={hero.ref}><Hero<Spotlight> candidates={candidates} platform={platform} visible={hero.visible} reducedMotion={reducedMotion}
+      renderReason={slide => slide.reason}
+      renderMetadata={slide => <HeroFacts parts={slide.facts} platform={platform} />}
+      renderArtwork={(slide, context) => <AmbientArt source={artwork.ambient(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, {group: 'home-hero', order: context.index, priority: 'high'})}
+        foreground={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, heroPixels, 16 / 9, {group: 'home-hero', order: context.index, priority: 'high', large: true})}
+        treatment={platform === 'desktop' ? 'hero' : 'phone'} visible={context.visible} onReady={context.onReady} onError={context.onError} />}
+      renderThumbnail={(slide, context) => <Artwork source={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, 132 * devicePixelRatio, 16 / 9, {group: 'home-thumbnails', order: context.index})} alt="" visible={context.visible} />}
+      renderActions={slide => <>
+        {slide.primary && homePlaybackTarget(slide.entry, slide.primary.entry) && <Button variant="primary" size="hero" phone={platform !== 'desktop'} icon="i-play" onClick={() => play(slide.entry, slide.primary!.entry)}>{t(slide.primary.label.key, slide.primary.label.params)}</Button>}
+        {homeEntryCapabilities(slide.entry, {platform: 'web', playbackAvailable: true, queueAvailable: true}).watchlisted !== undefined && <Button variant="glass" size="hero" phone={platform !== 'desktop'} icon={slide.entry.watchlisted ? 'i-check' : 'i-plus'} aria-pressed={slide.entry.watchlisted === true}
+          aria-label={t(slide.entry.watchlisted ? 'next.home.removeMyList' : 'next.home.addMyList')}
+          onClick={() => { void effects.setMyList(slide.source).catch(effects.reportError); }}>{t('next.home.myList')}</Button>}
+      </>} /></div>}
+    {selection.toolbar}
+    <div className={styles.rows} data-with-hero={candidates.length > 0}>
+      {rows.map((row, index) => <HomeRowView key={row.id} row={row} rowIndex={index} platform={platform} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}
+        artwork={artwork} effects={effects} selection={selection} time={time} reducedMotion={reducedMotion} />)}
+    </div>
+  </div>;
+}
+
+type HomeRowProps = HomePresentation & {row: HomeRow; rowIndex: number; platform: LayoutPlatform; nowMs: number; onMore: () => void; refreshLive: () => void};
+function HomeRowView(props: HomeRowProps) {
+  const {row, rowIndex, selection, refreshLive} = props;
+  const interest = useVisible(), [range, setRange] = useState<readonly [number, number]>(props.row.collection ? [0, 0] : [-1, -1]);
+  const onRange = useCallback((first: number, last: number) => setRange(before => before[0] === first && before[1] === last ? before : [first, last]), []);
+  // Intersection can run after a suspended deadline timer. Use the actual clock
+  // before both registration and rendering, even when the supplied tick is old.
+  const nowMs = Date.now(), liveCurrent = !row.live || !!currentHomeLive(row.live, nowMs);
+  useEffect(() => {
+    if (!interest.visible) return;
+    if (!liveCurrent) { refreshLive(); return; }
+    return selection.registerWindow(row, rowIndex, range[0], range[1]);
+  }, [interest.visible, liveCurrent, refreshLive, selection, row, rowIndex, range]);
+  return <div ref={interest.ref}><HomeRowContents {...props} nowMs={props.row.live ? nowMs : props.nowMs} onRange={onRange} /></div>;
+}
+function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bindings}: HomeRowProps & {onRange: (first: number, last: number) => void}) {
+  const env = {t, locale: bindings.time.locale};
+  const header = {heading: serverTextLabel(defaultI18n, row.titleText, row.title), subtitle: serverTextLabel(defaultI18n, row.subtitleText), platform,
+    onSeeAll: row.seeAll ? () => bindings.effects.openSeeAll(row.seeAll!) : undefined};
+  const visibleRange = useCallback((first: number, last: number) => { onRange(first, last); if (row.nextCursor && last >= row.entries.length - 3) onMore(); }, [row.nextCursor, row.entries.length, onMore, onRange]);
+  const live = currentHomeLive(row.live, nowMs);
+  if (row.live) {
+    if (!live) return null;
+    const marks = channelMonograms({kind: 'authoritative', channels: live.channels.map(({channel}) => ({sourceId: channel.sourceId, id: channel.id, mark: channel.mark}))});
+    return <Shelf {...header} items={live.channels} getKey={value => JSON.stringify([value.channel.sourceId, value.channel.id])} reducedMotion={bindings.reducedMotion}
+      onVisibleRange={(first, last) => { onRange(first, last); if (row.nextCursor && last >= live.channels.length - 3) onMore(); }}
+      renderItem={(item, context) => <VisibleLive item={item} mark={marks.get(item.channel.sourceId)!.get(item.channel.id)!} nowMs={nowMs} order={rowIndex * 1000 + context.index} row={row} {...bindings} />} />;
+  }
+  if (row.collection) {
+    return <VisibleCollection row={row} rowIndex={rowIndex} {...bindings} />;
+  }
+  if (!row.entries.length) return null;
+  return <Shelf {...header} items={row.entries} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={visibleRange}
+    renderItem={(entry, context) => <VisibleCard entry={entry} row={row} rowIndex={rowIndex} index={context.index} platform={platform} {...bindings} />} />;
+}
+
+function VisibleCollection({row, rowIndex, artwork, effects, selection, time}: HomePresentation & {row: HomeRow; rowIndex: number}) {
+  const interest = useVisible(), collection = row.collection!;
+  const open = () => effects.openSeeAll({type: 'collection', resourceId: collection.collection.id, libraryId: collection.collection.libraryId});
+  return <div ref={interest.ref} className={styles.collection}><CollectionBanner model={{title: collection.collection.name, caption: homeCollectionCaption(collection, {t, locale: time.locale})}} kindLabel={t('next.home.collection')}
+    visible={interest.visible}
+    selection={selection.collection(row)}
+    artwork={artwork.foreground(collection.backdropUrl, 1312 * devicePixelRatio, 16 / 9, {order: rowIndex * 1000, group: row.id})}
+    ambient={artwork.ambient(collection.backdropUrl, {order: rowIndex * 1000, group: row.id})}
+    covers={collection.members.slice(0, 4).flatMap((entry, index) => { const art = artwork.foreground(entry.posterUrl, 50 * devicePixelRatio, 2 / 3, {order: rowIndex * 1000 + index, group: row.id}); return art ? [art] : []; })}
+    actionLabel={t('next.home.openCollection')} actionVariant="glass" onAction={open} onNavigate={open} /></div>;
+}
+
+function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, selection, time}: HomePresentation & {entry: ContentEntry; row: HomeRow; rowIndex: number; index: number; platform: LayoutPlatform}) {
+  const interest = useVisible(), wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
+  const width = wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118;
+  const resume = row.resumes?.find(value => value.entryId === entry.id)?.target ?? entry;
+  const target = homePlaybackTarget(entry, resume);
+  const model = homeCardModel(wide ? resume : entry, wide, {t, locale: time.locale});
+  const source = wide ? entry.backdropUrl ?? entry.posterUrl : entry.posterUrl;
+  const props = {model, visible: interest.visible, watched: entry.watched, isNew: entry.new,
+    artwork: artwork.foreground(source, width * devicePixelRatio, wide ? 16 / 9 : square ? 1 : 2 / 3, {order: rowIndex * 1000 + index, group: row.id}),
+    ambient: square ? artwork.ambient(source, {order: rowIndex * 1000 + index, group: row.id}) : undefined,
+    fallback: <GeneratedArt glyph={Array.from(entry.title.trim())[0] ?? ''} />,
+    onNavigate: () => effects.openEntry(entry),
+    onPlay: target ? () => { void effects.play(entry, resume).catch(effects.reportError); } : undefined,
+    selection: selection.card(row, entry),
+    onMore: selection.moreAvailable(entry) ? (anchor: HTMLButtonElement) => effects.openMore(row, entry, anchor) : undefined,
+    moreExpanded: selection.moreExpanded(row, entry)};
+  return <div ref={interest.ref}>{row.id === 'community_watching' && row.period ? <RankedCard {...props} rank={row.start + index + 1} /> : wide ? <WideCard {...props} /> : square ? <SquareCard {...props} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'} /> : <PosterCard {...props} />}</div>;
+}
+
+function VisibleLive({item, mark, nowMs, order, row, artwork, effects, time, selection}: HomePresentation & {item: HomeChannel; mark: Parameters<typeof LiveCard>[0]['channel']['mark']; nowMs: number; order: number; row: HomeRow}) {
+  const interest = useVisible(), {channel} = item;
+  const programme = channel.programmes.find(item => Date.parse(item.start) <= nowMs && nowMs < Date.parse(item.end));
+  const start = programme && Date.parse(programme.start), end = programme && Date.parse(programme.end);
+  const current = () => !!currentHomeLive(row.live, Date.now()) && !!selection.channel(row, item);
+  const play = () => { if (current()) void effects.playChannel(channel).catch(effects.reportError); };
+  const canPlay = homeChannelSelection(item, {platform: 'web', playbackAvailable: true, queueAvailable: true}).capabilities.play;
+  return <div ref={interest.ref}><LiveCard channel={{sourceId: channel.sourceId, id: channel.id, name: channel.name, number: channel.number, mark}}
+    programme={programme ? {title: programme.title, facts: programmeFactParts({startMs: start, endMs: end, subtitle: programme.subtitle, categories: programme.categories, rating: programme.rating?.value, flags: programme.flags, recording: programme.recordingState === 'recording'}, time, nowMs), progress: start !== undefined && end !== undefined && end > start ? (nowMs - start) / (end - start) : undefined, live: programme.flags?.live === true, isNew: programme.flags?.new === true, premiere: programme.flags?.premiere === true} : undefined}
+    visible={interest.visible} selection={selection.channel(row, item)} logo={artwork.foreground(channel.logoPath, 34 * devicePixelRatio, 1, {group: row.id, order})} onNavigate={canPlay ? play : () => { if (current()) effects.openSeeAll({type: 'guide', sourceId: channel.sourceId}); }} onPlay={canPlay ? play : undefined} /></div>;
+}

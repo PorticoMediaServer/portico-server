@@ -87,7 +87,7 @@ func (d Dependencies) episodeRoutes(mux *http.ServeMux) {
 			return
 		}
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		rows, next, err := d.Catalog.WithContext(r.Context()).Episodes(viewer, "", r.PathValue("id"), r.URL.Query().Get("cursor"), limit)
+		rows, next, err := d.Catalog.WithContext(r.Context()).Episodes(viewer, "", r.PathValue("id"), r.URL.Query().Get("cursor"), limit, r.URL.Query().Get("playState"))
 		if err != nil {
 			failure(w, err)
 			return
@@ -106,7 +106,7 @@ func (d Dependencies) episodeRoutes(mux *http.ServeMux) {
 			return
 		}
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		rows, next, err := d.Catalog.WithContext(r.Context()).Episodes(viewer, r.PathValue("id"), "", r.URL.Query().Get("cursor"), limit)
+		rows, next, err := d.Catalog.WithContext(r.Context()).Episodes(viewer, r.PathValue("id"), "", r.URL.Query().Get("cursor"), limit, r.URL.Query().Get("playState"))
 		if err != nil {
 			failure(w, err)
 			return

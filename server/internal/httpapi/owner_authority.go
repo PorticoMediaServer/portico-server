@@ -44,9 +44,6 @@ func (d Dependencies) ownerContext(ctx context.Context, r *http.Request) (identi
 	if err != nil {
 		return p, err
 	}
-	if err = d.Identity.CheckRecoveryRoute(ctx, p, d.privateSetupPeer(r)); err != nil {
-		return p, err
-	}
 	gated, err := dbwork.BeginSnapshot(ctx, d.DB)
 	if err != nil {
 		return p, err

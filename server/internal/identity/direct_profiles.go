@@ -61,6 +61,20 @@ func (s *Service) directSnapshotTx(ctx context.Context, tx *sql.Tx, c directCall
 	}
 	c.account.HostedAccountID = hosted.String
 	out := DirectSnapshot{Authority: "local", ServerID: s.ID(), Account: c.account, Profiles: []DirectProfile{}, CanManage: c.manage}
+	if c.familyID == "" && out.CanManage {
+		var protected bool
+		if e := tx.QueryRowContext(ctx, `SELECT pin_hash IS NOT NULL FROM direct_profiles WHERE id=? AND account_id=? AND deleted=0`, c.account.PrimaryProfileID, c.account.ID).Scan(&protected); e != nil {
+			return out, e
+		}
+		out.CanManage = !protected
+	}
+	if c.familyID != "" && out.CanManage {
+		var pinBlocked bool
+		if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM authorization_session_families f JOIN direct_profiles p ON p.id=? AND p.account_id=f.account_id WHERE f.id=? AND f.role='account' AND p.pin_hash IS NOT NULL)`, c.account.PrimaryProfileID, c.familyID).Scan(&pinBlocked); e != nil {
+			return out, e
+		}
+		out.CanManage = !pinBlocked
+	}
 	if hosted.Valid && c.account.Role == TierOwner {
 		var custodian sql.NullString
 		if e := tx.QueryRowContext(ctx, `SELECT custodian FROM hosted_membership_sync WHERE singleton=1`).Scan(&custodian); e != nil && !errors.Is(e, sql.ErrNoRows) {
@@ -91,6 +105,43 @@ func (s *Service) directSnapshotTx(ctx context.Context, tx *sql.Tx, c directCall
 	}
 	return out, rows.Err()
 }
+
+// profileManagerTx uses the existing primary-profile selection as the PIN proof.
+// An account-scoped sign-in may manage only when that profile has no PIN.
+func (s *Service) profileManagerTx(ctx context.Context, tx *sql.Tx, bearer string) (directCaller, error) {
+	c, e := s.directCallerTx(ctx, tx, bearer, true)
+	if e != nil {
+		return c, e
+	}
+	var role string
+	var protected bool
+	e = tx.QueryRowContext(ctx, `SELECT f.role,p.pin_hash IS NOT NULL FROM authorization_session_families f JOIN direct_profiles p ON p.id=? AND p.account_id=f.account_id WHERE f.id=?`, c.account.PrimaryProfileID, c.familyID).Scan(&role, &protected)
+	if e != nil {
+		return c, e
+	}
+	if role == "account" && protected {
+		return c, ErrForbidden
+	}
+	return c, nil
+}
+
+// ProfilePINError carries the actual next permitted attempt, preserving the error identity.
+type ProfilePINError struct {
+	Locked            bool
+	RetryAfterSeconds int64
+}
+
+func (e *ProfilePINError) Error() string { return e.Unwrap().Error() }
+func (e *ProfilePINError) Unwrap() error {
+	if e.Locked {
+		return ErrProfileLocked
+	}
+	return ErrProfilePIN
+}
+func pinWait(locked, now int64) *ProfilePINError {
+	return &ProfilePINError{Locked: true, RetryAfterSeconds: max(int64(1), (locked-now+999)/1000)}
+}
+
 func (s *Service) CreateDirectProfile(ctx context.Context, bearer, name, art string) (DirectSnapshot, error) {
 	name = strings.TrimSpace(name)
 	if art == "" {
@@ -105,7 +156,7 @@ func (s *Service) CreateDirectProfile(ctx context.Context, bearer, name, art str
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
-	c, e := s.directCallerTx(ctx, tx, bearer, true)
+	c, e := s.profileManagerTx(ctx, tx, bearer)
 	if e != nil {
 		return DirectSnapshot{}, e
 	}
@@ -157,7 +208,7 @@ func (s *Service) EditDirectProfile(ctx context.Context, bearer, id string, q Di
 	}
 	tx := gated2.Tx()
 	defer gated2.Rollback()
-	c, e := s.directCallerTx(ctx, tx, bearer, true)
+	c, e := s.profileManagerTx(ctx, tx, bearer)
 	if e != nil {
 		return DirectSnapshot{}, e
 	}
@@ -238,7 +289,7 @@ func (s *Service) OrderDirectProfiles(ctx context.Context, bearer string, order 
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
-	c, e := s.directCallerTx(ctx, tx, bearer, true)
+	c, e := s.profileManagerTx(ctx, tx, bearer)
 	if e != nil {
 		return DirectSnapshot{}, e
 	}
@@ -345,7 +396,7 @@ func (s *Service) proveProfilePIN(ctx context.Context, bearer, id string, q Dire
 	}
 	if nowMS-lastFailed <= int64((24*time.Hour)/time.Millisecond) && locked > nowMS {
 		gated.Rollback()
-		return proof, ErrProfileLocked
+		return proof, pinWait(locked, nowMS)
 	}
 	gated.Rollback()
 	proof.checked = true
@@ -364,7 +415,6 @@ func (s *Service) SelectDirectProfile(ctx context.Context, bearer, id string, q 
 	return s.SelectDirectProfileFrom(ctx, bearer, id, q, true)
 }
 func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string, q DirectSelection, private bool) (DirectSelectionResult, error) {
-	ctx = WithRecoveryLocality(ctx, private)
 	out := DirectSelectionResult{}
 	if !validFamilyID(id) || len(q.PIN) > 4 || len(q.TrustToken) > 128 || len(q.InstallationID) > 128 || q.Trust && !validFamilyID(q.InstallationID) {
 		return out, ErrDirectInput
@@ -415,7 +465,7 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 			locked = 0
 		}
 		if locked > nowMS {
-			return out, ErrProfileLocked
+			return out, pinWait(locked, nowMS)
 		}
 		// The proof was made against the PIN as it was a moment ago. If the PIN
 		// has been changed, removed or set since, nothing was proved about the
@@ -444,7 +494,7 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 			if e = gated4.Commit(); e != nil {
 				return out, e
 			}
-			return out, ErrProfilePIN
+			return out, &ProfilePINError{RetryAfterSeconds: delay}
 		}
 		if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_pin_attempts WHERE profile_id=? AND device_id=?`, id, c.deviceID); e != nil {
 			return out, e
@@ -453,9 +503,6 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 	role := c.account.Role
 	if primary == 0 {
 		role = "member"
-	}
-	if e = s.recoveryAllowedTx(ctx, tx, c.account.ID, c.familyID, private); e != nil {
-		return out, e
 	}
 	// Choosing a profile continues the sign-in this device already holds; the
 	// remote sign-in policy judged that sign-in when it was made.
@@ -486,7 +533,7 @@ func (s *Service) RevokeDirectTrust(ctx context.Context, bearer, profile, instal
 	}
 	tx := gated5.Tx()
 	defer gated5.Rollback()
-	c, e := s.directCallerTx(ctx, tx, bearer, true)
+	c, e := s.profileManagerTx(ctx, tx, bearer)
 	if e != nil {
 		return e
 	}
@@ -521,7 +568,7 @@ func (s *Service) PreviewDirectProfileDeletion(ctx context.Context, bearer, id s
 	}
 	tx := gated6.Tx()
 	defer gated6.Rollback()
-	c, e := s.directCallerTx(ctx, tx, bearer, true)
+	c, e := s.profileManagerTx(ctx, tx, bearer)
 	if e != nil {
 		return ProfileDeletionPreview{}, e
 	}
@@ -537,7 +584,7 @@ func (s *Service) DeleteDirectProfile(ctx context.Context, bearer, id string, ex
 	}
 	tx := gated7.Tx()
 	defer gated7.Rollback()
-	c, e := s.directCallerTx(ctx, tx, bearer, true)
+	c, e := s.profileManagerTx(ctx, tx, bearer)
 	if e != nil {
 		return e
 	}
