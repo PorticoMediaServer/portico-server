@@ -5,7 +5,7 @@ import {captureQueueSource, type WebPlaybackQueueSource} from '../src/platform/p
 test('browse capture preserves the exact Home query and sort without retaining mutable caller objects', () => {
   const input = {query: {libraryId: '*', pivot: 'titles', query: {all: [
     {field: 'homeRow', operator: 'equals' as const, value: 'row_current'},
-    {field: 'year', operator: 'greaterOrEqual' as const, value: 2020},
+    {field: 'year', operator: 'at-least' as const, value: 2020},
   ]}, sort: [{field: 'random', direction: 'asc' as const, seed: 912}, {field: 'title', direction: 'desc' as const}]}};
   const expected = structuredClone(input), captured = captureQueueSource(input);
   input.query.query.all.reverse();input.query.sort[0]!.seed = 1;
