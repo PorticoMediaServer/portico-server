@@ -87,7 +87,8 @@ func (s *Service) CanMakeEpisodeThumbnailTx(ctx context.Context, tx *sql.Tx, tar
 }
 
 func (s *Service) episodeThumbnailVideoTx(ctx context.Context, tx *sql.Tx, target RepairTarget) (EpisodeThumbnailTarget, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT cl.library_id,s.id,o.id,o.revision FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id JOIN inventory_objects o ON o.asset_id=a.token JOIN library_sources s ON s.id=o.source_id WHERE e.public_id=pid_blob(?) AND e.kind=4 AND a.available=1 AND a.video_codec<>'' AND s.library_id=cl.library_id AND s.enabled=1 AND s.identity_confirmed=1 AND o.retired=0 AND o.state='available' AND o.root_incarnation=s.incarnation ORDER BY l.part_index,a.token,s.id`, target.ID)
+	// Keep the indexed inventory lookup after the selected episode's assets.
+	rows, err := tx.QueryContext(ctx, `SELECT cl.library_id,s.id,o.id,o.revision FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id CROSS JOIN inventory_objects o ON o.asset_id=a.token JOIN library_sources s ON s.id=o.source_id WHERE e.public_id=pid_blob(?) AND e.kind=4 AND a.available=1 AND a.video_codec<>'' AND s.library_id=cl.library_id AND s.enabled=1 AND s.identity_confirmed=1 AND o.retired=0 AND o.state='available' AND o.root_incarnation=s.incarnation ORDER BY l.part_index,a.token,s.id`, target.ID)
 	if err != nil {
 		return EpisodeThumbnailTarget{}, err
 	}

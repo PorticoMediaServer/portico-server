@@ -58,8 +58,10 @@ func captureEpisodeThumbnailTx(ctx context.Context, tx *sql.Tx, target RepairTar
 	}
 	var duration, start, end float64
 	var detail string
+	// Resolve this episode's assets before their indexed inventory lookups.
+	// Reversing that join can scan every inventory object for one capture.
 	err = tx.QueryRowContext(ctx, `SELECT s.id,o.id,o.revision,a.token,s.incarnation,s.root_identity,s.generation,a.duration,l.start_seconds,COALESCE(l.end_seconds,a.duration),COALESCE((SELECT st.detail_json FROM asset_streams st WHERE st.asset_id=a.id AND st.type='video' ORDER BY st.stream_index LIMIT 1),'')
- FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN inventory_objects o ON o.asset_id=a.token JOIN library_sources s ON s.id=o.source_id
+ FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id CROSS JOIN inventory_objects o ON o.asset_id=a.token JOIN library_sources s ON s.id=o.source_id
  WHERE l.entity_id=? AND s.library_id=? AND a.available=1 AND a.video_codec<>'' AND s.enabled=1 AND s.identity_confirmed=1 AND o.retired=0 AND o.state='available' AND o.root_incarnation=s.incarnation
  AND (?='' OR s.id=?) AND (?='' OR o.id=?) AND (?='' OR o.revision=?)
  AND NOT EXISTS(SELECT 1 FROM episode_asset_boundaries b WHERE b.item_id=l.entity_id AND b.asset_id=a.token AND b.status='unknown_multi_episode')
