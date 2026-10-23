@@ -34,8 +34,18 @@ try {
   const origin = `http://127.0.0.1:${server.address().port}`;
   browser = await chromium.launch({executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? '/usr/bin/chromium', headless: true,
     args: ['--no-sandbox', '--disable-dev-shm-usage']});
-  for (const path of ['/', '/sign-in']) {
+  for (const [path, blockedFirstTransition] of [['/', false], ['/sign-in', false], ['/', true]]) {
     const context = await browser.newContext(), page = await context.newPage(), errors = [];
+    if (blockedFirstTransition) await page.addInitScript(() => {
+      const native = document.startViewTransition.bind(document);
+      document.startViewTransition = update => {
+        if (document.getElementById('portico-content')) return native(update);
+        // A native snapshot cannot be a prerequisite for the first routed DOM.
+        // This reproduces the observed stage boundary without touching auth.
+        const pending = new Promise(() => {});
+        return {ready: pending, updateCallbackDone: pending, finished: pending, skipTransition() {}};
+      };
+    });
     page.on('pageerror', error => {errors.push(error.message);});
     await page.goto(origin + path, {waitUntil: 'networkidle'});
     let mounted = true;
@@ -56,7 +66,7 @@ try {
           matches: router.state.matches.map(value => ({routeId: value.routeId, status: value.status})),
           pending: router.state.pendingMatches?.length ?? 0, transaction: !!router._tx}};
     });
-    console.log(JSON.stringify({case: path, mounted, observed, errors}));
+    console.log(JSON.stringify({case: path, blockedFirstTransition, mounted, observed, errors}));
     await context.close();
     assert.equal(mounted, true, 'production App must mount routed content before any account/API result');
     assert.deepEqual(errors, []);
