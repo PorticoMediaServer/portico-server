@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,7 +16,7 @@ import (
 	"portico.local/server/internal/storage"
 )
 
-func nativeSaveFixture(t *testing.T) (observationFixture, *mounts.Service, *identity.Service, identity.Principal, string) {
+func nativeSaveFixture(t *testing.T) (observationFixture, *mounts.Service, *identity.Service, identity.Principal, string, string) {
 	t.Helper()
 	f := newObservationFixture(t)
 	identities, owner, family := observationOwner(t, f)
@@ -22,13 +24,29 @@ func nativeSaveFixture(t *testing.T) (observationFixture, *mounts.Service, *iden
 	if err != nil {
 		t.Fatal(err)
 	}
+	source, err := os.Open(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary = filepath.Join(t.TempDir(), "native-helper-fixture")
+	target, err := os.OpenFile(binary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0700)
+	if err != nil {
+		source.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := io.Copy(target, source)
+	source.Close()
+	closeErr := target.Close()
+	if copyErr != nil || closeErr != nil {
+		t.Fatal(copyErr, closeErr)
+	}
 	managed, err := mounts.New(f.s.db, t.TempDir(), "", binary, storage.New(binary))
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.s.mounts = managed
 	managed.NativeSourceCandidate = f.s.nativeSourceCandidate
-	return f, managed, identities, owner, family
+	return f, managed, identities, owner, family, binary
 }
 
 func nativeSaveOperation(n int) string {
@@ -42,9 +60,8 @@ func TestNativeSavePublishesOnlyWithCurrentOwnerAndConfigReceipt(t *testing.T) {
 	for _, backend := range []string{"sftp", "smb"} {
 		t.Run(backend, func(t *testing.T) {
 			ctx := context.Background()
-			f, managed, identities, owner, family := nativeSaveFixture(t)
+			f, managed, identities, owner, family, binary := nativeSaveFixture(t)
 			authorize := func(tx *sql.Tx) error { return currentLocalOwnerTx(ctx, tx, identities, owner) }
-			binary, _ := os.Executable()
 			config := func(host string) string { return "[native]\ntype=" + backend + "\nhost=" + host + "\nport=2222\n" }
 			command := mounts.Command{OperationID: nativeSaveOperation(1), Action: "create", Name: "NAS", Executable: binary, Remote: "native:/media", Config: config("192.168.42.7")}
 			receipt, err := managed.Command(ctx, "actual-owner-fixture", "", command, authorize)
@@ -101,7 +118,7 @@ func TestNativeSavePublishesOnlyWithCurrentOwnerAndConfigReceipt(t *testing.T) {
 
 func TestNativeSaveSourceAndReceiptRollBackTogether(t *testing.T) {
 	ctx := context.Background()
-	f, managed, identities, owner, _ := nativeSaveFixture(t)
+	f, managed, identities, owner, _, binary := nativeSaveFixture(t)
 	authorize := func(tx *sql.Tx) error { return currentLocalOwnerTx(ctx, tx, identities, owner) }
 	denied := errors.New("publication aborted after source write")
 	actual := managed.NativeSourceCandidate
@@ -119,7 +136,6 @@ func TestNativeSaveSourceAndReceiptRollBackTogether(t *testing.T) {
 		}
 		return publication, nil
 	}
-	binary, _ := os.Executable()
 	command := mounts.Command{OperationID: nativeSaveOperation(10), Action: "create", Name: "NAS", Executable: binary, Remote: "native:/", Config: "[native]\ntype=smb\nhost=192.168.42.7\n"}
 	if _, err := managed.Command(ctx, "actual-owner-fixture", "", command, authorize); !errors.Is(err, denied) {
 		t.Fatal("source publication error was hidden", err)
