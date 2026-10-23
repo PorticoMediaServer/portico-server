@@ -1,6 +1,7 @@
 import {invoke} from '@tauri-apps/api/core';
+import type {WindowChromeState} from '../../../web-next/src/platform/window-chrome.ts';
 
-export type WindowChromeHostState = Readonly<{surface:'pages'|'video'|'music';controlsVisible:boolean;fullscreen:boolean;scrolled?:boolean}>;
+export type WindowChromeHostState = WindowChromeState;
 export type CaptionNames = Readonly<{minimize:string;maximize:string;restore:string;close:string}>;
 export type WindowSnapshot = Readonly<{os:'macos'|'windows'|'linux';fullscreen:boolean;maximized:boolean;focused:boolean;captions:CaptionNames|null;captionHover:0|1|2|3}>;
 export type CaptionRect = Readonly<{x:number;y:number;width:number;height:number}>;
