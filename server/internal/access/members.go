@@ -44,15 +44,18 @@ type Member struct {
 
 type MemberPage struct {
 	Page
-	Items []Member `json:"items"`
+	Items        []MemberRow `json:"items"`
+	TotalCount   int         `json:"totalCount"`
+	MatchedCount int         `json:"matchedCount"`
 }
 
 // Members lists accounts newest username first by page. The caller's own tier is
 // passed in so the list can mark which rows that caller may manage, which keeps
 // the tier rule in identity.ManagesTier rather than in a client.
 type MemberQuery struct {
-	Cursor string
-	Limit  string
+	Search, Role, Status, Sort, Direction string
+	Cursor                                string
+	Limit                                 string
 }
 
 const memberColumns = `a.id,a.username,a.profile_id,m.role,m.disabled,m.disabled_ms,m.disabled_reason,m.revision,m.allowed_libraries,
@@ -107,38 +110,6 @@ func (s *Store) Member(ctx context.Context, auth Authorize, account string) (out
 		out, e = scanMember(tx.QueryRowContext(ctx, `SELECT `+memberColumns+` FROM `+memberTables+` WHERE a.id=?`, account))
 		return e
 	})
-	return
-}
-
-func (s *Store) Members(ctx context.Context, auth Authorize, q MemberQuery) (out MemberPage, err error) {
-	limit, err := pageLimit(q.Limit)
-	if err != nil {
-		return out, err
-	}
-	_, after, err := decodeCursor(q.Cursor)
-	if err != nil {
-		return out, err
-	}
-	out.Limit, out.Items = limit, []Member{}
-	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		rows, e := tx.QueryContext(ctx, `SELECT `+memberColumns+` FROM `+memberTables+` WHERE a.id>? ORDER BY a.id LIMIT ?`, after, limit+1)
-		if e != nil {
-			return e
-		}
-		defer rows.Close()
-		for rows.Next() {
-			m, e := scanMember(rows)
-			if e != nil {
-				return e
-			}
-			out.Items = append(out.Items, m)
-		}
-		return rows.Err()
-	})
-	if err == nil && len(out.Items) > limit {
-		out.Items = out.Items[:limit]
-		out.NextCursor = encodeCursor(0, out.Items[limit-1].AccountID)
-	}
 	return
 }
 

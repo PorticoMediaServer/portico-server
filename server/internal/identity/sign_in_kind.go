@@ -93,3 +93,7 @@ func (s *Service) RequireMainProfileTx(ctx context.Context, tx *sql.Tx, p Princi
 	}
 	return nil
 }
+
+func (s *Service) RevokeMemberSessionsTx(ctx context.Context, tx *sql.Tx, account string) error {
+	return s.revokeCredentialsWithReasonTx(ctx, tx, account, RevokedMembershipRemoved)
+}

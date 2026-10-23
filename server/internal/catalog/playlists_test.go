@@ -320,7 +320,7 @@ func TestPlaylistDirectoryCursorAndCandidateBounds(t *testing.T) {
 	if _, e = s.PlaylistDirectory(r, a); e != nil {
 		t.Fatal("directory cursor did not survive mutation", e)
 	}
-	_, e = db.Exec(`INSERT INTO accounts VALUES('u1','private1',x'00','candidate1',1),('u2','private2',x'00','candidate2',1)`)
+	_, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('u1','private1',x'00','candidate1',1),('u2','private2',x'00','candidate2',1)`)
 	if e != nil {
 		t.Fatal(e)
 	}
