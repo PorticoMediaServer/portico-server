@@ -85,6 +85,8 @@ func enrichAdminFacts(ctx context.Context, tx *sql.Tx, s *Service, items []Admin
 			}
 			if f.asset != "" {
 				var version Version
+				// Delegate selected-source facts to the canonical streams reader;
+				// never infer breadth from titles or detail JSON in this projection.
 				if e = s.streams(ctx, tx, f.asset, &version); e != nil {
 					return e
 				}
