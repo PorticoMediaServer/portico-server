@@ -38,11 +38,12 @@ try {
     const context = await browser.newContext(), page = await context.newPage(), errors = [];
     if (blockedFirstTransition) await page.addInitScript(() => {
       const native = document.startViewTransition.bind(document);
+      window.__startupMotion = {blocked: 0, native: 0};
       document.startViewTransition = update => {
-        if (document.getElementById('portico-content')) return native(update);
+        if (document.getElementById('portico-content')) {window.__startupMotion.native++;return native(update);}
         // A native snapshot cannot be a prerequisite for the first routed DOM.
         // This reproduces the observed stage boundary without touching auth.
-        const pending = new Promise(() => {});
+        window.__startupMotion.blocked++;const pending = new Promise(() => {});
         return {ready: pending, updateCallbackDone: pending, finished: pending, skipTransition() {}};
       };
     });
@@ -61,6 +62,7 @@ try {
         pending.push(fiber.child, fiber.sibling, fiber.alternate);
       }
       return {path: location.pathname, content: !!document.getElementById('portico-content'), forms: document.forms.length,
+        motion: window.__startupMotion,
         rootChildren: [...(root?.children ?? [])].map(element => element.tagName),
         router: router && {isServer: router.isServer, status: router.state.status, isLoading: router.state.isLoading,
           matches: router.state.matches.map(value => ({routeId: value.routeId, status: value.status})),
@@ -69,6 +71,10 @@ try {
     console.log(JSON.stringify({case: path, blockedFirstTransition, mounted, observed, errors}));
     await context.close();
     assert.equal(mounted, true, 'production App must mount routed content before any account/API result');
+    if (blockedFirstTransition) {
+      assert.equal(observed.motion.blocked, 0, 'first paint never requests an unavailable native snapshot');
+      assert.ok(observed.motion.native > 0, 'the real signed-out redirect still uses native motion after first paint');
+    }
     assert.deepEqual(errors, []);
   }
 } finally {
