@@ -17,7 +17,9 @@ import {browserServerDisplay} from '../platform/server-display';
 import {parseServerSignIn,signInLabelKey} from '@core/sign-in.ts';
 import {defaultI18n} from '@i18n';
 import {browserAppSessionActions,signOutBrowserPorticoAccount,type BrowserAppSessionActions} from '../platform/app-sessions';
-import {browserConnectionEnvironment, restoreBrowserConnection, trackBrowserConnection, forgetBrowserConnection} from '../platform/server-connections';
+import {browserConnectionEnvironment, restoreBrowserConnection, trackBrowserConnection, forgetBrowserConnection, observeBrowserSessionChanges} from '../platform/server-connections';
+import {watchViewerSelection} from '../platform/viewer-selection-events';
+import {savedConnectionDamaged} from '@core/server-connections.ts';
 import {browserEventStream, browserFeedEnvironment} from '../platform/event-feed';
 import {freshnessFor, type FreshnessRuntime} from '../platform/freshness';
 import {authenticatedArtwork, type ShellArtwork} from './artwork';
@@ -89,6 +91,7 @@ export class ShellBootstrap {
     selected: Pick<typeof browserViewerStorage, 'read'>;
     restore: typeof restoreBrowserConnection;
     actions?: () => BrowserAppSessionActions;
+    observeSelection?: (changed:()=>void)=>()=>void;
   } = {selected: browserViewerStorage, restore: restoreBrowserConnection}) {}
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -132,6 +135,11 @@ export class ShellBootstrap {
     const cleanups: (() => void)[] = [];
     const close = () => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); };
     this.retire = close;
+    if(this.environment.observeSelection||typeof window!=='undefined')cleanups.push(watchViewerSelection({
+      subscribe:this.environment.observeSelection??observeBrowserSessionChanges,read:()=>this.environment.selected.read(),
+      current:()=>session,same:sameShellAuthority,changed:()=>{if(isCurrent())this.restart();},
+      failed:error=>{if(isCurrent()&&savedConnectionDamaged(error)){this.fence();this.publish({phase:'error',error});}},
+    }));
     let signingOut = false;
     cleanups.push(() => { if (!signingOut) api.getRouteConnection()?.dispose(); });
     const signOut = () => {

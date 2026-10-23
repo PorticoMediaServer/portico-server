@@ -9,12 +9,13 @@ import styles from './accounts.module.css';
 
 const t = defaultI18n.t;
 /** The public auth surface has colour only. It never accepts library artwork. */
-export function AuthStage({children, shape = 'side', layout = 'column', service = false, topRight, legal = true, className, contentClassName}: {
-  children: ReactNode; shape?: 'side' | 'round' | 'top'; layout?: 'column' | 'center'; service?: boolean; topRight?: ReactNode; legal?: boolean;
+export function AuthStage({children, shape = 'side', phoneShape, layout = 'column', service = false, topRight, legal = true, className, contentClassName}: {
+  children: ReactNode; shape?: 'side' | 'round' | 'top'; phoneShape?: 'side' | 'round' | 'top'; layout?: 'column' | 'center'; service?: boolean; topRight?: ReactNode; legal?: boolean;
   className?: string; contentClassName?: string;
 }) {
-  return <section className={[styles.stage, className].filter(Boolean).join(' ')} data-layout={layout}>
-    <ColourBackdrop shape={shape} />
+  return <section className={[styles.stage, phoneShape && styles.hasPhoneBackdrop, className].filter(Boolean).join(' ')} data-layout={layout}>
+    <ColourBackdrop shape={shape} className={styles.standardBackdrop} />
+    {phoneShape && <ColourBackdrop shape={phoneShape} className={styles.phoneBackdrop} />}
     <header className={styles.brand}><img src={wordmark} alt={t('accounts.brand')} />{service && <span>{t('next.shell.account')}</span>}</header>
     {topRight && <div className={styles.topRight}>{topRight}</div>}
     <div className={[styles.content, contentClassName].filter(Boolean).join(' ')} data-auth-content>{children}</div>

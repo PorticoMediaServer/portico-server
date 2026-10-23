@@ -80,11 +80,10 @@ function person(covers: boolean, initials = covers ? 'JR' : 'MF', size = covers 
 function mosaic(count: number): ComponentType { return function MosaicCase() { const refs = useReferenceArt(); return <Stage><CoverMosaic className={styles.mosaic} covers={[refs.afterHours, refs.ram, refs.hit, refs.damn].slice(0, count)} alt={t('next.artwork.case.mosaic')} /></Stage>; }; }
 function channel(mode: 'monogram' | 'logo' | 'error'): ComponentType { return function ChannelCase() { const refs = useReferenceArt(), evidence = useArtworkEvidence(); return <Stage><ChannelMark mark={{sourceId: 'reference-lineup', id: 'northwind-news-24', text: 'N24', seed: 'reference-lineup:northwind-news-24'}} source={mode === 'error' ? evidence?.failedLogo ?? refs.nonImage : mode === 'logo' ? evidence?.logo ?? refs.referenceLogo : undefined} tint={referenceArtworkColors.channel} alt={t('next.artwork.case.channel')} /></Stage>; }; }
 const profiles: readonly ProfilePickerProfile[] = [
-  {id: 'demo', name: fixture('next.artwork.fixture.demo'), eligible: true, art: 'blue', primary: true},
-  {id: 'alex', name: fixture('next.artwork.fixture.alex'), eligible: true, art: 'violet', pinRequired: true},
-  {id: 'kids', name: fixture('next.artwork.fixture.kids'), eligible: true, art: 'mint'},
-  {id: 'sam', name: fixture('next.artwork.fixture.sam'), eligible: false, art: 'coral', unavailableReason: 'server_restriction'},
-  {id: 'jules', name: fixture('next.artwork.fixture.jules'), eligible: false, art: 'gold', unavailableReason: 'membership_required'},
+  {id: 'demo', name: fixture('next.artwork.fixture.demo'), art: 'blue', primary: true},
+  {id: 'alex', name: fixture('next.artwork.fixture.alex'), art: 'violet', pinRequired: true},
+  {id: 'kids', name: fixture('next.artwork.fixture.kids'), art: 'mint'},
+  {id: 'sam', name: fixture('next.artwork.fixture.sam'), art: 'coral'},
 ];
 function picker(layout: 'desktop' | 'phone' | 'tv'): ComponentType {
   return function PickerCase() {

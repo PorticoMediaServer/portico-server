@@ -2,6 +2,7 @@
    Browser chrome belongs to the browser and is excluded from content comparisons. */
 .stage { position: relative; isolation: isolate; min-height: 100svh; overflow: hidden; background: var(--color-ink); }
 .stage, .stage button, .stage input { font-family: var(--font); }
+.phoneBackdrop, .phoneFace, .phonePINHeading, .phonePINLabel, .phoneProfileBack { display: none; }
 .brand { position: absolute; z-index: 1; left: 64px; top: 30px; display: flex; align-items: center; gap: 14px; }
 .brand img { display: block; height: 20px; width: auto; }
 .brand span { padding-left: 14px; border-left: 1.5px solid var(--color-line-strong); color: var(--color-text-secondary); font-size: 16px; font-weight: 700; line-height: 20px; }
@@ -32,6 +33,7 @@
 .stage[data-layout="center"] .content { align-items: center; text-align: center; margin: 0; width: 100%; }
 .pickerTitle { position: relative; font-size: 64px !important; line-height: normal !important; margin: 0 0 56px !important; }
 .pin { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.desktopFace > span { font-size: 58px; }
 .pin > p { font-size: 17px; color: var(--color-text-secondary); margin: 0 0 30px; line-height: normal; }
 .pin .codeError { margin: 14px 0 0; font-size: 15px; line-height: 1.45; }
 .codeGroup { display: flex; flex-direction: column; align-items: center; }
@@ -64,6 +66,8 @@
 .recovery > label { color: var(--color-text-secondary); font-size: 13px; font-weight: 700; }
 .recovery .recoveryQuiet { font-size: 13px; color: var(--color-text-tertiary); text-align: center; }
 @media (max-width: 700px) {
+  .hasPhoneBackdrop .standardBackdrop { display: none; }
+  .phoneBackdrop { display: block; }
   .brand { left: 22px; top: 36px; }
   .brand img { height: 22px; }
   .content { width: auto; min-height: 100svh; margin: 0; padding: 126px 22px 100px; justify-content: flex-start; }
@@ -75,4 +79,20 @@
   .pickerTitle { font-size: 32px !important; text-align: left; margin-bottom: 26px !important; }
   .pin .codeBoxes > span { width: 62px; height: 70px; }
   .serverContext { display: none; }
+  .profilesStage .brand, .profilesStage .topRight, .pinStage .brand, .pinStage .topRight { display: none; }
+  .profilesStage[data-layout="center"] .content { align-items: stretch; text-align: left; padding: 106px 22px 0; }
+  .profilesStage .pickerTitle { margin: 0 0 32px !important; text-wrap: wrap; }
+  .profilesStage .content button > b { letter-spacing: normal; }
+  .pinStage[data-layout="center"] .content { padding: 104px 22px 0; justify-content: flex-start; }
+  .pinStage .phoneFace, .pinStage .phonePINHeading, .pinStage .phonePINLabel { display: block; }
+  .pinStage .desktopFace, .pinStage .desktopPINHeading, .pinStage .remember { display: none; }
+  .pinStage .phoneFace > span { font-size: 34px; }
+  .pinStage h1.phonePINHeading { margin: 18px 0 4px; font-size: 26px; line-height: normal; font-weight: 800; letter-spacing: -.03em; }
+  .pinStage p.phonePINHeading { font-size: 15px; margin: 0 0 22px; }
+  .pinStage .phonePINLabel { font-size: 13px; font-weight: 700; color: var(--color-text-secondary); margin: 0 0 10px; }
+  .pinStage .pin .codeBoxes > span { width: 56px; height: 62px; }
+  .pinStage .pinActions { margin-top: 16px; }
+  .pinStage .pinActions button:first-child { display: none; }
+  .pinStage .pinActions button:last-child { padding: 0; height: auto; font-size: 15px; }
+  .pinStage .phoneProfileBack { position: absolute; z-index: 2; top: 50px; left: 8px; display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 6px 0 0; border: 0; background: none; color: var(--color-text-secondary); font-size: 16px; font-weight: 600; }
 }

@@ -14,12 +14,16 @@ export async function checkAccountSurfaces(page, origin) {
   await page.setViewportSize({width: 1440, height: 900});
   await open('13');
   assert.equal(await page.getByRole('heading', {name: 'Who’s watching on Portico demo?', exact: true}).count(), 1);
-  assert.equal(await page.getByRole('button', {name: 'Sam Restricted', exact: true}).isDisabled(), true);
+  assert.equal(await page.getByRole('button', {name: 'Sam', exact: true}).isEnabled(), true);
+  assert.equal(await page.getByText('Restricted', {exact: true}).count(), 0);
   assert.equal(await page.getByRole('button', {name: /Manage profiles|Add profile|Not shared/}).count(), 0);
   assert.equal(await page.getByRole('button', {name: 'Alex Protected by a PIN', exact: true}).evaluate(e => e === document.activeElement), true);
   await page.keyboard.press('Tab');
   assert.equal(await page.getByRole('button', {name: 'Kids', exact: true}).evaluate(e => e === document.activeElement), true);
   await page.keyboard.press('Enter'); assert.deepEqual(await action(), {kind: 'profile', value: 'kids'});
+  await page.keyboard.press('Tab');
+  assert.equal(await page.getByRole('button', {name: 'Sam', exact: true}).evaluate(e => e === document.activeElement), true);
+  await page.keyboard.press('Enter'); assert.deepEqual(await action(), {kind: 'profile', value: 'sam'});
 
   await open('14');
   const pin = page.getByRole('textbox', {name: 'Four-digit PIN', exact: true});

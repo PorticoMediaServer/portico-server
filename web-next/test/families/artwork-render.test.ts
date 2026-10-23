@@ -44,10 +44,10 @@ test('ProfileFace uses the canonical semantic base unless the caller explicitly 
   assert.equal(profileArtColors.gold, '#796120');
 });
 
-test('picker tint mapping receives original profiles and leaves unmapped semantic colours and eligibility intact', () => {
+test('picker preserves supplied profiles and colours without retired selection eligibility', () => {
   const profiles = Object.freeze([
-    Object.freeze({id: 'reference-main', name: 'Reference main', eligible: true, art: 'blue', primary: true}),
-    Object.freeze({id: 'reference-unshared', name: 'Reference unshared', eligible: false, art: 'gold', unavailableReason: 'membership_required' as const}),
+    Object.freeze({id: 'reference-main', name: 'Reference main', art: 'blue', primary: true}),
+    Object.freeze({id: 'reference-other', name: 'Reference other', art: 'gold'}),
   ]);
   const seen: unknown[] = [];
   const html = renderToStaticMarkup(createElement(ProfilePicker, {profiles, onSelect() {}, getProfileTint: profile => { seen.push(profile); return profile.id === 'reference-main' ? '#2f86bb' : undefined; }}));
@@ -55,8 +55,7 @@ test('picker tint mapping receives original profiles and leaves unmapped semanti
   assert.equal(seen[1], profiles[1]);
   assert.match(html, /--profile-colour:#2f86bb/);
   assert.match(html, /--profile-colour:#796120/);
-  assert.match(html, /disabled=""/);
-  assert.match(html, /Not shared/);
+  assert.doesNotMatch(html, /disabled=|Restricted|Not shared/);
   assert.deepEqual(profiles.map(profile => profile.art), ['blue', 'gold']);
 });
 

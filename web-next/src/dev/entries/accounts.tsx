@@ -9,10 +9,10 @@ import '../../bootstrap.css';
 // Drawn demo facts exist only in this DEV specimen, never in runtime adapters.
 if (!import.meta.env.DEV) throw new Error('Account specimens require development.');
 const profiles = [
-  {id: 'demo', name: 'Demo', eligible: true, primary: true, art: 'blue'},
-  {id: 'alex', name: 'Alex', eligible: true, pinRequired: true, art: 'violet'},
-  {id: 'kids', name: 'Kids', eligible: true, art: 'mint'},
-  {id: 'sam', name: 'Sam', eligible: false, unavailableReason: 'server_restriction' as const, art: 'coral'},
+  {id: 'demo', name: 'Demo', primary: true, art: 'blue'},
+  {id: 'alex', name: 'Alex', pinRequired: true, art: 'violet'},
+  {id: 'kids', name: 'Kids', art: 'mint'},
+  {id: 'sam', name: 'Sam', art: 'coral'},
 ];
 const remembered = [
   {accountId: 'nana', username: 'nana_r', displayName: 'Nana', avatarVersion: 0, automaticSignIn: false, lastUsed: ''},
@@ -22,7 +22,7 @@ function Specimen() {
   const frame = new URLSearchParams(location.search).get('frame') ?? '4';
   const [remember, setRemember] = useState(false);
   const record = (kind: string, value?: unknown) => {document.documentElement.dataset.accountAction = JSON.stringify({kind, value});};
-  if (frame === '13') return <ServerProfiles serverName="Portico demo" profiles={profiles} onSelect={value => record('profile', value.id)} onSwitchServer={() => record('servers')} autoFocusId="alex" />;
+  if (frame === '13') return <ServerProfiles serverName="Portico demo" profiles={profiles} onSelect={value => record('profile', value.id)} onSwitchServer={() => record('servers')} autoFocusId={innerWidth > 700 ? 'alex' : undefined} />;
   if (frame === '14') return <ServerProfilePIN serverName="Portico demo" profile={profiles[1]} remember={remember} onRememberChange={setRemember} error
     onComplete={value => record('pin', value)} onOtherProfiles={() => record('profiles')} onForgotPIN={() => record('forgot-pin')} onSwitchServer={() => record('servers')} />;
   if (frame === '4b') return <PorticoServerSignIn serverName="Portico demo" onContinue={() => record('portico')} onRecovery={() => record('recovery')} onOldPassword={() => record('old-password')} />;

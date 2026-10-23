@@ -87,8 +87,24 @@ export class BrowserProtectedStore<RecordType> {
  });}
 }
 let sessions:AppSessionStore|undefined;
+const sessionListeners=new Set<()=>void>();let sessionChannel:BroadcastChannel|undefined;
+const notifySessions=()=>{for(const listener of sessionListeners)listener();};
+function listenForSessionChanges(){
+ if(typeof window==='undefined'||sessionChannel||typeof BroadcastChannel==='undefined')return;
+ sessionChannel=new BroadcastChannel('portico.app-session-change.v1');
+ sessionChannel.addEventListener('message',event=>{if(event.data==='changed')notifySessions();});
+}
+/** No credential, viewer ID, server address or account state crosses the channel. */
+export function observeBrowserSessionChanges(changed:()=>void){
+ listenForSessionChanges();sessionListeners.add(changed);
+ window.addEventListener('focus',changed);window.addEventListener('pageshow',changed);
+ return()=>{sessionListeners.delete(changed);window.removeEventListener('focus',changed);window.removeEventListener('pageshow',changed);};
+}
 export function browserAppSessions():AppSessionStore {
- return sessions ??= new AppSessionStore(new BrowserProtectedStore<AppSessionRecord>('portico.app-sessions.v1',4*1024*1024));
+ if(sessions)return sessions;
+ const vault=new BrowserProtectedStore<AppSessionRecord>('portico.app-sessions.v1',4*1024*1024);
+ listenForSessionChanges();
+ return sessions=new AppSessionStore({read:()=>vault.read(),change:async update=>{await vault.change(update);notifySessions();sessionChannel?.postMessage('changed');}});
 }
 let listening=false,active:RouteConnection|undefined,networkRevision=0;
 export function browserConnectionEnvironment(serverId?:string,admission?:NewServerConnection):ConnectionEnvironment {

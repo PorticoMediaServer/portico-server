@@ -14,7 +14,7 @@ import {router} from '../../router';
 const t = defaultI18n.t;
 /** DirectSnapshot contains only this account's profiles on the proven server.
  * Selection remains a live server decision; no cross-server profile is added. */
-const pickerProfile = (profile: ManagedProfile): ProfilePickerProfile => ({...profile, eligible: true});
+const pickerProfile = (profile: ManagedProfile): ProfilePickerProfile => profile;
 export function AccountProfilesScreen() {
   const entry = useMemo(createBrowserAccountEntry, []), state = useSyncExternalStore(entry.subscribe, entry.getSnapshot);
   const bootstrap = useAccountBootstrap(), suspend = bootstrap?.suspendForAccountEntry, resume = bootstrap?.resumeAfterAccountEntry ?? bootstrap?.retry;
