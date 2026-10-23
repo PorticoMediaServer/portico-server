@@ -15,7 +15,7 @@ import {Artwork, AmbientArt, GeneratedArt} from '../../kit/artwork';
 import {Hero, HeroFacts, type HeroCandidate, type LayoutPlatform} from '../../kit/layout';
 import {Button} from '../../kit/controls';
 import {CollectionBanner, LiveCard, PosterCard, RankedCard, SquareCard, WideCard, type CardSelection} from '../../kit/cards';
-import {HomeSkeleton, StateView} from '../../kit/states';
+import {HomeSkeleton, StateLayout} from '../../kit/states';
 import type {ShellArtwork} from '../../shell/artwork';
 import {useShellWidth} from '../../shell/viewport';
 import {currentHomeLive, homeCardModel, homeLiveDeadline, homePlaybackTarget, homeSpotlights} from './model';
@@ -41,8 +41,9 @@ export type HomeEffects = Readonly<{
   openMore: (row: HomeRow, entry: ContentEntry, anchor: HTMLElement) => void;
   setMyList: (spotlight: HomeSpotlight) => Promise<void>;
   reportError: (error: unknown) => void;
+  openHome?: () => void;
 }>;
-export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean}>;
+export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; serverName?: string}>;
 type HomePresentation = Pick<HomeBindings, 'artwork' | 'effects' | 'selection' | 'time' | 'reducedMotion'>;
 const t = defaultI18n.t;
 const dependencies = [dependsOn.libraries, dependsOn.content(), dependsOn.order(), dependsOn.personal(), dependsOn.progress(), dependsOn.settings('preferences'), dependsOn.settings('server'), dependsOn.list('recommendations'), dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.event('stream.resync')];
@@ -112,9 +113,11 @@ export function HomeScreen(bindings: HomeBindings) {
     const timers = [300, 8000].map(delay => setTimeout(() => setElapsed(Date.now() - started), Math.max(0, delay - (Date.now() - started))));
     return () => timers.forEach(clearTimeout);
   }, [snapshot.document, started]);
-  if (!document && snapshot.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
-    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}} />;
-  if (!document) return <HomeSkeleton elapsedMs={elapsed} window={{width, height: window.innerHeight, scrollTop: window.scrollY}} />;
+  if (!document && snapshot.phase === 'error') return <StateLayout title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} icon="i-warn" tone="warning" contentStyle={{top: width >= 1024 ? 470 : 250}}
+    primary={{id: 'retry', icon: 'i-retry', label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}}
+    secondary={{id: 'home', label: t('next.states.goHome'), onPress: bindings.effects.openHome ?? (() => {void service.retry();})}}/>;
+  if (!document) return <HomeSkeleton elapsedMs={elapsed} window={{width, height: window.innerHeight, scrollTop: window.scrollY}}
+    slowNotice={bindings.serverName ? <div className={styles.slowNotice} role="status"><span className={styles.waitingDot}/><span><b>{t('next.states.stillLoading')}</b>{' '}{t('next.states.slowConnection', {server: bindings.serverName})}</span></div> : undefined}/>;
   return <HomeView {...bindings} document={document} nowMs={now} refreshLive={refreshLive} onMore={rowId => { void service.more(rowId); }} />;
 }
 
@@ -176,12 +179,14 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bi
   const header = {heading: serverTextLabel(defaultI18n, row.titleText, row.title), subtitle: serverTextLabel(defaultI18n, row.subtitleText), platform,
     onSeeAll: row.seeAll ? () => bindings.effects.openSeeAll(row.seeAll!) : undefined};
   const wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
-  const cardWidth = wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118;
+  const ranked = row.id === 'community_watching' && !!row.period;
+  const cardWidth = ranked ? platform === 'desktop' ? 262 : 186 : wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118;
   const live = currentHomeLive(row.live, nowMs);
   if (row.live) {
     if (!live) return null;
     const marks = channelMonograms({kind: 'authoritative', channels: live.channels.map(({channel}) => ({sourceId: channel.sourceId, id: channel.id, mark: channel.mark}))});
-    return <PagedShelf {...header} items={live.channels} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={platform === 'desktop' ? 316 : 262} artworkRatio={16 / 9} getKey={value => JSON.stringify([value.channel.sourceId, value.channel.id])} reducedMotion={bindings.reducedMotion}
+    const liveWidth = platform === 'desktop' ? 316 : 244, liveHeight = platform === 'desktop' ? 178 : 140;
+    return <PagedShelf {...header} items={live.channels} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={liveWidth} artworkRatio={liveWidth / liveHeight} getKey={value => JSON.stringify([value.channel.sourceId, value.channel.id])} reducedMotion={bindings.reducedMotion}
       onVisibleRange={onRange}
       renderItem={(item, context) => <VisibleLive item={item} mark={marks.get(item.channel.sourceId)!.get(item.channel.id)!} nowMs={nowMs} order={rowIndex * 1000 + context.index} row={row} {...bindings} />} />;
   }
@@ -189,7 +194,7 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bi
     return <VisibleCollection row={row} rowIndex={rowIndex} {...bindings} />;
   }
   if (!row.entries.length) return null;
-  return <PagedShelf {...header} items={row.entries} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={cardWidth} artworkRatio={wide ? 16 / 9 : square ? 1 : 2 / 3} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={onRange}
+  return <PagedShelf {...header} items={row.entries} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={cardWidth} artworkRatio={ranked ? cardWidth / (platform === 'desktop' ? 255 : 174) : wide ? 16 / 9 : square ? 1 : 2 / 3} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={onRange}
     renderItem={(entry, context) => <VisibleCard entry={entry} row={row} rowIndex={rowIndex} index={context.index} platform={platform} {...bindings} />} />;
 }
 

@@ -2,6 +2,7 @@ import {BrowseQueryBuilder, browseCapabilitiesPath, browsePath, browseMembership
   type BrowseCapabilities, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
 import {createWindowedCollection, type WindowedCollection} from '@core/collections/windowed.ts';
 import type {ContentEntry, LibraryContentApi} from '@core/library-content.ts';
+import {isStaleAnswer} from '@core/freshness-actions.ts';
 
 export type BrowseMember = Readonly<{membershipId: string; entry: ContentEntry}>;
 export type BrowseSource = Readonly<{libraryId: string; pivot: string; base?: readonly BrowseNode[]; homeRowId?: string; sort?: BrowseSortSelection}>;
@@ -64,7 +65,7 @@ export class BrowseController {
       const body = this.builder(caps, predicates, sort).limit(count).range({start, ...(revision ? {revision} : {})}).build();
       const page = parseBrowseResult(await this.api.request(browsePath(this.source.libraryId), 'POST', body, signal));
       if (!this.current() || epoch !== this.epoch || signal.aborted) throw closed();
-      if (page.pivot !== this.source.pivot || page.pageInfo.start !== start || revision && revision !== page.pageInfo.revision) throw new Error('browse-page-revision-changed');
+      if (page.pivot !== this.source.pivot || page.pageInfo.start !== start || revision && revision !== page.pageInfo.revision) throw Object.assign(new Error('browse-page-revision-changed'), {retry: 'after_refresh'});
       revision = page.pageInfo.revision;
       return {items: page.entries.map((entry, index) => ({membershipId: browseMembershipId(page, index)!, entry})),
         total: page.pageInfo.total, totalIsLowerBound: page.pageInfo.totalIsLowerBound,
@@ -90,6 +91,10 @@ export class BrowseController {
   }
   /** UI controls preserve compound predicates and validate every generated node. */
   parseNode = (value: unknown) => parseBrowseNode(value);
-  retry = () => { if (this.state.phase === 'error') void this.load(); else this.collection.retry(); };
+  retry = () => {
+    if (this.state.phase === 'error') void this.load();
+    else if (isStaleAnswer(this.collection.getSnapshot().error)) this.reset();
+    else this.collection.retry();
+  };
   dispose() { this.life.abort(); this.epoch++; this.collection.dispose(); this.listeners.clear(); }
 }

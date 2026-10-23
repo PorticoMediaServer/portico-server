@@ -43,6 +43,24 @@ test('a different revision cannot enter the displayed collection', async () => {
   controller.collection.ensureRange(60, 65);await settle();assert.equal(controller.collection.itemAt(60), undefined);assert.equal(controller.collection.getSnapshot().status, 'error');
  } finally {controller.dispose();}
 });
+test('Retry after a revision change obtains a fresh source window rather than repeating the old revision', async () => {
+ let fresh = false;
+ const requests: {start: number; revision?: string; fresh: boolean; signal?: AbortSignal}[] = [];
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown, signal?: AbortSignal) {
+  if (path.includes('capabilities')) return caps as T;
+  const range = (body as {range: {start: number; revision?: string}}).range;requests.push({...range, fresh, signal});
+  const page = payload(range.start, 180, fresh || range.start !== 0 ? 'revision-two' : 'revision-one');
+  return {...page, entries: page.entries.map(entry => fresh ? {...entry, id: 'fresh-' + entry.id} : entry)} as T;
+ }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
+ try {await controller.load();await settle();controller.collection.ensureRange(60, 65);await settle();
+  assert.equal(controller.collection.getSnapshot().status, 'error');fresh = true;controller.retry();await settle();
+  assert.equal(requests.find(request => request.fresh)?.revision, undefined);
+  assert.equal(controller.collection.itemAt(0)?.entry.id, 'fresh-movie-0');
+  controller.collection.ensureRange(60, 65);await settle();assert.equal(controller.collection.itemAt(60)?.entry.id, 'fresh-movie-60');
+  const continuations = requests.filter(request => request.fresh && request.start > 0 && !request.signal?.aborted);
+  assert.ok(continuations.length > 0);assert.ok(continuations.every(request => request.revision === 'revision-two'));
+ } finally {controller.dispose();}
+});
 test('Home display pages, facet queries and batch counts keep the immutable source membership', async () => {
  const membership = {field: 'homeRow', operator: 'equals' as const, value: 'continue'};
  const scopedCaps = {...caps, library: {id: '', kind: '', name: ''}, fields: [

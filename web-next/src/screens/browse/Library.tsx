@@ -79,7 +79,7 @@ export function LibraryBrowse(bindings: LibraryBindings) {
   if (!model) return null;
   const chips = model.applied.flatMap((node, index) => 'field' in node ? [{id: String(index), parts: appliedFilterParts(node, id => {const field = state.capabilities!.fields.find(field => field.id === id);return field ? browseLabels.field(field) : id;}, env)}] : []);
   const setPredicates = (nodes: readonly BrowseNode[]) => {try {controller.setQuery(nodes);} catch (error) {bindings.reportError(error);}};
-  const resultCount = snapshot.total === undefined ? undefined : t(snapshot.totalIsLowerBound ? 'lib.countAtLeast' : 'lib.count', {count: snapshot.total, pivot: controller.source.pivot});
+  const resultCount = snapshot.total === undefined || snapshot.refreshing ? undefined : t(snapshot.totalIsLowerBound ? 'lib.countAtLeast' : 'lib.count', {count: snapshot.total, pivot: controller.source.pivot});
   const shape = bindings.pivot === 'collections' ? 'collection' : ['music', 'audiobook'].includes(library.kind) ? 'square' : 'poster';
   return <>
     <BrowseToolbar model={model} labels={browseLabels} platform={compact ? 'phone' : 'desktop'} resultCount={resultCount} topInset={compact ? 94 : 76} sticky
