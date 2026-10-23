@@ -6,6 +6,10 @@ import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {V1Viewer} from '@core/playback-v1/v1-queue-player.ts';
 import type {PlaybackOptions, Session} from '@core/playback-v1/types.ts';
 import type {Timers} from '@core/playback-v1/sessions.ts';
+import type {CapabilityDocument} from '@core/client-profile.ts';
+import type {PlaybackMediaPort, RenderEngine} from './web-playback.ts';
+import type {PlaybackService} from '@core/index.ts';
+import type {WebMediaPlayerOptions} from './web-media-player.ts';
 import type {AudioEffectsSettings} from '@core/audio-effects.ts';
 import type {QualityRequest} from '@core/playback-v1/quality.ts';
 import type {QueuePlaybackView} from '@core/queue-controller.ts';
@@ -32,6 +36,11 @@ export type WebPlaybackSource = Readonly<{
   settings: WebPlaybackSettings;
 }>;
 export type WebPlaybackEnvironment = Readonly<{
+  /** Build-time platform injection. null disables the browser music engine. */
+  createPlayer?: (video: VideoLike, options: WebMediaPlayerOptions) => PlaybackMediaPort;
+  createRender?: ((service: PlaybackService, video: VideoLike) => RenderEngine) | null;
+  capabilities?: () => Promise<CapabilityDocument>;
+  subtitleSurface?: boolean;
   page?: Document; browser?: Window; fetch?: typeof fetch;
   loadHls?: () => Promise<HlsModule>; nativeHls?: 'first' | 'fallback' | 'never';
   timers?: Timers; playerTimers?: WebPlayerTimers; key?: () => string;
@@ -46,6 +55,7 @@ export type WebPlaybackPresentation = Readonly<{
   volume: number; muted: boolean; rate: number; policy: PolicyView | null;
 }>;
 export type WebPlaybackRuntimeSnapshot = Readonly<{
+  nativeVideoSurfaceActive: boolean;
   authority: WebPlaybackAuthority; sequence: number; playback: PlaybackSnapshot; dock: DockState;
   fence?: PlaybackFence; subject?: PlaybackSubject; presentation?: WebPlaybackPresentation;
   presentations: readonly WebPlaybackPresentation[];
