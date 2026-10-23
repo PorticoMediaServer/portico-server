@@ -51,7 +51,27 @@ const mondayWindow = `{"timezone":"UTC","windows":[{"days":[1],"startMinute":600
 
 func setMemberLimits(t *testing.T, f *v1Fixture, body string) {
 	t.Helper()
-	if _, err := f.db.Exec(`INSERT INTO access_limits VALUES('member',1,0,?) ON CONFLICT(account_id) DO UPDATE SET body=excluded.body,revision=access_limits.revision+1`, body); err != nil {
+	var limits struct {
+		MaxStreams int `json:"maxStreams"`
+	}
+	if err := json.Unmarshal([]byte(body), &limits); err != nil {
+		t.Fatal(err)
+	}
+	if limits.MaxStreams > 0 {
+		if _, err := f.db.Exec(`INSERT INTO account_stream_limits(account_id,mode,stream_limit) VALUES('member','limit',?) ON CONFLICT(account_id) DO UPDATE SET mode=excluded.mode,stream_limit=excluded.stream_limit`, limits.MaxStreams); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var rest map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(body), &rest); err != nil {
+		t.Fatal(err)
+	}
+	delete(rest, "maxStreams")
+	normalized, err := json.Marshal(rest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`INSERT INTO access_limits VALUES('member',1,0,?) ON CONFLICT(account_id) DO UPDATE SET body=excluded.body,revision=access_limits.revision+1`, string(normalized)); err != nil {
 		t.Fatal(err)
 	}
 }

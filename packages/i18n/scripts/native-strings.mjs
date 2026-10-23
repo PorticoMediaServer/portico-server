@@ -125,8 +125,16 @@ function validateAppleSources(nativeRoot, tables) {
   const phrases = Object.keys(source).filter(phraseKey).map(key => swiftPhrase(source[key]));
   for (const literal of [...titles, ...phrases]) if (!literals.includes(literal)) throw new Error(`PorticoIntents.swift is missing catalogue literal: ${literal}`);
   const allowed = new Set(titles);
-  const contexts = /(?:title\s*:\s*LocalizedStringResource\s*=|title\s*:|IntentDescription\s*\(|IntentDialog\s*\(|TypeDisplayRepresentation\s*=)\s*"((?:\\.|[^"\\])*)"/g;
-  for (const match of swift.matchAll(contexts)) if (!allowed.has(match[1])) throw new Error(`PorticoIntents.swift has uncatalogued literal: ${match[1]}`);
+  const contexts = /\b(?:title\s*:\s*LocalizedStringResource\s*=|title\s*:|subtitle\s*:|IntentDescription\s*\(|IntentDialog\s*\(|TypeDisplayRepresentation\s*=)\s*"((?:\\.|[^"\\])*)"/g;
+  for (const match of swift.matchAll(contexts)) {
+    // AppEntity's media title/subtitle are content. Permit only these existing
+    // pure interpolations in DisplayRepresentation, never parameter/intent
+    // copy, mixed fixed words, escaped interpolation or another constructor.
+    const before = swift.slice(0, match.index);
+    const contentTitle = match[1] === '\\(title)' && /\bDisplayRepresentation\s*\(\s*$/.test(before);
+    const contentSubtitle = match[1] === '\\(subtitle)' && /\bDisplayRepresentation\s*\(\s*title\s*:\s*"\\\(title\)"\s*,\s*$/.test(before);
+    if (!contentTitle && !contentSubtitle && !allowed.has(match[1])) throw new Error(`PorticoIntents.swift has uncatalogued literal: ${match[1]}`);
+  }
   for (const block of swift.matchAll(/phrases\s*:\s*\[([\s\S]*?)\]/g)) for (const phrase of quoted(block[1])) if (!phrases.includes(phrase)) throw new Error(`PorticoIntents.swift has uncatalogued phrase: ${phrase}`);
   for (const platform of ['ios', 'tvos']) {
     const plist = readFileSync(path.join(nativeRoot, `${platform}/Portico/Info.plist`), 'utf8');

@@ -6,8 +6,10 @@ export function validDirectPassword(value:string):boolean {
 import {routePath,routeBody,type RouteRequest,type RouteResponse} from '../../contracts/src/routes.ts';
 import type {ProfileAPI} from './profile-management.ts';
 import {CodedError} from './server-messages.ts';
+import {identityCode} from './route-identity.ts';
 
 export type ServerInvitation=RouteResponse<'get_admin_access_invitation'>;
+export type ServerInvitationLink=Readonly<{code:string;expiresAt:string;serverId?:string}>;
 export type PeopleMember=RouteResponse<'get_admin_access_member'>;
 export type PublicInvitation=Readonly<{serverName:string;expiresAt:string;role:'admin'|'member';libraries:readonly {name:string}[];allLibraries:boolean;signInMethod:'local'|'portico';inviterUsername?:string}>;
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -32,6 +34,7 @@ export function parsePublicInvitation(raw:unknown):PublicInvitation{
 function parseServerInvitation(raw:unknown):ServerInvitation{
  if(!object(raw)||!bounded(raw.id,128)||!rev(raw.revision)||!['member','admin'].includes(String(raw.role))||!['pending','accepted','revoked'].includes(String(raw.state))||!timestamp(raw.createdAt)||!timestamp(raw.expiresAt)||!Array.isArray(raw.allowedLibraries)||raw.allowedLibraries.some(v=>!bounded(v,128)))invalidPeople();
  if(raw.email!==undefined)invalidPeople();if(raw.notes!==undefined&&raw.notes!==null&&(typeof raw.notes!=='string'||privatePersonNotes(raw.notes)!==raw.notes))invalidPeople();
+ if(raw.serverId!==undefined){if(typeof raw.serverId!=='string')invalidPeople();try{identityCode(raw.serverId);}catch{invalidPeople();}}
  return Object.freeze({...raw,allowedLibraries:Object.freeze([...raw.allowedLibraries])}) as ServerInvitation;
 }
 /** Server-admin and recipient operations use distinct, generated contracts. */
@@ -46,11 +49,12 @@ export class PeopleInvitationsClient{
   if(!rev(input.expectedRevision))invalidPeople();const {notes,...rest}=input;
   return parseServerInvitation(await this.api.request(routePath('put_admin_access_invitation',{id}),'PUT',routeBody('put_admin_access_invitation',{...rest,notes:privatePersonNotes(notes)??undefined}),signal));
  }
- async link(invitation:Pick<ServerInvitation,'id'|'revision'|'state'>,signal?:AbortSignal):Promise<Readonly<{code:string;expiresAt:string}>>{
+ async link(invitation:Pick<ServerInvitation,'id'|'revision'|'state'>,signal?:AbortSignal):Promise<ServerInvitationLink>{
   if(invitation.state!=='pending'||!rev(invitation.revision))throw new CodedError('invitation_expired','This invitation is no longer usable.');
   const raw=await this.api.request<unknown>(routePath('post_admin_access_invitation_link',{id:invitation.id}),'POST',routeBody('post_admin_access_invitation_link',{expectedRevision:invitation.revision}),signal);
   if(!object(raw)||!bounded(raw.code,128)||raw.code.length<32||!timestamp(raw.expiresAt))invalidPeople();
-  return Object.freeze({code:raw.code,expiresAt:raw.expiresAt});
+  if(raw.serverId!==undefined){if(typeof raw.serverId!=='string')invalidPeople();try{identityCode(raw.serverId);}catch{invalidPeople();}}
+  return Object.freeze({code:raw.code,expiresAt:raw.expiresAt,...(raw.serverId===undefined?{}:{serverId:raw.serverId as string})});
  }
  async revoke(invitation:Pick<ServerInvitation,'id'|'revision'>,operationId:string,signal?:AbortSignal):Promise<ServerInvitation>{return parseServerInvitation(await this.api.request(routePath('post_admin_access_invitations_id_revoke',{id:invitation.id}),'POST',routeBody('post_admin_access_invitations_id_revoke',{expectedRevision:invitation.revision,operationId}),signal));}
  async preview(code:string,signal?:AbortSignal):Promise<PublicInvitation>{return parsePublicInvitation(await this.api.request(routePath('preview_invitation'),'POST',routeBody('preview_invitation',{code}),signal));}

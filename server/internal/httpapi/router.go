@@ -69,6 +69,9 @@ type Dependencies struct {
 	CacheDirectory    string
 	Restart           func()
 	ListeningPort     int
+	// LocalHTTPURL comes solely from the actual bound loopback-capable listener.
+	// Empty means no localhost route is reported, never an inferred default.
+	LocalHTTPURL string
 	// SettingsApplied runs after an owner saves console settings so snapshot
 	// readers (delivery configuration) refresh off the request path.
 	SettingsApplied func(context.Context)
@@ -261,6 +264,10 @@ func reportHTTPFailure(status int, code string, err error) {
 	log.Printf("request failed (%d %s): %s", status, code, boundFailureDetail(err))
 }
 func failure(w http.ResponseWriter, e error) {
+	if errors.Is(e, identity.ErrFactorSetupRequired) {
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "factor_setup_required"})
+		return
+	}
 	if revisionFailure(w, e) {
 		return
 	}
