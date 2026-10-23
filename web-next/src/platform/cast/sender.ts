@@ -1,0 +1,217 @@
+import {CastController, type CastApi, type CastChoices, type CastMetadata, type CastSnapshot} from '@core/cast/index.ts';
+import {castDisplayName, currentCastBrowser, isCastBrowser, loadCastSdk, type CastBrowser, type CastContext, type CastFramework, type CastSession, type CastSessionEvent} from './sdk';
+import {castTransportFor, confirmedCastDevice, type ConfirmedCastDevice} from './transport';
+
+export type ConfirmedCastPlayback = Readonly<{itemId: string; positionSeconds: number; durationSeconds: number; paused: boolean}>;
+export type WebCastSnapshot = CastSnapshot & Readonly<{
+  device?: ConfirmedCastDevice;
+  /** The latest receiver status, retained on stop/replacement for the continuation offer.
+   * Absent before the receiver reports; a requested seek/start is not a confirmed position. */
+  receiver?: ConfirmedCastPlayback;
+}>;
+export type WebCastSenderOptions = Readonly<{
+  api: CastApi;
+  serverOrigin: string;
+  castApplicationId?: string;
+  displayName?: string;
+  /** An optional viewer-bound catalogue read for a session rejoined after a page reload. */
+  describe?: (itemId: string) => Promise<string | undefined>;
+  browser?: CastBrowser;
+}>;
+
+const unavailable: WebCastSnapshot = Object.freeze({available: false, phase: 'off', positionSeconds: 0, durationSeconds: 0, paused: false, audioTracks: Object.freeze([]), textTracks: Object.freeze([])});
+
+function secureOrigin(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.origin : undefined;
+  } catch { return undefined; }
+}
+
+/** The web SDK adapter; all pairing, receiver ACKs, status and actions belong to CastController.
+ * Its caller owns local playback and only leaves that player after phase becomes `casting`.
+ * Create one per viewer/server authority and dispose it when that authority changes. */
+export class WebCastSender {
+  private readonly browser?: CastBrowser;
+  private readonly applicationId: string;
+  private readonly controller?: CastController;
+  private readonly listeners = new Set<() => void>();
+  private snapshot: WebCastSnapshot = unavailable;
+  private device?: ConfirmedCastDevice;
+  private receiver?: ConfirmedCastPlayback;
+  private context?: CastContext;
+  private framework?: CastFramework;
+  private preparation?: Promise<boolean>;
+  private cancelIdle?: () => void;
+  private offController?: () => void;
+  private offResume?: () => void;
+  private cancelStart?: () => void;
+  private operation = 0;
+  private pickerBusy = false;
+  private disposed = false;
+
+  constructor(private readonly options: WebCastSenderOptions) {
+    this.browser = options.browser ?? currentCastBrowser();
+    this.applicationId = options.castApplicationId?.trim() ?? '';
+    const origin = secureOrigin(options.serverOrigin);
+    if (!origin || !/^[A-Za-z0-9_-]{1,128}$/.test(this.applicationId) || !isCastBrowser(this.browser)) return;
+    this.controller = new CastController({api: options.api, origin, displayName: options.displayName ?? castDisplayName(this.browser.navigator.userAgent)});
+    this.offController = this.controller.subscribe(() => this.changed());
+  }
+
+  getSnapshot = (): WebCastSnapshot => this.snapshot;
+  subscribe = (listener: () => void): (() => void) => {
+    if (this.disposed) return () => {};
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+  private changed(): void {
+    if (this.disposed) return;
+    const state = this.controller?.getSnapshot() ?? unavailable;
+    const receiver = this.receiver;
+    const samePlayback = receiver && (state.phase === 'off' || state.phase === 'replaced' || state.itemId === receiver.itemId);
+    this.snapshot = Object.freeze({
+      ...state,
+      ...(samePlayback ? {positionSeconds: receiver.positionSeconds, durationSeconds: receiver.durationSeconds} : {}),
+      ...(receiver ? {receiver} : {}),
+      ...(this.device && state.phase !== 'off' && state.phase !== 'replaced' ? {device: this.device} : {}),
+    });
+    for (const listener of [...this.listeners]) listener();
+  }
+
+  /** Called by the shell after setup. With no idle API, only player-open prepares Cast. */
+  prepareOnIdle(): () => void {
+    const browser = this.browser;
+    if (this.disposed || !this.controller || this.snapshot.available || !browser?.requestIdleCallback) return () => {};
+    if (this.cancelIdle) return this.cancelIdle;
+    const handle = browser.requestIdleCallback(() => {
+      this.cancelIdle = undefined;
+      void this.prepareForPlayer();
+    });
+    const cancel = () => {
+      browser.cancelIdleCallback?.(handle);
+      if (this.cancelIdle === cancel) this.cancelIdle = undefined;
+    };
+    this.cancelIdle = cancel;
+    return cancel;
+  }
+
+  /** Explicit player-open entry point. It never opens a device picker. */
+  prepareForPlayer(): Promise<boolean> {
+    this.cancelIdle?.();
+    if (this.disposed || !this.controller || !this.browser) return Promise.resolve(false);
+    if (this.preparation) return this.preparation;
+    const preparation = this.prepareSdk();
+    this.preparation = preparation;
+    void preparation.then(ready => { if (!ready && this.preparation === preparation) this.preparation = undefined; });
+    return preparation;
+  }
+  private async prepareSdk(): Promise<boolean> {
+    const controller = this.controller, browser = this.browser;
+    if (!controller || !browser) return false;
+    try {
+      const framework = await loadCastSdk(browser);
+      if (!framework || this.disposed) return false;
+      const context = framework.CastContext.getInstance();
+      context.setOptions({receiverApplicationId: this.applicationId, autoJoinPolicy: browser.chrome?.cast?.AutoJoinPolicy.ORIGIN_SCOPED ?? 'origin_scoped'});
+      this.context = context;
+      this.framework = framework;
+      const listener = (event: CastSessionEvent) => { if (event.sessionState === framework.SessionState.SESSION_RESUMED) this.adopt(); };
+      const type = framework.CastContextEventType.SESSION_STATE_CHANGED;
+      context.addEventListener(type, listener);
+      this.offResume = () => context.removeEventListener(type, listener);
+      controller.setAvailable(true);
+      this.adopt();
+      return !this.disposed;
+    } catch {
+      this.offResume?.();
+      this.offResume = undefined;
+      this.context = undefined;
+      this.framework = undefined;
+      if (!this.disposed) controller.setAvailable(false);
+      return false;
+    }
+  }
+
+  private adopt(): void {
+    const controller = this.controller, context = this.context, framework = this.framework;
+    if (this.disposed || this.pickerBusy || !controller || !context || !framework || controller.getSnapshot().phase !== 'off') return;
+    try {
+      const session = context.getCurrentSession();
+      if (!session) return;
+      this.device = confirmedCastDevice(session);
+      this.receiver = undefined;
+      void controller.adopt(this.transport(session, context, framework), this.options.describe).catch(() => false);
+    } catch { /* A session no longer present cannot be adopted. */ }
+  }
+
+  /** Invoke from the device-row click after availability. The SDK picker opens before any await.
+   * The result is true only after the shared controller receives the receiver's load ACK. */
+  start(itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices): Promise<boolean> {
+    const controller = this.controller, context = this.context, framework = this.framework;
+    if (this.disposed || this.pickerBusy || !this.snapshot.available || !controller || !context || !framework) return Promise.resolve(false);
+    const operation = ++this.operation;
+    this.device = undefined;
+    this.receiver = undefined;
+    this.pickerBusy = true;
+    controller.connecting(meta.title);
+    let cancel!: () => void;
+    const canceled = new Promise<boolean>(resolve => { cancel = () => resolve(false); });
+    this.cancelStart = cancel;
+    const opening = this.openPicker(operation, itemId, meta, startSeconds, choices);
+    return Promise.race([opening, canceled]).finally(() => { if (this.cancelStart === cancel) this.cancelStart = undefined; });
+  }
+  private async openPicker(operation: number, itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices): Promise<boolean> {
+    const controller = this.controller!, context = this.context!, framework = this.framework!;
+    try {
+      await context.requestSession();
+      if (this.disposed || operation !== this.operation) return false;
+      const session = context.getCurrentSession();
+      if (!session) { controller.cancelConnecting(); return false; }
+      this.device = confirmedCastDevice(session);
+      return await controller.start(this.transport(session, context, framework), itemId, meta, startSeconds, choices);
+    } catch {
+      if (!this.disposed && operation === this.operation) controller.cancelConnecting();
+      return false;
+    } finally { this.pickerBusy = false; }
+  }
+
+  private transport(session: CastSession, context: CastContext, framework: CastFramework) {
+    const operation = this.operation;
+    return castTransportFor(session, context, framework, status => {
+      if (this.disposed || operation !== this.operation || !status.itemId) return;
+      this.receiver = Object.freeze({itemId: status.itemId, positionSeconds: status.positionSeconds, durationSeconds: status.durationSeconds, paused: status.paused});
+    });
+  }
+
+  /** Invalidates pending SDK selection and pairing; a late picker cannot send a new load. */
+  cancelConnecting(): void {
+    if (this.snapshot.phase === 'connecting' || this.snapshot.phase === 'pairing' || this.snapshot.phase === 'waiting') this.stop();
+  }
+  play(): void { this.controller?.play(); }
+  pause(): void { this.controller?.pause(); }
+  toggle(): void { this.controller?.toggle(); }
+  seek(positionSeconds: number): void { this.controller?.seek(positionSeconds); }
+  setAudioTrack(trackId: number): void { this.controller?.setAudioTrack(trackId); }
+  setSubtitleTrack(trackId: number | null): void { this.controller?.setSubtitleTrack(trackId); }
+  answerTakeover(allow: boolean): void { this.controller?.answerTakeover(allow); }
+  stop(): void {
+    this.operation++;
+    this.cancelStart?.();
+    this.cancelStart = undefined;
+    this.controller?.stop();
+  }
+  dismiss(): void { this.controller?.dismiss(); }
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.operation++;
+    this.cancelStart?.();
+    this.cancelStart = undefined;
+    this.cancelIdle?.();
+    this.offResume?.();
+    this.offController?.();
+    this.controller?.dispose();
+    this.listeners.clear();
+  }
+}

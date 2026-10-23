@@ -25,19 +25,22 @@ export type CastTrack = Readonly<{id: number; language: string; name: string}>;
  * the TV can show it: text, or burned into the picture for an image or styled track the TV cannot
  * draw itself. Absent: the profile's usual choice.
  */
-export type CastChoices = Readonly<{subtitleTrackId?: string | null}>;
+export type CastQueueRef = Readonly<{queueId: string; entryId: string}>;
+export type CastChoices = Readonly<{subtitleTrackId?: string | null; queue?: CastQueueRef}>;
 const trackIdPattern = /^[A-Za-z0-9._:-]{1,128}$/;
 /** `load` fields for `choices`: `subtitleTrackId` is a track id, or "off". */
-export function castChoiceFields(choices: CastChoices | undefined): Record<string, string> {
-  if (!choices || choices.subtitleTrackId === undefined) return {};
-  if (choices.subtitleTrackId === null) return {subtitleTrackId: 'off'};
-  return trackIdPattern.test(choices.subtitleTrackId) ? {subtitleTrackId: choices.subtitleTrackId} : {};
+export function castChoiceFields(choices: CastChoices | undefined): Record<string, string | CastQueueRef> {
+  const fields: Record<string, string | CastQueueRef> = {};
+  if (choices?.subtitleTrackId === null) fields.subtitleTrackId = 'off';
+  else if (typeof choices?.subtitleTrackId === 'string' && trackIdPattern.test(choices.subtitleTrackId)) fields.subtitleTrackId = choices.subtitleTrackId;
+  if (choices?.queue && typeof choices.queue.queueId === 'string' && typeof choices.queue.entryId === 'string' && trackIdPattern.test(choices.queue.queueId) && trackIdPattern.test(choices.queue.entryId)) fields.queue = {queueId: choices.queue.queueId, entryId: choices.queue.entryId};
+  return fields;
 }
 
 /** Sender → receiver. */
 export type CastCommand =
   | {type: 'pair'; code: string; origin: string; displayName: string}
-  | ({type: 'load'; itemId: string; startSeconds: number} & Record<string, string | number>)
+  | ({type: 'load'; itemId: string; startSeconds: number} & Record<string, string | number | CastQueueRef>)
   | {type: 'play'} | {type: 'pause'} | {type: 'stop'} | {type: 'status';controlToken?:string}
   | {type: 'seek'; positionSeconds: number}
   | {type: 'audio'; trackId: number}
@@ -51,7 +54,8 @@ export type CastEvent =
   | {type: 'pair-failed'; code: string}
   | {type: 'busy'}
   | {type: 'pair-required'}
-  | {type: 'load-failed'}
+  | {type: 'load-failed'; requestId?: string}
+  | {type: 'loaded'; requestId: string; itemId: string}
   | {type: 'takeover-requested'; requester: string}
   | {type: 'replaced'}
   | {type: 'status'; itemId: string; positionSeconds: number; durationSeconds: number; paused: boolean; audioTracks: readonly CastTrack[]; textTracks: readonly CastTrack[]};
@@ -66,12 +70,14 @@ function tracks(v: unknown): readonly CastTrack[] {
 /** Parse one receiver message (a JSON string, or an object on SDKs that decode it). */
 export function parseCastEvent(raw: unknown): CastEvent | undefined {
   let m: unknown = raw;
-  if (typeof raw === 'string') { try { m = JSON.parse(raw); } catch { return undefined; } }
+  if (typeof raw === 'string') { if (raw.length > 65536) return undefined; try { m = JSON.parse(raw); } catch { return undefined; } }
   if (!m || typeof m !== 'object') return undefined;
   const o = m as Record<string, unknown>;
   switch (o.type) {
     case 'paired': return {type:'paired',...(typeof o.controlToken==='string'&&/^[a-f0-9]{48}$/.test(o.controlToken)?{controlToken:o.controlToken}:{})};
-    case 'pair-pending': case 'busy': case 'pair-required': case 'load-failed': case 'replaced':
+    case 'load-failed': return {type: 'load-failed', ...(typeof o.requestId === 'string' && trackIdPattern.test(o.requestId) ? {requestId: o.requestId} : {})};
+    case 'loaded': return typeof o.requestId === 'string' && trackIdPattern.test(o.requestId) && typeof o.itemId === 'string' && trackIdPattern.test(o.itemId) ? {type: 'loaded', requestId: o.requestId, itemId: o.itemId} : undefined;
+    case 'pair-pending': case 'busy': case 'pair-required': case 'replaced':
       return {type: o.type};
     case 'pair-failed': return {type: 'pair-failed', code: short(o.code, 64) || 'pair_failed'};
     case 'takeover-requested': return {type: 'takeover-requested', requester: short(o.requester, 64)};

@@ -46,7 +46,7 @@ const {Shell} = await import('../src/shell/Shell.tsx');
 const {AccountMenu} = await import('../src/kit/shell/AccountSurfaces.tsx');
 const {MenuSeparator} = await import('../src/kit/overlays/Popover.tsx');
 function identity(role: string): ShellIdentity {
-  return {viewer: {serverId: 'server', accountId: 'account', profileId: 'profile', authority: 'local', role},
+  return {capabilities:{manageAccount:true,manageServer:['owner','admin','administrator'].includes(role),managePeople:['owner','admin','administrator'].includes(role),manageSignIn:role==='owner'},viewer: {serverId: 'server', accountId: 'account', profileId: 'profile', authority: 'local', role},
     username: 'actual-account', profileName: 'Actual profile', serverName: 'Actual server', primaryProfile: true,
     profiles: [], canManageProfiles: false, accountFacts: [], libraries: [], liveAvailable: false, unread: 0, showNotificationDot: false};
 }

@@ -26,7 +26,7 @@ func TestPlaylistHTTPShareNeverGrantsMedia(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = db.Exec(`INSERT INTO accounts VALUES('owner','private-login',x'00','owner-p',1);INSERT INTO libraries(id,name,kind,root) VALUES('a','A','movie','/a'),('b','B','movie','/b')`)
+	_, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','private-login',x'00','owner-p',1);INSERT INTO libraries(id,name,kind,root) VALUES('a','A','movie','/a'),('b','B','movie','/b')`)
 	if e != nil {
 		t.Fatal(e)
 	}
