@@ -59,6 +59,18 @@ export const colors = {
   amber: "#e8bc6a",
   record: "#f17979",
   healthy: "#86cfb3",
+  /** Dashboard category, hardware and rank colours from the approved 812 frames. */
+  lilac: "#a99be8",
+  gold: "#e0b66e",
+  rose: "#e8929f",
+  hardwareText: "#f3cf86",
+  reportRankStart: "#96d4f4",
+  accountAvatar1Start: "#2f86bb", accountAvatar1End: "#153749",
+  accountAvatar2Start: "#7a5cc2", accountAvatar2End: "#2d2250",
+  accountAvatar3Start: "#2f9b86", accountAvatar3End: "#123f3a",
+  accountAvatar4Start: "#b9773a", accountAvatar4End: "#4a2a14",
+  accountAvatar5Start: "#b8527a", accountAvatar5End: "#47182f",
+  accountAvatar6Start: "#5f7fd0", accountAvatar6End: "#1d2b57",
   trackRest: "#35505f",
   /** Text and glyphs on action blue (all three accent states). */
   actionInk: "#03121c",
@@ -102,6 +114,11 @@ const handheldType = {
   rowSubtitle: type(14, 'normal', 400), seeAll: type(14, 'normal', 600), thumbnailLabel: type(12, 'normal', 600),
   liveMonogram: type(13, 'normal', 800), bannerKind: type(14, 'normal', 600), fallbackLabel: type(12, 'normal', 700),
   personTitle: type(14, 'normal', 700), detailHeading: type(17, 'normal', 700), starring: type(14, 'normal', 400),
+  reportSection: type(20, 'normal', 700, -.015), reportTitle: type(17, 21.25, 700, -.015),
+  reportMeta: type(13.5, 'normal', 600), reportDetail: type(12.5, 'normal', 600), reportDevice: type(12.5, 'normal', 700),
+  reportHardware: type(11, 'normal', 700), reportValue: type(32, 33.6, 800, -.03), reportPerson: type(14.5, 'normal', 700),
+  reportAvatar: type(12.5, 'normal', 800), reportRank: type(128, 102.4, 800, -.07),
+  stopBody: type(15, 23.25, 500), stopField: type(16, 'normal', 600), stopHelp: type(13.5, 'normal', 400),
 };
 export type TypeRole = keyof typeof handheldType;
 /** The desktop, phone and TV drawings are separate columns; tablet uses the phone layout. */

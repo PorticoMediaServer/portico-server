@@ -4,6 +4,8 @@ import {DownloadsService} from '@core/downloads-service.ts';
 import {randomId} from '@core/random-id.ts';
 import type {SavedDownloadsScope} from './downloads-port.ts';
 import {SavedOperations} from './operations.ts';
+import {SavedReadyDownloads, type SaveReadyPreparation} from './ready-downloads.ts';
+import {SavedSummary} from './summary.ts';
 
 export type SavedScreenRoute = SavedRoute | Readonly<{view: 'downloads'}>;
 
@@ -29,17 +31,28 @@ export function createSavedRuntime(input: Readonly<{api: SavedApi; scope: SavedD
   const serverScope = Object.freeze({serverId: scope.serverId, viewerId: JSON.stringify([scope.authority, scope.accountId, scope.profileId, scope.sessionFamilyId])});
   const makeSaved = () => new SavedService({api, scope: serverScope, requestId: async () => randomId()});
   const saved = makeSaved(), posters = makeSaved(), squares = makeSaved(), personal = new PersonalSavedService(api, serverScope, async () => randomId()), downloads = new DownloadsService(api);
+  const summary = new SavedSummary(api, serverScope, operations);
+  let readyDownloads: SavedReadyDownloads | undefined;
   if (input.deviceId) downloads.followDevice(input.deviceId);
   return {
-    scope, operations, saved, posters, squares, personal, downloads,
+    scope, operations, saved, posters, squares, personal, downloads, summary,
+    /** Install once for this captured parent lifetime. Route unmounts do not
+     * cancel an accepted native queue; parent retirement closes the observer. */
+    installReadyDownloads(save: SaveReadyPreparation, reportError: (error: unknown) => void): void {
+      if (!operations.current || readyDownloads) return;
+      readyDownloads = new SavedReadyDownloads(downloads, scope, operations, save, reportError);
+      downloads.start();
+    },
     async select(route: SavedScreenRoute, restore?: SavedRestore): Promise<void> {
       if (!operations.current || route.view === 'downloads') return;
-      if (isPersonalSavedRoute(route)) { await personal.select(route, restore); return; }
+      if (isPersonalSavedRoute(route)) { await Promise.all([personal.select(route, restore), route.view === 'collections' || route.view === 'views' ? summary.refresh() : Promise.resolve()]); return; }
       if (route.view === 'watchlist' || route.view === 'favorites') {
         await Promise.all([posters.select({...route, shape: 'posters'}, restore), squares.select({...route, shape: 'squares'}, restore)]);
       } else await saved.select(route, restore);
     },
     dispose(): void {
+      readyDownloads?.dispose();
+      summary.dispose();
       operations.dispose(); for (const controller of controllers) controller.abort(); controllers.clear();
       saved.dispose(); posters.dispose(); squares.dispose(); personal.dispose(); downloads.dispose();
     },

@@ -1,0 +1,5 @@
+{
+  "extends": "../../web-next/tsconfig.json",
+  "compilerOptions": {"types": ["vite/client", "node"]},
+  "include": ["src", "test", "../../web-next/src/env.d.ts"]
+}
