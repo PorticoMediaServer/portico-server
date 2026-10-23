@@ -6,6 +6,7 @@ import (
 	administration "portico.local/server/internal/administration"
 	"portico.local/server/internal/catalog"
 	diagnostics "portico.local/server/internal/diagnostics"
+	"portico.local/server/internal/mediaanalysis"
 	operations "portico.local/server/internal/operations"
 	persistence "portico.local/server/internal/persistence"
 	servicelog "portico.local/server/internal/servicelog"
@@ -13,6 +14,17 @@ import (
 )
 
 func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
+	sonicErrors := []string{"invalid_request", "invalid_analysis", "unauthorized", "not_permitted", "not_found", "library_configuration_conflict", "analysis_conflict", "analysis_unavailable", "internal"}
+	if err := apikit.RegisterHTTP[struct{}, mediaanalysis.SonicStatusView](registry, apikit.Metadata{ID: "get_admin_libraries_id_sonic_analysis", Method: "GET", Path: "/v1/admin/libraries/{id}/sonic-analysis", Summary: "Read current library sound analysis status", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.PageSized, Status: 200, Errors: sonicErrors}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[SonicSettingsChange, mediaanalysis.SonicStatusView](registry, apikit.Metadata{ID: "put_admin_libraries_id_sonic_analysis", Method: "PUT", Path: "/v1/admin/libraries/{id}/sonic-analysis", Summary: "Save library sound analysis with its current revision", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.PageSized, BodyLimit: 4096, Status: 200, Errors: sonicErrors}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[struct{}, mediaanalysis.SonicStatusView](registry, apikit.Metadata{ID: "post_admin_libraries_id_sonic_analysis_retry", Method: "POST", Path: "/v1/admin/libraries/{id}/sonic-analysis/retry", Summary: "Retry the installed sound analysis engine", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.Constant, BodyLimit: 1024, Status: 200, Errors: sonicErrors}); err != nil {
+		return err
+	}
+
 	if err := apikit.RegisterHTTP[access.MemberBulkRequest, access.MemberBulkResult](registry, apikit.Metadata{ID: "post_admin_access_members_bulk", Method: "POST", Path: "/v1/admin/access/members/bulk", Summary: "Change selected people in one transaction", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "members", Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.PageSized, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
