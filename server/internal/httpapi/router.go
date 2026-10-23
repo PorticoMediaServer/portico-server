@@ -700,7 +700,7 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 	strict := strictPrincipal(dbwork.ClassFrom(r.Context(), dbwork.ClassInteractive))
 	if !strict && !private {
 		key = identity.Digest(token)
-		if cached, ok := d.principals.lookup(key, time.Now()); ok {
+		if cached, ok := d.principals.lookup(key, time.Now()); ok && !(cached.Grant == identity.GrantCastTarget && castOccurrenceRoute(r.Method, r.URL.Path)) {
 			// The cache remembers who a token is, not what this request is: a
 			// narrowed session is judged against every request it makes.
 			if e := cached.PermitsRequest(r.Context()); e != nil {
@@ -717,7 +717,13 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 		if p, e = d.Identity.AuthenticateContext(ctx, token); e != nil {
 			return e
 		}
-		return d.allowedLibrary(ctx, p, "")
+		if e = d.allowedLibrary(ctx, p, ""); e != nil {
+			return e
+		}
+		if item, queue := castOccurrenceResource(r.Method, r.URL.Path); item != "" || queue != "" {
+			return d.castOccurrenceAllowed(ctx, p, item, queue)
+		}
+		return nil
 	}
 	var err error
 	if d.DB == nil {
@@ -727,7 +733,7 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 	}
 	// A denial is never cached: the reason may have been transient, and a cached
 	// refusal is the one mistake here a viewer would actually see.
-	if err == nil && key != "" {
+	if err == nil && key != "" && !(p.Grant == identity.GrantCastTarget && castOccurrenceRoute(r.Method, r.URL.Path)) {
 		d.principals.store(key, p, time.Now(), generation)
 	}
 	if err == nil {
@@ -1531,6 +1537,10 @@ func (d Dependencies) itemReadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	item, e := d.Catalog.WithContext(r.Context()).Get(identity.PersonalKey(p.Viewer), r.PathValue("id"))
 	if e != nil {
+		failure(w, e)
+		return
+	}
+	if e = d.castOccurrenceAllowed(r.Context(), p, r.PathValue("id"), ""); e != nil {
 		failure(w, e)
 		return
 	}

@@ -317,6 +317,13 @@ func (s *Service) RenewAuthorization(ctx context.Context, bearer string, b Renew
 	if err != nil {
 		return AuthorizationEnvelope{}, err
 	}
+	// Owner completion is a single captured operation, never a renewable
+	// playback/controller family. Refuse before calling a controller verifier or
+	// looking up a historical renewal response. Existing Cast playback remains
+	// the only narrower grant that participates in this protocol.
+	if r.principal.Grant != "" && r.principal.Grant != GrantCastTarget {
+		return AuthorizationEnvelope{}, ErrForbidden
+	}
 	now := time.Now().UTC().Truncate(time.Second)
 	if r.revoked || !r.AuthorizationHorizon.After(now) {
 		return AuthorizationEnvelope{}, ErrUnauthorized

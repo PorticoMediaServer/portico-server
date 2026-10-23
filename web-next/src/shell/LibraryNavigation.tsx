@@ -22,7 +22,7 @@ export function LibraryNavigation({libraries, sidebar}: {libraries: readonly Lib
     observer.observe(element); measure();
     return () => observer.disconnect();
   }, [libraries, sidebar, measure]);
-  return <div className={styles.libraryGroup}>
+  return <div className={styles.libraryGroup} data-window-no-drag>
     {sidebar ? <div className={styles.libraryHeading}>{defaultI18n.t('next.home.shell.libraries')}</div> : <div className={styles.railDivider} />}
     <div ref={track} className={styles.railLibraries} data-navigation-libraries data-fade-start={edges.start || undefined} data-fade-end={edges.end || undefined} onScroll={measure}>
       {libraries.map(library => <Link className={styles.railItem} key={library.id} to="/library/$libraryId" params={{libraryId: library.id}} activeProps={{'aria-current': 'page'}}><Icon name={libraryNavigationIcon(library.kind, 'touch')} size={22} /><span data-nav-label>{library.name}</span></Link>)}

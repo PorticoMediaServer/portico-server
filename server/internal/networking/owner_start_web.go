@@ -1,0 +1,144 @@
+package networking
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"database/sql"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"net/url"
+	"time"
+
+	"portico.local/server/internal/claimweb"
+)
+
+// OwnerStartAuthority is supplied only by the local HTTP identity edge. It
+// closes over its exact current owner/main-profile/family/generation and token
+// expiry; neither the browser nor a Hosted approval can construct this guard.
+type OwnerStartAuthority struct {
+	ExpiresAt time.Time
+	CaptureTx func(context.Context, *sql.Tx, string, claimweb.Signed, claimweb.Signed) error
+	BindTx    func(context.Context, *sql.Tx, string, string) error
+}
+
+type ownerStartSigner interface {
+	SignOwnerStart(context.Context, Binding, claimweb.Signed, claimweb.OwnerStart) (claimweb.Signed, error)
+}
+
+func ownerRandom32(value string) bool {
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(value)
+	return err == nil && len(raw) == 32 && base64.RawURLEncoding.EncodeToString(raw) == value
+}
+
+// beginOwnerWebClaim is the private initiation producer. Its public action
+// binding is composed separately and must enforce the secure-origin and
+// protected-state prerequisites. Signed state is never a status GET fact.
+func (h *ClaimHandler) beginOwnerWebClaim(ctx context.Context, v Intent, address, state, codeChallenge, installation string, authority *OwnerStartAuthority) (localWebClaim, error) {
+	var out localWebClaim
+	transport, ok := h.transport.(*HTTPTransport)
+	signer, canSign := h.signer.(ownerStartSigner)
+	if !ok || !canSign || authority == nil || authority.CaptureTx == nil || authority.BindTx == nil {
+		return out, ErrUnavailable
+	}
+	if v.Purpose != "switch" || v.CurrentOwnerAccountID != "" || address == "" || !ownerRandom32(state) || !ownerRandom32(codeChallenge) || len(installation) < 32 || !validID(installation) {
+		return out, ErrInvalid
+	}
+	if err := checkClaimRequest(ctx); err != nil {
+		return out, err
+	}
+	var claimPayload, claimSignature, startPayload, startSignature []byte
+	err := h.store.db.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature FROM identity_owner_completions WHERE operation_id=?`, v.OperationID).Scan(&claimPayload, &claimSignature, &startPayload, &startSignature)
+	var start claimweb.OwnerStart
+	var original claimweb.Request
+	if err == nil {
+		out.Signed = claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(claimPayload), Signature: base64.RawURLEncoding.EncodeToString(claimSignature)}
+		proof := claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(startPayload), Signature: base64.RawURLEncoding.EncodeToString(startSignature)}
+		original, start, err = claimweb.VerifyOwnerStart(out.Signed, proof, transport.origin, time.Now())
+		if err != nil || original.Address != address || start.CodeChallenge != codeChallenge || start.InstallationID != installation || subtle.ConstantTimeCompare([]byte(start.State), []byte(state)) != 1 {
+			return localWebClaim{}, ErrStale
+		}
+		out.OwnerStart = &proof
+	} else if errors.Is(err, sql.ErrNoRows) {
+		if v.Stage != Prepared || v.AccountID != UnboundAccount {
+			return out, ErrStale
+		}
+		now := time.Now().UTC()
+		expires := now.Add(claimweb.OwnerStartLifetime)
+		if authority.ExpiresAt.Before(expires) {
+			expires = authority.ExpiresAt.UTC()
+		}
+		if !expires.After(now) {
+			return out, ErrStale
+		}
+		original = claimweb.Request{Kind: "portico.claim.web.v2", Audience: transport.origin, OperationID: v.OperationID, ServerID: v.ServerID, PublicKey: base64.RawURLEncoding.EncodeToString(v.PublicKey), LocalGeneration: v.LocalGeneration, Name: h.name(), Address: address, Purpose: "switch", IssuedAt: now, ExpiresAt: now.Add(webClaimLifetime)}
+		claimPayload, err = json.Marshal(original)
+		if err != nil {
+			return out, ErrInvalid
+		}
+		claimSignature, err = h.signer.Sign(ctx, v.Binding, claimPayload)
+		if err != nil {
+			return out, err
+		}
+		out.Signed = claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(claimPayload), Signature: base64.RawURLEncoding.EncodeToString(claimSignature)}
+		challenge := make([]byte, 24)
+		if _, err = rand.Read(challenge); err != nil {
+			return out, err
+		}
+		digest := sha256.Sum256(claimPayload)
+		start = claimweb.OwnerStart{Kind: claimweb.OwnerStartKind, Audience: transport.origin, ClaimHash: base64.RawURLEncoding.EncodeToString(digest[:]), OperationID: v.OperationID, ServerID: v.ServerID, PublicKey: original.PublicKey, LocalGeneration: v.LocalGeneration, Address: address, Purpose: "switch", State: state, CodeChallenge: codeChallenge, InstallationID: installation, ServerChallenge: base64.RawURLEncoding.EncodeToString(challenge), IssuedAt: now, ExpiresAt: expires}
+		proof, err := signer.SignOwnerStart(ctx, v.Binding, out.Signed, start)
+		if err != nil {
+			return out, err
+		}
+		out.OwnerStart = &proof
+	} else {
+		return out, err
+	}
+	// Persist the exact full proof and fresh challenge before any Hosted call.
+	g, err := h.store.tx(ctx)
+	if err != nil {
+		return localWebClaim{}, err
+	}
+	err = authority.CaptureTx(ctx, g.Tx(), transport.origin, out.Signed, *out.OwnerStart)
+	if err == nil {
+		err = commitClaimDatabaseTx(ctx, g)
+	}
+	g.Rollback()
+	if err != nil {
+		return localWebClaim{}, err
+	}
+	var pending claimweb.Pending
+	if err = transport.call(ctx, "pending", claimweb.PendingRequest{Payload: out.Signed.Payload, Signature: out.Signed.Signature, OwnerStart: out.OwnerStart}, &pending, nil); err != nil {
+		return localWebClaim{}, err
+	}
+	if !validID(pending.OwnerTransactionID) || pending.Code == "" || len(pending.Code) > 128 || pending.ServerID != v.ServerID || pending.Purpose != "switch" || pending.Address != address || !pending.ExpiresAt.After(time.Now()) || pending.ExpiresAt.After(original.ExpiresAt) {
+		return localWebClaim{}, ErrInvalid
+	}
+	out.OwnerTransactionID = pending.OwnerTransactionID
+	out.Code = pending.Code
+	out.URL = transport.origin + "/claim#" + url.Values{"code": {pending.Code}, "server": {original.Name}, "operation": {v.OperationID}}.Encode()
+	out.ExpiresAt = start.ExpiresAt
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		return localWebClaim{}, err
+	}
+	g, err = h.store.tx(ctx)
+	if err != nil {
+		return localWebClaim{}, err
+	}
+	defer g.Rollback()
+	if err = authority.BindTx(ctx, g.Tx(), v.OperationID, pending.OwnerTransactionID); err != nil {
+		return localWebClaim{}, err
+	}
+	if _, err = g.Tx().ExecContext(ctx, `INSERT INTO networking_web_claims(operation_id,request) VALUES(?,?) ON CONFLICT(operation_id) DO UPDATE SET request=excluded.request`, v.OperationID, string(encoded)); err != nil {
+		return localWebClaim{}, err
+	}
+	if err = commitClaimDatabaseTx(ctx, g); err != nil {
+		return localWebClaim{}, err
+	}
+	h.wakeClaimRecovery()
+	return out, nil
+}
