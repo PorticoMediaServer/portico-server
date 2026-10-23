@@ -1,0 +1,84 @@
+/** Binary access is supplied by the selected server/viewer scope, or a lawful
+ * local/offline file. Engines receive no URL, cookie, token or HTTP client. */
+export type ReaderRange = Readonly<{start: number; endExclusive: number}>;
+export interface ReaderSource {
+  readonly id: string;
+  readonly size: number;
+  read(range: ReaderRange, signal: AbortSignal): Promise<Uint8Array>;
+}
+export type ReaderFormat = 'epub' | 'pdf' | 'cbz';
+export type ReaderViewport = Readonly<{width: number; height: number}>;
+export type ReaderRect = Readonly<{x: number; y: number; width: number; height: number}>;
+type ObservedLocation = Readonly<{
+  progression: number;
+  /** These are omitted unless observed by the renderer; never estimated copy. */
+  chapter?: string;
+  pageLabel?: string;
+  pagesLeftInSection?: number;
+}>;
+export type ReaderLocation = ObservedLocation & (
+  | Readonly<{format: 'epub'; cfi: string; section?: string}>
+  | Readonly<{format: 'pdf' | 'cbz'; page: number}>
+);
+export type ReaderTocItem = Readonly<{
+  id: string; label: string; location: ReaderLocation; children?: readonly ReaderTocItem[];
+}>;
+export type ReaderMetadata = Readonly<{
+  title?: string; author?: string; language?: string;
+  direction?: 'ltr' | 'rtl' | 'vertical'; pageCount?: number;
+}>;
+export type ReaderSelection = Readonly<{
+  text: string; location: ReaderLocation; rects: readonly ReaderRect[];
+}>;
+export type ReaderSearchResult = Readonly<{
+  id: string; excerpt: string; location: ReaderLocation; chapter?: string;
+}>;
+export type ReaderSearchOptions = Readonly<{signal: AbortSignal; limit: number}>;
+export type ReaderNavigation =
+  | Readonly<{kind: 'next' | 'previous'}>
+  | Readonly<{kind: 'location'; location: ReaderLocation}>
+  | Readonly<{kind: 'progression'; value: number}>;
+export type ReaderFit = 'page' | 'width' | 'height' | 'spread';
+export type ReaderZoom = Readonly<{kind: 'scale'; value: number}> | Readonly<{kind: 'fit'; value: ReaderFit}>;
+export type ReaderZoomState = Readonly<{scale: number; fit?: ReaderFit}>;
+export type ReaderErrorCode = 'aborted' | 'closed' | 'invalid_source' | 'invalid_book'
+  | 'invalid_location' | 'invalid_preferences' | 'limit_exceeded' | 'protected'
+  | 'unsupported_format' | 'unsupported_operation' | 'source_unavailable' | 'render_failed';
+
+/** No persistence API is exposed: Aa and fixed-page changes are session-only.
+ * Preferences is the canonical Reading facade value, supplied by the host. */
+export interface ReaderView<Preferences extends object> {
+  navigate(target: ReaderNavigation, signal: AbortSignal): Promise<void>;
+  applyPreferences(preferences: Readonly<Preferences>, signal: AbortSignal): Promise<void>;
+  resize(viewport: ReaderViewport, signal: AbortSignal): Promise<void>;
+  getLocation(): ReaderLocation | null;
+  setZoom?(zoom: ReaderZoom, signal: AbortSignal): Promise<void>;
+  getZoom?(): ReaderZoomState;
+  pan?(offset: Readonly<{x: number; y: number}>, signal: AbortSignal): Promise<void>;
+  dispose(): void | Promise<void>;
+}
+export type ReaderMount<Preferences extends object> = Readonly<{
+  container: HTMLElement; preferences: Readonly<Preferences>; viewport: ReaderViewport;
+  signal: AbortSignal; onLocation(location: ReaderLocation): void;
+  onSelection(selection: ReaderSelection | null): void;
+}>;
+export interface ReaderDocument<Preferences extends object> {
+  readonly id: string;
+  readonly format: ReaderFormat;
+  readonly metadata: ReaderMetadata;
+  readonly toc: readonly ReaderTocItem[];
+  mount(options: ReaderMount<Preferences>): Promise<ReaderView<Preferences>>;
+  search(query: string, options: ReaderSearchOptions): AsyncIterable<ReaderSearchResult>;
+  dispose(): void | Promise<void>;
+}
+export interface ReaderAdapter<Preferences extends object> {
+  readonly format: ReaderFormat;
+  open(options: Readonly<{source: ReaderSource; signal: AbortSignal}>): Promise<ReaderDocument<Preferences>>;
+}
+export type ReaderSnapshot<Preferences extends object> = Readonly<{
+  status: 'closed' | 'opening' | 'ready' | 'error';
+  format?: ReaderFormat; sourceId?: string; metadata?: ReaderMetadata;
+  toc: readonly ReaderTocItem[]; location: ReaderLocation | null;
+  selection: ReaderSelection | null; preferences: Readonly<Preferences>;
+  overriddenKeys: readonly (keyof Preferences)[]; error?: ReaderErrorCode;
+}>;
