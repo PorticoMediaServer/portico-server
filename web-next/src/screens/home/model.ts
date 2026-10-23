@@ -27,7 +27,7 @@ export function homeCardSubject(entry: ContentEntry): CardSubject {
     : entry.seasonNumber === 0 ? {mode: 'special' as const}
     : {mode: 'seasonal' as const, season: entry.seasonNumber, episode: entry.episodeNumber};
   return {id: entry.id, kind: entry.kind, title: entry.title,
-    year: entry.year, contentRating: entry.contentRating, durationSeconds: entry.duration,
+    seasonNumber: entry.seasonNumber, year: entry.year, contentRating: entry.contentRating, durationSeconds: entry.duration,
     positionSeconds: entry.progressSeconds, genres: entry.genres, seasonCount: entry.seasonCount,
     artist: entry.artist?.name, album: entry.album?.name, author: entry.author,
     show: entry.show ? {id: entry.show.id, title: entry.show.name} : undefined, episode};

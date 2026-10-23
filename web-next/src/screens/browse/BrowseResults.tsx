@@ -4,7 +4,7 @@ import {timelineFacts, type TextEnvironment} from '@portico/client-core/kit-mode
 import {durationText} from '@core/presentation/kit-model/text.ts';
 import type {BrowseSortSelection} from '@core/browse.ts';
 import {AlphabetRail, WindowedGrid, type WindowedGridHandle} from '../../kit/layout';
-import {Skeleton} from '../../kit/states';
+import {Skeleton, StateView} from '../../kit/states';
 import {Artwork, GeneratedArt} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
@@ -44,6 +44,7 @@ export function BrowseResults(props: BrowseResultsProps) {
   const anchors = Object.entries(snapshot.positionIndex ?? {}).map(([key, index]) => ({key, index}));
   const list = view === 'list', ratio = shape === 'poster' ? 2 / 3 : shape === 'collection' ? 1.9 : 1;
   const height = cardWidth / ratio + (shape === 'collection' ? 0 : 58);
+  if (snapshot.status === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/>;
   return <div className={styles.results} ref={root} data-view={view}>
     {list && <div className={styles.listHead} role="row">{columns.map(column => {
       const offered = state.capabilities?.sorts.find(sort => sort.id === column.id);
@@ -55,17 +56,18 @@ export function BrowseResults(props: BrowseResultsProps) {
       cardWidth={list ? Math.max(1, size.width) : cardWidth} rowHeight={list ? 70 : height} gap={list ? 0 : 20} rowGap={list ? 0 : 30} reducedMotion={props.reducedMotion}
       onVisibleRange={range} renderPlaceholder={() => <Skeleton height={list ? 54 : cardWidth / ratio} width={list ? '100%' : cardWidth}/>}
       renderItem={(member, context) => list ? <BrowseListRow {...props} member={member} index={context.index}/> : <BrowseEntryCard entry={member.entry} actions={props.actions(member, context.index)} artwork={props.artwork} env={props.env}
-        width={cardWidth} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />}
+        width={cardWidth} family={state.capabilities?.library.kind} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />}
     {state.sort?.field === 'title' && anchors.length > 0 && <AlphabetRail anchors={anchors} visibleRange={visible} onJump={anchor => grid.current?.scrollToIndex(anchor.index)} className={styles.rail}/>}
   </div>;
 }
 function BrowseListRow({member, index, artwork, env, actions}: BrowseResultsProps & {member: BrowseMember; index: number}) {
+  const source = useRef<'pointer' | 'keyboard'>('pointer');
   const {entry} = member, action = actions(member, index), progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
   const art = artwork.foreground(entry.posterUrl, 72 * devicePixelRatio, 2 / 3, {group: entry.libraryId, order: index});
   const added = entry.addedAt && Number.isFinite(Date.parse(entry.addedAt)) ? new Intl.DateTimeFormat(env.locale ?? 'en-US', {month: 'short', day: 'numeric', year: 'numeric'}).format(new Date(entry.addedAt)) : undefined;
   const resolution = entry.resolution === '4k' ? t('quality.4k') : entry.resolution === '1080p' ? t('downloads.quality.1080p') : entry.resolution === '720p' ? t('downloads.quality.720p') : entry.resolution === 'sd' ? t('quality.sd') : undefined;
-  return <div className={styles.listRow} data-browse-entry={entry.id}>
-    <div className={styles.listTitle}>{action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: 'pointer'})} accessibilityLabel={t('next.selection.select')} variant="row"/>}
+  return <div className={styles.listRow} data-browse-entry={entry.id} onKeyDown={event => {if (event.key === 'Escape' && action.selection?.active) {event.preventDefault();action.selection.onExit();}}}>
+    <div className={styles.listTitle}>{action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: source.current})} onKeyDownCapture={() => {source.current = 'keyboard';}} onPointerDownCapture={() => {source.current = 'pointer';}} accessibilityLabel={t('next.selection.select')} variant="row"/>}
       <button type="button" data-layout-primary onClick={action.onOpen}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(entry.title)[0] ?? ''}/>}/></span><span>{entry.title}</span></button></div>
     <span>{entry.year}</span><span>{durationText(entry.duration, env.t)}</span><span>{entry.rating !== undefined && <><Icon name="i-star" size={13}/>{defaultI18n.number(entry.rating, {maximumFractionDigits: 1})}</>}</span>
     <span>{resolution && <span className={styles.resolution}>{resolution}</span>}</span><span>{added}</span>

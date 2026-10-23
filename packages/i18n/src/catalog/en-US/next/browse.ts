@@ -1,4 +1,7 @@
 export const browseMessages = {
+  'next.browse.countAtLeast': '{count, number}+',
+  'next.browse.filmCount': '{count, plural, one {# film} other {# films}}',
+  'next.browse.filmCountAtLeast': '{count, number}+ films',
   'next.browse.family': 'Browsing a library',
   'next.browse.libraryHeader': 'Library header',
   'next.browse.phoneHeader': 'Compact library header',

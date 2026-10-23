@@ -43,3 +43,25 @@ test('a different revision cannot enter the displayed collection', async () => {
   controller.collection.ensureRange(60, 65);await settle();assert.equal(controller.collection.itemAt(60), undefined);assert.equal(controller.collection.getSnapshot().status, 'error');
  } finally {controller.dispose();}
 });
+test('Home display pages, facet queries and batch counts keep the immutable source membership', async () => {
+ const membership = {field: 'homeRow', operator: 'equals' as const, value: 'continue'};
+ const scopedCaps = {...caps, library: {id: '', kind: '', name: ''}, fields: [
+  {id: 'homeRow', labelKey: 'browse.field.homeRow', type: 'identity-set', operators: ['equals'], controlHint: 'text', applicableKinds: ['movie']},
+  {id: 'library', labelKey: 'browse.field.library', type: 'enum', operators: ['in'], controlHint: 'facet-multi-select', applicableKinds: ['movie'], facetSource: {endpoint: '/ignored', field: 'library'}}],
+  sorts: [...caps.sorts, {id: 'groupOrder', labelKey: 'sort.groupOrder', directions: ['asc'], defaultDirection: 'asc', requiresGroup: true, applicableKinds: ['movie']}]};
+ const requests: {path: string; body: unknown}[] = [];
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  requests.push({path, body});
+  if (path.includes('capabilities')) return scopedCaps as T;
+  if (path.includes('facets')) return {field: 'library', total: 1, values: [{value: 'lib', label: 'Movies', count: 80}]} as T;
+  if (path.includes('counts')) return {counts: [{id: 'draft', total: 80, totalIsLowerBound: false, revision: 'actual-count-revision'}]} as T;
+  return payload((body as {range: {start: number}}).range.start, 80) as T;
+ }}, {libraryId: '*', pivot: 'movies', homeRowId: 'continue', base: [membership], sort: {field: 'groupOrder', direction: 'asc'}}, () => true);
+ try {await controller.load();await settle();const stop = new AbortController();
+  await controller.facets('library', '', [], stop.signal);await controller.count([], stop.signal);
+  const page = requests.find(r => r.path.endsWith('/browse'))!.body as {homeRowDisplay: string;query: unknown};
+  assert.equal(page.homeRowDisplay, 'continue');assert.deepEqual(page.query, membership);
+  const facet = requests.find(r => r.path.includes('facets'))!;assert.deepEqual(JSON.parse(new URL(facet.path,'https://local.invalid').searchParams.get('query')!), membership);
+  const count = requests.find(r => r.path.includes('counts'))!.body as {queries: {query: unknown}[]};assert.deepEqual(count.queries[0].query, membership);
+ } finally {controller.dispose();}
+});

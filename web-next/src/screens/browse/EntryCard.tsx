@@ -1,7 +1,9 @@
+import {defaultI18n} from '@i18n';
 import type {CSSProperties} from 'react';
 import type {ContentEntry} from '@core/library-content.ts';
 import {shapeFor} from '@core/presentation/card-shape.ts';
-import {homeCardModel} from '../home/model';
+import {homeCardSubject} from '../home/model';
+import {cardText} from '@portico/client-core/kit-model';
 import type {TextEnvironment} from '@portico/client-core/kit-model';
 import {GeneratedArt} from '../../kit/artwork';
 import {CircleCard, CollectionTile, PosterCard, SquareCard, type CardSelection} from '../../kit/cards';
@@ -16,11 +18,13 @@ export type BrowseItemActions = Readonly<{
   selection?: CardSelection;
 }>;
 export type BrowseEntryCardProps = Readonly<{entry: ContentEntry; actions: BrowseItemActions; artwork: ShellArtwork; env: TextEnvironment;
-  width: number; order: number; group: string; visible: boolean; backdrops: boolean}>;
+  width: number; family?: string; order: number; group: string; visible: boolean; backdrops: boolean}>;
 /** Display fields never stand in for a navigation target or a permission offer. */
-export function BrowseEntryCard({entry, actions, artwork, env, width, order, group, visible, backdrops}: BrowseEntryCardProps) {
+export function BrowseEntryCard({entry, actions, artwork, env, width, family, order, group, visible, backdrops}: BrowseEntryCardProps) {
   const shape = shapeFor(entry.kind, 'grid');
-  const props = {model: homeCardModel(entry, false, env), context: 'grid' as const, visible, watched: entry.watched, isNew: entry.new,
+  const ordinary = cardText({...homeCardSubject(entry), itemCount: ['collection', 'category', 'playlist'].includes(entry.kind) ? entry.count : undefined, albumCount: entry.albumCount, songCount: entry.kind === 'album' || entry.kind === 'disc' ? entry.count : undefined, countIsLowerBound: entry.countIsLowerBound}, 'ordinary', env);
+  const model = entry.kind === 'collection' && family === 'movie' ? {...ordinary, caption: entry.count === undefined ? [] : [{id: 'films', role: 'supplement' as const, text: defaultI18n.t(entry.countIsLowerBound ? 'next.browse.filmCountAtLeast' : 'next.browse.filmCount', {count: entry.count})}], detail: entry.yearMin !== undefined && entry.yearMax !== undefined ? [{id: 'years', role: 'supplement' as const, text: env.t('next.kit.range', {start: String(entry.yearMin), end: String(entry.yearMax)})}] : []} : ordinary;
+  const props = {model, context: 'grid' as const, visible, watched: entry.watched, isNew: entry.new,
     onNavigate: actions.onOpen, onPlay: actions.onPlay, onMore: actions.onMore, moreExpanded: actions.moreExpanded,
     onNotInterested: actions.onNotInterested, selection: actions.selection, style: {'--cards-width': `${width}px`} as CSSProperties,
     fallback: <GeneratedArt glyph={Array.from(entry.title.trim())[0] ?? ''}/>};

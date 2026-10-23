@@ -1,4 +1,4 @@
-import {BrowseQueryBuilder, browseCapabilitiesPath, browsePath, browseMembershipId, parseBrowseCapabilities, parseBrowseResult,
+import {BrowseQueryBuilder, browseCapabilitiesPath, browsePath, browseMembershipId, parseBrowseCapabilities, parseBrowseResult, browseContextFacetsPath, parseBrowseFacets, browseCountsPath, browseCountsRequest, parseBrowseCounts, parseBrowseNode,
   type BrowseCapabilities, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
 import {createWindowedCollection, type WindowedCollection} from '@core/collections/windowed.ts';
 import type {ContentEntry, LibraryContentApi} from '@core/library-content.ts';
@@ -72,6 +72,24 @@ export class BrowseController {
     });
     this.collection.ensureRange(0, 0);
   }
+  async facets(field: string, query: string, predicates: readonly BrowseNode[], signal: AbortSignal) {
+    const {capabilities: caps, sort} = this.state;
+    if (!caps || !sort || !this.current()) throw closed();
+    const epoch = this.epoch, body = this.builder(caps, predicates, sort).build();
+    const raw = await this.api.request(browseContextFacetsPath(this.source.libraryId, field, this.source.pivot, body.query, query, 200), 'GET', undefined, signal);
+    if (!this.current() || epoch !== this.epoch || signal.aborted) throw closed();
+    return parseBrowseFacets(raw, field);
+  }
+  async count(predicates: readonly BrowseNode[], signal: AbortSignal) {
+    const {capabilities: caps, sort} = this.state;
+    if (!caps || !sort || !this.current()) throw closed();
+    const epoch = this.epoch, body = this.builder(caps, predicates, sort).build();
+    const raw = await this.api.request(browseCountsPath(this.source.libraryId), 'POST', browseCountsRequest(this.source.pivot, [{id: 'draft', query: body.query ?? null}]), signal);
+    if (!this.current() || epoch !== this.epoch || signal.aborted) throw closed();
+    return parseBrowseCounts(raw, ['draft'])[0];
+  }
+  /** UI controls preserve compound predicates and validate every generated node. */
+  parseNode = (value: unknown) => parseBrowseNode(value);
   retry = () => { if (this.state.phase === 'error') void this.load(); else this.collection.retry(); };
   dispose() { this.life.abort(); this.epoch++; this.collection.dispose(); this.listeners.clear(); }
 }
