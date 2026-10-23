@@ -17,4 +17,6 @@ export type {PlaybackTrickplaySource, PlaybackTrickplaySelection} from './trickp
 export {playbackPolicyNext} from './policy.ts';
 export type {WebPlaybackPolicyAction, WebPlaybackPolicyNext} from './policy.ts';
 export type {WebPlaybackVersionChoices, WebPlaybackVersionChoice} from './versions.ts';
+export {playbackVersionRows} from './version-rows.ts';
+export type {PlaybackVersionRowFormatter, PlaybackVersionRow} from './version-rows.ts';
 export {loadDeviceEqualizer, saveDeviceEqualizer, resetDeviceEqualizer, subscribeDeviceEqualizer} from './audio/equalizer-store.ts';
