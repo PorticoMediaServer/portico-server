@@ -10,6 +10,7 @@ export function useReportContext() {
   const scope = useViewerScope();
   const {region} = useI18n();
   const [revision, setRevision] = useState(0);
-  const context = useMemo(() => captureReportContext(region.timeZone), [api, scope, region.timeZone, revision]);
-  return {context, refresh: () => setRevision(value => value + 1)};
+  // Missing clock facts are refused by the canonical validator, never UTC.
+  const captured = useMemo(() => ({api, scope, revision, context: captureReportContext(region.timeZone ?? '')}), [api, scope, region.timeZone, revision]);
+  return {context: captured.context, scope: captured.scope, refresh: () => setRevision(value => value + 1)};
 }

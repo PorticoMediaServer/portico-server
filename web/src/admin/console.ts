@@ -42,7 +42,8 @@ export type ReadOptions = {
  */
 export function useRead<T>(fn: () => Promise<T>, deps: readonly unknown[], options: ReadOptions = {}): Read<T> {
   const {hub} = useFreshness();
-  const store = useMemo(() => new QuietRead<T>(hub), [hub, options.resetKey]);
+  const source = useMemo(() => ({hub, resetKey: options.resetKey}), [hub, options.resetKey]);
+  const store = useMemo(() => new QuietRead<T>(source.hub), [source]);
   useEffect(() => () => store.dispose(), [store]);
   const latest = useRef(fn);
   latest.current = fn;

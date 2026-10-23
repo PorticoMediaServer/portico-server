@@ -28,8 +28,11 @@ export function PlayHistoryPanel() {
   const client = useConsole();
   const libraries = useLibrariesContext();
   const accounts = useRead(() => client.accountOptions(), [client]);
-  const {context, refresh} = useReportContext();
-  const [selected, setFilters] = useState<Omit<PlayHistoryFilters, 'timeZone' | 'until'>>({period: 'all'});
+  const {context, scope, refresh} = useReportContext();
+  type Selection = Omit<PlayHistoryFilters, 'timeZone' | 'until'>;
+  const [selection, setSelection] = useState<{scope: typeof scope; value: Selection}>(() => ({scope, value: {period: 'all'}}));
+  const selected = useMemo<Selection>(() => selection.scope === scope ? selection.value : {period: 'all'}, [selection, scope]);
+  const setFilters = (update: (value: Selection) => Selection) => setSelection({scope, value: update(selected)});
   const filters = useMemo<PlayHistoryFilters>(() => ({...selected, ...context}), [selected, context]);
   const current = useRef(filters);
   current.current = filters;
@@ -45,7 +48,7 @@ export function PlayHistoryPanel() {
     const controller = new AbortController();
     request.current = controller;
     const n = ++run.current;
-    // What is on screen stays until the answer arrives: a filter or Refresh never empties the table first.
+    // Keep rows only for this exact settled report and query.
     setState(prev => prev.shown === filters ? {...prev, loading: true, error: undefined} : {entries: [], next: '', loading: true, shown: filters});
     fetchPlayHistory(api, filters, cursor, controller.signal).then(
       page => { if (n === run.current && current.current === filters && !controller.signal.aborted) setState(prev => ({entries: cursor ? [...prev.entries, ...page.entries] : page.entries, total: page.total ?? (cursor ? prev.total : undefined), next: page.nextCursor, loading: false, at: Date.now(), shown: filters})); },

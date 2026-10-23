@@ -27,6 +27,8 @@ test('legacy reports keep one actual regional capture until refresh, viewer, API
   assert.notEqual(render().context, changedAPI);
   timeZone = 'Pacific/Auckland';
   assert.equal(render().context.timeZone, timeZone);
+  timeZone = '';
+  assert.throws(render, {code: 'invalid_report_interval'}, 'missing zone is not replaced with UTC');
 });
 
 test('legacy telemetry and Today summary pass their original canonical context into the real call seam', async () => {
@@ -53,12 +55,12 @@ test('legacy History retires old pages and cursors before a new report context c
   const effects: (() => void | (() => void))[] = [];
   const reads: {filters: unknown; cursor: string; signal: AbortSignal; resolve: (page: unknown) => void}[] = [];
   let context = Object.freeze({timeZone: 'America/Halifax', until: '2026-10-23T13:15:00.000Z'});
-  const client = {}, api = {};
+  const client = {}, api = {}, scope = {viewerId: 'viewer', serverId: 'server'};
   const m = await componentModule(new URL('../src/screens/server/PlayHistory.tsx', import.meta.url), {
     react: {...h.react, useEffect: (effect: () => void) => effects.push(effect)},
     '../../app/session': {useSession: () => ({api})}, '../../app/libraries': {useLibrariesContext: () => ({items: []})},
     '../../app/i18n': {useI18n: () => ({t: (key: string) => key})},
-    './report-context': {useReportContext: () => ({context, refresh() {}})},
+    './report-context': {useReportContext: () => ({context, scope, refresh() {}})},
     '../../admin/console': {useConsole: () => client, useRead: () => ({}), useQuietly() {}},
     '../../ui': {Surface: 'surface', Table: 'table', Button: 'button', Select: 'select', Freshness: 'freshness', Text: 'text'},
     '@core/play-history.ts': {fetchPlayHistory: (_api: unknown, filters: unknown, cursor: string, signal: AbortSignal) => new Promise(resolve => reads.push({filters, cursor, signal, resolve})), playHistoryUser: () => 'viewer', playHistoryType: () => 'Movie', playHistoryTitle: () => 'Title', playHistoryPlatform: () => ''},
