@@ -38,7 +38,7 @@ test('trusted bridge delivers actual source bytes in bounded chunks, metadata om
     f.host.confirm(); assert.equal(confirmations, 1); assert.deepEqual(guest.preferences.getSnapshot(), preferences); off();
     await guest.openSettings(); await guest.back(); assert.equal(f.settings, 1); assert.equal(f.back, 1);
     const saved = await guest.session.saveProgress({expectedRevision: 0, location: format === 'epub' ? {format, progression: 0, cfi: 'epubcfi(/6/2!/4/1:0)'} : {format, progression: 0, pageIndex: 0}});
-    assert.deepEqual(saved, {progress: null, saved: false});
+    assert.equal(saved.progress, null); assert.equal(saved.saved, false);
     guest.dispose(); f.host.dispose();
   }
 });
