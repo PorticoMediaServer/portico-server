@@ -1,7 +1,8 @@
 # Security policy
 
-Portico is prerelease software. Fixes are normally provided in the newest build;
-older builds may not receive security patches.
+Portico is prerelease software. When security fixes are published, they normally
+target the newest build; older builds may not receive patches. Support, responses,
+and fixes are voluntary and not guaranteed. See [SUPPORT.md](SUPPORT.md).
 
 ## Report a problem
 
