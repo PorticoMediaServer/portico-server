@@ -14,6 +14,10 @@ func TestSignInPolicyOwnerMainProfileAndTypedReplacement(t *testing.T) {
 		if w.Code != 403 {
 			t.Fatalf("non-owner policy read: %d %s", w.Code, w.Body)
 		}
+		w = f.call("PATCH", "/v1/admin/sign-in/policy", token, `{"values":{}}`)
+		if w.Code != 403 {
+			t.Fatalf("non-owner reached revision/body validation: %d %s", w.Code, w.Body)
+		}
 	}
 	w := f.call("GET", "/v1/admin/sign-in/policy", f.owner, "")
 	var current identity.SignInPolicy

@@ -4,6 +4,7 @@ import {Button} from '../../kit/controls';
 import {useRouterState} from '@tanstack/react-router';
 import {settingsBinding} from '@core/presentation/settings-bindings.ts';
 import {captureReportContext, type ReportContext} from '@core/report-context.ts';
+import {SettingsPeopleClient} from '@core/settings-people.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
@@ -19,6 +20,7 @@ import {SettingsController, type SettingsControllerOptions} from './controller';
 import {createSettingsBindings} from './bindings';
 import {readingSettingsAdapter} from './reading-adapter';
 import {hasWebPreferenceEffect} from './effects';
+import {PeopleScreen, type PeopleBindings} from './People';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
 const historyContexts = new WeakMap<ShellAssemblyContext, ReportContext>();
@@ -40,6 +42,7 @@ export function SettingsEntry() {
     const reader = context?.preferences, snapshot = reader?.getSnapshot('web');
     if (!context || !reader || !snapshot || !context.isCurrent()) return;
     let active = true;
+    const authorityListeners = new Set<() => void>();
     const current = () => active && context.isCurrent();
     const reportError = () => {if (current()) setFailure(true);};
     const identity = context.facts.identity, viewer = context.session().viewer;
@@ -61,6 +64,14 @@ export function SettingsEntry() {
       }},
     };
     const controller = new SettingsController(options);
+    const session = context.session();
+    const people: PeopleBindings | undefined = route.section === 'people' && identity.primaryProfile === true && identity.capabilities?.managePeople === true &&
+      (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {
+        client: new SettingsPeopleClient(context.api, current), serverName: context.facts.serverName, libraries: identity.libraries,
+        actor: {accountId: viewer.accountId, role}, openHome, reportError,
+        authority: {scope: {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, sessionFamilyId: session.sessionFamilyId},
+          isCurrent: current, subscribe: listener => {authorityListeners.add(listener); return () => {authorityListeners.delete(listener);};}, onAuthorityChanged: openHome},
+      } : undefined;
     let dashboard: DashboardBindings | undefined;
     if (identity.primaryProfile === true && identity.capabilities?.manageServer && (role === 'owner' || role === 'admin')) {
       const pending = route.section === 'history' ? historyContexts.get(context) : undefined;
@@ -73,14 +84,14 @@ export function SettingsEntry() {
     }
     const source = createSettingsBindings(controller, options, identity, {openHome,
       special: row => row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null,
-      section: selected => selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : undefined,
+      section: selected => selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : undefined,
     });
     const settings: SettingsBindings = {...source,
-      eligible: (row, selected) => row.id === 'metadata.perLibrary' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected),
-      rowState: (row, selected) => row.id === 'metadata.perLibrary' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected),
+      eligible: (row, selected) => row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected),
+      rowState: (row, selected) => row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected),
     };
     setFailure(false);setOwned({context, settings, dashboard});
-    return () => {active = false;dashboard?.dispose();controller.dispose();};
+    return () => {active = false;people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();controller.dispose();};
   }, [context, retry, route.section, reportTimeZone]);
   if (!protectedContext || !owned || owned.context !== context) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};
