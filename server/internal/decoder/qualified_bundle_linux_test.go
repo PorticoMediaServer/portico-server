@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/mediaexec"
 )
@@ -193,5 +194,23 @@ func TestQualifiedBundleRejectsOptionsSubstitutionAndCancellation(t *testing.T) 
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestQualifiedBundleCanonicalRuntime(t *testing.T) {
+	root := os.Getenv("PORTICO_TEST_QUALIFIED_BUNDLE")
+	if root == "" {
+		t.Skip("set PORTICO_TEST_QUALIFIED_BUNDLE to the exact checked Linux bundle for this target integration gate")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	ff, fp := filepath.Join(root, "bin/ffmpeg"), filepath.Join(root, "bin/ffprobe")
+	facts, err := ProbeToolchain(ctx, ff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	qualified, err := QualifyToolchainBundle(ctx, ff, fp, facts)
+	if err != nil || !qualified.DolbyVisionProfile7To81 || !qualified.DolbyVisionDualLayerJoin || qualified.Identity != facts.Identity || qualified.VulkanAvailable || qualified.OpenCLAvailable {
+		t.Fatal("exact canonical runtime failed its bound feature producer", qualified, err)
 	}
 }
