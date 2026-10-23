@@ -182,9 +182,14 @@ export class DesktopOfflineCoordinator{
       await this.transport.store.saveReceipt(entry.id,outcomes[0].receipt,current);
       if(outcomes[0].titleOnServer!==null)await this.transport.store.serverPresence(entry,outcomes[0].titleOnServer,current);
     }catch(error){
-      if(entry&&entry.state==='downloading'){
-        // Return only our unchanged partial transfer to queued, never undo a concurrent Pause.
-        try{this.transport.store.assertCurrent();entry=await this.transport.store.hold(entry,false);}catch{
+      if(entry&&(costPaused||entry.state==='downloading')){
+        // A native append may commit before cancellation discards its reply. Re-read
+        // the actual revision; never acknowledge our stale pre-append row as queued.
+        try{
+          this.transport.store.assertCurrent();
+          const actual=await this.transport.store.entry(entry.id);
+          if(actual.state==='downloading'&&!actual.held)entry=await this.transport.store.hold(actual,false);
+        }catch{
           if(costPaused){const actual=await this.transport.store.entry(entry.id,signal);if(actual.state==='downloading'&&!actual.held)failed('downloads_conflict');}
         }
       }

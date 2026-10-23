@@ -222,7 +222,7 @@ async fn desktop_spike_report(window:WebviewWindow,state:tauri::State<'_,EngineS
         let value=tauri::async_runtime::spawn_blocking(move||{
             let native=receive.recv().map_err(|_|Error::EngineFailure)?;
             let (observation,audio)=match engine.as_ref(){Some(e)=>(Some(e.observation()),Some(e.audio_facts())),None=>(None,None)};
-            Ok(serde_json::json!({"platform":std::env::consts::OS,"ui":{"frames":report.frames,"elapsedMs":report.elapsed_ms,"longestFrameMs":report.longest_frame_ms,"width":report.width,"height":report.height},"native":native,"player":observation,"audio":audio}))
+            Ok(serde_json::json!({"platform":std::env::consts::OS,"networkCost":crate::network::current(),"ui":{"frames":report.frames,"elapsedMs":report.elapsed_ms,"longestFrameMs":report.longest_frame_ms,"width":report.width,"height":report.height},"native":native,"player":observation,"audio":audio}))
         }).await.map_err(|_|Error::EngineFailure)??;
         let path=PathBuf::from(path);let temp=path.with_extension("tmp");
         std::fs::write(&temp,serde_json::to_vec_pretty(&value).map_err(|_|Error::EngineFailure)?).map_err(|_|Error::EngineFailure)?;

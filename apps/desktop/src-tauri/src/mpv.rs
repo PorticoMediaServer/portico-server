@@ -509,7 +509,7 @@ mod local_source_tests {
         assert_eq!(engine.execute(Command::FrameStep{generation:1,direction:0}),Err(Error::InvalidCommand));
         engine.execute(Command::FrameStep{generation:1,direction:1}).unwrap();let one=wait(Some(start),false);
         engine.execute(Command::FrameStep{generation:1,direction:1}).unwrap();let two=wait(Some(one),false);
-        // This fixture's actual PTS are 0,100,400,500,1100,1700ms. A constant fps guess
+        // This fixture's actual PTS are 0,100,400,500,1200,1700ms. A constant fps guess
         // cannot satisfy both observed intervals. The engine commands name no position.
         assert!((one-100.0).abs()<2.0,"first observed frame {one}");
         assert!((two-400.0).abs()<2.0,"second observed VFR frame {two}");
