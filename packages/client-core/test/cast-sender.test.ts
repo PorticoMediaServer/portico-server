@@ -10,16 +10,18 @@ function receiver(deviceName = 'Living Room TV', deviceId?: string) {
   const onMsg = new Set<(raw: unknown) => void>();
   const onEnd = new Set<() => void>();
   let ended: boolean | undefined;
+  let autoAck = true;
   const transport: CastTransport = {
     deviceName,
     ...(deviceId ? {deviceId} : {}),
-    send: async m => { sent.push(m); },
+    send: async m => { sent.push(m); if (m.type === 'load' && autoAck) queueMicrotask(() => { for (const fn of onMsg) fn({type:'loaded',requestId:m.requestId,itemId:m.itemId}); }); },
     onMessage: fn => { onMsg.add(fn); return () => onMsg.delete(fn); },
     onSessionEnd: fn => { onEnd.add(fn); return () => onEnd.delete(fn); },
     end: stop => { ended = stop; },
   };
   return {
     transport, sent,
+    set autoAck(value: boolean) { autoAck = value; },
     reply: (m: unknown) => { for (const fn of [...onMsg]) fn(typeof m === 'string' ? m : JSON.stringify(m)); },
     endSession: () => { for (const fn of [...onEnd]) fn(); },
     get ended() { return ended; },
@@ -54,7 +56,7 @@ test('the subtitle chosen on the sender travels with load: a track id, or off; n
   await settle();
   r.reply({type: 'paired'});
   assert.equal(await started, true);
-  assert.deepEqual(r.sent[1], {type: 'load', itemId: 'item-1', startSeconds: 0, title: 'Pilot', subtitleTrackId: 's3'});
+  assert.deepEqual(r.sent[1], {type: 'load', requestId: 'load-1', itemId: 'item-1', startSeconds: 0, title: 'Pilot', subtitleTrackId: 's3'});
 });
 
 test('pairs with a server-issued code, then loads the title with its display fields', async () => {
@@ -68,7 +70,7 @@ test('pairs with a server-issued code, then loads the title with its display fie
   assert.equal(h.controller.getSnapshot().phase, 'waiting', 'the TV is asking the person watching');
   r.reply({type: 'paired'});
   assert.equal(await started, true);
-  assert.deepEqual(r.sent[1], {type: 'load', itemId: 'item-1', startSeconds: 42, title: 'Pilot', seriesTitle: 'The Show', season: 1, episode: 1, kind: 'episode', artworkPath: '/v1/artwork/x'});
+  assert.deepEqual(r.sent[1], {type: 'load', requestId: 'load-1', itemId: 'item-1', startSeconds: 42, title: 'Pilot', seriesTitle: 'The Show', season: 1, episode: 1, kind: 'episode', artworkPath: '/v1/artwork/x'});
   const s = h.controller.getSnapshot();
   assert.equal(s.phase, 'casting');
   assert.equal(s.deviceName, 'Living Room TV');
@@ -246,4 +248,26 @@ test('two televisions with one name keep their own pairing proofs when the platf
   void again.adopt(loungeAgain.transport);
   assert.deepEqual(loungeAgain.sent[0], {type: 'status', controlToken: 'a'.repeat(48)});
   again.dispose();
+});
+
+test('load acknowledgement is correlated and a missing/rejected load never claims playback', async () => {
+  const h = harness(), r = receiver(); r.autoAck = false;
+  const started = h.controller.start(r.transport, 'item-1', meta, 0);
+  await settle(); r.reply({type:'paired'}); await settle();
+  assert.equal(h.controller.getSnapshot().phase, 'pairing');
+  r.reply({type:'loaded',requestId:'load-other',itemId:'item-1'});
+  assert.equal(h.controller.getSnapshot().phase, 'pairing');
+  r.reply({type:'load-failed',requestId:'load-1'});
+  assert.equal(await started, false);
+  assert.equal(h.controller.getSnapshot().phase, 'error');
+  const second=h.controller.start(r.transport, 'item-1', meta, 0);
+  await settle();r.reply({type:'paired'});await settle();h.fire(150_000);
+  assert.equal(await second,false);
+});
+test('a queue load carries only bounded server queue and entry identities', async () => {
+  assert.deepEqual(castChoiceFields({queue:{queueId:'q-1',entryId:'entry-2'}}),{queue:{queueId:'q-1',entryId:'entry-2'}});
+  assert.deepEqual(castChoiceFields({queue:{queueId:'https://evil.test',entryId:'entry-2'}}),{});
+  const h=harness(),r=receiver();const started=h.controller.start(r.transport,'song',meta,0,{queue:{queueId:'q-1',entryId:'entry-2'}});
+  await settle();r.reply({type:'paired'});assert.equal(await started,true);
+  const load=r.sent.find(m=>m.type==='load');assert.deepEqual(load?.queue,{queueId:'q-1',entryId:'entry-2'});
 });

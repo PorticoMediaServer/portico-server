@@ -48,6 +48,24 @@ The patched hls.js build is `1.7.2-portico.1`, based on upstream `1.7.2` at
 [licence](third_party/hls.js/LICENSE) and
 [provenance](third_party/hls.js/provenance.json) are retained in `third_party/hls.js`.
 
+## Reader libraries
+
+The Reader dependencies are pinned in `packages/reader-core/package.json` and the
+root lockfile. Full upstream licence texts and their hashes are retained in
+[third_party/reader](third_party/reader/provenance.json) and copied into release
+payloads under `licenses/reader`.
+
+| Component | Pinned source | Licence |
+| --- | --- | --- |
+| Mozilla Foundation PDF.js (`pdfjs-dist`) | [6.4.299](https://github.com/mozilla/pdf.js/tree/v6.4.299) | [Apache-2.0](third_party/reader/pdfjs-LICENSE) |
+| John Factotum Foliate.js | [78914aef4466eb960965702401634c2cb348e9b1](https://github.com/johnfactotum/foliate-js/tree/78914aef4466eb960965702401634c2cb348e9b1) | [MIT](third_party/reader/foliate-LICENSE) |
+| Gildas Lormeau zip.js | 2.24.0 | [BSD-3-Clause](third_party/reader/zipjs-LICENSE) |
+| Cure53 DOMPurify | 3.4.17 | [Apache-2.0](third_party/reader/dompurify-LICENSE), selected from the upstream Apache-2.0 OR MPL-2.0 choice |
+
+The necessary text-layer CSS subset in `packages/reader-core/src/pdf/adapter.ts`
+is adapted from Mozilla PDF.js 6.4.299 under Apache-2.0 and retains its source
+attribution. Portico supplies its own viewer chrome.
+
 ## Browser subtitle renderer and fonts
 
 The unmodified `@jellyfin/libass-wasm` 4.2.4 archive and served files are in
