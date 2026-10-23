@@ -19,6 +19,7 @@ import type {DockState, DockTransition, PlaybackFence, PolicyView, SkipMode} fro
 import type {HlsModule, VideoLike, WebPlayerTimers} from './web-media-player.ts';
 import type {EqualizerPort} from '../../kit/media/equalizer-port.ts';
 import type {LocalPlaybackScope} from '../../../../packages/player-core/src/index.ts';
+import type {WebLocalQueueSnapshot} from './local-queue.ts';
 
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
@@ -67,6 +68,8 @@ export type WebPlaybackPresentation = Readonly<{
   volume: number; muted: boolean; rate: number; policy: PolicyView | null;
 }>;
 export type WebPlaybackRuntimeSnapshot = Readonly<{
+  /** Actual app-local receipt/queue state, never projected as a V1 session or queueView. */
+  local?: WebLocalQueueSnapshot;
   nativeVideoSurfaceActive: boolean;
   authority: WebPlaybackAuthority; sequence: number; playback: PlaybackSnapshot; dock: DockState;
   fence?: PlaybackFence; subject?: PlaybackSubject; presentation?: WebPlaybackPresentation;
