@@ -20,6 +20,7 @@ type MemberRow struct {
 	Email            string   `json:"email,omitempty"`
 	Role             string   `json:"role"`
 	Revision         int64    `json:"revision"`
+	LimitsRevision   int64    `json:"limitsRevision"`
 	Disabled         bool     `json:"disabled"`
 	Status           string   `json:"status"`
 	AllowedLibraries []string `json:"allowedLibraries"`
@@ -151,7 +152,7 @@ func (s *Store) Members(ctx context.Context, auth Authorize, q MemberQuery) (out
 			pageArgs = append(pageArgs, cursor.Value, cursor.ID)
 		}
 		pageArgs = append(pageArgs, limit+1)
-		query := `SELECT a.id,a.username,a.email,m.role,m.revision,m.disabled,` + status + `,m.allowed_libraries,COALESCE(json_extract(l.body,'$.maxStreams'),0),` + profiles + `,(SELECT json_group_array(name) FROM (SELECT name FROM direct_profiles WHERE account_id=a.id AND deleted=0 ORDER BY is_primary DESC,position,id)),` + last + `,CASE WHEN ` + live + ` THEN 'playing' ELSE 'idle' END,(SELECT json_group_array(name) FROM (SELECT name FROM libraries WHERE json_array_length(m.allowed_libraries)=0 OR id IN(SELECT value FROM json_each(m.allowed_libraries)) ORDER BY name,id)),` + sortExpr + ` FROM accounts a JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN access_limits l ON l.account_id=a.id WHERE ` + pred + ` ORDER BY ` + sortExpr + ` ` + q.Direction + `,a.id ` + q.Direction + ` LIMIT ?`
+		query := `SELECT a.id,a.username,a.email,m.role,m.revision,COALESCE(l.revision,1),m.disabled,` + status + `,m.allowed_libraries,COALESCE(json_extract(l.body,'$.maxStreams'),0),` + profiles + `,(SELECT json_group_array(name) FROM (SELECT name FROM direct_profiles WHERE account_id=a.id AND deleted=0 ORDER BY is_primary DESC,position,id)),` + last + `,CASE WHEN ` + live + ` THEN 'playing' ELSE 'idle' END,(SELECT json_group_array(name) FROM (SELECT name FROM libraries WHERE json_array_length(m.allowed_libraries)=0 OR id IN(SELECT value FROM json_each(m.allowed_libraries)) ORDER BY name,id)),` + sortExpr + ` FROM accounts a JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN access_limits l ON l.account_id=a.id WHERE ` + pred + ` ORDER BY ` + sortExpr + ` ` + q.Direction + `,a.id ` + q.Direction + ` LIMIT ?`
 		rows, e := tx.QueryContext(ctx, query, pageArgs...)
 		if e != nil {
 			return e
@@ -161,7 +162,7 @@ func (s *Store) Members(ctx context.Context, auth Authorize, q MemberQuery) (out
 		for rows.Next() {
 			var row MemberRow
 			var libs, names, libraryNames, key string
-			if e = rows.Scan(&row.AccountID, &row.Username, &row.Email, &row.Role, &row.Revision, &row.Disabled, &row.Status, &libs, &row.MaxStreams, &row.ProfileCount, &names, &row.LastActiveAt, &row.LiveState, &libraryNames, &key); e != nil {
+			if e = rows.Scan(&row.AccountID, &row.Username, &row.Email, &row.Role, &row.Revision, &row.LimitsRevision, &row.Disabled, &row.Status, &libs, &row.MaxStreams, &row.ProfileCount, &names, &row.LastActiveAt, &row.LiveState, &libraryNames, &key); e != nil {
 				return e
 			}
 			if e = json.Unmarshal([]byte(libs), &row.AllowedLibraries); e != nil {
