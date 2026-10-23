@@ -3,6 +3,37 @@ import {PlaybackPolicy,parseSegmentMarkers,parseQueuePostPlay} from '../src/inde
 import {fence,channelFence,frame,intro,credits,post} from './fixtures.ts';
 const player=(markers:unknown=[intro,credits])=>{const p=new PlaybackPolicy();p.begin(fence,markers,1400);return p;};
 
+test('the end card exposes only the real policy remainder after confirmed completion',()=>{
+ const p=player();
+ assert.equal(p.update(frame())!.view.endCountdown,undefined);
+ const ended={ended:true,playing:false,positionSeconds:1400};
+ assert.deepEqual(p.update(frame({...ended,nowMs:1000}))!.view.endCountdown,{seconds:10,automatic:true});
+ assert.deepEqual(p.update(frame({...ended,nowMs:3250}))!.view.endCountdown,{seconds:7.75,automatic:true});
+ const last=p.update(frame({...ended,nowMs:11000}))!;
+ assert.equal(last.view.endCountdown,undefined);
+ assert.equal(last.commands[0]?.kind,'advance');
+});
+
+test('a docked end retains its policy clock without advertising a card or resetting on expansion',()=>{
+ const p=player(),ended={ended:true,playing:false,positionSeconds:1400};
+ assert.equal(p.update(frame({...ended,expanded:false}))!.view.endCountdown,undefined);
+ assert.equal(p.update(frame({...ended,expanded:false,nowMs:4000}))!.view.endCountdown,undefined);
+ assert.deepEqual(p.update(frame({...ended,nowMs:5000}))!.view.endCountdown,{seconds:5,automatic:true});
+ p.cancelAutoplay(fence);
+ assert.equal(p.update(frame({...ended,nowMs:6000}))!.view.endCountdown,undefined);
+});
+
+test('manual, unavailable and attention end states never publish an automatic countdown',()=>{
+ for(const postPlay of [{...post,autoplay:false},{...post,available:false},{...post,passoutCheckDue:true}]){
+  const p=player();assert.equal(p.update(frame({ended:true,playing:false,positionSeconds:1400,postPlay}))!.view.endCountdown,undefined);
+ }
+ const p=player();
+ assert.equal(p.update(frame({ended:true,playing:false,positionSeconds:1400,attention:'playback-error'}))!.view.endCountdown,undefined);
+ const replacement={...fence,sessionId:'replacement'};p.begin(replacement,[],1400);
+ assert.equal(p.update(frame({ended:true})),null);
+ assert.deepEqual(p.update(frame({fence:replacement,ended:true,playing:false,positionSeconds:1400}))!.view.endCountdown,{seconds:10,automatic:true});
+});
+
 test('a rendered marker mismatch cannot dismiss another overlapping active marker',()=>{
  const earlier={...credits,id:'earlier-outro',kind:'outro' as const,startSeconds:1290,endSeconds:1380};
  const p=player([earlier,credits]);
