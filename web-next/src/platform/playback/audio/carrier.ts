@@ -1,3 +1,4 @@
+import {configureDestination} from './output';
 /**
  * The media element music decoded on the device plays through (B-17.19).
  *
@@ -41,7 +42,8 @@ export class MediaCarrier {
     this.context = context; this.output = output; this.onPause = onPause;
     let element: CarrierElement | null = null, stream: MediaStreamAudioDestinationNode | null = null;
     try {
-      if (typeof context.createMediaStreamDestination === 'function') {
+      // MediaStreamAudioDestination defaults to stereo. Surround uses the real endpoint.
+      if (configureDestination(context.destination) <= 2 && typeof context.createMediaStreamDestination === 'function') {
         element = make();
         if (element) {
           stream = context.createMediaStreamDestination();
@@ -55,6 +57,13 @@ export class MediaCarrier {
       output.connect(stream);
       element.addEventListener('pause', this.paused);
     } else output.connect(context.destination);
+  }
+
+  /** Re-read the actual endpoint when the selected/default output changes. Never fold surround to stereo. */
+  refreshOutput(): number {
+    const channels = configureDestination(this.context.destination);
+    if (channels > 2) this.direct();
+    return channels;
   }
 
   /** Whether the audio goes through the element (and so reaches media keys and the lock screen). */

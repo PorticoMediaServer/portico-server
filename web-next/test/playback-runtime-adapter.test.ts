@@ -1268,3 +1268,40 @@ test('native surface paint is false until the actual current video port reports 
   assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,false,'audio never gets a native video hole');
   f.runtime.dispose(); assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,false);
 });
+
+test('device processing alone selects the renderer and preserves the actual queue/session when toggled', async t => {
+  const applied: string[] = []; let disposed=0;
+  const f=setup(t,{audioEffects:()=>({gapless:false,crossfadeSeconds:0,normalization:'off'})},{createRender:(service)=>({
+    apply(snapshot){
+      if(!snapshot.session)return;applied.push(snapshot.session.id);
+      service.ready(snapshot.intentId);
+      if(snapshot.pendingSeek)service.seekApplied(snapshot.intentId,snapshot.pendingSeek.revision,snapshot.pendingSeek.positionSeconds,'paused');
+    },transportPosition:()=>0,dispose(){disposed++;}
+  })});
+  await f.runtime.play('song_device');await f.arrive();
+  const first=f.runtime.getSnapshot(), id=first.playback.session!.id, queue=first.session!.queue;
+  assert.equal(first.playback.audioEffects.rendering,false);assert.equal(applied.length,0);
+  const service=(f.runtime as unknown as {stack:{service: import('../../packages/client-core/src/index.ts').PlaybackService}}).stack.service;
+  service.setDeviceAudioProcessing(true);await settle();
+  assert.equal(f.runtime.getSnapshot().playback.audioEffects.rendering,true);assert.ok(applied.includes(id));
+  assert.equal(f.runtime.getSnapshot().playback.session!.id,id);assert.deepEqual(f.runtime.getSnapshot().session!.queue,queue);
+  assert.equal(f.runtime.audioEngineFacts(f.runtime.getSnapshot().fence!),undefined,'an unconfirmed renderer has no invented processing facts');
+  service.setDeviceAudioProcessing(false);await f.arrive();
+  assert.equal(f.runtime.getSnapshot().playback.audioEffects.rendering,false);assert.ok(disposed>0);
+  assert.equal(f.runtime.getSnapshot().playback.session!.id,id);assert.deepEqual(f.runtime.getSnapshot().session!.queue,queue);
+  assert.deepEqual(f.runtime.getSnapshot().playback.audioEffects.settings,{gapless:false,crossfadeSeconds:0,normalization:'off'});
+});
+
+
+test('native media factory receives the validated audio plan and unchanged saved processing snapshot',async t=>{
+ const {WebMediaPlayer}=await import('../src/platform/playback/web-media-player.ts');
+ const received:import('../../packages/client-core/src/index.ts').PlaybackSnapshot[]=[];
+ const settings={gapless:true,crossfadeSeconds:3,normalization:'album'} as const;
+ const f=setup(t,{audioEffects:()=>settings},{createRender:null,subtitleSurface:false,createPlayer:(video,options)=>Object.assign(new WebMediaPlayer(video,options),{applyAudioEffects:(snapshot:import('../../packages/client-core/src/index.ts').PlaybackSnapshot)=>received.push(snapshot)})});
+ await f.runtime.play('song_native_effects');await f.arrive();
+ const snapshot=received.findLast(snapshot=>snapshot.session?.audio);
+ assert.ok(snapshot);assert.equal(snapshot.session!.audio!.version,2);
+ assert.deepEqual(snapshot.audioEffects.settings,settings);
+ assert.equal(snapshot.session!.id,f.runtime.getSnapshot().playback.session!.id);
+ assert.ok(snapshot.session!.audio!.trim,'native engine sees raw/audible trim contract, not just a URL');
+});

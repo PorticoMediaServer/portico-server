@@ -19,6 +19,8 @@ import type {PlaybackSubject} from '@core/presentation/kit-model/index.ts';
 import {PlaybackDock, PlaybackPolicy, PlayerSessionChoices, playbackFence, queueScope, sameFence, type DockPlayback, type DockTransition, type PlaybackFence, type PolicyView} from '../../../../packages/player-core/src/index.ts';
 import {WebPlayback} from './web-playback.ts';
 import {DecodeAudioRender} from './DecodeAudioRender.ts';
+import {savedOutputEqualizer} from './audio/equalizer-store.ts';
+import type {EqualizerSettings} from './audio/equalizer.ts';
 import {ByteCache} from './audio/bytes.ts';
 import {browserNativeHlsPolicy} from './native-hls.ts';
 import {documentVisibility} from './page-visibility.ts';
@@ -153,6 +155,10 @@ export class WebShellPlaybackRuntime {
     }}, this.env.key, {...this.env.service, queueRequired: true, deferRecovery: true, pageVisibility: documentVisibility, beforeFreshPlayback: async () => {
       // The copied real browser probe is the capability source. Node's media-port tests have
       // no browser; they exercise the actual server's baseline planning instead.
+      if (this.env.createRender !== null && !this.env.createPlayer && typeof indexedDB !== 'undefined') {
+        try { const eq = await savedOutputEqualizer(); if (this.current(stackReference)) service.setDeviceAudioProcessing(eq.enabled); }
+        catch { if (this.current(stackReference)) service.audioEffectsNotice('The equalizer settings for this output could not be loaded.'); }
+      }
       if (!this.env.capabilities && (typeof document === 'undefined' || typeof window === 'undefined')) return;
       const profile = await (this.env.capabilities ?? browserClientProfile)();
       if (!this.current(stackReference)) return;
@@ -183,6 +189,7 @@ export class WebShellPlaybackRuntime {
     if (this.video) problem('playback_surface_already_mounted');
     this.video = video;
     if (this.env.subtitleSurface !== false && compatibleVideo(video) && SubtitleSurface.supported(video)) this.surface = new SubtitleSurface(video);
+    this.surface?.applyPreferences(this.source.settings.subtitlePreferences?.());
     this.bindElement(this.stack);
     const volume = () => this.sync();
     video.addEventListener('volumechange', volume);
@@ -687,7 +694,14 @@ export class WebShellPlaybackRuntime {
     if ((stack.subject?.kind === 'music' || fence.kind === 'channel') && speed !== 1) problem('playback_speed_unavailable');
     this.choices.set('speed', fence.playback, speed); stack.service.setPlaybackRate(speed); stack.web.setRate(speed); this.sync();
   }
-  refreshSettings(): void { this.assertCurrent(); this.stack.service.adoptAudioEffectsPreference(this.source.settings.audioEffects()); this.sync(); }
+  audioEngineFacts(fence: PlaybackFence) { return this.require(fence).web.audioFacts(); }
+  async setEqualizer(fence: PlaybackFence, settings: EqualizerSettings): Promise<void> {
+    const stack = this.require(fence);
+    if (stack.subject?.kind !== 'music') problem('equalizer_unavailable');
+    await stack.web.setEqualizer(settings);
+    if (this.current(stack)) this.sync();
+  }
+  refreshSettings(): void { this.assertCurrent(); this.surface?.applyPreferences(this.source.settings.subtitlePreferences?.()); this.stack.service.adoptAudioEffectsPreference(this.source.settings.audioEffects()); this.sync(); }
 
   onAction = async (action: WebPlaybackAction): Promise<void> => {
     if (action.remote) problem('remote_playback_binding_unavailable');

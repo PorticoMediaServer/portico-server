@@ -5,6 +5,9 @@ import {Deck, linkDecks, type PcmSource} from './audio/engine';
 import {ConvertedSource} from './audio/converted';
 import {TrackStream} from './audio/track';
 import {Stretch} from './audio/stretch';
+import {BrowserEqualizer, flatEqualizer, parseEqualizer, type EqualizerSettings} from './audio/equalizer';
+import {EqualizerStore, resolvedOutputId} from './audio/equalizer-store';
+import {configureDestination, outputClockLag, type BrowserAudioFacts} from './audio/output';
 import {MediaCarrier} from './audio/carrier';
 
 /**
@@ -39,6 +42,12 @@ export class DecodeAudioRender {
   private context: AudioContext;
   private master: GainNode;
   private carrier: MediaCarrier;
+  private readonly equalizer: BrowserEqualizer;
+  private readonly equalizerStore = new EqualizerStore();
+  private outputId = 'default';
+  private outputRevision = 0;
+  private outputCount = 2;
+  private clockBasis: BrowserAudioFacts['clock'] = 'latency';
   /** Seconds between the context's clock and what is heard (the output path's latency), smoothed. */
   private lag = 0;
   private primary?: Playing;
@@ -65,16 +74,21 @@ export class DecodeAudioRender {
   constructor(service: PlaybackService, url: (path: string) => string, element: HTMLVideoElement, sameAlbum: SameAlbum = () => false, byteCache: ByteCache = audioByteCache) {
     this.service = service; this.url = url; this.element = element; this.sameAlbum = sameAlbum; this.byteCache = byteCache;
     this.snapshot = service.getSnapshot();
-    const rate = playableAudio(this.snapshot.session?.audio) ? this.snapshot.session!.audio!.sampleRate! : undefined;
     // On iPhone and iPad, audio from a bare AudioContext follows the silent switch and stops when
     // the page goes to the background unless the page says it is playing media.
     try { const session = (navigator as Navigator & {audioSession?: {type: string}}).audioSession; if (session && session.type !== 'playback') session.type = 'playback'; } catch { /* not offered here */ }
-    this.context = createContext(rate);
+    this.context = createContext();
+    this.outputCount = configureDestination(this.context.destination);
     this.context.addEventListener('statechange', this.contextChanged);
     document.addEventListener('visibilitychange', this.interrupted);
     this.master = this.context.createGain();
+    this.equalizer = new BrowserEqualizer(this.context);
+    this.equalizer.output.connect(this.master);
     // Through a media element where the browser allows it, so media keys and the lock screen reach music too.
     this.carrier = new MediaCarrier(this.context, this.master, () => { if (!this.disposed && this.service.getSnapshot().intent === 'playing') this.service.pause(); });
+    void this.outputChanged();
+    this.context.addEventListener('sinkchange', this.outputChanged);
+    navigator.mediaDevices?.addEventListener?.('devicechange', this.outputChanged);
     this.volume();
     element.addEventListener('volumechange', this.volume);
     document.addEventListener('click', this.gesture);
@@ -143,7 +157,7 @@ export class DecodeAudioRender {
     if (!stream) return undefined;
     const frames = plan.durationFrames - fromFrame;
     const source = speed === 1 ? stream : new Stretch(stream, speed, frames);
-    return new Deck(this.context, this.master, source, {frames: speed === 1 ? frames : (source as Stretch).outputFrames, gain: this.gainFor(plan), label, holdTail: this.snapshot.audioEffects.settings.gapless || this.snapshot.audioEffects.settings.crossfadeSeconds === 0});
+    return new Deck(this.context, this.equalizer.input, source, {frames: speed === 1 ? frames : (source as Stretch).outputFrames, gain: this.gainFor(plan), label, holdTail: this.snapshot.audioEffects.settings.gapless || this.snapshot.audioEffects.settings.crossfadeSeconds === 0});
   }
 
   /** A candidate cancelled before its deck opened has no deck yet; its reader still closes. */
@@ -285,21 +299,10 @@ export class DecodeAudioRender {
    * half a second, and smoothed so the position never jumps.
    */
   private measureLag() {
-    const c = this.context as AudioContext & {outputLatency?: number; getOutputTimestamp?: () => AudioTimestamp};
-    if (c.state !== 'running') return;
-    let lag: number | undefined;
-    try {
-      const stamp = c.getOutputTimestamp?.();
-      if (stamp && Number.isFinite(stamp.contextTime) && Number.isFinite(stamp.performanceTime) && stamp.performanceTime! > 0 && typeof performance !== 'undefined')
-        lag = c.currentTime - (stamp.contextTime! + (performance.now() - stamp.performanceTime!) / 1000);
-    } catch { lag = undefined; }
-    if (lag === undefined || !(lag > 0)) {
-      const stated = (Number.isFinite(c.outputLatency) ? c.outputLatency! : 0) + (Number.isFinite(c.baseLatency) ? c.baseLatency : 0);
-      if (lag === undefined || stated > 0) lag = stated;
-    }
-    if (!Number.isFinite(lag)) return;
-    const bounded = Math.max(0, Math.min(0.5, lag));
-    this.lag = this.lag === 0 ? bounded : this.lag + (bounded - this.lag) * 0.1;
+    const sample = outputClockLag(this.context, performance.now(), this.carrier.carrying);
+    if (!sample) return;
+    this.clockBasis = sample.basis;
+    this.lag = this.lag === 0 ? sample.seconds : this.lag + (sample.seconds - this.lag) * 0.1;
   }
 
   private tick() {
@@ -342,6 +345,40 @@ export class DecodeAudioRender {
     }
   }
 
+  private outputChanged = async () => {
+    const revision = ++this.outputRevision;
+    this.outputCount = this.carrier.refreshOutput();
+    this.equalizer.apply(flatEqualizer);
+    try {
+      const outputId = await resolvedOutputId(this.context);
+      const settings = await this.equalizerStore.load(outputId);
+      if (this.disposed || revision !== this.outputRevision) return;
+      this.outputId = outputId;
+      this.equalizer.apply(settings);
+      this.service.setDeviceAudioProcessing?.(settings.enabled);
+    } catch {
+      if (!this.disposed && revision === this.outputRevision) this.service.audioEffectsNotice('The equalizer settings for this output could not be loaded.');
+    }
+  };
+
+  /** Resolve only after atomic persistence and after the active graph confirms the same output. */
+  async setEqualizer(settings: EqualizerSettings): Promise<void> {
+    const value = parseEqualizer(settings), revision = ++this.outputRevision, outputId = await resolvedOutputId(this.context);
+    await this.equalizerStore.save(outputId, value);
+    if (this.disposed || revision !== this.outputRevision) throw new Error('audio_output_changed');
+    this.outputId = outputId;
+    this.equalizer.apply(value);
+    this.service.setDeviceAudioProcessing?.(value.enabled);
+  }
+  getEqualizer(): Readonly<{outputId: string; settings: EqualizerSettings}> { return {outputId: this.outputId, settings: this.equalizer.settings}; }
+  audioFacts(): BrowserAudioFacts | undefined {
+    const plan = this.primary?.plan;
+    if (!plan) return undefined;
+    return {engine:'web-audio',bitPerfect:false,sourceRate:plan.sampleRate,contextRate:this.context.sampleRate,
+      resampledToContext:plan.sampleRate!==this.context.sampleRate,deviceRate:null,browserMayResample:true,
+      sourceChannels:plan.channels,outputChannels:Math.min(plan.channels,this.outputCount),eqEnabled:this.equalizer.settings.enabled,clock:this.carrier.carrying?'unmeasured-carrier':this.clockBasis};
+  }
+
   transportPosition() { return this.primary ? this.position() : this.snapshot.positionSeconds; }
 
   dispose() {
@@ -354,14 +391,16 @@ export class DecodeAudioRender {
     this.element.removeEventListener('volumechange', this.volume);
     this.context.removeEventListener('statechange', this.contextChanged);
     document.removeEventListener('visibilitychange', this.interrupted);
+    this.context.removeEventListener('sinkchange', this.outputChanged);
+    navigator.mediaDevices?.removeEventListener?.('devicechange', this.outputChanged);
     this.carrier.dispose();
+    this.equalizer.dispose();
+    void this.equalizerStore.close();
     void this.context.close();
   }
 }
 
-/** An AudioContext at the music's own rate when the browser allows it: the browser's output path
- * then does the one resampling to the device (§9.6 rule 3), continuously across tracks. */
-function createContext(rate?: number): AudioContext {
-  if (rate) { try { return new AudioContext({sampleRate: rate, latencyHint: 'playback'}); } catch { /* unsupported rate */ } }
+/** Let the browser choose its real context output rate; it may still resample in the OS path. */
+function createContext(): AudioContext {
   return new AudioContext({latencyHint: 'playback'});
 }

@@ -6,6 +6,7 @@ import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {V1Viewer} from '@core/playback-v1/v1-queue-player.ts';
 import type {PlaybackOptions, Session} from '@core/playback-v1/types.ts';
 import type {Timers} from '@core/playback-v1/sessions.ts';
+import type {SubtitlePreferences} from '@core/preference-effects.ts';
 import type {CapabilityDocument} from '@core/client-profile.ts';
 import type {PlaybackMediaPort, RenderEngine} from './web-playback.ts';
 import type {PlaybackService} from '@core/index.ts';
@@ -19,6 +20,7 @@ import type {HlsModule, VideoLike, WebPlayerTimers} from './web-media-player.ts'
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
 export type WebPlaybackSettings = Readonly<{
+  subtitlePreferences?: () => SubtitlePreferences;
   videoSpeed: () => number;
   audiobookSpeed: () => number;
   /** Undefined leaves the saved delivery default to the server. Original is an explicit choice. */

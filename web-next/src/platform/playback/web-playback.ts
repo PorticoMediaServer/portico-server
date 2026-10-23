@@ -32,6 +32,9 @@ import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
 import type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource} from '@core/playback-v1/port.ts';
 import {PlaybackSessionController, SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from '@core/playback-v1/sessions.ts';
 import {toPlaybackSession} from '@core/playback-v1/session-shape.ts';
+import {parseEqualizer, type EqualizerSettings} from './audio/equalizer';
+import {saveOutputEqualizer} from './audio/equalizer-store';
+import type {BrowserAudioFacts} from './audio/output';
 import type {Session} from '@core/playback-v1/types.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
 import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers, type WebMediaPlayerOptions} from './web-media-player.ts';
@@ -41,6 +44,8 @@ export type WebPlaybackNotice = 'autoplayBlocked' | 'qualityLowered' | 'qualityR
 
 /** Structural native/web media port. A platform adapter owns one generation at a time. */
 export type PlaybackMediaPort = MediaPlayer & {
+  /** Validated session/processing input. Native adapters serialize commands and fence by session+generation. */
+  applyAudioEffects?(snapshot: PlaybackSnapshot): void;
   readonly nativeSurfaceActive?: boolean;
   readonly loaded: number;
   readonly settling: boolean;
@@ -51,7 +56,7 @@ export type PlaybackMediaPort = MediaPlayer & {
 };
 
 /** The device's own audio engine for music (`DecodeAudioRender`). */
-export type RenderEngine = {apply(snapshot: PlaybackSnapshot): void; dispose(): void; transportPosition(): number};
+export type RenderEngine = {apply(snapshot: PlaybackSnapshot): void; dispose(): void; transportPosition(): number; audioFacts?(): BrowserAudioFacts | undefined; setEqualizer?(settings: EqualizerSettings): Promise<void>};
 
 /** Failure codes this path stores as the service's error; `playbackFailure` words them. */
 export const failure = {
@@ -136,6 +141,7 @@ export class PlayerSlot implements MediaPlayer {
   dispose(): void { this.unmount(); this.listeners.clear(); this.notices.clear(); }
 
   get settling(): boolean { return !!this.real && !this.held && this.real.settling; }
+  applyAudioEffects(snapshot: PlaybackSnapshot): void { this.real?.applyAudioEffects?.(snapshot); }
   get nativeSurfaceActive(): boolean { return !this.held && !!this.real?.loaded && this.real.nativeSurfaceActive === true; }
   get mounted(): boolean { return !!this.real; }
   /** The generation the element has loaded (0: nothing). */
@@ -293,6 +299,7 @@ export class WebPlayback implements PlaybackAdapter {
 
   apply = (next: PlaybackSnapshot): void => {
     if (this.disposed) return;
+    this.slot.applyAudioEffects(next);
     const session = next.session;
     // Nothing to play, or a failed play: the media is let go. A delayed event cannot revive it.
     if (!session || next.phase === 'error') { this.release(); return; }
@@ -504,6 +511,21 @@ export class WebPlayback implements PlaybackAdapter {
     const changed = state !== this.renderState;
     this.renderState = state;
     this.controller.observe({state, positionMs: next.positionSeconds * 1000, rate: next.audioEffects.rate, volume: this.video?.volume, muted: this.video?.muted}, changed ? 'state' : 'time');
+  }
+
+  audioFacts(): BrowserAudioFacts | undefined { return this.render?.audioFacts?.(); }
+  async setEqualizer(settings: EqualizerSettings): Promise<void> {
+    const value = parseEqualizer(settings);
+    if (!this.host.createRender || !this.service) throw new Error('equalizer_unavailable');
+    if (!this.render) {
+      await saveOutputEqualizer(value);
+      this.service.setDeviceAudioProcessing(value.enabled);
+      if (!value.enabled) return;
+    }
+    const render = this.render;
+    if (!render?.setEqualizer) { this.service.setDeviceAudioProcessing(false); throw new Error('equalizer_unavailable'); }
+    try { await render.setEqualizer(value); }
+    catch (error) { this.service.setDeviceAudioProcessing(false); throw error; }
   }
 
   private endRender() {
