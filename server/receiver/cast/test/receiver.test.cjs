@@ -7,7 +7,10 @@ async function harness(fixture={}){
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
  const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_DISCONNECTED:'disconnect'},MessageType:{JSON:'json'}}}};
  let failed=false,expired=false,preparing=!!fixture.preparing,generation=1;
- const presentation=(start)=>({generation,mode:fixture.direct?'direct':'stream',url:fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8',container:fixture.container||(fixture.direct?'mp4':'fmp4_hls'),startPositionMs:start||0,subtitles:[],decision:fixture.audioOnly?{audio:{action:'copy',reasons:[]}}:fixture.transcode?{video:{action:'transcode',reasons:[]}}:{video:{action:'copy',reasons:[]}}});
+ const presentation=(start,mediaUrl)=>{
+  const url=mediaUrl===undefined?(fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8'):mediaUrl;
+  return {generation,mode:fixture.direct?'direct':'stream',url,container:fixture.container||(fixture.direct?'mp4':'fmp4_hls'),startPositionMs:start||0,subtitles:[],decision:fixture.audioOnly?{audio:{action:'copy',reasons:[]}}:fixture.transcode?{video:{action:'transcode',reasons:[]}}:{video:{action:'copy',reasons:[]}},...(fixture.audioRender?{audioRender:{version:2,id:'render-1',url,...fixture.audioRender}}:{})};
+ };
  const sessionFor=(body,start)=>({id:'ps_1',revision:String(generation),kind:'vod',role:'local',state:'playing',itemId:body?.itemId||'movie',...(body?.queue?{queue:body.queue}:fixture.queue?{queue:{queueId:'q-1',entryId:'entry-1'}}:{}),lease:{reportEveryMs:10000},presentation:presentation(start)});
  const reply=(payload,status=200)=>new Response(status===204?null:JSON.stringify(payload),{status});
  const context={document,cast,navigator:fixture.mediaCapabilities?{mediaCapabilities:fixture.mediaCapabilities}:{},URL,URLSearchParams,TextDecoder,AbortController,Uint8Array,console,Number,Promise,setTimeout:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearTimeout:id=>timers.delete(id),setInterval:(fn,ms)=>{timers.set(++timer,{fn,ms});return timer},clearInterval:id=>timers.delete(id),fetch:async(url,options)=>{
@@ -17,8 +20,8 @@ async function harness(fixture={}){
   if(path.endsWith('/reconnect')&&fixture.revoked)return reply({error:{code:'cast_device_revoked',message:'That receiver pairing was revoked.',retryable:false}},403);
   if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({device:{id:'cdv_'+(body?.code||'renewed'),generation:'1'},session:{accessToken:'bearer-'+(body?.code||'renewed')},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
   if(fixture.queue&&path==='/v1/queues/q-1'&&options.method==='GET')return reply({id:'q-1',revision:'1',next:{available:!fixture.queueEnd,entryId:'entry-2',reason:'ready'}});
-  if(fixture.queue&&path==='/v1/queues/q-1:prepare-next')return reply({token:'private-next-token',itemId:'song-2',entryId:'entry-2',expiresAt:'2099-01-01T00:00:00Z',presentation:{...presentation(0),url:fixture.noPrivateURL?'':'/v1/media/private-next'}});
-  if(fixture.queue&&path==='/v1/queues/q-1:commit-next'){if(fixture.rejectCommit)return reply({error:{code:'prepared_canceled'}},409);return reply({queue:{id:'q-1',revision:'2'},session:{...sessionFor({},0),id:'ps_2',itemId:'song-2',queue:{queueId:'q-1',entryId:'entry-2'}}});}
+  if(fixture.queue&&path==='/v1/queues/q-1:prepare-next')return reply({token:'private-next-token',itemId:'song-2',entryId:'entry-2',expiresAt:'2099-01-01T00:00:00Z',presentation:presentation(0,fixture.noPrivateURL?'':'/v1/media/private-next')});
+  if(fixture.queue&&path==='/v1/queues/q-1:commit-next'){if(fixture.rejectCommit)return reply({error:{code:'prepared_canceled'}},409);return reply({queue:{id:'q-1',revision:'2'},session:{...sessionFor({},0),...(fixture.commitPrivateURL?{presentation:presentation(0,'/v1/media/private-next')} : {}),id:'ps_2',itemId:'song-2',queue:{queueId:'q-1',entryId:'entry-2'}}});}
   if(fixture.queue&&path==='/v1/queues/q-1:advance')return reply({queue:{id:'q-1',revision:'2'},session:{...sessionFor({},0),id:'ps_2',itemId:'song-2',queue:{queueId:'q-1',entryId:'entry-2'}}});
   if(path==='/v1/me/devices/current/capabilities')return reply({},204);
   if(path==='/v1/playback/sessions'&&options.method==='POST'){
@@ -285,6 +288,22 @@ test('unavailable private preparation leaves current authority and ordinary adva
  h.events.MEDIA_FINISHED();await settle();assert.equal(h.receiver.state().playbackId,'ps_2');
  assert(h.calls.some(c=>c.url.endsWith(':advance')));assert(!h.calls.some(c=>c.url.endsWith(':commit-next')));
 });
+test('progressive queue completion advances normally when CAF never preloads',async()=>{
+ const h=await harness({queue:true,direct:true,audioOnly:true,container:'mp3'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
+ h.events.MEDIA_FINISHED();await settle();
+ assert.equal(h.receiver.state().playbackId,'ps_2');assert(h.calls.some(c=>c.url.endsWith(':advance')));
+ assert(!h.calls.some(c=>c.url.endsWith(':prepare-next')||c.url.endsWith(':commit-next')));
+ assert(!h.calls.some(c=>c.url.endsWith('/timeline')&&c.body.state==='ended'),'the transition transaction owns the end of the old occurrence');
+});
+test('a committed private URL retains exactly the prepared CAF media identity',async()=>{
+ const h=await harness({queue:true,direct:true,audioOnly:true,container:'flac',commitPrivateURL:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
+ const preloaded=await h.interceptors.PRELOAD({media:h.queueItems[1].media});
+ assert.equal(h.receiver.state().playbackId,'ps_1');
+ const committed=await h.interceptors.LOAD(preloaded);
+ assert.equal(committed.media,preloaded.media);assert.equal(h.resolved(committed),'/v1/media/private-next');
+ assert.equal(h.receiver.state().playbackId,'ps_2');assert(!h.calls.some(c=>c.method==='DELETE'));
+ assert(!h.calls.some(c=>c.url.endsWith('/timeline')&&c.body.state==='ended'));
+});
 test('a stale next nonce and server-canceled preparation never adopt another session',async()=>{
  const h=await harness({queue:true,rejectCommit:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
  const preloaded=await h.interceptors.PRELOAD({media:h.queueItems[1].media});
@@ -326,6 +345,33 @@ test('audio-only ISO-BMFF demuxer identity has an audio MIME type and unknown co
  assert.equal(h.loads[0].media.contentType,'audio/mp4');
  const bad=await harness({direct:true,container:'unrecognized'});await bad.receiver.redeem('ABCD');
  await assert.rejects(()=>bad.receiver.startPlayback('movie',0),/unsupported_media_container/);assert.equal(bad.loads.length,0);assert(bad.calls.some(c=>c.method==='DELETE'&&c.url==='/v1/playback/sessions/ps_1'));
+});
+
+test('only the matching playable audio render plan describes the delivered audio container',async()=>{
+ for(const [container,codec,type] of [['flac','flac','audio/flac'],['ogg','opus','audio/ogg'],['aac','aac','audio/aac'],['mp4','aac','audio/mp4']]){
+  const h=await harness({direct:true,audioOnly:true,container:'mov',audioRender:{mode:'converted',container,codec}});
+  await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0);
+  assert.equal(h.loads[0].media.contentType,type);assert.equal(h.resolved(h.loads[0]),'/v1/media/grant');
+ }
+ for(const audioRender of [{mode:'converted',container:'flac',url:'/v1/media/different'},{mode:'unavailable',container:'flac'}]){
+  const h=await harness({direct:true,audioOnly:true,container:'mov',audioRender});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0);
+  assert.equal(h.loads[0].media.contentType,'audio/mp4','an unrelated or unavailable plan cannot relabel this URL');
+ }
+ const video=await harness({direct:true,container:'mp4',audioRender:{mode:'converted',container:'flac'}});await video.receiver.redeem('ABCD');await video.receiver.startPlayback('movie',0);
+ assert.equal(video.loads[0].media.contentType,'video/mp4','an audio plan cannot relabel a video presentation');
+ const stream=await harness({audioOnly:true,audioRender:{mode:'converted',container:'flac'}});await stream.receiver.redeem('ABCD');await stream.receiver.startPlayback('song',0);
+ assert.equal(stream.loads[0].media.contentType,'application/x-mpegurl');assert.equal(stream.loads[0].media.hlsSegmentFormat,'FMP4');
+ const bad=await harness({direct:true,audioOnly:true,audioRender:{mode:'converted',container:'unknown'}});await bad.receiver.redeem('ABCD');
+ await assert.rejects(()=>bad.receiver.startPlayback('song',0),/unsupported_media_container/);
+});
+
+test('private prepare uses the matching render container without granting current-session authority',async()=>{
+ const h=await harness({queue:true,direct:true,audioOnly:true,container:'mov',audioRender:{mode:'converted',container:'flac',codec:'flac'}});
+ await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
+ const preloaded=await h.interceptors.PRELOAD({media:h.queueItems[1].media});
+ assert.equal(preloaded.media.contentType,'audio/flac');assert.equal(h.resolved(preloaded),'/v1/media/private-next');
+ assert.equal(h.receiver.state().playbackId,'ps_1');assert(!h.calls.some(c=>c.url.endsWith(':commit-next')));
+ assert(!JSON.stringify(h.sent).includes('/v1/media/'));
 });
 
 test('a CAF load rejection ends its owned server session and leaves an honest error card',async()=>{

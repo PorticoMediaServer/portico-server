@@ -422,6 +422,14 @@
     var p = session.presentation;
     if (typeof p.url !== 'string' || !/^\/v1\/media\/[^\\\s]+$/.test(p.url)) throw new Error('invalid_media_url');
     var container = String(p.container || '');
+    // The server may deliver an audio conversion through the presentation URL while
+    // its general delivery decision still describes the source container. Only the
+    // playable audio plan for this exact URL can supply the delivered audio type.
+    var audioOnly = p.decision && !p.decision.video && !!p.decision.audio;
+    var render = p.audioRender;
+    if (p.mode !== 'stream' && audioOnly && render && (render.mode === 'direct' || render.mode === 'converted') && render.url === p.url) {
+      container = String(render.container || '');
+    }
     var contentId = 'portico-' + token(16);
     mediaAddresses.set(contentId, base + p.url);
     while (mediaAddresses.size > 8) mediaAddresses.delete(mediaAddresses.keys().next().value);
@@ -431,7 +439,6 @@
       media.hlsSegmentFormat = media.hlsVideoSegmentFormat = container === 'fmp4_hls' ? 'FMP4' : 'TS';
     } else {
       if (!directTypes[container]) throw new Error('unsupported_media_container');
-      var audioOnly = p.decision && !p.decision.video && !!p.decision.audio;
       media.contentType = audioOnly && ['mp4','mov','m4v'].indexOf(container)>=0 ? 'audio/mp4' : audioOnly && container==='webm' ? 'audio/webm' : directTypes[container];
     }
     // Title and artwork for CAF's standard player, the Google TV ambient UI and the Google Home app (CAST-01 §2).
