@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/url"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"portico.local/hosted/internal/serverreturn"
@@ -91,7 +94,7 @@ func VerifyOwnerStart(original, signed Signed, audience string, now time.Time) (
 	}
 	if start.Kind != OwnerStartKind || start.Audience != audience || start.Audience != claim.Audience ||
 		start.OperationID != claim.OperationID || start.ServerID != claim.ServerID || start.PublicKey != claim.PublicKey ||
-		start.LocalGeneration != claim.LocalGeneration || start.Address != claim.Address || !serverreturn.Origin(start.Address) ||
+		start.LocalGeneration != claim.LocalGeneration || start.Address != claim.Address || !ownerStartAddress(start.Address) ||
 		start.Purpose != claim.Purpose || !ownerStartSecret.MatchString(start.State) ||
 		!ownerStartSecret.MatchString(start.InstallationID) || !ownerStartSecret.MatchString(start.ServerChallenge) ||
 		start.IssuedAt.IsZero() || start.IssuedAt.Before(claim.IssuedAt) || start.IssuedAt.After(now.Add(time.Minute)) ||
@@ -100,6 +103,28 @@ func VerifyOwnerStart(original, signed Signed, audience string, now time.Time) (
 		return fail()
 	}
 	return claim, start, nil
+}
+
+// The owner browser may start on the server's secure address or on literal
+// localhost (ruling17.5). This is syntax only: it cannot attest a secure browser,
+// protected storage or a trusted native channel. Registered returns keep their
+// existing HTTPS-only Origin predicate.
+func ownerStartAddress(value string) bool {
+	u, e := url.Parse(value)
+	if e != nil {
+		return false
+	}
+	if port := u.Port(); port != "" {
+		n, e := strconv.Atoi(port)
+		if e != nil || n < 1 || n > 65535 || strconv.Itoa(n) != port {
+			return false
+		}
+	}
+	if serverreturn.Origin(value) {
+		return true
+	}
+	return strings.HasPrefix(value, "http://") && u.Hostname() == "localhost" &&
+		serverreturn.Origin("https://"+strings.TrimPrefix(value, "http://"))
 }
 
 func ownerStartBase64(value string, size int) ([]byte, error) {

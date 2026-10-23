@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"portico.local/hosted/internal/serverreturn"
 )
 
 // This fixed key is a public interoperability fixture, never a credential.
@@ -235,5 +237,53 @@ func TestOwnerStartKeepsClaimExpiryAndExactLargeGeneration(t *testing.T) {
 	start.ClaimHash = base64.RawURLEncoding.EncodeToString(hash[:])
 	if _, _, e = VerifyOwnerStart(signOwnerFixture(t, key, claim), signOwnerFixture(t, key, start), claim.Audience, now); e == nil {
 		t.Fatal("start extended the original claim expiry")
+	}
+}
+
+func TestOwnerStartLiteralLocalhostIsSeparateFromRegistration(t *testing.T) {
+	cases := []struct {
+		address string
+		valid   bool
+	}{
+		{"http://localhost", true},
+		{"http://localhost:32500", true},
+		{"http://localhost:65535", true},
+		{"https://server.example.test", true},
+		{"https://server.example.test:32500", true},
+		{"http://127.0.0.1:32500", false},
+		{"http://[::1]:32500", false},
+		{"http://server.localhost:32500", false},
+		{"http://localhost.example.test:32500", false},
+		{"http://localhost.:32500", false},
+		{"http://LOCALHOST:32500", false},
+		{"HTTP://localhost:32500", false},
+		{"http://user@localhost:32500", false},
+		{"http://localhost:32500/", false},
+		{"http://localhost:32500?", false},
+		{"http://localhost:32500?x=1", false},
+		{"http://localhost:32500#x", false},
+		{"http://localhost:", false},
+		{"http://localhost:0", false},
+		{"http://localhost:65536", false},
+		{"http://localhost:032500", false},
+		{"http://localhost:abc", false},
+		{"https://server.example.test:65536", false},
+		{"http://192.0.2.1:32500", false},
+	}
+	for _, c := range cases {
+		t.Run(c.address, func(t *testing.T) {
+			key, claim, start, now := ownerStartFixture(t)
+			claim.Address, start.Address = c.address, c.address
+			raw, _ := json.Marshal(claim)
+			hash := sha256.Sum256(raw)
+			start.ClaimHash = base64.RawURLEncoding.EncodeToString(hash[:])
+			_, _, e := VerifyOwnerStart(signOwnerFixture(t, key, claim), signOwnerFixture(t, key, start), claim.Audience, now)
+			if (e == nil) != c.valid {
+				t.Fatal("wrong owner-start address acceptance", e)
+			}
+			if strings.HasPrefix(c.address, "http://") && serverreturn.Origin(c.address) {
+				t.Fatal("HTTP address became an actual return registration")
+			}
+		})
 	}
 }
