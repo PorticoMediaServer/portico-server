@@ -24,6 +24,8 @@ export function useConsole(): ConsoleClient {
 export type Read<T> = {data?: T; error?: string; loading: boolean; at?: number; reload: () => void};
 
 export type ReadOptions = {
+  /** Retire prior results when the captured report/authority changes. */
+  resetKey?: unknown;
   auto?: boolean;
   /** Look again this often while the page is in front, for something the server sends no hint about (`QUIET_READ_EVERY_MS` is the usual pace). */
   every?: number;
@@ -40,7 +42,7 @@ export type ReadOptions = {
  */
 export function useRead<T>(fn: () => Promise<T>, deps: readonly unknown[], options: ReadOptions = {}): Read<T> {
   const {hub} = useFreshness();
-  const store = useMemo(() => new QuietRead<T>(hub), [hub]);
+  const store = useMemo(() => new QuietRead<T>(hub), [hub, options.resetKey]);
   useEffect(() => () => store.dispose(), [store]);
   const latest = useRef(fn);
   latest.current = fn;

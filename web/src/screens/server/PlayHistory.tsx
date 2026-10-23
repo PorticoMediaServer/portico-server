@@ -9,6 +9,7 @@ import {useSession} from '../../app/session';
 import {present} from '../../app/errors';
 import {Button, Freshness, Notice, Select, Surface, Table, Text} from '../../ui';
 import s from './PlayHistory.module.css';
+import {useReportContext} from './report-context';
 import {dependsOn} from '@core/freshness-hub.ts';
 
 // A play is recorded as it starts and ends, which is when the list of sessions moves.
@@ -27,16 +28,28 @@ export function PlayHistoryPanel() {
   const client = useConsole();
   const libraries = useLibrariesContext();
   const accounts = useRead(() => client.accountOptions(), [client]);
-  const [filters, setFilters] = useState<PlayHistoryFilters>({period: 'all'});
-  const [state, setState] = useState<{entries: readonly PlayHistoryEntry[]; total?: number; next: string; loading: boolean; error?: string; at?: number; /** The filters `entries` were read with: until a new answer arrives they stay on screen. */ shown?: PlayHistoryFilters}>({entries: [], next: '', loading: true});
+  const {context, refresh} = useReportContext();
+  const [selected, setFilters] = useState<Omit<PlayHistoryFilters, 'timeZone' | 'until'>>({period: 'all'});
+  const filters = useMemo<PlayHistoryFilters>(() => ({...selected, ...context}), [selected, context]);
+  const current = useRef(filters);
+  current.current = filters;
+  const [result, setState] = useState<{entries: readonly PlayHistoryEntry[]; total?: number; next: string; loading: boolean; error?: string; at?: number; /** The filters `entries` were read with: until a new answer arrives they stay on screen. */ shown?: PlayHistoryFilters}>({entries: [], next: '', loading: true});
+  // Retired calendar/authority rows never appear under a new timezone or cursor.
+  const state: typeof result = result.shown && result.shown !== filters ? {entries: [], next: '', loading: true} : result;
   const run = useRef(0);
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => { ++run.current; request.current?.abort(); }, []);
   const load = useCallback((cursor: string) => {
+    if (current.current !== filters) return;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     const n = ++run.current;
     // What is on screen stays until the answer arrives: a filter or Refresh never empties the table first.
-    setState(prev => ({...prev, loading: true, error: undefined}));
-    fetchPlayHistory(api, filters, cursor).then(
-      page => { if (n === run.current) setState(prev => ({entries: cursor ? [...prev.entries, ...page.entries] : page.entries, total: page.total ?? (cursor ? prev.total : undefined), next: page.nextCursor, loading: false, at: Date.now(), shown: filters})); },
-      error => { if (n === run.current) setState(prev => ({...prev, loading: false, error: present(error, 'server-console').body})); },
+    setState(prev => prev.shown === filters ? {...prev, loading: true, error: undefined} : {entries: [], next: '', loading: true, shown: filters});
+    fetchPlayHistory(api, filters, cursor, controller.signal).then(
+      page => { if (n === run.current && current.current === filters && !controller.signal.aborted) setState(prev => ({entries: cursor ? [...prev.entries, ...page.entries] : page.entries, total: page.total ?? (cursor ? prev.total : undefined), next: page.nextCursor, loading: false, at: Date.now(), shown: filters})); },
+      error => { if (n === run.current && current.current === filters && !controller.signal.aborted) setState(prev => ({...prev, loading: false, error: present(error, 'server-console').body})); },
     );
   }, [api, filters]);
   useEffect(() => load(''), [load]);
@@ -44,7 +57,7 @@ export function PlayHistoryPanel() {
   useQuietly(async () => {
     const n = run.current;
     const page = await fetchPlayHistory(api, filters, '');
-    if (n !== run.current) return;
+    if (n !== run.current || current.current !== filters) return;
     setState(prev => (prev.loading || prev.shown !== filters ? prev : {...prev, entries: mergeRevalidatedList(prev.entries, page.entries, e => e.id, {complete: !page.nextCursor && !prev.next, same: (a, b) => JSON.stringify(a) === JSON.stringify(b)}), total: page.total ?? prev.total, next: prev.entries.length > page.entries.length ? prev.next : page.nextCursor, at: Date.now()}));
   }, () => state.shown === filters && !state.loading, {on: HISTORY_MOVES});
   const libraryName = useMemo(() => new Map(libraries.items.map(l => [l.id, l.name])), [libraries.items]);
@@ -61,7 +74,7 @@ export function PlayHistoryPanel() {
           options={PLAY_HISTORY_PERIODS.map(p => ({value: p, label: t(playHistoryPeriodLabel(p))}))} />
         {state.total !== undefined ? <Text variant="caption" tone="secondary" className={s.total}>{t('server.plays.total', {count: state.total})}</Text> : null}
         {/* The page's one Refresh asks this list again. */}
-        <Freshness at={state.at} verb="Updated" refreshing={state.loading} onRefresh={() => load('')} />
+        <Freshness at={state.at} verb="Updated" refreshing={state.loading} onRefresh={refresh} />
       </div>
       {state.error ? <div className={s.note}><Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: () => load(state.entries.length ? state.next : '')}}>{state.error}</Notice></div> : null}
       {state.entries.length ? (

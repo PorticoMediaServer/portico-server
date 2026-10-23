@@ -1,5 +1,5 @@
-import React, {useMemo, useState} from 'react';
-import type {PlaybackHistoryPeriod, TelemetryPoint, TelemetryWindow} from '@core/admin/index.ts';
+import React, {useState} from 'react';
+import type {TelemetryPoint, TelemetryWindow} from '@core/admin/index.ts';
 import {loadValue, measuredLoadTiles} from '@core/server-admin/dashboard.ts';
 import {VIEWING_PERIODS, fetchPlaySummary, viewingFigures, viewingPeriodLabel, type ViewingPeriod} from '@core/play-history.ts';
 import {useSession} from '../../app/session';
@@ -7,6 +7,7 @@ import {useConsole, useRead} from '../../admin/console';
 import {useI18n} from '../../app/i18n';
 import {Freshness, Notice, Segmented, Surface, Text} from '../../ui';
 import s from './Server.module.css';
+import {useReportContext} from './report-context';
 
 /** A plain SVG line: no chart library for six small lines. */
 function Spark({points, max}: {points: readonly TelemetryPoint[]; max: number}) {
@@ -25,8 +26,9 @@ function Spark({points, max}: {points: readonly TelemetryPoint[]; max: number}) 
 export function TelemetryPanel({title, lead}: {title?: string; lead?: React.ReactNode} = {}) {
   const client = useConsole();
   const {t} = useI18n();
+  const {context, refresh} = useReportContext();
   const [window, setWindow] = useState<TelemetryWindow>('1h');
-  const read = useRead(() => client.telemetry(window), [client, window], {every: window === '10m' ? 15000 : 60000});
+  const read = useRead(() => client.telemetry(window, context), [client, window, context], {resetKey: context, every: window === '10m' ? 15000 : 60000});
   const data = read.data;
   const tiles = data ? measuredLoadTiles(data.status) : [];
   return (
@@ -35,7 +37,7 @@ export function TelemetryPanel({title, lead}: {title?: string; lead?: React.Reac
         <span className={s.panelTitle}>{title ?? t('web.telemetry.load')}</span>
         <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
           <Segmented size="sm" label={t('web.telemetry.period')} value={window} onChange={v => setWindow(v as TelemetryWindow)} options={[{id: '10m', label: t('web.telemetry.window10m')}, {id: '1h', label: t('web.telemetry.window1h')}, {id: '24h', label: t('web.telemetry.window24h')}]} />
-          <Freshness at={read.at} onRefresh={read.reload} refreshing={read.loading} />
+          <Freshness at={read.at} onRefresh={refresh} refreshing={read.loading} />
         </div>
       </div>
       {lead}
@@ -70,8 +72,9 @@ export function TelemetryPanel({title, lead}: {title?: string; lead?: React.Reac
 export function ViewingPanel() {
   const {api} = useSession();
   const {t} = useI18n();
-  const [period, setPeriod] = useState<ViewingPeriod>('24h');
-  const read = useRead(() => fetchPlaySummary(api, period), [api, period]);
+  const {context, refresh} = useReportContext();
+  const [period, setPeriod] = useState<ViewingPeriod>('today');
+  const read = useRead(() => fetchPlaySummary(api, {...context, period}), [api, period, context], {resetKey: context});
   const figures = read.data ? viewingFigures(read.data) : undefined;
   return (
     <Surface padless>
@@ -79,7 +82,7 @@ export function ViewingPanel() {
         <span className={s.panelTitle}>{t('web.telemetry.viewing')}</span>
         <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
           <Segmented size="sm" label={t('web.telemetry.period')} value={period} onChange={v => setPeriod(v as ViewingPeriod)} options={VIEWING_PERIODS.map(id => ({id, label: t(viewingPeriodLabel(id))}))} />
-          <Freshness at={read.at} onRefresh={read.reload} refreshing={read.loading} />
+          <Freshness at={read.at} onRefresh={refresh} refreshing={read.loading} />
         </div>
       </div>
       {read.error && !read.data ? <div style={{padding: 16}}><Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
