@@ -57,7 +57,7 @@ mod tests{
     fn path(label:&str)->std::path::PathBuf{std::env::temp_dir().join(format!("desktop-installation-{label}-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos())).join("installation.sqlite3")}
     #[test]
     fn durable_installation_identity_is_local_unique_and_never_account_or_output_keyed(){
-        let first=path("first"),second=path("second");
+        let first=path("first");let second=path("second");
         let store=InstallationStore::open(&first).unwrap();let original=store.read().unwrap();assert_eq!(original.len(),64);
         assert!(InstallationStore::open(&first).is_err(),"a second app cannot rotate the same credential vault concurrently");drop(store);
         assert!(InstallationStore::open(&first).unwrap().read().unwrap()==original);
