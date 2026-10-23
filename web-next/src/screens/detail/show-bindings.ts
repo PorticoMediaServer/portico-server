@@ -6,12 +6,24 @@ import {getContainerState, setContainerFlag, setContainerState, type ContainerSt
 import {createRecommendations} from './recommendations';
 import {titleView} from './view-state';
 import {openGenre} from './genre-binding';
+import {preferenceValue} from '@core/preferences.ts';
 
 export function createShowBindings(context: ScreenContext) {
   const life = screenLifetime(context), service = new ShowWorkspaceService({api: life.api, scope: context.scope});
   const episode = createDetailBindings(context), primary = createDetailBindings(context), listedPlayback = createDetailBindings(context);
   const recommendations = createRecommendations(context);
   const view = titleView('episodes', ['episodes', 'related', 'details'], life.assert);
+  let episodeLayoutPreference: 'auto' | 'tiles' | 'list' | undefined;
+  const updateEpisodeLayout = () => {
+    if (!life.current()) return;
+    const snapshot = context.preferences.getSnapshot();
+    if (!snapshot.registry?.fields.some(field => field.key === 'appearance.episodesLayout')) return;
+    const value = preferenceValue<'auto' | 'tiles' | 'list'>(snapshot, 'appearance.episodesLayout');
+    if (value !== 'auto' && value !== 'tiles' && value !== 'list') return;
+    if (value !== episodeLayoutPreference) { episodeLayoutPreference = value; view.defaultLayout(value === 'list' ? 'list' : 'grid'); }
+  };
+  updateEpisodeLayout();
+  const offPreferences = context.preferences.subscribe(updateEpisodeLayout);
   let viewIdentity = '';
   let subject: Readonly<{libraryId: string; showId: string; title: string}> | undefined;
   const offSubject = service.subscribe(() => { const data = service.getSnapshot().data; if (data && service.getSnapshot().phase === 'ready') subject = {libraryId: data.scope.libraryId, showId: data.show.id, title: data.show.title}; });
@@ -105,7 +117,7 @@ export function createShowBindings(context: ScreenContext) {
       current(data); signal?.throwIfAborted(); await service.refresh();
     },
     cancel() { intent++; selection?.abort(); playbackRequest?.abort(); listedPlayback.service.cancel(); service.cancel(); episode.service.cancel(); primary.service.cancel(); recommendations.clear(); personal = undefined; publish(); },
-    dispose() { intent++; selection?.abort(); playbackRequest?.abort(); subject = undefined; offSubject(); viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); personal = undefined; busy = false; publish(); listeners.clear(); listedPlayback.dispose(); episode.dispose(); primary.dispose(); service.cancel(); service.dispose(); },
+    dispose() { intent++; selection?.abort(); playbackRequest?.abort(); subject = undefined; offSubject(); offPreferences(); episodeLayoutPreference = undefined; viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); personal = undefined; busy = false; publish(); listeners.clear(); listedPlayback.dispose(); episode.dispose(); primary.dispose(); service.cancel(); service.dispose(); },
   };
 }
 export type ShowBindings = ReturnType<typeof createShowBindings>;
