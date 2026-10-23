@@ -1,5 +1,7 @@
 /** Wording shared by the new renderer-free kit models. */
 export const shared = {
+  'next.auth.tv.playPause': 'Play/Pause',
+  'next.auth.tv.deleteDigit': 'Delete a digit',
   // Drawn playback clocks: desktop-player f1 and phone-player r4 (812dacac).
   'next.watch.remaining': '−{time}',
   'next.watch.clockDivider': '/ {time}',

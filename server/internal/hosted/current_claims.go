@@ -57,6 +57,9 @@ func (s *Service) RevokeClaimTx(ctx context.Context, tx *sql.Tx, v networking.In
 	if e := networking.RevokeCertificatesTx(ctx, tx, v.OperationID); e != nil {
 		return e
 	}
+	if e := s.identity.RetireOwnerCompletionForClaimTx(ctx, tx, v.OperationID); e != nil {
+		return e
+	}
 	if _, e := tx.ExecContext(ctx, `DELETE FROM policy WHERE server_id=?`, v.ServerID); e != nil {
 		return e
 	}

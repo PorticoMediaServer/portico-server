@@ -4793,9 +4793,12 @@ server_settings.advertiseUrl
 server_settings.advertisedInterface
 server_settings.analysisStageStorageMiB
 server_settings.analysisStorageGiB
+server_settings.apiKeysMax
 server_settings.apiRequestsPerMinute
+server_settings.assistantsEnabled
 server_settings.connectionLimit
 server_settings.conversionMode
+server_settings.credentialMaxDays
 server_settings.customCertificateDomain
 server_settings.customCertificateKeyPath
 server_settings.customCertificatePath
@@ -4810,6 +4813,7 @@ server_settings.hdrToneMapping
 server_settings.hdrToneMappingAlgorithm
 server_settings.home.communityActivityEnabled
 server_settings.jobDays
+server_settings.keyInAddress
 server_settings.lanDiscoveryEnabled
 server_settings.library.missingTitles
 server_settings.library.missingTitlesDays
@@ -4819,6 +4823,7 @@ server_settings.maxBackgroundSessions
 server_settings.maxConcurrentSessions
 server_settings.maxHardwareSessions
 server_settings.maxSoftwareSessions
+server_settings.memberTokenScope
 server_settings.musicAwayQuality
 server_settings.notificationDays
 server_settings.outputFormat
@@ -4835,10 +4840,16 @@ server_settings.subtitleFileLimitMiB
 server_settings.subtitleTrackLimit
 server_settings.temporaryDirectory
 server_settings.throttleBufferMs
+server_settings.tokensPerMember
 server_settings.updated_ms
 server_settings.updates.feedUrl
 server_settings.updates.releaseChannel
 server_settings.uploadCapacityKbps
+server_settings.webhookHTTPSOnly
+server_settings.webhookLogSize
+server_settings.webhookQueueSize
+server_settings.webhookRetries
+server_settings.webhookTimeoutSeconds
 server_settings.x264Preset
 setup_rate_limits_v1.attempts
 setup_rate_limits_v1.kind
