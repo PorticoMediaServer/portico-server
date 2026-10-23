@@ -2246,8 +2246,8 @@ test('Together never executes an unattended member skip locally; a permitted man
   assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt?.kind, 'skip');
   assert.equal(f.runtime.getSnapshot().playback.pendingSeek, undefined, 'device autoplay preferences cannot change the group clock');
   await f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'});await settle();
-  const command = f.log.find(request => request.path.endsWith('/transport') && (request.body as {command: string}).command === 'seek')!;
-  assert.ok(command);assert.equal((command.body as {positionUs: string}).positionUs, '79000000');
+  const commands = f.log.filter(request => request.path.endsWith('/transport') && (request.body as {command: string}).command === 'seek');
+  assert.deepEqual(commands.map(request => (request.body as {positionUs: string}).positionUs), ['40000000', '79000000']);
   assert.equal(f.runtime.getSnapshot().playback.pendingSeek!.positionSeconds, 79, 'the canonical follower applies the accepted room clock');
   assert.equal(f.log.some(request => request.path.endsWith(':advance')), false);
 });
