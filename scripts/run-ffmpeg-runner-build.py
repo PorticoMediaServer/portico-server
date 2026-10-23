@@ -10,7 +10,89 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import stat
 import subprocess
+
+
+QUALIFICATION_REPORTS = (
+    'feature-report-bundle.json', 'disc-report-bundle.json',
+    'runtime-report-bundle.json', 'abi-report-bundle.json', 'repeat-build.json',
+    'linux-deps/dependency-inputs.json', 'linux-output/dovi-profile-build.json',
+    'linux-output/dovi-video-build.json', 'linux-hdr-gate/runtime/report.json',
+    'linux-hdr-gate/hdr10plus-report.json', 'linux-hdr-gate/join-runtime/report.json',
+)
+
+
+def qualification_report(work, name):
+    """Read one fixed text report without following directory or file links."""
+    directory = os.open(work, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        parts = Path(name).parts
+        for part in parts[:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                            dir_fd=directory)
+            os.close(directory)
+            directory = child
+        descriptor = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                             dir_fd=directory)
+        try:
+            info = os.fstat(descriptor)
+            limit = 2 << 20
+            if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+                raise ValueError('Report must be a regular text file of at most 2 MiB')
+            chunks, size = [], 0
+            while True:
+                chunk = os.read(descriptor, min(65536, limit + 1 - size))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                size += len(chunk)
+                if size > limit:
+                    raise ValueError('Report grew beyond its text bound')
+            raw = b''.join(chunks)
+        finally:
+            os.close(descriptor)
+    finally:
+        os.close(directory)
+    text = raw.decode('utf-8')
+    record = {'state': 'produced', 'bytes': len(raw),
+              'sha256': hashlib.sha256(raw).hexdigest()}
+    try:
+        record['report'] = json.loads(text)
+    except ValueError:
+        # A truncated failed report is evidence, never a successful gate.
+        record.update(state='invalid-json', text=text)
+    return record
+
+
+def collect_qualification_reports(job_root, source_commit, build_succeeded, failure):
+    """Preserve bounded target diagnostics before mandatory job cleanup."""
+    output = Path(os.environ['PORTICO_RUNNER_OUTPUT'])
+    if (output.is_symlink() or output.resolve(strict=True) != job_root / 'outputs' or
+            not output.is_dir()):
+        raise ValueError('Qualification diagnostics must use this runner job output directory')
+    work = job_root / '.scratch/hardware-r29/ffmpeg-build/linux-x64'
+    reports = {}
+    for name in QUALIFICATION_REPORTS:
+        try:
+            reports[name] = qualification_report(work, name)
+        except FileNotFoundError:
+            reports[name] = {'state': 'not-produced'}
+        except (OSError, ValueError) as error:
+            reports[name] = {'state': 'refused', 'reason': str(error)}
+    record = {'schema': 1, 'sourceCommit': source_commit,
+              'host': os.uname().nodename, 'canonicalBuildCommandSucceeded': build_succeeded,
+              'failure': failure, 'reports': reports,
+              'scope': 'Text diagnostics only. Missing, invalid or refused reports do not qualify a bundle; the final artifact receipt and command status remain authoritative.'}
+    temporary = output / ('hardware-qualification.log.new-' + str(os.getpid()))
+    try:
+        with temporary.open('x') as stream:
+            json.dump(record, stream, indent=2)
+            stream.write('\n')
+        temporary.chmod(0o644)
+        temporary.replace(output / 'hardware-qualification.log')
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def digest(path):
@@ -81,6 +163,8 @@ def main():
     if preflight['availableDiskBytes'] < disk_peak + 20 * 2**30 or available < ram_cap:
         print('REFUSED: this FFmpeg job peak does not fit; continue code-only', flush=True)
         return 75
+    collect_qualification_reports(job_root, args.source_commit, None,
+        'Canonical build command has not started; source/preflight details remain in runner.log.')
     subprocess.run(['python3', str(root / 'scripts/check-ffmpeg-source.py'),
                     '--archive-commit', args.source_commit, '--archive-rejections'],
                    cwd=root, env=env, check=True)
@@ -96,11 +180,19 @@ def main():
         '--cpus', '0.25', '--memory', '128m', '--memory-swap', '128m',
         lock['linuxSourceBuild']['compilerImage'], 'bash', '-c',
         'timeout 10 getent ahostsv4 github.com gitlab.freedesktop.org index.crates.io'], check=True)
+    build_succeeded, build_failure = False, None
     try:
         subprocess.run(['bash', str(root / 'scripts/build-ffmpeg.sh'), 'linux-x64'],
                        cwd=root, env=env, check=True)
+        build_succeeded = True
+    except BaseException as error:
+        build_failure = (type(error).__name__ + ': ' + str(error))[:4000]
+        raise
     finally:
-        owner.restore_job_ownership(job_root, lock['linuxSourceBuild']['compilerImage'])
+        try:
+            owner.restore_job_ownership(job_root, lock['linuxSourceBuild']['compilerImage'])
+        finally:
+            collect_qualification_reports(job_root, args.source_commit, build_succeeded, build_failure)
     work = scratch / 'ffmpeg-build/linux-x64'
     archive = work / 'portico-ffmpeg-linux-x64.tar.xz'
     manifest = work / 'bundle/toolchain-manifest.json'
