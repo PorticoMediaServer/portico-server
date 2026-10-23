@@ -146,6 +146,7 @@ if [[ "$TARGET" == linux-x64 ]]; then
   cp "$WORK/linux-deps/"{dependency-inputs.json,stage-plan.json,prefix-files.json,compiler.txt,license-inventory.json} "$WORK/provenance/linux-dependencies/"
   cp "$WORK/repeat-build.json" "$WORK/provenance/"
   cp "$WORK/linux-build-inputs.json" "$WORK/provenance/"
+  cp -a "$WORK/linux-build-inputs" "$WORK/provenance/"
   cp -a "$INPUT/compiler-source" "$WORK/provenance/"
   cp "$INPUT/compiler-linked-inputs.json" "$WORK/provenance/"
   cp "$ROOT/scripts/build-linux-ffmpeg-deps.py" "$ROOT/scripts/build-linux-ffmpeg.py" "$WORK/provenance/scripts/"
@@ -154,9 +155,10 @@ if [[ "$TARGET" == linux-x64 ]]; then
   cp "$ROOT/scripts/build-linux-libdovi.py" "$WORK/provenance/scripts/"
   mkdir -p "$WORK/provenance/libdovi"
   cp -a "$LANE_SCRATCH/libdovi/sources" "$WORK/provenance/libdovi/sources"
-  cp "$WORK/libdovi/"{vendor-source.tar.xz,fetch.sh,build.sh,contract.json,expected.json,compiler-and-licenses.json} "$WORK/provenance/libdovi/"
+  cp "$WORK/libdovi/"{vendor-source.tar.xz,vendor-lock.json,fetch.sh,build.sh,contract.json,expected.json,compiler-and-licenses.json} "$WORK/provenance/libdovi/"
   cp "$INPUT/libdovi-build.json" "$INPUT/dovi-profile-build.json" "$WORK/provenance/libdovi/"
   cp -a "$ROOT/third_party/ffmpeg/tests" "$WORK/provenance/contract/"
+  cp "$ROOT/third_party/ffmpeg/portico-dovi-profile.patch" "$WORK/provenance/contract/"
 fi
 # Include dependency sources and exact recipe, excluding only output binaries and git metadata.
 tar -C "$WORK" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner --exclude=recipe/.git --exclude=recipe/workspace --exclude=recipe/artifacts --exclude=recipe/.cache/images -I 'xz -T1' -cf "$WORK/corresponding-source.tar.xz" recipe provenance

@@ -132,9 +132,23 @@ cd /dovi/source
 mkdir -p .cargo
 cargo vendor --locked --sync dolby_vision/Cargo.toml --versioned-dirs /dovi/vendor > .cargo/config.toml
 ''')
-    subprocess.run(['docker', 'run', '--rm', '--name', 'portico-hardware-r29-libdovi-fetch',
-        '--label', 'portico.lane=hardware-r29', '--cpus', '1', '--memory', '512m', '--memory-swap', '512m',
-        '-v', str(stage) + ':/dovi', lock['linuxSourceBuild']['compilerImage'], 'bash', '/dovi/fetch.sh'], check=True)
+    vendor_lock = stage / 'vendor-lock.json'
+    if vendor_lock.exists():
+        vendor = json.loads(vendor_lock.read_text())
+        if (vendor.get('sourceSHA256') != source['sha256'] or vendor.get('cargoLocks') != source['cargoLocks'] or
+                digest(stage / 'vendor-source.tar.xz') != vendor.get('vendorSourceSHA256')):
+            raise ValueError('Offline vendor archive differs from its qualified source lock')
+        with tarfile.open(stage / 'vendor-source.tar.xz') as tar:
+            if any(not m.name.startswith('vendor/') and m.name != 'vendor' for m in tar.getmembers()):
+                raise ValueError('Vendor source escaped its archive root')
+            tar.extractall(stage, filter='data')
+        (tree / '.cargo').mkdir(exist_ok=True)
+        (tree / '.cargo/config.toml').write_text('[source.crates-io]\nreplace-with = "vendored-sources"\n'
+            '[source.vendored-sources]\ndirectory = "/dovi/vendor"\n')
+    else:
+        subprocess.run(['docker', 'run', '--rm', '--name', 'portico-hardware-r29-libdovi-fetch',
+            '--label', 'portico.lane=hardware-r29', '--cpus', '1', '--memory', '512m', '--memory-swap', '512m',
+            '-v', str(stage) + ':/dovi', lock['linuxSourceBuild']['compilerImage'], 'bash', '/dovi/fetch.sh'], check=True)
     subprocess.run(['docker', 'run', '--rm', '--name', 'portico-hardware-r29-libdovi',
         '--label', 'portico.lane=hardware-r29', '--cpus', '2', '--memory', '4g', '--memory-swap', '4g', '--network', 'none',
         '-v', str(stage) + ':/dovi', '-v', str(prefix) + ':/opt/ffbuild',
@@ -150,6 +164,8 @@ cargo vendor --locked --sync dolby_vision/Cargo.toml --versioned-dirs /dovi/vend
               'oracleSHA256': digest(stage / 'oracle/dovi_tool'),
               'sourceArchive': archive.name,
               'scope': 'static libdovi plus test-only official CLI; packet/video gates still required'}
+    atomic_json(vendor_lock, {'sourceSHA256': source['sha256'], 'cargoLocks': source['cargoLocks'],
+                             'vendorSourceSHA256': record['vendorSourceSHA256']})
     atomic_json(record_file, record)
     # Refresh the canonical seal only after the new installed inputs qualified.
     atomic_json(deps / 'prefix-files.json', {str(p.relative_to(prefix)): digest(p)

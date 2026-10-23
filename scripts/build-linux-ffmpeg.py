@@ -70,6 +70,8 @@ def main():
               'portico-dovi-profile.v1.json': root / 'third_party/ffmpeg/portico-dovi-profile.v1.json'}
     fixture_root = root / 'fixtures/video/dovi-metadata'
     contract = json.loads(inputs['portico-dovi-profile.v1.json'].read_text())
+    if digest(inputs['dovi-profile-packets.c']) != contract['hostProof']['packetTestSourceSha256']:
+        raise ValueError('Qualified packet test source changed')
     if digest(fixture_root / 'manifest.json') != contract['hostProof']['fixtureManifestSha256']:
         raise ValueError('Qualified Dolby Vision packet fixtures changed')
     fixtures = json.loads((fixture_root / 'manifest.json').read_text())
