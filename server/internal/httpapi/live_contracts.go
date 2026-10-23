@@ -151,6 +151,9 @@ func registerLiveContracts(r *apikit.Registry, d Dependencies) {
 			return out, administration.ErrUnavailable
 		}
 		value, e := d.Administration.SaveLiveDefaults(ctx, d.administrationAuthority(p), in)
+		if e == nil && d.Console != nil {
+			e = d.Console.FlushConfiguration(context.WithoutCancel(ctx))
+		}
 		return LiveOwnerResult[administration.Document[administration.LiveDefaults]]{"1.0", d.Identity.ID(), value}, e
 	})
 	liveContract(r, d, "GET", "/v1/admin/live-sources/{id}/configuration", "get_live_source_configuration", 0, func(ctx context.Context, q *http.Request, p identity.Principal, _ struct{}) (LiveOwnerResult[administration.LiveSourceDocument], error) {

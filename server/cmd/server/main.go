@@ -1014,6 +1014,7 @@ func run() (runErr error) {
 	console, scheduler, e := initializeConsole(db, scanner, player, hls, cat, lyricFetch, state)
 	if console != nil {
 		console.ConfigFile, console.ConfigPath = configSettings.ConfigFile, layout.Config
+		console.ConfigurationDomains = append([]operations.ConfigurationDomain{}, configSettings.ConfigurationDomains...)
 		console.FFmpegValidation = operations.FFmpegValidator(ffmpegTool)
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
 		console.AppliedFFmpegPath = &startupMedia.FFmpegPath

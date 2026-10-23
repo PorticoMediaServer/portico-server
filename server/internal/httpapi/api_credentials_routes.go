@@ -9,7 +9,9 @@ import (
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/access"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/operations"
 )
 
 // Routes for API keys (the owner's) and personal access tokens (any member's).
@@ -24,11 +26,14 @@ type ScopeDocument struct {
 // CredentialOptions tells a console what it may offer.
 type CredentialOptions struct {
 	Scopes []ScopeDocument `json:"scopes"`
+	// Personal-token choices are the intersection with the owner's global ceiling.
+	TokenScopes           []ScopeDocument `json:"tokenScopes"`
+	MaximumCredentialDays int             `json:"maximumCredentialDays"`
 	// MaximumKeys and MaximumTokens are how many may be in use at once.
 	MaximumKeys   int `json:"maximumKeys"`
 	MaximumTokens int `json:"maximumTokens"`
 	// TokensAllowed is false when the owner has turned personal access tokens
-	// off for members. The owner and administrators may still make them.
+	// off for this account. Global ceilings never turn this permission on.
 	TokensAllowed bool `json:"tokensAllowed"`
 	// RequestsPerMinute is the rate one key or token is held to.
 	RequestsPerMinute int `json:"requestsPerMinute"`
@@ -82,13 +87,31 @@ func (d Dependencies) sessionAuthority(p identity.Principal) access.Authorize {
 }
 
 func (d Dependencies) credentialOptions(ctx context.Context, p identity.Principal) (CredentialOptions, error) {
-	out := CredentialOptions{Scopes: []ScopeDocument{}, MaximumKeys: access.MaxAPIKeys, MaximumTokens: access.MaxAccessTokens, TokensAllowed: true, RequestsPerMinute: d.apiRequestsPerMinute(ctx), QueryParameter: QueryCredentialParameter}
+	out := CredentialOptions{Scopes: []ScopeDocument{}, TokenScopes: []ScopeDocument{}, RequestsPerMinute: d.apiRequestsPerMinute(ctx)}
+	snapshot, err := dbwork.BeginSnapshot(ctx, d.DB)
+	if err != nil {
+		return out, err
+	}
+	defer snapshot.Rollback()
+	if err = d.sessionAuthority(p)(ctx, snapshot.Tx()); err != nil {
+		return out, err
+	}
+	policy, err := operations.ReadIntegrationSettingsTx(ctx, snapshot.Tx())
+	if err != nil {
+		return out, err
+	}
+	out.MaximumKeys, out.MaximumTokens, out.MaximumCredentialDays = policy.APIKeysMax, policy.TokensPerMember, policy.CredentialMaxDays
+	if policy.KeyInAddress {
+		out.QueryParameter = QueryCredentialParameter
+	}
 	for _, scope := range access.CredentialScopes {
 		out.Scopes = append(out.Scopes, ScopeDocument{ID: scope})
+		if policy.MemberTokenScope == "same" || scope == "read" || scope == "playback" && policy.MemberTokenScope == "play" {
+			out.TokenScopes = append(out.TokenScopes, ScopeDocument{ID: scope})
+		}
 	}
-	out.TokensAllowed = false
-	if e := d.DB.QueryRowContext(ctx, `SELECT access_tokens=1 AND disabled=0 FROM direct_memberships WHERE account_id=?`, p.AccountID).Scan(&out.TokensAllowed); e != nil {
-		return out, e
+	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT access_tokens=1 AND disabled=0 FROM direct_memberships WHERE account_id=?`, p.AccountID).Scan(&out.TokensAllowed); err != nil {
+		return CredentialOptions{}, err
 	}
 	return out, nil
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 )
 
@@ -32,6 +33,48 @@ func TestWebhookSecurePolicyRefusesBeforeSendingPayload(t *testing.T) {
 	}
 	if !policyURL("https://example.com/webhook", policy) {
 		t.Fatal("secure policy refused HTTPS")
+	}
+}
+
+func TestWebhookShortenedCurrentRetryPolicyStopsQueuedAttempt(t *testing.T) {
+	store, db := open(t)
+	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	store.Now = func() time.Time { return now }
+	receiver := newReceiver(t)
+	receiver.answer(500)
+	made, err := store.Create(context.Background(), nil, Create{Name: "Local receiver", URL: receiver.server.URL, Events: []string{PlaybackStarted}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.SendTest(context.Background(), nil, made.Webhook.ID); err != nil {
+		t.Fatal(err)
+	}
+	d := NewDispatcher(store)
+	d.Step(context.Background())
+	if receiver.count() != 1 {
+		t.Fatal("first actual attempt was not sent")
+	}
+	policy := operations.New(db)
+	document, err := policy.Settings(context.Background(), operations.AllowServerScope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document.Requested.WebhookRetries = "none"
+	if _, err = policy.ApplySettings(context.Background(), identity.Principal{}, operations.AllowServerScope, operations.SettingsChange{ExpectedRevision: document.Revision, IdempotencyKey: "stop-queued-webhook-retry", Values: document.Requested}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Hour)
+	d.Step(context.Background())
+	if receiver.count() != 1 {
+		t.Fatal("a waiting retry sent payload after the owner disabled retries")
+	}
+	var state, code string
+	var attempts int
+	if err = db.QueryRow(`SELECT state,error,attempts FROM webhook_deliveries WHERE webhook_id=?`, made.Webhook.ID).Scan(&state, &code, &attempts); err != nil {
+		t.Fatal(err)
+	}
+	if state != "failed" || code != "retry_limit_reached" || attempts != 1 {
+		t.Fatalf("unsent attempt was counted or kept pending: %s %s %d", state, code, attempts)
 	}
 }
 

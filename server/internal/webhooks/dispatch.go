@@ -270,18 +270,26 @@ func (d *Dispatcher) attempt(ctx context.Context, q queued) bool {
 	if err != nil {
 		return false
 	} // No attempt or permissive policy on a failed read.
-	body, err := d.payload(ctx, q)
 	status, code := 0, ""
 	started := time.Now()
-	if err != nil {
-		code = "payload_too_large"
+	attempts := q.attempts
+	exhausted := attempts > len(policyRetries(policy.WebhookRetries))
+	if exhausted {
+		// A shortened current policy cancels a waiting retry before sending
+		// either payload or credentials. Do not count a POST that never happened.
+		code = "retry_limit_reached"
 	} else {
-		status, code = d.postWithPolicy(ctx, q, body, policy)
+		attempts++
+		body, err := d.payload(ctx, q)
+		if err != nil {
+			code = "payload_too_large"
+		} else {
+			status, code = d.postWithPolicy(ctx, q, body, policy)
+		}
 	}
 	elapsed := time.Since(started).Milliseconds()
 	now := store.now()
 	delivered := code == ""
-	attempts := q.attempts + 1
 	err = dbwork.WithWriteTx(ctx, store.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
 		current, err := operations.ReadIntegrationSettingsTx(ctx, tx)
 		if err != nil {
@@ -296,7 +304,7 @@ func (d *Dispatcher) attempt(ctx context.Context, q queued) bool {
 			if _, e := tx.ExecContext(ctx, `UPDATE webhooks SET failures=0 WHERE id=? AND failures<>0`, q.webhook); e != nil {
 				return e
 			}
-		case attempts > len(delays) || code == "payload_too_large" || code == "secure_address_required":
+		case exhausted || attempts > len(delays) || code == "payload_too_large" || code == "secure_address_required":
 			if _, e := tx.ExecContext(ctx, `UPDATE webhook_deliveries SET state='failed',attempts=?,finished_ms=?,status=?,duration_ms=?,error=? WHERE id=? AND state='pending'`, attempts, now, status, elapsed, code, q.id); e != nil {
 				return e
 			}
