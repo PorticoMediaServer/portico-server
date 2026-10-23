@@ -12,7 +12,7 @@ func TestSoftwareDecodeKeepsHardwareFilterAndEncoder(t *testing.T) {
 			continue
 		}
 		exercised = true
-		request := ConversionRequest{Probe: HardwareProbe{Backend: backend, Available: true, NativeFilters: true}, ConvertVideo: true, MaxHeight: 720, SoftwareDecode: true}
+		request := ConversionRequest{Probe: HardwareProbe{Backend: backend, Available: true, NativeFilters: true, DecodeCodecs: map[string]bool{"h264:8": true}}, SourceVideoCodec: "h264", SourceBitDepth: 8, ConvertVideo: true, MaxHeight: 720, SoftwareDecode: true}
 		graph, err := BuildConversion(request)
 		if err != nil || argValue(graph.Input, "-hwaccel") != "" || !strings.Contains(argValue(graph.Video, "-vf"), "hwupload") || graph.Backend != backend {
 			t.Fatal("decode-off did not keep software decode and hardware upload/encode", backend, graph, err)
