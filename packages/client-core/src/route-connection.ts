@@ -1,4 +1,4 @@
-import {RouteError,probeRoute,routeOrigin,privateRouteHost,sameServerPin,webRouteCrypto,type RouteCrypto,type RouteCandidate,type ServerPin,type VerifiedRoutes} from './route-identity.ts';
+import {RouteError,probeRoute,routeOrigin,routeBytes,observedRouteTLSLeaf,privateRouteHost,sameServerPin,webRouteCrypto,type RouteCrypto,type RouteCandidate,type RouteProof,type ServerPin,type VerifiedRoutes} from './route-identity.ts';
 export type DiscoveryRoute = Readonly<{baseUrl:string;serverId:string;fingerprint:string;port:number;path:string;expiresAt:number}>;
 export type RouteSnapshot = Readonly<{phase:'idle'|'probing'|'ready'|'offline'|'identity_mismatch'|'unconfirmed';errorCode?:string;origin:string|null;revision:number;network:string;message:string;discovery:'unknown'|'available'|'unsupported'|'denied'|'empty'}>;
 export type RouteMemory = Readonly<{current?:VerifiedRoutes;previous?:VerifiedRoutes;paired:readonly string[];lastGood?:string}>;
@@ -23,6 +23,25 @@ export function discoveredRoutes(records:readonly DiscoveryRoute[],pin:ServerPin
  const group=groups.get(pin.fingerprint)??[];if(group.some(r=>r.serverId!==pin.serverId||r.path!==''&&r.path!=='/'||!Number.isInteger(r.port)||r.port<1||r.port>65535)||new Set(group.map(r=>r.port+'|'+r.path)).size>1)return [];
  const out:RouteCandidate[]=[];for(const r of group){if(!Number.isFinite(r.expiresAt)||r.expiresAt<=now||r.expiresAt>now+120000)continue;try{const origin=routeOrigin(r.baseUrl),u=new URL(origin);if(!privateRouteHost(u.hostname)||Number(u.port||(u.protocol==='https:'?443:80))!==r.port)continue;if(!out.some(c=>c.baseUrl===origin))out.push({baseUrl:origin,class:'lan',quality:'probe_required',generation:'1'});}catch{}}
  return out.slice(0,8);
+}
+/** Final identity ruling (design 69f2d45): Bonjour's fp remains SHA256(identity public key),
+ * not a TLS fingerprint. Current-network discovery alone never authorizes a certificate.
+ * probeRoute has already derived serverId/fingerprint from the key and verified the signed
+ * nonce for this origin. The SAME native proof exchange must supply its actual observed leaf.
+ * This function sends nothing and pins nothing; any absent/invalid fact takes the away path. */
+export function bonjourProvesHome(origin:string,proof:RouteProof,observedTLSLeaf:string,records:readonly DiscoveryRoute[],now=Date.now()):boolean {
+ try{
+  const url=new URL(routeOrigin(origin)),ipv4=url.hostname.split('.').map(Number);
+  // The binding ruling keeps carrier-grade NAT/Tailscale 100.64/10 away.
+  if(ipv4.length===4&&ipv4[0]===100&&ipv4[1]>=64&&ipv4[1]<=127)return false;
+  if(url.protocol!=='https:'||observedRouteTLSLeaf(origin,proof,now)!==observedTLSLeaf)return false;
+  routeBytes(observedTLSLeaf,32);
+  if(!proof.tlsCertificateFingerprints?.includes(observedTLSLeaf))return false;
+  // Existing discovery grouping rejects conflicting id/fp or service records and accepts
+  // only current private routes. It compares both TXT values with the cryptographically
+  // derived proof values; it never treats the identity-key fp as the observed TLS leaf.
+  return discoveredRoutes(records,proof,now).length>0;
+ }catch{return false;}
 }
 const routeFailureCode=(error:unknown):string|undefined=>{const code=(error as {code?:unknown}|null)?.code;return typeof code==='string'?code:undefined;};
 const certificateFailure=(code:string|undefined)=>code==='certificate_unverified'||code==='certificate_untrusted';

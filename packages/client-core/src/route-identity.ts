@@ -3,6 +3,21 @@ import {routePath} from "../../contracts/src/routes.ts";
 export type ServerPin = Readonly<{serverId:string;publicKey:string;fingerprint:string}>;
 /** Verified route identity plus optional authorization of exact TLS leaf certificates. */
 export type RouteProof = Readonly<ServerPin & {tlsCertificateFingerprints?:readonly string[]}>;
+// A plain/cached pin or a deserialized proof must never stand for this connection's nonce
+// exchange. Only probeRoute can register a result, after all cryptographic checks pass.
+const proofObservations=new WeakMap<RouteProof,Readonly<{origin:string;receivedAt:number;tlsLeaf?:string}>>();
+/** This exact object was proved fresh for this origin recently. Native additionally supplies
+ * the TLS leaf observed by that SAME proof-only exchange, never a TXT or response-header claim. */
+export function isCurrentRouteProof(origin:string,proof:RouteProof,now=Date.now()):boolean {
+ const observation=proofObservations.get(proof);
+ if(!observation||!Number.isFinite(now))return false;
+ try{return observation.origin===routeOrigin(origin)&&now>=observation.receivedAt&&now-observation.receivedAt<30000;}catch{return false;}
+}
+/** Native transport metadata for the exact Response probeRoute consumed. Never populated
+ * from HTTP headers, Bonjour TXT, a remembered pin, or a separate certificate observation. */
+export function observedRouteTLSLeaf(origin:string,proof:RouteProof,now=Date.now()):string|undefined {
+ return isCurrentRouteProof(origin,proof,now)?proofObservations.get(proof)?.tlsLeaf:undefined;
+}
 export type SignedRoutes = Readonly<{payload:string;signature:string}>;
 export type RouteKey = Readonly<{keyId:string;publicKey:string}>;
 export type RouteCandidate = Readonly<{baseUrl:string;class:'lan'|'public'|'manual';quality:'reachable'|'probe_required';generation:string}>;
@@ -153,12 +168,17 @@ export async function routeJSON(response:Response,signal:AbortSignal,max=32768):
  const reader=response.body.getReader(),chunks:Uint8Array[]=[];let length=0;const abort=()=>{void reader.cancel().catch(()=>{});};signal.addEventListener('abort',abort,{once:true});
  try{for(;;){if(signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');const next=await reader.read();if(next.done)break;length+=next.value.byteLength;if(length>max)throw new RouteError('invalid_response','Connection response exceeded its limit.');chunks.push(next.value);}if(signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');const bytes=new Uint8Array(length);let n=0;for(const b of chunks){bytes.set(b,n);n+=b.length;}return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}finally{signal.removeEventListener('abort',abort);void reader.cancel().catch(()=>{});try{reader.releaseLock();}catch{}}
 }
-export async function probeRoute(origin:string,pin:ServerPin|undefined,options:{fetcher?:typeof fetch;crypto?:RouteCrypto;signal?:AbortSignal;now?:()=>number}={}):Promise<RouteProof> {
+export async function probeRoute(origin:string,pin:ServerPin|undefined,options:{fetcher?:typeof fetch;crypto?:RouteCrypto;signal?:AbortSignal;now?:()=>number;
+ /** A trusted native bridge reads its actual TLS observation keyed by this exact proof
+  * Response. Not an HTTP header. Absence cannot establish Bonjour-based home trust. */
+ observedTLSLeaf?:(response:Response)=>string|undefined;
+}={}):Promise<RouteProof> {
  const baseUrl=routeOrigin(origin),crypto=options.crypto??webRouteCrypto,nonce=routeBase64(crypto.random(32));
  const controller=new AbortController(),cancel=()=>controller.abort();options.signal?.addEventListener('abort',cancel,{once:true});const timer=setTimeout(cancel,3000);
  try{
   if(options.signal?.aborted)cancel();if(controller.signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');
   const response=await (options.fetcher??globalThis.fetch)((baseUrl) + routePath("prove_network_identity"),{method:'POST',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Accept:'application/json; portico-route-proof=2','Content-Type':'application/json'},body:JSON.stringify({baseUrl,nonce})});
+  const tlsLeaf=options.observedTLSLeaf?.(response);if(tlsLeaf!==undefined)routeBytes(tlsLeaf,32);
   const signed=envelope(await routeJSON(response,controller.signal,8192)),v=parseSignedJSON(signed);
   if(Object.keys(v).some(k=>!['kind','version','baseUrl','nonce','serverId','publicKey','fingerprint','issuedAt','expiresAt',...(v.version==='2'?['tlsCertificateFingerprints']:[])].includes(k))||v.kind!=='portico.route-proof'||(v.version!=='1'&&v.version!=='2')||v.baseUrl!==baseUrl||v.nonce!==nonce||typeof v.serverId!=='string'||typeof v.publicKey!=='string'||typeof v.fingerprint!=='string')throw new RouteError('identity_mismatch','The server did not prove this connection.');
   let fingerprints:readonly string[]|undefined;
@@ -171,7 +191,9 @@ export async function probeRoute(origin:string,pin:ServerPin|undefined,options:{
   const actual=await serverPin(v.serverId,v.publicKey,v.fingerprint,crypto);if(pin&&!sameServerPin(actual,pin))throw new RouteError('identity_mismatch','This address belongs to a different server. No credentials were sent.');
   if(!await crypto.verify(routeBytes(actual.publicKey,32),routeBytes(signed.signature,64),routeBytes(signed.payload)))throw new RouteError('identity_mismatch','The server could not prove its identity. No credentials were sent.');
   // After the signature: only a proof this server really signed over our nonce can blame the clocks.
-  proofTimes(v,30000,options.now?.()??Date.now());
-  if(controller.signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');return fingerprints?Object.freeze({...actual,tlsCertificateFingerprints:fingerprints}):actual;
+  const receivedAt=options.now?.()??Date.now();proofTimes(v,30000,receivedAt);
+  if(controller.signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');
+  const proof:RouteProof=fingerprints?Object.freeze({...actual,tlsCertificateFingerprints:fingerprints}):actual;
+  proofObservations.set(proof,Object.freeze({origin:baseUrl,receivedAt,...(tlsLeaf===undefined?{}:{tlsLeaf})}));return proof;
  }finally{clearTimeout(timer);options.signal?.removeEventListener('abort',cancel);controller.abort();}
 }

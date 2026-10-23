@@ -8,6 +8,8 @@ export const connectionTrustMessages = {
   'connection.identity.forgetTitle': 'Forget {server}?',
   'connection.identity.forgetBody': 'You’ll need to sign in again. Only do that if its owner says the server was reset.',
   'connection.identity.forgetAction': 'Forget',
+  // Before the code matches, {server} is the address AS TYPED (69f2d45 frames 2a/2b/5).
+  // No name or other route is requested before matching; only the proof exchange is allowed.
   'connection.identity.checkTitle': 'Check this is {server}',
   'connection.identity.checkBody': 'Ask its owner for the identity code in Settings › Remote access.',
   'connection.identity.codeLabel': 'Identity code',
