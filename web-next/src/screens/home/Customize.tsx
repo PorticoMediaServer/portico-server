@@ -14,7 +14,7 @@ import {homeDraftCanHide, homeDraftCanMove, homeDraftRow, type HomeLayoutDraft} 
 import {HomeCustomization, type HomeCustomizationBindings} from './customization';
 import styles from './customize.module.css';
 
-/** Exact frame copy is supplied from the checked catalogue at the Home composition boundary. */
+/** Exact published frame copy, available on checked MAIN. */
 export type HomeCustomizeCopy = Readonly<{
   entryDescription: string; conflictBody: string; reloadLayout: string; keepEditing: string; noViewsTitle: string; noViewsBody: string; loadFailedBody: string;
   picked: (title: string, position: number, count: number) => string; moveHint: string;
@@ -22,8 +22,16 @@ export type HomeCustomizeCopy = Readonly<{
 type Lift = {id: string; original: HomeLayoutDraft; pointer?: number; top?: number; left?: number; width?: number; offset?: number; target: number};
 const t = defaultI18n.t;
 const label = (draft: HomeLayoutDraft, id: string) => draft.added.get(id)?.name ?? serverTextLabel(defaultI18n, homeDraftRow(draft, id)?.titleText, homeDraftRow(draft, id)?.title);
+const homeCopy = (compact: boolean): HomeCustomizeCopy => ({
+  entryDescription: t('next.home.customizeDescription'),
+  conflictBody: t(compact ? 'next.home.layoutChangedBodyCompact' : 'next.home.layoutChangedBody'),
+  reloadLayout: t('next.home.reloadLayout'), keepEditing: t('next.home.keepEditing'),
+  noViewsTitle: t('next.home.noViewsTitle'), noViewsBody: t('next.home.noViewsBody'), loadFailedBody: t('next.home.layoutLoadFailedBody'),
+  picked: (title, position, count) => t('next.home.layoutPicked', {title, position, count}), moveHint: t('next.home.layoutMoveHint'),
+});
 
-export function HomeCustomizeEntry({service, binding, copy}: {service: HomeService; binding: HomeCustomizationBindings; copy: HomeCustomizeCopy}) {
+export function HomeCustomizeEntry({service, binding}: {service: HomeService; binding: HomeCustomizationBindings}) {
+  const copy = homeCopy(useShellWidth() < 600);
   const trigger = useRef<HTMLButtonElement>(null), active = useRef<HomeCustomization | undefined>(undefined);
   const [opened, setOpened] = useState<{controller: HomeCustomization; service: HomeService; binding: HomeCustomizationBindings}>();
   const close = () => {active.current?.dispose();active.current = undefined;setOpened(undefined);};
@@ -98,7 +106,7 @@ export function HomeCustomizeDialog({controller, createSavedViews, isCurrent, co
       footer={picking ? <Button variant="glass" onClick={() => setPicking(false)}>{t('action.cancel')}</Button> : <><Button variant="text" className={styles.reset} disabled={busy || state.phase !== 'ready'} onClick={() => setResetting(true)}>{t('action.resetToDefault')}</Button><span className={styles.spacer}/>
         {!compact && <Button variant="glass" disabled={busy} onClick={cancel}>{t('action.cancel')}</Button>}<Button variant="primary" loading={state.pending === 'save'} disabled={busy || state.phase !== 'ready' || state.conflict || !isCurrent()} onClick={() => {void save();}}>{t('action.save')}</Button></>}>
       {picking && draft ? <SavedViewPicker create={createSavedViews} isCurrent={isCurrent} exclude={draft.order} copy={copy} onPick={resource => {if (isCurrent()) {controller.add(resource);setPicking(false);}}}/> : <>
-        {state.conflict && <div className={styles.notice} role="alert"><Icon name="i-warn" size={22}/><div><b>{t('error.title.save', {subject: 'home'})}</b><p>{copy.conflictBody}</p><div className={styles.noticeActions}><Button ref={reload} variant="primary" size="small" onClick={() => {finish(true);void controller.load();}}>{copy.reloadLayout}</Button><Button variant="glass" size="small" onClick={() => root.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()}>{copy.keepEditing}</Button></div></div></div>}
+        {state.conflict && <div className={styles.notice} role="alert"><Icon name="i-warn" size={22}/><div><b>{t('next.home.layoutChangedTitle')}</b><p>{copy.conflictBody}</p><div className={styles.noticeActions}><Button ref={reload} variant="primary" size="small" onClick={() => {finish(true);void controller.load();}}>{copy.reloadLayout}</Button><Button variant="glass" size="small" onClick={() => root.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()}>{copy.keepEditing}</Button></div></div></div>}
         {error && <div className={styles.notice} role="alert"><Icon name="i-warn" size={22}/><div><b>{error.title}</b><p>{state.phase === 'load-error' ? copy.loadFailedBody : error.body}</p>{state.phase === 'load-error' && <Button size="small" variant="primary" onClick={() => {void controller.load();}}>{t('action.tryAgain')}</Button>}</div></div>}
         {state.phase === 'loading' && <div className={styles.loading}>{Array.from({length: 6}, (_, index) => <Skeleton key={index} height={compact ? 54 : 56}/>)}</div>}
         {draft && <ol ref={root} className={styles.rows} aria-label={t('home.customize.action')}>{draft.order.map((id, index) => <li key={id} data-home-layout-row={id} className={styles.row} data-hidden={draft.hidden.has(id) || undefined} data-slot={moving?.pointer !== undefined && moving.id === id || undefined}

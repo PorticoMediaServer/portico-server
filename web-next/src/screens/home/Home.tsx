@@ -22,6 +22,7 @@ import {currentHomeLive, homeCardModel, homeLiveDeadline, homePlaybackTarget, ho
 import {PagedShelf} from '../browse/PagedShelf';
 import styles from './home.module.css';
 import type {HomeCustomizationBindings} from './customization';
+import {HomeCustomizeEntry} from './Customize';
 
 export type HomeSelection = Readonly<{
   /** The canonical selection owner supplies its real bar and controls. */
@@ -123,7 +124,7 @@ export function HomeScreen(bindings: HomeBindings) {
 }
 
 type Spotlight = Omit<ReturnType<typeof homeSpotlights>[number], 'reason'> & HeroCandidate & {causalReason: HomeReason; source: HomeSpotlight};
-export function HomeView({document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
+export function HomeView({service, customization, document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
   const width = useShellWidth(), platform: LayoutPlatform = width >= 1024 ? 'desktop' : 'phone-web';
   const heroPixels = Math.max(width, heroSpec.backdropWidth[platform === 'desktop' ? 'web' : 'phone']) * devicePixelRatio;
   const hero = useVisible(), env = useMemo(() => ({t, locale: time.locale}), [time.locale]);
@@ -156,6 +157,7 @@ export function HomeView({document, nowMs, onMore, refreshLive, artwork, effects
     <div className={styles.rows} data-with-hero={candidates.length > 0}>
       {rows.map((row, index) => <HomeRowView key={row.id} row={row} rowIndex={index} platform={platform} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}
         artwork={artwork} effects={effects} selection={selection} time={time} reducedMotion={reducedMotion} />)}
+      {customization && <HomeCustomizeEntry service={service} binding={customization}/>}
     </div>
   </div>;
 }
