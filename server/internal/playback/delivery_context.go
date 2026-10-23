@@ -196,8 +196,14 @@ func originalAudioLanguageTx(ctx context.Context, tx *sql.Tx, item string) (stri
  FROM catalog_entities e
  LEFT JOIN catalog_episodes ep ON ep.entity_id=e.id
  LEFT JOIN catalog_seasons se ON se.entity_id=e.id
- JOIN screen_metadata_fields f ON f.target_kind=CASE WHEN ep.show_id IS NOT NULL OR se.show_id IS NOT NULL THEN 'show' ELSE 'item' END
+ JOIN screen_metadata_fields f ON f.target_kind=CASE WHEN e.kind=2 OR ep.show_id IS NOT NULL OR se.show_id IS NOT NULL THEN 'show' ELSE 'item' END
  AND f.target_id=COALESCE(ep.show_id,se.show_id,e.id) AND f.field='language'
+ JOIN screen_metadata_work w ON w.target_kind=f.target_kind AND w.target_id=f.target_id
+ AND w.accepted_publication=f.publication_id
+ JOIN screen_metadata_publications publication ON publication.id=f.publication_id
+ AND publication.target_kind=f.target_kind AND publication.target_id=f.target_id
+ AND publication.decision='accepted' AND publication.provider=f.provider
+ AND publication.provider IN('tmdb','tvdb','anilist')
  WHERE e.public_id=pid_blob(?) AND e.retired=0`, item).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
