@@ -109,13 +109,14 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 		out.language = plan.Selected.Language
 		switch {
 		case plan.DocumentURL != "" && plan.Renderer == "external_text":
-			out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: "webvtt", URL: plan.DocumentURL + ".vtt"})
+			out.files = append(out.files, SubtitleFile{TimeDomain: "source-relative", TrackID: plan.Selected.ID, Format: "webvtt", URL: plan.DocumentURL + ".vtt"})
 			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: playback.SubtitleText, Delivery: "sidecar"}
 		case plan.Renderer == "client":
 			// The original file, for a device that draws styled or image subtitles itself.
 			for _, d := range plan.Selected.Deliveries {
 				if d.Format != "text" {
-					out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: d.Format, URL: d.URL, CompanionURL: d.CompanionURL, FontsURL: d.FontsURL, LinesURL: d.LinesURL})
+					offsetUS, _ := strconv.ParseInt(plan.OffsetUS, 10, 64)
+					out.files = append(out.files, SubtitleFile{TimeDomain: "source-relative", TrackID: plan.Selected.ID, Format: d.Format, OffsetMs: offsetUS / 1000, URL: d.URL, CompanionURL: d.CompanionURL, FontsURL: d.FontsURL, LinesURL: d.LinesURL})
 				}
 			}
 			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: subtitleKindOf(plan.Selected.Format), Delivery: "device"}

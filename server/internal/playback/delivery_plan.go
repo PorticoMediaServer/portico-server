@@ -303,6 +303,15 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if in.Outputs != nil {
 		outputs = *in.Outputs
 	}
+	if cfg.OutputFormat == "h264" {
+		filtered := []ConversionVideoOutput{}
+		for _, o := range outputs.Video {
+			if o.Codec == "h264" {
+				filtered = append(filtered, o)
+			}
+		}
+		outputs.Video = filtered
+	}
 	source := legacySource(in)
 	if in.Source != nil {
 		source = *in.Source
@@ -526,7 +535,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		// same reason instead of being planned and then failing to start.
 		transports = nil
 	}
-	conversionAllowed := in.TranscodingEnabled && policy.Transcode != "never"
+	conversionAllowed := in.TranscodingEnabled && cfg.ConversionMode != "never" && policy.Transcode != "never"
 
 	// Route 2: both streams copied into HLS.
 	remuxable := false
@@ -618,7 +627,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		if audioToDecode != nil && carrier != nil && !containsString(carrier.Audio, converted.Codec) {
 			rejections = append(rejections, RouteRejection{RejectAudioCodec, converted.Codec + " in " + transport})
 		}
-		if !conversionAllowed {
+		if !conversionAllowed || !audioOnly && cfg.ConversionMode == "sound" {
 			rejections = append(rejections, RouteRejection{RejectTranscodingDisabled, ""})
 		}
 		if transport == "" {
@@ -849,7 +858,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			p.MaxFrameRate = limit
 		}
 	}
-	p.HardwareDevice = cfg.HardwareDevice
+	p.HardwareDevice = in.Hardware.Device
 	if in.Hardware.Available && in.Hardware.Backend != decoder.BackendSoftware {
 		p.HardwareBackend, p.HardwareNative = string(in.Hardware.Backend), in.Hardware.NativeFilters
 		if !p.ToneMap {

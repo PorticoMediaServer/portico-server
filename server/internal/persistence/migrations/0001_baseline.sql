@@ -8426,3 +8426,23 @@ CREATE TRIGGER owner_change_account_insert BEFORE INSERT ON accounts WHEN EXISTS
 CREATE TRIGGER owner_change_account_rename BEFORE UPDATE OF username ON accounts WHEN NEW.username<>OLD.username COLLATE NOCASE AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND approved_username=NEW.username COLLATE NOCASE) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
 CREATE TRIGGER owner_change_link_insert BEFORE INSERT ON account_portico_links WHEN EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
 CREATE TRIGGER owner_change_link_update BEFORE UPDATE OF hosted_account_id ON account_portico_links WHEN NEW.hosted_account_id<>OLD.hosted_account_id AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
+
+CREATE TABLE asset_stream_breadth(
+ asset_id TEXT NOT NULL,
+ stream_index INTEGER NOT NULL,
+ audio_description INTEGER NOT NULL DEFAULT 0 CHECK(audio_description IN(0,1)),
+ audio_variant TEXT NOT NULL DEFAULT '',
+ chroma_subsampling TEXT NOT NULL DEFAULT '',
+ fps_numerator INTEGER NOT NULL DEFAULT 0 CHECK(fps_numerator>=0),
+ fps_denominator INTEGER NOT NULL DEFAULT 0 CHECK(fps_denominator>=0),
+ frame_rate_mode TEXT NOT NULL DEFAULT '' CHECK(frame_rate_mode IN('','constant','variable')),
+ interlace_analysis TEXT NOT NULL DEFAULT '',
+ telecine INTEGER NOT NULL DEFAULT 0 CHECK(telecine IN(0,1)),
+ dovi_rpu INTEGER NOT NULL DEFAULT 0 CHECK(dovi_rpu IN(0,1)),
+ dovi_base_layer INTEGER NOT NULL DEFAULT 0 CHECK(dovi_base_layer IN(0,1)),
+ dovi_metadata_known INTEGER NOT NULL DEFAULT 0 CHECK(dovi_metadata_known IN(0,1)),
+ dovi_enhancement_type TEXT NOT NULL DEFAULT '' CHECK(dovi_enhancement_type IN('','mel','fel')),
+ dovi_cm_version TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(asset_id,stream_index),
+ FOREIGN KEY(asset_id,stream_index) REFERENCES asset_streams(asset_id,stream_index) ON DELETE CASCADE
+) STRICT;
