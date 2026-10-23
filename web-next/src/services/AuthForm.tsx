@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type FormEvent} from 'react';
 import {passwordStrength} from '@core/password-strength.ts';
 import {AuthCodeBoxes, AuthLinks, AuthPasswordField} from '../kit/accounts';
-import {HostedError, ServicesActions, ServicesAuthStage, ServicesDivider, ServicesHeading, ServicesHint, ServicesLabel, ServicesLead, ServicesNotice, ServicesPair, ServicesProviderButton, ServicesQuiet, ServicesStateIcon, ServicesStrength, ServicesTerms} from '../kit/accounts/ServicesAuth';
+import {HostedError, ServicesActions, ServicesAuthStage, ServicesDivider, ServicesHeading, ServicesHint, ServicesLabel, ServicesLead, ServicesNotice, ServicesPair, ServicesProviderButton, ServicesQuiet, ServicesRegistrationLead, ServicesStateIcon, ServicesStrength, ServicesTerms, ServicesVerificationCode} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {ServicesAuthFlow} from './auth-flow';
 import type {ServicesAccount} from './session';
@@ -33,9 +33,9 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', e
   const providers = state.options?.providers.filter(item => item.enabled).sort((a, b) => a.id.localeCompare(b.id)) ?? [];
   const providerButtons = <>{providers.map(item => <ServicesProviderButton key={item.id} provider={item.id} disabled={busy} onClick={() => void flow.provider(item.id)}>{t(item.id === 'apple' ? 'services.provider.apple' : 'services.provider.google')}</ServicesProviderButton>)}{providers.length > 0 && state.options?.password && <ServicesDivider>{t(mode === 'create' ? 'services.provider.createDivider' : 'auth.orWithEmail')}</ServicesDivider>}</>;
   const content = <>
-    {mode === 'verify' && <ServicesStateIcon tone="info" icon="i-mail" />}
+    {mode === 'verify' && <ServicesStateIcon tone="info" icon="i-mail" size={32} />}
     {mode === 'ready' && <ServicesStateIcon />}
-    <ServicesHeading singleLine>{title}</ServicesHeading><ServicesLead>{body}</ServicesLead>
+    <ServicesHeading singleLine>{title}</ServicesHeading>{mode === 'verify' && state.registration ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : <ServicesLead>{body}</ServicesLead>}
     {mode === 'signin' && before}
     {(mode === 'signin' || mode === 'create') && providerButtons}
     {state.error ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : (state.error as {code?: string})?.code === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : <HostedError error={state.error} /> : null}
@@ -62,7 +62,7 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', e
     </>}
     {mode === 'verify' && state.registration && <>
       <form className={styles.form} onSubmit={submit(() => flow.verify(code))}>
-        <AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('auth.code')} disabled={busy} />
+        <ServicesVerificationCode><AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('auth.code')} disabled={busy} /></ServicesVerificationCode>
         <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || code.length !== 6}>{retrySeconds ? retryLabel : t('auth.createAccount')}</Button></ServicesActions>
       </form>
       <AuthLinks><button type="button" disabled={blocked || state.resends >= 5} onClick={() => void flow.resend()}>{t('auth.sendCodeAgain')}</button><ServicesQuiet>{t('services.signup.resendLimit')}</ServicesQuiet></AuthLinks>
@@ -77,7 +77,7 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', e
     {mode === 'sent' && <><ServicesQuiet>{t('services.recovery.expiry')}</ServicesQuiet><AuthLinks>{back}</AuthLinks></>}
     {(mode === 'factor' || mode === 'recovery') && <>
       <form className={styles.form} onSubmit={submit(() => flow.signIn(username, password, code))}>
-        {mode === 'factor' ? <AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('auth.code')} disabled={busy} /> : <TextField variant="auth" name="recovery-code" autoComplete="one-time-code" label={t('services.signin.recovery')} placeholder={t('services.recovery.codePlaceholder')} value={code} onChange={event => setCode(event.currentTarget.value)} disabled={busy} />}
+        {mode === 'factor' ? <ServicesVerificationCode label={false}><AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('auth.code')} disabled={busy} /></ServicesVerificationCode> : <TextField variant="auth" name="recovery-code" autoComplete="one-time-code" label={t('services.signin.recovery')} placeholder={t('services.recovery.codePlaceholder')} value={code} onChange={event => setCode(event.currentTarget.value)} disabled={busy} />}
         {mode === 'factor' && <AuthLinks><span>{t('services.signin.lostPhone')}</span><button type="button" disabled={busy} onClick={() => flow.recovery()}>{t('services.signin.recovery')}</button></AuthLinks>}
         <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || (mode === 'factor' ? code.length !== 6 : !code.trim())}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions>
       </form><AuthLinks>{mode === 'recovery' ? <button type="button" disabled={busy} onClick={() => flow.recovery()}>{t('services.signin.authenticator')}</button> : back}</AuthLinks>
@@ -91,5 +91,5 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', e
     </>}
     {mode === 'ready' && <ServicesActions><Button variant="primary" loading={busy} onClick={() => void flow.continue()}>{t('action.continue')}</Button></ServicesActions>}
   </>;
-  return embedded ? content : <ServicesAuthStage variant={mode === 'create' || mode === 'provider' ? 'signup' : mode === 'verify' ? 'reset' : mode === 'ready' ? 'state' : 'auth'}>{content}</ServicesAuthStage>;
+  return embedded ? content : <ServicesAuthStage legal={mode !== 'create' && mode !== 'provider' && mode !== 'verify'} variant={mode === 'create' || mode === 'provider' ? 'signup' : mode === 'verify' ? 'reset' : mode === 'ready' ? 'state' : 'auth'}>{content}</ServicesAuthStage>;
 }

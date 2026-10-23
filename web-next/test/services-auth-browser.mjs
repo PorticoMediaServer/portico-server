@@ -58,7 +58,9 @@ export async function runServicesAuthProof({driver, port, capture, report}) {
     await driver.clickText('Sign out');
     await driver.waitFor("document.querySelector('input[name=username]')", 20000);
     assert.equal(await identity(), null);
-    report.targetedSignOut = true;
+    const ended = await driver.evaluate("import('/src/services/session.ts').then(async({servicesAccount})=>{const a=servicesAccount();await a.service.retryRevocations();const s=a.service.getSnapshot();return {signedOut:!s.session,pendingRevocations:s.pendingRevocations}})");
+    assert(ended.signedOut && ended.pendingRevocations === 0, 'Do not close the browser before canonical revocation finishes.');
+    report.targetedSignOut = ended;
     report.checks = {genuineSignup: true, deliveredCodeEntry: true, sameFamilyAfterDocumentReload: true, targetedSignOut: true,
       noServerBootstrap: ![...driver.requests.values()].some(url => /\/api\/system|\/api\/servers/.test(new URL(url).pathname))};
   } finally {

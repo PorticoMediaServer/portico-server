@@ -8,8 +8,8 @@ import {AuthStage} from './AuthStage';
 import styles from './services-auth.module.css';
 
 const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
-export function ServicesAuthStage({children, variant = 'auth'}: {children: ReactNode; variant?: 'auth' | 'signup' | 'reset' | 'state' | 'device' | 'deviceReview' | 'deviceSignIn'}) {
-  return <AuthStage service legal shape={variant === 'state' ? 'round' : 'side'} layout={variant === 'state' ? 'center' : 'column'}
+export function ServicesAuthStage({children, variant = 'auth', legal = variant !== 'signup'}: {children: ReactNode; variant?: 'auth' | 'signup' | 'reset' | 'state' | 'device' | 'deviceReview' | 'deviceSignIn'; legal?: boolean}) {
+  return <AuthStage service legal={legal} shape={variant === 'state' ? 'round' : 'side'} layout={variant === 'state' ? 'center' : 'column'}
     className={styles.stage} contentClassName={[styles.content, styles[variant]].join(' ')}>{children}</AuthStage>;
 }
 export function ServicesHeading({children, singleLine = false}: {children: ReactNode; singleLine?: boolean}) {
@@ -40,8 +40,8 @@ export function ServicesStrength({password, id}: {password: string; id: string})
 }
 export function ServicesActions({children}: {children: ReactNode}) { return <div className={styles.actions}>{children}</div>; }
 export function ServicesLabel({children, detail}: {children: ReactNode; detail?: ReactNode}) { return <span className={styles.label}>{children}{detail && <small>{detail}</small>}</span>; }
-export function ServicesStateIcon({tone = 'success', icon = 'i-check'}: {tone?: 'success' | 'warning' | 'error' | 'info'; icon?: IconName}) {
-  return <span className={styles.stateIcon} data-tone={tone}><Icon name={icon} size={34} /></span>;
+export function ServicesStateIcon({tone = 'success', icon = 'i-check', size = 34}: {tone?: 'success' | 'warning' | 'error' | 'info'; icon?: IconName; size?: number}) {
+  return <span className={styles.stateIcon} data-tone={tone}><Icon name={icon} size={size} /></span>;
 }
 export function ServicesProviderButton({provider, children, disabled, onClick}: {provider: IdentityProvider; children: ReactNode; disabled?: boolean; onClick: () => void}) {
   return <button type="button" className={styles.provider} data-provider={provider} disabled={disabled} onClick={onClick}><Icon name={provider === 'apple' ? 'i-apple' : 'i-google'} size={20} />{children}</button>;
@@ -74,3 +74,8 @@ export function ServicesDeviceCodeHelp({fromQR}: {fromQR: boolean}) {
 }
 export function ServicesDeviceWarning({children}: {children: ReactNode}) { return <p className={styles.deviceWarning}>{children}</p>; }
 export function ServicesDeviceAnother({disabled, onClick}: {disabled?: boolean; onClick: () => void}) { return <div className={styles.deviceAnother}><button type="button" disabled={disabled} onClick={onClick}>{t('web.device.anotherCode')}</button></div>; }
+export function ServicesRegistrationLead({address}: {address: string}) {
+  const message = t('auth.codeSentTo', {address: '{address}'});
+  return <ServicesLead>{parseMessage(message).map((part, index) => part.kind === 'text' ? <Fragment key={index}>{part.value}</Fragment> : part.kind === 'arg' && part.name === 'address' ? <b key={index} className={styles.verifiedAddress}>{address}</b> : null)}</ServicesLead>;
+}
+export function ServicesVerificationCode({children, label = true}: {children: ReactNode; label?: boolean}) { return <div className={styles.verificationCode}>{label && <span aria-hidden="true">{t('auth.code')}</span>}{children}</div>; }
