@@ -1,0 +1,70 @@
+import {ReadOnlySignInClient, type SignInSettings} from '@core/account-move.ts';
+import type {ManagementCapabilities, ProfileAPI} from '@core/profile-management.ts';
+import type {SignInKind} from '@core/app-sessions.ts';
+import {defaultI18n} from '@i18n';
+import type {SettingPresentation} from '../../kit/settings';
+
+type Snapshot = Readonly<{loading: boolean; document?: SignInSettings; error?: unknown}>;
+const empty: Snapshot = Object.freeze({loading: true});
+export type SignInSettingsSourceOptions = Readonly<{
+  serverId: string; signIn: SignInKind; isCurrent: () => boolean;
+  capabilities: () => ManagementCapabilities;
+  /** The shell rereads actual authority/kind; the Settings source grants nothing. */
+  onAuthorityChanged: () => void;
+}>;
+
+/** The Sign-in page's private facts, read through the checked guarded client. */
+export class SignInSettingsSource {
+  private readonly client: ReadOnlySignInClient;
+  private readonly listeners = new Set<() => void>();
+  private readonly lifetime = new AbortController();
+  private snapshot: Snapshot = empty;
+  private loading?: Promise<void>;
+  private closed = false;
+  constructor(api: ProfileAPI, private readonly options: SignInSettingsSourceOptions) {
+    this.client = new ReadOnlySignInClient(api, options);
+  }
+  private current = () => !this.closed && this.options.isCurrent() && this.options.capabilities().manageSignIn;
+  getSnapshot = (): Snapshot => this.current() ? this.snapshot : empty;
+  subscribe = (listener: () => void) => {this.listeners.add(listener);return () => {this.listeners.delete(listener);};};
+  private publish(snapshot: Snapshot) {
+    if (!this.current()) return;
+    this.snapshot = Object.freeze(snapshot);
+    for (const listener of this.listeners) listener();
+  }
+  load = (): Promise<void> => {
+    if (!this.current() || this.snapshot.document) return Promise.resolve();
+    if (this.loading) return this.loading;
+    this.publish({loading: true});
+    const task = this.client.read(this.lifetime.signal).then(document => {
+      if (!this.current()) return;
+      if (document.signIn !== this.options.signIn) {this.dispose();this.options.onAuthorityChanged();return;}
+      this.publish({loading: false, document});
+    }, error => {
+      if (!this.current()) return;
+      if (error && typeof error === 'object' && 'status' in error && (error.status === 401 || error.status === 403)) {
+        this.dispose();this.options.onAuthorityChanged();return;
+      }
+      this.publish({loading: false, error});
+    }).finally(() => {if (this.loading === task) this.loading = undefined;});
+    this.loading = task;return task;
+  };
+  /** Only facts from this source are projected. Other domain rows use their actual adapters. */
+  rowState = (rowId: string): SettingPresentation | undefined => {
+    if (!['signin.method', 'signin.methodLocal', 'signin.owner', 'signin.ownerLocal'].includes(rowId)) return undefined;
+    const document = this.getSnapshot().document;
+    if (!document) return {present: false};
+    const local = document.signIn === 'local';
+    if (rowId.endsWith('Local') !== local) return {present: false};
+    if (rowId.startsWith('signin.method')) return {present: true, displayValue: defaultI18n.t(local ? 'accounts.settings.local' : 'accounts.settings.portico'), statusTone: 'ok',
+      help: defaultI18n.t(local ? 'accounts.settings.localPrivacy' : 'accounts.settings.porticoPrivacy')};
+    return {present: true, displayValue: document.owner.username, readOnly: true,
+      help: !local && document.owner.email ? defaultI18n.t('accounts.settings.porticoOwner', {email: document.owner.email}) : undefined};
+  };
+  dispose = () => {
+    if (this.closed) return;
+    this.closed = true;this.lifetime.abort();this.client.dispose();this.snapshot = empty;
+    for (const listener of this.listeners) listener();
+    this.listeners.clear();
+  };
+}
