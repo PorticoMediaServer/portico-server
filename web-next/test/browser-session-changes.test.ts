@@ -4,6 +4,8 @@ import {BrowserProtectedStore, browserAppSessions, observeBrowserSessionChanges}
 
 test('actual app-session writer emits a noncredential read hint only after commit, in this tab and other tabs', async t => {
   const page = new EventTarget(), channels: Channel[] = [], sent: unknown[] = [];
+  const restoreGlobals: (() => void)[] = []; let stop: (() => void) | undefined;
+  t.after(() => {stop?.(); for (const channel of [...channels]) channel.close(); for (const restore of restoreGlobals) restore();});
   class Channel extends EventTarget {
     constructor(readonly name: string) {super(); channels.push(this);}
     postMessage(data: unknown) {sent.push(data); for (const other of channels) if (other !== this && other.name === this.name) other.dispatchEvent(new MessageEvent('message', {data}));}
@@ -12,7 +14,7 @@ test('actual app-session writer emits a noncredential read hint only after commi
   for (const [name, value] of [['window', page], ['BroadcastChannel', Channel]] as const) {
     const old = Object.getOwnPropertyDescriptor(globalThis, name);
     Object.defineProperty(globalThis, name, {configurable: true, value});
-    t.after(() => {if (old) Object.defineProperty(globalThis, name, old); else delete (globalThis as Record<string, unknown>)[name];});
+    restoreGlobals.push(() => {if (old) Object.defineProperty(globalThis, name, old); else delete (globalThis as Record<string, unknown>)[name];});
   }
   const connection = (id: string) => ({signIn: 'local', connection: {version: '1', selectionId: id.padEnd(32, '_'), logicalOrigin: 'https://' + id + '.test', pin: {serverId: id, publicKey: 'p', fingerprint: 'f'}, routes: {paired: ['https://' + id + '.test']}, session: {sessionFamilyId: 'family-' + id, tokenGeneration: '1', accessToken: 'private-fixture-credential-' + id, expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-02-01T00:00:00Z', viewer: {serverId: id, accountId: 'account', profileId: 'main', authority: 'local', role: 'member'}}}});
   let raw: unknown = {version: 1, revision: 1, selectedServerId: 'first', servers: [connection('first'), connection('second')]};
@@ -25,8 +27,7 @@ test('actual app-session writer emits a noncredential read hint only after commi
     raw = next; committed = true;
   });
   let heard = 0;
-  const stop = observeBrowserSessionChanges(() => {assert.equal(committed, true); heard++;});
-  t.after(stop); t.after(() => {for (const channel of [...channels]) channel.close();});
+  stop = observeBrowserSessionChanges(() => {assert.equal(committed, true); heard++;});
   const store = browserAppSessions();
   commit = new Promise<void>(resolve => {release = resolve;});
   const selecting = store.select('second'); await new Promise(resolve => setImmediate(resolve));
