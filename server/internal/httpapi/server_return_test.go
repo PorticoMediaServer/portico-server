@@ -20,6 +20,9 @@ func TestRegisteredReturnServicesUnavailableIsPublicRetryableRefusal(t *testing.
 
 func TestRegisteredReturnPreparationRejectsUnboundOriginsAndLocal(t *testing.T) {
 	f := administrationFixtureNew(t)
+	if _, e := f.deps.DB.Exec(`UPDATE accounts SET password_hash=X'';UPDATE identity_state SET sign_in_kind='portico'`); e != nil {
+		t.Fatal(e)
+	}
 	for _, q := range []struct{ origin, nonce, installation string }{
 		{"https://evil.example", identity.Token(), identity.Token()},
 		{"http://server.example:32500", identity.Token(), identity.Token()},
@@ -38,7 +41,7 @@ func TestRegisteredReturnPreparationRejectsUnboundOriginsAndLocal(t *testing.T) 
 		}
 		assertSpecResponse(t, "POST", "/v1/auth/portico-return/prepare", w)
 	}
-	if _, e := f.deps.DB.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local')`); e != nil {
+	if _, e := f.deps.DB.Exec(`UPDATE identity_state SET sign_in_kind='local'`); e != nil {
 		t.Fatal(e)
 	}
 	w := f.call("POST", "/v1/auth/portico-return/prepare", "", `{"origin":"https://server.example:32500","nonce":"`+identity.Token()+`"}`)

@@ -21,7 +21,10 @@ import (
 
 // RouteIdentity is public information. Its v2 binding authorizes server-owned
 // TLS leaf certificates, never a session or claim. A fresh client nonce proves
-// possession of the already pinned identity key.
+// possession of the already pinned identity key. Fingerprint is SHA256 of the
+// identity public key; TLSCertificateFingerprints are SHA256 of leaf DER. A
+// client must compare its own observed leaf with the signed v2 list, as well as
+// verify the signature, origin, nonce and lifetime. See IDENTITY.md.
 type RouteIdentity struct {
 	Kind                       string    `json:"kind"`
 	Version                    string    `json:"version"`
