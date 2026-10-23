@@ -94,6 +94,7 @@ type VideoStream struct {
 	BitrateKbps                int     `json:"bitrateKbps,omitempty"`
 }
 type AudioStream struct {
+	Profile        string `json:"profile,omitempty"`
 	Variant        string `json:"variant,omitempty"`
 	ObjectAudio    string `json:"objectAudio,omitempty"`
 	SampleRate     int    `json:"sampleRate,omitempty"`
@@ -463,7 +464,7 @@ func (s *Service) streams(ctx context.Context, tx *sql.Tx, asset string, v *Vers
 		case "video":
 			v.Video = append(v.Video, VideoStream{Interlaced: facts.ObservedInterlaced(), ChromaSubsampling: facts.ChromaSubsampling, FrameRateNumerator: facts.FrameRateNumerator, FrameRateDenominator: facts.FrameRateDenominator, FrameRateMode: facts.FrameRateMode, DolbyVisionProfile: facts.DolbyVisionProfile, DolbyVisionCompatibility: facts.DolbyVisionCompatibility, DolbyVisionRPU: facts.DolbyVisionRPU, DolbyVisionBaseLayer: facts.DolbyVisionBaseLayer, DolbyVisionEnhancementType: facts.DolbyVisionEnhancementType, DolbyVisionCMVersion: facts.DolbyVisionCMVersion, HDR10Plus: facts.HDR10Plus, MasterDisplay: facts.MasterDisplay, MaxCLL: facts.MaxCLL, ID: streamID("v", index), Codec: codec, Profile: strings.ToLower(facts.Profile), Level: facts.Level, BitDepth: facts.BitDepth, Width: facts.Width, Height: facts.Height, Fps: facts.FrameRate, HDR: hdrName(transfer, detail), BitrateKbps: int(facts.BitRate / 1000)})
 		case "audio":
-			v.Audio = append(v.Audio, AudioStream{Variant: facts.AudioVariant, ObjectAudio: facts.ObjectAudio, SampleRate: facts.SampleRate, BitDepth: facts.BitsPerSample, DTSX: facts.ObjectAudio == "dtsx", ID: streamID("a", index), Codec: codec, Channels: channels, Layout: layout, Atmos: facts.ObjectAudio == "atmos", Language: language, Title: title, Default: isDefault, Commentary: strings.Contains(lower, "commentary"), VisualImpaired: facts.AudioDescription})
+			v.Audio = append(v.Audio, AudioStream{Profile: facts.Profile, Variant: facts.AudioVariant, ObjectAudio: facts.ObjectAudio, SampleRate: facts.SampleRate, BitDepth: facts.BitsPerSample, DTSX: facts.ObjectAudio == "dtsx", ID: streamID("a", index), Codec: codec, Channels: channels, Layout: layout, Atmos: facts.ObjectAudio == "atmos", Language: language, Title: title, Default: isDefault, Commentary: strings.Contains(lower, "commentary"), VisualImpaired: facts.AudioDescription})
 		case "subtitle":
 			if s.Subtitles == nil {
 				v.Subtitles = append(v.Subtitles, SubStream{ID: streamID("s", index), Format: codec, Source: "embedded", Language: language, Title: title, Forced: forced, SDH: strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing"), Default: isDefault})

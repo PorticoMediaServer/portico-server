@@ -9,6 +9,7 @@ import {WebShellPlaybackRuntime} from '../src/platform/playback/runtime.ts';
 import {ByteCache} from '../src/platform/playback/audio/bytes.ts';
 import {PlayOnController, type WebCastPort} from '../src/platform/playback/play-on.ts';
 import {playbackPolicyNext} from '../src/platform/playback/policy.ts';
+import {dispatchWatchNext, watchUpNextOffer} from '../src/screens/watch/up-next.ts';
 import {watchBodyTarget, watchBodyKey} from '../src/screens/watch/body-target.ts';
 import {playbackVersionRows} from '../src/platform/playback/version-rows.ts';
 import {WebCastSender, type CastBrowser, type CastSession} from '../src/platform/cast/index.ts';
@@ -2137,4 +2138,33 @@ test('a guide tune cannot adopt a late channel after abort/navigation or stop a 
     assert.equal(f.runtime.getSnapshot().fence?.kind, retirement === 'new-play' ? 'queue' : undefined);
     assert.ok(f.log.some(request => request.method === 'DELETE' && request.path === '/v1/playback/sessions/live_session_1'), 'the actual late channel session is abandoned');
   }
+});
+
+
+test('the drawn Up next card follows the actual offered next occurrence and only its canonical countdown', async t => {
+  const f = setup(t, {skipModes: () => ({credits: 'ask'})});
+  policyFixture(f, [{...creditsMarker, endMs: 7150000}]);
+  const fence = await policyQueue(f);f.video.advance(7110);await settle();
+  const binding = {getSnapshot: f.runtime.getSnapshot, isCurrent: () => true, policyAction: f.runtime.policyAction.bind(f.runtime), reportError: (error: unknown) => {throw error;}};
+  const shown = f.runtime.getSnapshot(), offer = watchUpNextOffer(binding, shown)!;
+  assert.ok(offer);assert.equal(offer.next.itemId, 'next');assert.equal(offer.next.title, 'Title next');
+  assert.equal(offer.prompt.sceneAfterCredits, true);
+  assert.deepEqual(offer.countdown, {automatic: false, seconds: 95});assert.equal(offer.progress, undefined);
+  await f.runtime.pause(fence);f.clock.advance(3000);await settle();
+  assert.equal(watchUpNextOffer(binding, shown)!.countdown!.seconds, 95, 'pause never runs a renderer timer');
+  assert.equal(await dispatchWatchNext(binding, shown, 'watch-credits'), true);
+  assert.equal(watchUpNextOffer(binding, shown), null);assert.equal(await dispatchWatchNext(binding, shown, 'play-now'), false);
+  assert.equal(f.runtime.getSnapshot().session!.itemId, 'first');
+});
+
+test('the drawn automatic Up next progress uses the real policy clock and rejects replacement media', async t => {
+  const f = setup(t, {skipModes: () => ({credits: 'ask'})});policyFixture(f, [creditsMarker], {startDuringCredits: true});
+  await policyQueue(f);f.video.advance(7110);await settle();
+  const binding = {getSnapshot: f.runtime.getSnapshot, isCurrent: () => true, policyAction: f.runtime.policyAction.bind(f.runtime), reportError: (error: unknown) => {throw error;}};
+  f.clock.advance(2000);await settle();
+  const shown = f.runtime.getSnapshot(), offer = watchUpNextOffer(binding, shown)!;
+  assert.deepEqual(offer.countdown, {automatic: true, seconds: 3});assert.equal(offer.progress, .4);
+  assert.equal(await dispatchWatchNext(binding, shown, 'play-now'), true);await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.itemId, 'next');assert.equal(watchUpNextOffer(binding, shown), null);
+  assert.equal(await dispatchWatchNext(binding, shown, 'play-now'), false);
 });

@@ -14,6 +14,7 @@ import {DevicePage} from './DevicePage';
 import {ResetPage, VerifyPage} from './LinkPages';
 import {AccountPage} from './AccountPage';
 import {JoinPage} from './JoinPage';
+import {ServicesHomePage} from './HomePage';
 
 type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink};
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
@@ -67,7 +68,7 @@ function HomeRoute() {
   // Explicit recovery/create links do not resume a different transaction from the cookie.
   const mode = new URLSearchParams(location.search).get('mode');
   if (!session || authenticating) return <ServicesAuthForm account={account} initialMode={mode === 'forgot' || mode === 'create' ? mode : 'signin'} onSignedIn={() => setAuthenticating(false)} />;
-  return <AccountPage account={account} session={session} section="servers" />;
+  return <ServicesHomePage account={account} session={session} />;
 }
 function AccountRoute() {
   const {account, session} = useAccount(), {tab} = workspace.useSearch<ServicesRouter>();
