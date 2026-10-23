@@ -85,7 +85,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
       {touchContext ? <div id={`${id}-title`} className={touchStyles.popoverTitle}>{title}</div> : <span id={`${id}-title`} className={styles.visuallyHidden}>{title}</span>}
       {description !== undefined && <div id={`${id}-description`} className={styles.popoverDescription}>{description}</div>}
       {children}
-      {touchContext && <RadixPopover.Arrow width={20} height={10} asChild><svg viewBox="0 0 20 10" aria-hidden="true"><rect x={3} y={-7} width={14} height={14} rx={3} transform="rotate(45 10 0)" fill="rgba(22,44,58,.97)" stroke="rgba(237,245,250,.1)" /></svg></RadixPopover.Arrow>}
+      {touchContext && <RadixPopover.Arrow width={20} height={10} asChild><svg viewBox="0 0 20 10" aria-hidden="true" data-touch-menu-pointer><rect x={3} y={-7} width={14} height={14} rx={3} transform="rotate(45 10 0)" fill="rgba(22,44,58,.97)" stroke="rgba(237,245,250,.1)" /></svg></RadixPopover.Arrow>}
     </RadixPopover.Content></div></div></RadixPopover.Portal>}
   </RadixPopover.Root>;
 }

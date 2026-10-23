@@ -62,6 +62,13 @@ const start = point => target.call('Input.dispatchTouchEvent', {type: 'touchStar
 const end = () => target.call('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
 const state = () => target.evaluate(`(()=>{const e=document.querySelector('[data-component-only]');return{navigations:Number(e.dataset.navigations),menus:Number(e.dataset.menus),toggles:Number(e.dataset.toggles),open:!!document.querySelector('[role=menu],[role=dialog]')}})()`);
 const bounds = selector => target.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw new Error('Missing capture element');e.scrollIntoView({block:'center',inline:'center'});const r=e.getBoundingClientRect();return{x:r.x+scrollX,y:r.y+scrollY,width:r.width,height:r.height,scale:1}})()`);
+const pair = async (id, referenceImage, buildImage, referenceClip, buildClip) => {
+  const width = Math.ceil(Math.max(referenceClip.width, buildClip.width)), height = Math.ceil(Math.max(referenceClip.height, buildClip.height));
+  await target.call('Emulation.setDeviceMetricsOverride', {width: width * 2, height, deviceScaleFactor: 1, mobile: false});
+  await navigate('about:blank');
+  await target.evaluate(`document.body.style.cssText='margin:0;background:#071018;display:flex;align-items:flex-end';document.body.innerHTML=${JSON.stringify(`<img alt="Mock-up" src="data:image/jpeg;base64,${referenceImage}" style="width:${referenceClip.width}px;height:${referenceClip.height}px"><img alt="Build" src="data:image/jpeg;base64,${buildImage}" style="width:${buildClip.width}px;height:${buildClip.height}px">`)};true`);
+  await settle(); await screenshot(`${id}-pair.jpg`, {x: 0, y: 0, width: width * 2, height, scale: 1});
+};
 const measure = selector => target.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{rect:{x:r.x,y:r.y,width:r.width,height:r.height},background:s.backgroundColor,padding:s.padding,borderRadius:s.borderRadius,text:e.innerText,rows:[...e.querySelectorAll('button')].map(b=>({text:b.innerText,height:b.getBoundingClientRect().height,font:getComputedStyle(b).font,padding:getComputedStyle(b).padding})),images:[...e.querySelectorAll('img')].map(i=>({complete:i.complete,naturalWidth:i.naturalWidth,rect:{width:i.width,height:i.height}}))}})()`);
 
 try {
@@ -86,6 +93,8 @@ try {
     await navigate(`${reference}/${item.file}`);
     const referenceFacts = await measure(item.selector), referenceClip = await bounds(item.selector);
     const referenceImage = await screenshot(`${item.id}-reference.jpg`, referenceClip);
+    const referencePointerClip = item.id === 'anchored' ? await target.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(item.selector)}),r=e.getBoundingClientRect(),p=getComputedStyle(e,'::before');return{x:r.x+scrollX-14,y:r.y+scrollY+parseFloat(p.top)+parseFloat(p.height)/2-14,width:28,height:28,scale:1}})()`) : undefined;
+    const referencePointer = referencePointerClip && await screenshot('anchored-pointer-reference.jpg', referencePointerClip);
     await target.call('Emulation.setDeviceMetricsOverride', {width: item.width, height: item.height, deviceScaleFactor: 1, mobile: false});
     await navigate(`http://127.0.0.1:18732/test/fixtures/touch-menu.html?case=${item.id}&reference=${encodeURIComponent(reference)}`);
     let point = await primary();
@@ -104,17 +113,16 @@ try {
     if (unresolved.length) throw new Error(`Missing document icon symbols: ${unresolved.join(',')}`);
     const buildFacts = await measure(selector), buildClip = await bounds(selector);
     const buildImage = await screenshot(`${item.id}-build.jpg`, buildClip);
+    const buildPointerClip = item.id === 'anchored' ? await target.evaluate(`(()=>{const e=document.querySelector('[role=menu]'),r=e.getBoundingClientRect(),p=e.querySelector('[data-touch-menu-pointer]').getBoundingClientRect();return{x:r.x+scrollX-14,y:p.y+scrollY+p.height/2-14,width:28,height:28,scale:1}})()`) : undefined;
+    const buildPointer = buildPointerClip && await screenshot('anchored-pointer-build.jpg', buildPointerClip);
     await target.call('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27});
     await target.call('Input.dispatchKeyEvent', {type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27});
     await settle();
     assert.equal((await state()).open, false);
     assert.equal(await target.evaluate(`document.activeElement===document.querySelector('[data-card-kind] > button')`), true);
     results.push({id: item.id, qualification: 'component-only; exact frame supplied rows, no application/authority/dispatch acceptance', reference: referenceFacts, build: buildFacts, referenceClip, buildClip});
-    const width = Math.ceil(Math.max(referenceClip.width, buildClip.width)), height = Math.ceil(Math.max(referenceClip.height, buildClip.height));
-    await target.call('Emulation.setDeviceMetricsOverride', {width: width * 2, height, deviceScaleFactor: 1, mobile: false});
-    await navigate('about:blank');
-    await target.evaluate(`document.body.style.cssText='margin:0;background:#071018;display:flex;align-items:flex-end';document.body.innerHTML=${JSON.stringify(`<img alt="Mock-up" src="data:image/jpeg;base64,${referenceImage}" style="width:${referenceClip.width}px;height:${referenceClip.height}px"><img alt="Build" src="data:image/jpeg;base64,${buildImage}" style="width:${buildClip.width}px;height:${buildClip.height}px">`)};true`);
-    await settle(); await screenshot(`${item.id}-pair.jpg`, {x: 0, y: 0, width: width * 2, height, scale: 1});
+    await pair(item.id, referenceImage, buildImage, referenceClip, buildClip);
+    if (referencePointer && buildPointer) await pair('anchored-pointer', referencePointer, buildPointer, referencePointerClip, buildPointerClip);
     await target.call('Emulation.setDeviceMetricsOverride', {width: item.width, height: item.height, deviceScaleFactor: 1, mobile: false});
     const fixture = `http://127.0.0.1:18732/test/fixtures/touch-menu.html?case=${item.id}&reference=${encodeURIComponent(reference)}`;
     await navigate(fixture);
