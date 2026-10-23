@@ -52,6 +52,7 @@ var processSpawns = map[string]string{
 	"internal/mounts/guardian.go:Guardian":                       "rclone under the guardian",
 	"internal/rcloneprogram/command_other.go:versionCommand":     "fixed rclone version probe; Check bounds runtime/output and applies childprocess cleanup; no media input",
 	"internal/rcloneprogram/command_windows.go:versionCommand":   "fixed rclone version probe, including a selected .cmd/.bat wrapper; same Check bounds and childprocess cleanup; no media input",
+	"internal/rcloneprogram/serve_command.go:PrepareServe":       "read-only rclone source server; approved image digest, mandatory egress installer, private config cleanup and physical childprocess retirement; media decoding remains in mediaexec",
 	"internal/networking/topology.go:defaultGateway":             "/sbin/route on macOS",
 	"internal/telemetry/command.go:runCommand":                   "fixed read-only platform reporters",
 	"internal/httpapi/fixture/fixture.go:cloneFile":              "test fixture copy (cp), not built into the server",
