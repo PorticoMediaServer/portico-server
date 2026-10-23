@@ -1,0 +1,369 @@
+import type {InventorySource,SourceSettings} from '../library-inventory.ts';
+import type {SettingsConfiguration, ConfigurationValue} from '../settings-configuration.ts';
+import {canonicalQualityLadder} from '../../../contracts/src/types.ts';
+import {validatePreferencePatch,type PreferenceSnapshot,type PreferenceScope,type PreferenceValue} from '../preferences.ts';
+import type {ReadingPreferences} from '../preference-effects.ts';
+
+export type SettingsBindingForm='runtime'|'connectivity'|'connectivityStatus'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library';
+export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
+export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>;deviceDefaults?:Readonly<Record<string,unknown>>}>;
+export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
+export type SettingsBindingPatch=Readonly<{form:SettingsBindingForm;values:Readonly<Record<string,unknown>>}>;
+const bindings:Readonly<Record<string,SettingsBinding>>={
+ 'device.player':{form:'device',key:'playerEngine',codec:'player-engine'},
+ 'device.receive':{form:'device',key:'receiveFromDevices',codec:'boolean'},
+ 'audioSubtitles.surround':{form:'device',key:'forceStereo',codec:'surround'},
+ 'quality.disableHdr':{form:'device',key:'disableHdr',codec:'boolean'},
+ 'quality.tvSupports':{form:'device',key:'tvSupports',fields:{hdr:'tvHdr',surround:'tvSurround'},codec:'tv-support'},
+ 'playback.skipping':{form:'preferences',key:'playback.skipping',scope:'profile-server',fields:{intro:'playback.introSkip',credits:'playback.creditsSkip',recap:'playback.recapSkip'}},
+ 'playback.stillWatching':{form:'preferences',key:'playback.passoutProtection',scope:'profile-server',fields:{enabled:'playback.passoutProtection',episodes:'playback.passoutAfterEpisodes'},codec:'still-watching'},
+ 'storage.missingRule':{form:'runtime',key:'library.missingTitles',codec:'missing-rule'},
+ 'storage.missingDaysExact':{form:'runtime',key:'library.missingTitlesDays'},
+ 'segments.mode':{form:'runtime',key:'library.segmentDetection'},
+ 'people.maxStreamsEach':{form:'runtime',key:'perAccountCap',codec:'unlimited'},
+ 'people.communityActivity':{form:'runtime',key:'home.communityActivityEnabled'},
+ 'integrations.requestsPerMinute':{form:'runtime',key:'apiRequestsPerMinute'},
+ 'streaming.whenCantPlay':{form:'runtime',key:'planningPolicy'},
+ 'general.name':{form:'runtime',key:'name'},
+ 'general.updateChecks':{form:'runtime',key:'updates.feedUrl',codec:'update-checks'},
+ 'general.updateFeed':{form:'runtime',key:'updates.feedUrl'},
+ 'updates.channel':{form:'runtime',key:'updates.releaseChannel'},
+ 'streaming.allowConversion':{form:'runtime',key:'conversionMode'},
+ 'streaming.outputFormat':{form:'runtime',key:'outputFormat'},
+ 'streaming.downloadQuality':{form:'runtime',key:'downloadMaxQuality',codec:'video-quality-choice'},
+ 'streaming.uploadSpeed':{form:'connectivity',key:'uploadCapacityKbps',scale:1000},
+ 'streaming.awayQuality':{form:'connectivity',key:'remoteBitrateLimitKbps',codec:'away-quality'},
+ 'streaming.awayExact':{form:'connectivity',key:'remoteBitrateLimitKbps',scale:1000},
+ // The drawn Device selector needs the checked opaque device-ID producer.
+ // hardwareBackend names a method and cannot represent this decision; the
+ // former free-text streaming.hardwareDevice row is retired by 812.
+ 'streaming.toneMapping':{form:'runtime',key:'hdrToneMapping'},
+ 'streaming.toneMappingMethod':{form:'runtime',key:'hdrToneMappingAlgorithm'},
+ 'streaming.encoderSpeed':{form:'runtime',key:'x264Preset'},
+ 'streaming.repackage':{form:'runtime',key:'directStreamRemux'},
+ 'streaming.ffmpegPath':{form:'runtime',key:'ffmpegPath'},
+ 'streaming.convertAhead':{form:'runtime',key:'throttleBufferMs',scale:1000,codec:'number-choice'},
+ 'streaming.rewindKeep':{form:'runtime',key:'playedRetentionMs',scale:1000,codec:'number-choice'},
+ 'streaming.sessionSpace':{form:'runtime',key:'sessionStorageMiB',codec:'number-choice'},
+ 'streaming.maxConversions':{form:'runtime',key:'maxConcurrentSessions',codec:'unlimited'},
+ 'streaming.maxHardwareConversions':{form:'runtime',key:'maxHardwareSessions',codec:'unlimited'},
+ 'streaming.maxSoftwareConversions':{form:'runtime',key:'maxSoftwareSessions',codec:'unlimited'},
+ 'streaming.maxBackgroundConversions':{form:'runtime',key:'maxBackgroundSessions',codec:'unlimited'},
+ 'streaming.maxStreams':{form:'runtime',key:'serverCap',codec:'unlimited'},
+ 'streaming.pausedTimeout':{form:'connectivity',key:'pausedSessionTimeoutMinutes',codec:'number-choice'},
+ 'remote.ownCertificate':{form:'connectivity',key:'ownAddressEnabled'},
+ 'remote.externalAddress':{form:'connectivity',key:'customCertificateDomain',codec:'domain'},
+ 'remote.certFile':{form:'connectivity',key:'customCertificatePath'},
+ 'remote.certKey':{form:'connectivity',key:'customCertificateKeyPath'},
+ 'remote.homeNets':{form:'connectivity',key:'lanNetworks'},
+ 'remote.discovery':{form:'connectivity',key:'lanDiscoveryEnabled'},
+ 'remote.dlna':{form:'connectivity',key:'dlnaEnabled'},
+ 'remote.interface':{form:'connectivity',key:'advertisedInterface',codec:'interface'},
+ 'remote.connectionLimit':{form:'connectivity',key:'connectionLimit',codec:'unlimited'},
+ 'remote.extraAddresses':{form:'connectivity',key:'accessUrls'},
+ 'remote.trustedProxies':{form:'connectivity',key:'trustedProxies'},
+ 'remote.who':{form:'connectivity',key:'remoteSignInPolicy',codec:'remote-policy'},
+ 'general.heavyWork':{form:'maintenance',key:'enabled',window:'heavy',codec:'window-mode'},
+ 'general.heavyStart':{form:'maintenance',key:'startMinute',window:'heavy',codec:'number-choice'},
+ 'general.heavyLength':{form:'maintenance',key:'durationMinutes',window:'heavy',scale:60,codec:'number-choice'},
+ 'general.heavyDays':{form:'maintenance',key:'days',window:'heavy',codec:'days'},
+ 'storage.backupSchedule':{form:'maintenance',key:'enabled',window:'backup',codec:'window-mode'},
+ 'storage.backupTime':{form:'maintenance',key:'startMinute',window:'backup',codec:'number-choice'},
+ 'storage.backupWindowLength':{form:'maintenance',key:'durationMinutes',window:'backup',scale:60,codec:'number-choice'},
+ 'storage.backupDays':{form:'maintenance',key:'days',window:'backup',codec:'days'},
+ 'history.keepHistory':{form:'runtime',key:'playHistoryDays',codec:'number-choice'},
+ 'general.backgroundSpeed':{form:'maintenance',key:'backgroundSpeed'},
+ 'general.alertStorageWarn':{form:'alerts',key:'storageWarningPercent',codec:'number-choice'},
+ 'general.alertStorageCritical':{form:'alerts',key:'storageCriticalPercent',codec:'number-choice'},
+ 'general.alertCertificateDays':{form:'alerts',key:'certificateWarningDays',codec:'number-choice'},
+ 'storage.analysisSpace':{form:'runtime',key:'analysisStorageGiB',codec:'number-choice'},
+ 'storage.analysisStage':{form:'runtime',key:'analysisStageStorageMiB',codec:'number-choice'},
+ 'storage.subtitleTracks':{form:'runtime',key:'subtitleTrackLimit',codec:'number-choice'},
+ 'storage.subtitleFile':{form:'runtime',key:'subtitleFileLimitMiB',codec:'number-choice'},
+ 'storage.keepNotifications':{form:'runtime',key:'notificationDays',codec:'number-choice'},
+ 'storage.backupKeep':{form:'maintenance',key:'backupKeepCount',codec:'number-choice'},
+ 'storage.backupKeepExact':{form:'maintenance',key:'backupKeepCount'},
+ 'storage.keepConversions':{form:'maintenance',key:'retention.conversions',codec:'number-choice'},
+ 'storage.keepPrepared':{form:'maintenance',key:'retention.prepared',codec:'number-choice'},
+ 'storage.keepDownloads':{form:'maintenance',key:'retention.downloads',codec:'number-choice'},
+ 'storage.keepSubtitles':{form:'maintenance',key:'retention.subtitles',codec:'number-choice'},
+ 'storage.keepTrickplay':{form:'maintenance',key:'retention.trickplay',codec:'number-choice'},
+ 'troubleshooting.logLevel':{form:'logs',key:'logLevel'},
+ 'troubleshooting.keepLogs':{form:'runtime',key:'diagnosticDays',codec:'number-choice'},
+ 'troubleshooting.keepLogsByKind':{form:'runtime',key:'logRetention',codec:'log-retention'},
+};
+const preferenceKeys:Readonly<Record<string,string>>={
+ 'audioSubtitles.preferredAudio':'playback.preferredAudioLanguages','audioSubtitles.preferredSubtitles':'playback.preferredSubtitleLanguages','audioSubtitles.subtitleMode':'playback.subtitleMode','audioSubtitles.subtitleSize':'playback.subtitleSize','audioSubtitles.subtitleBackground':'playback.subtitleBackground',
+ 'quality.home':'quality.home','quality.remote':'quality.remote','quality.mobileData':'quality.mobile',
+ 'quality.directPlay':'delivery.directPlay','quality.directStream':'delivery.directStream','quality.transcode':'delivery.transcode',
+ 'privacy.showActivity':'privacy.showActivityToMembers','privacy.includeWatchTogether':'privacy.includeInWatchTogether','privacy.pauseHistory':'privacy.pauseWatchHistory','privacy.rememberSearches':'search.rememberHistory',
+ 'music.audioNormalization':'music.audioNormalization','music.crossfadeMs':'music.crossfadeMs','music.gapless':'music.gapless','playback.showSyncedLyrics':'playback.showSyncedLyrics','playback.audiobookSpeed':'audiobooks.defaultSpeed','music.idlePause':'playback.sleepTimerMinutes',
+ 'music.qualityAway':'music.qualityAway','music.qualityMobile':'music.qualityMobile',
+ 'language.locale':'region.locale','language.hourCycle':'region.hourCycle',
+ 'playback.autoplayNext':'playback.autoplayNext','playback.upNextCountdownMs':'playback.upNextCountdownMs','playback.startNextDuringCredits':'playback.startNextDuringCredits','playback.skipBackMs':'playback.skipBackMs','playback.skipForwardMs':'playback.skipForwardMs','playback.playedThresholdPercent':'playback.playedThresholdPercent','playback.startedThresholdPercent':'playback.startedThresholdPercent',
+ 'appearance.backdrops':'appearance.showBackdrops','appearance.cardSizeExact':'appearance.cardSizePercent','appearance.notificationDot':'notifications.badges',
+};
+const source69PreferenceBindings:Readonly<Record<string,SettingsBinding>>={
+ 'appearance.backdrops':{form:'preferences',key:'appearance.showBackdrops',scope:'profile-device-class'},
+ 'appearance.textSize':{form:'preferences',key:'appearance.textSize',scope:'profile-device'},
+ 'appearance.motion':{form:'preferences',key:'appearance.motion',scope:'profile-device'},
+ 'appearance.cardSizeExact':{form:'preferences',key:'appearance.cardSizePercent',scope:'profile-device-class'},
+ 'appearance.libraryView':{form:'preferences',key:'appearance.libraryView',scope:'profile-device'},
+ 'appearance.episodesLayout':{form:'preferences',key:'appearance.episodesLayout',scope:'profile-device'},
+ 'appearance.layout':{form:'preferences',key:'appearance.layout',scope:'profile-device'},
+ 'audioSubtitles.preferredAudio':{form:'preferences',key:'playback.preferredAudioLanguages',scope:'profile-server'},
+ 'audioSubtitles.preferredSubtitles':{form:'preferences',key:'playback.preferredSubtitleLanguages',scope:'profile-server'},
+ 'audioSubtitles.subtitleMode':{form:'preferences',key:'playback.subtitleMode',scope:'profile-server'},
+ 'audioSubtitles.subtitleSize':{form:'preferences',key:'playback.subtitleSize',scope:'profile-server'},
+ 'audioSubtitles.subtitleColor':{form:'preferences',key:'playback.subtitleColor',scope:'profile-server'},
+ 'audioSubtitles.subtitleBackground':{form:'preferences',key:'playback.subtitleBackground',scope:'profile-server'},
+ 'audioSubtitles.subtitlePosition':{form:'preferences',key:'playback.subtitlePosition',scope:'profile-server'},
+ 'audioSubtitles.audioDescription':{form:'preferences',key:'playback.audioDescription',scope:'profile-server'},
+ 'audioSubtitles.trackChoice':{form:'preferences',key:'playback.audioTrackChoice',scope:'profile-server'},
+ 'audioSubtitles.systemCaptions':{form:'preferences',key:'playback.useSystemCaptionStyle',scope:'profile-device'},
+ 'audioSubtitles.preferSdh':{form:'preferences',key:'playback.preferSdhSubtitles',scope:'profile-server'},
+ 'audioSubtitles.forcedFallback':{form:'preferences',key:'playback.forcedSubtitleFallback',scope:'profile-server'},
+ 'audioSubtitles.untaggedForced':{form:'preferences',key:'playback.useUntaggedForced',scope:'profile-server'},
+ 'audioSubtitles.subtitleFont':{form:'preferences',key:'playback.subtitleFont',scope:'profile-server'},
+ 'audioSubtitles.styledSubtitles':{form:'preferences',key:'playback.keepSubtitleStyling',scope:'profile-server'},
+ 'language.locale':{form:'preferences',key:'region.locale',scope:'profile-server'},
+ 'language.hourCycle':{form:'preferences',key:'region.hourCycle',scope:'profile-server'},
+ 'language.formats':{form:'preferences',key:'region.formats',scope:'profile-server'},
+ 'language.dateOrder':{form:'preferences',key:'region.dateOrder',scope:'profile-server'},
+ 'language.firstDay':{form:'preferences',key:'region.firstDay',scope:'profile-server'},
+ 'language.sizeUnits':{form:'preferences',key:'region.sizeUnits',scope:'profile-server'},
+ 'playback.showSyncedLyrics':{form:'preferences',key:'playback.showSyncedLyrics',scope:'profile-server'},
+ 'playback.audiobookSpeed':{form:'preferences',key:'audiobooks.defaultSpeed',scope:'profile-server'},
+ 'playback.autoplayNext':{form:'preferences',key:'playback.autoplayNext',scope:'profile-server'},
+ 'playback.upNextCountdownMs':{form:'preferences',key:'playback.upNextCountdownMs',scope:'profile-server'},
+ 'playback.startNextDuringCredits':{form:'preferences',key:'playback.startNextDuringCredits',scope:'profile-server'},
+ 'playback.skipBackMs':{form:'preferences',key:'playback.skipBackMs',scope:'profile-server'},
+ 'playback.skipForwardMs':{form:'preferences',key:'playback.skipForwardMs',scope:'profile-server'},
+ 'playback.playedThresholdPercent':{form:'preferences',key:'playback.playedThresholdPercent',scope:'profile-server',codec:'inherited-watched-threshold'},
+ 'playback.startedThresholdPercent':{form:'preferences',key:'playback.startedThresholdPercent',scope:'profile-server'},
+ 'privacy.showActivity':{form:'preferences',key:'privacy.showActivityToMembers',scope:'profile-server'},
+ 'privacy.includeWatchTogether':{form:'preferences',key:'privacy.includeInWatchTogether',scope:'profile-server'},
+ 'privacy.pauseHistory':{form:'preferences',key:'privacy.pauseWatchHistory',scope:'profile-server'},
+ 'privacy.rememberSearches':{form:'preferences',key:'search.rememberHistory',scope:'profile-server'},
+ 'appearance.notificationDot':{form:'preferences',key:'notifications.badges',scope:'profile-server'},
+ 'quality.home':{form:'preferences',key:'quality.home',scope:'profile-device-class',codec:'video-quality-choice'},
+ 'quality.remote':{form:'preferences',key:'quality.remote',scope:'profile-device-class',codec:'video-quality-choice'},
+ 'quality.directPlay':{form:'preferences',key:'delivery.directPlay',scope:'profile-device-class'},
+ 'quality.directStream':{form:'preferences',key:'delivery.directStream',scope:'profile-device-class'},
+ 'quality.transcode':{form:'preferences',key:'delivery.transcode',scope:'profile-device-class'},
+};
+export function settingsBinding(rowId:string):SettingsBinding|undefined{
+ for(const table of [bindings,source69PreferenceBindings])if(Object.hasOwn(table,rowId))return table[rowId];
+ return Object.hasOwn(preferenceKeys,rowId)?{form:'preferences',key:preferenceKeys[rowId]!}:undefined;
+}
+
+/** Settings reads Reading through readingPreferences and submits changes through
+ * its patch facade. This is the sole row-to-property map, with no reader effect
+ * or extra preference key. The write facade still owns value validation/CAS. */
+const readingProperties:Readonly<Record<string,keyof ReadingPreferences>>=Object.freeze({
+ 'reading.theme':'theme','reading.font':'font','reading.textSize':'textSize',
+ 'reading.lineSpacing':'lineSpacing','reading.margins':'margins','reading.alignment':'alignment',
+ 'reading.layout':'layout','reading.twoPages':'twoPages','reading.tapToTurn':'tapToTurn',
+ 'reading.hyphenation':'hyphenation','reading.highlightColour':'highlightColour','reading.pdfView':'pdfView',
+ 'comics.fit':'comicFit','comics.direction':'comicDirection','comics.firstPageAlone':'firstPageAlone',
+});
+export function readingSettingsProperty(rowId:string):keyof ReadingPreferences|undefined{return Object.hasOwn(readingProperties,rowId)?readingProperties[rowId]:undefined;}
+function at(source:Readonly<Record<string,unknown>>|undefined,key:string):unknown{if(source&&Object.hasOwn(source,key))return source[key];return key.split('.').reduce<unknown>((v,key)=>v&&typeof v==='object'?(v as Record<string,unknown>)[key]:undefined,source);}
+const days=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] as const;
+const categories=['server','playback','scan','network','client'] as const;
+const cadences:Readonly<Record<string,readonly string[]>>={nightly:days,weekdays:days.slice(0,5),weekends:days.slice(5),weekly:['sunday']};
+function defaultFeed(sources:SettingsBindingSources):unknown{return sources.configuration?.fields.find(f=>f.id==='general.updateFeed')?.default;}
+function windows(sources:SettingsBindingSources):readonly Readonly<Record<string,unknown>>[]{const v=sources.forms?.maintenance?.windows;return Array.isArray(v)?v:[];}
+function windowMode(binding:SettingsBinding,w:Readonly<Record<string,unknown>>):unknown{
+ if(!w.enabled)return binding.window==='heavy'?'any':'never';
+ if(binding.window==='heavy')return w.startMinute===60&&w.durationMinutes===300&&Array.isArray(w.days)&&w.days.length===7&&days.every(d=>(w.days as unknown[]).includes(d))&&!w.timezone?'overnight':'custom';
+ return Object.entries(cadences).find(([,wanted])=>Array.isArray(w.days)&&w.days.length===wanted.length&&wanted.every(d=>(w.days as unknown[]).includes(d)))?.[0]??'custom';
+}
+function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSources):unknown{
+ if(v===undefined)return undefined;
+ if(binding.codec==='video-quality-choice')return typeof v==='string'&&canonicalQualityLadder.some(q=>q.id===v)&&(binding.key!=='downloadMaxQuality'||v!=='automatic')?(v==='2160p'?'4k':v):undefined;
+ if(binding.codec==='boolean')return typeof v==='boolean'?v:undefined;
+ if(binding.codec==='surround')return typeof v==='boolean'?(v?'stereo':'asis'):undefined;
+ if(binding.codec==='player-engine')return v==='automatic'?'auto':v==='native'||v==='mpv'?v:undefined;
+
+ if(binding.codec==='missing-rule'){const n=sources.configuration?.fields.find(f=>f.id==='storage.missingDaysExact')?.current??sources.forms?.runtime?.['library.missingTitlesDays'];return v==='never'?'never':v==='immediately'?'now':v==='after_days'?(n===7?'7d':n===30?'30d':n===90?'90d':'custom'):undefined;}
+ if(binding.key==='planningPolicy')return v==='minimize_server_work'?'least':v==='maximum_fidelity'?'most':undefined;
+ if(binding.codec==='update-checks'){const feed=defaultFeed(sources);return v===''?'never':feed===undefined?undefined:v===feed?'auto':'custom';}
+ if(binding.codec==='away-quality')return v===0?'original':canonicalQualityLadder.find(q=>q.height>0&&q.videoKbps===v)?.id.replace('2160p','4k')??'custom';
+ if(binding.codec==='domain')return v?`https://${String(v)}`:'';
+ if(binding.codec==='interface')return v||'all';
+ if(binding.codec==='remote-policy')return v==='allow'?'anyone':v==='owner-only'?'owner':v==='off'?'none':undefined;
+ if(binding.codec==='unlimited')return v===0||v===null?'unlimited':String(v);
+ if(binding.codec==='days'&&Array.isArray(v)){const chosen=v;return Object.fromEntries(days.map(d=>[d,chosen.includes(d)?'runs':'skips']));}
+ if(binding.codec==='log-retention'&&Array.isArray(v)){const entries=v as {category:string;days:number}[];return Object.fromEntries(categories.map(k=>[k,String(entries.find(r=>r.category===k)?.days??'default')]));}
+ if(binding.scale){if(v===0&&binding.key==='uploadCapacityKbps')return null;v=typeof v==='number'?v/binding.scale:v;}
+ return binding.codec==='number-choice'?String(v):v;
+}
+export function readSettingsBinding(binding:SettingsBinding,sources:SettingsBindingSources,rowId?:string):SettingsBindingValue|undefined{
+ if(binding.fields){
+  const values=Object.entries(binding.fields).map(([name,key])=>[name,readSettingsBinding({form:binding.form,key,scope:binding.scope},sources)] as const);
+  if(values.some(([,value])=>!value))return undefined;
+  const part=(kind:'current'|'effective'|'default')=>{
+   const v=Object.fromEntries(values.map(([name,value])=>[name,value![kind]]));
+   if(binding.codec==='still-watching')return typeof v.enabled==='boolean'&&typeof v.episodes==='number'&&Number.isSafeInteger(v.episodes)&&v.episodes>=2&&v.episodes<=5?(v.enabled?v.episodes:0):undefined;
+   if(binding.codec==='tv-support')return typeof v.hdr==='boolean'&&typeof v.surround==='boolean'?(v.hdr?(v.surround?'hdr-surround':'hdr'):(v.surround?'surround':'none')):undefined;
+   return v;
+  };
+  const current=part('current'),effective=part('effective');if(current===undefined||effective===undefined)return undefined;
+  return {current,effective,default:part('default'),source:[...new Set(values.map(([,v])=>v!.source))].join(','),configOnly:false};
+ }
+ if(binding.form==='preferences'){
+  const snapshot=sources.preferences,field=snapshot?.registry.fields.find(f=>f.key===binding.key);if(!snapshot||!field)return undefined;
+  const scope=binding.scope??(field.scopes.length===1?field.scopes[0]:undefined);
+  if(!scope||!field.scopes.includes(scope)||scope==='profile-device'&&!snapshot.deviceBound)return undefined;
+  const document=snapshot.documents.find(d=>d.scope===scope),source=snapshot.effectiveSource[binding.key];
+  if(!document||source!=='default'&&source!=='policy'&&source!==scope)return undefined;
+  const stored=Object.hasOwn(document.values,binding.key),effective=snapshot.effective[binding.key];
+  if(stored&&source==='default'||!stored&&source===scope||effective===undefined)return undefined;
+  if(binding.codec==='inherited-watched-threshold'){
+   if(field.type!=='integer'||!validPublishedPreference(snapshot,scope,binding.key,field.default)||!validPublishedPreference(snapshot,scope,binding.key,effective))return undefined;
+   if(!stored&&source==='default')return {current:'server',effective:'server',default:'server',source,configOnly:false};
+   const current=document.values[binding.key];
+   if(!stored||source!==scope||!validPublishedPreference(snapshot,scope,binding.key,current)||!validPublishedPreference(snapshot,scope,binding.key,effective))return undefined;
+   return {current,effective,default:'server',source,configOnly:false};
+  }
+  const raw=stored?document.values[binding.key]:effective;
+  if(!validPublishedPreference(snapshot,scope,binding.key,raw)||!validPublishedPreference(snapshot,scope,binding.key,effective))return undefined;
+  const current=presented(binding,raw,sources),shown=presented(binding,effective,sources),defaultValue=presented(binding,field.default,sources);
+  if(current===undefined||shown===undefined||defaultValue===undefined)return undefined;
+  return {current,effective:shown,default:defaultValue,source,configOnly:false};
+ }
+ const alias=rowId==='general.updateChecks'?'general.updateFeed':rowId==='streaming.awayQuality'?'streaming.awayExact':rowId==='storage.backupKeep'?'storage.backupKeepExact':rowId;
+ const fact:ConfigurationValue|undefined=alias?sources.configuration?.fields.find(f=>f.id===alias):undefined;
+ if(fact){const display={...binding,scale:undefined,...(rowId==='streaming.awayQuality'?{scale:1/1000}:{})};const show=(v:unknown)=>rowId==='streaming.awayQuality'?presented(binding,typeof v==='number'?v*1000:v,sources):presented(display,v,sources);const current=show(fact.current),effective=show(fact.effective);if(current===undefined||effective===undefined)return undefined;return {current,effective,default:show(fact.default),source:fact.source,configOnly:fact.configOnly,applicationMode:fact.applicationMode};}
+ const w=binding.window?windows(sources).find(w=>w.id===binding.window):undefined;
+ const raw=binding.window?(binding.codec==='window-mode'?w&&windowMode(binding,w):w?.[binding.key]):at(binding.form==='device'?sources.device:sources.forms?.[binding.form],binding.key);if(raw===undefined)return undefined;
+ const current=presented(binding,raw,sources);if(current===undefined)return undefined;return {current,effective:current,default:binding.form==='device'?presented(binding,at(sources.deviceDefaults,binding.key),sources):undefined,source:binding.form,configOnly:false};
+}
+function checkedPreferencePatch(snapshot:PreferenceSnapshot,scope:PreferenceScope,values:Readonly<Record<string,unknown>>):Readonly<Record<string,PreferenceValue|null>>{
+ const patch=validatePreferencePatch(snapshot.registry,scope,values as Readonly<Record<string,PreferenceValue|null>>);
+ for(const [key,value] of Object.entries(patch)){
+  const field=snapshot.registry.fields.find(f=>f.key===key)!;
+  if(typeof value==='number'&&(field.min!==undefined&&value<field.min||field.max!==undefined&&value>field.max))throw new Error('Invalid setting value.');
+ }
+ return patch;
+}
+function validPublishedPreference(snapshot:PreferenceSnapshot,scope:PreferenceScope,key:string,value:unknown):boolean{
+ if(value===null||value===undefined)return false;
+ try{checkedPreferencePatch(snapshot,scope,{[key]:value});return true;}catch{return false;}
+}
+function preferenceBindingPatch(binding:SettingsBinding,values:Readonly<Record<string,unknown>>,sources:SettingsBindingSources):SettingsBindingPatch{
+ const snapshot=sources.preferences;if(!snapshot)throw new Error('Invalid setting value.');
+ const fields=Object.keys(values).map(key=>snapshot.registry.fields.find(f=>f.key===key));
+ const first=fields[0],scope=binding.scope??(first?.scopes.length===1?first.scopes[0]:undefined);
+ if(!scope||scope==='profile-device'&&!snapshot.deviceBound||!snapshot.documents.some(d=>d.scope===scope)||fields.some(f=>!f||!f.scopes.includes(scope)))throw new Error('Invalid setting value.');
+ return {form:'preferences',values:checkedPreferencePatch(snapshot,scope,values)};
+}
+/** A write always targets an existing producer; Advanced values are not rounded to a preset. */
+export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sources:SettingsBindingSources={}):SettingsBindingPatch{
+ if(binding.readOnly||binding.form==='connectivityStatus')throw new Error('This setting is read-only.');
+ if(binding.fields){
+  if(binding.codec==='still-watching'){
+   if(typeof value!=='number'||!Number.isSafeInteger(value)||![0,2,3,4,5].includes(value))throw new Error('Invalid episode count.');
+   return preferenceBindingPatch(binding,value===0?{'playback.passoutProtection':false}:{'playback.passoutProtection':true,'playback.passoutAfterEpisodes':value},sources);
+  }
+  if(binding.codec==='tv-support'){
+   if(value!=='none'&&value!=='hdr'&&value!=='surround'&&value!=='hdr-surround')throw new Error('Invalid setting value.');
+   return {form:'device',values:{tvHdr:value==='hdr'||value==='hdr-surround',tvSurround:value==='surround'||value==='hdr-surround'}};
+  }
+  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==Object.keys(binding.fields).length)throw new Error('Invalid setting matrix.');
+  const values=Object.fromEntries(Object.entries(binding.fields).map(([name,key])=>{const v=(value as Record<string,unknown>)[name];if(v!=='ask'&&v!=='auto'&&v!=='off')throw new Error('Invalid skip mode.');return [key,v];}));
+  return binding.form==='preferences'?preferenceBindingPatch(binding,values,sources):{form:binding.form,values};
+ }
+ if(binding.codec==='missing-rule'){if(value==='never')return {form:binding.form,values:{'library.missingTitles':'never'}};if(value==='now')return {form:binding.form,values:{'library.missingTitles':'immediately'}};const n=value==='7d'?7:value==='30d'?30:value==='90d'?90:undefined;if(n===undefined)throw new Error('Custom is derived.');return {form:binding.form,values:{'library.missingTitles':'after_days','library.missingTitlesDays':n}};}
+ let raw=value;
+ if(binding.codec==='inherited-watched-threshold'){
+  const field=sources.preferences?.registry.fields.find(f=>f.key===binding.key);
+  if(field?.type!=='integer')throw new Error('Invalid setting value.');
+  raw=value==='server'||value===null?null:value;
+ }
+ if(binding.codec==='video-quality-choice'){
+  if(typeof value!=='string'||value==='2160p'||!canonicalQualityLadder.some(q=>(q.id==='2160p'?'4k':q.id)===value)||binding.key==='downloadMaxQuality'&&value==='automatic')throw new Error('Invalid setting value.');
+  raw=value==='4k'?'2160p':value;
+ }
+ if(binding.codec==='boolean'&&typeof value!=='boolean')throw new Error('Invalid setting value.');
+ if(binding.codec==='surround'){if(value!=='asis'&&value!=='stereo')throw new Error('Invalid setting value.');raw=value==='stereo';}
+ if(binding.codec==='player-engine'){if(value!=='auto'&&value!=='native'&&value!=='mpv')throw new Error('Invalid setting value.');raw=value==='auto'?'automatic':value;}
+ if(binding.form==='preferences')return preferenceBindingPatch(binding,{[binding.key]:raw},sources);
+ if(binding.key==='planningPolicy')raw=value==='least'?'minimize_server_work':value==='most'?'maximum_fidelity':undefined;
+ if(value==='custom'&&binding.codec!=='window-mode')throw new Error('Custom is derived.');
+ if(binding.codec==='domain'){
+  if(value==='')raw='';else{if(typeof value!=='string')throw new Error('An HTTPS address is required.');const url=new URL(value.includes('://')?value:`https://${value}`);if(url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash||url.port)throw new Error('An HTTPS domain is required.');raw=url.hostname;}
+ }else if(binding.codec==='update-checks'){raw=value==='never'?'':value==='auto'?defaultFeed(sources):undefined;}
+ else if(binding.codec==='away-quality'){raw=value==='original'?0:canonicalQualityLadder.find(q=>q.height>0&&q.id===(value==='4k'?'2160p':value))?.videoKbps;}
+ else if(binding.codec==='interface')raw=value==='all'?'':value;
+ else if(binding.codec==='remote-policy')raw=value==='anyone'?'allow':value==='owner'?'owner-only':value==='none'?'off':undefined;
+ else if(binding.codec==='unlimited')raw=value==='unlimited'||value==='auto'?(binding.key==='serverCap'?null:0):Number(value);
+ else if(binding.codec==='number-choice')raw=Number(value);
+ else if(binding.codec==='days'){
+  if(!value||typeof value!=='object'||Object.keys(value).length!==7)throw new Error('Seven days are required.');
+  const m=value as Record<string,unknown>;if(days.some(d=>m[d]!=='runs'&&m[d]!=='skips'))throw new Error('Invalid day.');raw=days.filter(d=>m[d]==='runs');
+ }else if(binding.codec==='log-retention'){
+  if(!value||typeof value!=='object'||Object.keys(value).some(k=>!categories.includes(k as typeof categories[number])))throw new Error('Invalid log category.');
+  raw=Object.entries(value).flatMap(([category,days])=>{if(days==='default')return [];const n=Number(days);if(!Number.isSafeInteger(n)||n<1||n>90)throw new Error('Invalid log retention.');return [{category,days:n}];});
+ }
+ if(binding.scale)raw=value===null&&binding.key==='uploadCapacityKbps'?0:typeof raw==='number'?Math.round(raw*binding.scale):raw;
+ if(typeof raw==='number'&&!Number.isFinite(raw)||raw===undefined)throw new Error('Invalid setting value.');
+ if(binding.window){
+  const all=windows(sources),existing=all.find(w=>w.id===binding.window);if(!existing)throw new Error('Load maintenance settings before editing a window.');let change:Record<string,unknown>={[binding.key]:raw};
+  if(binding.codec==='window-mode'){
+   if(binding.window==='heavy')change=value==='any'?{enabled:false}:value==='overnight'?{enabled:true,cadence:'nightly',startMinute:60,durationMinutes:300,days:[...days],timezone:''}:value==='custom'?{enabled:true}:{};
+   else change=value==='never'?{enabled:false}:value==='custom'?{enabled:true}:typeof value==='string'&&cadences[value]?{enabled:true,cadence:value,days:[...cadences[value]!]}:{};
+   if(!Object.keys(change).length)throw new Error('Invalid maintenance window.');
+  }else if(binding.codec==='days')change={days:raw,cadence:'custom'};
+  return {form:binding.form,values:{windows:all.map(w=>w.id===binding.window?{...w,...change}:w)}};
+ }
+ return {form:binding.form,values:{[binding.key]:raw}};
+}
+/** Apply dotted domain fields as well as literal dotted registry keys. */
+export function applySettingsBindingPatch<T extends Readonly<Record<string,unknown>>>(draft:T,patch:SettingsBindingPatch):T{
+ const next=structuredClone(draft) as Record<string,unknown>;
+ for(const [key,value] of Object.entries(patch.values)){
+  if(Object.hasOwn(next,key)||!key.includes('.')){next[key]=structuredClone(value);continue;}
+  const parts=key.split('.');let at=next;for(const part of parts.slice(0,-1)){const child=at[part];at[part]=child&&typeof child==='object'&&!Array.isArray(child)?{...child}:{};at=at[part] as Record<string,unknown>;}at[parts.at(-1)!]=structuredClone(value);
+ }
+ return next as T;
+}
+
+export type SettingsPresetOption=Readonly<{value:unknown;sets?:Readonly<Record<string,unknown>>}>;
+function equal(a:unknown,b:unknown):boolean{
+ if(Object.is(a,b))return true;
+ if(Array.isArray(a)&&Array.isArray(b))return a.length===b.length&&a.every((v,i)=>equal(v,b[i]));
+ if(a&&b&&typeof a==='object'&&typeof b==='object'){const aa=a as Record<string,unknown>,bb=b as Record<string,unknown>;return Object.keys(aa).length===Object.keys(bb).length&&Object.keys(aa).every(k=>Object.hasOwn(bb,k)&&equal(aa[k],bb[k]));}
+ return false;
+}
+/** Only full exact sets match; no nearest-choice policy loses Advanced values. */
+function matches(actual:unknown,expected:unknown):boolean{if(expected&&typeof expected==='object'&&!Array.isArray(expected)){if(!actual||typeof actual!=='object'||Array.isArray(actual))return false;return Object.entries(expected).every(([key,value])=>matches((actual as Record<string,unknown>)[key],value));}return equal(actual,expected);}
+export function exactPresetValue(options:readonly SettingsPresetOption[],read:(rowId:string)=>unknown):unknown{return options.find(option=>option.sets&&Object.entries(option.sets).every(([key,value])=>matches(read(key),value)))?.value??'custom';}
+export function presetPatch(options:readonly SettingsPresetOption[],choice:unknown,read?:(rowId:string)=>unknown):Readonly<Record<string,unknown>>{const option=options.find(option=>Object.is(option.value,choice));if(!option?.sets)throw new Error('A stored preset is required.');return Object.fromEntries(Object.entries(option.sets).map(([key,value])=>[key,value&&typeof value==='object'&&!Array.isArray(value)?{...(read?.(key) as Record<string,unknown>??{}),...structuredClone(value)}:structuredClone(value)]));}
+export const resetPreset=presetPatch;
+export function changedFromDefault(current:unknown,defaultValue:unknown):boolean{return !equal(current,defaultValue);}
+
+export {searchConfiguration} from '../settings-configuration.ts';
+
+export const libraryCreateKinds=Object.freeze([
+ {choice:'movies',kind:'movie'},{choice:'tv',kind:'tv'},{choice:'anime',kind:'anime'},{choice:'music',kind:'music'},
+ {choice:'audiobooks',kind:'audiobook'},{choice:'books',kind:'book'},{choice:'comics',kind:'comic'},
+] as const);
+export function libraryKindForChoice(choice:string):(typeof libraryCreateKinds)[number]['kind']{const kind=libraryCreateKinds.find(c=>c.choice===choice)?.kind;if(!kind)throw new Error('Invalid library kind.');return kind;}
+const libraryFolderFields:Readonly<Record<string,keyof SourceSettings>>={'libraries.folderPath':'path','libraries.folderName':'name','libraries.location':'classification','libraries.rescan':'intervalSeconds','libraries.symlinks':'followSymlinks'};
+const folderIntervals:Readonly<Record<string,number>>={'15m':900,'1h':3600,'6h':21600,'1d':86400,'never':0};
+export function readLibrarySourceSettingsBinding(rowId:string,source:InventorySource):SettingsBindingValue|undefined{
+ const key=libraryFolderFields[rowId];if(!key||key==='expectedRevision'||key==='acceptReplacement')return undefined;
+ const raw=source[key as keyof InventorySource];const current=rowId==='libraries.rescan'?Object.entries(folderIntervals).find(([,n])=>n===raw)?.[0]??'custom':raw;
+ return {current,effective:current,default:undefined,source:'library-source',configOnly:false};
+}
+/** Revision and replacement consent remain the caller's current inventory intent. */
+export function patchLibrarySourceSettingsBinding(rowId:string,value:unknown,draft:SourceSettings):SourceSettings{
+ const key=libraryFolderFields[rowId];if(!key)throw new Error('Invalid library folder setting.');let raw=value;
+ if(rowId==='libraries.rescan'){if(typeof value!=='string'||!Object.hasOwn(folderIntervals,value))throw new Error('Custom is derived.');raw=folderIntervals[value];}
+ else if(rowId==='libraries.location'){if(value!=='local'&&value!=='network')throw new Error('Invalid folder location.');}
+ else if(rowId==='libraries.symlinks'){if(typeof value!=='boolean')throw new Error('Invalid symbolic-link policy.');}
+ else if(typeof value!=='string'||/[\u0000-\u001f]/.test(value))throw new Error('Invalid folder value.');
+ return {...draft,[key]:raw};
+}
