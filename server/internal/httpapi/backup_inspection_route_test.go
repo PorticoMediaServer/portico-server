@@ -50,7 +50,7 @@ func TestBackupInspectionRouteUsesBytesAndCreatesNoRestore(t *testing.T) {
 			t.Fatal("inspection inferred protection from extension or disclosed the selected path")
 		}
 	}
-	if service.RestoreProgress().JobID != "" {
+	if progress := service.RestoreProgress(); progress != nil && progress.JobID != "" {
 		t.Fatal("inspection started a restore")
 	}
 	if _, err = os.Stat(filepath.Join(state, backup.RestoreStagedDir)); !os.IsNotExist(err) {

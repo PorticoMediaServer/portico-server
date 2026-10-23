@@ -113,7 +113,7 @@ func TestBackupSettingsHTTPSecretBoundaryAndEncryptedRestore(t *testing.T) {
 	if inspected.Code != 200 || !bytes.Contains(inspected.Body.Bytes(), []byte(`"encrypted":true`)) {
 		t.Fatalf("real encrypted inspection: %d", inspected.Code)
 	}
-	if service.RestoreProgress().JobID != "" {
+	if progress := service.RestoreProgress(); progress != nil && progress.JobID != "" {
 		t.Fatal("inspection started a restore")
 	}
 	// A new portable restore must not destroy a valid pending restore when
