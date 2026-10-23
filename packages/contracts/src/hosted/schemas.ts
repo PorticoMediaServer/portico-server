@@ -4274,7 +4274,8 @@ export const schemas = {
         "enum": [
           "setup",
           "switch",
-          "change-owner"
+          "change-owner",
+          "sign-in"
         ],
         "type": "string"
       },
@@ -4504,6 +4505,57 @@ export const schemas = {
           },
           "purpose": {
             "const": "change-owner",
+            "type": "string"
+          },
+          "registrationId": {
+            "type": "string"
+          },
+          "serverChallenge": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "state": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "purpose",
+          "registrationId",
+          "state",
+          "codeChallenge",
+          "serverChallenge",
+          "installationId"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "claimOperationId": {
+            "type": "string"
+          },
+          "codeChallenge": {
+            "maxLength": 43,
+            "minLength": 43,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "installationId": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "purpose": {
+            "const": "sign-in",
             "type": "string"
           },
           "registrationId": {

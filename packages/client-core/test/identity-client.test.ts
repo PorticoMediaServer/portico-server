@@ -30,7 +30,7 @@ test('requests go to the documented routes with exactly the documented bodies',a
 });
 
 test('the device list is parsed from the envelope the server sends',async()=>{
- const device={id:'d1',installationId:'i'.repeat(32),name:'Living room',platform:'tvos',app:'Portico',appVersion:'0.1.0',ip:'192.168.2.41',firstSeen:'2026-08-01T10:00:00Z',lastSeen:'2026-09-17T10:00:00Z',trusted:true,approvalState:'approved',lastProfileId:'',rememberAccount:true,current:true,sessions:1};
+ const device={id:'d1',installationId:'i'.repeat(32),name:'Living room',platform:'tvos',app:'Portico',appVersion:'0.1.0',ip:'192.168.2.41',firstSeen:'2026-08-01T10:00:00Z',lastSeen:'2026-09-17T10:00:00Z',lastProfileId:'',rememberAccount:true,current:true,sessions:1};
  const client=new IdentityClient({request:async<T,>():Promise<T>=>({items:[device]}) as T});
  const list=await client.devices('i'.repeat(32));
  assert.equal(list.length,1);assert.equal(list[0].name,'Living room');
@@ -42,7 +42,7 @@ test('rating systems are read from the {items} envelope the server sends',async(
  assert.equal((await client.ratingSystems())[0].values[0].code,'PG');
 });
 
-const deviceRecord=(over:Record<string,unknown>={})=>({id:'dev-1',installationId:'i'.repeat(36),name:'This browser',platform:'web',app:'Portico Web',appVersion:'1',ip:'10.0.0.2',firstSeen:'2026-09-01T00:00:00Z',lastSeen:'2026-09-17T00:00:00Z',trusted:false,approvalState:'approved',rememberAccount:true,lastProfileId:'',current:true,sessions:1,...over});
+const deviceRecord=(over:Record<string,unknown>={})=>({id:'dev-1',installationId:'i'.repeat(36),name:'This browser',platform:'web',app:'Portico Web',appVersion:'1',ip:'10.0.0.2',firstSeen:'2026-09-01T00:00:00Z',lastSeen:'2026-09-17T00:00:00Z',rememberAccount:true,lastProfileId:'',current:true,sessions:1,...over});
 
 test('announcing a device registers then binds, and never costs a sign-in',async()=>{
  const {announceDevice}=await import('../src/identity-client.ts');
@@ -52,10 +52,6 @@ test('announcing a device registers then binds, and never costs a sign-in',async
  assert.equal(await announceDevice(new IdentityClient(api),description,'fam-1'),'bound');
  assert.deepEqual(calls.map(c=>c.path),['/v1/devices','/v1/devices/dev-1/sessions/bind']);
  assert.deepEqual(calls[1].body,{installationId:'i'.repeat(36),sessionFamilyId:'fam-1'});
- refuse=Object.assign(new Error('Waiting for approval.'),{code:'device_approval_pending',status:403});
- assert.equal(await announceDevice(new IdentityClient(api),description,'fam-1'),'pending');
- refuse=Object.assign(new Error('Refused.'),{code:'device_denied',status:403});
- assert.equal(await announceDevice(new IdentityClient(api),description,'fam-1'),'denied','the owner turned this device away: said so, never skipped');
  refuse=new TypeError('Failed to fetch');
  assert.equal(await announceDevice(new IdentityClient(api),description,'fam-1'),'skipped');
  calls.length=0;
