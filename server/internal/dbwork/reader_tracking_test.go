@@ -25,6 +25,11 @@ func TestReaderLifetimesCoverSnapshotHelpersAndDirectTransactions(t *testing.T) 
 	db := readerFixture(t)
 	ctx := context.Background()
 	baseline := ReaderLifetimes().Snapshots
+	defer func() {
+		if t.Failed() {
+			t.Logf("reader cancellation baseline=%d final=%+v", baseline, ReaderLifetimes())
+		}
+	}()
 	check := func(want int) {
 		t.Helper()
 		if stats := ReaderLifetimes(); stats.Snapshots != baseline+want {
