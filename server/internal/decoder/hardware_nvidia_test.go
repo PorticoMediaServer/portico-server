@@ -12,11 +12,11 @@ const controlledNVIDIAInventory = "GPU-11111111-2222-3333-4444-555555555555, 000
 func TestNVIDIAInventoryKeepsUUIDIdentityAcrossIndexChanges(t *testing.T) {
 	first := parseNVIDIADiscovery(controlledNVIDIAInventory)
 	second := parseNVIDIADiscovery(strings.Replace(controlledNVIDIAInventory, ", 2,", ", 4,", 1))
-	if len(first) != 1 || len(second) != 1 || first[0].ID != second[0].ID || first[0].Path != "2" || second[0].Path != "4" || first[0].PCIAddress != "0:01:00.0" || first[0].DriverVersion != "570.12.3" {
+	if len(first) != 1 || len(second) != 1 || first[0].ID != second[0].ID || first[0].DriverDeviceIndex != "2" || second[0].DriverDeviceIndex != "4" || first[0].PCIAddress != "0:01:00.0" || first[0].DriverVersion != "570.12.3" {
 		t.Fatal("observed UUID did not bind the index", first, second)
 	}
-	if len(first[0].Backends) != 1 || first[0].Backends[0] != BackendNVENC {
-		t.Fatal(first)
+	if len(first[0].Backends) != 0 || first[0].Path != "" {
+		t.Fatal("NVML index incorrectly became a selected CUDA ordinal", first)
 	}
 	raw, err := json.Marshal(first[0])
 	if err != nil || strings.Contains(string(raw), "GPU-111") || strings.Contains(string(raw), "available") || strings.Contains(string(raw), "sessionLimit") || strings.Contains(string(raw), "backends") || strings.Contains(string(raw), "pciAddress") {

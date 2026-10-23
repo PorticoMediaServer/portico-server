@@ -10,14 +10,15 @@ import (
 // Paths and candidate backend families stay private; a selected device earns
 // each codec/depth through HardwareDetector's actual confined probes.
 type HardwareDevice struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	Vendor        string            `json:"vendor"`
-	Driver        string            `json:"driver"`
-	DriverVersion string            `json:"driverVersion,omitempty"`
-	PCIAddress    string            `json:"-"`
-	Path          string            `json:"-"`
-	Backends      []HardwareBackend `json:"-"`
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	Vendor            string            `json:"vendor"`
+	Driver            string            `json:"driver"`
+	DriverVersion     string            `json:"driverVersion,omitempty"`
+	PCIAddress        string            `json:"-"`
+	DriverDeviceIndex string            `json:"-"`
+	Path              string            `json:"-"`
+	Backends          []HardwareBackend `json:"-"`
 }
 
 var ErrUnknownHardwareDevice = errors.New("unknown hardware device selection")

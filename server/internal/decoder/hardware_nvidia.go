@@ -115,7 +115,10 @@ func parseNVIDIADiscovery(raw string) []HardwareDevice {
 		seen[uuid], indexes[index], addresses[pci] = true, true, true
 		sum := sha256.Sum256([]byte(uuid))
 		out = append(out, HardwareDevice{ID: "nvidia-" + hex.EncodeToString(sum[:16]), Name: row[3], Vendor: "0x10de", Driver: "nvidia", DriverVersion: row[4], PCIAddress: pci,
-			Path: strconv.FormatUint(index, 10), Backends: []HardwareBackend{BackendNVENC}})
+			DriverDeviceIndex: strconv.FormatUint(index, 10)})
+		// NVML's report index is not a qualified CUDA ordinal under reordered
+		// visibility masks. Preserve the observed identity but grant no selected
+		// NVENC candidate until a CUDA UUID association is actually qualified.
 	}
 	return out
 }
