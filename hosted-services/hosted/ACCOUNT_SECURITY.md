@@ -8,7 +8,7 @@ implement invitation administration, server claims, DNS, certificates or media.
 Almost everything described here is covered by tests that need a PostgreSQL
 database and that skip silently without one. `TESTING.md` explains how to point
 them at a throwaway database; `dev/test-db.sh` does it for you. Run them before
-trusting a change to sign-in, sessions, claims, membership, deletion or erasure.
+trusting a change to sign-in, sessions, claims, membership, deletion or departure.
 
 ## Configuration and custody
 
@@ -113,7 +113,7 @@ revocation after a security change.
 
 Registration is pending for 30 minutes. Its six-digit verification code lasts at
 most 10 minutes, has five attempts and can be replaced up to five times. The
-verified contact, account, primary profile and first session are committed
+verified contact, account and first session are committed
 atomically. A username collision retains verified contact and asks for another
 username. The same request ID retries the same operation rather than minting a
 new account or password. Completed session receipts are sealed, bounded to five
@@ -184,11 +184,9 @@ costlier, intentional answer outside this cool-off.
 boundary. Call it in the same transaction as the authoritative domain change.
 Supply a stable intent ID, resource ID/revision, intended account/epoch, expiry and
 payload. Reusing an ID with a different payload is a conflict. Supported kinds:
-registration, OIDC contact, password reset, email change, security notice and
-invitation. An invitation owner may enqueue `mailoutbox.Invitation` only alongside
-its existing pending invitation; no invitation workflow is implemented here.
-At delivery, that kind rechecks the pending invitation, recipient, primary contact
-and epoch against current rows.
+registration, OIDC contact, password reset, email change and security notice.
+Invitations, profiles and their data belong only to each Server; Hosted neither
+stores invitations nor sends invitation email.
 
 Two worker lanes claim durable 45-second leases and recheck current eligibility
 immediately before SMTP, with no database lock held during network I/O. There are
@@ -207,15 +205,23 @@ and old mail metadata. No tests in this delivery contacted an SMTP service.
 
 ## Schema and deletion integration
 
-`InstallAccountSecuritySchemaTx` runs after the existing identity/current schema
-under its existing initialization transaction. Hosted format version 2 is not
-renumbered; the feature marker is `account_security_schema` version 1. Existing
-session-family/profile/claim identities are retained.
+`InitializeCurrentHostedSchemaTx` installs the complete current baseline in one
+transaction. The `hosted_schema_contract` marker is version 24. Historical or
+unrecognized schemas are refused and must be provisioned explicitly; no legacy
+profile, invitation, policy or remote-erasure tables are adopted. Account,
+session-family, claim, return and generation authority remains transactional.
 
 Deletion requires an explicit fresh, current-family-bound preview and confirmation.
-Erasure jobs record the installed claim operation/generation/credential generation.
-A superseded claim cannot acknowledge another claim's job. Old unbound jobs are
-not silently reassigned. A real unresolved cleanup/ownership prerequisite can
-block the affected deletion; it is not a blanket disablement of account deletion.
-Server-claim orchestration and invitation/profile administration remain with
-their respective packages.
+An account that owns any server cannot be deleted; its ownership must first be
+resolved on that server. Accepted member deletion revokes central identity and
+sessions and records only a durable departure notice for its servers. It never
+queues deletion of Server profiles or media activity.
+
+`POST /v1/servers/leave` accepts an immutable original-key signed notice bound to
+the exact operation and installed claim/credential generations. It returns an
+empty 204, including exact replay. A Server persists the notice before moving to
+local sign-in; delivery can follow later without enabling other Local traffic.
+The transaction removes central registration, account links, addresses and
+certificate work. It retains only a hashed replay receipt and normalized public
+name/sequence withdrawal records so offline DNS readers can remove stale names.
+Old notices and stale positive authority cannot affect a successor registration.

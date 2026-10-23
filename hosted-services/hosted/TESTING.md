@@ -2,7 +2,7 @@
 
 `go test ./...` runs everything that needs no database. Every test under
 `internal/postgres` — sign-in, sessions, server claims, membership, deletion and
-erasure — **skips silently** unless a PostgreSQL URL is configured, so a plain
+server departure — **skips silently** unless a PostgreSQL URL is configured, so a plain
 `go test ./...` proves far less than it looks like it does. Run the database
 tests before trusting a change to any of those areas.
 
@@ -47,5 +47,6 @@ Pass extra `go test` arguments after the host, for example
   Where a test needs Hosted to call out — endpoint proofs, wake delivery — it
   injects a client, so the request Hosted builds and signs is exactly the
   production one and only the transport is local.
-- **Roughly a minute.** `internal/postgres` takes about a minute; the rest of
-  the tree is under two seconds.
+- **Several minutes.** PostgreSQL fixtures install the complete current schema
+  and exercise password hashes and transaction races. Allow several minutes
+  for a full run; use focused tests for subsequent scoped corrections.
