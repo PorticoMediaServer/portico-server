@@ -295,6 +295,7 @@ impl DownloadsSession {
             .fill(&mut bytes)
             .map_err(|_| Error::DownloadsUnavailable)?;
         let lease = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        self.store.retire_confirmations();
         self.binding = Some(Binding {
             scope,
             lease: lease.clone(),
@@ -327,6 +328,7 @@ impl DownloadsSession {
         {
             self.binding = None;
             self.local_sources.clear();
+            self.store.retire_confirmations();
         }
     }
     pub fn force_release(&mut self, lease: &str) {
@@ -335,6 +337,7 @@ impl DownloadsSession {
             self.local_sources.clear();
             self.local_preparation = None;
             self.active_local = None;
+            self.store.retire_confirmations();
         }
     }
     fn viewer(&self, lease: &str) -> Result<DownloadViewer> {
@@ -357,6 +360,7 @@ impl DownloadsSession {
                 if self.local_preparation.as_deref() == Some(&preparation_id) {
                     self.local_sources.clear();
                     self.local_preparation = None;
+                    self.release_if_unowned();
                 }
                 R::Done
             }
@@ -575,6 +579,9 @@ impl DownloadsSession {
     pub fn active_generation(&self) -> Option<u64> {
         self.active_local.as_ref().map(|p| p.generation)
     }
+    pub fn active_file_valid(&self) -> bool {
+        self.active_local.as_ref().is_none_or(|p| self.store.playback_file(&p.viewer, &p.entry_id).is_ok())
+    }
     pub fn retire_local(&mut self) {
         self.active_local = None;
         self.release_if_unowned();
@@ -773,6 +780,42 @@ mod tests {
             serde_json::from_str::<DownloadOperation>(r#"{"action":"run","command":"ffmpeg"}"#)
                 .is_err()
         );
+    }
+    #[test]
+    fn shared_bind_reference_counts_and_family_confirmation_retirement() {
+        let root=std::env::temp_dir().join(format!("desktop-download-refs-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let mut session=DownloadsSession::open(&root).unwrap();
+        let lease=session.bind(scope()).unwrap();
+        assert_eq!(lease,session.bind(scope()).unwrap());
+        let token=session.store.preview_other_profiles(&scope().viewer().unwrap()).unwrap().snapshot_token;
+        session.release(&lease);
+        assert!(session.execute(&lease,DownloadOperation::Rules{}).is_ok());
+        let mut next=scope();next.session_family_id="new_family".into();
+        let new_lease=session.bind(next).unwrap();
+        assert!(matches!(session.execute(&new_lease,DownloadOperation::RemoveOtherProfiles{snapshot_token:token}),Err(Error::DownloadsConflict)));
+        session.local_preparation=Some("retained".into());
+        session.release(&new_lease);
+        assert!(session.lease_current(&new_lease));
+        session.execute(&new_lease,DownloadOperation::ReleaseLocalQueue{preparation_id:"retained".into()}).unwrap();
+        assert!(!session.lease_current(&new_lease));
+        drop(session);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn native_progress_requires_actual_current_generation_and_rejects_intent_and_nonfinite_time() {
+        let root=std::env::temp_dir().join(format!("desktop-download-observation-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let mut session=DownloadsSession::open(&root).unwrap();let lease=session.bind(scope()).unwrap();let viewer=scope().viewer().unwrap();
+        let entry=session.store.enroll(Enrollment{viewer:viewer.clone(),preparation_id:"preparation".into(),item_id:"item".into(),quality:"original".into(),sha256:"a".repeat(64),bytes:5,title:DownloadTitle{kind:"song".into(),title:"Actual title".into(),artist:String::new(),parent_id:String::new(),parent_title:String::new(),group_id:String::new(),group_title:String::new(),group_number:None,number:None,year:2026,duration_ms:10000,on_server:true}}).unwrap();
+        session.active_local=Some(ActiveLocal{viewer:viewer.clone(),entry_id:entry.id,item_id:"item".into(),play_id:"play".into(),generation:7,last_write:std::time::Instant::now(),last_position_ms:0});
+        let mut observation=crate::boundary::Observation{generation:6,state:"playing".into(),position_ms:1234.0,rate:1.0,volume:1.0,muted:false,dropped_frames:0,native_surface_active:false,eq_applied:false,leveling_applied:false};
+        session.record_observation(&observation,true).unwrap();assert!(session.store.pending_plays(&viewer).unwrap().is_empty());
+        observation.generation=7;observation.state="loading".into();session.record_observation(&observation,true).unwrap();assert!(session.store.pending_plays(&viewer).unwrap().is_empty());
+        observation.state="playing".into();observation.position_ms=f64::NAN;session.record_observation(&observation,true).unwrap();assert!(session.store.pending_plays(&viewer).unwrap().is_empty());
+        observation.position_ms=1234.0;session.record_observation(&observation,false).unwrap();assert!(session.store.pending_plays(&viewer).unwrap().is_empty());
+        session.record_observation(&observation,true).unwrap();let first=session.store.pending_plays(&viewer).unwrap();assert_eq!(first[0].position_ms,1234);assert!(!first[0].ended);
+        observation.state="ended".into();observation.position_ms=10000.0;
+        session.store.acknowledge_play(&viewer,"play",first[0].observed_ms).unwrap();
+        session.record_observation(&observation,false).unwrap();assert!(session.store.pending_plays(&viewer).unwrap()[0].ended);
+        session.force_release(&lease);drop(session);std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn rebound_or_released_family_cannot_write_and_rules_ack_is_durable() {

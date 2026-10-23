@@ -1,5 +1,5 @@
 import {invoke} from '@tauri-apps/api/core';
-import {parseDownloadTitle, type DownloadTitle} from '../../../packages/client-core/src/downloads.ts';
+import {parseDownloadTitle, type DownloadTitle, type DownloadReceipt} from '../../../packages/client-core/src/downloads.ts';
 
 // App-owned transport. UI owners consume the canonical web port after its MAIN landing.
 export type DownloadScope = Readonly<{authority:'local'|'hosted';serverId:string;accountId:string;profileId:string;sessionFamilyId:string}>;
@@ -9,6 +9,7 @@ export type RulesSnapshot = Readonly<{revision:number;rules:DownloadRules}>;
 export type DownloadCursor = Readonly<{addedMs:number;id:string}>;
 export type DownloadPage = Readonly<{items:readonly LocalDownload[];nextCursor:DownloadCursor|null}>;
 export type Capacity = Readonly<{totalBytes:number;freeBytes:number;usedBytes:number;otherDownloadsBytes:number}>;
+export type PendingPlay = Readonly<{playId:string;itemId:string;positionMs:number;ended:boolean;observedMs:number}>;
 export type NativeDownloadsBridge = Readonly<{
   bind(scope:DownloadScope):Promise<string>;
   release(lease:string):Promise<void>;
@@ -73,6 +74,7 @@ export class DesktopDownloadStore {
     catch(error){store.dispose();if(signal?.aborted||!isCurrent())return aborted();throw downloadFailure(error);}
   }
   private guard(signal?:AbortSignal){if(this.disposed||!this.isCurrent()||signal?.aborted)aborted();}
+  assertCurrent(signal?:AbortSignal):void{this.guard(signal);}
   async request<T>(operation:Readonly<Record<string,unknown>>,kind:string,parse:(value:unknown)=>T,signal?:AbortSignal):Promise<T>{
     this.guard(signal);
     try{
@@ -109,5 +111,17 @@ export class DesktopDownloadStore {
     if(bytes.byteLength>4194304)return Promise.reject(new Error('invalid_command'));
     return this.request({action:'saveArtwork',id:entry.id,expectedRevision:entry.revision,mime,bytes:Array.from(bytes)},'entry',parseLocalDownload,signal);
   }
+  installReceiptKey(keyId:string,publicKey:string,signal?:AbortSignal){return this.request({action:'receiptKey',keyId,publicKey},'done',()=>undefined,signal);}
+  saveReceipt(entryId:string,receipt:DownloadReceipt,signal?:AbortSignal){
+    const {receiptId,keyId,algorithm,payload,signature,revision}=receipt;
+    return this.request({action:'receipt',id:digest(entryId),envelope:{receiptId,keyId,algorithm,payload,signature,revision}},'done',()=>undefined,signal);
+  }
+  revoke(receiptId:string,signal?:AbortSignal){return this.request({action:'revoke',receiptId:id(receiptId)},'done',()=>undefined,signal);}
+  serverPresence(entry:Pick<LocalDownload,'id'|'revision'>,onServer:boolean,signal?:AbortSignal){return this.request({action:'serverPresence',id:entry.id,expectedRevision:entry.revision,onServer},'entry',parseLocalDownload,signal);}
+  pendingPlays(signal?:AbortSignal):Promise<readonly PendingPlay[]>{return this.request({action:'pendingPlays'},'pendingPlays',value=>{
+    if(!Array.isArray(value)||value.length>100)return invalid();
+    return Object.freeze(value.map(raw=>{const v=object(raw);return Object.freeze({playId:id(v.playId),itemId:id(v.itemId),positionMs:integer(v.positionMs),ended:boolean(v.ended),observedMs:integer(v.observedMs)});}));
+  },signal);}
+  acknowledgePlay(play:Pick<PendingPlay,'playId'|'observedMs'>,signal?:AbortSignal){return this.request({action:'acknowledgePlay',playId:id(play.playId),observedMs:integer(play.observedMs)},'done',()=>undefined,signal);}
   dispose(){if(this.disposed)return;this.disposed=true;const lease=this.lease;this.lease='';if(lease)void this.bridge.release(lease).catch(()=>{});}
 }

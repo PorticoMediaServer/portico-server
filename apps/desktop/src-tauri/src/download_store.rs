@@ -935,7 +935,7 @@ impl DownloadStore {
         self.connection.execute("INSERT INTO download_receipts VALUES(?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(entry_id) DO UPDATE SET receipt_id=excluded.receipt_id,key_id=excluded.key_id,payload=excluded.payload,signature=excluded.signature,revision=excluded.revision,expires_ms=excluded.expires_ms",params![id,receipt.receipt_id,receipt.key_id,receipt.payload,receipt.signature,receipt.revision as i64,expires]).map_err(unavailable)?;
         Ok(())
     }
-    pub fn revoke(&self, viewer: &DownloadViewer, receipt_id: &str) -> Result<()> {
+    pub fn revoke(&mut self, viewer: &DownloadViewer, receipt_id: &str) -> Result<()> {
         if !identifier(receipt_id) {
             return Err(Error::InvalidCommand);
         }
@@ -945,6 +945,8 @@ impl DownloadStore {
                 params![self.ensure_scope(viewer)?, receipt_id],
             )
             .map_err(unavailable)?;
+        let entry_id:Option<String>=self.connection.query_row("SELECT r.entry_id FROM download_receipts r JOIN download_entries e ON e.id=r.entry_id WHERE e.scope_id=?1 AND r.receipt_id=?2",params![scope(viewer)?,receipt_id],|r|r.get(0)).optional().map_err(unavailable)?;
+        if let Some(id)=entry_id{let entry=self.entry(viewer,&id)?;self.remove(viewer,&id,entry.revision)?;}
         Ok(())
     }
     /// Native caller passes this path directly to the constrained offline mpv load. Never an IPC
@@ -1360,6 +1362,9 @@ impl DownloadStore {
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(unavailable)
     }
+    pub fn retire_confirmations(&mut self) {
+        self.previews.clear();
+    }
     pub fn preview_other_profiles(
         &mut self,
         viewer: &DownloadViewer,
@@ -1589,6 +1594,16 @@ mod tests {
         }
     }
     #[test]
+    fn another_app_connection_cannot_race_the_file_journal() {
+        let root=root();let mut first=DownloadStore::open(&root,&rules()).unwrap();
+        let entry=first.enroll(enrollment(b"first")).unwrap();
+        assert!(DownloadStore::open(&root,&rules()).is_err());
+        let entry=first.append(&viewer(),&entry.id,entry.revision,0,b"first").unwrap();
+        assert_eq!(entry.bytes_done,5);
+        drop(first);let reopened=DownloadStore::open(&root,&rules()).unwrap();assert_eq!(reopened.entry(&viewer(),&entry.id).unwrap().bytes_done,5);
+        drop(reopened);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     fn durable_chunks_recover_and_ready_requires_exact_hash_then_signed_viewer_receipt() {
         let root = root();
         let mut store = DownloadStore::open(&root, &rules()).unwrap();
@@ -1621,10 +1636,9 @@ mod tests {
         };
         assert!(store.playback_file(&other, &entry.id).is_err());
         store.revoke(&viewer(), "receipt").unwrap();
-        assert_eq!(
-            store.playback_file(&viewer(), &entry.id).unwrap_err(),
-            Error::InvalidReceipt
-        );
+        assert!(store.entry(&viewer(), &entry.id).is_err());
+        assert!(!store.path(&entry.id,true).unwrap().exists());
+        assert!(store.playback_file(&viewer(), &entry.id).is_err());
         drop(store);
         std::fs::remove_dir_all(root).unwrap();
     }

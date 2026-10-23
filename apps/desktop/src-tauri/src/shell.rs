@@ -34,10 +34,18 @@ async fn desktop_downloads_release(window:WebviewWindow,state:tauri::State<'_,Do
     tauri::async_runtime::spawn_blocking(move||{state.lock().map_err(|_|Error::DownloadsUnavailable)?.as_mut().map_err(|e|*e)?.release(&lease);Ok(())}).await.map_err(|_|Error::DownloadsUnavailable)?
 }
 #[tauri::command]
-async fn desktop_downloads_command(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,lease:String,operation:crate::download_commands::DownloadOperation)->Result<crate::download_commands::DownloadReply>{
+async fn desktop_downloads_command(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,engine:tauri::State<'_,EngineState>,lease:String,operation:crate::download_commands::DownloadOperation)->Result<crate::download_commands::DownloadReply>{
     caller(&window)?;
     let state=state.0.clone();
-    tauri::async_runtime::spawn_blocking(move||state.lock().map_err(|_|Error::DownloadsUnavailable)?.as_mut().map_err(|e|*e)?.execute(&lease,operation)).await.map_err(|_|Error::DownloadsUnavailable)?
+    let native=engine.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().ok().cloned();
+    tauri::async_runtime::spawn_blocking(move||{
+        let mut guard=state.lock().map_err(|_|Error::DownloadsUnavailable)?;let session=guard.as_mut().map_err(|e|*e)?;
+        let can_remove=matches!(&operation,crate::download_commands::DownloadOperation::Revoke{..}|crate::download_commands::DownloadOperation::Remove{..}|crate::download_commands::DownloadOperation::GroupAction{..});
+        if can_remove {if let Some(native)=native.as_ref(){let _=session.record_observation(&native.observation(),true);}}
+        let reply=session.execute(&lease,operation)?;
+        if can_remove&&!session.active_file_valid(){retire_offline(session,native.as_ref())?;}
+        Ok(reply)
+    }).await.map_err(|_|Error::DownloadsUnavailable)?
 }
 #[derive(serde::Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
