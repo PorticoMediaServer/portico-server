@@ -2,11 +2,21 @@ import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 const origin=process.env.PORTICO_REVIEW_ORIGIN,commit=process.env.PORTICO_REVIEW_COMMIT;
 const {chromium}=await import(process.env.TMPDIR+'/browser/node_modules/playwright/index.mjs');
-let browser,page,step='launch',credentialPhase=false;const consoleEvents=[],requests=[],responses=[];const pendingResponses=[];const out=process.env.PORTICO_RUNNER_OUTPUT;const failures=[];
+let browser,page,step='launch',credentialPhase=false;const consoleEvents=[],requests=[],responses=[];const pendingResponses=[];const out=process.env.PORTICO_RUNNER_OUTPUT;const failures=[];const authFacts={profileSelectionPOSTOccurred:false,me:[],refresh:[]};const pendingAuth=[];const safeRole=value=>['account','owner','admin','member'].includes(value)?value:'unobserved';
 try {
  browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || '/usr/bin/chromium',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
  const context=await browser.newContext({viewport:{width:1440,height:900}});page=await context.newPage();page.setDefaultTimeout(30000);page.on('console',m=>{if(!credentialPhase)consoleEvents.push({type:m.type(),text:m.text().slice(0,3000)});});page.on('request',r=>{const u=new URL(r.url());requests.push({method:r.method(),origin:u.origin,path:u.pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi,':id'),type:r.resourceType()});});
  page.on('response',r=>{if(!credentialPhase && ['document','script'].includes(r.request().resourceType()))pendingResponses.push((async()=>{const u=new URL(r.url());const body=await r.body();responses.push({origin:u.origin,path:u.pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi,':id'),status:r.status(),contentType:r.headers()['content-type'],sha256:createHash('sha256').update(body).digest('hex')});})().catch(()=>{}));if(r.status()>=400){const u=new URL(r.url());if(u.origin===origin)failures.push({path:u.pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi,':id'),status:r.status()});}});
+ page.on('request',request=>{
+  const path=new URL(request.url()).pathname;
+  if(request.method()==='POST'&&(/^\/v1\/direct\/profiles\/.+\/select$/.test(path)||path==='/v1/direct/profile-switch'))authFacts.profileSelectionPOSTOccurred=true;
+  if(path==='/v1/me'||path==='/v1/auth/refresh')pendingAuth.push((async()=>{const headers=await request.allHeaders();authFacts[path==='/v1/me'?'me':'refresh'].push({utc:new Date().toISOString(),authorizationPresent:!!headers.authorization,cookiePresent:!!headers.cookie});})().catch(()=>{authFacts.requestMetadataUnavailable=true;}));
+ });
+ page.on('response',response=>{
+  const path=new URL(response.url()).pathname;if(!['/v1/direct/sign-in','/v1/me','/v1/auth/refresh'].includes(path))return;
+  const entry={utc:new Date().toISOString(),path,status:response.status()};(authFacts.responses??=[]).push(entry);
+  if(path!=='/v1/me')pendingAuth.push((async()=>{const body=await response.json();entry.grantRole=safeRole(body.session?.viewer?.role??body.viewer?.role);if(path==='/v1/direct/sign-in'){entry.accountScoped=body.session?.viewer?.role==='account';entry.profilesCount=Array.isArray(body.profiles)?body.profiles.length:null;}})().catch(()=>{authFacts.responseMetadataUnavailable=true;}));
+ });
  page.on('pageerror',()=>failures.push({pageError:true}));
  step='source-cutoff';const stamp=await(await page.request.get(origin+'/portico-build.json')).json();if(stamp.commit!==commit || (stamp.serverCommit && stamp.serverCommit!==commit))throw Error('source-cutoff');
  step='signed-out-root';await page.goto(origin+'/',{waitUntil:'networkidle'});
@@ -40,7 +50,7 @@ finally {
    await page.locator('input').evaluateAll(nodes=>nodes.forEach(node=>{node.value='';node.removeAttribute('value');}));
    const document=await page.evaluate(()=>{const clone=document.documentElement.cloneNode(true);clone.querySelectorAll('input,textarea').forEach(node=>{node.removeAttribute('value');node.textContent='';});return clone.outerHTML;});
    fs.writeFileSync(out+'/failure-dom.log',document);
-   await Promise.allSettled(pendingResponses);console.log(JSON.stringify({diagnosis:{responses,visibility:await page.evaluate(()=>document.visibilityState),url:new URL(page.url()).origin+new URL(page.url()).pathname,title:await page.title(),console:consoleEvents,requests,failures}}));try{await page.screenshot({path:out+'/final-page.png',timeout:5000});}catch{console.log('Diagnostic screenshot unavailable; DOM and console retained.');}
+   await Promise.allSettled([...pendingResponses,...pendingAuth]);const cookies=await browser.contexts()[0].cookies();authFacts.cookies={present:cookies.length>0,flags:cookies.map(c=>({secure:c.secure,httpOnly:c.httpOnly,sameSite:c.sameSite}))};console.log(JSON.stringify({diagnosis:{authFacts,responses,visibility:await page.evaluate(()=>document.visibilityState),url:new URL(page.url()).origin+new URL(page.url()).pathname,title:await page.title(),console:consoleEvents,requests,failures}}));try{await page.screenshot({path:out+'/final-page.png',timeout:5000});}catch{console.log('Diagnostic screenshot unavailable; DOM and console retained.');}
   }catch{console.log('Diagnostic page unavailable after browser failure');}
  }
  if(browser)await browser.close();
