@@ -86,12 +86,16 @@ export class BrowseController {
     return parseBrowseFacets(raw, field);
   }
   async count(predicates: readonly BrowseNode[], signal: AbortSignal) {
+    return (await this.counts([{id: 'draft', predicates}], signal))[0];
+  }
+  async counts(groups: readonly Readonly<{id: string; predicates: readonly BrowseNode[]}>[], signal: AbortSignal) {
     const {capabilities: caps, sort} = this.state;
     if (!caps || !sort || !this.current()) throw closed();
-    const epoch = this.epoch, body = this.builder(caps, predicates, sort).build();
-    const raw = await this.api.request(browseCountsPath(this.source.libraryId), 'POST', browseCountsRequest(this.source.pivot, [{id: 'draft', query: body.query ?? null}]), signal);
+    const epoch = this.epoch;
+    const queries = groups.map(group => ({id: group.id, query: this.builder(caps, group.predicates, sort).build().query ?? null}));
+    const raw = await this.api.request(browseCountsPath(this.source.libraryId), 'POST', browseCountsRequest(this.source.pivot, queries), signal);
     if (!this.current() || epoch !== this.epoch || signal.aborted) throw closed();
-    return parseBrowseCounts(raw, ['draft'])[0];
+    return parseBrowseCounts(raw, groups.map(group => group.id));
   }
   /** The same server query used by pages, counts, saved views and whole-group Play. */
   query() {

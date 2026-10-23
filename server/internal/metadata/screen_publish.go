@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/metadatalanguage"
 	"portico.local/server/internal/metadataprovider"
 )
 
@@ -110,6 +111,7 @@ func (s *Service) publishScreen(ctx context.Context, p *screenClaim, cs []screen
 func (s *Service) applyScreenRecord(ctx context.Context, tx *sql.Tx, p *screenClaim, c screenCandidate) error {
 	b := p.Base
 	r := c.Record
+	r.Language = metadatalanguage.Primary(r.Language)
 	id := r.Identity
 	if b.TargetKind == "show" && b.ProviderID == "" {
 		if id.Provider == "anilist" {
@@ -218,6 +220,9 @@ func (s *Service) applyScreenRecord(ctx context.Context, tx *sql.Tx, p *screenCl
 	}
 	relationOnly := b.ItemKind == "episode" && id.Type == "anime"
 	fields := screenRecordFields(r, b.Region)
+	// Unknown original language withdraws the prior fact even during a
+	// fill-missing refresh; it is not an editable descriptive field.
+	fields["language"] = r.Language
 	if relationOnly {
 		fields = map[string]any{"workRelationship": r.Identity, "relations": r.Relations, "ordering": r.Coordinates}
 	}
@@ -409,12 +414,23 @@ func screenCompanyFacts(relations []metadataprovider.ScreenRelation) (studios, n
 	return studios, networks
 }
 func (s *Service) screenField(ctx context.Context, tx *sql.Tx, b screenBase, field string, value any, provider, sourceKind, url string, confidence float64, stamp string, selection int64, publication string) (bool, error) {
+	if field == "language" {
+		if provider != "tmdb" && provider != "tvdb" && provider != "anilist" {
+			return false, nil
+		}
+		text, _ := value.(string)
+		value = metadatalanguage.Primary(text)
+		if value == "" {
+			_, err := tx.ExecContext(ctx, `DELETE FROM screen_metadata_fields WHERE target_kind=? AND target_id=? AND field='language'`, b.TargetKind, b.Entity)
+			return false, err
+		}
+	}
 	var prior, oldKind string
 	err := tx.QueryRowContext(ctx, `SELECT value,source_kind FROM screen_metadata_fields WHERE target_kind=? AND target_id=? AND field=?`, b.TargetKind, b.Entity, field).Scan(&prior, &oldKind)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, err
 	}
-	if err == nil && sourceKind != "nfo" && (oldKind == "nfo" || b.RefreshMode == "fill_missing") {
+	if field != "language" && err == nil && sourceKind != "nfo" && (oldKind == "nfo" || b.RefreshMode == "fill_missing") {
 		return false, nil
 	}
 	raw := screenRaw(value)

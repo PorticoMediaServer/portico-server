@@ -10,7 +10,7 @@ import (
 // StreamDetailVersion is bumped whenever inspect learns a new fact. Delivery
 // planning refreshes an asset whose stored detail is older, so a library scanned
 // before a fact existed gains it the first time the title is played.
-const StreamDetailVersion = 4
+const StreamDetailVersion = 5
 
 // Dynamic range families. They name what a display has to be able to do, not the
 // transfer function: Dolby Vision profile 8.1 is "dolby_vision" with an HDR10
@@ -247,9 +247,8 @@ func streamDetail(kind, codec string, width, height int, s probeStreamDetail) St
 					d.DolbyVisionProfile, d.DolbyVisionLevel = side.Profile, side.Level
 					d.DolbyVisionCompatibility = side.Compatibility
 					d.EnhancementLayer = side.Enhancement != 0
-					d.DolbyVisionRPU = side.RPU != 0
-					d.DolbyVisionBaseLayer = side.BaseLayer != 0
-					d.DolbyVisionMetadataKnown = true
+					// RPU/base presence flags here belong to the configuration
+					// record. AnalyzePlayback observes actual decoded packets.
 				}
 			}
 		}
