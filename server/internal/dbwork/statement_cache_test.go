@@ -156,7 +156,7 @@ func TestStatementCacheCanceledAndFailedQueriesAreSafeToReuse(t *testing.T) {
 func TestStatementCacheSchemaConfigurationRollbackAndAuthority(t *testing.T) {
 	_, conn := statementCacheDB(t)
 	ctx := context.Background()
-	for _, query := range []string{`CREATE TABLE accounts(id INTEGER PRIMARY KEY, enabled INTEGER)`, `INSERT INTO accounts VALUES(1,1)`} {
+	for _, query := range []string{`CREATE TABLE accounts(id INTEGER PRIMARY KEY, enabled INTEGER)`, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(1,1)`} {
 		if _, err := conn.ExecContext(ctx, query); err != nil {
 			t.Fatal(err)
 		}

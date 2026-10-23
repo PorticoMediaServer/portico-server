@@ -52,8 +52,7 @@ export class IdentityClient{
   return parseDevices(await this.api.request<RouteResponse<"get_devices">>(routePath("get_devices"),'GET',undefined,signal));
  }
  /** Tells the server which device this is, at sign-in. It refreshes the record when the
-  * installation is already known and never overwrites a name a person gave the device. Under an
-  * owner's approve-new-devices policy a new arrival is refused with `device_approval_pending`. */
+  * installation is already known and never overwrites a name a person gave the device. */
  async registerDevice(device:DeviceDescription):Promise<Device>{return parseDevice(await this.api.request<RouteResponse<"post_device">>(routePath("post_device"),'POST',device));}
  /** Ties this viewing session to the device, so "sign this device out" knows what to end. */
  async bindDevice(deviceId:string,installationId:string,sessionFamilyId:string):Promise<void>{await this.api.request(encodedRoutePath("post_device_session_binding", {"id": id(deviceId)}),'POST',routeBody("post_device_session_binding", {installationId,sessionFamilyId}));}
@@ -62,8 +61,7 @@ export class IdentityClient{
  async rememberedAccounts(installationId:string,signal?:AbortSignal):Promise<readonly RememberedAccount[]>{return parseRememberedAccounts(await this.api.request<RouteResponse<"post_auth_remembered_accounts">>(routePath("post_auth_remembered_accounts"),'POST',routeBody("post_auth_remembered_accounts", {installationId}),signal));}
  async rememberAccount(installationId:string,automaticSignIn:boolean):Promise<readonly RememberedAccount[]>{return parseRememberedAccounts(await this.api.request<RouteResponse<"post_direct_remembered_accounts">>(routePath("post_direct_remembered_accounts"),'POST',routeBody("post_direct_remembered_accounts", {installationId,automaticSignIn})));}
  async forgetAccount(accountId:string,installationId:string):Promise<void>{await this.api.request(encodedRoutePath("delete_direct_remembered_account", {"accountId": id(accountId)}),'DELETE',routeBody("delete_direct_remembered_account", {installationId}));}
- async editDevice(deviceId:string,edit:{name?:string;trusted?:boolean;rememberAccount?:boolean}):Promise<Device>{return parseDevice(await this.api.request<RouteResponse<"patch_device">>(encodedRoutePath("patch_device", {"id": id(deviceId)}),'PATCH',edit));}
- async approveDevice(deviceId:string,approved:boolean):Promise<Device>{return parseDevice(await this.api.request<RouteResponse<"post_device_approval">>(encodedRoutePath("post_device_approval", {"id": id(deviceId)}),'POST',routeBody("post_device_approval", {approved})));}
+ async editDevice(deviceId:string,edit:{name?:string;rememberAccount?:boolean}):Promise<Device>{return parseDevice(await this.api.request<RouteResponse<"patch_device">>(encodedRoutePath("patch_device", {"id": id(deviceId)}),'PATCH',edit));}
  async signOutDevice(deviceId:string):Promise<void>{await this.api.request(encodedRoutePath("delete_device_sessions", {"id": id(deviceId)}),'DELETE');}
  async removeDevice(deviceId:string):Promise<void>{await this.api.request(encodedRoutePath("delete_device", {"id": id(deviceId)}),'DELETE');}
  /** Ends every session of the account (C45: no password; the signed-in session is the authority). */
@@ -80,12 +78,10 @@ export class IdentityClient{
  async disableTwoFactor(password:string,code:string):Promise<void>{await this.api.request(routePath("delete_direct_two_factor"),'DELETE',routeBody("delete_direct_two_factor", {password,code}));}
 }
 
-/** Registers this device and binds the session in one step, after a direct sign-in. Returns
- * `pending` when the owner must approve the device first, `denied` when the owner turned it away
- * (`device_denied`); any other failure is `skipped`, because a device list that is briefly
- * incomplete must never cost someone their sign-in. */
-export async function announceDevice(identity:IdentityClient,device:DeviceDescription,sessionFamilyId:string):Promise<'bound'|'pending'|'denied'|'skipped'>{
+/** Registers this device and verifies the issued session binding. A briefly unavailable
+ * device list never costs someone their sign-in. */
+export async function announceDevice(identity:IdentityClient,device:DeviceDescription,sessionFamilyId:string):Promise<'bound'|'skipped'>{
  if(!validInstallationId(device.installationId))return 'skipped';
  try{const record=await identity.registerDevice(device);await identity.bindDevice(record.id,device.installationId,sessionFamilyId);return 'bound';}
- catch(e){const code=(e as {code?:string}|null)?.code;return code==='device_approval_pending'?'pending':code==='device_denied'?'denied':'skipped';}
+ catch{return 'skipped';}
 }

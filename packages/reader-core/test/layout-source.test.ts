@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {planFixedLayout, spreadFits} from '../src/layout.ts';
-import {readRange, sourceFromBlob, MAX_READER_RANGE_BYTES} from '../src/source.ts';
+import {readRange, sourceFromBlob, MAX_READER_RANGE_BYTES, validateSource} from '../src/source.ts';
 const base = {format: 'cbz' as const, viewport: {width: 1180, height: 820}, pageCount: 6, twoPages: true,
   firstPageAlone: true, direction: 'ltr' as const, fit: 'auto' as const};
 test('cover offset, RTL visual ordering, next/previous bounds and narrow/vertical singles', () => {
@@ -43,4 +43,15 @@ test('drawn compact sideways PDF/manga spreads differ from LTR comic width singl
   const comic = planFixedLayout({...base,viewport,page:2});
   assert.deepEqual(comic.pages,[2]); assert.equal(comic.fit,'width');
   assert.deepEqual(planFixedLayout({...base,viewport,page:2,twoPages:false,direction:'rtl'}).pages,[2]);
+});
+
+test('sequential source is genuine from-start access and cannot masquerade as ranges',async()=>{
+  const source={id:'sequential-publication',revision:'actual-current-revision',size:3,sequential:{async open(signal:AbortSignal){
+    if(signal.aborted)throw new Error('aborted');return new ReadableStream<Uint8Array>({start(c){c.enqueue(new Uint8Array([1,2,3]));c.close();}});
+  }}};
+  validateSource(source);
+  const reader=(await source.sequential.open(new AbortController().signal)).getReader();assert.deepEqual([...(await reader.read()).value!],[1,2,3]);
+  await assert.rejects(readRange(source,{start:0,endExclusive:1},new AbortController().signal),{code:'invalid_source'});
+  assert.throws(()=>validateSource({...source,read:async()=>new Uint8Array([1])}),{code:'invalid_source'});
+  const cancelled=new AbortController();cancelled.abort();await assert.rejects(source.sequential.open(cancelled.signal));
 });

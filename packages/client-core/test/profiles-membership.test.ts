@@ -11,7 +11,7 @@ test('profile DTOs require one primary and at most eight unique active profiles'
  const sorted=parseManagedProfiles([p(2),p(),p(1)]);assert.equal(sorted[0].id,'profile-0');assert.ok(Object.isFrozen(sorted));
 });
 test('Direct account DTO does not derive administration from a selected child profile',()=>{
- const raw={authority:'local',serverId:'server',account:{id:'account',username:'member',primaryProfileId:'profile-0',role:'member',revision:1,disabled:false,allowedLibraries:[]},profiles:[p(),p(1)],canManage:false};
+ const raw={authority:'local',serverId:'server',account:{id:'account',username:'member',primaryProfileId:'profile-0',role:'member',revision:1,disabled:false,allowedLibraries:[]},profiles:[p(),p(1)],canManage:false,capabilities:{manageAccount:false,managePeople:false,manageServer:false,manageSignIn:false}};
  assert.equal(parseDirectSnapshot(raw,{accountId:'account',serverId:'server'}).canManage,false);
  assert.throws(()=>parseDirectSnapshot(raw,{accountId:'another'}));assert.throws(()=>parseDirectSnapshot(raw,{authority:'hosted'}));
  assert.throws(()=>parseDirectSnapshot({...raw,account:{...raw.account,primaryProfileId:'profile-1'}}));
@@ -56,7 +56,7 @@ test('a profile list read for display leaves out one unreadable profile and neve
 });
 test('sign-in and the account snapshot still refuse a profile list with an unreadable profile in it',async()=>{
  const account={id:'account',username:'member',primaryProfileId:'profile-0',role:'member',revision:1,disabled:false,allowedLibraries:[]};
- const raw={authority:'local',serverId:'server',account,profiles:[p(),{...p(1),pinRequired:'no'}],canManage:false};
+ const raw={authority:'local',serverId:'server',account,profiles:[p(),{...p(1),pinRequired:'no'}],canManage:false,capabilities:{manageAccount:false,managePeople:false,manageServer:false,manageSignIn:false}};
  // Left out, the second profile would make this look like an account with one unprotected profile.
  assert.throws(()=>parseDirectSnapshot(raw));assert.throws(()=>parseDirectSnapshot(raw,{accountId:'account',serverId:'server'}));
  const local=new ManagedProfilesClient(apiFor(raw,[]),scope);

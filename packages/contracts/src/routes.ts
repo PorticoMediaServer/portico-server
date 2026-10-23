@@ -850,8 +850,6 @@ export const routes = [
     "errors": [
       "unauthorized",
       "password_change_required",
-      "device_approval_pending",
-      "device_denied",
       "not_permitted",
       "invalid_request",
       "internal"
@@ -1387,7 +1385,7 @@ export const routes = [
     "id": "get_admin_access_devices",
     "method": "GET",
     "path": "/v1/admin/access/devices",
-    "summary": "List members' devices and whether each is approved",
+    "summary": "List members' devices",
     "access": "admin_scope",
     "adminScope": "members",
     "requires": "admin",
@@ -1397,7 +1395,6 @@ export const routes = [
     "query": [
       "cursor",
       "limit",
-      "trust",
       "account",
       "sort"
     ],
@@ -1494,7 +1491,12 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "cursor",
-      "limit"
+      "limit",
+      "q",
+      "role",
+      "status",
+      "sort",
+      "direction"
     ],
     "errors": [
       "invalid_request",
@@ -3668,8 +3670,6 @@ export const routes = [
     "errors": [
       "unauthorized",
       "password_change_required",
-      "device_approval_pending",
-      "device_denied",
       "internal"
     ],
     "status": 200,
@@ -3730,8 +3730,6 @@ export const routes = [
     "errors": [
       "unauthorized",
       "password_change_required",
-      "device_approval_pending",
-      "device_denied",
       "not_permitted",
       "internal"
     ],
@@ -3751,8 +3749,6 @@ export const routes = [
     "errors": [
       "unauthorized",
       "password_change_required",
-      "device_approval_pending",
-      "device_denied",
       "internal"
     ],
     "status": 200,
@@ -3771,8 +3767,6 @@ export const routes = [
     "errors": [
       "unauthorized",
       "password_change_required",
-      "device_approval_pending",
-      "device_denied",
       "invalid_request",
       "internal"
     ],
@@ -3832,8 +3826,6 @@ export const routes = [
     "errors": [
       "unauthorized",
       "password_change_required",
-      "device_approval_pending",
-      "device_denied",
       "not_permitted",
       "internal"
     ],
@@ -7517,6 +7509,58 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_sign_in_move",
+    "method": "GET",
+    "path": "/v1/admin/sign-in/move",
+    "summary": "Manage the server sign-in move",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "get_sign_in_settings",
+    "method": "GET",
+    "path": "/v1/admin/sign-in",
+    "summary": "Manage the server sign-in move",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
     "id": "get_storage_mounts",
     "method": "GET",
     "path": "/v1/storage/mounts",
@@ -8966,32 +9010,6 @@ export const routes = [
     "admission": "admin"
   },
   {
-    "id": "list_member_access_tokens",
-    "method": "GET",
-    "path": "/v1/admin/access-tokens",
-    "summary": "List the personal access tokens members have made",
-    "access": "owner",
-    "requires": "session",
-    "lane": "default",
-    "cost": "page_sized",
-    "bodyLimit": 0,
-    "query": [
-      "cursor",
-      "limit",
-      "accountId"
-    ],
-    "errors": [
-      "unauthorized",
-      "not_permitted",
-      "session_required",
-      "invalid_request",
-      "administration_unavailable",
-      "internal"
-    ],
-    "status": 200,
-    "admission": "admin"
-  },
-  {
     "id": "list_missing_titles",
     "method": "GET",
     "path": "/v1/admin/missing-titles",
@@ -9581,6 +9599,28 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_admin_access_members_bulk",
+    "method": "POST",
+    "path": "/v1/admin/access/members/bulk",
+    "summary": "Change selected people in one transaction",
+    "access": "admin_scope",
+    "adminScope": "members",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "page_sized",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -10526,6 +10566,110 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "post_auth_move_code",
+    "method": "POST",
+    "path": "/v1/auth/move/code",
+    "summary": "Manage the server sign-in move",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_auth_move_local",
+    "method": "POST",
+    "path": "/v1/auth/move/local",
+    "summary": "Manage the server sign-in move",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_auth_move_password",
+    "method": "POST",
+    "path": "/v1/auth/move/password",
+    "summary": "Manage the server sign-in move",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_auth_move_portico",
+    "method": "POST",
+    "path": "/v1/auth/move/portico",
+    "summary": "Manage the server sign-in move",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
     "id": "post_auth_owner_reset_request",
     "method": "POST",
     "path": "/v1/auth/owner-reset/request",
@@ -10587,6 +10731,12 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "rate_limited",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "access_refused",
+      "account_move_waiting",
+      "move_collision",
+      "move_code_invalid",
       "internal"
     ],
     "status": 200,
@@ -10747,32 +10897,10 @@ export const routes = [
     "bodyLimit": 4096,
     "errors": [
       "unauthorized",
-      "device_approval_pending",
-      "device_denied",
       "invalid_request",
       "internal"
     ],
     "status": 201,
-    "admission": "auth"
-  },
-  {
-    "id": "post_device_approval",
-    "method": "POST",
-    "path": "/v1/devices/{id}/approval",
-    "summary": "Approve or deny a pending device",
-    "access": "device",
-    "requires": "admin",
-    "lane": "security",
-    "cost": "constant",
-    "bodyLimit": 4096,
-    "errors": [
-      "unauthorized",
-      "not_permitted",
-      "invalid_request",
-      "not_found",
-      "internal"
-    ],
-    "status": 200,
     "admission": "auth"
   },
   {
@@ -10787,13 +10915,54 @@ export const routes = [
     "bodyLimit": 4096,
     "errors": [
       "unauthorized",
-      "device_approval_pending",
       "invalid_request",
       "not_found",
       "internal"
     ],
     "status": 204,
     "admission": "auth"
+  },
+  {
+    "id": "post_direct_member_device_sign_out",
+    "method": "POST",
+    "path": "/v1/direct/members/{id}/devices/{deviceId}/sign-out",
+    "summary": "Sign out one or all devices belonging to a person",
+    "access": "admin_scope",
+    "adminScope": "members",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_direct_member_devices_sign_out",
+    "method": "POST",
+    "path": "/v1/direct/members/{id}/devices/sign-out",
+    "summary": "Sign out one or all devices belonging to a person",
+    "access": "admin_scope",
+    "adminScope": "members",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "admission": "security-fence"
   },
   {
     "id": "post_direct_members",
@@ -10967,8 +11136,6 @@ export const routes = [
     "errors": [
       "unauthorized",
       "password_change_required",
-      "device_approval_pending",
-      "device_denied",
       "not_permitted",
       "invalid_request",
       "request_in_progress",
@@ -11127,8 +11294,6 @@ export const routes = [
     "errors": [
       "unauthorized",
       "password_change_required",
-      "device_approval_pending",
-      "device_denied",
       "not_permitted",
       "internal"
     ],
@@ -12649,6 +12814,136 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "post_sign_in_move_cancel",
+    "method": "POST",
+    "path": "/v1/admin/sign-in/move/{id}/cancel",
+    "summary": "Manage the server sign-in move",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_sign_in_move_codes",
+    "method": "POST",
+    "path": "/v1/admin/sign-in/move/codes",
+    "summary": "Manage the server sign-in move",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_sign_in_move_confirm",
+    "method": "POST",
+    "path": "/v1/admin/sign-in/move/confirm",
+    "summary": "Manage the server sign-in move",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_sign_in_move_finish",
+    "method": "POST",
+    "path": "/v1/admin/sign-in/move/{id}/finish",
+    "summary": "Manage the server sign-in move",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_sign_in_move_preview",
+    "method": "POST",
+    "path": "/v1/admin/sign-in/move/preview",
+    "summary": "Manage the server sign-in move",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
     "id": "post_storage_mounts",
     "method": "POST",
     "path": "/v1/storage/mounts",
@@ -13135,29 +13430,6 @@ export const routes = [
     "admission": "admin"
   },
   {
-    "id": "put_admin_access_device_trust",
-    "method": "PUT",
-    "path": "/v1/admin/access/devices/{id}/trust",
-    "summary": "Approve a member's device, block it, or put it back to waiting",
-    "access": "admin_scope",
-    "adminScope": "members",
-    "requires": "admin",
-    "lane": "security",
-    "cost": "constant",
-    "bodyLimit": 4096,
-    "errors": [
-      "unauthorized",
-      "not_permitted",
-      "invalid_request",
-      "not_found",
-      "revision_mismatch",
-      "internal",
-      "revision_required"
-    ],
-    "status": 200,
-    "admission": "security-fence"
-  },
-  {
     "id": "put_admin_access_invitation",
     "method": "PUT",
     "path": "/v1/admin/access/invitations/{id}",
@@ -13534,8 +13806,6 @@ export const routes = [
     "errors": [
       "unauthorized",
       "password_change_required",
-      "device_approval_pending",
-      "device_denied",
       "not_permitted",
       "invalid_request",
       "revision_mismatch",
@@ -14583,28 +14853,6 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
-    ],
-    "status": 200,
-    "admission": "security-fence"
-  },
-  {
-    "id": "revoke_member_access_token",
-    "method": "DELETE",
-    "path": "/v1/admin/access-tokens/{id}",
-    "summary": "Revoke a member's personal access token",
-    "access": "owner",
-    "requires": "session",
-    "lane": "security",
-    "cost": "constant",
-    "bodyLimit": 0,
-    "errors": [
-      "unauthorized",
-      "not_permitted",
-      "session_required",
-      "invalid_request",
-      "not_found",
-      "administration_unavailable",
       "internal"
     ],
     "status": 200,
@@ -17642,6 +17890,8 @@ export const routePaths = {
   "get_shows_id_recommendations": "/v1/shows/{id}/recommendations",
   "get_shows_id_seasons": "/v1/shows/{id}/seasons",
   "get_shows_screen_metadata": "/v1/shows/{id}/metadata/screen",
+  "get_sign_in_move": "/v1/admin/sign-in/move",
+  "get_sign_in_settings": "/v1/admin/sign-in",
   "get_storage_mounts": "/v1/storage/mounts",
   "get_storage_operations_id": "/v1/storage/operations/{id}",
   "get_storage_rclone_bundled": "/v1/storage/rclone/bundled",
@@ -17689,7 +17939,6 @@ export const routePaths = {
   "list_live_source_channels": "/v1/admin/live/sources/{id}/channels",
   "list_live_source_groups": "/v1/admin/live/sources/{id}/groups",
   "list_live_sources": "/v1/admin/live-sources",
-  "list_member_access_tokens": "/v1/admin/access-tokens",
   "list_missing_titles": "/v1/admin/missing-titles",
   "list_playback_failure_memory": "/v1/admin/playback/route-failures",
   "list_queue_entries": "/v1/queues/{id}/entries",
@@ -17718,6 +17967,7 @@ export const routePaths = {
   "post_admin_access_invitation_link": "/v1/admin/access/invitations/{id}/link",
   "post_admin_access_invitations": "/v1/admin/access/invitations",
   "post_admin_access_invitations_id_revoke": "/v1/admin/access/invitations/{id}/revoke",
+  "post_admin_access_members_bulk": "/v1/admin/access/members/bulk",
   "post_admin_background_pause": "/v1/admin/maintenance/background-pause",
   "post_admin_backups": "/v1/admin/backups",
   "post_admin_backups_restore": "/v1/admin/backups/restore",
@@ -17762,6 +18012,10 @@ export const routePaths = {
   "post_albums_id_metadata_musicbrainz_policy": "/v1/albums/{id}/metadata/musicbrainz/policy",
   "post_albums_id_metadata_musicbrainz_retry": "/v1/albums/{id}/metadata/musicbrainz/retry",
   "post_albums_id_metadata_musicbrainz_search": "/v1/albums/{id}/metadata/musicbrainz/search",
+  "post_auth_move_code": "/v1/auth/move/code",
+  "post_auth_move_local": "/v1/auth/move/local",
+  "post_auth_move_password": "/v1/auth/move/password",
+  "post_auth_move_portico": "/v1/auth/move/portico",
   "post_auth_owner_reset_request": "/v1/auth/owner-reset/request",
   "post_auth_owner_reset_verify": "/v1/auth/owner-reset/verify",
   "post_auth_portico_return_exchange": "/v1/auth/portico-return/exchange",
@@ -17773,8 +18027,9 @@ export const routePaths = {
   "post_client_log": "/v1/diagnostics/client-logs",
   "post_collections_id_items_batch": "/v1/collections/{id}/items:batch",
   "post_device": "/v1/devices",
-  "post_device_approval": "/v1/devices/{id}/approval",
   "post_device_session_binding": "/v1/devices/{id}/sessions/bind",
+  "post_direct_member_device_sign_out": "/v1/direct/members/{id}/devices/{deviceId}/sign-out",
+  "post_direct_member_devices_sign_out": "/v1/direct/members/{id}/devices/sign-out",
   "post_direct_members": "/v1/direct/members",
   "post_direct_members_id_reset_code": "/v1/direct/members/{id}/reset-code",
   "post_direct_ownership": "/v1/direct/ownership",
@@ -17861,6 +18116,11 @@ export const routePaths = {
   "post_shows_id_metadata_screen_retry": "/v1/shows/{id}/metadata/screen/retry",
   "post_shows_id_metadata_screen_search": "/v1/shows/{id}/metadata/screen/search",
   "post_shows_id_metadata_tvdb_retry": "/v1/shows/{id}/metadata/tvdb/retry",
+  "post_sign_in_move_cancel": "/v1/admin/sign-in/move/{id}/cancel",
+  "post_sign_in_move_codes": "/v1/admin/sign-in/move/codes",
+  "post_sign_in_move_confirm": "/v1/admin/sign-in/move/confirm",
+  "post_sign_in_move_finish": "/v1/admin/sign-in/move/{id}/finish",
+  "post_sign_in_move_preview": "/v1/admin/sign-in/move/preview",
   "post_storage_mounts": "/v1/storage/mounts",
   "post_storage_mounts_id_actions": "/v1/storage/mounts/{id}/actions",
   "post_storage_sources_webdav": "/v1/storage/sources/webdav",
@@ -17878,7 +18138,6 @@ export const routePaths = {
   "preview_remote_live_source": "/v1/admin/live-sources/remote/preview",
   "prove_network_identity": "/v1/networking/identity-proof",
   "publish_remote_live_source": "/v1/admin/live-sources/remote/save",
-  "put_admin_access_device_trust": "/v1/admin/access/devices/{id}/trust",
   "put_admin_access_invitation": "/v1/admin/access/invitations/{id}",
   "put_admin_access_member_notes": "/v1/admin/access/members/{id}/notes",
   "put_admin_access_members_id_limits": "/v1/admin/access/members/{id}/limits",
@@ -17943,7 +18202,6 @@ export const routePaths = {
   "revoke_access_token": "/v1/me/access-tokens/{id}",
   "revoke_api_key": "/v1/admin/api-keys/{id}",
   "revoke_download_receipts": "/v1/downloads/receipts/revoke",
-  "revoke_member_access_token": "/v1/admin/access-tokens/{id}",
   "revoke_profile_downloads": "/v1/admin/downloads/revoke",
   "save_live_source": "/v1/admin/live-sources",
   "save_queue_as_playlist": "/v1/queues/{id}:save-as-playlist",

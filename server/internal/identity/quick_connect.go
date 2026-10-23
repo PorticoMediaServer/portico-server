@@ -366,7 +366,7 @@ func (s *Service) PollQuick(ctx context.Context, secret string) (Envelope, error
 	}
 	if status == "approved" && tokenHash == "" {
 		out, e := s.issueQuickTx(ctx, tx, id, cipher)
-		if errors.Is(e, ErrDevicePending) || errors.Is(e, ErrDeviceDenied) {
+		if errors.Is(e, ErrUnauthorized) {
 			// The server requires the owner to approve new devices, and this one
 			// is new (or was blocked). Its record is kept, so the owner has
 			// something to approve; rolling it back would leave the television

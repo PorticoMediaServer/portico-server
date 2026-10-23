@@ -37,7 +37,7 @@ func TestBrowseRoutesPublishAndExecuteTheVocabulary(t *testing.T) {
 	c.Fields(names["m1"].ID, map[string]any{"added_text": "2026-09-01T00:00:00.000Z"})
 	c.Fields(names["m2"].ID, map[string]any{"added_text": "2026-09-02T00:00:00.000Z"})
 	c.Genres(names["m1"].ID, "tmdb", "Action")
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1)`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1)`); err != nil {
 		t.Fatal(err)
 	}
 	c.Drain()

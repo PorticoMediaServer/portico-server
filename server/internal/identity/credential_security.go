@@ -109,7 +109,7 @@ func credentialBucketTx(ctx context.Context, tx *sql.Tx, account string) (string
 	claim, _ := ctx.Value(issuingDeviceKey{}).(issuingDevice)
 	if id := claim.registration.InstallationID; id != "" && account != "" {
 		var known bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_devices WHERE authority='local' AND account_id=? AND installation_id=? AND approval_state='approved')`, account, id).Scan(&known); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_devices WHERE authority='local' AND account_id=? AND installation_id=?)`, account, id).Scan(&known); err != nil {
 			return "", err
 		}
 		if known {
