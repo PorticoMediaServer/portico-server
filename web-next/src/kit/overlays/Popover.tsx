@@ -5,6 +5,14 @@ import {BottomSheet} from './BottomSheet';
 import {classes, focusElement, focusable, useDismissReason, useExclusiveAnchor, useInDialog, useOverlayKeys, usePhone, usePresence, useSurfaceFocus, useSurfaceMotion} from './shared';
 import type {AnchoredOverlayProps, OverlayChange, OverlayStyle} from './types';
 import styles from './overlays.module.css';
+import touchStyles from './touch-menu.module.css';
+
+/** select17: caller-supplied facts from the captured current item, without invented metadata. */
+export function TouchMenuTitle({title, artwork, kind, year}: {title: string; artwork?: ReactNode; kind?: string; year?: string}) {
+  return <span className={touchStyles.title}>{artwork && <span className={touchStyles.art}>{artwork}</span>}<span className={touchStyles.text}>
+    <b>{title}</b>{(kind || year) && <span className={touchStyles.facts}>{kind && <span>{kind}</span>}{year && <span>{year}</span>}</span>}
+  </span></span>;
+}
 
 export type PopoverProps = AnchoredOverlayProps & {role?: 'dialog' | 'menu'; onContentKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void; touchContext?: boolean};
 
@@ -41,7 +49,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
   return <RadixPopover.Root open={open} onOpenChange={value => { if (value === open) return; onOpenChange(value, reason.current); reason.current = 'action'; }} modal={modal || touchContext}>
     {trigger ? <RadixPopover.Trigger asChild ref={triggerElement} aria-haspopup={role} aria-controls={open ? `${id}-content` : undefined}>{trigger}</RadixPopover.Trigger> : <RadixPopover.Anchor virtualRef={anchor} />}
     {/* Exit presence must not leave the positioning wrapper as a pointer target. */}
-    {present && !superseded && <RadixPopover.Portal forceMount>{touchContext && spotlight && <div ref={scrimMotion} aria-hidden="true" style={{position: 'fixed', inset: 0, zIndex: 'var(--layer-menu)', pointerEvents: open ? 'auto' : 'none'}}>{[
+    {present && !superseded && <RadixPopover.Portal forceMount><div style={{display: 'contents'}}>{touchContext && spotlight && <div ref={scrimMotion} aria-hidden="true" style={{position: 'fixed', inset: 0, zIndex: 'var(--layer-menu)', pointerEvents: open ? 'auto' : 'none'}}>{[
       {left: 0, top: 0, right: 0, height: Math.max(0, spotlight.top)},
       {left: 0, top: spotlight.bottom, right: 0, bottom: 0},
       {left: 0, top: spotlight.top, width: Math.max(0, spotlight.left), height: spotlight.height},
@@ -66,7 +74,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
       {description !== undefined && <div id={`${id}-description`} className={styles.popoverDescription}>{description}</div>}
       {children}
       {touchContext && <RadixPopover.Arrow width={14} height={7} style={{fill: 'rgba(22,44,58,.97)'}} />}
-    </RadixPopover.Content></div></RadixPopover.Portal>}
+    </RadixPopover.Content></div></div></RadixPopover.Portal>}
   </RadixPopover.Root>;
 }
 
@@ -74,7 +82,7 @@ type RowExtras = {icon?: IconName; description?: ReactNode; selected?: boolean; 
 export type MenuRowProps = ButtonHTMLAttributes<HTMLButtonElement> & RowExtras;
 export const MenuRow = forwardRef<HTMLButtonElement, MenuRowProps>(function MenuRow({icon, description, selected, destructive = false, children, className, type = 'button', ...props}, ref) {
   return <button {...props} ref={ref} type={type} className={classes(styles.menuRow, className)} data-selected={selected || undefined} data-destructive={destructive || undefined} aria-pressed={props.role?.startsWith('menuitem') ? undefined : selected}>
-    {icon && <span className={styles.menuIcon}><Icon name={icon} size={18} /></span>}
+    {icon && <span data-menu-icon className={styles.menuIcon}><Icon name={icon} size={18} /></span>}
     <span className={styles.menuLabel}>{children}</span>
     {description !== undefined && <span className={styles.menuDescription}>{description}</span>}
     {selected && <Icon name="i-check" size={18} className={styles.menuCheck} />}
@@ -113,7 +121,7 @@ function EntryGroups({items, phone, touchContext = false}: {items: readonly Menu
     else groups.at(-1)!.items.push(item);
   }
   return <>{groups.filter(group => group.items.length || group.label !== undefined).map(group => <Fragment key={group.id}>
-    {!phone && group.separator && <MenuSeparator />}<MenuGroup label={group.label} ownerOnly={group.ownerOnly}>{group.items.map(item => <MenuItem style={touchContext && !phone ? {minHeight: 44} : undefined} key={item.id} icon={item.icon} description={item.description} disabled={item.disabled} selected={item.selected} destructive={item.destructive} onSelect={item.onSelect}>{item.label}</MenuItem>)}</MenuGroup>
+    {!phone && group.separator && <MenuSeparator />}<MenuGroup label={group.label} ownerOnly={group.ownerOnly}>{group.items.map(item => <MenuItem className={touchContext ? touchStyles.row : undefined} style={touchContext ? {height: 44, minHeight: 44} : undefined} key={item.id} icon={item.icon} description={item.description} disabled={item.disabled} selected={item.selected} destructive={item.destructive} onSelect={item.onSelect}>{item.label}</MenuItem>)}</MenuGroup>
   </Fragment>)}</>;
 }
 
@@ -148,6 +156,6 @@ export function Menu({items, children, open, onOpenChange, title, presentation =
     {items && <EntryGroups items={items} phone={sheet} touchContext={touchContext} />}
     {children}
   </div></MenuContext.Provider>;
-  if (sheet) return <BottomSheet open={open} onOpenChange={onOpenChange} trigger={props.trigger} title={title} description={props.description} className={classes(styles.phoneMenu, props.className)} fitContent showCloseButton={touchContext ? false : undefined} backdropOpacity={touchContext ? .58 : undefined} initialFocusRef={props.initialFocusRef ?? initial} returnFocusRef={props.returnFocusRef ?? props.anchorRef} accessibilityLabel={props.accessibilityLabel} testID={props.testID}>{content}</BottomSheet>;
+  if (sheet) return <BottomSheet open={open} onOpenChange={onOpenChange} trigger={props.trigger} title={title} description={props.description} className={classes(styles.phoneMenu, touchContext && touchStyles.sheet, props.className)} fitContent showCloseButton={touchContext ? false : undefined} backdropOpacity={touchContext ? .58 : undefined} initialFocusRef={props.initialFocusRef ?? initial} returnFocusRef={props.returnFocusRef ?? props.anchorRef} accessibilityLabel={props.accessibilityLabel} testID={props.testID}>{content}</BottomSheet>;
   return <Popover {...props} touchContext={touchContext} open={open} onOpenChange={onOpenChange} title={title} role="menu" className={classes(styles.menu, props.className)} initialFocusRef={props.initialFocusRef ?? initial}>{content}</Popover>;
 }

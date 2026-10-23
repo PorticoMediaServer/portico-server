@@ -8,6 +8,7 @@ import {homeEntryCapabilities} from '@core/home-selection.ts';
 import {Artwork} from '../kit/artwork';
 import {Button, Select} from '../kit/controls';
 import {Banner, Dialog, Menu, type MenuEntry} from '../kit/overlays';
+import {TouchMenuTitle} from '../kit/overlays/Popover';
 import {BulkEditor, DeleteMediaDialog, MixedEditExplainer, PhoneActionBar, SelectionBar} from '../kit/selection';
 import {OwnerTag, ServerAudienceTag, ServerMark, type EditorAudience} from '../kit/shell';
 import type {IconName} from '../kit/Icon';
@@ -74,6 +75,15 @@ export function SelectionSurfaces({source}: {source: SelectionRendererSource}) {
     return () => document.removeEventListener('keydown', key);
   }, [controller, source]);
   const menu = snapshot.menu;
+  const touchMenu = source.touchMenu?.() ?? false;
+  const display = menu && selectionMemberDisplay(menu.member);
+  const entry = menu?.member.entry;
+  const kindKey = entry?.kind === 'movie' ? 'search.kind.movie' : entry?.kind === 'show' ? 'search.kind.show'
+    : entry?.kind === 'artist' ? 'search.kind.artist' : entry?.kind === 'album' ? 'search.kind.album' : undefined;
+  const menuTitle = touchMenu && display ? width < 600 ? <TouchMenuTitle title={display.title}
+    artwork={display.posterUrl ? <Artwork alt="" source={source.artwork.foreground(display.posterUrl, 80 * (globalThis.devicePixelRatio || 1), 2 / 3, {group: 'home-menu', priority: 'high'})} /> : undefined}
+    kind={kindKey ? t(kindKey) : undefined} year={entry?.year === undefined ? undefined : defaultI18n.number(entry.year, {useGrouping: false})} /> : display.title
+    : t('next.home.moreFor', {title: display?.title ?? ''});
   const rating = menu?.member.entry && homeEntryCapabilities(menu.member.entry, {platform: 'web', playbackAvailable: true, queueAvailable: true}).rating;
   const entries: MenuEntry[] = menu?.groups.flatMap((group, groupIndex) => [
     ...(group.title ? [{id: 'group:' + group.id, section: true as const, label: t(group.title), ownerOnly: group.id === 'manage'}] : groupIndex === 0 ? [] : [{id: 'group:' + group.id, separator: true as const}]),
@@ -105,8 +115,8 @@ export function SelectionSurfaces({source}: {source: SelectionRendererSource}) {
       actions={actionsFor(source, snapshot)} typeCount={summary.types.length} selectAll={{kind: 'row'}}
       onSelectAll={() => run(source, () => { const result = controller.selectRow(); if (!result.ok) throw Object.assign(new Error(result.reason), {code: result.reason}); })}
       onExit={() => controller.clear()} /></div>}
-    <Menu open={!!menu} onOpenChange={open => { if (!open) controller.closeMenu(); }} title={source.touchMenu?.() ? menu ? selectionMemberDisplay(menu.member).title : '' : t('next.home.moreFor', {title: menu ? selectionMemberDisplay(menu.member).title : ''})}
-      anchorRef={source.anchor} items={entries} width={300} touchContext={source.touchMenu?.() ?? false} />
+    <Menu open={!!menu} onOpenChange={open => { if (!open) controller.closeMenu(); }} title={menuTitle} accessibilityLabel={display?.title}
+      anchorRef={source.anchor} items={entries} width={300} touchContext={touchMenu} />
     {snapshot.mixedEdit && <MixedEditExplainer open onOpenChange={open => { if (!open) controller.closeEditor(); }} anchorRef={source.anchor}
       types={dialogSummary.types} reason={snapshot.editExplanation === 'no-bulk-fields' ? 'no-bulk-fields' : 'mixed-types'} onKeepOnly={kind => { controller.keepOnly(kind); }} />}
     {editor?.preview && editor.phase !== 'uncertain' && editor.phase !== 'error' && dialogSummary.types.length === 1 ? <BulkEditor open onOpenChange={open => { if (!open && !editorBusy) controller.closeEditor(); }} returnFocusRef={source.anchor}
