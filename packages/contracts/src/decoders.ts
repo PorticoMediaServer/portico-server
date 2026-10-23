@@ -329,6 +329,7 @@ export function decodeGetSearchHistoryResponse(input: unknown): types.GetSearchH
 export function decodeGetSeasonsIdEpisodesResponse(input: unknown): types.GetSeasonsIdEpisodesResponse { return decode("GetSeasonsIdEpisodesResponse", input) as types.GetSeasonsIdEpisodesResponse; }
 export function decodeGetServerResponse(input: unknown): types.GetServerResponse { return decode("GetServerResponse", input) as types.GetServerResponse; }
 export function decodeGetServerMetadataAttentionResponse(input: unknown): types.GetServerMetadataAttentionResponse { return decode("GetServerMetadataAttentionResponse", input) as types.GetServerMetadataAttentionResponse; }
+export function decodeGetSettingsConfigurationResponse(input: unknown): types.GetSettingsConfigurationResponse { return decode("GetSettingsConfigurationResponse", input) as types.GetSettingsConfigurationResponse; }
 export function decodeGetSetupStateResponse(input: unknown): types.GetSetupStateResponse { return decode("GetSetupStateResponse", input) as types.GetSetupStateResponse; }
 export function decodeGetShowsIdEpisodesResponse(input: unknown): types.GetShowsIdEpisodesResponse { return decode("GetShowsIdEpisodesResponse", input) as types.GetShowsIdEpisodesResponse; }
 export function decodeGetShowsIdMetadataTvdbResponse(input: unknown): types.GetShowsIdMetadataTvdbResponse { return decode("GetShowsIdMetadataTvdbResponse", input) as types.GetShowsIdMetadataTvdbResponse; }
