@@ -880,6 +880,15 @@ func (s *SQLiteStore) WithdrawReplacement(ctx context.Context, expected Intent) 
 	if !firstSwitch && (!id.installed.Valid || !id.active.Valid || id.active.String != id.installed.String) {
 		return Intent{}, true, ErrStale
 	}
+	var captured bool
+	if firstSwitch {
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_owner_completions WHERE operation_id=? AND phase='prepared')`, v.OperationID).Scan(&captured); e != nil {
+			return Intent{}, true, e
+		}
+		if captured && s.denied == nil {
+			return Intent{}, true, ErrUnavailable
+		}
+	}
 	if _, e = tx.ExecContext(ctx, `UPDATE networking_claim_intents SET stage='cancelled',revision=revision+1,owner_change_reserved=0 WHERE operation_id=?`, v.OperationID); e != nil {
 		return Intent{}, true, e
 	}
@@ -889,6 +898,18 @@ func (s *SQLiteStore) WithdrawReplacement(ctx context.Context, expected Intent) 
 	next, e := loadIntentTx(ctx, tx, v.OperationID)
 	if e != nil {
 		return Intent{}, true, e
+	}
+	if captured {
+		if e = s.denied(ctx, tx, v.Intent, "unclaimed"); e != nil {
+			return Intent{}, true, e
+		}
+		// Only this pending, never-installed operation was withdrawn. Its hook
+		// just retired the captured family/challenge. The root lifecycle still
+		// fences the denial commit; that ended family cannot authorize it again.
+		if e = commitClaimTx(ctx, gated.Commit); e != nil {
+			return Intent{}, true, e
+		}
+		return next.Intent, true, nil
 	}
 	out, e := s.finish(ctx, gated, next.Intent, false)
 	return out, true, e

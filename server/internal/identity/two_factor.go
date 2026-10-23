@@ -158,6 +158,22 @@ func (s *Service) TwoFactor(ctx context.Context, bearer string) (TwoFactorState,
 	tx := gated.Tx()
 	defer gated.Rollback()
 	c, e := s.directCallerTx(ctx, tx, bearer, true)
+	if errors.Is(e, ErrPasswordChangeRequired) {
+		// The existing read-only security route may show the conditional reset
+		// choice only after a genuine local owner's file proof. This context
+		// never escapes the read and gives no factor mutation authority.
+		resetCtx := context.WithValue(ctx, passwordChangeContextKey{}, true)
+		candidate, ce := s.directCallerTx(resetCtx, tx, bearer, true)
+		if ce == nil && candidate.account.Role == TierOwner {
+			kind, ke := resetSessionTx(resetCtx, tx, candidate.familyID)
+			if ke != nil {
+				return TwoFactorState{}, ke
+			}
+			if kind == "password" {
+				c, e = candidate, nil
+			}
+		}
+	}
 	if e != nil {
 		return TwoFactorState{}, e
 	}
