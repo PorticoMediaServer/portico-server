@@ -107,8 +107,11 @@ func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 		return nil, err
 	}
 	var p packageXML
-	if err = decodeXML(b, &p); err != nil || len(p.Manifest) == 0 || len(p.Manifest) > MaxEntries || len(p.Spine.Items) == 0 {
+	if err = decodeXML(b, &p); err != nil || len(p.Manifest) == 0 || len(p.Spine.Items) == 0 {
 		return nil, ErrInvalid
+	}
+	if len(p.Manifest) > MaxEntries || len(p.Spine.Items) > MaxEntries {
+		return nil, ErrLimit
 	}
 	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
 	if len(e.Metadata.Title) > 4096 || len(e.Metadata.Author) > 4096 || len(e.Metadata.Language) > 64 {

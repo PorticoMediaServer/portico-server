@@ -235,7 +235,8 @@ func (s *Service) OpenSession(ctx context.Context, p identity.Principal, id stri
 	}
 	request, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(session.life, cancel)
-	f, err := s.Open(request, p, session.selection.ItemID, session.selection.SourceID, session.selection.Revision)
+	owner := &sessionRequestContext{Context: request, owner: session.life}
+	f, err := s.Open(owner, p, session.selection.ItemID, session.selection.SourceID, session.selection.Revision)
 	if err != nil {
 		stop()
 		cancel()

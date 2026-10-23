@@ -238,6 +238,9 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 		if err == nil {
 			err = f.service.validate(f.ctx, f.p, f.Selection)
 		}
+		if err == nil {
+			err = f.ctx.Err()
+		}
 		if err != nil {
 			return done, err
 		}
@@ -279,7 +282,10 @@ func (f *Source) Validate() (failure error) {
 	if err != nil {
 		return err
 	}
-	return f.checkObservation(o)
+	if err := f.checkObservation(o); err != nil {
+		return err
+	}
+	return f.ctx.Err()
 }
 
 // StopAndRecheck ends a failed decode without reopening or retargeting its
