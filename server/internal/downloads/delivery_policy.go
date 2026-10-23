@@ -58,7 +58,7 @@ func (s *Service) conversionPolicyReason(ctx context.Context, tx *sql.Tx, qualit
 	if !s.withinCeiling(quality, found) {
 		return ReasonDownloadCeiling
 	}
-	if quality == QualityOriginal || sameAsSource(quality, found) {
+	if quality == QualityOriginal && recipe == "" || sameAsSource(quality, found) {
 		return ""
 	}
 	// An existing finished file needs no server conversion permission.

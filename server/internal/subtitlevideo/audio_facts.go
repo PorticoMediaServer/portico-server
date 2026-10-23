@@ -36,7 +36,8 @@ func (r *Runtime) measureAudio(ctx context.Context, item, asset string) (audiofa
 		return f, e
 	}
 	defer input.Close()
-	b, e := openBridge(ctx, input, &extentLedger{})
+	ledger := &extentLedger{}
+	b, e := openBridge(ctx, input, ledger)
 	if e != nil {
 		return f, e
 	}
@@ -52,6 +53,19 @@ func (r *Runtime) measureAudio(ctx context.Context, item, asset string) (audiofa
 	}
 	if parsed != nil {
 		return f, parsed
+	}
+	if f.Codec == "mpc7" || f.Codec == "mpc8" {
+		prefix, err := input.ReadExtent(ctx, 0, min(input.Size(), 1<<20))
+		if err != nil {
+			return f, err
+		}
+		if err = ledger.check(0, prefix); err != nil {
+			return f, err
+		}
+		f, e = audiofacts.CompleteCodecHeaders(f, prefix)
+		if e != nil {
+			return f, e
+		}
 	}
 	// An MP3, ADTS or Ogg file also gets its seek index: one more read of the
 	// same fenced input, headers only, nothing decoded. A file that can't be

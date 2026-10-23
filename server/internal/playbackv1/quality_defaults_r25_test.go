@@ -23,7 +23,10 @@ func TestQualityDefaultsR25CallerAndOptions(t *testing.T) {
 				if saved == "" && transport == "cellular" && !audio {
 					want = Quality{Mode: QualityFixed, ID: "720p-high"}
 				}
-				if got := c.defaultQuality(ctx, audio); got != want {
+				if saved == "" && transport == "cellular" && audio {
+					want = Quality{Mode: QualityLimit, MaxAudioBitrateKbps: 320}
+				}
+				if got := c.defaultQuality(ctx, map[bool]string{false: "movie", true: "song"}[audio]); got != want {
 					t.Fatal(audio, transport, saved, got, want)
 				}
 				view, err := f.service.Options(ctx, c.Principal, f.items[0].Public, Preview{}, nil, Reach{SavedQuality: saved, TransportClass: transport})
@@ -44,7 +47,7 @@ func TestQualityDefaultsR25CallerAndOptions(t *testing.T) {
 		c := f.caller
 		c.TransportClass = "cellular"
 		c.SavedQuality = func(context.Context) (string, error) { return "", errors.New("read failed") }
-		if got := c.defaultQuality(ctx, audio); got.Mode != QualityOriginal {
+		if got := c.defaultQuality(ctx, map[bool]string{false: "movie", true: "song"}[audio]); got.Mode != QualityOriginal {
 			t.Fatal(got)
 		}
 	}

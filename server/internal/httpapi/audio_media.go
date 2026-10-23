@@ -109,7 +109,7 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 		// A prepared track's budget is reserved for the range asked, then settled
 		// to the body bytes actually sent: a failed or short response gives the
 		// rest back (NEW-33).
-		if private {
+		if private && r.Method != http.MethodHead {
 			reserved := rangeLength(r.Header.Get("Range"), plan.Bytes)
 			if !d.Playback.PrefetchCharge(session, reserved, plan.PrefetchBytes) {
 				writePreparedLimit(w)
@@ -161,7 +161,7 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 	// Converted: FLAC, Ogg Opus or ADTS AAC, exact (spec §18.1). ?fromFrame=N starts at
 	// output frame N; before commit only from frame 0, within prefetchBytes.
 	d.httpHandle(mux, "GET /v1/media/{grant}/audio-converted", func(w http.ResponseWriter, r *http.Request) {
-		_, aid, item, session, plan, private, ok := d.audioGrant(w, r, "converted")
+		grant, aid, item, session, plan, private, ok := d.audioGrant(w, r, "converted")
 		if !ok {
 			return
 		}
@@ -186,7 +186,7 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 		skip := int64(math.Round(float64(from) * float64(c.SourceRate) / float64(c.Rate)))
 		out := plan.DurationFrames - from
 		spec := decoder.AnalysisSpec{Kind: "audio_flac", MaxDurationUS: max(1, c.SourceFrames*1_000_000/int64(max(1, c.SourceRate))+1_000_000),
-			AudioSourceRate: c.SourceRate, AudioPriming: c.SourceStart, AudioStart: c.SourceStart + skip, AudioFrames: max(1, c.SourceFrames-skip), AudioOut: out, AudioRate: c.Rate, AudioChannels: c.Channels, AudioBitDepth: c.BitDepth}
+			AudioTruePeakLimit: c.TruePeakLimit, AudioSourceDepth: c.SourceBitDepth, AudioGainDB: c.GainDB, AudioSourceRate: c.SourceRate, AudioPriming: c.SourceStart, AudioStart: c.SourceStart + skip, AudioFrames: max(1, c.SourceFrames-skip), AudioOut: out, AudioRate: c.Rate, AudioChannels: c.Channels, AudioBitDepth: c.BitDepth}
 		start, end := int64(0), int64(0)
 		w.Header().Set("Content-Type", "audio/flac")
 		if c.Codec == "opus" {
@@ -209,9 +209,17 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 		defer body.release()
 		var sink io.Writer = body
 		if private {
-			sink = &budgetWriter{w: body, charge: func(n int64) bool { return d.Playback.PrefetchCharge(session, n, plan.PrefetchBytes) }, refund: func(n int64) { d.Playback.PrefetchRefund(session, n) }}
+			retire := d.Playback.RetainPrefetch(session)
+			defer retire()
+			sink = &budgetWriter{w: body, ctx: r.Context(), check: newStreamAuthority(func() error {
+				_, principal, currentItem, e := d.Playback.ResolveDecodeGrantContext(r.Context(), grant)
+				if e == nil {
+					e = d.itemAccess(r.Context(), principal, currentItem)
+				}
+				return e
+			}).check, take: func(n int64) int64 { return d.Playback.PrefetchTake(session, n, plan.PrefetchBytes) }, refund: func(n int64) { d.Playback.PrefetchRefund(session, n) }}
 		}
-		if err := d.AudioMedia.ConvertAudio(r.Context(), item, aid, spec, sink); err != nil && !errors.Is(err, errBudget) && r.Context().Err() == nil {
+		if err := d.AudioMedia.ConvertAudio(r.Context(), item, aid, spec, sink); err != nil && r.Context().Err() == nil {
 			// Headers are gone; the stream just ends early and the client falls back (§18.3).
 			fmt.Fprint(io.Discard, err)
 		}
@@ -227,26 +235,6 @@ type SeekIndexContract struct {
 	Version int     `json:"version"`
 	Offsets []int64 `json:"offsets"`
 	Frames  []int64 `json:"frames"`
-}
-
-var errBudget = errors.New("prefetch budget spent")
-
-// budgetWriter stops a private presentation's stream at its prefetch budget.
-type budgetWriter struct {
-	w      io.Writer
-	charge func(int64) bool
-	refund func(int64)
-}
-
-func (b *budgetWriter) Write(p []byte) (int, error) {
-	if !b.charge(int64(len(p))) {
-		return 0, errBudget
-	}
-	n, err := b.w.Write(p)
-	if n < len(p) && b.refund != nil {
-		b.refund(int64(len(p) - n))
-	}
-	return n, err
 }
 
 // servedBytes counts the body bytes of a successful (2xx) response, so a

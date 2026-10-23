@@ -116,6 +116,12 @@ func Parse(r io.Reader) (Facts, error) {
 			}
 			sawStream = true
 			f.Codec = fields["codec_name"]
+			switch f.Codec {
+			case "musepack7":
+				f.Codec = "mpc7"
+			case "musepack8":
+				f.Codec = "mpc8"
+			}
 			durationTicks, _ = strconv.ParseInt(fields["duration_ts"], 10, 64)
 			streamTimeBase = fields["time_base"]
 			f.Profile = fields["profile"]
@@ -159,6 +165,9 @@ func Parse(r io.Reader) (Facts, error) {
 	f.StartFrames, f.EndFrames = firstSkip, lastDiscard
 	f.DurationFrames = frames - firstSkip - lastDiscard
 	f.TrimSource = sourceOf(f)
+	if f.Codec == "mpc7" || f.Codec == "mpc8" {
+		f.TrimSource = "mpc-header-pending"
+	}
 	// MP4's sample table describes the audible end even when the final AAC
 	// packet contains unused samples and no iTunSMPB tag was written.
 	if f.Container == "mp4" && f.Codec == "aac" && durationTicks > 0 && durationTicks < 1<<45 {

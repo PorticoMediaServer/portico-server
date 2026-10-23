@@ -101,6 +101,14 @@ func (s *Service) produce(ctx context.Context, b binding, stage string, input In
 	}
 	spec := decoder.AnalysisSpec{MaxDurationUS: b.DurationUS, SourceVideo: decoder.PreviewVideoFacts{DynamicRange: b.Video.DynamicRange, DolbyVisionProfile: b.Video.DolbyVisionProfile, DolbyVisionCompatibility: b.Video.DolbyVisionCompatibility}}
 	switch stage {
+	case "loudness":
+		if b.AudioCodec == "" {
+			out.Summary = map[string]any{"status": "not_applicable", "reason": "no_audio_stream"}
+			return out, nil
+		}
+		spec.Kind = "loudness_full"
+		err = decode(ctx, key, spec, func(r io.Reader) error { var e error; out.Summary, e = readFullLoudness(r); return e })
+		return out, err
 	case "chapter_images":
 		if b.VideoCodec == "" {
 			out.Summary = map[string]any{"status": "not_applicable", "reason": "no_video_stream"}
