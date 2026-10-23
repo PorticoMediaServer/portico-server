@@ -61,7 +61,7 @@ func TestSonicActualConfinedCueDecodeAndSingleAllocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	physical, err := locks.Lock(livechannels.Allocation{ID: "0123456789abcdef0123456789abcdef", Generation: 1})
+	physical, err := locks.Lock(livechannels.Allocation{ID: "0123456789abcdef0123456789abcdef0123456789abcdef", Generation: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
