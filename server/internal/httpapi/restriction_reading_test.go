@@ -238,8 +238,16 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &list) != nil || len(list.Items) != 0 {
 				t.Fatal("revoked library listed", w.Code, w.Body.String())
 			}
+			// A bounded list filters both hidden and absent libraries to the
+			// same empty result, rather than performing an item lookup.
 			path := template + "?libraryId="
-			assertSameRefusal(readingHTTP(t, h, "GET", path+url.QueryEscape(r.library), token, "", nil), readingHTTP(t, h, "GET", path+url.QueryEscape(absentTwin(r.library)), token, "", nil))
+			hidden := readingHTTP(t, h, "GET", path+url.QueryEscape(r.library), token, "", nil)
+			absent := readingHTTP(t, h, "GET", path+url.QueryEscape(absentTwin(r.library)), token, "", nil)
+			assertPrivate(hidden)
+			assertPrivate(absent)
+			if hidden.Code != 200 || absent.Code != 200 || normalizedAnswer(hidden.Body.String(), r.library) != normalizedAnswer(absent.Body.String(), absentTwin(r.library)) {
+				t.Fatal("hidden/absent library lists differ", hidden.Code, hidden.Body.String(), absent.Code, absent.Body.String())
+			}
 		} else {
 			assertPrivate(w)
 			if w.Code < 400 {
