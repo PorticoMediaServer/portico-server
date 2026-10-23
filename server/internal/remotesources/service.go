@@ -95,6 +95,7 @@ func New(db *sql.DB, state string, managed *mounts.Service) (*Service, error) {
 	}
 	managed.NativeBusy = s.PlaybackActive
 	managed.NativeInvalidated = s.invalidate
+	managed.NativeSourceCandidate = s.nativeSourceCandidate
 	// No acquisition survives a server process. Remove only our private spool names.
 	if files, e := os.ReadDir(private); e == nil {
 		for _, file := range files {
