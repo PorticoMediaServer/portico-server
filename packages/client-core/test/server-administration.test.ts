@@ -7,7 +7,7 @@ import {
  parseMemberDeletionPreview,previewMemberDeletion,deleteMember,
 } from '../src/server-administration.ts';
 
-const limits={maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
+const limits={accessTokens:true,maxProfiles:8,allowRemote:true,conversion:'server',maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
  schedule:{timezone:'UTC',windows:[{days:[1,3],startMinute:600,endMinute:780}]},
  channelPolicy:{mode:'deny',channels:['news']},tagPolicy:{deniedLabels:['Spoilers']}};
 
@@ -30,12 +30,9 @@ test('member limits round-trip, with the rating kept as the server stored it', (
   assert.throws(() => parseMemberLimits({...limits, maxContentRating: 'X'.repeat(40)}));
   assert.throws(() => parseMemberLimits({...limits, maxStreams: 100000}));
   assert.throws(() => parseMemberLimits({...limits, schedule: {timezone: 'UTC', windows: [{days: [], startMinute: 0, endMinute: 10}]}}));
-  // An absent envelope is an unrestricted one, not a parse failure.
-  const empty = parseMemberLimits({});
-  assert.equal(empty.maxContentRating, '');
-  assert.equal(empty.maximumAge, -1);
-  assert.equal(empty.allowUnrated, true);
-  assert.deepEqual([...empty.tagPolicy.deniedLabels], []);
+  // The canonical producer publishes these permissions explicitly. Missing values
+  // must not silently grant tokens or remote access on the owner screen.
+  assert.throws(() => parseMemberLimits({}));
 });
 
 test('a limits document is pinned to the account it was read for', () => {
@@ -92,16 +89,15 @@ test('an invitation code is accepted only where the server issues one', () => {
   assert.deepEqual([...page.items], []);
 });
 
-test('a device page carries the approval policy that governs it', () => {
-  const page = parseAccessDevicePage({limit: 25, approvalRequired: true, items: [{id: 'living-room', accountId: 'a',
-    profileId: 'p', name: 'Living Room', platform: 'tvos', trust: 'pending', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:30:00Z', revision: 1}]});
-  assert.equal(page.approvalRequired, true);
-  assert.equal(page.items[0].trust, 'pending');
-  // A device whose trust this app cannot read is neither hidden nor listed as approved, pending or blocked: the page is refused.
-  assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: true, items: [{id: 'x', accountId: 'a', trust: 'trusted', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:00:00Z', revision: 1}, page.items[0]]}));
-  assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: 'yes', items: []}));
+test('administrative device pages describe real activity and refuse retired trust/approval policy',()=>{
+ const row={id:'living-room',accountId:'a',username:'alice',profileId:'p',profileName:'Evening',name:'Living room',platform:'tvos',app:'Portico',appVersion:'1',lastNetwork:'home',liveState:'watching',firstSeenAt:'2026-09-16T12:00:00Z',lastSeenAt:'2026-09-16T12:30:00Z',revision:1};
+ const page=parseAccessDevicePage({limit:25,items:[row]});
+ assert.equal(page.items[0].liveState,'watching');assert.equal(page.items[0].profileName,'Evening');
+ assert.equal('approvalRequired' in page,false);assert.equal('trust' in page.items[0],false);
+ assert.throws(()=>parseAccessDevicePage({limit:25,approvalRequired:false,items:[row]}));
+ assert.throws(()=>parseAccessDevicePage({limit:25,items:[{...row,trust:'approved'}]}));
+ assert.throws(()=>parseAccessDevicePage({limit:25,items:[{...row,liveState:'approved'}]}));
 });
-
 
 test('log records keep their sequence as a string so a long-running server does not lose precision', () => {
   const page = parseLogPage({level: 'warn', effectiveLevel: 'debug', limit: 100, nextCursor: '9007199254740993',

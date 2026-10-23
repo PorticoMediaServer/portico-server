@@ -83,11 +83,8 @@ func TestPorticoAdmissionRechecksSignerAfterAssertionVerification(t *testing.T) 
 	}
 }
 
-func TestPendingDeviceStillPassesSignInAdmission(t *testing.T) {
+func TestNewDeviceStillPassesSignInAdmission(t *testing.T) {
 	s, _, _, _ := memberWithSession(t)
-	if err := s.SetDeviceApprovalPolicy(DeviceApprovalOwner); err != nil {
-		t.Fatal(err)
-	}
 	remote := WithSignInAdmission(onDevice(t, memberPhone, "Phone"), SignInAdmission{Remote: true, Policy: RemoteSignInOwnerOnly})
 	if _, err := s.DirectLogin(remote, "member", "Testing2!"); !errors.Is(err, ErrRemoteSignIn) {
 		t.Fatalf("outside member awaiting approval bypassed admission: %v", err)
@@ -103,17 +100,14 @@ func TestPendingDeviceStillPassesSignInAdmission(t *testing.T) {
 	}
 }
 
-func TestRemoteOwnerOnlyRegistrationCannotCommitAWaitingMember(t *testing.T) {
+func TestRemoteOwnerOnlyRegistrationCannotCommitAMember(t *testing.T) {
 	s, _, _ := directFixture(t)
 	if err := s.SetSelfRegistration(SelfRegistrationOpen); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetDeviceApprovalPolicy(DeviceApprovalOwner); err != nil {
-		t.Fatal(err)
-	}
 	ctx := WithSignInAdmission(onDevice(t, memberPhone, "Phone"), SignInAdmission{Remote: true, Policy: RemoteSignInOwnerOnly})
-	if out, err := s.Register(ctx, SelfRegistrationRequest{Username: "outside", Password: "Testing2!"}, false); !errors.Is(err, ErrRemoteSignIn) {
-		t.Fatalf("outside registration: pending=%v err=%v", out.DeviceApprovalPending, err)
+	if _, err := s.Register(ctx, SelfRegistrationRequest{Username: "outside", Password: "Testing2!"}, false); !errors.Is(err, ErrRemoteSignIn) {
+		t.Fatalf("outside registration: %v", err)
 	}
 	var accounts int
 	if err := s.db.QueryRow(`SELECT count(*) FROM accounts WHERE username='outside'`).Scan(&accounts); err != nil || accounts != 0 {
@@ -174,14 +168,13 @@ func TestMemberDeviceDecisionRechecksLiveAuthority(t *testing.T) {
 			} else if change != "logout" && !errors.Is(err, ErrForbidden) {
 				t.Fatalf("live demotion ended the sign-in: %v", err)
 			}
-			if _, err = s.SetMemberDeviceTrust(ctx, actor, login.DeviceID, MemberDeviceTrust{ExpectedRevision: 1, Trust: "blocked"}); err == nil {
+			if err = s.SignOutMemberDevices(ctx, actor, member.ID, login.DeviceID); err == nil {
 				t.Error("stale administrator blocked a device")
 			} else if change != "logout" && !errors.Is(err, ErrForbidden) {
 				t.Fatalf("live demotion ended the sign-in: %v", err)
 			}
-			var state string
-			if err = s.db.QueryRow(`SELECT approval_state FROM identity_devices WHERE id=?`, login.DeviceID).Scan(&state); err != nil || state != "approved" {
-				t.Fatalf("device changed: %q %v", state, err)
+			if _, err = s.Authenticate(login.Session.AccessToken); err != nil {
+				t.Fatalf("refused sign-out changed target: %v", err)
 			}
 		})
 	}

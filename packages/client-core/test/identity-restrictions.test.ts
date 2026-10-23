@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {parseRatingSystems,parseProfileRestrictions,restrictionEdit,parsePINRecoveryMethods,parseProfileAvatar,parseTwoFactorState,parseAuthCapabilities} from '../src/identity-restrictions.ts';
-import {parseDevice,parseDevices,parseRememberedAccounts,parseTopShelfFeed,topShelfExpired,newInstallationId,validInstallationId,deviceAwaitingApproval} from '../src/identity-devices.ts';
+import {parseDevice,parseDevices,parseRememberedAccounts,parseTopShelfFeed,topShelfExpired,newInstallationId,validInstallationId} from '../src/identity-devices.ts';
 
 const installation='a'.repeat(43);
 const restrictions={profileId:'child',ratingSystem:'mpaa',maximumAgeRating:'PG-13',maximumAge:13,allowUnrated:false,blockedLabels:['Halloween'],allowDownloads:true,allowLiveTv:false,allowDvr:false,allowWatchTogether:true,revision:4};
@@ -78,7 +78,7 @@ test('capabilities gate the sign-in affordances a client may draw',()=>{
   assert.throws(()=>parseAuthCapabilities({serverId:'server',serverName:'Home',setupRequired:false,methods:['password'],selfRegistration:'off',quickConnect:true,twoFactor:true,hostedAttach:false,...patch}),{code:'invalid_identity_document'});
 });
 
-const device={id:'device',installationId:installation,name:'Living room TV',platform:'tvos',app:'portico-tv',appVersion:'1.0.0',ip:'203.0.113.7',firstSeen:new Date().toISOString(),lastSeen:new Date().toISOString(),trusted:false,approvalState:'approved',lastProfileId:'child',rememberAccount:true,current:true,sessions:1};
+const device={id:'device',installationId:installation,name:'Living room TV',platform:'tvos',app:'portico-tv',appVersion:'1.0.0',ip:'203.0.113.7',firstSeen:new Date().toISOString(),lastSeen:new Date().toISOString(),lastProfileId:'child',rememberAccount:true,current:true,sessions:1};
 
 test('an installation id is a secret, not a label',()=>{
  const generated=newInstallationId();
@@ -90,14 +90,11 @@ test('an installation id is a secret, not a label',()=>{
  assert.throws(()=>parseDevice({...device,installationId:'short'}),{code:'invalid_device_document'});
 });
 
-test('device records reject a fabricated address, an unknown approval state and an unknown field',()=>{
+test('current device records have binding/session facts and refuse retired approval/trust fields',()=>{
  const parsed=parseDevice(device);
- assert.equal(parsed.approvalState,'approved');
- assert.equal(deviceAwaitingApproval(parsed),false);
- assert.equal(deviceAwaitingApproval(parseDevice({...device,approvalState:'pending'})),true);
- for(const patch of [{ip:'not an address'},{ip:'x'.repeat(46)},{approvalState:'maybe'},{name:''},{sessions:-1},{trusted:'yes'},{futureField:1}] as any[])
+ assert.equal(parsed.sessions,1);assert.equal('approvalState' in parsed,false);assert.equal('trusted' in parsed,false);
+ for(const patch of [{ip:'not an address'},{ip:'x'.repeat(46)},{approvalState:'approved'},{name:''},{sessions:-1},{trusted:false},{futureField:1}] as any[])
   assert.throws(()=>parseDevice({...device,...patch}),{code:'invalid_device_document'});
- // An empty IP is legitimate: the server records an address or nothing.
  assert.equal(parseDevice({...device,ip:''}).ip,'');
 });
 

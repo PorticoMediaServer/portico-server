@@ -4,7 +4,7 @@ import type {FactPart} from '@core/presentation/kit-model';
 import {Icon, type IconName} from '../Icon';
 import {Artwork} from '../artwork/Artwork';
 import type {ArtworkSource} from '../artwork/types';
-import {Menu, MenuItem, MenuSeparator} from '../overlays/Popover';
+import {Menu, MenuItem, MenuSeparator,MenuGroup} from '../overlays/Popover';
 import type {OverlayChange} from '../overlays/types';
 import type {ShellTranslate} from './ServerIdentity';
 import {ShellScrim} from './ShellScrim';
@@ -39,27 +39,27 @@ export function ProfileAvatarFace({initial, art = 'blue', size = 34, appearance 
 }
 
 export type AccountMenuActions = Readonly<{
-  manageProfiles: () => void; addProfile?: () => void; switchProfile: (profile: ProfileIdentity) => void;
+  manageProfiles?: () => void; addProfile?: () => void; switchProfile: (profile: ProfileIdentity) => void;
   switchServer: () => void; settings: () => void; notifications?: () => void; watchTogether: () => void; downloads?: () => void;
-  feedback: () => void; help: () => void; signOut: () => void;
+  feedback: () => void; help: () => void; signOut: () => void; signOutPorticoAccount?: () => void;
 }>;
 export type AccountMenuProps = Readonly<{
   open: boolean; onOpenChange: OverlayChange; trigger: ReactElement; current: ProfileIdentity;
   primary: boolean; accountFacts: readonly FactPart[]; profiles: readonly ProfileIdentity[];
-  actions: AccountMenuActions; serverAction?: ReactNode; notificationCount?: number; notificationDot?: boolean; t?: ShellTranslate;
+  serverChoices?:readonly {id:string;label:string;onSelect:()=>void}[]; actions: AccountMenuActions; signOutLabel?:string; serverAction?: ReactNode; notificationCount?: number; notificationDot?: boolean; t?: ShellTranslate;
 }>;
-export function AccountMenu({open, onOpenChange, trigger, current, primary, accountFacts, profiles, actions, serverAction, notificationCount, notificationDot = false, t = tDefault}: AccountMenuProps) {
+export function AccountMenu({open, onOpenChange, trigger, current, primary, accountFacts, profiles, actions, serverChoices, signOutLabel, serverAction, notificationCount, notificationDot = false, t = tDefault}: AccountMenuProps) {
   const choose = (profile: ProfileIdentity) => actions.switchProfile(profile);
   return <><ShellScrim open={open} context="account" /><Menu open={open} onOpenChange={onOpenChange} trigger={trigger} title={t('next.shell.profileMenu', {name: current.name})} width={340} sideOffset={17} alignOffset={-24} modal className={styles.accountMenu}>
     <div className={styles.who}><ProfileAvatarFace initial={current.initial} art={current.art} size={48} /><div><b><IdentityName person={current} /></b>{primary && <small>{t('next.shell.mainProfile')}</small>}<small className={styles.factParts}>{accountFacts.map(fact => <span key={fact.id}>{fact.text}</span>)}</small></div></div>
-    <div className={styles.switchProfiles}><div className={styles.switchLabel}>{t('next.shell.switchTo')}<MenuItem className={styles.manageProfiles} onSelect={actions.manageProfiles}>{t('next.shell.manage')}</MenuItem></div>
+    <div className={styles.switchProfiles}><div className={styles.switchLabel}>{t('next.shell.switchTo')}{actions.manageProfiles && <MenuItem className={styles.manageProfiles} onSelect={actions.manageProfiles}>{t('next.shell.manage')}</MenuItem>}</div>
       <div className={styles.profileRow}>{profiles.filter(profile => profile.id !== current.id).map(profile => <MenuItem key={profile.id} className={styles.miniProfile} onSelect={() => choose(profile)}><ProfileAvatarFace initial={profile.initial} art={profile.art} size={48} locked={profile.pinRequired} t={t} /><span>{profile.name}</span></MenuItem>)}
         {actions.addProfile && <MenuItem className={styles.addProfile} onSelect={actions.addProfile}><span className={styles.addFace}><Icon name="i-plus" size={22} /></span>{t('next.shell.add')}</MenuItem>}
       </div>
     </div>
     {serverAction}
     <MenuSeparator />
-    <MenuItem className={styles.menuAction} icon="i-server" onSelect={actions.switchServer}>{t('next.shell.switchServerMenu')}</MenuItem>
+    {serverChoices?.length ? <MenuGroup label={t('next.shell.switchServerMenu')}>{serverChoices.map(server=><MenuItem key={server.id} className={styles.menuAction} icon="i-server" onSelect={server.onSelect}>{server.label}</MenuItem>)}</MenuGroup> : <MenuItem className={styles.menuAction} icon="i-server" onSelect={actions.switchServer}>{t('next.shell.switchServerMenu')}</MenuItem>}
     <MenuItem className={styles.menuAction} icon="i-gear" onSelect={actions.settings}>{t('next.shell.settings')}</MenuItem>
     {actions.notifications && <MenuItem className={styles.menuAction} icon="i-bell" onSelect={actions.notifications} aria-label={notificationCount === undefined ? t('next.shell.notifications') : t('next.shell.notificationsUnread', {count: notificationCount})}><span className={styles.notificationAction}>{t('next.shell.notifications')}{notificationCount !== undefined && notificationCount > 0 ? <span className={styles.notificationCount}>{notificationCount}</span> : notificationDot ? <span className={styles.notificationMenuDot} aria-hidden="true" /> : undefined}</span></MenuItem>}
     <MenuSeparator />
@@ -67,7 +67,8 @@ export function AccountMenu({open, onOpenChange, trigger, current, primary, acco
     {actions.downloads && <MenuItem className={styles.menuAction} icon="i-download" onSelect={actions.downloads}>{t('next.shell.downloads')}</MenuItem>}
     <MenuItem className={styles.menuAction} icon="i-flag" onSelect={actions.feedback}>{t('next.shell.feedback')}</MenuItem>
     <MenuItem className={styles.menuAction} icon="i-help" onSelect={actions.help}>{t('next.shell.help')}<Icon name="i-ext" size={16} className={styles.external} /></MenuItem>
-    <MenuSeparator /><MenuItem className={styles.menuAction} icon="i-out" onSelect={actions.signOut}>{t('next.shell.signOut')}</MenuItem>
+    <MenuSeparator /><MenuItem className={styles.menuAction} icon="i-out" onSelect={actions.signOut}>{signOutLabel??t('next.shell.signOut')}</MenuItem>
+    {actions.signOutPorticoAccount && <MenuItem className={styles.menuAction} icon="i-out" onSelect={actions.signOutPorticoAccount}>{t('accounts.signOut.portico')}</MenuItem>}
   </Menu></>;
 }
 

@@ -53,6 +53,8 @@ func credentialRouteError(err error) error {
 		return &apierror.Error{Code: "idempotency_key_reused"}
 	case errors.Is(err, access.ErrCapacity):
 		return &apierror.Error{Code: "credential_limit"}
+	case errors.Is(err, access.ErrAccessTokensOff):
+		return &apierror.Error{Code: "access_tokens_off"}
 	case errors.Is(err, access.ErrCredentialMember):
 		return &apierror.Error{Code: "credential_unavailable"}
 	case errors.Is(err, identity.ErrCredentialInput), errors.Is(err, access.ErrInvalid):
@@ -60,7 +62,7 @@ func credentialRouteError(err error) error {
 	case errors.Is(err, sql.ErrNoRows):
 		return &apierror.Error{Code: "not_found"}
 	case errors.Is(err, identity.ErrUnauthorized), errors.Is(err, identity.ErrForbidden), errors.Is(err, identity.ErrNotVisible),
-		errors.Is(err, identity.ErrDevicePending), errors.Is(err, identity.ErrDeviceDenied), errors.Is(err, identity.ErrPasswordChangeRequired):
+		errors.Is(err, identity.ErrPasswordChangeRequired):
 		return foundationAuthError(err)
 	default:
 		return &apierror.Error{Code: "internal", Cause: err}
@@ -84,11 +86,10 @@ func (d Dependencies) credentialOptions(ctx context.Context, p identity.Principa
 	for _, scope := range access.CredentialScopes {
 		out.Scopes = append(out.Scopes, ScopeDocument{ID: scope})
 	}
-	document, err := d.settingsDocument(ctx)
-	if err != nil {
-		return out, err
+	out.TokensAllowed = false
+	if e := d.DB.QueryRowContext(ctx, `SELECT access_tokens=1 AND disabled=0 FROM direct_memberships WHERE account_id=?`, p.AccountID).Scan(&out.TokensAllowed); e != nil {
+		return out, e
 	}
-	out.TokensAllowed = !document.Effective.BlockMemberAccessTokens || identity.Administrative(p.Role)
 	return out, nil
 }
 
@@ -164,43 +165,6 @@ func registerCredentialRoutes(registry *apikit.Registry, d Dependencies) error {
 			return access.Credential{}, foundationAuthError(err)
 		}
 		out, err := s.RevokeCredential(ctx, d.accessAuthority(p, identity.TierOwner), d.Identity, identity.CredentialKindKey, r.PathValue("id"), "")
-		return out, credentialRouteError(err)
-	}})
-	if err != nil {
-		return err
-	}
-
-	// ---- every member's tokens, for the owner to see and end
-	err = apikit.Register(registry, apikit.Route[struct{}, access.CredentialPage]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "list_member_access_tokens", Method: "GET", Path: "/v1/admin/access-tokens", Summary: "List the personal access tokens members have made",
-		Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit", "accountId"}, Errors: listErrors,
-	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.CredentialPage, error) {
-		s, err := store()
-		if err != nil {
-			return access.CredentialPage{}, err
-		}
-		p, err := d.foundationCaller(r)
-		if err != nil {
-			return access.CredentialPage{}, foundationAuthError(err)
-		}
-		query := r.URL.Query()
-		out, err := s.Credentials(ctx, d.accessAuthority(p, identity.TierOwner), access.CredentialQuery{Kind: identity.CredentialKindToken, AccountID: query.Get("accountId"), Cursor: query.Get("cursor"), Limit: query.Get("limit")})
-		return out, credentialRouteError(err)
-	}})
-	if err != nil {
-		return err
-	}
-	err = apikit.Register(registry, apikit.Route[struct{}, access.Credential]{Metadata: apikit.Metadata{Admission: laneSecurityFence, ID: "revoke_member_access_token", Method: "DELETE", Path: "/v1/admin/access-tokens/{id}", Summary: "Revoke a member's personal access token",
-		Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: endErrors,
-	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.Credential, error) {
-		s, err := store()
-		if err != nil {
-			return access.Credential{}, err
-		}
-		p, err := d.foundationCaller(r)
-		if err != nil {
-			return access.Credential{}, foundationAuthError(err)
-		}
-		out, err := s.RevokeCredential(ctx, d.accessAuthority(p, identity.TierOwner), d.Identity, identity.CredentialKindToken, r.PathValue("id"), "")
 		return out, credentialRouteError(err)
 	}})
 	if err != nil {

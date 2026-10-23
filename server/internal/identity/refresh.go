@@ -24,10 +24,10 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 	tx := gated.Tx()
 	defer gated.Rollback()
 	hash := Digest(secret)
-	var family, device, expiry, deviceInstallation, state string
+	var family, device, expiry, deviceInstallation string
 	var generation int64
-	err = tx.QueryRowContext(ctx, `SELECT c.family_id,c.device_id,c.generation,c.expires_at,d.installation_id,d.approval_state FROM identity_refresh_credentials c JOIN identity_devices d ON d.id=c.device_id WHERE c.token_hash=?`, hash).
-		Scan(&family, &device, &generation, &expiry, &deviceInstallation, &state)
+	err = tx.QueryRowContext(ctx, `SELECT c.family_id,c.device_id,c.generation,c.expires_at,d.installation_id FROM identity_refresh_credentials c JOIN identity_devices d ON d.id=c.device_id WHERE c.token_hash=?`, hash).
+		Scan(&family, &device, &generation, &expiry, &deviceInstallation)
 	if errors.Is(err, sql.ErrNoRows) && migratedRefreshTx(ctx, tx, hash) {
 		return Envelope{}, ErrSessionMigrated
 	}
@@ -52,7 +52,7 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 	}
 	now := time.Now().UTC().Truncate(time.Second)
 	refreshUntil, err := familyTime(expiry)
-	if err != nil || !refreshUntil.After(now) || deviceInstallation != installation || state != "approved" {
+	if err != nil || !refreshUntil.After(now) || deviceInstallation != installation {
 		return Envelope{}, ErrUnauthorized
 	}
 	var p Principal
@@ -78,6 +78,15 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 		return Envelope{}, err
 	}
 	horizon := now.Add(LocalSignInWindow)
+	// A Portico assertion admits a family for at most90 days. Local refresh
+	// never moves that boundary; another live identity proof starts a new family.
+	kind, err := SignInKindTx(ctx, tx)
+	if err != nil {
+		return Envelope{}, err
+	}
+	if kind == SignInPortico && oldHorizon.Before(horizon) {
+		horizon = oldHorizon
+	}
 
 	var currentGeneration int64
 	if err = tx.QueryRowContext(ctx, `SELECT current_generation FROM authorization_session_families WHERE id=? AND revoked=0`, family).Scan(&currentGeneration); err != nil || currentGeneration < generation {
@@ -140,8 +149,6 @@ func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, 
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Envelope{}, "", err
 	}
-	if err == nil {
-	}
 
 	var family, storedRequest, until string
 	var sealed []byte
@@ -172,7 +179,7 @@ func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, 
 	// in their authenticated data. Return it on an exact replay as well.
 	out.InstallationID = installation
 	var live bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM authorization_session_families f JOIN identity_refresh_credentials c ON c.family_id=f.id JOIN identity_devices d ON d.id=c.device_id JOIN authorization_family_tokens t ON t.family_id=f.id AND t.generation=f.current_generation WHERE f.id=? AND f.revoked=0 AND d.approval_state='approved' AND d.installation_id=? AND c.token_hash=? AND t.token_hash=?)`, family, installation, Digest(out.RefreshToken), Digest(out.AccessToken)).Scan(&live); err != nil || !live {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM authorization_session_families f JOIN identity_refresh_credentials c ON c.family_id=f.id JOIN identity_devices d ON d.id=c.device_id JOIN authorization_family_tokens t ON t.family_id=f.id AND t.generation=f.current_generation WHERE f.id=? AND f.revoked=0 AND d.installation_id=? AND c.token_hash=? AND t.token_hash=?)`, family, installation, Digest(out.RefreshToken), Digest(out.AccessToken)).Scan(&live); err != nil || !live {
 		return Envelope{}, "", ErrRenewalRetired
 	}
 	p = Principal{Viewer: out.Viewer, Hash: Digest(out.AccessToken)}

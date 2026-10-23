@@ -24,8 +24,8 @@ func ratedLibrary(t *testing.T, ratings map[string][]string, labels map[string][
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1);
- INSERT INTO accounts VALUES('member','member',x'00','member-profile',1);
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1);
+ INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('member','member',x'00','member-profile',1);
  INSERT INTO libraries(id,name,kind,root) VALUES('lib','Library','movie','/library');`); err != nil {
 		t.Fatal(err)
 	}

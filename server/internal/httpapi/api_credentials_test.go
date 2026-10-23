@@ -412,29 +412,14 @@ func TestCredentialIsNeverAnUnscopedSession(t *testing.T) {
 	}
 }
 
-func TestCredentialWaitsForDeviceApprovalWhenTheOwnerRequiresIt(t *testing.T) {
+func TestPermittedCredentialIsActiveWithoutDeviceApproval(t *testing.T) {
 	f := administrationFixtureNew(t)
-	if err := f.deps.Identity.SetDeviceApprovalPolicy(identity.DeviceApprovalOwner); err != nil {
-		t.Fatal(err)
+	token := issueCredential(t, f, "/v1/me/access-tokens", f.member, `{"operationId":"token-no-approval","name":"Personal","scopes":["read"]}`)
+	if token.Credential.State != "active" {
+		t.Fatalf("state %q", token.Credential.State)
 	}
-	token := issueCredential(t, f, "/v1/me/access-tokens", f.member, `{"operationId":"token-approval-1","name":"Waiting","scopes":["read"]}`)
-	if token.Credential.State != "awaiting_approval" {
-		t.Fatalf("state: %q", token.Credential.State)
-	}
-	if w := f.call("GET", "/v1/me", token.Secret, ""); w.Code != 401 {
-		t.Fatalf("an unapproved token works: %d %s", w.Code, w.Body)
-	}
-	if _, err := f.deps.DB.Exec(`UPDATE identity_devices SET approval_state='approved' WHERE installation_id=?`, "api-credential-"+token.Credential.ID); err != nil {
-		t.Fatal(err)
-	}
-	dbwork.BumpAuthority()
 	if w := f.call("GET", "/v1/me", token.Secret, ""); w.Code != 200 {
-		t.Fatalf("an approved token does not work: %d %s", w.Code, w.Body)
-	}
-	// The owner's own key is not held for the owner's own approval.
-	key := issueCredential(t, f, "/v1/admin/api-keys", f.owner, `{"operationId":"key-approval-1","name":"Mine","scopes":["read"]}`)
-	if key.Credential.State != "active" {
-		t.Fatalf("owner key state: %q", key.Credential.State)
+		t.Fatalf("permitted token refused: %d %s", w.Code, w.Body)
 	}
 }
 

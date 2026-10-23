@@ -52,7 +52,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
     const dockVisible = hasDock(runtime.getSnapshot());
     return {api: context.api, events: context.events, scopeKey: JSON.stringify([viewer.serverId, authority, viewer.accountId, viewer.profileId, context.epoch, context.viewerFence]),
       playback: playbackBinding,
-      shell: {identity: context.facts.identity, OwnerActivity: activity.OwnerActivity, dockVisible, onSignOut: context.signOut,
+      shell: {identity: context.facts.identity, OwnerActivity: activity.OwnerActivity, dockVisible, onSignOut: context.signOut,onSignOutPorticoAccount:context.signOutPorticoAccount,onSwitchProfile:context.switchProfile,onSwitchServer:context.switchServer,savedServers:context.savedServers,
         phoneSelection: selection.phoneSelection(), overlays: <ShellFeedbackHost source={feedback} dockVisible={dockVisible} />},
       home: {service: context.home, artwork: context.artwork, time, reducedMotion: preferenceValue<boolean>(context.facts.preferences, 'appearance.reduceMotion'), selection: selection.selection,
         effects: {play: async (entry, target) => {

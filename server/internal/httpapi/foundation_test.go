@@ -588,18 +588,18 @@ func TestTypedRegistrationPolicyIsAtomicAndOwnerOnly(t *testing.T) {
 	if d.Identity.SelfRegistration() != identity.SelfRegistrationOff {
 		t.Fatal("invalid device choice partially opened self-registration")
 	}
-	if w := put(`{"selfRegistration":"open","deviceApproval":"auto"}`, child.Session.AccessToken); w.Code != 403 {
+	if w := put(`{"selfRegistration":"open"}`, child.Session.AccessToken); w.Code != 403 {
 		t.Fatalf("child changed policy: %d %s", w.Code, w.Body.String())
 	}
-	body := `{"selfRegistration":"open","deviceApproval":"owner-approves-new-devices"}`
+	body := `{"selfRegistration":"open"}`
 	changed := put(body, owner.AccessToken)
 	if changed.Code != 200 || !strings.Contains(changed.Body.String(), `"selfRegistration":"open"`) {
 		t.Fatalf("owner changed policy: %d %s", changed.Code, changed.Body.String())
 	}
-	if d.Identity.SelfRegistration() != identity.SelfRegistrationOpen || d.Identity.DeviceApprovalPolicy() != identity.DeviceApprovalOwner {
+	if d.Identity.SelfRegistration() != identity.SelfRegistrationOpen {
 		t.Fatal("atomic policy write did not save both choices")
 	}
-	if w := logoutHTTPRequest(h, "GET", path, owner.AccessToken); w.Code != 200 || !strings.Contains(w.Body.String(), `"deviceApproval":"owner-approves-new-devices"`) {
+	if w := logoutHTTPRequest(h, "GET", path, owner.AccessToken); w.Code != 200 || !strings.Contains(w.Body.String(), `"selfRegistration":"open"`) {
 		t.Fatalf("read saved policy: %d %s", w.Code, w.Body.String())
 	}
 	if os.Getenv("PORTICO_CONTRACT_UPDATE") == "1" {

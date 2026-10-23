@@ -221,6 +221,12 @@ func (s *Service) ServicesReachability(ctx context.Context) ServicesReachability
 	if s == nil || !s.Configured() {
 		return ServicesReachability{}
 	}
+	if s.identity != nil {
+		kind, e := s.identity.SignInKind(ctx)
+		if e != nil || kind == identity.SignInLocal {
+			return ServicesReachability{}
+		}
+	}
 	s.reachMu.Lock()
 	defer s.reachMu.Unlock()
 	if time.Now().Before(s.reachUntil) {

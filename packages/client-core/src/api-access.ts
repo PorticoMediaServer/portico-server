@@ -112,7 +112,7 @@ export function parseApiAccessOptions(raw:unknown):ApiAccessOptions{
  return Object.freeze({scopes,maximumKeys:whole(raw.maximumKeys,'maximumKeys'),maximumTokens:whole(raw.maximumTokens,'maximumTokens'),tokensAllowed:flag(raw.tokensAllowed,'tokensAllowed'),requestsPerMinute:whole(raw.requestsPerMinute,'requestsPerMinute'),queryParameter:filled(raw.queryParameter,32,'queryParameter')});
 }
 
-const API_KEYS=routePath("list_api_keys"),MEMBER_TOKENS=routePath("list_member_access_tokens"),MY_TOKENS=routePath("list_access_tokens"),OPTIONS=routePath("get_api_access_options");
+const API_KEYS=routePath("list_api_keys"),MY_TOKENS=routePath("list_access_tokens"),OPTIONS=routePath("get_api_access_options");
 const id=(value:string):string=>encodeURIComponent(value);
 const body=(q:NewApiCredential)=>({operationId:q.operationId,name:q.name,scopes:[...q.scopes],...(q.expiresAt?{expiresAt:q.expiresAt}:{})});
 
@@ -126,10 +126,6 @@ export const revokeApiKey=async(t:ApiAccessTransport,keyId:string,signal?:AbortS
 export const listAccessTokens=async(t:ApiAccessTransport,cursor='',signal?:AbortSignal):Promise<ApiCredentialPage>=>parseApiCredentialPage(await t.request<unknown>(MY_TOKENS+query({limit:100,cursor}),'GET',undefined,signal));
 export const createAccessToken=async(t:ApiAccessTransport,q:NewApiCredential,signal?:AbortSignal):Promise<IssuedApiCredential>=>parseIssuedApiCredential(await t.request<unknown>(MY_TOKENS,'POST',body(q),signal));
 export const revokeAccessToken=async(t:ApiAccessTransport,tokenId:string,signal?:AbortSignal):Promise<ApiCredential>=>parseApiCredential(await t.request<unknown>(`${MY_TOKENS}/${id(tokenId)}`,'DELETE',undefined,signal));
-/** Every member's tokens, for the owner. */
-export const listMemberAccessTokens=async(t:ApiAccessTransport,options:Readonly<{cursor?:string;accountId?:string}>={},signal?:AbortSignal):Promise<ApiCredentialPage>=>parseApiCredentialPage(await t.request<unknown>(MEMBER_TOKENS+query({limit:100,cursor:options.cursor,accountId:options.accountId}),'GET',undefined,signal));
-export const revokeMemberAccessToken=async(t:ApiAccessTransport,tokenId:string,signal?:AbortSignal):Promise<ApiCredential>=>parseApiCredential(await t.request<unknown>(`${MEMBER_TOKENS}/${id(tokenId)}`,'DELETE',undefined,signal));
-
 // ── Webhooks ────────────────────────────────────────────────────────────────
 
 export const webhookEvents=['title.added','title.updated','title.removed','scan.started','scan.finished','playback.started','playback.paused','playback.resumed','playback.stopped',

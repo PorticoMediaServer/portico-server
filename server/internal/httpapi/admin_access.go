@@ -27,13 +27,31 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 	if store == nil || d.Identity == nil {
 		return
 	}
+	d.httpHandle(mux, "POST /v1/admin/access/members/bulk", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.administrator(r)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		var q access.MemberBulkRequest
+		if e = decode(w, r, &q); e != nil {
+			accessFailure(w, e)
+			return
+		}
+		out, e := store.BulkMembers(r.Context(), d.accessAuthority(p, identity.TierAdmin), d.Identity, p, q)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
 	d.httpHandle(mux, "GET /v1/admin/access/members", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)
 		if e != nil {
 			accessFailure(w, e)
 			return
 		}
-		out, e := store.Members(r.Context(), d.accessReadAuthority(&p, identity.TierAdmin), access.MemberQuery{Cursor: r.URL.Query().Get("cursor"), Limit: r.URL.Query().Get("limit")})
+		out, e := store.Members(r.Context(), d.accessReadAuthority(&p, identity.TierAdmin), access.MemberQuery{Cursor: r.URL.Query().Get("cursor"), Limit: r.URL.Query().Get("limit"), Search: r.URL.Query().Get("q"), Role: r.URL.Query().Get("role"), Status: r.URL.Query().Get("status"), Sort: r.URL.Query().Get("sort"), Direction: r.URL.Query().Get("direction")})
 		if e != nil {
 			accessFailure(w, e)
 			return
@@ -338,22 +356,16 @@ type invitationChallenge struct {
 	identity.DirectSnapshot
 	Challenge identity.SignInChallenge `json:"challenge"`
 }
-type invitationDevicePending struct {
-	identity.DirectSnapshot
-	DeviceApprovalPending bool   `json:"deviceApprovalPending"`
-	DeviceID              string `json:"deviceId"`
-	InstallationID        string `json:"installationId"`
-}
 
 func (InvitationAcceptanceResponse) JSONSchema() map[string]any {
-	variants := []reflect.Type{reflect.TypeFor[access.AcceptanceResult](), reflect.TypeFor[invitationSignedIn](), reflect.TypeFor[invitationChallenge](), reflect.TypeFor[invitationDevicePending]()}
+	variants := []reflect.Type{reflect.TypeFor[access.AcceptanceResult](), reflect.TypeFor[invitationSignedIn](), reflect.TypeFor[invitationChallenge]()}
 	shapes := make([]any, 0, len(variants))
 	for _, typ := range variants {
 		shape, e := apikit.Schema(typ)
 		if e != nil {
 			panic(e)
 		}
-		if typ == reflect.TypeFor[invitationChallenge]() || typ == reflect.TypeFor[invitationDevicePending]() {
+		if typ == reflect.TypeFor[invitationChallenge]() {
 			// These producers marshal a zero snapshot, including nil slices.
 			// Keep those fields explicit without allowing null in signed-in data.
 			properties := shape["properties"].(map[string]any)
