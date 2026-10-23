@@ -304,6 +304,12 @@ func boundRequestError(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	var admission *serveAdmissionFailure
+	if errors.As(err, &admission) {
+		// Preserve the actual captured authority reason through net/http's
+		// wrapper. A changed/revoked source is not an offline provider report.
+		return admission.cause
+	}
 	for _, kind := range []error{ErrPolicy, mediasource.ErrSourceChanged, mediasource.ErrIdentityRequired} {
 		if errors.Is(err, kind) {
 			return kind

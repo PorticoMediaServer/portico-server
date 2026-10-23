@@ -275,6 +275,9 @@ func (d *DAV) parseResponse(r io.Reader, directory string, sync, stat bool) (DAV
 				}
 				seen[rel] = true
 				status := davStatus(wire.Status)
+				if stat && rel == directory && status == 404 {
+					return DAVPage{}, ErrObservationChanged
+				}
 				if rel == directory && status == 507 && sync && wire.Error.Limit != nil {
 					out.More = true
 					continue
