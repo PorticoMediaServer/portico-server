@@ -36,8 +36,8 @@ func (s *Store) SearchProgrammes(ctx context.Context, a DirectoryAuthority, proj
 	start := time.Now().UTC().Truncate(time.Minute)
 	c := programmeSearchCursor{Binding: binding, Start: start.Format(time.RFC3339), End: start.Add(14 * 24 * time.Hour).Format(time.RFC3339), Expires: time.Now().Add(30 * time.Minute).Unix()}
 	if cursor != "" {
-		if err := s.readGuideValue(cursor, "search-programmes", &c); err != nil {
-			return out, err
+		if err := s.searchCursors.Get(cursor, "search-programmes", &c); err != nil {
+			return out, ErrCursor
 		}
 		if c.Binding != binding || c.Expires <= time.Now().Unix() {
 			return out, ErrCursor
@@ -191,12 +191,18 @@ func (s *Store) SearchProgrammes(ctx context.Context, a DirectoryAuthority, proj
 				// did not match. Never infer exhaustion from a short/empty visible page.
 				raw := batches[g.key][127]
 				c.WithinStart, c.WithinID = raw.Programme.Start, raw.Programme.ID
-				out.NextCursor = s.signGuideValue(c, "search-programmes")
+				out.NextCursor, err = s.searchCursors.Put("search-programmes", c, time.Unix(c.Expires, 0))
+				if err != nil {
+					return err
+				}
 				break
 			}
 		}
 		if out.NextCursor == "" && moreGroups {
-			out.NextCursor = s.signGuideValue(c, "search-programmes")
+			out.NextCursor, err = s.searchCursors.Put("search-programmes", c, time.Unix(c.Expires, 0))
+			if err != nil {
+				return err
+			}
 		}
 		return nil
 	})

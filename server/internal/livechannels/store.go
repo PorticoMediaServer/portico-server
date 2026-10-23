@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/searchcursor"
 	"sort"
 	"strings"
 	"time"
@@ -23,7 +24,8 @@ const StageBatch = 128
 const GuideCandidateBatch = 512
 
 type Store struct {
-	db *sql.DB
+	searchCursors searchcursor.Cache
+	db            *sql.DB
 	// cursorKey signs continuation cursors. It is stable per state folder
 	// (configuration live_cursor_key), never a file key.
 	cursorKey []byte

@@ -569,7 +569,7 @@ func validateRetainQueueIDs(ids []string) error {
 var errCreateRaced = errors.New("queue create raced")
 
 // createReplay answers a create whose key this device has used (review P18):
-// with its kept response; a different body is a mismatch; a create that
+// with a current authorized projection; a different body is a mismatch; a create that
 // committed but hasn't kept its response yet (in flight, or cut off after its
 // commit) is finished here, the same way, which is idempotent. ok is false
 // when the key is new.
@@ -585,16 +585,59 @@ func (s *Service) createReplay(ctx context.Context, c Caller, key, want string, 
 	if digest != want {
 		return QueueReply{}, true, ErrIdempotencyMismatch
 	}
-	var reply QueueReply
-	if response != "" && json.Unmarshal([]byte(response), &reply) == nil {
-		return reply, true, nil
-	}
 	q, err := loadQueue(ctx, s.DB, queue)
 	if err != nil || !ownsQueue(c, q) {
 		return QueueReply{}, true, ErrNotFound // replaced before its answer was kept
 	}
-	reply, err = s.finishCreate(ctx, c, key, req, q)
+	if response != "" {
+		// A receipt proves the create committed; it is not current authority
+		// for its retained JSON, catalogue facts or playback presentation.
+		reply, err := s.currentCreateReply(ctx, c, q)
+		return reply, true, err
+	}
+	reply, err := s.finishCreate(ctx, c, key, req, q)
 	return reply, true, err
+}
+
+// currentCreateReply is read-only with respect to create/capture/playback. A
+// completed retry projects the current queue under the current caller instead
+// of replaying old metadata or reexecuting the accepted mutation.
+func (s *Service) currentCreateReply(ctx context.Context, c Caller, q queueRow) (QueueReply, error) {
+	var reply QueueReply
+	err := s.withLayout(ctx, q, func(l *layout) error {
+		if !ownsQueue(c, l.q) {
+			return ErrNotFound
+		}
+		reply.Queue = s.header(l)
+		from := max(0, l.q.current-20)
+		var err error
+		reply.Window, err = s.window(ctx, l, c.Principal, from, l.q.current-from+51)
+		if err != nil {
+			return err
+		}
+		visible := map[string]bool{}
+		for _, entry := range reply.Window {
+			if entry.ItemID != "" {
+				visible[entry.SegmentID] = true
+			}
+		}
+		for i := range reply.Queue.Segments {
+			if !visible[reply.Queue.Segments[i].ID] {
+				reply.Queue.Segments[i].Label = ""
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return QueueReply{}, err
+	}
+	if q.session != "" {
+		if session, err := s.Get(ctx, c, q.session); err == nil {
+			reply.Session = &session
+		}
+	}
+	s.withNext(ctx, c, &reply.Queue, q)
+	return reply, nil
 }
 
 // finishCreate is everything after a create's commit, and safe to repeat:

@@ -3818,7 +3818,8 @@ CREATE TABLE catalog_terms(
  key TEXT NOT NULL,
  label TEXT NOT NULL,
  UNIQUE(vocab,key)) STRICT;
-CREATE INDEX catalog_terms_search_label ON catalog_terms(vocab,label,id);
+CREATE INDEX catalog_terms_search_label ON catalog_terms(vocab,label COLLATE NOCASE,label,id);
+CREATE INDEX catalog_term_sources_search_label ON catalog_term_sources(label_override COLLATE NOCASE,label_override,entity_id,term_id) WHERE label_override IS NOT NULL;
 CREATE TABLE catalog_entity_terms(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  term_id INTEGER NOT NULL REFERENCES catalog_terms(id),

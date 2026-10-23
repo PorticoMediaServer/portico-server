@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/naming"
+	"portico.local/server/internal/searchcursor"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 	"portico.local/server/internal/worker"
@@ -89,6 +90,7 @@ type Service struct {
 
 // serviceState is the process-lifetime state one database's catalogue keeps.
 type serviceState struct {
+	searchCursors      searchcursor.Cache
 	visibilityMu       sync.Mutex
 	visibilityRequests map[string]visibilityRequest
 	visibilityWake     *worker.Signal

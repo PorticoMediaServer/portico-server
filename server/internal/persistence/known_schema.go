@@ -238,6 +238,7 @@ index catalog_term_source_membership
 index catalog_term_sources_name_seek
 index catalog_term_sources_overrides
 index catalog_term_sources_provider
+index catalog_term_sources_search_label
 index catalog_term_sources_term
 index catalog_terms_search_label
 index catalog_title_tombstones_expiry

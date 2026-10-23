@@ -109,3 +109,37 @@ func TestSearchHTTPWireEvidence(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchTopUnicodeHTTPWire(t *testing.T) {
+	f := newSearchPrivacyFixture(t)
+	film := f.c.Movie(f.c.Handle("movies"), "/movies/sigma.mkv", "ΟΣ", 2026)
+	f.c.Attributes(film.ID, "contentRating", "G")
+	f.c.Drain()
+	records := []map[string]any{}
+	for _, q := range []string{"οσ", "ος", "ΟΣ"} {
+		w := logoutHTTPRequest(f.h, "GET", "/v1/search?q="+q+"&groups=movies", f.kids.AccessToken)
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var page catalog.SearchEnvelope
+		if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+		if (page.Top != nil) != (q != "οσ") {
+			t.Fatal("noncanonical Top", q, page.Top)
+		}
+		if len(page.Groups) != 1 || len(page.Groups[0].Items) != 1 || page.Groups[0].Items[0].ID != film.Public {
+			t.Fatal("Unicode candidate missing", page)
+		}
+		records = append(records, map[string]any{"q": q, "response": json.RawMessage(w.Body.Bytes()), "scope": map[string]string{"serverId": f.d.Identity.ID(), "viewerId": identity.PersonalKey(f.kids.Viewer)}})
+	}
+	if path := os.Getenv("PORTICO_SEARCH_UNICODE_WIRE"); path != "" {
+		raw, err := json.MarshalIndent(records, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

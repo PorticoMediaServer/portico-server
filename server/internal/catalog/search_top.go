@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"golang.org/x/text/unicode/norm"
 	"unicode"
 	"unicode/utf16"
@@ -117,13 +119,19 @@ func (s *Service) searchTop(r SearchRequest, out *SearchEnvelope) error {
 // Exact normalization of the existing headless Top rule: punctuation separates
 // words here (unlike FTS tokens), and length uses JavaScript UTF-16 units.
 func searchTopPlain(v string) string {
-	var b strings.Builder
+	var decomposed strings.Builder
 	for _, r := range norm.NFKD.String(v) {
-		if r >= 0x300 && r <= 0x36f {
-			continue
+		if r < 0x300 || r > 0x36f {
+			decomposed.WriteRune(r)
 		}
+	}
+	// ECMAScript lowercases the whole string before punctuation replacement.
+	// Default Unicode casing includes contextual final sigma, unlike rune casing.
+	lowered := cases.Lower(language.Und).String(decomposed.String())
+	var b strings.Builder
+	for _, r := range lowered {
 		if unicode.IsLetter(r) || unicode.IsNumber(r) {
-			b.WriteRune(unicode.ToLower(r))
+			b.WriteRune(r)
 		} else {
 			b.WriteByte(' ')
 		}

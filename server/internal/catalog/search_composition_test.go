@@ -291,3 +291,29 @@ func TestSearchGenreContinuationKeepsRevisionAndTrueExhaustion(t *testing.T) {
 		t.Fatal("old genre cursor did not require restart", err)
 	}
 }
+
+func TestSearchTopContextualUnicodeMatchesCanonicalJS(t *testing.T) {
+	for _, v := range []struct{ in, want string }{{"ΟΣ", "ος"}, {"ΟΣ Α", "ος α"}, {"ΟΣ'Α", "οσ α"}, {"Ο\u0301Σ", "ος"}, {"ΟΣ.Α", "οσ α"}, {"İ", "i"}} {
+		if got := searchTopPlain(v.in); got != v.want {
+			t.Fatalf("%q => %q want %q", v.in, got, v.want)
+		}
+	}
+	c := catalogtest.Open(t)
+	lib := c.Library("films", "Films", "movie", "/films")
+	film := c.Movie(lib, "/films/sigma.mkv", "ΟΣ", 2026)
+	c.Drain()
+	s := New(c.DB)
+	for _, q := range []string{"οσ", "ος", "ΟΣ"} {
+		out, err := s.Search(context.Background(), SearchRequest{Viewer: Viewer{Profile: "p", Fence: "f", Libraries: []string{"films"}}, Q: q, Groups: []string{"movies"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := q != "οσ"
+		if (out.Top != nil) != want {
+			t.Fatalf("q=%s top=%+v", q, out.Top)
+		}
+		if out.Top != nil && out.Top.Entry.ID != film.Public {
+			t.Fatal("wrong Top identity")
+		}
+	}
+}

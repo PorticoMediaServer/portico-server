@@ -2,9 +2,11 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
-	"strconv"
+	"sort"
 	"strings"
 
 	"portico.local/server/internal/compactcatalog"
@@ -78,6 +80,10 @@ func (s *Service) SearchQueueKeysTx(ctx context.Context, tx *sql.Tx, viewer View
 	}
 	match = `kind : k7 AND kind : (` + strings.Join(tokens, " OR ") + `) AND search : (` + match + `)`
 	order := catalogOrder(r.Sort, "song", normalized)
+	tie := "entity_id"
+	if r.Sort == "relevance" {
+		tie = "public_id"
+	}
 	from := `(SELECT rowid entity_id,-rank relevance FROM catalog_search_titles WHERE catalog_search_titles MATCH ?) m CROSS JOIN catalog_search_documents d ON d.entity_id=m.entity_id CROSS JOIN catalog_entities e ON e.id=m.entity_id JOIN catalog_libraries l ON l.id=e.library_id`
 	predicate, visibleArgs := viewer.itemVisibilitySQL("e.id")
 	where := `e.kind=7 AND l.library_id IN(SELECT value FROM json_each(?)) AND ` + predicate + ` AND EXISTS(SELECT 1 FROM catalog_songs song JOIN catalog_entities album ON album.id=song.album_id WHERE song.entity_id=e.id AND album.library_id=e.library_id AND album.retired=0) AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=e.id)`
@@ -106,17 +112,24 @@ func (s *Service) SearchQueueKeysTx(ctx context.Context, tx *sql.Tx, viewer View
 			}
 		}
 		if lead != "" {
+			tie = "entity_id"
 			order = searchOrder{expr: `CASE WHEN d.title_fold=? THEN 3 ELSE COALESCE((SELECT max(p.tier) FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity WHERE p.entity_id=d.entity_id AND p.term_id=(SELECT id FROM catalog_search_prefix_terms WHERE prefix=?)),0) END`}
 			args = append([]any{facettext.SearchFold(normalized), lead}, args[len(catalogOrder(r.Sort, "song", normalized).args):]...)
 		}
 	}
 	// SELECT's ORDER BY parameters follow FROM/WHERE parameters, so put the
 	// ranking projection before FROM to preserve the producer's binding order.
-	query := `SELECT public_id FROM (SELECT pid(e.public_id) public_id,e.id entity_id,` + order.expr + ` ord FROM ` + from + ` WHERE ` + where + `) ORDER BY ord ` + r.Direction + `,entity_id ` + r.Direction
+	query := `SELECT public_id FROM (SELECT pid(e.public_id) public_id,e.id entity_id,` + order.expr + ` ord FROM ` + from + ` WHERE ` + where + `) ORDER BY ord ` + r.Direction + `,` + tie + ` ` + r.Direction
 	rev, stamp, err := searchRevision(ctx, tx, r, idsJSON(libraries))
 	if err != nil {
 		return QueueSelection{}, err
 	}
 	served, err := compactcatalog.SearchServingSQL(ctx, tx, compactcatalog.ServingSQL(query))
-	return QueueSelection{SQL: served, Args: args, Revision: stamp + ":" + strconv.FormatInt(rev.Viewer, 10), Label: normalized}, err
+	// A lost retained read can resume only under the identical selection authority.
+	// Personal/catalogue revisions alone do not change when parental access does.
+	selected := append([]string(nil), libraries...)
+	sort.Strings(selected)
+	binding, _ := json.Marshal([]any{stamp, rev.Viewer, viewer.Profile, viewer.Fence, RestrictionFence(viewer.Restrictions), selected, normalized, r.Sort, r.Direction})
+	digest := sha256.Sum256(binding)
+	return QueueSelection{SQL: served, Args: args, Revision: "search_" + hex.EncodeToString(digest[:]), Label: normalized}, err
 }
