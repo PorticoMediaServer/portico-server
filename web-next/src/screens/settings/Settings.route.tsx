@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 import {useRouterState} from '@tanstack/react-router';
@@ -18,10 +18,11 @@ import {SettingsScreen, type SettingsBindings} from './Settings';
 import {SettingsController, type SettingsControllerOptions} from './controller';
 import {createSettingsBindings} from './bindings';
 import {readingSettingsAdapter} from './reading-adapter';
+import {hasWebPreferenceEffect} from './effects';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
 const historyContexts = new WeakMap<ShellAssemblyContext, ReportContext>();
-const playbackEffects = new Set(['playback.defaultSpeed', 'playback.introSkip', 'playback.creditsSkip', 'playback.recapSkip', 'playback.passoutProtection', 'playback.passoutAfterEpisodes', 'playback.skipBackMs', 'playback.skipForwardMs', 'audiobooks.defaultSpeed', 'accessibility.reducedMotion']);
+const noPreferences = () => () => {};
 
 export function SettingsEntry() {
   const protectedContext = useProtectedWebScreenContext();
@@ -29,6 +30,10 @@ export function SettingsEntry() {
   const [owned, setOwned] = useState<{context: ShellAssemblyContext; settings: SettingsBindings; dashboard?: DashboardBindings}>();
   const [failure, setFailure] = useState(false), [retry, setRetry] = useState(0);
   const context = protectedContext?.context;
+  // The same confirmed reader drives calendar lifetime. A zone change retires
+  // the old report factory/results; no old rows can acquire the new zone label.
+  const preferences = useSyncExternalStore(context?.preferences?.subscribe ?? noPreferences, () => context?.preferences?.getSnapshot('web'), () => undefined);
+  const reportTimeZone = preferences && shellLanguage(preferences).region.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const raw = Object.fromEntries(new URLSearchParams(location.searchStr));
   const route = settingsRoute(location.pathname === '/dashboard' ? {scope: 'server', section: 'dashboard'} : raw, () => true);
   useEffect(() => {
@@ -48,19 +53,21 @@ export function SettingsEntry() {
       preferences: snapshot, reader, isCurrent: current, reportError, reading: readingSettingsAdapter,
       environment: {...(platform?.environment ?? {platform: 'web' as const, os: 'browser' as const}), role, signIn: identity.signIn}, device: platform?.device,
       eligibility: {library: () => undefined, hasEngine: (row: Parameters<SettingsController['eligible']>[0]) => {
+        if (row.control.options?.some(option => option.sets)) return hasWebPreferenceEffect(row);
         const binding = settingsBinding(row.id);
         if (!binding) return row.id === 'device.name' && !!platform?.device?.getSnapshot().facts.name || row.id === 'device.appVersion' && !!platform?.device?.getSnapshot().facts.appVersion;
-        if (binding.form === 'preferences') return playbackEffects.has(binding.key) || binding.key.startsWith('subtitles.');
+        if (binding.form === 'preferences') return hasWebPreferenceEffect(row);
         return binding.form !== 'library' && binding.form !== 'remote' && binding.form !== 'managedRoute';
       }},
     };
     const controller = new SettingsController(options);
     let dashboard: DashboardBindings | undefined;
     if (identity.primaryProfile === true && identity.capabilities?.manageServer && (role === 'owner' || role === 'admin')) {
-      const carried = route.section === 'history' ? historyContexts.get(context) : undefined;
-      if (carried) historyContexts.delete(context);
+      const pending = route.section === 'history' ? historyContexts.get(context) : undefined;
+      if (pending) historyContexts.delete(context);
+      const carried = pending?.timeZone === reportTimeZone ? pending : undefined;
       dashboard = createDashboardBindings({api: context.api, events: context.events, scope: {serverId: viewer.serverId, viewerId: options.viewerId},
-        context: carried ?? captureReportContext(shellLanguage(snapshot).region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone), role, isCurrent: current, isMainProfile: () => current() && context.facts.identity.primaryProfile === true,
+        context: carried ?? captureReportContext(reportTimeZone), role, isCurrent: current, isMainProfile: () => current() && context.facts.identity.primaryProfile === true,
         artwork: (id, kind, revision) => revision ? context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind}) + '?' + new URLSearchParams({v: revision}), kind === 'backdrop' ? 800 : 400, kind === 'poster' ? 2 / 3 : kind === 'backdrop' ? 16 / 9 : 1) : undefined,
         effects: {openHome, openSettings, reportError, openHistory: report => {if (current()) {historyContexts.set(context, report);openSettings('history');}}}});
     }
@@ -74,7 +81,7 @@ export function SettingsEntry() {
     };
     setFailure(false);setOwned({context, settings, dashboard});
     return () => {active = false;dashboard?.dispose();controller.dispose();};
-  }, [context, retry, route.section]);
+  }, [context, retry, route.section, reportTimeZone]);
   if (!protectedContext || !owned || owned.context !== context) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};
   const settings = failure ? {...owned.settings, section: () => <SettingsPageFailure retry={() => setRetry(value => value + 1)} home={owned.settings.openHome} />} : owned.settings;
