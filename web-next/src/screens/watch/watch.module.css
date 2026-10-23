@@ -77,6 +77,7 @@
 .watch[data-mode='portrait'] .bottom { padding: 0 6px 8px 14px; display: flex; align-items: center; gap: 5px; }
 .watch[data-mode='portrait'] .seek { position: absolute; bottom: -1px; left: 0; right: 0; height: 3px; }
 .watch[data-mode='portrait'] .rail, .watch[data-mode='portrait'] .rail > i { height: 3px; border-radius: 0; }
+.watch[data-mode='portrait'] .rail .marker { min-width: 12px; box-sizing: border-box; background: color-mix(in srgb, var(--color-text) 70%, transparent); box-shadow: none; border-left: 1.5px solid color-mix(in srgb, var(--color-ink) 90%, transparent); border-right: 1.5px solid color-mix(in srgb, var(--color-ink) 90%, transparent); }
 .watch[data-mode='portrait'] .rail input::-webkit-slider-thumb { opacity: 0; }
 .watch[data-mode='portrait'] .times { margin-top: 0; gap: 5px; }
 .watch[data-mode='portrait'] .controls { display: flex; margin-top: 0; margin-left: auto; }
@@ -96,6 +97,7 @@
   .bottom { left: max(60px, env(safe-area-inset-left)); right: max(60px, env(safe-area-inset-right)); bottom: 15px; padding: 0; }
   .bottom .seek { margin: 0 58px 0 68px; height: 20px; }
   .bottom .rail { height: 4px; }
+  .rail .marker { min-width: 28px; box-sizing: border-box; background: color-mix(in srgb, var(--color-text) 70%, transparent); box-shadow: none; border-left: 2px solid color-mix(in srgb, var(--color-ink) 90%, transparent); border-right: 2px solid color-mix(in srgb, var(--color-ink) 90%, transparent); }
   .bottom .times { position: absolute; left: 0; right: 0; top: 1px; margin: 0; pointer-events: none; }
   .bottom .controls { margin-top: 11px; }
   .transport { gap: 38px; }

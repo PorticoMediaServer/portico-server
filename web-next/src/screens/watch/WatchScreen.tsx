@@ -173,7 +173,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
       <div className={styles.bottom}>
         <div className={styles.seek}>
           <span className={styles.rail}><i style={{width: `${bounds ? Math.min(100, Math.max(0, (position - bounds.start) / (bounds.end - bounds.start) * 100)) : 0}%`}} />
-            {presentation?.policy?.markers.map(marker => duration > 0 && <span key={marker.id} className={styles.marker} style={{left: `${marker.startSeconds / duration * 100}%`, width: `${(marker.endSeconds - marker.startSeconds) / duration * 100}%`}} />)}
+            {presentation?.policy?.markers.map(marker => duration > 0 && <span key={marker.id} className={styles.marker} data-kind={marker.kind}
+              style={{...(marker.kind === 'credits' ? {right: `${(duration - marker.endSeconds) / duration * 100}%`} : {left: `${marker.startSeconds / duration * 100}%`}), width: `${(marker.endSeconds - marker.startSeconds) / duration * 100}%`}} />)}
             <input type="range" min={bounds?.start ?? 0} max={bounds?.end ?? 1} step={.1} value={bounds ? Math.min(bounds.end, Math.max(bounds.start, position)) : 0} disabled={!bounds}
               aria-label={t('player.position')} aria-valuetext={t('player.clockOf', {position: watchClock(position), duration: watchClock(duration)})}
               onChange={event => { const seconds = watchSeek(snapshot, event.currentTarget.valueAsNumber); if (seconds !== null) send({kind: 'seek', seconds}); }} />
