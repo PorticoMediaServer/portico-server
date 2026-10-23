@@ -4,6 +4,18 @@ import {BLOCK,ByteCache,RangeReader} from '../src/bridge/audio/bytes.ts';
 
 const reader=(fetcher:(url:string,init:RequestInit)=>Promise<Response>,options:{size?:number;limit?:number}={})=>new RangeReader({url:'https://media.example/audio',key:'audio',cache:new ByteCache(),fetch:fetcher,...options});
 
+test('an injected fetch callback never receives the RangeReader as its receiver',async()=>{
+ let calls=0;
+ const fetcher=function(this:unknown,url:string,init:RequestInit):Promise<Response>{
+  assert.equal(this,undefined);calls++;assert.equal(url,'https://media.example/audio');
+  assert.equal((init.headers as Record<string,string>).Range,`bytes=0-${BLOCK-1}`);
+  assert.equal(init.credentials,'omit');assert.equal(init.cache,'no-store');assert.equal(init.redirect,'error');assert.ok(init.signal);
+  return Promise.resolve(new Response(new Uint8Array([1,2,3])));
+ };
+ const r=reader(fetcher);
+ try{assert.deepEqual(await r.read(0,3),new Uint8Array([1,2,3]));assert.equal(calls,1);}finally{r.close();}
+});
+
 test('an ignored Range never buffers a whole unbounded file',async()=>{
  let cancelled=false, buffered=false;
  const response={status:200,ok:true,headers:new Headers({'Content-Length':String(BLOCK*20)}),body:{cancel:async()=>{cancelled=true;}},arrayBuffer:async()=>{buffered=true;return new ArrayBuffer(BLOCK*20);}} as unknown as Response;
