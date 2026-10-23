@@ -25,3 +25,5 @@ export {audioGainLinear, audioSeconds, audioTrimWindow, parseAudioRenderV2, play
 export {V1ChannelControl, serverSupportsV1Channels, channelView, parseChannelSession, v1ChannelId, type ChannelPlayback, type ChannelStartOptions, type ChannelView, type ChannelViewSink, type V1ChannelOptions} from './channel-control.ts';
 
 export {musicQualityPresentation, qualityPresentation, qualityLimitKbps, qualityLimit} from './quality-presentation.ts';
+
+export {parseObservedPlayback, type ObservedPlayback, type ObservedDynamicRange} from './observed-playback.ts';
