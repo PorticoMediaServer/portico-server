@@ -523,6 +523,7 @@ func run() (runErr error) {
 	// This is a barrier, not a background best-effort capability update. No
 	// playback service is constructed until qualification completes or times out.
 	overrideRejected := false
+	var selectedInventory decoder.ToolchainFacts
 	select {
 	case result := <-toolchainReady:
 		if result.err != nil {
@@ -532,6 +533,7 @@ func run() (runErr error) {
 			}
 			log.Printf("Media toolchain qualification unavailable: %v", result.err)
 		} else {
+			selectedInventory = result.facts
 			decoder.ConfigureToolchain(result.facts)
 			playback.SetConversionOutputs(decoder.AvailableConversionOutputs(&result.facts))
 			log.Printf("Media toolchain: %s ass=%t zscale=%t", ffmpegTool, result.facts.Filters["ass"], result.facts.Filters["zscale"])
@@ -555,6 +557,7 @@ func run() (runErr error) {
 		facts, err := decoder.ProbeToolchain(retry, ffmpegTool)
 		retryCancel()
 		if err == nil {
+			selectedInventory = facts
 			decoder.ConfigureToolchain(facts)
 			playback.SetConversionOutputs(decoder.AvailableConversionOutputs(&facts))
 		} else {
@@ -1218,6 +1221,11 @@ func run() (runErr error) {
 	// answered with an honest 500 when nothing has reached the client yet.
 	handlerSwitch.set(supervise.HandlerMiddleware(measurements.Wrap(handler)))
 	serverReadyHook()
+	// Optional device and exact-bundle features cannot delay readiness or
+	// replace the trusted inventory barrier above. The selected pair is final.
+	if selectedInventory.Identity != "" && len(selectedInventory.MissingRequired()) == 0 {
+		startToolchainRuntime(ctx, drain, ffmpegTool, ffprobeTool, selectedInventory.Identity)
+	}
 	supervise.Go("cmd.started-notice", func() { announceStarted(ctx, outboundWebhooks) })
 	supervise.Supervise(ctx, "cmd.visibility-rebuilder", cat.RunVisibilityRebuilder)
 	supervise.Supervise(ctx, "cmd.compact-catalogue", compactcatalog.NewWorker(db).Run)
