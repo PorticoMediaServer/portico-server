@@ -61,12 +61,13 @@ func TestMaintenanceDefaultsPreserveBackupAndRepresentAnyTime(t *testing.T) {
 	for _, window := range policy.Windows {
 		windows[window.ID] = window
 	}
+	days := []string{"friday", "monday", "saturday", "sunday", "thursday", "tuesday", "wednesday"}
 	backup, ok := windows["nightly"]
-	if !ok || len(windows) != 2 || backup.Name != "Overnight" || !backup.Enabled || backup.Cadence != "nightly" || backup.StartMinute != 180 || backup.DurationMinutes != 240 || backup.Timezone != "" || len(backup.Days) != 7 || !reflect.DeepEqual(backup.Tasks, []string{"backup"}) {
+	if !ok || len(windows) != 2 || backup.Name != "Overnight" || !backup.Enabled || backup.Cadence != "nightly" || backup.StartMinute != 180 || backup.DurationMinutes != 240 || backup.Timezone != "" || !reflect.DeepEqual(backup.Days, days) || !reflect.DeepEqual(backup.Tasks, []string{"backup"}) {
 		t.Fatalf("nightly backup changed: %+v; windows=%v", backup, windows)
 	}
 	heavy, ok := windows["heavy"]
-	if !ok || heavy.Enabled || heavy.StartMinute != 60 || heavy.DurationMinutes != 300 || len(heavy.Days) != 7 || !reflect.DeepEqual(heavy.Tasks, []string{"analysis", "trickplay"}) {
+	if !ok || heavy.Name != "Heavy background work" || heavy.Enabled || heavy.Cadence != "nightly" || heavy.StartMinute != 60 || heavy.DurationMinutes != 300 || heavy.Timezone != "" || !reflect.DeepEqual(heavy.Days, days) || !reflect.DeepEqual(heavy.Tasks, []string{"analysis", "trickplay"}) {
 		t.Fatalf("heavy window = %+v", heavy)
 	}
 	for _, task := range []string{"analysis", "trickplay"} {
