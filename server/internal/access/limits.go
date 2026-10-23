@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/streamlimits"
 )
 
 // isCanonicalChannelID reports whether id is a canonical v1 channel id
@@ -78,8 +79,13 @@ type TagPolicy struct {
 //	ChannelPolicy        — Enforcer.AdmitChannel, called by the v1 channel
 //	                       start path with canonical v1 ids only.
 type Limits struct {
-	MaxStreams        int `json:"maxStreams"`
-	RemoteBitrateKbps int `json:"remoteBitrateKbps"`
+	AccessTokens      bool              `json:"accessTokens"`
+	MaxProfiles       int               `json:"maxProfiles"`
+	AllowRemote       bool              `json:"allowRemote"`
+	Conversion        string            `json:"conversion"`
+	MaxStreams        int               `json:"maxStreams"`
+	MaxStreamsMode    streamlimits.Mode `json:"maxStreamsMode"`
+	RemoteBitrateKbps int               `json:"remoteBitrateKbps"`
 	// RatingSystem and MaxContentRating name the highest rating the account
 	// may see, exactly as a profile's restriction does: one value of one of
 	// the published rating systems (GET /v1/rating-systems). With no system
@@ -96,23 +102,31 @@ type Limits struct {
 	Tags             TagPolicy      `json:"tagPolicy"`
 }
 
-// DefaultLimits is an unrestricted member: zero means unlimited everywhere, an
-// empty rating means no ceiling, and unrated content is allowed.
+// DefaultLimits inherits the server stream ceiling, adds no content ceiling,
+// and permits unrated content. Explicit unlimited also obeys the server ceiling.
 func DefaultLimits() Limits {
-	return Limits{MaximumAge: -1, AllowUnrated: true, Schedule: AccessSchedule{Windows: []ScheduleWindow{}}, Channels: ChannelPolicy{Mode: "all", Channels: []string{}}, Tags: TagPolicy{DeniedLabels: []string{}}}
+	return Limits{MaxStreamsMode: streamlimits.Inherit, AccessTokens: true, MaxProfiles: 8, AllowRemote: true, Conversion: "server", MaximumAge: -1, AllowUnrated: true, Schedule: AccessSchedule{Windows: []ScheduleWindow{}}, Channels: ChannelPolicy{Mode: "all", Channels: []string{}}, Tags: TagPolicy{DeniedLabels: []string{}}}
 }
 
 // LimitsDocument is the wire shape every limits read and write returns.
 type LimitsDocument struct {
-	AccountID string `json:"accountId"`
-	Revision  int64  `json:"revision"`
-	UpdatedAt string `json:"updatedAt,omitempty"`
-	Limits    Limits `json:"limits"`
+	AccountID           string `json:"accountId"`
+	Revision            int64  `json:"revision"`
+	UpdatedAt           string `json:"updatedAt,omitempty"`
+	Limits              Limits `json:"limits"`
+	ServerMaxStreams    *int   `json:"serverMaxStreams"`
+	EffectiveMaxStreams *int   `json:"effectiveMaxStreams"`
 }
 
 func normalizeLimits(v *Limits) error {
 	fields := []string{}
-	if v.MaxStreams < 0 || v.MaxStreams > 1000 {
+	if v.MaxProfiles < 1 || v.MaxProfiles > 8 {
+		fields = append(fields, "limits.maxProfiles")
+	}
+	if v.Conversion != "server" && v.Conversion != "audio" && v.Conversion != "none" {
+		fields = append(fields, "limits.conversion")
+	}
+	if !streamlimits.Valid(v.MaxStreamsMode, v.MaxStreams) {
 		fields = append(fields, "limits.maxStreams")
 	}
 	if v.RemoteBitrateKbps < 0 || v.RemoteBitrateKbps > 200000 {
@@ -252,10 +266,23 @@ func ContentLimitsTx(ctx context.Context, tx *sql.Tx, account string, r identity
 
 func readLimits(tx *sql.Tx, account string) (LimitsDocument, error) {
 	out := LimitsDocument{AccountID: account, Revision: 1, Limits: DefaultLimits()}
+	streams, e := streamlimits.ReadTx(context.Background(), tx, account)
+	if e != nil {
+		return out, e
+	}
+	out.ServerMaxStreams = streams.ServerCeiling
+	out.EffectiveMaxStreams = streams.EffectiveLimit
 	var body string
 	var updated int64
 	err := tx.QueryRow(`SELECT revision,updated_ms,body FROM access_limits WHERE account_id=?`, account).Scan(&out.Revision, &updated, &body)
 	if errors.Is(err, sql.ErrNoRows) {
+		if e := tx.QueryRow(`SELECT access_tokens,max_profiles FROM direct_memberships WHERE account_id=?`, account).Scan(&out.Limits.AccessTokens, &out.Limits.MaxProfiles); e != nil {
+			return out, e
+		}
+		out.Limits.MaxStreamsMode = streams.Mode
+		if streams.Limit != nil {
+			out.Limits.MaxStreams = *streams.Limit
+		}
 		// A member with no stored row is unrestricted at revision 1, so a client
 		// can write against that revision without a create step.
 		return out, nil
@@ -266,6 +293,14 @@ func readLimits(tx *sql.Tx, account string) (LimitsDocument, error) {
 	out.Limits = DefaultLimits()
 	if err = json.Unmarshal([]byte(body), &out.Limits); err != nil {
 		return out, err
+	}
+	if e := tx.QueryRow(`SELECT access_tokens,max_profiles FROM direct_memberships WHERE account_id=?`, account).Scan(&out.Limits.AccessTokens, &out.Limits.MaxProfiles); e != nil {
+		return out, e
+	}
+	out.Limits.MaxStreamsMode = streams.Mode
+	out.Limits.MaxStreams = 0
+	if streams.Limit != nil {
+		out.Limits.MaxStreams = *streams.Limit
 	}
 	out.Limits.MaximumAge = out.Limits.Ceiling()
 	out.UpdatedAt = time.UnixMilli(updated).UTC().Format(time.RFC3339)
@@ -326,11 +361,23 @@ func (s *Store) SetLimits(ctx context.Context, auth Authorize, account string, c
 			return &ConflictError{current.Revision}
 		}
 		revision, now := current.Revision+1, s.now()
-		raw, _ := json.Marshal(c.Limits)
+		raw, e := limitsBody(c.Limits)
+		if e != nil {
+			return e
+		}
+		if e = streamlimits.WriteTx(ctx, tx, account, c.Limits.MaxStreamsMode, c.Limits.MaxStreams); e != nil {
+			return e
+		}
 		if _, e = tx.Exec(`INSERT INTO access_limits VALUES(?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET revision=excluded.revision,updated_ms=excluded.updated_ms,body=excluded.body`, account, revision, now, string(raw)); e != nil {
 			return e
 		}
-		out = LimitsDocument{AccountID: account, Revision: revision, UpdatedAt: time.UnixMilli(now).UTC().Format(time.RFC3339), Limits: c.Limits}
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET access_tokens=?,max_profiles=? WHERE account_id=?`, c.Limits.AccessTokens, c.Limits.MaxProfiles, account); e != nil {
+			return e
+		}
+		out, e = readLimits(tx, account)
+		if e != nil {
+			return e
+		}
 		return saveReceipt(tx, scope, c.OperationID, want, out, now)
 	})
 	return
@@ -345,4 +392,22 @@ func accountExists(tx *sql.Tx, account string) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// Existing non-stream access settings use their established body store. Stream
+// mode/value, token permission and profile capacity have normalized authorities
+// and are deliberately absent here; reads overlay those rows, never this body.
+func limitsBody(v Limits) ([]byte, error) {
+	type stored struct {
+		AllowRemote       bool           `json:"allowRemote"`
+		Conversion        string         `json:"conversion"`
+		RemoteBitrateKbps int            `json:"remoteBitrateKbps"`
+		RatingSystem      string         `json:"ratingSystem"`
+		MaxContentRating  string         `json:"maxContentRating"`
+		AllowUnrated      bool           `json:"allowUnrated"`
+		Schedule          AccessSchedule `json:"schedule"`
+		Channels          ChannelPolicy  `json:"channelPolicy"`
+		Tags              TagPolicy      `json:"tagPolicy"`
+	}
+	return json.Marshal(stored{v.AllowRemote, v.Conversion, v.RemoteBitrateKbps, v.RatingSystem, v.MaxContentRating, v.AllowUnrated, v.Schedule, v.Channels, v.Tags})
 }

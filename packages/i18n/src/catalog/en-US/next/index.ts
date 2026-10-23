@@ -8,6 +8,8 @@ import {layoutMessages} from './layout.ts';
 import {statesMessages} from './states.ts';
 import {shellMessages} from './shell.ts';
 import {dockMessages} from './dock.ts';
+import {castPlayerMessages} from './cast-player.ts';
+import {mediaMessages} from './media.ts';
 import {homeMessages} from './home.ts';
 import {controlsNativeMessages} from './controls-native.ts';
 import {overlaysNativeMessages} from './overlays-native.ts';
@@ -23,6 +25,8 @@ import {homeContractsMessages} from './home-contracts.ts';
 import {selectionMessages} from './selection.ts';
 import {selectionNativeMessages} from './selection-native.ts';
 import {homeNativeMessages} from './home-native.ts';
+import {settingsMessages} from './settings.ts';
+import {settingsSpecMessages} from './settings-spec.ts';
 
 export const nextMessages = {
   ...platformMessages,
@@ -35,6 +39,8 @@ export const nextMessages = {
   ...statesMessages,
   ...shellMessages,
   ...dockMessages,
+  ...castPlayerMessages,
+  ...mediaMessages,
   ...homeMessages,
   ...controlsNativeMessages,
   ...overlaysNativeMessages,
@@ -50,6 +56,8 @@ export const nextMessages = {
   ...selectionMessages,
   ...selectionNativeMessages,
   ...homeNativeMessages,
+  ...settingsMessages,
+  ...settingsSpecMessages,
 } as const satisfies Record<`next.${string}`, string>;
 
 export type NextMessageId = keyof typeof nextMessages;

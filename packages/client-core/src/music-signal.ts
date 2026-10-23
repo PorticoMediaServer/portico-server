@@ -90,14 +90,15 @@ export function musicSignal(input:MusicSignalInput):MusicSignalModel{
  const {source,server,output}=input,delivered=server?.delivered;
  const gain=server?.loudnessAppliedDb??(input.levelingApplied?input.levelingGainDb:undefined);
  const gainChanged=changedGain(gain),converted=server?.route==='converted';
+ const normalizationAltered=input.levelingApplied||server?.loudnessAppliedDb!==undefined&&server.loudnessAppliedDb!==0;
  const atmosLost=server?.atmosLost===true||output.atmosLost===true;
  const volumeChanged=output.platform==='desktop'&&output.exclusive===true&&typeof output.volume==='number'&&output.volume>=0&&output.volume<1;
- const untouched=server!==undefined&&!converted&&!positive(source.dsdMultiple)&&!input.eqApplied&&!gainChanged&&(!input.levelingApplied||gainKnown(gain))&&!volumeChanged&&output.resampledBy===undefined&&!atmosLost;
+ const untouched=server!==undefined&&!converted&&!positive(source.dsdMultiple)&&!input.eqApplied&&!normalizationAltered&&!volumeChanged&&output.resampledBy===undefined&&!atmosLost;
  const bitPerfect=untouched&&source.lossless===true&&positive(source.sampleRate)&&source.sampleRate===output.sampleRate&&positive(source.bitDepth)&&source.bitDepth===output.bitDepth&&output.bitPerfect===true&&(
   output.platform==='android'&&output.bitPerfectMode==='android14-usb'&&output.usbDac===true||
   output.platform==='desktop'&&output.bitPerfectMode==='desktop-exclusive'&&output.exclusive===true);
  const matched=untouched&&output.platform==='apple'&&output.sampleRateMatched===true&&positive(output.sampleRate)&&positive(source.sampleRate)&&output.sampleRate===source.sampleRate;
- const passthrough=output.passthrough===true&&server!==undefined&&!converted&&!input.eqApplied&&!gainChanged&&!atmosLost;
+ const passthrough=output.passthrough===true&&server!==undefined&&!converted&&!input.eqApplied&&!normalizationAltered&&!atmosLost;
  const pill=text(atmosLost?'player.signal.pill.atmosLost':bitPerfect?'player.signal.pill.bitPerfect':matched?'player.signal.pill.rateMatched':'player.signal.pill.notBitPerfect');
  let state:SignalText|undefined,stateLoss:SignalText|undefined,rule:MusicSignalModel['rule']=6,foldSourceIntoState=false;
  if(converted){
@@ -106,7 +107,7 @@ export function musicSignal(input:MusicSignalInput):MusicSignalModel{
    state=text('player.signal.line.dsdToPcm',{source:text('player.signal.source.dsd',{multiple:source.dsdMultiple}),rate:rate(delivered.sampleRate)});foldSourceIntoState=true;
   }else if(server.atmosLost&&layout(delivered??{}))state=text('player.signal.line.atmosLost',{layout:layout(delivered??{})!});
   else if(server.quality==='cd-quality')state=text('player.signal.line.convertedCd');
-  else if(server.quality==='320'||server.quality==='96')state=text('player.signal.line.convertedBitrate',{kbps:Number(server.quality)});
+  else if((server.quality==='320'||server.quality==='96')&&positive(delivered?.bitrateBps))state=text('player.signal.line.convertedBitrate',{kbps:Math.round(delivered.bitrateBps/1000)});
   else if(delivered?.codec)state=text('player.signal.server.converted',{format:codecName(delivered.codec)});
  }else if(input.eqOn||input.eqApplied){rule=2;state=text(input.eqApplied?'player.signal.line.eqOn':'player.signal.line.eqUnavailable');}
  else if(gainChanged){rule=3;state=text('player.signal.line.loudness',{gain:signalGain(gain)});}
@@ -130,7 +131,7 @@ export function musicSignal(input:MusicSignalInput):MusicSignalModel{
  steps.push({id:'server',label:text('player.signal.step.server'),value:serverValue,note:serverNote,changed:converted});
  const leveling=server?.loudnessAppliedDb!==undefined||input.levelingApplied;
  steps.push({id:'leveling',label:text('player.signal.step.leveling'),value:output.passthrough?text('player.signal.notApplied'):input.normalization==='off'?text('player.signal.off'):leveling&&gainKnown(gain)?text('player.signal.leveling.applied',{mode:input.normalization,gain:signalGain(gain)}):text('player.signal.notApplied'),changed:output.passthrough!==true&&gainChanged});
- steps.push({id:'eq',label:text('player.signal.step.eq'),value:output.passthrough?text('player.signal.notApplied'):!input.eqOn?text('player.signal.off'):input.eqApplied?text('player.signal.eq.on'):text('player.signal.notApplied'),changed:output.passthrough!==true&&input.eqApplied});
+ steps.push({id:'eq',label:text('player.signal.step.eq'),value:output.passthrough?text('player.signal.notApplied'):input.eqApplied?text('player.signal.eq.on'):!input.eqOn?text('player.signal.off'):text('player.signal.notApplied'),changed:output.passthrough!==true&&input.eqApplied});
  if(output.platform==='desktop'&&output.exclusive===true)steps.push({id:'volume',label:text('player.volume'),...(typeof output.volume==='number'&&output.volume>=0&&output.volume<=1?{percent:output.volume}:{}),changed:volumeChanged});
  let outputValue:SignalText|undefined;
  if(output.passthrough)outputValue=text('player.signal.line.passthrough');

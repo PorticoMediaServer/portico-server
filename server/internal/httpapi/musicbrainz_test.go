@@ -31,7 +31,7 @@ func TestMusicBrainzOwnerEditionSelectionAndScope(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','op',1),('member','member',x'00','mp',1);INSERT INTO libraries(id,name,kind,root) VALUES('lib','Music','music','/music');`)
+	_, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','op',1),('member','member',x'00','mp',1);INSERT INTO libraries(id,name,kind,root) VALUES('lib','Music','music','/music');`)
 	if e != nil {
 		t.Fatal(e)
 	}

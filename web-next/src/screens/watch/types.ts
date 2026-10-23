@@ -1,0 +1,74 @@
+import type {ReactNode, Ref, RefObject} from 'react';
+import type {TextEnvironment} from '@core/presentation/kit-model/index.ts';
+import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime} from '../../platform/playback';
+import type {ShellArtwork} from '../../shell/artwork';
+import type {PlaybackFence} from '../../../../packages/player-core/src/index.ts';
+import type {QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
+import type {TrickplayFrame} from '@core/trickplay.ts';
+import type {ArtworkSource} from '../../kit/artwork/types';
+
+/** Structurally matches the parent's binding. The screen never creates or mounts media. */
+export type WatchBindings = Readonly<{
+  runtime: WebShellPlaybackRuntime;
+  artwork: ShellArtwork;
+  environment: TextEnvironment;
+  skips: Readonly<{back: number; forward: number}>;
+  reportError: (error: unknown) => void;
+}>;
+export type WatchPanel = 'options' | 'subtitles-audio' | 'subtitles' | 'audio' | 'quality' | 'speed' | 'episodes' | 'play-on' | 'info' | 'file-info' | 'versions' | 'equalizer';
+export type WatchPanelContext = Readonly<{
+  panel: WatchPanel | null;
+  snapshot: WebPlaybackRuntimeSnapshot;
+  layout: 'desktop' | 'phone';
+  phoneTop: number;
+  close: () => void;
+  returnFocusRef: RefObject<HTMLButtonElement | null>;
+}>;
+/** The parent validates/reads one set and owns authenticated tile delivery and retirement. */
+export type WatchTrickplay = Readonly<{
+  fence: QueuePlaybackFence;
+  frameAt: (seconds: number) => Readonly<{frame: TrickplayFrame; source: ArtworkSource}> | null;
+  isCurrent: () => boolean;
+}>;
+/** The parent composes the media owner's checked panels. A missing port is no capability. */
+export type WatchSurfaces = Readonly<{
+  available: readonly WatchPanel[];
+  render: (context: WatchPanelContext) => ReactNode;
+  together?: ReactNode;
+  prompts?: ReactNode;
+  notices?: ReactNode;
+  /** Actual delivered-quality copy from the media adapter, bound to this source. */
+  quality?: Readonly<{fence: PlaybackFence; automatic: boolean; label: string; accessibleLabel: string}>;
+  tracks?: Readonly<{fence: PlaybackFence; audio?: string; subtitles?: string}>;
+  trickplay?: WatchTrickplay;
+  /** One retained title body owns its tab, season, paging and scroll, also when hidden. */
+  body?: ReactNode;
+  myList?: Readonly<{selected: boolean; pending?: boolean; toggle: () => void | Promise<void>}>;
+  more?: readonly Readonly<{id: string; label: string; action: () => void | Promise<void>}>[];
+}>;
+export type WatchWindowPort = Readonly<{
+  pictureInPicture?: Readonly<{active: boolean; toggle: () => void | Promise<void>}>;
+  fullscreen?: Readonly<{active: boolean; toggle: () => void | Promise<void>}>;
+  fit?: Readonly<{value: 'contain' | 'cover'; toggle: () => void | Promise<void>}>;
+}>;
+export type WatchRect = Readonly<{left: number; top: number; width: number; height: number}>;
+/** Geometry is supplied by Webmedia's presentation controller, never by another engine. */
+export type WatchGeometry = Readonly<{
+  mode: 'full' | 'portrait' | 'book' | 'tabletop';
+  picture: WatchRect;
+  controls: WatchRect;
+  body?: WatchRect;
+  revision: string | number;
+}>;
+export type WatchScreenProps = Readonly<{
+  binding: WatchBindings;
+  snapshot: WebPlaybackRuntimeSnapshot;
+  expanded: boolean;
+  onCollapse: () => void;
+  onControlsVisibleChange?: (visible: boolean) => void;
+  /** Empty bounds target for the SAME MediaSurface the parent already owns. */
+  surfaceSlotRef: Ref<HTMLDivElement>;
+  surfaces?: WatchSurfaces;
+  windowPort?: WatchWindowPort;
+  geometry?: WatchGeometry;
+}>;

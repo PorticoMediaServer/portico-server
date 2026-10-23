@@ -309,6 +309,12 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		if err != nil {
 			return err
 		}
+
+		if bytes && c.UploadLimited != nil {
+			if _, e := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET upload_limited=? WHERE id=?`, *c.UploadLimited, r.id); e != nil {
+				return e
+			}
+		}
 		if n, _ := res.RowsAffected(); n != 1 {
 			return ErrRevision
 		}

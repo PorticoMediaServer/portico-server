@@ -7,6 +7,7 @@ import {parseConnectionDocument,type ConnectionDocument} from './server-administ
 import {trackName} from './presentation/language.ts';
 import {randomId} from './random-id.ts';
 import {routeOrigin} from './route-identity.ts';
+import {parseMoveCollisionDetails,type MoveCollisionDetails} from './account-move.ts';
 import {sessionRoute,bindSessionRoute,type RouteConnection} from './route-connection.ts';
 export * from './route-identity.ts';
 export * from './identity-restrictions.ts';
@@ -115,16 +116,7 @@ export type PlaybackSession = {
   duration: number;
   resumeSeconds: number;
 };
-export type SystemInfo = {
-  id: string;
-  name: string;
-  setupRequired: boolean;
-  /** This build can reach the Portico Account service (true for every release build). */
-  hostedConfigured: boolean;
-  /** This server signs people in with Portico Accounts. Absent from older servers. */
-  hostedAttached?: boolean;
-  version: string;
-};
+export type SystemInfo = Omit<RouteResponse<'get_system'>, 'signIn'|'move'> & {signIn: 'portico' | 'local';move:'to_portico'|'to_local'|null};
 /** A server-named request field (`name`, `rules[0].query.libraryIds`), or undefined for anything else. */
 /** CD-06: `error.confirmRoots`, kept only as a short list of plain http(s) URLs. */
 export function errorConfirmRoots(value: unknown): readonly string[] | undefined {
@@ -214,6 +206,8 @@ export class ApiError extends Error {
    * (`source_lan_confirmation_required`), sent back in `confirmedLanRoots`. Validated plain URLs.
    */
   confirmRoots?: readonly string[];
+  /** Only a checked move_collision document is retained; no generic response-body storage. */
+  current?: MoveCollisionDetails;
   constructor(
     status: number,
     code: string,
@@ -320,8 +314,10 @@ export class HttpLocalApi {
   getTransportClass(): TransportClass { return this.transportClass; }
   /** The surface this client renders on, which scopes its device-class
    * preferences. Unset means the server applies no device-class document. */
-  setDeviceClass(value: 'web' | 'mobile' | 'television' | '') { this.deviceClass = value; setDeliveryContext({ deviceClass: value }); }
+  setDeviceClass(value: 'web' | 'mobile' | 'tablet' | 'television' | '') { this.deviceClass = value; setDeliveryContext({ deviceClass: value }); }
   getDeviceClass() { return this.deviceClass; }
+  /** The catalogue actually displayed by this app, after locale fallback. */
+  setAppLanguage(value: string) { setDeliveryContext({appLanguage: value}); }
   private deliveryHeaders(): Record<string, string> {
     return {
       ...deliveryContextHeaders(),
@@ -488,6 +484,7 @@ export class HttpLocalApi {
       if (path) error.path = path;
       const roots = errorConfirmRoots(data?.error?.current?.confirmRoots);
       if (roots) error.confirmRoots = roots;
+      if(error.status===409&&error.code==='move_collision')error.current=parseMoveCollisionDetails(data?.error?.current);
       throw error;
     }
     return response.status === 204 ? (undefined as T) : response.json();
@@ -702,6 +699,9 @@ export interface PlaybackAdapter {
 }
 /** UI intent is the sole command authority. Native events report facts, never autoplay intent. */
 export class PlaybackService {
+  /** Device engine processing (for example device-local EQ), never an account preference. */
+  private deviceAudioProcessing = false;
+
   private channels?: ChannelPlayback;
   private channelWantedState:'playing'|'paused'='playing';
   private channelSeekId?: string;
@@ -884,7 +884,7 @@ export class PlaybackService {
     this.clearStartup();this.bookmarkProtected=true;this.hasObserved=false;
     const intentId=before.intentId;
     this.requestSeek(position,{session:{...next,duration:next.duration||session.duration,resumeSeconds:position},phase:'starting',audio:this.audioSelection.reset(),audioTracks:before.audioTracks?Object.freeze({...before.audioTracks,selected:before.audioTracks.pending??before.audioTracks.selected,pending:undefined}):undefined,error:undefined,recovering:undefined,
-      audioEffects:{...before.audioEffects,rendering:renderable(next)&&audioEffectsEnabled(before.audioEffects.settings),prepared:undefined,committed:undefined}});
+      audioEffects:{...before.audioEffects,rendering:renderable(next)&&(audioEffectsEnabled(before.audioEffects.settings)||this.deviceAudioProcessing),prepared:undefined,committed:undefined}});
     this.audioPlanDiagnostic(next);
     this.armStartup(()=>{this.reportStalledStart(intentId);this.fail(intentId,'Playback did not become ready. Check the server and try again.');});
     return true;
@@ -1034,11 +1034,23 @@ export class PlaybackService {
   setAudioEffects(settings:AudioEffectsSettings){
     settings=parseAudioEffects(settings);if(!this.nativeV1){this.queue?.seekRetiringAudio?.(this.snapshot.positionSeconds);this.queue?.invalidateAudioPreparation?.();}
     const current=this.snapshot,effects=current.audioEffects;
-    const enable=renderable(current.session)&&audioEffectsEnabled(settings);
+    const enable=renderable(current.session)&&(audioEffectsEnabled(settings)||this.deviceAudioProcessing);
     this.update({audioEffects:{...effects,settings,rendering:effects.rendering||enable,levelingApplied:effects.settings.normalization===settings.normalization&&effects.levelingApplied}});
     this.syncListeningPolicy();
     if(enable&&!effects.rendering&&current.session&&!this.nativeV1)this.requestSeek(current.positionSeconds);
     void this.queue?.saveAudioEffects(settings);
+  }
+  /** The platform engine selects local processing without rewriting the viewer's music settings. */
+  setDeviceAudioProcessing(enabled:boolean){
+    if(this.deviceAudioProcessing===enabled)return;
+    this.deviceAudioProcessing=enabled;
+    const current=this.snapshot,effects=current.audioEffects;
+    const rendering=renderable(current.session)&&(enabled||audioEffectsEnabled(effects.settings));
+    if(rendering===effects.rendering)return;
+    this.queue?.invalidateAudioPreparation?.();
+    const audioEffects={...effects,rendering,prepared:undefined,committed:undefined};
+    if(current.session)this.requestSeek(current.pendingSeek?.positionSeconds??current.positionSeconds,{audioEffects});
+    else this.update({audioEffects});
   }
   audioRenderStatus(effectiveRate:number,waiting:boolean){
     if(!Number.isFinite(effectiveRate)||effectiveRate<0||effectiveRate>4)return;
@@ -1226,7 +1238,7 @@ export class PlaybackService {
     this.leave(false,true);this.sequence=0;this.lastProgress=0;
     const intentId=this.snapshot.intentId;
     this.update({phase:'starting',itemId,intent,error:undefined});
-    this.requestSeek(session.resumeSeconds,{session,duration:session.duration,audioEffects:{...this.snapshot.audioEffects,rendering:renderable(session)&&audioEffectsEnabled(this.snapshot.audioEffects.settings),prepared:undefined,committed:undefined}});
+    this.requestSeek(session.resumeSeconds,{session,duration:session.duration,audioEffects:{...this.snapshot.audioEffects,rendering:renderable(session)&&(audioEffectsEnabled(this.snapshot.audioEffects.settings)||this.deviceAudioProcessing),prepared:undefined,committed:undefined}});
     this.audioPlanDiagnostic(session);
     if(this.snapshot.intentId===intentId&&this.snapshot.phase!=='ready'){
       this.armStartup(()=>{this.reportStalledStart(intentId);this.fail(intentId,'The selected queue item did not become ready. Retry playback or choose another item.');});
@@ -1898,7 +1910,6 @@ export type HostedAccount = {
   username: string;
   displayName: string;
 };
-export type HostedProfile = { id: string; name: string };
 export type HostedSession = {
   refreshToken?: string;
   familyId: string;
@@ -1906,7 +1917,6 @@ export type HostedSession = {
   accessToken: string;
   expiresAt: string;
   account: HostedAccount;
-  profiles: HostedProfile[];
 };
 /**
  * Whether Hosted has heard from a server recently (its presence lease). Absent
@@ -2060,6 +2070,7 @@ export type {PlayerChapter,PlayerChaptersData,PlayerChaptersTarget,PlayerChapter
 export {PlayerSessionChoices,playerSessionChoices} from './player-session-choices.ts';
 export * from './listening.ts';
 export * from './preferences.ts';
+export * from './preference-effects.ts';
 export {parseSegmentMarkers,parseSegmentMarkerSet,canSkipAutomatically,type SegmentMarker,type SegmentMarkerKind,type SegmentMarkerSet} from './segment-markers.ts';
 export {activeSegment,skipsAutomatically,skipTarget,followedByScene,closingKind,SKIP_LEAD_SECONDS,UNDO_SECONDS,type SkipMode} from './segment-skip.ts';
 export {parseQueuePostPlay,passoutCheckRequired,type QueuePostPlay,type QueueAdvanceMode} from './post-play.ts';
@@ -2107,3 +2118,9 @@ export {highestRatingChoices} from './profile-limits.ts';
 
 export * from './account-reset.ts';
 export * from './same-tab-return.ts';
+
+export * from './report-context.ts';
+export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppSessionStorage, type AppServerSession, type NewServerConnection, type PorticoAccountScope, type SignInKind} from './app-sessions.ts';
+export {ServerSignInProbe, parseServerSignIn, signInLabelKey, serverSignInSettingsURL, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
+export * from './account-move.ts';
+export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} from './tv-consent.ts';

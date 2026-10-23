@@ -2,6 +2,7 @@ package playbackv1
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -16,15 +17,23 @@ import (
 // AdminSession is one active playback on the server (spec §14, Now Playing):
 // who, on what device, what, how it's delivered and from where.
 type AdminSession struct {
-	ID         string        `json:"id"`
-	Protocol   string        `json:"protocol"` // "v1"
-	User       AdminName     `json:"user"`
-	Profile    AdminName     `json:"profile"`
-	Device     AdminName     `json:"device"`
-	Item       *ActivityItem `json:"item,omitempty"`
-	Kind       string        `json:"kind"` // "vod" | "audio" | "channel"
-	State      string        `json:"state"`
-	PositionMs int64         `json:"positionMs"`
+	App                string         `json:"app,omitempty"`
+	Platform           string         `json:"platform,omitempty"`
+	Address            string         `json:"address,omitempty"`
+	CurrentBitrateKbps *float64       `json:"currentBitrateKbps"`
+	RateWindowMs       int            `json:"rateWindowMs"`
+	Live               bool           `json:"live"`
+	Media              *AdminMedia    `json:"media,omitempty"`
+	Delivery           *AdminDelivery `json:"delivery,omitempty"`
+	ID                 string         `json:"id"`
+	Protocol           string         `json:"protocol"` // "v1"
+	User               AdminName      `json:"user"`
+	Profile            AdminName      `json:"profile"`
+	Device             AdminName      `json:"device"`
+	Item               *ActivityItem  `json:"item,omitempty"`
+	Kind               string         `json:"kind"` // "vod" | "audio" | "channel"
+	State              string         `json:"state"`
+	PositionMs         int64          `json:"positionMs"`
 	// DurationMs is the length of the version being played; absent for a
 	// channel or when the files do not say.
 	DurationMs    int64     `json:"durationMs,omitempty"`
@@ -105,6 +114,16 @@ type SessionTotals struct {
 func (s *Service) AdminSessions(ctx context.Context, limit int, cursor string) (AdminSessionPage, error) {
 	return s.activitySessionPage(ctx, limit, cursor, false)
 }
+
+// A request composing authorized channel marks with these session rows borrows
+// its one read transaction. Standalone activity reads retain their normal bound.
+func activityRead(ctx context.Context, db *sql.DB) (*sql.Tx, func(), error) {
+	if tx := dbwork.Snapshot(ctx); tx != nil {
+		return tx, func() {}, nil
+	}
+	return dbwork.BeginRead(ctx, db)
+}
+
 func (s *Service) activitySessionPage(ctx context.Context, limit int, cursor string, popover bool) (AdminSessionPage, error) {
 	if limit == 0 {
 		limit = 10
@@ -125,7 +144,7 @@ func (s *Service) activitySessionPage(ctx context.Context, limit int, cursor str
 		}
 		afterPriority, afterCreated, afterID = p, n, parts[3]
 	}
-	tx, done, err := dbwork.BeginRead(ctx, s.DB)
+	tx, done, err := activityRead(ctx, s.DB)
 	if err != nil {
 		return AdminSessionPage{}, err
 	}
@@ -185,8 +204,13 @@ func (s *Service) activitySessionPage(ctx context.Context, limit int, cursor str
 	}
 	// Large lists are compact: neither artwork joins nor catalogue walks beyond
 	// this page. Small-card and popover reads enrich only their bounded choices.
-	if err = enrichActivityItems(ctx, tx, out.Items, popover || out.Totals.Streams <= 10); err != nil {
+	if err = enrichActivityItems(ctx, tx, out.Items, true); err != nil {
 		return out, err
+	}
+	if !popover {
+		if err = enrichAdminFacts(ctx, tx, s, out.Items); err != nil {
+			return out, err
+		}
 	}
 	return out, nil
 }
@@ -229,19 +253,25 @@ func readAdminSession(rows interface{ Scan(...any) error }) (AdminSession, durat
 	}
 	if a.Kind == "channel" && selection != "" {
 		var selected struct {
-			Name  string `json:"name"`
-			Title string `json:"title"`
-			End   int64  `json:"entryEndMs"`
+			Name   string `json:"name"`
+			Number string `json:"number"`
+			Title  string `json:"title"`
+			End    int64  `json:"entryEndMs"`
 		}
 		if json.Unmarshal([]byte(selection), &selected) == nil {
 			if selected.Name != "" {
-				a.Channel = &ActivityChannel{Name: selected.Name}
+				a.Channel = &ActivityChannel{Name: selected.Name, Number: selected.Number}
 			}
 			if selected.Title != "" && selected.End > 0 {
 				a.Programme = &ActivityProgramme{Title: selected.Title, EndsAt: time.UnixMilli(selected.End).UTC().Format(time.RFC3339Nano)}
 			}
 		}
 	}
+	a.Live = a.Kind == "channel" || a.Kind == "live"
+	if a.Live {
+		a.PositionMs = 0
+	}
+	a.RateWindowMs = 5000
 	a.StartedAt = time.UnixMilli(created).UTC().Format(time.RFC3339Nano)
 	return a, durationKey{entity, version}, created, nil
 }

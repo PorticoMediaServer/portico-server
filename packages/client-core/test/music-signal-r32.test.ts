@@ -9,7 +9,7 @@ const key=(v:ReturnType<typeof musicSignal>)=>v.state?.key;
 test('812/b4: priority uses actual conversion, EQ, gain and observed output',()=>{
  assert.equal(key(musicSignal({...base,eqOn:true,eqApplied:false})), 'player.signal.line.eqUnavailable');
  assert.equal(key(musicSignal({...base,eqOn:true,eqApplied:true})), 'player.signal.line.eqOn');
- assert.equal(key(musicSignal({...base,eqOn:true,server:{route:'converted',quality:'320'}})), 'player.signal.line.convertedBitrate');
+ assert.equal(key(musicSignal({...base,eqOn:true,server:{route:'converted',quality:'320',delivered:{codec:'opus',bitrateBps:256000}}})), 'player.signal.line.convertedBitrate');
  assert.equal(key(musicSignal({...base,normalization:'track',levelingApplied:true,levelingGainDb:-3.2})), 'player.signal.line.loudness');
  assert.equal(key(musicSignal({...base,normalization:'track',levelingApplied:true,levelingGainDb:0})), undefined);
  assert.equal(key(musicSignal({...base,server:{route:'original',loudnessAppliedDb:-12}})), 'player.signal.line.loudness');
@@ -50,4 +50,18 @@ test('812: DSD conversion is folded once and notable badges are bounded',()=>{
 test('812: Smooth transitions alone starts neither a renderer nor an overlap',()=>{
  assert.equal(audioEffectsEnabled({...noAudioEffects,smoothTransitions:true}),false);
  assert.equal(audioTransitionsEnabled({...noAudioEffects,smoothTransitions:true}),false);
+});
+
+test('Actual processing is independent of requested state and display rounding',()=>{
+ const eq=musicSignal({...base,eqOn:false,eqApplied:true}).steps.find(s=>s.id==='eq')!;
+ assert.equal(typeof eq.value==='object'&&eq.value.key,'player.signal.eq.on');
+ const output={...base.output,platform:'desktop' as const,device:'computer' as const,exclusive:true,bitPerfect:true,bitPerfectMode:'desktop-exclusive' as const,sampleRate:96000,bitDepth:24};
+ for(const input of [{...base,output,levelingApplied:true,levelingGainDb:.01},{...base,output,server:{route:'original' as const,loudnessAppliedDb:.01}}]){
+  assert.equal(musicSignal(input).pill.key,'player.signal.pill.notBitPerfect');
+ }
+ assert.equal(musicSignal({...base,output}).pill.key,'player.signal.pill.bitPerfect');
+ const measured=musicSignal({...base,server:{route:'converted',quality:'320',delivered:{codec:'opus',bitrateBps:256000}}});
+ assert.equal(measured.state?.values?.kbps,256);
+ const unknown=musicSignal({...base,server:{route:'converted',quality:'320',delivered:{codec:'opus'}}});
+ assert.equal(unknown.state?.key,'player.signal.server.converted');
 });

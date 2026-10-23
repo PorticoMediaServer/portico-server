@@ -444,8 +444,9 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
      subtitle list has loaded nothing is said, and the profile's usual choice applies. */
   const castSubtitles = () => {
     const plan = subtitles.snapshot.plan;
-    if (!plan) return undefined;
-    return {subtitleTrackId: plan.mode === 'track' && !subtitles.snapshot.suppressed && plan.selected ? plan.selected.id : null};
+    const current = service.getSnapshot();
+    const queue = engine.playback.session(current.session?.id)?.queue;
+    return {...(queue ? {queue: {queueId: queue.queueId, entryId: queue.entryId}} : {}), ...(plan ? {subtitleTrackId: plan.mode === 'track' && !subtitles.snapshot.suppressed && plan.selected ? plan.selected.id : null} : {})};
   };
   /** Watch Together from the player: the title goes to the Together page, which plays it once the group has started. */
   function watchTogether() {
@@ -459,7 +460,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     engine.leave();
   }
   // The error state card already says why playback stopped; the toast doesn't repeat it.
-  const message = state.linearStalled ? null : engine.queueNotice || (state.error && state.phase !== 'error' ? playbackUserMessage(state.error) : state.seekError ? playbackUserMessage(state.seekError) : null) || (state.recovering ? i18n.t('web.player.reconnecting') : null) || notice || state.audioEffects.notice || (state.pendingSeek ? 'Seeking…' : state.phase === 'starting' ? 'Preparing playback…' : buffering && state.intent === 'playing' ? 'Buffering…' : isAudio ? listening?.message ?? undefined : undefined);
+  const message = state.linearStalled ? null : engine.queueNotice || (state.error && state.phase !== 'error' ? playbackUserMessage(state.error) : state.seekError ? playbackUserMessage(state.seekError) : null) || (state.recovering ? i18n.t('web.player.reconnecting') : null) || notice || (state.pendingSeek ? 'Seeking…' : state.phase === 'starting' ? 'Preparing playback…' : buffering && state.intent === 'playing' ? 'Buffering…' : isAudio ? listening?.message ?? undefined : undefined);
   const linear = state.linear;
   const failed = playbackFailure(state.error);
   const ownerStop = ownerStopOf(state.ended);
@@ -575,7 +576,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const savedQuality: QualityChoice = inForce && (!fixedQuality(inForce) || offeredSteps.some(q => q.id === inForce)) ? inForce : 'original';
   const qualityChoice: QualityChoice = engine.qualityChoice ?? savedQuality;
   const automaticStep = useSyncExternalStore(engine.playback.subscribeAutomatic, () => engine.playback.automaticAt);
-  const stepLabel = (q: FixedQuality) => (q.id === '2160' ? i18n.t('quality.4k') : i18n.t('quality.height', {height: q.height}));
+  const stepLabel = (q: FixedQuality) => (q.height >= 2160 ? i18n.t('quality.4k') : i18n.t('quality.height', {height: q.height}));
   const automaticWanted = qualityChoice === 'automatic' && !isAudio && !state.linear && !!state.session && owner.transcoding;
   useEffect(() => {
     engine.playback.setAutomatic(automaticWanted ? {steps: offeredSteps, ...(originalKbps ? {originalKbps} : {})} : null);

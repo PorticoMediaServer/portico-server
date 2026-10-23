@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"portico.local/apikit"
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/administration"
 	"portico.local/server/internal/backup"
@@ -47,16 +48,20 @@ import (
 	"portico.local/server/internal/playbackv1"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/rcloneprogram"
+	"portico.local/server/internal/reading"
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/social"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
+	"portico.local/server/internal/telemetry"
 	"portico.local/server/internal/webhooks"
 )
 
 type Dependencies struct {
+	TelemetryContext  context.Context
+	streamTraffic     *telemetry.Traffic
 	RcloneProgram     *rcloneprogram.Status
 	StorageLayout     *storagepaths.Layout
 	ConnectionUsage   func() ConnectionUsage
@@ -64,6 +69,9 @@ type Dependencies struct {
 	CacheDirectory    string
 	Restart           func()
 	ListeningPort     int
+	// LocalHTTPURL comes solely from the actual bound loopback-capable listener.
+	// Empty means no localhost route is reported, never an inferred default.
+	LocalHTTPURL string
 	// SettingsApplied runs after an owner saves console settings so snapshot
 	// readers (delivery configuration) refresh off the request path.
 	SettingsApplied func(context.Context)
@@ -106,6 +114,7 @@ type Dependencies struct {
 	DB                *sql.DB
 	Identity          *identity.Service
 	Catalog           *catalog.Service
+	Reading           *reading.Service
 	Ingestion         *ingestion.Service
 	Playback          *playback.Service
 	Hosted            *hosted.Service
@@ -255,6 +264,10 @@ func reportHTTPFailure(status int, code string, err error) {
 	log.Printf("request failed (%d %s): %s", status, code, boundFailureDetail(err))
 }
 func failure(w http.ResponseWriter, e error) {
+	if errors.Is(e, identity.ErrFactorSetupRequired) {
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "factor_setup_required"})
+		return
+	}
 	if revisionFailure(w, e) {
 		return
 	}
@@ -271,6 +284,33 @@ func failure(w http.ResponseWriter, e error) {
 	}
 	if errors.Is(e, preparedmedia.ErrInput) || errors.Is(e, preparedmedia.ErrConflict) || errors.Is(e, preparedmedia.ErrUnavailable) || errors.Is(e, preparedmedia.ErrSourceChanged) {
 		preparedFailure(w, e)
+		return
+	}
+	for _, moveErr := range []struct {
+		err    error
+		code   string
+		status int
+	}{{identity.ErrMoveCollision, "move_collision", 409}, {identity.ErrMoveConfirmation, "move_confirmation", 409}, {identity.ErrMoveCode, "move_code_invalid", 410}, {identity.ErrMoveWaiting, "account_move_waiting", 403}} {
+		if errors.Is(e, moveErr.err) {
+			var collision *identity.MoveCollisionError
+			public := &apierror.Error{Code: moveErr.code}
+			if errors.As(e, &collision) {
+				public.Current = MoveCollisionDetails{ExistingUsername: collision.Username, ServerName: collision.ServerName}
+			}
+			policyErrors.Write(w, w.Header().Get("X-Request-Id"), public)
+			return
+		}
+	}
+	if errors.Is(e, identity.ErrSignInKindPortico) || errors.Is(e, identity.ErrSignInKindLocal) {
+		code := "sign_in_kind_portico"
+		if errors.Is(e, identity.ErrSignInKindLocal) {
+			code = "sign_in_kind_local"
+		}
+		write(w, 403, map[string]any{"error": map[string]any{"code": code, "message": e.Error(), "retryable": false}})
+		return
+	}
+	if errors.Is(e, hosted.ErrServicesUnavailable) {
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "portico_services_unavailable"})
 		return
 	}
 	status, code := 500, "internal"
@@ -353,12 +393,6 @@ func failure(w http.ResponseWriter, e error) {
 	}
 	if errors.Is(e, identity.ErrDeviceUnknown) {
 		status, code = 404, "device_not_found"
-	}
-	if errors.Is(e, identity.ErrDevicePending) {
-		status, code = 403, "device_approval_pending"
-	}
-	if errors.Is(e, identity.ErrDeviceDenied) {
-		status, code = 403, "device_denied"
 	}
 	if errors.Is(e, identity.ErrRegistrationClosed) {
 		status, code = 403, "registration_closed"
@@ -722,6 +756,7 @@ func (d Dependencies) itemAccess(ctx context.Context, p identity.Principal, id s
 	return d.restrictedItem((&http.Request{}).WithContext(ctx), p, id)
 }
 func New(d Dependencies) http.Handler {
+	d.streamTraffic = &telemetry.Traffic{}
 	d.configurePlaybackEvidence()
 	if d.Storage == nil {
 		if binary, e := os.Executable(); e == nil {
@@ -795,6 +830,12 @@ func New(d Dependencies) http.Handler {
 		})
 	}
 	d.v1 = newPlaybackV1(d)
+	if d.Reading == nil {
+		d.Reading = d.readingService()
+	}
+	if d.v1 != nil {
+		d.v1.Traffic = d.streamTraffic
+	}
 	d.social = d.Social()
 	if registry, err := FoundationRegistry(d); err != nil {
 		panic(err)
@@ -878,7 +919,17 @@ func New(d Dependencies) http.Handler {
 	// maintenance document; published here it tells a scanner which servers
 	// carry a known flaw.
 	d.httpHandle(mux, "GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
-		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"]})
+		kind, err := d.Identity.SignInKind(r.Context())
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		move, err := d.Identity.PublicAccountMove(r.Context())
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		write(w, 200, SystemInfo{Move: move, ID: d.Identity.ID(), Name: d.Identity.Name(), SignIn: kind, SetupRequired: d.Identity.SetupRequired(), HostedConfigured: d.Hosted != nil && d.Hosted.Configured(), HostedAttached: d.Identity.Hosted(), Version: buildinfo.Info()["version"]})
 	})
 	d.httpHandle(mux, "GET /v1/me", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
@@ -1279,7 +1330,7 @@ func New(d Dependencies) http.Handler {
 				// still held to the origin rule above and to its own authentication.
 				w.Header().Set("Access-Control-Allow-Private-Network", "true")
 			}
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Range, If-Match, If-None-Match, Idempotency-Key, Last-Event-ID, Portico-Client, X-Portico-Transport-Class, X-Portico-Device-Class, X-Portico-Device-Name, X-Portico-Device-Platform, X-Portico-Installation-Id, X-Portico-App, X-Portico-App-Version")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Range, If-Match, If-None-Match, Idempotency-Key, Last-Event-ID, Portico-Client, X-Portico-Transport-Class, X-Portico-Device-Class, X-Portico-App-Language, X-Portico-Device-Name, X-Portico-Device-Platform, X-Portico-Installation-Id, X-Portico-App, X-Portico-App-Version")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length, Location, Retry-After, ETag, Idempotent-Replayed, RateLimit, RateLimit-Policy, Report-Every-Ms")
 			// Without this a browser remembers a preflight for about five seconds, so the hosted web

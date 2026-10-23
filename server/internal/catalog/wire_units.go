@@ -124,10 +124,10 @@ func (HistoryEntry) JSONSchema() map[string]any {
 type playSummaryWire PlaySummary
 
 func (v PlaySummary) MarshalJSON() ([]byte, error) {
-	return apiwire.MarshalDurations(playSummaryWire(v), map[string]string{"watchedSeconds": "watchedMs"})
+	return apiwire.MarshalDurations(playSummaryWire(v), nil)
 }
 func (PlaySummary) JSONSchema() map[string]any {
-	return apiwire.DurationSchema(reflect.TypeFor[playSummaryWire](), map[string]string{"watchedSeconds": "watchedMs"})
+	return apiwire.DurationSchema(reflect.TypeFor[playSummaryWire](), nil)
 }
 
 func (v *Item) UnmarshalJSON(raw []byte) error {
@@ -163,7 +163,7 @@ func (v *HistoryEntry) UnmarshalJSON(raw []byte) error {
 }
 
 func (v *PlaySummary) UnmarshalJSON(raw []byte) error {
-	return apiwire.UnmarshalDurations(raw, (*playSummaryWire)(v), map[string]string{"watchedSeconds": "watchedMs"})
+	return apiwire.UnmarshalDurations(raw, (*playSummaryWire)(v), nil)
 }
 
 type titleRowWire TitleRow

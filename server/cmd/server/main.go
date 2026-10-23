@@ -842,6 +842,27 @@ func run() (runErr error) {
 	} else {
 		log.Print("Media conversion unavailable; compatible direct playback remains available")
 	}
+	meta := metadata.New(db, os.Getenv("PORTICO_TMDB_READ_ACCESS_TOKEN"))
+	meta.Admission = workAdmission.Admit
+	meta.SubtitleCredentials = subtitleProvider.SetCredentials
+	meta.SubtitleStatus = func() metadata.OpenSubtitlesStatus {
+		return metadata.OpenSubtitlesStatus(subtitleProvider.OwnerStatus())
+	}
+	meta.SubtitleCheck = func(ctx context.Context) metadata.OpenSubtitlesStatus {
+		return metadata.OpenSubtitlesStatus(subtitleProvider.Check(ctx))
+	}
+	if e = meta.ConfigureAcoustID(os.Getenv("PORTICO_ACOUSTID_CLIENT_KEY")); e != nil {
+		return e
+	}
+	cat.OwnerMetadataRevision = meta.OwnerTextRevision
+	meta.LocalArtwork = localMeta.Open
+	meta.LocalArtworkUsage = localMeta.MeasuredArtworkUsage
+	if e = meta.SetArtworkDirectory(storagepaths.Path(state, "artwork")); e != nil {
+		return e
+	}
+	// Bind the same configured metadata service before the scanner can call it.
+	// Generation remains closed until its retained source runtime is composed.
+	scanner.EpisodeThumbnails = meta.ScanEpisodeThumbnails
 	supervise.Supervise(ctx, "cmd.remote-sources", sources.Run)
 	supervise.Supervise(ctx, "cmd.library-channels", generatedChannels.Run)
 	supervise.Supervise(ctx, "cmd.live-refresh", func(life context.Context) { liveSources.RunRefresh(life, livechannels.SourceFetcher{}) })
@@ -866,19 +887,6 @@ func run() (runErr error) {
 	drain.add("scanner", cancel, scanDone)
 	drain.add("analysis-retention", nil, retentionDone)
 	drain.add("segment-detection", nil, segmentsDone)
-	meta := metadata.New(db, os.Getenv("PORTICO_TMDB_READ_ACCESS_TOKEN"))
-	meta.Admission = workAdmission.Admit
-	meta.SubtitleCredentials = subtitleProvider.SetCredentials
-	meta.SubtitleStatus = func() metadata.OpenSubtitlesStatus {
-		return metadata.OpenSubtitlesStatus(subtitleProvider.OwnerStatus())
-	}
-	meta.SubtitleCheck = func(ctx context.Context) metadata.OpenSubtitlesStatus {
-		return metadata.OpenSubtitlesStatus(subtitleProvider.Check(ctx))
-	}
-	if e = meta.ConfigureAcoustID(os.Getenv("PORTICO_ACOUSTID_CLIENT_KEY")); e != nil {
-		return e
-	}
-	cat.OwnerMetadataRevision = meta.OwnerTextRevision
 	// The Portico title dataset: a daily manifest check and download for the
 	// domains this server has libraries for, and works matched as they gain
 	// provider ids. Off until a release is published (enrichment.Published*).
@@ -963,11 +971,6 @@ func run() (runErr error) {
 		defer unregisterChanged()
 		worker.Run(life, "cmd.listening-groups", wake, cat.ListeningGroupStep(changed))
 	})
-	meta.LocalArtwork = localMeta.Open
-	meta.LocalArtworkUsage = localMeta.MeasuredArtworkUsage
-	if e = meta.SetArtworkDirectory(storagepaths.Path(state, "artwork")); e != nil {
-		return e
-	}
 	supervise.Supervise(ctx, "cmd.metadata", meta.Run)
 	supervise.Supervise(ctx, "cmd.artwork", meta.RunArtwork)
 	supervise.Supervise(ctx, "cmd.hosted-control", control.Run)
@@ -1177,19 +1180,37 @@ func run() (runErr error) {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
 	var transport *cappedListener
-	handler := httpapi.New(httpapi.Dependencies{RcloneProgram: &rcloneStatus, CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
+	apiDependencies := httpapi.Dependencies{TelemetryContext: ctx, RcloneProgram: &rcloneStatus, CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
 		held, _ := transport.Held()
 		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
-	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
+	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, LocalHTTPURL: networking.LoopbackHTTPURL(listener.Addr()), Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
 		control.NotifySettingsChanged(ctx)
 		deliverySettings.Refresh(ctx)
 		claimHandler.Remote().Wake()
 		invalidateCustomSource()
-	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner, claimHandler.Certificates(), customCertificate), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins, SetupHosts: setupHosts})
+	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner, claimHandler.Certificates(), customCertificate), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins, SetupHosts: setupHosts}
+	readingService := httpapi.NewReadingService(apiDependencies)
+	defer readingService.Close()
+	apiDependencies.Reading = readingService
+	previousFamilyRevoked := ident.OnFamilyRevokedTx
+	ident.OnFamilyRevokedTx = func(ctx context.Context, tx *sql.Tx, family identity.FamilyState) error {
+		if previousFamilyRevoked != nil {
+			if err := previousFamilyRevoked(ctx, tx, family); err != nil {
+				return err
+			}
+		}
+		return readingService.OnFamilyRevokedTx(ctx, tx, family)
+	}
+	handler := httpapi.New(apiDependencies)
 	// The timeout and 5xx log lines name the registered route pattern, which
 	// only the router can resolve for a request seen outside the mux.
 	measurements.Pattern = httpapi.RoutePattern
 	doneRouter(nil)
+	if claimHandler != nil {
+		supervise.Supervise(ctx, "networking.claim.web-recovery", func(ctx context.Context) {
+			claimHandler.RunWebClaimRecovery(ctx, httpapi.NetworkingClaimResume(ident))
+		})
+	}
 	supervise.Supervise(ctx, "cmd.api-events", events.Run)
 	supervise.Supervise(ctx, "cmd.scan-events", func(ctx context.Context) { scanevents.Run(ctx, db, cat.InventoryStatus, scanner) })
 	// The outermost wrapper: a handler panic is counted and attributed here, and

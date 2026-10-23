@@ -4,6 +4,7 @@ import (
 	"portico.local/apikit"
 	access "portico.local/server/internal/access"
 	administration "portico.local/server/internal/administration"
+	"portico.local/server/internal/catalog"
 	diagnostics "portico.local/server/internal/diagnostics"
 	operations "portico.local/server/internal/operations"
 	persistence "portico.local/server/internal/persistence"
@@ -12,8 +13,12 @@ import (
 )
 
 func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
+	if err := apikit.RegisterHTTP[access.MemberBulkRequest, access.MemberBulkResult](registry, apikit.Metadata{ID: "post_admin_access_members_bulk", Method: "POST", Path: "/v1/admin/access/members/bulk", Summary: "Change selected people in one transaction", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "members", Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.PageSized, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "revision_mismatch", "internal"}}); err != nil {
+		return err
+	}
+
 	// internal/httpapi/admin_access.go:27
-	if err := apikit.RegisterHTTP[struct{}, access.MemberPage](registry, apikit.Metadata{ID: "get_admin_access_members", Method: "GET", Path: "/v1/admin/access/members", Summary: "Read server access members", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit"}, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, access.MemberPage](registry, apikit.Metadata{ID: "get_admin_access_members", Method: "GET", Path: "/v1/admin/access/members", Summary: "Read server access members", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "q", "role", "status", "sort", "direction"}, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin_access.go: one member
@@ -58,7 +63,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/admin_access.go:139
-	if err := apikit.RegisterHTTP[InvitationAcceptRequest, InvitationAcceptanceResponse](registry, apikit.Metadata{ID: "post_access_invitations_accept", Method: "POST", Path: "/v1/access/invitations/accept", Summary: "Run access invitations accept", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[InvitationAcceptRequest, InvitationAcceptanceResponse](registry, apikit.Metadata{ID: "post_access_invitations_accept", Method: "POST", Path: "/v1/access/invitations/accept", Summary: "Run access invitations accept", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "sign_in_kind_local", "sign_in_kind_portico", "factor_setup_required", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin_concurrency.go:182
@@ -320,7 +325,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/telemetry_routes.go:42
-	if err := apikit.RegisterHTTP[struct{}, projectedConsoleEnvelope[telemetry.Reading]](registry, apikit.Metadata{ID: "get_admin_telemetry", Method: "GET", Path: "/v1/admin/telemetry", Summary: "Read server telemetry", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"window"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, projectedConsoleEnvelope[telemetry.Reading]](registry, apikit.Metadata{ID: "get_admin_telemetry", Method: "GET", Path: "/v1/admin/telemetry", Summary: "Read server telemetry", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"window", "timeZone", "until"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/telemetry_routes.go:42
@@ -337,5 +342,25 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_admin_playback_history_csv", Method: "GET", Path: "/v1/admin/playback/history.csv", Summary: "Read server playback history.csv", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Media, Admission: lanePlayback, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, ResponseContentType: "text/csv", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
+
+	for _, spec := range []struct {
+		id, path string
+		people   bool
+	}{
+		{"get_admin_play_history_dashboard", "/v1/admin/play-history/dashboard", false},
+		{"get_admin_play_history_people", "/v1/admin/play-history/people", true},
+	} {
+		meta := apikit.Metadata{ID: spec.id, Method: "GET", Path: spec.path, Summary: "Read owner Dashboard analytics", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, Status: 200, Query: []string{"period", "accountId", "libraryId", "media", "q", "cursor", "limit", "topKind", "timeZone", "until"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}
+		if spec.people {
+			if err := apikit.RegisterHTTP[struct{}, catalog.DashboardPeople](registry, meta); err != nil {
+				return err
+			}
+		} else {
+			if err := apikit.RegisterHTTP[struct{}, catalog.DashboardHistory](registry, meta); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }

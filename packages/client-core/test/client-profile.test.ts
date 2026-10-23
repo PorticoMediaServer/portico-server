@@ -108,7 +108,7 @@ test('Safari on an HDR Mac: HEVC, HDR10, Dolby Vision, native HLS and surround o
  assert.ok(hevc.dynamicRanges!.includes('hdr10')&&hevc.dynamicRanges!.includes('dolby_vision'));
  assert.deepEqual(hevc.dolbyVisionProfiles,[5,8]);
  assert.equal(d.audioOutput!.maxChannels,6);
- assert.deepEqual(d.display!.dynamicRanges,['sdr','hdr10','hlg']);
+ assert.deepEqual(d.display!.dynamicRanges,['sdr','hdr10','hlg','dolby_vision']);
  assert.ok(p.transports!.find(t=>t.transport==='hls_fmp4')!.video!.includes('hevc'));
  assert.ok(p.transports!.find(t=>t.transport==='hls_ts')!.audio!.includes('eac3'));
  assert.equal(p.embeddedAudioSwitching,true);assert.equal(p.toneMapsHdr,true);
@@ -201,8 +201,8 @@ test('a decoder that does 4K only at 30 states its operating points',async()=>{
  const d=androidProfile({},{decoders:[{codec:'h264',hardware:true,maxWidth:3840,maxHeight:2160,maxFrameRate:30,limits:[{maxWidth:3840,maxHeight:2160,maxFrameRate:30},{maxWidth:1920,maxHeight:1080,maxFrameRate:60}]}]});
  assert.equal(capabilityDocumentProblem(d),null);
  assert.deepEqual(d.engines.native.video!.find(v=>v.codec==='h264')!.limits,[{maxWidth:3840,maxHeight:2160,maxFrameRate:30},{maxWidth:1920,maxHeight:1080,maxFrameRate:60}]);
- const web=await probeWebProfile(chromeLike({decodingInfo:async q=>({supported:!/hvc1|dvh1/.test(q.contentType)&&q.transferFunction===undefined,smooth:!(q.width>=3840&&q.framerate>30),powerEfficient:true})}));
- assert.deepEqual(web.engines.native.video!.find(v=>v.codec==='h264')!.limits,[{maxWidth:4096,maxHeight:2160,maxFrameRate:30},{maxWidth:1920,maxHeight:1080,maxFrameRate:60}]);
+ const web=await probeWebProfile(chromeLike({decodingInfo:async q=>({supported:!/hvc1|dvh1/.test(q.contentType)&&q.transferFunction===undefined,smooth:q.width<=3840&&!(q.width>=3840&&q.framerate>30),powerEfficient:true})}));
+ assert.deepEqual(web.engines.native.video!.find(v=>v.codec==='h264')!.limits,[{bitDepths:[8],maxWidth:3840,maxHeight:2160,maxFrameRate:30},{bitDepths:[8],maxWidth:1920,maxHeight:1080,maxFrameRate:60}]);
  const bad=androidProfile({},{decoders:[{codec:'h264',hardware:true,maxWidth:1920,maxHeight:1080}]});
  bad.engines.native.video![0]!.limits=[{}];
  assert.equal(capabilityDocumentProblem(bad),'engines.native.video.h264.limits');
@@ -211,8 +211,53 @@ test('a decoder that does 4K only at 30 states its operating points',async()=>{
 test('4K is asked at a level that covers 4K, so a decoder that answers by level is not under-declared',async()=>{
  const asked:string[]=[];
  // A decoder that refuses 3840×2160 at level 4.0 and takes it at 5.1, as some televisions and Vega do.
- const d=await probeWebProfile(chromeLike({decodingInfo:async q=>{if(q.width===3840)asked.push(q.contentType);return {supported:!(q.width===3840&&/avc1\.640028|av01\.0\.08M|vp09\.00\.40/.test(q.contentType))&&!/hvc1|dvh1/.test(q.contentType),smooth:true,powerEfficient:true};}}));
+ const d=await probeWebProfile(chromeLike({decodingInfo:async q=>{if(q.width===3840)asked.push(q.contentType);return {supported:!(q.width===3840&&/avc1\.640028|av01\.0\.08M|vp09\.00\.40/.test(q.contentType))&&!/hvc1|dvh1/.test(q.contentType),smooth:q.width<=3840,powerEfficient:true};}}));
  assert.ok(asked.some(type=>type.includes('avc1.640033')),'H.264 at level 5.1');
  assert.equal(asked.some(type=>type.includes('avc1.640028')),false);
  for(const codec of ['h264','av1','vp9'])assert.equal(d.engines.native.video!.find(v=>v.codec===codec)!.maxHeight,2160,codec);
+});
+
+
+test('Windows HEVC is granted by the runtime, with exact sample entry and transport',async()=>{
+ for(const browser of ['blink','gecko']){
+  const asked:string[]=[];
+  const d=await probeWebProfile({identity:{engine:browser,os:'windows'},canPlayType:t=>t.includes('hev1.')?'probably':'',mediaSourceSupports:null,
+   decodingInfo:async(q,type)=>{asked.push(type!);return {supported:q.contentType.includes('hev1.'),smooth:q.width<=3840&&q.framerate<=30,powerEfficient:true};}});
+  const hevc=d.engines.native.video!.find(v=>v.codec==='hevc')!;
+  assert.ok(hevc);assert.deepEqual(hevc.codecTags,['hev1']);assert.equal(hevc.maxHeight,2160);
+  assert.ok(asked.every(t=>t==='file'),'a file-only decoder is never asked with media-source');
+  assert.equal(d.engines.native.transports!.some(t=>t.transport==='hls_fmp4'),false);
+ }
+ const no=await probeWebProfile({identity:{engine:'blink',os:'windows'},canPlayType:()=>'',mediaSourceSupports:()=>false});
+ assert.equal(no.engines.native.video!.some(v=>v.codec==='hevc'),false,'OS or UA never grants a decoder');
+});
+
+test('8K8bit does not grant 8K10bit or 4K60 when only 1080p60 is smooth',async()=>{
+ const d=await probeWebProfile({canPlayType:t=>t.includes('hvc1')?'probably':'',mediaSourceSupports:t=>t.includes('hvc1'),
+  decodingInfo:async q=>({supported:true,smooth:q.contentType.includes('hvc1.2.')?q.width<=1920:q.framerate<=30||q.width<=1920,powerEfficient:true})});
+ const hevc=d.engines.native.video!.find(v=>v.codec==='hevc')!;
+ assert.equal(hevc.maxWidth,7680);
+ assert.ok(hevc.limits!.some(l=>l.bitDepths![0]===8&&l.maxWidth===7680&&l.maxFrameRate===30));
+ assert.ok(hevc.limits!.filter(l=>l.bitDepths![0]===10).every(l=>l.maxWidth!<=1920));
+ assert.ok(hevc.limits!.filter(l=>l.maxWidth!>1920).every(l=>l.maxFrameRate===30));
+ assert.equal(capabilityDocumentProblem(d),null);
+});
+
+test('Dolby Vision requires the exact runtime report and HDR display; MIME/base HEVC alone is insufficient',async()=>{
+ const env:WebProbeEnvironment={canPlayType:t=>/hvc1|dvh1/.test(t)?'probably':'',mediaSourceSupports:t=>/hvc1|dvh1/.test(t),matchMedia:()=>true,
+  decodingInfo:async q=>({supported:!q.contentType.includes('dvh1.05'),smooth:q.width<=3840,powerEfficient:true})};
+ const yes=await probeWebProfile(env),hevc=yes.engines.native.video!.find(v=>v.codec==='hevc')!;
+ assert.deepEqual(hevc.dolbyVisionProfiles,[8]);assert.ok(yes.display!.dynamicRanges!.includes('dolby_vision'));
+ const no=await probeWebProfile({...env,decodingInfo:async q=>({supported:!q.contentType.includes('dvh1'),smooth:true,powerEfficient:true})});
+ assert.equal(no.engines.native.video!.find(v=>v.codec==='hevc')!.dolbyVisionProfiles,undefined);
+ const sdr=await probeWebProfile({...env,matchMedia:()=>false});
+ assert.equal(sdr.engines.native.video!.find(v=>v.codec==='hevc')!.dolbyVisionProfiles,undefined);
+});
+
+
+test('explicit runtime operating-point denial is not replaced with a fabricated 1080p ceiling',async()=>{
+ const d=await probeWebProfile({canPlayType:()=> 'probably',mediaSourceSupports:()=>true,decodingInfo:async()=>({supported:false,smooth:false,powerEfficient:false})});
+ assert.deepEqual(d.engines.native.video,[]);
+ assert.equal(d.engines.native.audio!.find(a=>a.codec==='eac3')!.objectAudio,undefined,'codec support alone is not Atmos evidence');
+ assert.equal(capabilityDocumentProblem(d),null);
 });

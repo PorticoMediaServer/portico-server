@@ -10,14 +10,10 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
-
-	"portico.local/server/internal/persistence"
 )
 
 var ErrDeviceInput = requestinput.New("invalid device record")
 var ErrDeviceUnknown = errors.New("This device is not registered on this account.")
-var ErrDevicePending = errors.New("This device is waiting for the account owner to approve it.")
-var ErrDeviceDenied = errors.New("The account owner refused this device.")
 
 // A device record is what a person recognises on a sign-out screen: "the TV in the
 // living room", not a token family id. Families remain the unit of revocation, so a
@@ -26,65 +22,12 @@ var ErrDeviceDenied = errors.New("The account owner refused this device.")
 // once and keeps; it is not a fingerprint and carries no identifying power of its
 // own, which is why an unknown installation id is registered rather than rejected.
 
-const deviceApprovalKey = "identity.deviceApproval"
-
-// DeviceApprovalSettingKey is where the owner's device approval choice is
-// stored. The settings document's "require approval" switch reads and writes
-// this one value, so the switch and the rule every request is held to cannot
-// disagree.
-const DeviceApprovalSettingKey = deviceApprovalKey
-
-const (
-	// DeviceApprovalAuto registers a new device already approved.
-	DeviceApprovalAuto = "auto"
-	// DeviceApprovalOwner holds a new device pending until the owner approves it.
-	DeviceApprovalOwner = "owner-approves-new-devices"
-)
-
-// validInstallationID is stricter than validFamilyID. An installation id is the
-// only thing standing between a stranger and the unauthenticated remembered-account
-// list, so it must actually be a secret: at least 32 characters of the token
-// alphabet. This validates grammar and length, not randomness or entropy. A
-// short, guessable id is refused rather than quietly accepted.
+// Installation ids are random installation secrets, never device fingerprints.
 func validInstallationID(v string) bool { return len(v) >= 32 && validFamilyID(v) }
 
-func validDeviceApproval(v string) bool {
-	return v == DeviceApprovalAuto || v == DeviceApprovalOwner
-}
-
-// DeviceApprovalPolicy reads the owner's policy. An unset value is auto, which is
-// what a single-household server wants and what every existing client expects.
-func (s *Service) DeviceApprovalPolicy() string {
-	value := persistence.Get(s.db, deviceApprovalKey)
-	if !validDeviceApproval(value) {
-		return DeviceApprovalAuto
-	}
-	return value
-}
-
-// deviceApprovalPolicyTx is the same read through an open transaction. SQLite
-// serves one connection, so a read on s.db while a transaction is held would
-// deadlock the request against itself.
-func deviceApprovalPolicyTx(ctx context.Context, tx *sql.Tx) (string, error) {
-	var value string
-	e := tx.QueryRowContext(ctx, `SELECT value FROM configuration WHERE key=?`, deviceApprovalKey).Scan(&value)
-	if e != nil && !errors.Is(e, sql.ErrNoRows) {
-		return "", e
-	}
-	if !validDeviceApproval(value) {
-		return DeviceApprovalAuto, nil
-	}
-	return value, nil
-}
-
-// SetDeviceApprovalPolicy records the owner's policy. The caller must already have
-// proven owner authority.
-func (s *Service) SetDeviceApprovalPolicy(mode string) error {
-	if !validDeviceApproval(mode) {
-		return ErrDeviceInput
-	}
-	return persistence.Set(s.db, deviceApprovalKey, mode)
-}
+// ValidInstallationID applies the device registry's existing installation grammar
+// at protocol boundaries. Installation ids are opaque; they need not encode 32 bytes.
+func ValidInstallationID(v string) bool { return validInstallationID(v) }
 
 // Device is the record a person sees and manages.
 type Device struct {
@@ -98,8 +41,6 @@ type Device struct {
 	IP              string `json:"ip"`
 	FirstSeen       string `json:"firstSeen"`
 	LastSeen        string `json:"lastSeen"`
-	Trusted         bool   `json:"trusted"`
-	ApprovalState   string `json:"approvalState"`
 	LastProfileID   string `json:"lastProfileId,omitempty"`
 	RememberAccount bool   `json:"rememberAccount"`
 	Current         bool   `json:"current"`
@@ -172,7 +113,7 @@ func (s *Service) RegisterDevice(ctx context.Context, bearer string, q DeviceReg
 		return Device{}, e
 	}
 	device, e := s.registerDeviceTx(ctx, tx, c, q, peer)
-	if e != nil && !errors.Is(e, ErrDevicePending) && !errors.Is(e, ErrDeviceDenied) {
+	if e != nil {
 		return device, e
 	}
 	// A pending or denied registration is still recorded: the owner cannot approve
@@ -193,56 +134,23 @@ func (s *Service) registerDeviceTx(ctx context.Context, tx *sql.Tx, c deviceCall
 	platform, _ := deviceText(q.Platform, 64)
 	app, _ := deviceText(q.App, 64)
 	version, _ := deviceText(q.AppVersion, 64)
-	policy, e := deviceApprovalPolicyTx(ctx, tx)
-	if e != nil {
-		return Device{}, e
-	}
-	// With the owner's approval required, a device nobody has seen before
-	// waits. Three kinds of device never wait:
-	//   - the owner's own. The owner is the one who approves, so a policy that
-	//     held the owner's new phone would leave nobody able to approve it;
-	//   - one a signed-in, approved device vouched for by pairing it as a Cast
-	//     target, which gets a playback-only session and nothing else;
-	//   - any device while the policy is off, including one left waiting from
-	//     when it was on: turning the policy off lets waiting devices in. A
-	//     device the owner blocked stays blocked either way.
-	state := "approved"
-	if policy == DeviceApprovalOwner && ctx.Value(vouchedDeviceKey{}) != true {
-		var role string
-		if c.authority == "local" {
-			if e = tx.QueryRowContext(ctx, `SELECT role FROM direct_memberships WHERE account_id=?`, c.account).Scan(&role); e != nil && !errors.Is(e, sql.ErrNoRows) {
-				return Device{}, e
-			}
-		}
-		if role != TierOwner {
-			state = "pending"
-		}
-	}
-	if _, e := tx.ExecContext(ctx, `INSERT INTO identity_devices(id,authority,account_id,installation_id,name,platform,app,app_version,ip,first_seen,last_seen,trusted,approval_state) VALUES(?,?,?,?,?,?,?,?,?,?,?,0,?)
- ON CONFLICT(authority,account_id,installation_id) DO UPDATE SET platform=excluded.platform,app=excluded.app,app_version=excluded.app_version,ip=excluded.ip,last_seen=excluded.last_seen,
- approval_state=CASE WHEN identity_devices.approval_state='pending' AND excluded.approval_state='approved' THEN 'approved' ELSE identity_devices.approval_state END,
- revision=CASE WHEN identity_devices.approval_state='pending' AND excluded.approval_state='approved' THEN identity_devices.revision+1 ELSE identity_devices.revision END`,
-		Token(), c.authority, c.account, q.InstallationID, name, platform, app, version, clientIP(peer), now, now, state); e != nil {
+	if _, e := tx.ExecContext(ctx, `INSERT INTO identity_devices(id,authority,account_id,installation_id,name,platform,app,app_version,ip,first_seen,last_seen) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+ ON CONFLICT(authority,account_id,installation_id) DO UPDATE SET platform=excluded.platform,app=excluded.app,app_version=excluded.app_version,ip=excluded.ip,last_seen=excluded.last_seen`,
+		Token(), c.authority, c.account, q.InstallationID, name, platform, app, version, clientIP(peer), now, now); e != nil {
 		return Device{}, e
 	}
 	device, e := s.deviceTx(ctx, tx, c.authority, c.account, q.InstallationID, "")
 	if e != nil {
 		return device, e
 	}
-	switch device.ApprovalState {
-	case "pending":
-		return device, ErrDevicePending
-	case "denied":
-		return device, ErrDeviceDenied
-	}
 	return device, nil
 }
 
-const deviceColumns = `id,authority,installation_id,name,platform,app,app_version,ip,first_seen,last_seen,trusted,approval_state,last_profile_id,remember_account`
+const deviceColumns = `id,authority,installation_id,name,platform,app,app_version,ip,first_seen,last_seen,last_profile_id,remember_account`
 
 func scanDevice(row interface{ Scan(...any) error }) (Device, error) {
 	var d Device
-	e := row.Scan(&d.ID, &d.Authority, &d.InstallationID, &d.Name, &d.Platform, &d.App, &d.AppVersion, &d.IP, &d.FirstSeen, &d.LastSeen, &d.Trusted, &d.ApprovalState, &d.LastProfileID, &d.RememberAccount)
+	e := row.Scan(&d.ID, &d.Authority, &d.InstallationID, &d.Name, &d.Platform, &d.App, &d.AppVersion, &d.IP, &d.FirstSeen, &d.LastSeen, &d.LastProfileID, &d.RememberAccount)
 	return d, e
 }
 
@@ -288,9 +196,6 @@ func (s *Service) bindDeviceFamily(ctx context.Context, bearer, installation, fa
 	if pathID != "" && device.ID != pathID {
 		return ErrDeviceUnknown
 	}
-	if device.ApprovalState != "approved" {
-		return ErrDevicePending
-	}
 	var bound string
 	if e = tx.QueryRowContext(ctx, `SELECT b.device_id FROM authorization_session_families f JOIN identity_device_families b ON b.family_id=f.id WHERE f.id=? AND f.account_id=? AND f.authority=? AND f.revoked=0`, family, c.account, c.authority).Scan(&bound); e != nil {
 		return e
@@ -325,7 +230,7 @@ func (s *Service) Devices(ctx context.Context, bearer, _ string) ([]Device, erro
 	if e = tx.QueryRowContext(ctx, `SELECT b.device_id FROM authorization_family_tokens t JOIN identity_device_families b ON b.family_id=t.family_id WHERE t.token_hash=?`, Digest(bearer)).Scan(&currentDevice); e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return nil, e
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT `+deviceColumns+`,(SELECT count(*) FROM identity_device_families f JOIN authorization_session_families a ON a.id=f.family_id AND a.revoked=0 AND a.authorization_horizon>? WHERE f.device_id=identity_devices.id) FROM identity_devices WHERE authority=? AND account_id=? AND NOT(platform='api' AND approval_state='approved') ORDER BY last_seen DESC,id`, time.Now().UTC().Format(time.RFC3339), c.authority, c.account)
+	rows, e := tx.QueryContext(ctx, `SELECT `+deviceColumns+`,(SELECT count(*) FROM identity_device_families f JOIN authorization_session_families a ON a.id=f.family_id AND a.revoked=0 AND a.authorization_horizon>? WHERE f.device_id=identity_devices.id) FROM identity_devices WHERE authority=? AND account_id=? AND platform<>'api' ORDER BY last_seen DESC,id`, time.Now().UTC().Format(time.RFC3339), c.authority, c.account)
 	if e != nil {
 		return nil, e
 	}
@@ -333,7 +238,7 @@ func (s *Service) Devices(ctx context.Context, bearer, _ string) ([]Device, erro
 	out := []Device{}
 	for rows.Next() {
 		var d Device
-		if e = rows.Scan(&d.ID, &d.Authority, &d.InstallationID, &d.Name, &d.Platform, &d.App, &d.AppVersion, &d.IP, &d.FirstSeen, &d.LastSeen, &d.Trusted, &d.ApprovalState, &d.LastProfileID, &d.RememberAccount, &d.Sessions); e != nil {
+		if e = rows.Scan(&d.ID, &d.Authority, &d.InstallationID, &d.Name, &d.Platform, &d.App, &d.AppVersion, &d.IP, &d.FirstSeen, &d.LastSeen, &d.LastProfileID, &d.RememberAccount, &d.Sessions); e != nil {
 			return nil, e
 		}
 		d.Current = d.ID == currentDevice && currentDevice != ""
@@ -352,13 +257,12 @@ type DeviceEdit struct {
 	Name            *string `json:"name,omitempty"`
 	LastProfileID   *string `json:"lastProfileId,omitempty"`
 	RememberAccount *bool   `json:"rememberAccount,omitempty"`
-	Trusted         *bool   `json:"trusted,omitempty"`
 }
 
 // EditDevice applies a device edit. Changing Trusted or approval is an owner
 // action and goes through ApproveDevice instead.
 func (s *Service) EditDevice(ctx context.Context, bearer, id string, q DeviceEdit) (Device, error) {
-	if !validFamilyID(id) || q.Name == nil && q.LastProfileID == nil && q.RememberAccount == nil && q.Trusted == nil {
+	if !validFamilyID(id) || q.Name == nil && q.LastProfileID == nil && q.RememberAccount == nil {
 		return Device{}, ErrDeviceInput
 	}
 	gated4, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
@@ -404,6 +308,13 @@ func (s *Service) EditDevice(ctx context.Context, bearer, id string, q DeviceEdi
 		}
 	}
 	if q.RememberAccount != nil {
+		allowed, e := rememberAccountsTx(ctx, tx)
+		if e != nil {
+			return Device{}, e
+		}
+		if *q.RememberAccount && !allowed {
+			return Device{}, ErrForbidden
+		}
 		if _, e = tx.ExecContext(ctx, `UPDATE identity_devices SET remember_account=? WHERE id=? AND authority=? AND account_id=?`, *q.RememberAccount, id, c.authority, c.account); e != nil {
 			return Device{}, e
 		}
@@ -416,16 +327,6 @@ func (s *Service) EditDevice(ctx context.Context, bearer, id string, q DeviceEdi
 			}
 		}
 	}
-	if q.Trusted != nil {
-		// Trust is an owner decision even on one's own account: a member cannot
-		// promote the device in their hand past the owner's approval policy.
-		if c.role != "owner" {
-			return Device{}, ErrForbidden
-		}
-		if _, e = tx.ExecContext(ctx, `UPDATE identity_devices SET trusted=? WHERE id=? AND authority=? AND account_id=?`, *q.Trusted, id, c.authority, c.account); e != nil {
-			return Device{}, e
-		}
-	}
 	device, e := s.deviceTx(ctx, tx, c.authority, c.account, "", id)
 	if e != nil {
 		return device, e
@@ -436,57 +337,6 @@ func (s *Service) EditDevice(ctx context.Context, bearer, id string, q DeviceEdi
 // ApproveDevice resolves a pending device. Denying it also signs it out, because a
 // device the owner refused must not keep a session it obtained before the policy
 // was turned on.
-func (s *Service) ApproveDevice(ctx context.Context, bearer, id string, approved bool) (Device, error) {
-	if !validFamilyID(id) {
-		return Device{}, ErrDeviceInput
-	}
-	gated5, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
-	if e != nil {
-		return Device{}, e
-	}
-	tx := gated5.Tx()
-	defer gated5.Rollback()
-	c, e := s.deviceCallerTx(ctx, tx, bearer, true)
-	if e != nil {
-		return Device{}, e
-	}
-	if !Administrative(c.role) {
-		return Device{}, ErrForbidden
-	}
-	var target deviceCaller
-	if e = tx.QueryRowContext(ctx, `SELECT authority,account_id FROM identity_devices WHERE id=?`, id).Scan(&target.authority, &target.account); e != nil {
-		return Device{}, ErrDeviceUnknown
-	}
-	if c.role == TierAdmin {
-		if target.authority != "local" {
-			return Device{}, ErrForbidden
-		}
-		var targetRole string
-		if e = tx.QueryRowContext(ctx, `SELECT role FROM direct_memberships WHERE account_id=?`, target.account).Scan(&targetRole); e != nil {
-			return Device{}, e
-		}
-		if !ManagesTier(c.role, targetRole) {
-			return Device{}, ErrForbidden
-		}
-	}
-	c.authority, c.account = target.authority, target.account
-	if _, e = s.deviceTx(ctx, tx, c.authority, c.account, "", id); e != nil {
-		return Device{}, e
-	}
-	state := "approved"
-	if !approved {
-		state = "denied"
-	}
-	if e = s.setDeviceApprovalTx(ctx, tx, c, id, state); e != nil {
-		return Device{}, e
-	}
-	device, e := s.deviceTx(ctx, tx, c.authority, c.account, "", id)
-	if e != nil {
-		return device, e
-	}
-	return device, gated5.Commit()
-}
-
 func (s *Service) revokeDeviceFamiliesTx(ctx context.Context, tx *sql.Tx, c deviceCaller, device string, reason RevocationReason) error {
 	rows, e := tx.QueryContext(ctx, `SELECT f.family_id FROM identity_device_families f JOIN authorization_session_families a ON a.id=f.family_id WHERE f.device_id=? AND a.authority=? AND a.account_id=? AND a.revoked=0`, device, c.authority, c.account)
 	if e != nil {

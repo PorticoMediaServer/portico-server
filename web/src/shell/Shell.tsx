@@ -224,7 +224,7 @@ export function Shell() {
 function AppearanceBridge() {
   const server = useServerPreferences();
   const {update} = usePreferences();
-  const reduce = server.value('appearance.reduceMotion', false);
+  const reduce = server.value<'follow' | 'reduce'>('appearance.motion', 'follow') === 'reduce';
   const size = server.value('appearance.cardSizePercent', 100);
   const backdrops = server.value('appearance.showBackdrops', true);
   useEffect(() => {
@@ -382,7 +382,7 @@ export function useProfileName(): string {
   const session = useSession();
   const {t} = useI18n();
   const id = session.session?.viewer.profileId;
-  return session.hosted?.profiles.find(p => p.id === id)?.name ?? session.local?.profiles.find(p => p.id === id)?.name ?? session.hosted?.account.displayName ?? session.local?.username ?? t('web.shell.profileFallback');
+  return session.local?.profiles.find(p => p.id === id)?.name ?? session.hosted?.account.displayName ?? session.local?.username ?? t('web.shell.profileFallback');
 }
 
 /** WEB-SYS-10: one colour system for profile avatars, the profile's own art colour (`--profile-art-*`).

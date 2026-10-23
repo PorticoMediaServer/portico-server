@@ -3,8 +3,8 @@ package operations
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"golang.org/x/text/language"
+	"math"
 	"strings"
 	"unicode/utf8"
 
@@ -15,17 +15,18 @@ import (
 // PreferenceRegistryRevision changes whenever a field is added, removed, or its
 // domain moves. Clients render settings from the published registry, so the
 // revision is the only thing they have to compare between releases.
-const PreferenceRegistryRevision = "p40.Q2.B5.QL1.MQ2"
+const PreferenceRegistryRevision = "settings.14a.preferences.music.2"
 
 const (
 	HomeLayoutMaxRows        = 64
 	HomeLayoutRowIDMaxLength = 128
 	ScopeProfileServer       = "profile-server"
 	ScopeDeviceClass         = "profile-device-class"
+	ScopeDevice              = "profile-device"
 )
 
 // PreferenceScopes is the precedence order: later scopes win over earlier ones.
-var PreferenceScopes = []string{ScopeProfileServer, ScopeDeviceClass}
+var PreferenceScopes = []string{ScopeProfileServer, ScopeDeviceClass, ScopeDevice}
 
 // PreferenceField is the published description of one viewer preference. The
 // server is the only authority on defaults, domains and clamps; a client that
@@ -150,7 +151,6 @@ var preferenceRegistry = func() []PreferenceField {
 		prefEnum("playback.creditsSkip", "ask", skipModes, ScopeProfileServer),
 		prefEnum("playback.recapSkip", "ask", skipModes, ScopeProfileServer),
 		prefNumberEnum("playback.defaultSpeed", 1, playbackSpeeds, ScopeProfileServer),
-		prefNumberEnum("music.defaultSpeed", 1, playbackSpeeds, ScopeProfileServer),
 		prefNumberEnum("audiobooks.defaultSpeed", 1, audiobookSpeeds, ScopeProfileServer),
 		prefIntEnum("playback.sleepTimerMinutes", 0, []int{0, 30, 60, 90, 120}, ScopeProfileServer),
 		prefInt("playback.startedThresholdPercent", 5, 1, 25, ScopeProfileServer),
@@ -159,9 +159,19 @@ var preferenceRegistry = func() []PreferenceField {
 		languagePreference("playback.preferredSubtitleLanguages"),
 		// Subtitles without being asked: never; only the forced track beside audio in its own
 		// language (the part of a film the audio does not carry); or always, in a preferred language.
-		prefEnum("playback.subtitleMode", "forced", []string{"off", "forced", "always"}, ScopeProfileServer),
+		prefEnum("playback.subtitleMode", "foreign", []string{"off", "foreign", "forced", "always"}, ScopeProfileServer),
 		prefEnum("playback.subtitleSize", "medium", []string{"small", "medium", "large", "extra-large"}, ScopeProfileServer),
-		prefEnum("playback.subtitleBackground", "translucent", []string{"none", "translucent", "opaque"}, ScopeProfileServer),
+		prefEnum("playback.subtitleBackground", "translucent", []string{"none", "outline", "shadow", "translucent", "opaque"}, ScopeProfileServer),
+		prefEnum("playback.subtitleColor", "white", []string{"white", "yellow", "cyan", "green", "pink"}, ScopeProfileServer),
+		prefEnum("playback.subtitlePosition", "bottom", []string{"bottom", "raised", "top"}, ScopeProfileServer),
+		prefEnum("playback.subtitleFont", "default", []string{"default", "serif", "mono", "rounded"}, ScopeProfileServer),
+		prefBool("playback.keepSubtitleStyling", true, ScopeProfileServer),
+		prefBool("playback.preferSdhSubtitles", false, ScopeProfileServer),
+		prefEnum("playback.forcedSubtitleFallback", "none", []string{"none", "full"}, ScopeProfileServer),
+		prefBool("playback.useUntaggedForced", true, ScopeProfileServer),
+		prefEnum("playback.audioDescription", "avoid", []string{"avoid", "prefer"}, ScopeProfileServer),
+		prefEnum("playback.audioTrackChoice", "best", []string{"best", "channels", "stereo"}, ScopeProfileServer),
+		prefBool("playback.useSystemCaptionStyle", false, ScopeDevice),
 		prefBool("playback.showSyncedLyrics", true, ScopeProfileServer),
 
 		prefEnum("delivery.directPlay", "prefer", deliveryModes, ScopeDeviceClass),
@@ -182,13 +192,17 @@ var preferenceRegistry = func() []PreferenceField {
 		prefBool("music.gapless", true, ScopeProfileServer),
 
 		prefBool("privacy.pauseWatchHistory", false, ScopeProfileServer),
-		prefBool("privacy.showActivityToMembers", true, ScopeProfileServer),
+		prefBool("privacy.showActivityToMembers", false, ScopeProfileServer),
 		prefBool("privacy.includeInWatchTogether", true, ScopeProfileServer),
 
 		prefBool("search.rememberHistory", true, ScopeProfileServer),
 
 		// No region.timeZone: every client shows times in the device's own zone.
 		semanticPreference("region.locale", "locale", 35),
+		semanticPreference("region.formats", "locale", 35),
+		prefEnum("region.dateOrder", "auto", []string{"auto", "dmy", "mdy", "ymd"}, ScopeProfileServer),
+		prefEnum("region.firstDay", "auto", []string{"auto", "mon", "sun", "sat"}, ScopeProfileServer),
+		prefEnum("region.sizeUnits", "binary", []string{"binary", "decimal"}, ScopeProfileServer),
 		prefEnum("region.hourCycle", "auto", []string{"auto", "h12", "h23"}, ScopeProfileServer),
 
 		prefList("home.rowOrder", HomeLayoutMaxRows, HomeLayoutRowIDMaxLength, ScopeProfileServer),
@@ -196,8 +210,27 @@ var preferenceRegistry = func() []PreferenceField {
 
 		prefBool("appearance.showBackdrops", true, ScopeDeviceClass),
 		prefInt("appearance.cardSizePercent", 100, 75, 150, ScopeDeviceClass),
-		prefBool("appearance.reduceMotion", false, ScopeDeviceClass),
 
+		prefEnum("appearance.motion", "follow", []string{"follow", "reduce"}, ScopeDevice),
+		prefEnum("appearance.textSize", "standard", []string{"standard", "large"}, ScopeDevice),
+		prefEnum("appearance.layout", "auto", []string{"auto", "television", "touch"}, ScopeDevice),
+		prefEnum("appearance.libraryView", "grid", []string{"grid", "list"}, ScopeDevice),
+		prefEnum("appearance.episodesLayout", "auto", []string{"auto", "tiles", "list"}, ScopeDevice),
+		prefEnum("reading.theme", "dark", []string{"dark", "black", "sepia", "light"}, ScopeProfileServer),
+		prefEnum("reading.font", "literata", []string{"publisher", "literata", "manrope"}, ScopeProfileServer),
+		prefIntEnum("reading.textSize", 5, []int{1, 2, 3, 4, 5, 6, 7}, ScopeProfileServer),
+		prefEnum("reading.lineSpacing", "normal", []string{"tight", "normal", "loose"}, ScopeProfileServer),
+		prefEnum("reading.margins", "normal", []string{"narrow", "normal", "wide"}, ScopeProfileServer),
+		prefEnum("reading.alignment", "justified", []string{"left", "justified"}, ScopeProfileServer),
+		prefEnum("reading.layout", "pages", []string{"pages", "scroll"}, ScopeProfileServer),
+		prefBool("reading.twoPages", true, ScopeProfileServer),
+		prefBool("reading.tapToTurn", true, ScopeProfileServer),
+		prefBool("reading.hyphenation", true, ScopeProfileServer),
+		prefEnum("reading.highlightColour", "yellow", []string{"yellow", "green", "blue", "pink"}, ScopeProfileServer),
+		prefEnum("reading.pdfView", "automatic", []string{"automatic", "spread", "width", "page"}, ScopeProfileServer),
+		prefEnum("comics.fit", "auto", []string{"auto", "width", "height"}, ScopeProfileServer),
+		prefEnum("comics.direction", "file", []string{"file", "ltr", "rtl", "vertical"}, ScopeProfileServer),
+		prefBool("comics.firstPageAlone", true, ScopeProfileServer),
 		prefBool("notifications.badges", true, ScopeProfileServer),
 	)
 	for i := range out {
@@ -325,7 +358,7 @@ func canonicalPreference(f PreferenceField, raw any) (any, bool, error) {
 		return out, false, nil
 	case "integer", "number":
 		n, ok := numberOf(raw)
-		if !ok {
+		if !ok || math.IsNaN(n) || math.IsInf(n, 0) {
 			return nil, false, ErrInvalid
 		}
 		if f.Type == "integer" && n != float64(int64(n)) {
@@ -392,7 +425,7 @@ func canonicalPreference(f PreferenceField, raw any) (any, bool, error) {
 		out, seen := make([]string, 0, len(items)), map[string]bool{}
 		for _, item := range items {
 			text, ok := item.(string)
-			if f.Type == "languageList" {
+			if f.Type == "languageList" && text != "@appLanguage" && text != "@original" {
 				if strings.Contains(text, "_") {
 					return nil, false, ErrInvalid
 				}
@@ -402,7 +435,7 @@ func canonicalPreference(f PreferenceField, raw any) (any, bool, error) {
 				}
 				text = tag.String()
 			}
-			if !ok || !safeValue(text, f.maxLength) || seen[text] {
+			if !ok || !safeValue(text, f.maxLength) || seen[text] || text == "@original" && f.Key == "playback.preferredSubtitleLanguages" {
 				return nil, false, ErrInvalid
 			}
 			seen[text] = true
@@ -413,75 +446,27 @@ func canonicalPreference(f PreferenceField, raw any) (any, bool, error) {
 	return nil, false, ErrInvalid
 }
 
-// decodePreferenceDocument reads a stored scope document, dropping keys that the
-// current registry no longer publishes rather than failing the whole read.
-func decodePreferenceDocument(raw string, scope string) (PreferenceValues, error) {
-	out := PreferenceValues{}
-	if strings.TrimSpace(raw) == "" {
-		return out, nil
-	}
-	var stored map[string]any
-	if e := json.Unmarshal([]byte(raw), &stored); e != nil {
-		return nil, errors.New("invalid saved preference document")
-	}
-	for key, value := range stored {
-		f, ok := preferenceIndex[key]
-		if !ok || !f.allows(scope) || value == nil {
-			continue
-		}
-		canonical, _, e := canonicalPreference(f, value)
-		// Preserve explicit older music limits on read only. New writes use the
-		// current four-choice domain and never rewrite an existing choice.
-		if e != nil && (key == "music.qualityAway" || key == "music.qualityMobile") {
-			if text, ok := value.(string); ok {
-				if _, legacy := qualityladder.LegacyMusic(text); legacy {
-					out[key] = text
-				}
-			}
-		}
-		if e != nil {
-			continue
-		}
-		out[key] = canonical
-	}
-	return out, nil
-}
-
-// ViewerScopeKey is the durable owner tuple for preference documents. It matches
-// ViewerKey but takes the viewer alone, so packages without a Principal (the
-// personal-activity writer, for one) can read the same rows.
-func ViewerScopeKey(v identity.Viewer) string {
-	b, _ := json.Marshal([]string{v.Authority, v.AccountID, v.ProfileID})
-	return string(b)
-}
-
-func preferenceScopeKey(v identity.Viewer, scope, device string) (string, error) {
-	switch scope {
-	case ScopeProfileServer:
-		return "profile:" + ViewerScopeKey(v), nil
-	case ScopeDeviceClass:
-		if !validDeviceClass(device) {
-			return "", ErrInvalid
-		}
-		return "device:" + ViewerScopeKey(v) + ":" + device, nil
-	}
-	return "", ErrInvalid
-}
-
 func validDeviceClass(device string) bool {
-	return device == "web" || device == "mobile" || device == "television"
+	return device == "web" || device == "mobile" || device == "tablet" || device == "television"
 }
 
 // PreferenceQuery is the read surface shared by *sql.DB and *sql.Tx, so the
 // effective-value accessor works inside an existing write transaction.
 type PreferenceQuery interface {
 	QueryRow(query string, args ...any) *sql.Row
+	Query(query string, args ...any) (*sql.Rows, error)
 }
 
 // EffectivePreferences merges the stored scope documents over the registry
 // defaults for one viewer. deviceClass may be empty when the caller only needs
 // profile-server fields; device-class documents are then skipped.
 func EffectivePreferences(q PreferenceQuery, v identity.Viewer, deviceClass string) (PreferenceValues, map[string]string, []string, error) {
+	return EffectiveDevicePreferences(q, v, deviceClass, "")
+}
+
+// EffectiveDevicePreferences includes only the authenticated device's overrides.
+// Non-device consumers call EffectivePreferences, never guessing a device ID.
+func EffectiveDevicePreferences(q PreferenceQuery, v identity.Viewer, deviceClass, deviceID string) (PreferenceValues, map[string]string, []string, error) {
 	values, source := PreferenceValues{}, map[string]string{}
 	for _, f := range preferenceRegistry {
 		canonical, _, e := canonicalPreference(f, f.Default)
@@ -491,28 +476,19 @@ func EffectivePreferences(q PreferenceQuery, v identity.Viewer, deviceClass stri
 		values[f.Key], source[f.Key] = canonical, "default"
 	}
 	for _, scope := range PreferenceScopes {
-		if scope == ScopeDeviceClass && !validDeviceClass(deviceClass) {
+		if scope == ScopeDeviceClass && !validDeviceClass(deviceClass) || scope == ScopeDevice && deviceID == "" {
 			continue
 		}
-		key, e := preferenceScopeKey(v, scope, deviceClass)
-		if e != nil {
-			return nil, nil, nil, e
+		a, err := preferenceAddressFor(v, scope, deviceClass, deviceID)
+		if err != nil {
+			return nil, nil, nil, err
 		}
-		var raw string
-		var revision int64
-		e = q.QueryRow(`SELECT revision,body FROM console_documents WHERE scope=?`, key).Scan(&revision, &raw)
-		if errors.Is(e, sql.ErrNoRows) {
-			continue
+		_, stored, err := readPreferenceScope(q, a)
+		if err != nil {
+			return nil, nil, nil, err
 		}
-		if e != nil {
-			return nil, nil, nil, e
-		}
-		stored, e := decodePreferenceDocument(raw, scope)
-		if e != nil {
-			return nil, nil, nil, e
-		}
-		for field, value := range stored {
-			values[field], source[field] = value, scope
+		for key, value := range stored {
+			values[key], source[key] = value, scope
 		}
 	}
 	return values, source, []string{}, nil
@@ -526,5 +502,10 @@ func semanticPreference(key, kind string, maxLength int) PreferenceField {
 func languagePreference(key string) PreferenceField {
 	f := prefList(key, 8, 35, ScopeProfileServer)
 	f.Type = "languageList"
+	if key == "playback.preferredAudioLanguages" {
+		f.Default = []string{"@appLanguage", "@original"}
+	} else {
+		f.Default = []string{"@appLanguage"}
+	}
 	return f
 }

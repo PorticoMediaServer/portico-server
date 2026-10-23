@@ -53,7 +53,7 @@ func TestAutoSelectAppliesOnceAndOnlyToStoredText(t *testing.T) {
 	library := c.Library("lib", "Movies", "movie", "/m")
 	item := c.Movie(library, "/m/f.mkv", "Film", 2024)
 	c.Drain()
-	c.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','profile',1)`)
+	c.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','profile',1)`)
 	c.Exec(`INSERT INTO playback_sessions(id,session_hash,account_id,profile_id,item_id,asset_id,generation,grant_token,grant_hash,mode,duration,state,expires_at,request_id) VALUES('play','login','owner','profile',?,?,1,'g','h','hls',100,'starting','2099-01-01T00:00:00Z','r')`, item.ID, item.Token)
 	c.Exec(`INSERT INTO subtitle_resources(id,item_id,source_id,scope,owner,current_revision) VALUES('text',?,?,'shared','',1),('burn',?,?,'shared','',1)`, item.ID, item.Token, item.ID, item.Token)
 	c.Exec(`INSERT INTO subtitle_revisions(resource_id,revision,digest,size,format,language,title,origin,rights,original_digest,offset_us,source_size,source_modified_ns,source_facts_revision,created_at) VALUES('text',1,'d',1,'srt','spa','Español','sidecar','r','o',250000,1000,1,1,'now'),('burn',1,'d2',1,'pgs','spa','Español PGS','embedded','r','o2',0,1000,1,1,'now')`)
@@ -95,8 +95,8 @@ func TestAutomaticUnknownForcedAndFileDefault(t *testing.T) {
 		t.Fatal("ambiguous forced track selected")
 	}
 	tracks = []AutoCandidate{{ID: "default", Default: true, Language: "eng"}}
-	if got := ChooseAutomatic(AutoChoice{Enabled: true}, tracks); got == nil {
-		t.Fatal("file default ignored without viewer language preferences")
+	if got := ChooseAutomatic(AutoChoice{Enabled: true, NoLanguage: true}, tracks); got != nil {
+		t.Fatal("explicit empty languages must keep subtitles off")
 	}
 	if got := ChooseAutomatic(AutoChoice{Enabled: true, Languages: []string{"fr"}}, tracks); got != nil {
 		t.Fatal("file default overrode preferred language")

@@ -3,28 +3,32 @@ import {routePath as hostedRoutePath, encodedRoutePath as hostedEncodedRoutePath
 /**
  * The Portico Account's in-app notification feed and data export (BE-hosted, `be/hosted` da0a9db):
  * no push and no alert email any more. Parsers are strict about the shapes and lenient about
- * unknown kinds (a newer Hosted can add one; it shows as a generic row). One item of a page that
+ * unknown kinds. Retired server-private events never become generic account rows. One item of a page that
  * cannot be read is left out and the rest of the page is kept.
  *
  * - `GET /v1/account/notifications[?cursor=]` → `{items, unread, nextCursor?}` (newest first, 50 a page)
  * - `GET /v1/account/notifications/{id}`
  * - `POST /v1/account/notifications/read` `{ids}` or `{all: true}`
- * - `GET|PUT /v1/account/notification-preferences` `{serverOffline, storageNearlyFull, invitationAccepted}`
+ * - `GET|PUT /v1/account/notification-preferences` `{serverOffline}`
  * - export: `POST /v1/account/export` → `{id, state, expiresAt}`, then `GET /v1/account/exports/{id}`
  *   until `ready` (or the `account_export_ready` item), then `POST /v1/account/exports/{id}/download`.
  */
 import {keepReadable, noteSkipped} from './tolerant.ts';
 
 export type AccountNotificationKind =
-  | 'server_offline' | 'storage_nearly_full' | 'invitation_accepted'
+  | 'server_offline'
   | 'new_device' | 'security_event' | 'account_export_ready' | 'signing_key_expiring';
-export const ACCOUNT_NOTIFICATION_KINDS: readonly AccountNotificationKind[] = ['server_offline', 'storage_nearly_full', 'invitation_accepted', 'new_device', 'security_event', 'account_export_ready', 'signing_key_expiring'];
+export const ACCOUNT_NOTIFICATION_KINDS: readonly AccountNotificationKind[] = ['server_offline', 'new_device', 'security_event', 'account_export_ready', 'signing_key_expiring'];
+/** Four ordinary kinds plus the real operator key alert in the same account
+ * feed. The producer scopes that alert to its recipient, not a client role. */
+export type AccountFeedKind='new_device'|'account_export_ready'|'security_event'|'server_offline'|'signing_key_expiring';
+export function isAccountFeedNotification(item:AccountNotification):item is AccountNotification&{kind:AccountFeedKind}{return (ACCOUNT_NOTIFICATION_KINDS as readonly string[]).includes(item.kind);}
 export const ACCOUNT_SECURITY_EVENTS = ['password_changed', 'password_reset', 'recovery_codes_replaced', 'sign_in_method_removed', 'provider_linked', 'two_step_enabled', 'two_step_disabled', 'contact_email_changed', 'contact_email_verified'] as const;
 export type AccountSecurityEvent = (typeof ACCOUNT_SECURITY_EVENTS)[number];
 
 export type AccountNotification = Readonly<{
   id: string;
-  /** A kind this client doesn't know yet is kept (shown generically), never dropped. */
+  /** Unknown non-retired kinds are kept for caller-specific handling. */
   kind: AccountNotificationKind | 'other';
   rawKind: string;
   occurredAt: string;
@@ -33,7 +37,7 @@ export type AccountNotification = Readonly<{
   detail: Readonly<Record<string, string>>;
 }>;
 export type AccountNotificationPage = Readonly<{items: readonly AccountNotification[]; unread: number; nextCursor?: string}>;
-export type NotificationPreferences = Readonly<{serverOffline: boolean; storageNearlyFull: boolean; invitationAccepted: boolean}>;
+export type NotificationPreferences = Readonly<{serverOffline: boolean}>;
 export type AccountExportJob = Readonly<{id: string; state: 'pending' | 'ready'; expiresAt: string}>;
 
 type Request = <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>;
@@ -45,6 +49,7 @@ const instant = (v: unknown): v is string => typeof v === 'string' && v.length <
 
 export function parseAccountNotification(v: unknown): AccountNotification {
   if (!obj(v) || !str(v.id, 128) || !str(v.kind, 64) || !instant(v.occurredAt) || typeof v.read !== 'boolean') bad();
+  if(v.kind==='storage_nearly_full'||v.kind==='invitation_accepted')bad();
   let server: {id: string; name: string} | undefined;
   if (v.server !== undefined && v.server !== null) {
     // A server reference or detail that cannot be read is left off; the item still says what happened and when.
@@ -68,8 +73,8 @@ export function parseAccountNotificationPage(v: unknown): AccountNotificationPag
 }
 
 export function parseNotificationPreferences(v: unknown): NotificationPreferences {
-  if (!obj(v) || typeof v.serverOffline !== 'boolean' || typeof v.storageNearlyFull !== 'boolean' || typeof v.invitationAccepted !== 'boolean') bad();
-  return Object.freeze({serverOffline: v.serverOffline, storageNearlyFull: v.storageNearlyFull, invitationAccepted: v.invitationAccepted});
+  if (!obj(v) || typeof v.serverOffline !== 'boolean' || Object.keys(v).some(key=>key!=='serverOffline')) bad();
+  return Object.freeze({serverOffline: v.serverOffline});
 }
 
 export function parseAccountExportJob(v: unknown): AccountExportJob {
@@ -94,7 +99,7 @@ export class AccountNotificationsClient {
     return parseNotificationPreferences(await this.request(hostedRoutePath("account_notification_preferences_get"), 'GET', undefined, signal));
   }
   async savePreferences(p: NotificationPreferences): Promise<NotificationPreferences> {
-    return parseNotificationPreferences(await this.request(hostedRoutePath("account_notification_preferences_set"), 'PUT', hostedRouteBody("account_notification_preferences_set", {serverOffline: p.serverOffline, storageNearlyFull: p.storageNearlyFull, invitationAccepted: p.invitationAccepted})));
+    return parseNotificationPreferences(await this.request(hostedRoutePath("account_notification_preferences_set"), 'PUT', hostedRouteBody("account_notification_preferences_set", {serverOffline: p.serverOffline})));
   }
   /** Starts (or rejoins) the account's export with the signed-in session (BE-hosted cc222bf: `{operationId}`, 16–128 characters, no proof). Idempotent per operation id. */
   async requestExport(operationId: string): Promise<AccountExportJob> {

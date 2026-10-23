@@ -7,40 +7,27 @@ import (
 	"testing"
 )
 
-func TestRevokedSignerCannotFinishAPendingTelevisionApproval(t *testing.T) {
+func TestRevokedSignerCannotAdmitTelevisionAfterIdentityVerification(t *testing.T) {
 	ctx := context.Background()
 	s, _, _ := directFixture(t)
 	linkedMember(t, s, "linked", "acc_linked")
-	in, err := s.PorticoSignIn(ctx, PorticoIdentity{AccountID: "acc_linked", SignerKeyID: "key-a"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	approver, err := s.Authenticate(in.Session.AccessToken)
-	if err != nil {
+	in, err := s.PorticoSignIn(ctx, PorticoIdentity{AccountID: "acc_linked", Username: "linked", SignerKeyID: "key-a"})
+	if err != nil || in.Session == nil {
 		t.Fatal(err)
 	}
 	tv := onDevice(t, memberTV, "Living room")
-	code, err := s.StartQuick(tv, QuickStart{RequestID: "00000000-0000-4000-8000-000000000091", DeviceName: "Living room", Platform: "tvos", AppVersion: "1.0"}, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	preview, err := s.ReviewQuick(ctx, code.UserCode)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = s.DecideQuick(ctx, approver, preview.RequestID, code.UserCode, "approve"); err != nil {
-		t.Fatal(err)
+	// Portico TV sign-in supplies a verified identity, not a Local Quick
+	// Connect code. A verified assertion still rechecks its signer at admission.
+	if _, err = s.StartQuick(tv, QuickStart{RequestID: "00000000-0000-4000-8000-000000000091", DeviceName: "Living room", Platform: "tvos", AppVersion: "1.0"}, true); !errors.Is(err, ErrSignInKindPortico) {
+		t.Fatalf("Portico TV accepted Local Quick Connect: %v", err)
 	}
 	revokeKey(t, s, "key-a")
-	if _, err = s.db.Exec(`UPDATE quick_connect_v1 SET next_poll=0`); err != nil {
-		t.Fatal(err)
+	if out, err := s.PorticoSignIn(tv, PorticoIdentity{AccountID: "acc_linked", Username: "linked", SignerKeyID: "key-a"}); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("a revoked signer issued a television session: %+v %v", out, err)
 	}
-	if out, err := s.PollQuick(tv, code.DeviceCode); err == nil {
-		t.Fatalf("a revoked signer issued a television session: %s", out.SessionFamilyID)
-	}
-	var live int
-	if err = s.db.QueryRow(`SELECT count(*) FROM authorization_session_families WHERE account_id='linked' AND revoked=0`).Scan(&live); err != nil || live != 0 {
-		t.Fatalf("live sessions after refusal: %d %v", live, err)
+	var live, quick int
+	if err = s.db.QueryRow(`SELECT (SELECT count(*) FROM authorization_session_families WHERE account_id='linked' AND revoked=0),(SELECT count(*) FROM quick_connect_v1)`).Scan(&live, &quick); err != nil || live != 0 || quick != 0 {
+		t.Fatalf("live sessions=%d Local pairings=%d after refusal: %v", live, quick, err)
 	}
 }
 
@@ -54,10 +41,11 @@ func TestRevokedSignerCannotFinishAPendingSecondFactor(t *testing.T) {
 	if _, err = s.VerifyTwoFactor(ctx, owner.AccountToken, "Testing1!", currentTOTP(t, enrol.Secret)); err != nil {
 		t.Fatal(err)
 	}
+	selectPorticoFixture(t, s)
 	if _, err = s.db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES(?,'acc_owner')`, owner.Account.ID); err != nil {
 		t.Fatal(err)
 	}
-	pending, err := s.PorticoSignIn(ctx, PorticoIdentity{AccountID: "acc_owner", SignerKeyID: "key-a"})
+	pending, err := s.PorticoSignIn(ctx, PorticoIdentity{AccountID: "acc_owner", Username: "owner", SignerKeyID: "key-a"})
 	if err != nil || pending.Challenge == nil {
 		t.Fatalf("challenge: %+v %v", pending, err)
 	}
@@ -75,19 +63,16 @@ func TestPorticoAdmissionRechecksSignerAfterAssertionVerification(t *testing.T) 
 	s, _, _ := directFixture(t)
 	linkedMember(t, s, "linked", "acc_linked")
 	revokeKey(t, s, "key-a")
-	if _, err := s.PorticoSignIn(context.Background(), PorticoIdentity{AccountID: "acc_linked", SignerKeyID: "key-a"}); err == nil {
+	if _, err := s.PorticoSignIn(context.Background(), PorticoIdentity{AccountID: "acc_linked", Username: "linked", SignerKeyID: "key-a"}); err == nil {
 		t.Fatal("an assertion verified before revocation admitted after revocation")
 	}
-	if out, err := s.PorticoSignIn(context.Background(), PorticoIdentity{AccountID: "acc_linked", SignerKeyID: "key-b"}); err != nil || out.Session == nil {
+	if out, err := s.PorticoSignIn(context.Background(), PorticoIdentity{AccountID: "acc_linked", Username: "linked", SignerKeyID: "key-b"}); err != nil || out.Session == nil {
 		t.Fatalf("unrelated signer refused: %v", err)
 	}
 }
 
-func TestPendingDeviceStillPassesSignInAdmission(t *testing.T) {
+func TestNewDeviceStillPassesSignInAdmission(t *testing.T) {
 	s, _, _, _ := memberWithSession(t)
-	if err := s.SetDeviceApprovalPolicy(DeviceApprovalOwner); err != nil {
-		t.Fatal(err)
-	}
 	remote := WithSignInAdmission(onDevice(t, memberPhone, "Phone"), SignInAdmission{Remote: true, Policy: RemoteSignInOwnerOnly})
 	if _, err := s.DirectLogin(remote, "member", "Testing2!"); !errors.Is(err, ErrRemoteSignIn) {
 		t.Fatalf("outside member awaiting approval bypassed admission: %v", err)
@@ -103,17 +88,14 @@ func TestPendingDeviceStillPassesSignInAdmission(t *testing.T) {
 	}
 }
 
-func TestRemoteOwnerOnlyRegistrationCannotCommitAWaitingMember(t *testing.T) {
+func TestRemoteOwnerOnlyRegistrationCannotCommitAMember(t *testing.T) {
 	s, _, _ := directFixture(t)
 	if err := s.SetSelfRegistration(SelfRegistrationOpen); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetDeviceApprovalPolicy(DeviceApprovalOwner); err != nil {
-		t.Fatal(err)
-	}
 	ctx := WithSignInAdmission(onDevice(t, memberPhone, "Phone"), SignInAdmission{Remote: true, Policy: RemoteSignInOwnerOnly})
-	if out, err := s.Register(ctx, SelfRegistrationRequest{Username: "outside", Password: "Testing2!"}, false); !errors.Is(err, ErrRemoteSignIn) {
-		t.Fatalf("outside registration: pending=%v err=%v", out.DeviceApprovalPending, err)
+	if _, err := s.Register(ctx, SelfRegistrationRequest{Username: "outside", Password: "Testing2!"}, false); !errors.Is(err, ErrRemoteSignIn) {
+		t.Fatalf("outside registration: %v", err)
 	}
 	var accounts int
 	if err := s.db.QueryRow(`SELECT count(*) FROM accounts WHERE username='outside'`).Scan(&accounts); err != nil || accounts != 0 {
@@ -174,14 +156,13 @@ func TestMemberDeviceDecisionRechecksLiveAuthority(t *testing.T) {
 			} else if change != "logout" && !errors.Is(err, ErrForbidden) {
 				t.Fatalf("live demotion ended the sign-in: %v", err)
 			}
-			if _, err = s.SetMemberDeviceTrust(ctx, actor, login.DeviceID, MemberDeviceTrust{ExpectedRevision: 1, Trust: "blocked"}); err == nil {
+			if err = s.SignOutMemberDevices(ctx, actor, member.ID, login.DeviceID); err == nil {
 				t.Error("stale administrator blocked a device")
 			} else if change != "logout" && !errors.Is(err, ErrForbidden) {
 				t.Fatalf("live demotion ended the sign-in: %v", err)
 			}
-			var state string
-			if err = s.db.QueryRow(`SELECT approval_state FROM identity_devices WHERE id=?`, login.DeviceID).Scan(&state); err != nil || state != "approved" {
-				t.Fatalf("device changed: %q %v", state, err)
+			if _, err = s.Authenticate(login.Session.AccessToken); err != nil {
+				t.Fatalf("refused sign-out changed target: %v", err)
 			}
 		})
 	}

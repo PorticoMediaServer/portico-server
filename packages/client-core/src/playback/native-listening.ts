@@ -6,7 +6,7 @@ export const noListeningDeadlines:ListeningDeadlines=Object.freeze({sleepAtMs:nu
 /** Non-authorizing policy. The native owner applies it to the session it plays; neither policy
  * revisions nor activity send playback commands. */
 export type ListeningPolicy=Readonly<{
- preferences:Readonly<{musicRate:number;bookRate:number;autoplayNext:boolean;passoutMinutes:number}>|null;
+ preferences:Readonly<{bookRate:number;passoutMinutes:number}>|null;
  activityRevision:number;activityAtMs:number;timerRevision:number;
  timer:Readonly<{choice:string|number;label:string;wallDeadline?:number;endSeconds?:number;itemId?:string;bookId?:string;sessionId?:string;generation?:number;libraryId?:string}>|null;
 }>;

@@ -35,7 +35,7 @@ func TestListeningAndCategoryResponsesMatchSpec(t *testing.T) {
 	album := c.Album(artist, "Release", 2020)
 	songOne := c.Song(album, 1, "/music/one.m4a", "One")
 	songTwo := c.Song(album, 2, "/music/two.m4a", "Two")
-	c.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1)`)
+	c.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1)`)
 	owner, err := ident.Issue("owner", "owner-profile", "local", "owner", 1)
 	if err != nil {
 		t.Fatal(err)

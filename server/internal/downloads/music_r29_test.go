@@ -2,8 +2,10 @@ package downloads
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/dbwork"
 	"testing"
 
 	"portico.local/server/internal/compactcatalog"
@@ -52,7 +54,13 @@ func TestMusicDownloadLadderDefaultsAndReplayR29(t *testing.T) {
 	if e != nil || len(batch.Items) != 1 || batch.Items[0].Quality != "320" {
 		t.Fatal(batch, e)
 	}
-	if _, e = h.db.Exec(`INSERT INTO console_documents(scope,revision,body,updated_ms) VALUES(?,1,'{"music.qualityDownloads":"96"}',1)`, "device:"+operations.ViewerScopeKey(h.viewer.Viewer)+":web"); e != nil {
+	if e = dbwork.WithWriteTx(ctx, h.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO preference_scopes(authority,account_id,profile_id,scope,device_key,revision,updated_ms) VALUES(?,?,?,?,?,1,1)`, h.viewer.Authority, h.viewer.AccountID, h.viewer.ProfileID, operations.ScopeDeviceClass, "web"); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`INSERT INTO preference_values(authority,account_id,profile_id,scope,device_key,key,kind,text_value) VALUES(?,?,?,?,?,'music.qualityDownloads','string','96')`, h.viewer.Authority, h.viewer.AccountID, h.viewer.ProfileID, operations.ScopeDeviceClass, "web")
+		return err
+	}); e != nil {
 		t.Fatal(e)
 	}
 	replay, e := h.service.Submit(ctx, h.viewer, Request{OperationID: "music-omission", MediaID: song}, nil)

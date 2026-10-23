@@ -25,3 +25,12 @@ test('web volume is withheld on actual iPhone and desktop-mode iPad platforms', 
   assert.equal(shellPlaybackSettings(preferences, {userAgent: 'Macintosh', maxTouchPoints: 5}).webVolume(), false);
   assert.equal(shellPlaybackSettings(preferences, {userAgent: 'Macintosh', maxTouchPoints: 0}).webVolume(), true);
 });
+
+
+test('the shell subtitle callback reads the live confirmed preference source',()=>{
+ let current={effective:{...preferences.effective,'playback.subtitleSize':'large','playback.subtitleColor':'white','playback.subtitleBackground':'outline','playback.subtitlePosition':'raised','playback.subtitleFont':'mono','playback.keepSubtitleStyling':false,'playback.useSystemCaptionStyle':false}} as unknown as PreferenceSnapshot;
+ const settings=shellPlaybackSettings(()=>current,{userAgent:'Desktop',maxTouchPoints:0});
+ assert.equal(settings.subtitlePreferences().color,'white');assert.equal(settings.subtitlePreferences().position,'raised');
+ current={...current,effective:{...current.effective,'playback.subtitleColor':'yellow'}};
+ assert.equal(settings.subtitlePreferences().color,'yellow');
+});

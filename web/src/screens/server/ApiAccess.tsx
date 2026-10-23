@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
-import {apiScopes, createApiKey, getApiAccessOptions, listApiKeys, listMemberAccessTokens, revokeApiKey, revokeMemberAccessToken, type ApiAccessOptions, type ApiCredential, type ApiCredentialPage, type ApiScope, type IssuedApiCredential, type NewApiCredential} from '@core/api-access.ts';
+import {apiScopes, createApiKey, getApiAccessOptions, listApiKeys, revokeApiKey, type ApiAccessOptions, type ApiCredential, type ApiCredentialPage, type ApiScope, type IssuedApiCredential, type NewApiCredential} from '@core/api-access.ts';
 import {EXPIRY_DAYS, chosenScopes, credentialFacts, credentialMember, credentialState, credentialWorks, expiryInstant, expiryLabel, scopeTicked, type ExpiryDays} from '@core/server-admin/api-words.ts';
 import {useAction, useRead, type Read} from '../../admin/console';
 import {useCursorList} from '../../admin/cursor-read';
@@ -12,7 +12,6 @@ import {useI18n} from '../../app/i18n';
 import {Button, Checkbox, ConfirmDialog, Dialog, Input, Notice, Select, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Text, TextArea} from '../../ui';
 
 const API_KEY_MOVES = [dependsOn.list('apiKeys')];
-const MEMBER_TOKEN_MOVES = [dependsOn.list('memberTokens')];
 
 // The owner turning members' tokens off, or changing the rate, is a change to the server's settings.
 const ACCESS_OPTION_MOVES = [dependsOn.settings('server')];
@@ -163,15 +162,6 @@ export function APIKeysPanel() {
   const read = useCursorList(cursor => credentialPage(listApiKeys(api, cursor)), [api], {on: API_KEY_MOVES});
   return <CredentialList kind="key" title={t('web.access.apiKeys')} description={t('server.access.keyLede')} read={read} options={options.data} create={input => createApiKey(api, input)} revoke={id => revokeApiKey(api, id)} footnote={t('api.tokens.lifetime')} />;
 }
-
-/** Integrations › Members' tokens: every token a member has made for themselves, to see and to end. */
-export function MemberTokensPanel() {
-  const {t} = useI18n();
-  const {api} = useSession();
-  const read = useCursorList(cursor => credentialPage(listMemberAccessTokens(api, {cursor})), [api], {on: MEMBER_TOKEN_MOVES});
-  return <CredentialList kind="token" title={t('api.tokens.memberTitle')} description={t('api.tokens.memberLede')} read={read} revoke={id => revokeMemberAccessToken(api, id)} showMember />;
-}
-
 
 /** The way from another panel to where keys are made. */
 export function useOpenApiKeys(): () => void {

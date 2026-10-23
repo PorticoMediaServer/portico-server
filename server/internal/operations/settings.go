@@ -5,13 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"path/filepath"
-	"portico.local/server/internal/apievents"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/networkpolicy"
-	"sort"
 	"strings"
 	"time"
 )
@@ -131,9 +128,7 @@ func Registry() []Field {
 		field("customCertificateDomain", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener and route publication", "The domain the custom certificate serves. It is published to members as an access URL on the remote access port."),
 		field("lanDiscoveryEnabled", "connectivity", "boolean", true, nil, nil, nil, "hot", "LAN discovery advertisement", "Advertise this server on the local network with mDNS/Bonjour. The connectivity status report says whether this host can."),
 		field("dlnaEnabled", "connectivity", "boolean", false, nil, nil, nil, "hot", "DLNA server", "Let DLNA players on the home networks browse and play every library without signing in. Off by default; never offered outside the home networks."),
-		field("deviceApprovalRequired", "access", "boolean", false, nil, nil, nil, "next-operation", "identity device registration", "Hold each new device until the owner or an administrator approves it. The owner's own devices are never held. Devices already in use stay approved."),
 		field("apiRequestsPerMinute", "access", "integer", 0, bounded(0), bounded(100000), nil, "hot", "API key and access token admission", "How many requests one API key or personal access token may make each minute. 0 uses the default of 600."),
-		field("blockMemberAccessTokens", "access", "boolean", false, nil, nil, nil, "next-operation", "personal access token creation", "Stop members creating personal access tokens. Tokens that already exist keep working until they are revoked."),
 		field("logLevel", "diagnostics", "enumeration", "info", nil, nil, LogLevels, "hot", "servicelog.Recorder", "How much detail the message log keeps. A debug window raises this temporarily without changing the saved value."),
 		field("logRetention", "diagnostics", "log-retention-list", []LogRetention{}, nil, nil, LogCategories, "hot", "servicelog.Recorder and ClientLogStore prune", "Days of message log and client report history to keep per category. A category with no entry keeps its bounded history."),
 	}
@@ -183,7 +178,6 @@ type Settings struct {
 	APIRequestsPerMinute int `json:"apiRequestsPerMinute"`
 	// BlockMemberAccessTokens stops members making personal access tokens. It is
 	// phrased as the exception so that the zero value is the default: allowed.
-	BlockMemberAccessTokens bool `json:"blockMemberAccessTokens"`
 	// Aggregated server-wide play counts stay off until an owner opts in.
 	CommunityActivityEnabled bool `json:"home.communityActivityEnabled"`
 	// Update reporting and the default trash retention are owner administration
@@ -226,7 +220,6 @@ type Settings struct {
 	CustomCertificatePath       string         `json:"customCertificatePath"`
 	CustomCertificateKeyPath    string         `json:"customCertificateKeyPath"`
 	CustomCertificateDomain     string         `json:"customCertificateDomain"`
-	DeviceApprovalRequired      bool           `json:"deviceApprovalRequired"`
 	LogLevel                    string         `json:"logLevel"`
 	LogRetention                []LogRetention `json:"logRetention"`
 }
@@ -286,14 +279,6 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 	if e = tx.QueryRow(`SELECT transcoding_enabled,per_account_cap,server_cap FROM playback_owner_policy WHERE singleton=1`).Scan(&v.TranscodingEnabled, &v.PerAccountCap, &v.ServerCap); e != nil {
 		return SettingsDocument{}, e
 	}
-	// Device approval is the identity service's own value, read on every
-	// device registration. The switch here shows and sets that value.
-	var approval string
-	e = tx.QueryRow(`SELECT value FROM configuration WHERE key=?`, identity.DeviceApprovalSettingKey).Scan(&approval)
-	if e != nil && !errors.Is(e, sql.ErrNoRows) {
-		return SettingsDocument{}, e
-	}
-	v.DeviceApprovalRequired = approval == identity.DeviceApprovalOwner
 	b, _ := json.Marshal(v)
 	effective, pending := effectiveMediaSettings(v)
 	return SettingsDocument{Revision: revision, Digest: Hash(string(b)), Requested: v, Effective: effective, ActiveRevision: revision, RestartFields: pending, RegistryRevision: RegistryRevision}, nil
@@ -507,13 +492,6 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 		if _, err = tx.Exec(`INSERT INTO configuration VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, c.Values.Name); err != nil {
 			return err
 		}
-		approval := identity.DeviceApprovalAuto
-		if c.Values.DeviceApprovalRequired {
-			approval = identity.DeviceApprovalOwner
-		}
-		if _, err = tx.Exec(`INSERT INTO configuration VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, identity.DeviceApprovalSettingKey, approval); err != nil {
-			return err
-		}
 		if _, err = tx.Exec(`UPDATE playback_owner_policy SET revision=revision+1,transcoding_enabled=?,per_account_cap=?,server_cap=? WHERE singleton=1`, c.Values.TranscodingEnabled, c.Values.PerAccountCap, c.Values.ServerCap); err != nil {
 			return err
 		}
@@ -541,181 +519,4 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 	return
 }
 
-type PreferencePatch map[string]any
-type PreferenceChange struct {
-	ExpectedRevision int64           `json:"expectedRevision"`
-	IdempotencyKey   string          `json:"idempotencyKey"`
-	Scope            string          `json:"scope"`
-	DeviceClass      string          `json:"deviceClass"`
-	Values           PreferencePatch `json:"values"`
-}
-type PreferenceDocument struct {
-	Scope          string           `json:"scope"`
-	Revision       int64            `json:"revision"`
-	Values         PreferenceValues `json:"values"`
-	Digest         string           `json:"digest"`
-	ActiveRevision int64            `json:"activeRevision"`
-}
-type PreferenceRegistryDocument struct {
-	Revision string            `json:"revision"`
-	Fields   []PreferenceField `json:"fields"`
-}
-type PreferenceSnapshot struct {
-	AudioEffects     AudioEffectPreferences     `json:"audioEffects"`
-	DeviceClass      string                     `json:"deviceClass"`
-	Registry         PreferenceRegistryDocument `json:"registry"`
-	Documents        []PreferenceDocument       `json:"documents"`
-	Effective        PreferenceValues           `json:"effective"`
-	EffectiveSource  map[string]string          `json:"effectiveSource"`
-	ClampedFields    []string                   `json:"clampedFields"`
-	RegistryRevision string                     `json:"registryRevision"`
-}
-
-func readPreferences(tx *sql.Tx, v identity.Viewer, device string, clamped []string) (PreferenceSnapshot, error) {
-	out := PreferenceSnapshot{
-		DeviceClass:      device,
-		Registry:         PreferenceRegistryDocument{Revision: PreferenceRegistryRevision, Fields: PreferenceRegistry()},
-		Documents:        []PreferenceDocument{},
-		ClampedFields:    []string{},
-		RegistryRevision: PreferenceRegistryRevision,
-	}
-	if !validDeviceClass(device) {
-		return out, invalidFields("deviceClass")
-	}
-	for _, scope := range PreferenceScopes {
-		key, e := preferenceScopeKey(v, scope, device)
-		if e != nil {
-			return out, e
-		}
-		d := PreferenceDocument{Scope: scope, Revision: 1, Values: PreferenceValues{}}
-		var raw string
-		e = tx.QueryRow(`SELECT revision,body FROM console_documents WHERE scope=?`, key).Scan(&d.Revision, &raw)
-		if e == nil {
-			if d.Values, e = decodePreferenceDocument(raw, scope); e != nil {
-				return out, e
-			}
-		} else if !errors.Is(e, sql.ErrNoRows) {
-			return out, e
-		}
-		b, _ := json.Marshal(d.Values)
-		d.Digest = Hash(string(b))
-		d.ActiveRevision = d.Revision
-		out.Documents = append(out.Documents, d)
-	}
-	effective, source, policy, e := EffectivePreferences(tx, v, device)
-	if e != nil {
-		return out, e
-	}
-	out.Effective, out.EffectiveSource = effective, source
-	out.AudioEffects = effective.AudioEffects()
-	seen := map[string]bool{}
-	for _, key := range append(append([]string{}, clamped...), policy...) {
-		if !seen[key] {
-			seen[key] = true
-			out.ClampedFields = append(out.ClampedFields, key)
-		}
-	}
-	sort.Strings(out.ClampedFields)
-	return out, nil
-}
-func (s *Store) Preferences(ctx context.Context, p identity.Principal, device string, auth Authorize) (out PreferenceSnapshot, e error) {
-	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error {
-		var err error
-		out, err = readPreferences(tx, p.Viewer, device, nil)
-		return err
-	})
-	return
-}
-
-// validatePreferencePatch resolves a submitted patch against the registry. An
-// unknown key, a key outside the addressed scope, or a value the registry cannot
-// accept names that key in the rejection; only numeric ranges clamp.
-func validatePreferencePatch(scope string, patch PreferencePatch) (PreferenceValues, []string, []string, error) {
-	values, cleared, clamped := PreferenceValues{}, []string{}, []string{}
-	if patch == nil {
-		return nil, nil, nil, invalidFields("values")
-	}
-	keys := make([]string, 0, len(patch))
-	for key := range patch {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		f, ok := PreferenceFieldFor(key)
-		if !ok || !f.allows(scope) {
-			return nil, nil, nil, invalidFields("values." + key)
-		}
-		if patch[key] == nil {
-			cleared = append(cleared, key)
-			continue
-		}
-		canonical, wasClamped, e := canonicalPreference(f, patch[key])
-		if e != nil {
-			return nil, nil, nil, invalidFields("values." + key)
-		}
-		values[key] = canonical
-		if wasClamped {
-			clamped = append(clamped, key)
-		}
-	}
-	return values, cleared, clamped, nil
-}
-
-// ApplyPreferences merges the submitted keys into one scope document. A null
-// value removes that scope's override, so the next lower scope or the registry
-// default becomes effective again.
-func (s *Store) ApplyPreferences(ctx context.Context, p identity.Principal, auth Authorize, c PreferenceChange) (out PreferenceSnapshot, e error) {
-	if !validDeviceClass(c.DeviceClass) {
-		return out, invalidFields("deviceClass")
-	}
-	key, e := preferenceScopeKey(p.Viewer, c.Scope, c.DeviceClass)
-	if e != nil {
-		return out, invalidFields("scope")
-	}
-	patch, cleared, clamped, e := validatePreferencePatch(c.Scope, c.Values)
-	if e != nil {
-		return out, e
-	}
-	e = s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
-		raw, digest, err := Receipt(tx, key, c.IdempotencyKey, c, s.now())
-		if err != nil {
-			return err
-		}
-		if raw != "" {
-			return decodeDocument(raw, &out)
-		}
-		var revision int64 = 1
-		var body string
-		err = tx.QueryRow(`SELECT revision,body FROM console_documents WHERE scope=?`, key).Scan(&revision, &body)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if revision != c.ExpectedRevision {
-			return &ConflictError{revision}
-		}
-		merged, err := decodePreferenceDocument(body, c.Scope)
-		if err != nil {
-			return err
-		}
-		for field, value := range patch {
-			merged[field] = value
-		}
-		for _, field := range cleared {
-			delete(merged, field)
-		}
-		b, _ := json.Marshal(merged)
-		if _, err = tx.Exec(`INSERT INTO console_documents VALUES(?,?,?,?) ON CONFLICT(scope) DO UPDATE SET revision=excluded.revision,body=excluded.body,updated_ms=excluded.updated_ms`, key, revision+1, string(b), s.now()); err != nil {
-			return err
-		}
-		if err = apievents.Append(tx, apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID), "settings.changed", "settings", "preferences", fmt.Sprint(revision+1), map[string]string{"scope": c.Scope, "deviceClass": c.DeviceClass}); err != nil {
-			return err
-		}
-		out, err = readPreferences(tx, p.Viewer, c.DeviceClass, clamped)
-		if err != nil {
-			return err
-		}
-		return SaveReceipt(tx, key, c.IdempotencyKey, digest, out, s.now())
-	})
-	return
-}
 func days(n int) int64 { return int64(time.Duration(n) * 24 * time.Hour / time.Millisecond) }

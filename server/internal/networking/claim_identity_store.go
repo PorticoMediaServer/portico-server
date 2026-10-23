@@ -164,3 +164,18 @@ func CurrentIdentityTx(ctx context.Context, tx *sql.Tx) (IdentitySnapshot, error
 	v.PublicKey = append([]byte(nil), v.PublicKey...)
 	return v, ctx.Err()
 }
+
+// IdentityCodeTx derives the presentation value from the current protected-key
+// publication in the caller's transaction. The caller retains its existing
+// sign-in kind, main-profile and permission checks; this stores no setting.
+func IdentityCodeTx(ctx context.Context, tx *sql.Tx) (string, error) {
+	current, e := CurrentIdentityTx(ctx, tx)
+	if e != nil {
+		return "", e
+	}
+	code := IdentityCode(current.ServerID)
+	if code == "" {
+		return "", ErrInvalid
+	}
+	return code, nil
+}

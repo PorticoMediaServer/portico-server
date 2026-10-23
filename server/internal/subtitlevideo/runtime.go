@@ -21,6 +21,7 @@ import (
 	"portico.local/server/internal/supervise"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -41,6 +42,7 @@ type Runtime struct {
 	life                       context.Context
 	cancel                     context.CancelFunc
 	RemoteStorage              RemoteStorageInput
+	activeAudioConversions     atomic.Int64
 }
 type audioTrack struct {
 	Index           int

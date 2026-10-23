@@ -7,6 +7,9 @@ import (
 )
 
 func registerIdentityHTTPContracts(registry *apikit.Registry) error {
+	if e := registerSignInPolicyHTTPContracts(registry); e != nil {
+		return e
+	}
 	if err := registerResetFileHTTPContracts(registry); err != nil {
 		return err
 	}

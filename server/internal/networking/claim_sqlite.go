@@ -70,7 +70,6 @@ type storedIntent struct {
 	Intent
 	owner          LocalOwner
 	approvalIssued time.Time
-	targetUsername string
 	ownerReserved  bool
 }
 
@@ -81,7 +80,7 @@ type rowScanner interface{ Scan(...any) error }
 func scanIntent(row rowScanner) (storedIntent, error) {
 	var v storedIntent
 	var issued, expires string
-	e := row.Scan(&v.OperationID, &v.ServerID, &v.AccountID, &v.PublicKey, &v.LocalGeneration, &v.Revision, &v.Stage, &v.owner.AccountID, &v.owner.ProfileID, &v.owner.Epoch, &v.ApprovalRevision, &issued, &expires, &v.ClaimGeneration, &v.CredentialGeneration, &v.InstallationAcknowledged, &v.owner.SetupOperationID, &v.Purpose, &v.CurrentOwnerAccountID, &v.PreviousOwnerRole, &v.ReturnRegistrationID, &v.targetUsername, &v.ownerReserved)
+	e := row.Scan(&v.OperationID, &v.ServerID, &v.AccountID, &v.PublicKey, &v.LocalGeneration, &v.Revision, &v.Stage, &v.owner.AccountID, &v.owner.ProfileID, &v.owner.Epoch, &v.ApprovalRevision, &issued, &expires, &v.ClaimGeneration, &v.CredentialGeneration, &v.InstallationAcknowledged, &v.owner.SetupOperationID, &v.Purpose, &v.CurrentOwnerAccountID, &v.PreviousOwnerRole, &v.ReturnRegistrationID, &v.ReservationUsername, &v.ownerReserved)
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, ErrStale
 	}
@@ -185,10 +184,10 @@ func (s *SQLiteStore) positive(ctx context.Context, tx *sql.Tx, expected Intent)
 	if e != nil {
 		return v, e
 	}
-	if expected.ClaimPurpose != v.ClaimPurpose || !sameBinding(expected.Binding, v.Binding) || expected.Revision != v.Revision || expected.Stage != v.Stage || expected.ApprovalRevision != v.ApprovalRevision || !expected.ApprovalExpiresAt.Equal(v.ApprovalExpiresAt) || expected.ClaimGeneration != v.ClaimGeneration || expected.CredentialGeneration != v.CredentialGeneration || v.Stage == CancelPending || v.Stage == Cancelled || id.server != v.ServerID || !bytes.Equal(id.key, v.PublicKey) || id.generation != v.LocalGeneration || ((!id.active.Valid || id.active.String != v.OperationID) && (!id.pending.Valid || id.pending.String != v.OperationID)) {
+	if expected.ClaimPurpose != v.ClaimPurpose || !sameBinding(expected.Binding, v.Binding) || expected.Revision != v.Revision || expected.Stage != v.Stage || expected.ApprovalRevision != v.ApprovalRevision || expected.ReservationUsername != v.ReservationUsername || !expected.ApprovalExpiresAt.Equal(v.ApprovalExpiresAt) || expected.ClaimGeneration != v.ClaimGeneration || expected.CredentialGeneration != v.CredentialGeneration || v.Stage == CancelPending || v.Stage == Cancelled || id.server != v.ServerID || !bytes.Equal(id.key, v.PublicKey) || id.generation != v.LocalGeneration || ((!id.active.Valid || id.active.String != v.OperationID) && (!id.pending.Valid || id.pending.String != v.OperationID)) {
 		return v, ErrStale
 	}
-	if id.pending.Valid && id.pending.String == v.OperationID && (v.Stage == Prepared || v.Stage == Approved) {
+	if id.pending.Valid && id.pending.String == v.OperationID && (v.Stage == Prepared || v.Stage == Approved) && !(v.Purpose == "switch" && v.CurrentOwnerAccountID == "") {
 		if !id.installed.Valid || !id.active.Valid || id.installed.String != id.active.String {
 			return v, ErrStale
 		}
@@ -203,7 +202,7 @@ func (s *SQLiteStore) positive(ctx context.Context, tx *sql.Tx, expected Intent)
 			return v, e
 		}
 	}
-	if v.Purpose == "change-owner" && v.Stage != Prepared && v.Stage != Installed && (!v.ownerReserved || !claimUsername.MatchString(v.targetUsername)) {
+	if (v.Purpose == "change-owner" || v.Purpose == "switch") && v.Stage != Prepared && v.Stage != Installed && (!v.ownerReserved || !claimUsername.MatchString(v.ReservationUsername)) {
 		return v, ErrStale
 	}
 	if v.Stage == Installed {
@@ -296,16 +295,22 @@ func (s *SQLiteStore) PreparePurpose(ctx context.Context, b Binding, owner Local
 	if !errors.Is(e, ErrStale) {
 		return Intent{}, e
 	}
-	if purpose.Purpose != "setup" {
+	localSwitch := false
+	if purpose.Purpose == "switch" && purpose.CurrentOwnerAccountID == "" {
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_state k JOIN identity_moves m ON m.owner_id=? WHERE k.singleton=1 AND k.sign_in_kind='local' AND m.to_kind='portico' AND m.stage='preview' AND m.owner_confirmed=1)`, owner.AccountID).Scan(&localSwitch); e != nil {
+			return Intent{}, e
+		}
+		if !localSwitch || id.active.Valid || id.pending.Valid || owner.SetupOperationID != "" {
+			return Intent{}, ErrStale
+		}
+	}
+	if purpose.Purpose != "setup" && !localSwitch {
 		if !id.installed.Valid || !id.active.Valid || id.active.String != id.installed.String || owner.SetupOperationID != "" {
 			return Intent{}, ErrStale
 		}
 		var current string
 		if e = tx.QueryRowContext(ctx, `SELECT hosted_account_id FROM account_portico_links WHERE account_id=?`, owner.AccountID).Scan(&current); e != nil || current != purpose.CurrentOwnerAccountID {
 			return Intent{}, ErrStale
-		}
-		if e = s.ownerGuard(ctx, tx, owner); e != nil {
-			return Intent{}, e
 		}
 		if id.pending.Valid {
 			return Intent{}, ErrStale
@@ -320,10 +325,10 @@ func (s *SQLiteStore) PreparePurpose(ctx context.Context, b Binding, owner Local
 		if e = s.installedGuard(ctx, tx, previous.Intent); e != nil {
 			return Intent{}, e
 		}
-
-	} else if id.active.Valid || id.installed.Valid || id.pending.Valid {
+	} else if purpose.Purpose == "setup" && (id.active.Valid || id.installed.Valid || id.pending.Valid) {
 		return Intent{}, ErrStale
 	}
+
 	if id.server != b.ServerID || !bytes.Equal(id.key, b.PublicKey) || id.generation != b.LocalGeneration {
 		return Intent{}, ErrStale
 	}
@@ -386,15 +391,21 @@ func (s *SQLiteStore) Approve(ctx context.Context, expected Intent, proof []byte
 	if _, e = s.positive(ctx, tx, expected); e != nil {
 		return Intent{}, e
 	}
-	if facts.Purpose == "change-owner" {
+	if facts.Purpose == "change-owner" || facts.Purpose == "switch" {
 		if facts.AccountID == expected.CurrentOwnerAccountID {
 			return Intent{}, ErrApprovalRequired
 		}
 		if !claimUsername.MatchString(facts.TargetUsername) {
 			return Intent{}, ErrApprovalRequired
 		}
+		exclude := ""
+		if facts.Purpose == "switch" {
+			if e = tx.QueryRowContext(ctx, `SELECT owner_id FROM networking_claim_intents WHERE operation_id=?`, expected.OperationID).Scan(&exclude); e != nil {
+				return Intent{}, e
+			}
+		}
 		var collision bool
-		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_portico_links WHERE hosted_account_id=?) OR EXISTS(SELECT 1 FROM accounts WHERE username=? COLLATE NOCASE)`, facts.AccountID, facts.TargetUsername).Scan(&collision); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_portico_links WHERE hosted_account_id=? AND account_id<>?) OR EXISTS(SELECT 1 FROM accounts WHERE username=? COLLATE NOCASE AND id<>?)`, facts.AccountID, exclude, facts.TargetUsername, exclude).Scan(&collision); e != nil {
 			return Intent{}, e
 		}
 		if collision {
@@ -424,7 +435,7 @@ func (s *SQLiteStore) Approve(ctx context.Context, expected Intent, proof []byte
 		return Intent{}, ErrStale
 	}
 	if facts.Revision == v.ApprovalRevision {
-		if !facts.IssuedAt.Equal(v.approvalIssued) || !facts.ExpiresAt.Equal(v.ApprovalExpiresAt) || facts.TargetUsername != v.targetUsername {
+		if !facts.IssuedAt.Equal(v.approvalIssued) || !facts.ExpiresAt.Equal(v.ApprovalExpiresAt) || facts.TargetUsername != v.ReservationUsername {
 			return Intent{}, ErrStale
 		}
 		return s.finish(ctx, gated4, v.Intent, true)
@@ -436,7 +447,7 @@ func (s *SQLiteStore) Approve(ctx context.Context, expected Intent, proof []byte
 	if stage == Prepared {
 		stage = Approved
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE networking_claim_intents SET revision=revision+1,stage=?,approval_revision=?,approval_issued_at=?,approval_expires_at=?,updated_at=?,approved_username=?,owner_change_reserved=? WHERE operation_id=?`, stage, facts.Revision, facts.IssuedAt.UTC().Format(time.RFC3339Nano), facts.ExpiresAt.UTC().Format(time.RFC3339Nano), s.now().UTC().Format(time.RFC3339Nano), facts.TargetUsername, facts.Purpose == "change-owner", v.OperationID)
+	_, e = tx.ExecContext(ctx, `UPDATE networking_claim_intents SET revision=revision+1,stage=?,approval_revision=?,approval_issued_at=?,approval_expires_at=?,updated_at=?,approved_username=?,owner_change_reserved=? WHERE operation_id=?`, stage, facts.Revision, facts.IssuedAt.UTC().Format(time.RFC3339Nano), facts.ExpiresAt.UTC().Format(time.RFC3339Nano), s.now().UTC().Format(time.RFC3339Nano), facts.TargetUsername, facts.Purpose == "change-owner" || facts.Purpose == "switch", v.OperationID)
 	if e != nil {
 		return Intent{}, e
 	}
@@ -507,7 +518,11 @@ func (s *SQLiteStore) Install(ctx context.Context, expected Intent, result Resul
 	if e != nil {
 		return Intent{}, e
 	}
-	if v.Purpose != "setup" {
+	if v.Purpose == "switch" && v.CurrentOwnerAccountID == "" {
+		if !identity.pending.Valid || identity.pending.String != v.OperationID || identity.active.Valid || identity.installed.Valid {
+			return Intent{}, ErrStale
+		}
+	} else if v.Purpose != "setup" {
 		if !identity.pending.Valid || identity.pending.String != v.OperationID || !identity.installed.Valid || !identity.active.Valid || identity.active.String != identity.installed.String {
 			return Intent{}, ErrStale
 		}
@@ -556,6 +571,9 @@ func (s *SQLiteStore) Install(ctx context.Context, expected Intent, result Resul
 	}
 	next, e := loadIntentTx(ctx, tx, v.OperationID)
 	if e != nil {
+		return Intent{}, e
+	}
+	if _, e = tx.ExecContext(ctx, `DELETE FROM networking_claim_cancellations WHERE operation_id=?`, v.OperationID); e != nil {
 		return Intent{}, e
 	}
 	if s.installed != nil {
@@ -678,7 +696,8 @@ func (s *SQLiteStore) BeginCancel(ctx context.Context, b Binding, item Cancellat
 		old, e := s.cancellationTx(ctx, tx, v.Intent)
 		return v.Intent, old, e
 	}
-	if id.server != b.ServerID || !bytes.Equal(id.key, b.PublicKey) || id.generation != b.LocalGeneration || !id.active.Valid || id.active.String != b.OperationID {
+	firstSwitch := v.Purpose == "switch" && v.CurrentOwnerAccountID == "" && id.pending.Valid && id.pending.String == b.OperationID && !id.active.Valid && !id.installed.Valid
+	if id.server != b.ServerID || !bytes.Equal(id.key, b.PublicKey) || id.generation != b.LocalGeneration || (!firstSwitch && (!id.active.Valid || id.active.String != b.OperationID)) {
 		return Intent{}, Cancellation{}, ErrStale
 	}
 	if item.ClaimGeneration != "" && item.ClaimGeneration != v.ClaimGeneration {
@@ -694,7 +713,7 @@ func (s *SQLiteStore) BeginCancel(ctx context.Context, b Binding, item Cancellat
 		mode = "committed"
 	}
 	now := s.now().UTC().Format(time.RFC3339Nano)
-	_, e = tx.ExecContext(ctx, `INSERT INTO networking_claim_cancellations(operation_id,request_id,mode,claim_generation,payload,signature,state,created_at) VALUES(?,?,?,?,?,?,'pending',?)`, v.OperationID, item.RequestID, mode, item.ClaimGeneration, item.Proof.Payload, item.Proof.Signature, now)
+	_, e = tx.ExecContext(ctx, `INSERT INTO networking_claim_cancellations(operation_id,request_id,mode,claim_generation,payload,signature,state,created_at) VALUES(?,?,?,?,?,?,'pending',?) ON CONFLICT(operation_id) DO NOTHING`, v.OperationID, item.RequestID, mode, item.ClaimGeneration, item.Proof.Payload, item.Proof.Signature, now)
 	if e != nil {
 		return Intent{}, Cancellation{}, e
 	}
@@ -857,7 +876,8 @@ func (s *SQLiteStore) WithdrawReplacement(ctx context.Context, expected Intent) 
 	if v.Stage != Prepared && v.Stage != Approved {
 		return Intent{}, false, nil
 	}
-	if !id.installed.Valid || !id.active.Valid || id.active.String != id.installed.String {
+	firstSwitch := v.Purpose == "switch" && v.CurrentOwnerAccountID == "" && !id.installed.Valid && !id.active.Valid
+	if !firstSwitch && (!id.installed.Valid || !id.active.Valid || id.active.String != id.installed.String) {
 		return Intent{}, true, ErrStale
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE networking_claim_intents SET stage='cancelled',revision=revision+1,owner_change_reserved=0 WHERE operation_id=?`, v.OperationID); e != nil {

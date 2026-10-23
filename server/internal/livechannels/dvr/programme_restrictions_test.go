@@ -15,7 +15,7 @@ func TestDVRHidesProgrammeFactsAfterRatingRestriction(t *testing.T) {
 			s, source, p, a := sharingStore(t)
 			ctx := context.Background()
 			owner := livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "profile"}
-			if _, e := s.db.Exec(`INSERT INTO accounts VALUES('account','Owner',x'00','profile',1)`); e != nil {
+			if _, e := s.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','Owner',x'00','profile',1)`); e != nil {
 				t.Fatal(e)
 			}
 			if _, e := s.db.Exec(`UPDATE live_programme_metadata SET facts=json_set(facts,'$.rating',json('{"system":"mpaa","value":"R"}')) WHERE generation_id=? AND id=?`, source.Generation, p.ID); e != nil {
@@ -65,7 +65,7 @@ func TestDVRCancellationReceiptDoesNotReplayRestrictedFacts(t *testing.T) {
 	s, source, p, a := sharingStore(t)
 	ctx := context.Background()
 	o := livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "profile"}
-	if _, e := s.db.Exec(`INSERT INTO accounts VALUES('account','Owner',x'00','profile',1)`); e != nil {
+	if _, e := s.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','Owner',x'00','profile',1)`); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := s.db.Exec(`UPDATE live_programme_metadata SET facts=json_set(facts,'$.rating',json('{"value":"R"}')) WHERE generation_id=? AND id=?`, source.Generation, p.ID); e != nil {
@@ -93,7 +93,7 @@ func TestDVRCancellationReceiptDoesNotReplayRestrictedFacts(t *testing.T) {
 
 func TestActiveDVRCaptureRechecksRatingPolicy(t *testing.T) {
 	s, c, _ := sharedClaims(t)
-	if _, e := s.db.Exec(`INSERT INTO accounts VALUES('account','Owner',x'00',?,1)`, c.request.Owner.ProfileID); e != nil {
+	if _, e := s.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','Owner',x'00',?,1)`, c.request.Owner.ProfileID); e != nil {
 		t.Fatal(e)
 	}
 	c.request.Recording.Programme.Rating = &livechannels.ProgrammeRating{Value: "R"}
