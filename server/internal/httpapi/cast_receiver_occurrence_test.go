@@ -65,11 +65,10 @@ func castReceiverCurrentOccurrenceRoutes(t *testing.T, reportedEnded bool) {
 		}, 204, nil)
 	}
 	base := "/v1/queues/" + q.Queue.ID
-	if w := f.as(bearer, "GET", base, nil); w.Code != 200 {
-		t.Errorf("current receiver queue header: %d %s", w.Code, w.Body.String())
-	}
+	var head playbackv1.QueueView
+	f.callAs(bearer, "GET", base, nil, nil, 200, &head)
 	var next playbackv1.QueueReply
-	w := f.callAs(bearer, "POST", base+":advance", map[string]string{"If-Match": q.Queue.Revision, "Idempotency-Key": "receiver-completion-current-001"}, map[string]any{"reason": "completion"}, 0, nil)
+	w := f.callAs(bearer, "POST", base+":advance", map[string]string{"If-Match": head.Revision, "Idempotency-Key": "receiver-completion-current-001"}, map[string]any{"reason": "completion"}, 0, nil)
 	if w.Code != 200 {
 		t.Errorf("current receiver ordinary completion: %d %s", w.Code, w.Body.String())
 	} else {
