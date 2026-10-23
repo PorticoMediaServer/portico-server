@@ -45,6 +45,7 @@ var processSpawns = map[string]string{
 	"internal/storage/root_registration_windows.go:RegisterRoot":              "storage helper (server binary); transfers a retained root handle",
 	"internal/subtitles/acquisition.go:Import":                                "subtitle sidecar helper (server binary); reads text files, runs no tool",
 	// Not media.
+	"internal/decoder/hardware_nvidia.go:runNVIDIADiscovery":     "fixed read-only nvidia-smi UUID/PCI/index/name/driver query; 5-second context, bounded output, minimal environment and childprocess group retirement; no media input or codec availability inference",
 	"internal/mounts/service.go:reconcile":                       "rclone mount guardian (server binary)",
 	"internal/mounts/native.go:NativeHelper":                     "rclone, inside the native helper, for a managed network mount",
 	"internal/mounts/native.go:runOwned":                         "rclone native helper (server binary)",
