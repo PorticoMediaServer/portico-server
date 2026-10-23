@@ -13,6 +13,7 @@ import {PlayOnController, type WebCastPort} from '../src/platform/playback/play-
 import {playbackPolicyNext} from '../src/platform/playback/policy.ts';
 import {dispatchWatchNext, watchUpNextOffer} from '../src/screens/watch/up-next.ts';
 import {watchBodyTarget, watchBodyKey} from '../src/screens/watch/body-target.ts';
+import {watchFeedbackTarget} from '../src/screens/watch/feedback.ts';
 import {playbackVersionRows} from '../src/platform/playback/version-rows.ts';
 import {WebCastSender, type CastBrowser, type CastSession} from '../src/platform/cast/index.ts';
 import type {WebPlaybackSettings, WebPlaybackSource} from '../src/platform/playback/types.ts';
@@ -2265,4 +2266,19 @@ test('Together completion reports the actual room end without a private replay o
   assert.equal(f.log.some(request => request.path.endsWith(':advance')), false);
   await f.service.transport('seek', {positionUs: String(f.video.duration * 1000000)});await settle();
   assert.ok(f.log.some(request => request.path.endsWith('/readiness') && (request.body as {ended?: boolean}).ended === true), 'the canonical follower reports a genuine ended observation against the current room revision');
+});
+
+test('Watch Feedback retains the actual item and full session fence and retires on a newer source', async t => {
+  const f = setup(t);await f.runtime.play('movie');await f.arrive();
+  const shown = f.runtime.getSnapshot(), binding = {runtime: f.runtime, environment: {locale: 'en-US'}, artwork: {} as never,
+    skips: {back: 10, forward: 30}, reportError: () => {}};
+  const target = watchFeedbackTarget(binding, shown)!;
+  assert.ok(target);assert.equal(target.item.id, shown.session!.itemId);assert.equal(target.item.title, 'movie');
+  assert.equal(target.playback.fence, shown.fence);assert.equal(target.playback.isCurrent(), true);
+  let changes = 0;const off = target.playback.subscribe(() => {changes++;});
+  await f.runtime.play('next_movie');await f.arrive();off();
+  assert.ok(changes > 0);assert.equal(target.playback.isCurrent(), false);assert.equal(watchFeedbackTarget(binding, shown), undefined);
+  assert.equal(watchFeedbackTarget(binding, {...f.runtime.getSnapshot(), session: {...f.runtime.getSnapshot().session!, itemId: 'foreign'}}), undefined);
+  await f.runtime.playFromGuide(homeChannel.channel, {signal: new AbortController().signal, isCurrent: () => true});await f.arriveLive();
+  assert.equal(watchFeedbackTarget(binding, f.runtime.getSnapshot()), undefined, 'a channel is not a fabricated title/session target');
 });
