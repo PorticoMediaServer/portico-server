@@ -86,7 +86,8 @@ func readBrowseRow(ctx context.Context, tx *sql.Tx, id int64) (browseRow, error)
 	query, refined := refinedRowSQL[Kind(row.kind)]
 	switch {
 	case refined:
-	case playable:
+	case playable || Kind(row.kind) == Ebook || Kind(row.kind) == Comic:
+		// Reading is a leaf without acquiring playback/listening flags.
 		query = playableRow
 	default:
 		query = containerRowSQL
@@ -320,7 +321,7 @@ func deriveHomeBuckets(ctx context.Context, tx *sql.Tx, id int64) error {
 // membershipSQL is the membership set of item ?1 by source: itself (0), its
 // show (1) and season (2), its album (3) and album artist (4), its credited
 // artists (5), its book (6) and the book's author (7), and its collections (8).
-const membershipSQL = `SELECT e.id,0 FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 WHERE e.id=?1
+const membershipSQL = `SELECT e.id,0 FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE e.id=?1 AND (k.playable=1 OR k.id IN(20,21))
  UNION SELECT ep.show_id,1 FROM catalog_episodes ep WHERE ep.entity_id=?1
  UNION SELECT ep.season_id,2 FROM catalog_episodes ep WHERE ep.entity_id=?1 AND ep.season_id IS NOT NULL
  UNION SELECT s.album_id,3 FROM catalog_songs s WHERE s.entity_id=?1
@@ -669,7 +670,7 @@ func refreshEntityMetrics(ctx context.Context, tx *sql.Tx, entity int64) (errOut
 
 func init() {
 	Register(DomainBrowseRows, Derivation{
-		Version: 4,
+		Version: 5,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			ids := keyIDs(keys)
 			for _, id := range ids {
@@ -684,13 +685,13 @@ func init() {
 		},
 	})
 	Register(DomainBrowseEdges, Derivation{
-		Version: 1,
+		Version: 2,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			ids := keyIDs(keys)
 			return ids, deriveBrowseMembers(ctx, tx, ids)
 		},
 		Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
-			return scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 WHERE e.id>? ORDER BY e.id LIMIT ?`, after, limit)
+			return scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE (k.playable=1 OR k.id IN(20,21)) AND e.id>? ORDER BY e.id LIMIT ?`, after, limit)
 		},
 	})
 	Register(DomainAssetMetrics, Derivation{
@@ -713,7 +714,7 @@ func init() {
 		},
 	})
 	Register(DomainItemMetrics, Derivation{
-		Version: 2,
+		Version: 3,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			touched := map[int64]bool{}
 			var done []int64
@@ -748,7 +749,7 @@ func init() {
 			return done, touchContainers(ctx, tx, touched)
 		},
 		Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
-			return scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 WHERE e.id>? ORDER BY e.id LIMIT ?`, after, limit)
+			return scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE (k.playable=1 OR k.id IN(20,21)) AND e.id>? ORDER BY e.id LIMIT ?`, after, limit)
 		},
 	})
 	Register(DomainContainerRefresh, Derivation{
