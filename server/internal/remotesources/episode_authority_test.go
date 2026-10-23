@@ -23,11 +23,11 @@ func (f *episodeFactsFixture) ReadEpisodeStateTx(ctx context.Context, tx *sql.Tx
 }
 
 func (f *episodeFactsFixture) ReadEpisodeWorkTx(context.Context, *sql.Tx, EpisodeTarget, EpisodePurpose) (EpisodeWorkState, error) {
-	return EpisodeWorkState{ServerRevision: 1, LibraryRevision: 1, ProviderRevision: 1, ProviderState: f.providerState, Server: ReadCeiling{Known: true}, Library: ReadCeiling{Known: true}, Provider: ReadCeiling{Known: true}}, nil
+	return EpisodeWorkState{ServerRevision: 1, LibraryRevision: 1, ProviderRevision: 1, ReadLeaseRevision: 1, RemoteProcessGeneration: "fixture-process", ProviderState: f.providerState, Server: ReadCeiling{Known: true}, Library: ReadCeiling{Known: true}, Provider: ReadCeiling{Known: true}}, nil
 }
 
-func (f *episodeFactsFixture) CheckEpisodeReadLease(_ context.Context, _ EpisodeTarget, purpose EpisodePurpose, limits ReadLimits) error {
-	if purpose != EpisodeExplicitOneEpisode || limits != f.limits {
+func (f *episodeFactsFixture) CheckEpisodeReadLease(_ context.Context, binding EpisodeReadLeaseBinding) error {
+	if binding.Purpose != EpisodeExplicitOneEpisode || binding.Limits != f.limits || binding.RemoteProcessGeneration != "fixture-process" || binding.ReadLeaseRevision != 1 || binding.Observation.SourceID != "remote" || binding.Observation.Generation != "1" || binding.RootIncarnation == "" || binding.LibrarySourceGeneration < 1 {
 		return ErrEpisodeAuthority
 	}
 	return nil
@@ -154,7 +154,7 @@ func TestEpisodeAutomaticAndExplicitPolicyMatrix(t *testing.T) {
 }
 
 func TestEpisodeOperationalLimitsAndPurposeUseDifferentScheduleGates(t *testing.T) {
-	work := EpisodeWorkState{ServerRevision: 1, LibraryRevision: 2, ProviderRevision: 3, ProviderState: "ready",
+	work := EpisodeWorkState{ServerRevision: 1, LibraryRevision: 2, ProviderRevision: 3, ReadLeaseRevision: 1, ProviderState: "ready",
 		Server:   ReadCeiling{Known: true, Limits: ReadLimits{Connections: 3, BytesPerSecond: 10_000_000}},
 		Library:  ReadCeiling{Known: true, Limits: ReadLimits{RequestsPerSecond: 2}},
 		Provider: ReadCeiling{Known: true}}

@@ -56,6 +56,8 @@ type ReadCeiling struct {
 
 type EpisodeWorkState struct {
 	ServerRevision, LibraryRevision, ProviderRevision int64
+	ReadLeaseRevision                                 int64
+	RemoteProcessGeneration                           string
 	HeavyWindowRevision, AnalysisScheduleRevision     int64
 	HeavyWindowOpen, AnalysisScheduleOpen             bool
 	Server, Library, Provider                         ReadCeiling
@@ -64,13 +66,25 @@ type EpisodeWorkState struct {
 	ProviderState string
 }
 
+type EpisodeReadLeaseBinding struct {
+	Target                  EpisodeTarget
+	Purpose                 EpisodePurpose
+	Observation             ObservationRef
+	LibrarySourceGeneration int64
+	RootIncarnation         string
+	ProfileRevision         int64
+	ReadLeaseRevision       int64
+	RemoteProcessGeneration string
+	Limits                  ReadLimits
+}
+
 // EpisodeWorkReader must be backed by the checked scheduler and source-wide
 // enforcing resource lease. There is no permissive implementation/default.
 // CheckEpisodeReadLease performs a nonblocking local lease check; it must not
 // do remote I/O or wait for capacity while a database transaction is held.
 type EpisodeWorkReader interface {
 	ReadEpisodeWorkTx(context.Context, *sql.Tx, EpisodeTarget, EpisodePurpose) (EpisodeWorkState, error)
-	CheckEpisodeReadLease(context.Context, EpisodeTarget, EpisodePurpose, ReadLimits) error
+	CheckEpisodeReadLease(context.Context, EpisodeReadLeaseBinding) error
 }
 
 type EpisodeAuthorityResolver struct {
@@ -160,7 +174,7 @@ func minimumReadLimits(source ReadLimits, ceilings ...ReadCeiling) (ReadLimits, 
 }
 
 func episodeWorkLimits(purpose EpisodePurpose, state EpisodeWorkState, source ReadLimits) (ReadLimits, error) {
-	if state.ServerRevision < 1 || state.LibraryRevision < 1 || state.ProviderRevision < 1 || state.ProviderState != "ready" {
+	if state.ServerRevision < 1 || state.LibraryRevision < 1 || state.ProviderRevision < 1 || state.ReadLeaseRevision < 1 || state.ProviderState != "ready" {
 		return ReadLimits{}, ErrEpisodeAuthority
 	}
 	if purpose == EpisodeAutomatic && (state.HeavyWindowRevision < 1 || state.AnalysisScheduleRevision < 1 || !state.HeavyWindowOpen || !state.AnalysisScheduleOpen) {
@@ -275,6 +289,9 @@ func (r EpisodeAuthorityResolver) resolveTx(ctx context.Context, tx *sql.Tx, req
 	if err != nil {
 		return out, err
 	}
+	if s.Kind == "remote" && out.Work.RemoteProcessGeneration == "" {
+		return out, ErrEpisodeAuthority
+	}
 	out.Limits, err = episodeWorkLimits(request.Purpose, out.Work, out.Profile.Limits)
 	if err != nil {
 		return out, err
@@ -314,7 +331,8 @@ func (a *EpisodeAuthority) checkTx(ctx context.Context, tx *sql.Tx) error {
 		}
 	}
 	if err == nil {
-		err = a.resolver.Work.CheckEpisodeReadLease(ctx, a.request.Target, a.request.Purpose, a.captured.Limits)
+		s := a.captured
+		err = a.resolver.Work.CheckEpisodeReadLease(ctx, EpisodeReadLeaseBinding{Target: a.request.Target, Purpose: a.request.Purpose, Observation: s.Observation, LibrarySourceGeneration: s.Source.Generation, RootIncarnation: s.Source.Incarnation, ProfileRevision: s.Profile.Revision, ReadLeaseRevision: s.Work.ReadLeaseRevision, RemoteProcessGeneration: s.Work.RemoteProcessGeneration, Limits: s.Limits})
 	}
 	if err != nil {
 		a.terminal = err
