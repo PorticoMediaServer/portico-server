@@ -65,3 +65,22 @@ Live TV and Library Channels no longer depend on the platform: the old
 (BE-MEDIA-02). The Linux sandbox proxy forwards PUT for the reserved linear
 output path only. Only an owner who sets `PORTICO_DECODER_SANDBOX=required` on a
 host without a working sandbox sees `decoder_confinement_unavailable`.
+
+## Current review cycles
+
+Build an exact published server MAIN commit on Netcup; never compile on the demo:
+
+```sh
+python3 scripts/build-review.py FULL_MAIN_SHA --repo /path/to/server-checkout --runner /path/to/_program/runner-tools/run-remote.py --output /path/to/cycle-summary-builds --artifacts /home/justin/projects/Portico/.artifacts/release-r40/FULL_MAIN_SHA
+scripts/deploy-demo.sh FULL_MAIN_SHA /path/to/artifacts --cycle review-CYCLE --stage-only
+```
+
+Staging uses a separate fresh structured data directory and loopback port32504. Complete normal public local-owner setup, create the second profile, and disable transcoding through the owner settings API before scanning. Keep the existing `/srv/portico-demo-20260919` media and synthetic Live TV services. Credentials and the cycle's arm64 embedded-JavaScript testing APK link belong only in `_program/private/REVIEW-SERVER.md`, mode0600; never in this repository or logs.
+
+After setup verification, activate explicitly:
+
+```sh
+scripts/deploy-demo.sh FULL_MAIN_SHA /path/to/artifacts --cycle review-CYCLE --activate-only
+```
+
+The old service/configuration and old database remain available for rollback; a new binary never opens old state. The new unit uses `PORTICO_SERVICE=1` and explicitly permits its normal `/var/cache/portico` transcode path. Server transcoding stays disabled on this1CPU/1GB review box. A release APK uses the normal Welcome/local-server flow with `https://demo.getportico.tv` typed by the reviewer; no DEV proof entry, injected runtime or embedded credentials.
