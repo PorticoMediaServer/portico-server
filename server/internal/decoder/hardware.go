@@ -588,6 +588,11 @@ func (d *HardwareDetector) Report(ctx context.Context, executable, device string
 // ConversionRequest describes one video output rung. It is deliberately free of
 // session identity: the same request always produces the same argument graph.
 type ConversionRequest struct {
+	// SoftwareDecode disables only hardware decoding. Qualified hardware
+	// filters/encoding may still upload the software-decoded frames.
+	SoftwareDecode bool
+	// DisableHardwareDecode also forces system-frame filters for legacy source
+	// geometry corrections (rotation and non-square pixels). Keep that meaning.
 	DisableHardwareDecode bool
 	Target                *ConversionTarget
 	BurnIn                *BurnIn
@@ -805,11 +810,11 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		if backend != BackendSoftware && spec.device != nil {
 			out.Input = append(out.Input, spec.device(r.Probe.Device)...)
 			// Device initialization alone is software decode.
-		} else if backend == BackendVideoToolbox && !r.DisableHardwareDecode && r.BurnIn == nil && !r.ToneMap && !r.Deinterlace && r.MaxFrameRate == 0 && r.MaxHeight == 0 && r.MaxWidth == 0 {
+		} else if backend == BackendVideoToolbox && !r.SoftwareDecode && !r.DisableHardwareDecode && r.BurnIn == nil && !r.ToneMap && !r.Deinterlace && r.MaxFrameRate == 0 && r.MaxHeight == 0 && r.MaxWidth == 0 {
 			out.Input = append(out.Input, "-hwaccel", "videotoolbox")
 			decode = ExecutionHardware
 		}
-		if native && !r.DisableHardwareDecode && !r.Deinterlace && r.MaxFrameRate == 0 {
+		if native && !r.SoftwareDecode && !r.DisableHardwareDecode && !r.Deinterlace && r.MaxFrameRate == 0 {
 			switch backend {
 			case BackendNVENC:
 				out.Input = append(out.Input, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
