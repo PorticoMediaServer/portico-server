@@ -151,3 +151,35 @@ func TestReadingContinueRegistered(t *testing.T) {
 		t.Fatal("changed source lost its saved revision/stale fence", out)
 	}
 }
+
+func TestReadingContinueFormatLocations(t *testing.T) {
+	for _, tc := range []struct{ kind, format string }{{"book", "epub"}, {"comic", "cbz"}} {
+		t.Run(tc.format, func(t *testing.T) {
+			r := newReadingFixture(t, tc.kind, tc.format)
+			h := New(r.d)
+			m := readingOpened(t, r, h)
+			location := ReadingLocation{Format: ReadingFormat(tc.format), Progression: .4}
+			if tc.format == "epub" {
+				location.CFI, location.Section = "epubcfi(/6/4!/4/2:0)", m.Spine[0]
+			} else {
+				page := int64(0)
+				location.PageIndex = &page
+			}
+			w := readingHTTP(t, h, "PUT", "/v1/reading/sessions/"+m.SessionID+"/progress", r.f.owner.AccessToken, m.Revision, ReadingProgressRequest{Location: location})
+			if w.Code != 200 {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			w = readingHTTP(t, h, "GET", "/v1/reading/continue", r.f.owner.AccessToken, "", nil)
+			var out ReadingContinueResponse
+			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil || len(out.Items) != 1 {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			got := out.Items[0]
+			want, _ := json.Marshal(location)
+			actual, _ := json.Marshal(got.Progress.Location)
+			if string(actual) != string(want) || got.Progress.SourceRevision != m.Revision || got.Progress.Stale || got.Item.Format != m.Format || got.Item.SourceID != m.SourceID {
+				t.Fatal("format-specific saved location changed", got)
+			}
+		})
+	}
+}
