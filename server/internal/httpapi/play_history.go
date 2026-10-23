@@ -21,8 +21,12 @@ func (d Dependencies) playHistoryRoutes(mux *http.ServeMux) {
 			return
 		}
 		query := r.URL.Query()
+		if e := validateReportContext(query.Get("timeZone"), query.Get("until")); e != nil {
+			failure(w, e)
+			return
+		}
 		for key, values := range query {
-			if len(values) != 1 || (key != "accountId" && key != "libraryId" && key != "period" && key != "cursor" && key != "limit" && key != "media" && key != "q" && key != "sort" && key != "direction") {
+			if len(values) != 1 || (key != "accountId" && key != "libraryId" && key != "period" && key != "cursor" && key != "limit" && key != "media" && key != "q" && key != "sort" && key != "direction" && key != "timeZone" && key != "until") {
 				failure(w, requestinput.New("play history accepts accountId, libraryId, period, cursor and limit"))
 				return
 			}
@@ -36,7 +40,7 @@ func (d Dependencies) playHistoryRoutes(mux *http.ServeMux) {
 			}
 			limit = n
 		}
-		out, e := d.Catalog.PlayHistory(r.Context(), catalog.PlayHistoryQuery{AccountID: query.Get("accountId"), LibraryID: query.Get("libraryId"), Period: query.Get("period"), Cursor: query.Get("cursor"), Limit: limit, Media: query.Get("media"), Search: query.Get("q"), Sort: query.Get("sort"), Direction: query.Get("direction")})
+		out, e := d.Catalog.PlayHistory(r.Context(), catalog.PlayHistoryQuery{TimeZone: query.Get("timeZone"), Until: query.Get("until"), AccountID: query.Get("accountId"), LibraryID: query.Get("libraryId"), Period: query.Get("period"), Cursor: query.Get("cursor"), Limit: limit, Media: query.Get("media"), Search: query.Get("q"), Sort: query.Get("sort"), Direction: query.Get("direction")})
 		if e != nil {
 			failure(w, e)
 			return
@@ -56,8 +60,12 @@ func (d Dependencies) playHistoryRoutes(mux *http.ServeMux) {
 			return
 		}
 		query := r.URL.Query()
+		if e := validateReportContext(query.Get("timeZone"), query.Get("until")); e != nil {
+			failure(w, e)
+			return
+		}
 		for key, values := range query {
-			if len(values) != 1 || key != "period" {
+			if len(values) != 1 || (key != "period" && key != "timeZone" && key != "until" && key != "accountId" && key != "libraryId" && key != "media" && key != "q") {
 				failure(w, requestinput.New("the play history summary accepts period"))
 				return
 			}
@@ -66,7 +74,7 @@ func (d Dependencies) playHistoryRoutes(mux *http.ServeMux) {
 		if period == "" {
 			period = "24h"
 		}
-		out, e := d.Catalog.PlaySummary(r.Context(), period)
+		out, e := d.Catalog.PlaySummary(r.Context(), catalog.PlayHistoryQuery{Period: period, TimeZone: query.Get("timeZone"), Until: query.Get("until"), AccountID: query.Get("accountId"), LibraryID: query.Get("libraryId"), Media: query.Get("media"), Search: query.Get("q")})
 		if e != nil {
 			failure(w, e)
 			return

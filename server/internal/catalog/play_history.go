@@ -13,6 +13,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/reportwindow"
 )
 
 // The server's play history (migration 0007): the owner's record of what was
@@ -175,6 +176,7 @@ type PlayHistoryEntry struct {
 }
 
 type PlayHistoryPage struct {
+	reportwindow.Interval
 	Entries []PlayHistoryEntry `json:"entries"`
 	// Total counts the plays the filters match; sent with the first page only.
 	Total      *int64 `json:"total,omitempty"`
@@ -183,6 +185,8 @@ type PlayHistoryPage struct {
 
 // PlayHistoryQuery filters the history. Every field is optional.
 type PlayHistoryQuery struct {
+	TimeZone  string
+	Until     string
 	AccountID string
 	LibraryID string
 	Media     string
@@ -202,19 +206,28 @@ const PlayHistoryMax = 200
 // rows already in order, so a page reads a page of rows however long the history
 // is; the total is one count over the same index range, asked for once.
 func (s *Service) PlayHistory(ctx context.Context, q PlayHistoryQuery) (PlayHistoryPage, error) {
-	out := PlayHistoryPage{Entries: []PlayHistoryEntry{}}
+	if dbwork.Snapshot(ctx) == nil {
+		var out PlayHistoryPage
+		e := dbwork.WithReadSnapshot(ctx, s.db, func(snapshot context.Context) error { var e error; out, e = s.PlayHistory(snapshot, q); return e })
+		return out, e
+	}
+
+	r, err := s.historyInterval(ctx, q)
+	out := PlayHistoryPage{Interval: r, Entries: []PlayHistoryEntry{}}
+	if err != nil {
+		return out, err
+	}
 	if q.Limit == 0 {
 		q.Limit = 50
 	}
 	if q.Period == "" {
 		q.Period = "all"
 	}
-	window, known := HistoryPeriods[q.Period]
-	if q.Limit < 1 || q.Limit > PlayHistoryMax || !known || len(q.AccountID) > 128 || len(q.LibraryID) > 128 {
+	if q.Limit < 1 || q.Limit > PlayHistoryMax || len(q.AccountID) > 128 || len(q.LibraryID) > 128 {
 		return out, ErrCursor
 	}
 	custom := q.Sort != "" && q.Sort != "started" || q.Direction == "asc"
-	sortExpressions := map[string]string{"title": "lower(h.title)", "person": "lower(h.user_name)", "player": "lower(h.device_name)", "when": "printf('%020d',h.started_ms)", "started": "printf('%020d',h.started_ms)", "watched": "printf('%020d',h.watched_ms)", "location": "h.location"}
+	sortExpressions := map[string]string{"title": "lower(h.title)", "person": "lower(h.user_name)", "player": "lower(h.device_name)", "when": "printf('%020d',h.started_ms)", "started": "printf('%020d',h.started_ms)", "watched": "printf('%020d'," + historyWatched(r) + ")", "location": "h.location"}
 	sortExpression := sortExpressions[q.Sort]
 	if q.Sort == "" {
 		sortExpression = sortExpressions["started"]
@@ -236,13 +249,12 @@ func (s *Service) PlayHistory(ctx context.Context, q PlayHistoryQuery) (PlayHist
 		afterSort = values[0]
 		beforeID = values[1]
 	}
-	filter, args, err := historyFilter(q, s.recommendationNow(time.Time{}))
+	filter, args, err := historyFilter(q, r)
 	if err != nil {
 		return out, err
 	}
-	_ = window
 
-	tx, done, err := dbwork.BeginRead(ctx, s.db)
+	tx, done, err := historyRead(ctx, s.db)
 	if err != nil {
 		return out, err
 	}
@@ -283,7 +295,7 @@ func (s *Service) PlayHistory(ctx context.Context, q PlayHistoryQuery) (PlayHist
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT h.id,h.user_name,h.profile_name,h.account_id,h.kind,h.title,h.parent_title,h.season,h.episode,
 	 COALESCE((SELECT pid(e.public_id) FROM catalog_entities e WHERE e.id=h.item_id AND e.retired=0),''),
-	 h.library_id,h.device_name,h.platform,h.started_ms,h.position_ms,h.duration_ms,h.completed,h.watched_ms,h.location,`+sortExpression+`
+	 h.library_id,h.device_name,h.platform,h.started_ms,h.position_ms,h.duration_ms,h.completed,`+historyWatched(r)+`,h.location,`+sortExpression+`
 	 FROM play_history h`+page+` ORDER BY `+ordering+` LIMIT ?`, append(pageArgs, q.Limit+1)...)
 	if err != nil {
 		return out, err
@@ -332,11 +344,11 @@ func (s *Service) PlayHistory(ctx context.Context, q PlayHistoryQuery) (PlayHist
 // agree, and kept for as long as the history is (forever unless the owner sets
 // playHistoryDays).
 type PlaySummary struct {
-	Period string `json:"period"`
-	Plays  int64  `json:"plays"`
-	People int64  `json:"people"`
-	// WatchedSeconds is the time between each play's first and last report.
-	WatchedSeconds int64 `json:"watchedSeconds"`
+	reportwindow.Interval
+	Plays  int64 `json:"plays"`
+	People int64 `json:"people"`
+	// WatchedMs is accepted played time inside the same interval as the table.
+	WatchedMs int64 `json:"watchedMs"`
 	// Converted counts the plays the server converted (picture or sound).
 	Converted  int64       `json:"converted"`
 	MostPlayed []PlayCount `json:"mostPlayed"`
@@ -352,43 +364,49 @@ type PlayCount struct {
 // PlaySummary totals the plays of a period ("24h", "7d", "30d", "90d", "all").
 // A bounded period is a range over the started index; "all" reads the history
 // once, which an owner asks for and the server does not do on its own.
-func (s *Service) PlaySummary(ctx context.Context, period string) (PlaySummary, error) {
-	out := PlaySummary{Period: period, MostPlayed: []PlayCount{}, MostActive: []PlayCount{}}
-	window, known := HistoryPeriods[period]
-	if !known {
-		return out, ErrCursor
+func (s *Service) PlaySummary(ctx context.Context, q PlayHistoryQuery) (PlaySummary, error) {
+	if dbwork.Snapshot(ctx) == nil {
+		var out PlaySummary
+		e := dbwork.WithReadSnapshot(ctx, s.db, func(snapshot context.Context) error { var e error; out, e = s.PlaySummary(snapshot, q); return e })
+		return out, e
 	}
-	since := int64(0)
-	if window > 0 {
-		since = time.Now().Add(-window).UnixMilli()
+
+	r, err := s.historyInterval(ctx, q)
+	out := PlaySummary{Interval: r, MostPlayed: []PlayCount{}, MostActive: []PlayCount{}}
+	if err != nil {
+		return out, err
 	}
-	tx, done, err := dbwork.BeginRead(ctx, s.db)
+	filter, args, err := historyFilter(q, r)
+	if err != nil {
+		return out, err
+	}
+	tx, done, err := historyRead(ctx, s.db)
 	if err != nil {
 		return out, err
 	}
 	defer done()
-	if err = tx.QueryRowContext(ctx, `SELECT count(*),count(DISTINCT authority||'/'||account_id),COALESCE(sum(watched_ms),0)/1000,COALESCE(sum(converted),0)
-	 FROM play_history INDEXED BY play_history_recent WHERE started_ms>=?`, since).Scan(&out.Plays, &out.People, &out.WatchedSeconds, &out.Converted); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT count(*),count(DISTINCT authority||'/'||account_id),COALESCE(sum(`+historyWatched(r)+`),0),COALESCE(sum(converted),0) FROM play_history h`+filter, args...).Scan(&out.Plays, &out.People, &out.WatchedMs, &out.Converted); err != nil {
 		return out, err
 	}
 	top := func(name string) ([]PlayCount, error) {
-		rows, err := tx.QueryContext(ctx, `SELECT `+name+` AS name,count(*) AS plays FROM play_history INDEXED BY play_history_recent WHERE started_ms>=? GROUP BY name ORDER BY plays DESC,name COLLATE NOCASE LIMIT 5`, since)
-		if err != nil {
-			return nil, err
+		rows, e := tx.QueryContext(ctx, `SELECT `+name+` AS name,count(*) AS plays FROM play_history h`+filter+` GROUP BY name ORDER BY plays DESC,name COLLATE NOCASE LIMIT 5`, args...)
+		if e != nil {
+			return nil, e
 		}
 		defer rows.Close()
 		list := []PlayCount{}
 		for rows.Next() {
-			var row PlayCount
-			if err = rows.Scan(&row.Name, &row.Plays); err != nil {
-				return nil, err
+			var v PlayCount
+			if e = rows.Scan(&v.Name, &v.Plays); e != nil {
+				return nil, e
 			}
-			if row.Name != "" {
-				list = append(list, row)
+			if v.Name != "" {
+				list = append(list, v)
 			}
 		}
 		return list, rows.Err()
 	}
+
 	// An episode counts for its show and an audiobook file for its book; a film or a song is itself.
 	if out.MostPlayed, err = top(`CASE WHEN kind IN(` + strconv.Itoa(int(compactcatalog.Episode)) + `,` + strconv.Itoa(int(compactcatalog.Part)) + `) AND parent_title<>'' THEN parent_title ELSE title END`); err != nil {
 		return out, err

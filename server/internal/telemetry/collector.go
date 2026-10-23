@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"math"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/reportwindow"
 	"sort"
 	"sync"
 	"time"
@@ -125,6 +126,9 @@ func appendBounded(list []Sample, v Sample, limit int) []Sample {
 // zero, and a metric measured only under restriction stays limited.
 func average(samples []Sample, at int64) Sample {
 	out := newSample(at)
+	out.counts = map[string]int{}
+	out.totals = map[string]float64{}
+	out.firstAt, out.lastAt = map[string]int64{}, map[string]int64{}
 	if len(samples) == 0 {
 		return out
 	}
@@ -140,6 +144,10 @@ func average(samples []Sample, at int64) Sample {
 				}
 				continue
 			}
+			if count == 0 {
+				out.firstAt[name] = s.At
+			}
+			out.lastAt[name] = s.At
 			sum += m.Value
 			count++
 			if status != StatusAvailable {
@@ -151,6 +159,7 @@ func average(samples []Sample, at int64) Sample {
 			continue
 		}
 		out.Metrics[name] = Metric{Status: status, Value: sum / float64(count), Detail: detail}
+		out.counts[name], out.totals[name] = count, sum
 	}
 	return out
 }
@@ -166,142 +175,196 @@ func (c *Collector) Latest() Sample {
 	return c.detail[len(c.detail)-1]
 }
 
-// Windows are the only accepted values of the window query parameter.
-var Windows = []string{"live", "12h", "24h", "7d", "30d", "90d", "1y", "all", "10m", "1h"}
+// Windows are the accepted aggregate views and existing moving detail views.
+var Windows = []string{"live", "12h", "24h", "7d", "30d", "90d", "1y", "all", "today", "10m", "1h"}
 
-func windowSpan(window string) (time.Duration, bool) {
-	switch window {
-	case "live":
-		return 2 * time.Minute, true
-	case "12h":
-		return 12 * time.Hour, true
-	case "7d":
-		return 7 * 24 * time.Hour, true
-	case "30d":
-		return 30 * 24 * time.Hour, true
-	case "90d":
-		return 90 * 24 * time.Hour, true
-	case "1y":
-		return 365 * 24 * time.Hour, true
-	case "all":
-		return 100 * 365 * 24 * time.Hour, true
-	case "10m":
-		return 10 * time.Minute, true
-	case "1h":
-		return time.Hour, true
-	case "24h":
-		return 24 * time.Hour, true
+func (c *Collector) Read(window, zone, until string) (Reading, bool) {
+	if window == "live" || window == "10m" {
+		r, e := reportwindow.Live(zone, until, c.now())
+		if e != nil {
+			return Reading{}, false
+		}
+		span := 2 * time.Minute
+		if window == "10m" {
+			span = 10 * time.Minute
+			r.From = c.now().Add(-span).UTC().Format(time.RFC3339Nano)
+			r.Buckets[0].Start = r.From
+		}
+		r.Period = window
+		out := emptyReading(window, r)
+		out.ObservedAt = c.now().UnixMilli()
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		for _, name := range MetricNames {
+			for _, s := range c.detail {
+				if s.At >= out.ObservedAt-span.Milliseconds() && s.At <= out.ObservedAt && s.Metrics[name].Known() {
+					out.Series[name] = append(out.Series[name], Point{T: s.At, V: s.Metrics[name].Value})
+				}
+			}
+			if len(c.detail) > 0 {
+				out.Status[name] = c.detail[len(c.detail)-1].Metrics[name]
+			}
+			if window == "live" && len(out.Series[name]) > 60 {
+				out.Series[name] = out.Series[name][len(out.Series[name])-60:]
+			}
+		}
+		return out, true
 	}
-	return 0, false
-}
-
-// Read answers one window. The ten-minute window is served from detail samples;
-// longer windows from one-minute rollups, including the minute still filling so
-// a fresh restart is not an empty chart.
-func (c *Collector) Read(window string) (Reading, bool) {
-	span, ok := windowSpan(window)
-	if !ok {
+	if c.db != nil {
+		out, e := ReadAggregate(context.Background(), c.db, window, zone, until)
+		return out, e == nil
+	}
+	r, e := reportwindow.Resolve(window, zone, until, -1)
+	if e != nil {
 		return Reading{}, false
 	}
-	now := c.now().UnixMilli()
-	out := Reading{Window: window, Series: map[string][]Point{}, Status: map[string]Metric{}, ObservedAt: now}
+	out := emptyReading(window, r)
+	a := newAggregate(r)
 	c.mu.Lock()
-	source := append([]Sample{}, c.detail...)
-	if window != "10m" && window != "live" {
-		source = append(append([]Sample{}, c.rollups...), average(c.minute, c.minuteStamp))
-	}
-	latest := newSample(now)
-	if len(c.detail) > 0 {
-		latest = c.detail[len(c.detail)-1]
-	}
-	c.mu.Unlock()
-	from := now - span.Milliseconds()
-	if c.db != nil && window != "live" && window != "10m" && window != "1h" {
-		if stored, err := c.readStored(context.Background(), window, from, now); err == nil {
-			for name, points := range stored {
-				out.Series[name] = points
-			}
+	defer c.mu.Unlock()
+	for _, s := range c.rollups {
+		if s.At >= r.FromMS() && s.At < r.UntilMS() {
 			for _, name := range MetricNames {
-				out.Status[name] = latest.Metrics[name]
+				m := s.Metrics[name]
+				if m.Known() {
+					a.add(s.At, name, 1, m.Value, m.Status, m.Detail)
+				}
 			}
-			return out, true
 		}
 	}
-	for _, name := range MetricNames {
-		points := []Point{}
-		for _, s := range source {
-			if s.At < from || s.At > now {
-				continue
-			}
-			if m := s.Metrics[name]; m.Known() {
-				points = append(points, Point{T: s.At, V: m.Value})
-			}
-		}
-		cap := 70
-		if window == "24h" || window == "live" {
-			cap = 60
-		}
-		if window == "10m" {
-			cap = DetailSamples
-		}
-		if window == "1h" {
-			cap = 60
-		}
-		if len(points) > cap {
-			selected := make([]Point, cap)
-			for n := range selected {
-				selected[n] = points[n*(len(points)-1)/(cap-1)]
-			}
-			points = selected
-		}
-		out.Series[name] = points
-		out.Status[name] = latest.Metrics[name]
-	}
+	a.finish(&out)
 	return out, true
 }
 
-// Stored minute/hour/day/week facts have fixed retention, no serialized graph.
-// Long reads group at the database into at most 70 buckets per metric.
-var resolutions = []struct{ step, keep int64 }{
-	{60000, 24 * 60 * 60000}, {3600000, 90 * 24 * 3600000},
-	{86400000, 400 * 86400000}, {7 * 86400000, 5200 * 7 * 86400000},
+func emptyReading(window string, r reportwindow.Interval) Reading {
+	out := Reading{Interval: r, Window: window, Series: map[string][]Point{}, Status: map[string]Metric{}, ObservedAt: r.UntilMS()}
+	for _, name := range MetricNames {
+		out.Series[name] = []Point{}
+		out.Status[name] = Unavailable("No measured fact in this interval.")
+	}
+	return out
 }
 
+type aggregateValue struct {
+	count          int64
+	total          float64
+	status, detail string
+}
+type aggregate struct {
+	interval reportwindow.Interval
+	values   map[string][]aggregateValue
+}
+
+func newAggregate(r reportwindow.Interval) *aggregate {
+	a := &aggregate{interval: r, values: map[string][]aggregateValue{}}
+	for _, name := range MetricNames {
+		a.values[name] = make([]aggregateValue, len(r.Buckets))
+	}
+	return a
+}
+func (a *aggregate) add(at int64, name string, count int64, total float64, status, detail string) {
+	values, known := a.values[name]
+	if !known || count <= 0 || math.IsNaN(total) || math.IsInf(total, 0) {
+		return
+	}
+	index, ok := a.interval.Index(max(at, a.interval.FromMS()))
+	if !ok {
+		return
+	}
+	v := &values[index]
+	v.count += count
+	v.total += total
+	if status == StatusLimited || v.status == "" {
+		v.status = status
+		v.detail = detail
+	}
+}
+func (a *aggregate) finish(out *Reading) {
+	for _, name := range MetricNames {
+		for n, v := range a.values[name] {
+			if v.count > 0 {
+				at, _ := time.Parse(time.RFC3339Nano, a.interval.Buckets[n].Start)
+				m := Metric{Status: v.status, Value: v.total / float64(v.count), Detail: v.detail}
+				out.Series[name] = append(out.Series[name], Point{T: at.UnixMilli(), V: m.Value})
+				out.Status[name] = m
+			}
+		}
+	}
+}
+
+// ReadAggregate joins the caller's actual read transaction when present. Only
+// completed event-time quarters are eligible, independent of ingestion time.
+func ReadAggregate(ctx context.Context, db *sql.DB, window, zone, until string) (Reading, error) {
+	if dbwork.Snapshot(ctx) == nil {
+		var out Reading
+		e := dbwork.WithReadSnapshot(ctx, db, func(snapshot context.Context) error {
+			var e error
+			out, e = ReadAggregate(snapshot, db, window, zone, until)
+			return e
+		})
+		return out, e
+	}
+
+	loc, at, e := reportwindow.Context(zone, until)
+	_ = loc
+	if e != nil {
+		return Reading{}, e
+	}
+	first := int64(-1)
+	if window == "all" {
+		first, e = reportwindow.FirstFact(ctx, db, at.UnixMilli())
+		if e != nil {
+			return Reading{}, e
+		}
+	}
+	r, e := reportwindow.Resolve(window, zone, until, first)
+	if e != nil {
+		return Reading{}, e
+	}
+	out := emptyReading(window, r)
+	a := newAggregate(r)
+	from := r.FromMS() - r.FromMS()%reportwindow.Grain.Milliseconds()
+	rows, e := dbwork.Query(ctx, db, `SELECT bucket_ms,metric,samples,total,status,detail FROM telemetry_rollups WHERE bucket_ms>=? AND bucket_ms<? ORDER BY bucket_ms,metric`, from, r.UntilMS())
+	if e != nil {
+		return out, e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t, count int64
+		var name, status, detail string
+		var total float64
+		if e = rows.Scan(&t, &name, &count, &total, &status, &detail); e != nil {
+			return out, e
+		}
+		a.add(t, name, count, total, status, detail)
+	}
+	if e = rows.Err(); e != nil {
+		return out, e
+	}
+	a.finish(&out)
+	return out, nil
+}
+
+// Quarters are retained for All time, exceeding the thirteen-month minimum.
+// No coarse UTC day loses a viewer-local month/hour boundary.
 func (c *Collector) Restore(ctx context.Context) {
 	if c.db == nil {
 		return
 	}
-	rows, e := c.db.QueryContext(ctx, `SELECT bucket_ms,metric,total/samples,status,detail FROM telemetry_rollups WHERE resolution_ms=60000 AND bucket_ms>=? ORDER BY bucket_ms,metric`, c.now().Add(-24*time.Hour).UnixMilli())
-	if e != nil {
-		return
-	}
-	defer rows.Close()
-	list := []Sample{}
-	for rows.Next() {
-		var at int64
-		var name string
-		var m Metric
-		if rows.Scan(&at, &name, &m.Value, &m.Status, &m.Detail) != nil {
-			return
-		}
-		if len(list) == 0 || list[len(list)-1].At != at {
-			list = append(list, newSample(at))
-		}
-		list[len(list)-1].Metrics[name] = m
-	}
-	if rows.Err() != nil {
+	var last sql.NullInt64
+	if dbwork.QueryRow(ctx, c.db, `SELECT max(last_event_ms) FROM telemetry_rollups`).Scan(&last) != nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.rollups = list
-	if len(list) > 0 {
-		c.persisted = list[len(list)-1].At
+	if last.Valid {
+		c.persisted = last.Int64 - last.Int64%60000
 	}
 }
 
-// Only closed minutes are committed. An interrupted minute stays a gap after a
-// restart; it is never represented as a complete minute or counted twice.
+// Closed-minute batches only carry real samples into their UTC quarter. The
+// cursor is writer progress, not a report/ingestion snapshot. A restart leaves
+// an interrupted minute absent instead of inventing its missing observations.
 func (c *Collector) persist(ctx context.Context, final bool) {
 	if c.db == nil {
 		return
@@ -324,32 +387,15 @@ func (c *Collector) persist(ctx context.Context, final bool) {
 	for _, s := range pending {
 		for _, name := range MetricNames {
 			m := s.Metrics[name]
-			if !m.Known() || math.IsNaN(m.Value) || math.IsInf(m.Value, 0) {
+			count, total := s.counts[name], s.totals[name]
+			if !m.Known() || count <= 0 || math.IsNaN(total) || math.IsInf(total, 0) {
 				continue
 			}
-			result, e := tx.ExecContext(ctx, `INSERT INTO telemetry_rollups(resolution_ms,bucket_ms,metric,samples,total,status,detail) VALUES(60000,?,?,1,?,?,?) ON CONFLICT DO NOTHING`, s.At, name, m.Value, m.Status, m.Detail)
+			stamp := s.At - s.At%reportwindow.Grain.Milliseconds()
+			_, e = tx.ExecContext(ctx, `INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(bucket_ms,metric) DO UPDATE SET samples=samples+excluded.samples,total=total+excluded.total,status=CASE WHEN status='limited' OR excluded.status='limited' THEN 'limited' ELSE 'available' END,detail=excluded.detail,first_event_ms=min(first_event_ms,excluded.first_event_ms),last_event_ms=max(last_event_ms,excluded.last_event_ms)`, stamp, name, count, total, m.Status, m.Detail, s.firstAt[name], s.lastAt[name])
 			if e != nil {
 				return
 			}
-			n, e := result.RowsAffected()
-			if e != nil {
-				return
-			}
-			if n == 0 {
-				continue
-			}
-			for _, r := range resolutions[1:] {
-				stamp := s.At - s.At%r.step
-				_, e = tx.ExecContext(ctx, `INSERT INTO telemetry_rollups(resolution_ms,bucket_ms,metric,samples,total,status,detail) VALUES(?,?,?,1,?,?,?) ON CONFLICT(resolution_ms,bucket_ms,metric) DO UPDATE SET samples=samples+1,total=total+excluded.total,status=CASE WHEN status='limited' OR excluded.status='limited' THEN 'limited' ELSE 'available' END,detail=excluded.detail`, r.step, stamp, name, m.Value, m.Status, m.Detail)
-				if e != nil {
-					return
-				}
-			}
-		}
-	}
-	for _, r := range resolutions {
-		if _, e = tx.ExecContext(ctx, `DELETE FROM telemetry_rollups WHERE resolution_ms=? AND bucket_ms<?`, r.step, now-r.keep); e != nil {
-			return
 		}
 	}
 	if gated.Commit() != nil {
@@ -363,51 +409,6 @@ func (c *Collector) persist(ctx context.Context, final bool) {
 	}
 }
 
-func (c *Collector) readStored(ctx context.Context, window string, from, now int64) (map[string][]Point, error) {
-	step := int64(60000)
-	switch window {
-	case "7d", "30d", "90d":
-		step = 3600000
-	case "1y":
-		step = 86400000
-	case "all":
-		step = 7 * 86400000
-	}
-	if window == "all" {
-		var earliest sql.NullInt64
-		if e := c.db.QueryRowContext(ctx, `SELECT min(bucket_ms) FROM telemetry_rollups WHERE resolution_ms=?`, step).Scan(&earliest); e != nil {
-			return nil, e
-		}
-		if earliest.Valid {
-			from = max(from, earliest.Int64)
-		}
-	}
-	width := max(step, (now-from+69)/70)
-	// Stamp at the start of each aggregate; no interpolation or zero-filled gaps.
-	rows, e := c.db.QueryContext(ctx, `SELECT metric, min(bucket_ms),sum(total)/sum(samples) FROM telemetry_rollups WHERE resolution_ms=? AND bucket_ms>=? AND bucket_ms<=? GROUP BY metric,(bucket_ms-?)/? ORDER BY metric,min(bucket_ms)`, step, from, now, from, width)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	out := map[string][]Point{}
-	for _, name := range MetricNames {
-		out[name] = []Point{}
-	}
-	for rows.Next() {
-		var name string
-		var p Point
-		if e = rows.Scan(&name, &p.T, &p.V); e != nil {
-			return nil, e
-		}
-		if _, ok := out[name]; ok {
-			out[name] = append(out[name], p)
-		}
-	}
-	return out, rows.Err()
-}
-
-// Rollups is the retained one-minute history, oldest first. Tests assert bounds
-// against it; nothing on the wire reads it directly.
 func (c *Collector) Rollups() []Sample {
 	c.mu.Lock()
 	defer c.mu.Unlock()

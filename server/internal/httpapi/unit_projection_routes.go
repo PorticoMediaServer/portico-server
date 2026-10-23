@@ -43,6 +43,7 @@ var projectedPatterns = map[string]bool{
 	"PUT /v1/items/{id}/personal-state":           true,
 	"PUT /v1/items/personal-state:batch":          true,
 	"GET /v1/saved-resources/{id}/content":        true,
+	"GET /v1/admin/dashboard/report":              true,
 	"GET /v1/admin/play-history":                  true,
 	"GET /v1/admin/play-history/summary":          true,
 	"GET /v1/libraries/{id}/listening/selection":  true,
@@ -95,7 +96,7 @@ func addProjection[Request, Response any](registry *apikit.Registry, mux *http.S
 		lane = apikit.Browsing
 	}
 	access := apikit.Device
-	if strings.HasPrefix(path, "/v1/admin/play-history") {
+	if strings.HasPrefix(path, "/v1/admin/play-history") || path == "/v1/admin/dashboard/report" {
 		access = apikit.Owner
 	}
 	id := strings.ToLower(method) + "_" + strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_", ":", "_").Replace(strings.TrimPrefix(path, "/v1/"))
@@ -116,6 +117,7 @@ func registerUnitProjections(registry *apikit.Registry, d Dependencies) error {
 	mux := http.NewServeMux()
 	private.discoveryRoutes(mux)
 	private.playHistoryRoutes(mux)
+	private.dashboardReportRoute(mux, &telemetryService{d: private})
 	private.peopleRoutes(mux)
 	private.listeningRoutes(mux)
 	private.consoleRoutes(mux)
@@ -152,10 +154,13 @@ func registerUnitProjections(registry *apikit.Registry, d Dependencies) error {
 	if err := addProjection[noBody, catalog.SavedResourceContent](registry, mux, "GET /v1/saved-resources/{id}/content", apikit.ScopeRead, laneBrowsing, []string{"cursor", "limit"}); err != nil {
 		return err
 	}
-	if err := addProjection[noBody, catalog.PlayHistoryPage](registry, mux, "GET /v1/admin/play-history", apikit.ScopeAdmin, laneAdmin, []string{"accountId", "libraryId", "period", "cursor", "limit", "media", "q", "sort", "direction"}); err != nil {
+	if err := addProjection[noBody, DashboardReport](registry, mux, "GET /v1/admin/dashboard/report", apikit.ScopeAdmin, laneAdmin, dashboardReportQuery); err != nil {
 		return err
 	}
-	if err := addProjection[noBody, catalog.PlaySummary](registry, mux, "GET /v1/admin/play-history/summary", apikit.ScopeAdmin, laneAdmin, []string{"period"}); err != nil {
+	if err := addProjection[noBody, catalog.PlayHistoryPage](registry, mux, "GET /v1/admin/play-history", apikit.ScopeAdmin, laneAdmin, []string{"accountId", "libraryId", "period", "cursor", "limit", "media", "q", "sort", "direction", "timeZone", "until"}); err != nil {
+		return err
+	}
+	if err := addProjection[noBody, catalog.PlaySummary](registry, mux, "GET /v1/admin/play-history/summary", apikit.ScopeAdmin, laneAdmin, []string{"period", "timeZone", "until", "accountId", "libraryId", "media", "q"}); err != nil {
 		return err
 	}
 	if err := addProjection[noBody, projectedViewerEnvelope[catalog.ListeningSelection]](registry, mux, "GET /v1/libraries/{id}/listening/selection", apikit.ScopeRead, laneBrowsing, []string{"kind", "entityId", "cursor", "limit", "mode", "seed", "resume", "startItem"}); err != nil {

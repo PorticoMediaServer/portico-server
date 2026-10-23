@@ -75,6 +75,7 @@ var routeLanes = map[string]string{
 	"GET /v1/admin/console/schedules":                                            "admin",
 	"GET /v1/admin/console/settings":                                             "admin",
 	"GET /v1/admin/console/stream-options":                                       "admin",
+	"GET /v1/admin/dashboard/report":                                             "admin",
 	"GET /v1/admin/dashboard/status":                                             "admin",
 	"GET /v1/admin/diagnostics/bundle":                                           "admin-heavy",
 	"GET /v1/admin/diagnostics/capabilities":                                     "admin",

@@ -25,3 +25,5 @@ export {SettingsPeopleClient, parseSettingsPeoplePage} from '../settings-people.
 export type {SettingsPersonRow, SettingsPeoplePage, SettingsPeopleQuery, SettingsBulkAccess, SettingsBulkAction} from '../settings-people.ts';
 
 export * from './dashboard.ts';
+
+export * from '../report-context.ts';

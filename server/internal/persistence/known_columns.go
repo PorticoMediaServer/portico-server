@@ -3578,8 +3578,8 @@ play_history.title
 play_history.updated_ms
 play_history.user_name
 play_history.watched_ms
+play_history_time.bucket_ms
 play_history_time.history_id
-play_history_time.hour_ms
 play_history_time.watched_ms
 playback_admin_operations.actor
 playback_admin_operations.created_at
@@ -4755,8 +4755,9 @@ subtitle_sidecars.path
 subtitle_sidecars.size
 telemetry_rollups.bucket_ms
 telemetry_rollups.detail
+telemetry_rollups.first_event_ms
+telemetry_rollups.last_event_ms
 telemetry_rollups.metric
-telemetry_rollups.resolution_ms
 telemetry_rollups.samples
 telemetry_rollups.status
 telemetry_rollups.total

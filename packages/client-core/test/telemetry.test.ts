@@ -14,8 +14,8 @@ const sample=(overrides:Record<string,unknown>={})=>({at:1758000000000,metrics:m
 const reading=(overrides:Record<string,unknown>={})=>{
  const series:Record<string,unknown>={};
  for(const name of METRIC_NAMES)series[name]=[];
- series.cpu=[{t:1757999000000,v:10},{t:1758000000000,v:20}];
- return {window:'10m',series,status:metrics(),observedAt:1758000000000,...overrides};
+ series.cpu=[{t:1757999500000,v:10},{t:1758000000000,v:20}];
+ return {period:'10m',timeZone:'UTC',from:new Date(1758000000000-600000).toISOString(),until:new Date(1758000000000).toISOString(),buckets:[{start:new Date(1758000000000-600000).toISOString(),end:new Date(1758000000000).toISOString(),partial:false}],window:'10m',series,status:metrics(),observedAt:1758000000000,...overrides};
 };
 
 test('a metric carries its own status and an unavailable one cannot smuggle a value',()=>{

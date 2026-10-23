@@ -2,7 +2,7 @@ package catalog
 
 import "database/sql"
 
-// Split only an accepted, short report interval, proportionally at hour
+// Split only an accepted, short report interval, at fifteen-minute
 // boundaries. Pauses, seeks and missing reports never become watched time.
 func recordPlayedInterval(tx *sql.Tx, id, from, to, watched int64) error {
 	if to <= from || watched <= 0 {
@@ -10,13 +10,13 @@ func recordPlayedInterval(tx *sql.Tx, id, from, to, watched int64) error {
 	}
 	remaining := watched
 	for at := from; at < to; {
-		hour := at - at%3600000
-		end := min(to, hour+3600000)
+		bucket := at - at%900000
+		end := min(to, bucket+900000)
 		part := (end - at) * watched / (to - from)
 		if end == to {
 			part = remaining
 		}
-		if _, e := tx.Exec(`INSERT INTO play_history_time(history_id,hour_ms,watched_ms) VALUES(?,?,?) ON CONFLICT(history_id,hour_ms) DO UPDATE SET watched_ms=watched_ms+excluded.watched_ms`, id, hour, part); e != nil {
+		if _, e := tx.Exec(`INSERT INTO play_history_time(history_id,bucket_ms,watched_ms) VALUES(?,?,?) ON CONFLICT(history_id,bucket_ms) DO UPDATE SET watched_ms=watched_ms+excluded.watched_ms`, id, bucket, part); e != nil {
 			return e
 		}
 		remaining -= part
