@@ -9,8 +9,39 @@ import (
 	"strconv"
 	"time"
 
+	"portico.local/server/internal/claimweb"
 	"portico.local/server/internal/serverreturn"
 )
+
+// OwnerClaimOperationTx restores the one captured operation for this exact
+// token after a restart. It grants no ordinary session or management scope.
+func (s *Service) OwnerClaimOperationTx(ctx context.Context, tx *sql.Tx, expected Principal) (string, error) {
+	operation, err := ownerCompletionOperationTx(ctx, tx, expected.Hash)
+	if err != nil {
+		return "", err
+	}
+	if err = s.CheckOwnerClaimTx(ctx, tx, expected, operation); err != nil {
+		return "", err
+	}
+	return operation, nil
+}
+
+// CheckOwnerReturnOriginTx checks the original, immutable signed callback
+// context. It is only an extra proof fence; the caller must also check current
+// owner/attempt authority in this same snapshot. No HTTP origin is normalized.
+func CheckOwnerReturnOriginTx(ctx context.Context, tx *sql.Tx, operation, origin, audience string) error {
+	var claimPayload, claimSignature, startPayload, startSignature []byte
+	if err := tx.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature FROM identity_owner_completions WHERE operation_id=?`, operation).Scan(&claimPayload, &claimSignature, &startPayload, &startSignature); err != nil {
+		return err
+	}
+	original := claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(claimPayload), Signature: base64.RawURLEncoding.EncodeToString(claimSignature)}
+	start := claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(startPayload), Signature: base64.RawURLEncoding.EncodeToString(startSignature)}
+	claim, _, err := claimweb.VerifyOwnerStart(original, start, audience, time.Now())
+	if err != nil || origin == "" || claim.Address != origin {
+		return ErrUnauthorized
+	}
+	return nil
+}
 
 // OwnerReturnRoute is a private, current resolver observation. Networking must
 // obtain it through its installed credential and recheck actual serving TLS in
@@ -199,7 +230,10 @@ func (s *Service) CompleteOwnerReturnTx(ctx context.Context, tx *sql.Tx, expecte
 	if err = CheckPorticoReturnTx(ctx, tx, who); err != nil {
 		return none, err
 	}
-	return out, nil
+	if time.Now().UnixMilli() >= c.expires {
+		return none, ErrUnauthorized
+	}
+	return out, ctx.Err()
 }
 
 func (s *Service) endOwnerReturnTx(ctx context.Context, tx *sql.Tx, c ownerCompletion, phase string) error {

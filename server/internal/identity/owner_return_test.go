@@ -121,6 +121,7 @@ func TestOwnerReturnAttemptConsumesBeforeExchangeAndAtomicAdmission(t *testing.T
 			if err == nil {
 				t.Fatal("second exchange admitted")
 			}
+			err = nil
 			if mode == "lost response" {
 				err = dbwork.WithWriteTx(ctx, f.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error { return f.s.AbandonOwnerReturnTx(ctx, tx, operation, attempt) })
 				if err != nil {
