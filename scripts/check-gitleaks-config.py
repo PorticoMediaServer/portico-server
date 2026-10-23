@@ -42,6 +42,7 @@ def main():
             ("generic-api-key", "other.ts", 2),
         }
         if actual != expected:
+            print(json.dumps({"expectedLocations": sorted(expected), "actualLocations": sorted(actual)}))
             raise SystemExit("Gitleaks exception exceeded its exact expression/path or lost detection.")
     print("Gitleaks configuration: exact account expression ignored; same-file keys and other paths detected.")
 
