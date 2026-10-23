@@ -4,10 +4,12 @@ import {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPr
 import type {SettingsConfiguration, ConfigurationValue} from '../settings-configuration.ts';
 import {canonicalQualityLadder} from '../../../contracts/src/types.ts';
 import type {PreferenceSnapshot} from '../preferences.ts';
+import type {ConnectivityStatus} from '../server-administration.ts';
+import type {ReadingPreferences} from '../preference-effects.ts';
 
-export type SettingsBindingForm='runtime'|'connectivity'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library';
-export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
-export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>}>;
+export type SettingsBindingForm='runtime'|'connectivity'|'connectivityStatus'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library';
+export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
+export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;connectivityStatus?:ConnectivityStatus;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>}>;
 export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
 export type SettingsBindingPatch=Readonly<{form:SettingsBindingForm;values:Readonly<Record<string,unknown>>}>;
 const bindings:Readonly<Record<string,SettingsBinding>>={
@@ -50,6 +52,7 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'remote.externalAddress':{form:'connectivity',key:'customCertificateDomain',codec:'domain'},
  'remote.certFile':{form:'connectivity',key:'customCertificatePath'},
  'remote.certKey':{form:'connectivity',key:'customCertificateKeyPath'},
+ 'remote.identityCode':{form:'connectivityStatus',key:'identityCode',readOnly:true},
  'remote.homeNets':{form:'connectivity',key:'lanNetworks'},
  'remote.discovery':{form:'connectivity',key:'lanDiscoveryEnabled'},
  'remote.dlna':{form:'connectivity',key:'dlnaEnabled'},
@@ -120,6 +123,18 @@ const preferenceKeys:Readonly<Record<string,string>>={
  'appearance.backdrops':'appearance.showBackdrops','appearance.cardSizeExact':'appearance.cardSizePercent','appearance.notificationDot':'notifications.badges',
 };
 export function settingsBinding(rowId:string):SettingsBinding|undefined{return bindings[rowId]??libraryScalarBindings[rowId]??(preferenceKeys[rowId]?{form:'preferences',key:preferenceKeys[rowId]!}:undefined);}
+
+/** Settings reads Reading through readingPreferences and submits changes through
+ * its patch facade. This is the sole row-to-property map, with no reader effect
+ * or extra preference key. The write facade still owns value validation/CAS. */
+const readingProperties:Readonly<Record<string,keyof ReadingPreferences>>=Object.freeze({
+ 'reading.theme':'theme','reading.font':'font','reading.textSize':'textSize',
+ 'reading.lineSpacing':'lineSpacing','reading.margins':'margins','reading.alignment':'alignment',
+ 'reading.layout':'layout','reading.twoPages':'twoPages','reading.tapToTurn':'tapToTurn',
+ 'reading.hyphenation':'hyphenation','reading.highlightColour':'highlightColour','reading.pdfView':'pdfView',
+ 'comics.fit':'comicFit','comics.direction':'comicDirection','comics.firstPageAlone':'firstPageAlone',
+});
+export function readingSettingsProperty(rowId:string):keyof ReadingPreferences|undefined{return Object.hasOwn(readingProperties,rowId)?readingProperties[rowId]:undefined;}
 function at(source:Readonly<Record<string,unknown>>|undefined,key:string):unknown{if(source&&Object.hasOwn(source,key))return source[key];return key.split('.').reduce<unknown>((v,key)=>v&&typeof v==='object'?(v as Record<string,unknown>)[key]:undefined,source);}
 const days=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] as const;
 const categories=['server','playback','scan','network','client'] as const;
@@ -147,6 +162,11 @@ function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSour
  return binding.codec==='number-choice'?String(v):v;
 }
 export function readSettingsBinding(binding:SettingsBinding,sources:SettingsBindingSources,rowId?:string):SettingsBindingValue|undefined{
+ if(binding.form==='connectivityStatus'){
+  if(binding.key!=='identityCode'||!binding.readOnly)return undefined;
+  const value=sources.connectivityStatus?.identityCode;
+  return value===undefined?undefined:{current:value,effective:value,default:undefined,source:'snapshot',configOnly:false};
+ }
  if(binding.fields){const values=Object.entries(binding.fields).map(([name,key])=>[name,readSettingsBinding({form:binding.form,key},sources)] as const);if(values.some(([,value])=>!value))return undefined;const part=(kind:'current'|'effective'|'default')=>{const v=Object.fromEntries(values.map(([name,value])=>[name,value![kind]]));return binding.codec==='still-watching'?(v.enabled?v.episodes:0):v;};return {current:part('current'),effective:part('effective'),default:part('default'),source:[...new Set(values.map(([,v])=>v!.source))].join(','),configOnly:false};}
  if(binding.form==='preferences'){
   const snapshot=sources.preferences,field=snapshot?.registry.fields.find(f=>f.key===binding.key);if(!snapshot||!field)return undefined;
@@ -163,6 +183,7 @@ export function readSettingsBinding(binding:SettingsBinding,sources:SettingsBind
 }
 /** A write always targets an existing producer; Advanced values are not rounded to a preset. */
 export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sources:SettingsBindingSources={}):SettingsBindingPatch{
+ if(binding.readOnly||binding.form==='connectivityStatus')throw new Error('This setting is read-only.');
  if(binding.fields){
  if(binding.codec==='still-watching'){const n=Number(value);if(!Number.isSafeInteger(n)||![0,2,3,4,5].includes(n))throw new Error('Invalid episode count.');return {form:binding.form,values:n===0?{'playback.passoutProtection':false}:{'playback.passoutProtection':true,'playback.passoutAfterEpisodes':n}};}
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==Object.keys(binding.fields).length)throw new Error('Invalid setting matrix.');return {form:binding.form,values:Object.fromEntries(Object.entries(binding.fields).map(([name,key])=>{const v=(value as Record<string,unknown>)[name];if(!['ask','auto','off'].includes(String(v)))throw new Error('Invalid skip mode.');return [key,v];}))};

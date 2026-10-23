@@ -142,10 +142,12 @@ test('a client log listing carries metadata without bodies', () => {
 
 test('connectivity policy and status parse the whole report', () => {
   const policy = {revision: 7, remoteSignInPolicy: 'owner-only', remoteBitrateLimitKbps: 8000,
-    connectionLimit:0,advertiseUrl:'', lanNetworks: ['192.168.1.0/24'], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: false};
+    connectionLimit:0,advertiseUrl:'', ownAddressEnabled:false, lanNetworks: ['192.168.1.0/24'], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: false};
   const parsed = parseConnectivityPolicy(policy);
   assert.equal(parsed.remoteSignInPolicy, 'owner-only');
   assert.equal(parsed.lanDiscoveryEnabled, false);
+  assert.equal(parseConnectivityPolicy({...policy,uploadCapacityKbps:100000000}).uploadCapacityKbps,100000000);
+  assert.throws(()=>parseConnectivityPolicy({...policy,uploadCapacityKbps:100000001}));
   // DLNA is off when an older server does not report its switch.
   assert.equal(parsed.dlnaEnabled, false);
   assert.equal(parseConnectivityPolicy({...policy, dlnaEnabled: true}).dlnaEnabled, true);
@@ -178,9 +180,19 @@ test('connectivity policy and status parse the whole report', () => {
   assert.deepEqual(silent.connection, {secure: false, remote: false, plainHttpOutsideHome: false, clientAddress: '', accessUrls: []});
 });
 
+test('connectivity keeps only a producer-supplied canonical identity code without an own-address gate', () => {
+  const raw={observedAt:'2026-10-23T12:00:00Z',policy:{revision:1,remoteSignInPolicy:'allow',remoteBitrateLimitKbps:0,connectionLimit:0,advertiseUrl:'',ownAddressEnabled:false},tls:{},discovery:{},addresses:[],interfaces:[],warnings:[]};
+  assert.equal(parseConnectivityStatus(raw).identityCode,undefined);
+  assert.equal(parseConnectivityStatus({...raw,identityCode:'JJWY-C8J8-J26F'}).identityCode,'JJWY-C8J8-J26F');
+  assert.equal(parseConnectivityStatus({...raw,policy:{...raw.policy,identityCode:'JJWY-C8J8-J26F'}}).identityCode,undefined);
+  for(const identityCode of [null,0,'','jjwy-c8j8-j26f','JJWYC8J8J26F','IIII-C8J8-J26F','JJWY-C8J8-J260']){
+    assert.throws(()=>parseConnectivityStatus({...raw,identityCode}),error=>error instanceof Error&&(typeof identityCode!=='string'||identityCode.length===0||!error.message.includes(identityCode)));
+  }
+});
+
 test('CD-39: a host-sized report renders bounded slices with exact omitted counts', () => {
   const policy = {revision: 7, remoteSignInPolicy: 'allow', remoteBitrateLimitKbps: 0,
-    connectionLimit:0,advertiseUrl:'', lanNetworks: [], accessUrls: [], lanDiscoveryEnabled: false};
+    connectionLimit:0,advertiseUrl:'', ownAddressEnabled:false, lanNetworks: [], accessUrls: [], lanDiscoveryEnabled: false};
   const base = {connection:{secure:false,remote:false,plainHttpOutsideHome:false,clientAddress:'127.0.0.1',accessUrls:[]},observedAt: '2026-09-16T12:00:00Z', policy,
     tls: {configured: false, tlsReady: false, publiclyTrusted: false, listenerBound: false, listenPort: 0},
     discovery: {enabled: false, supported: false, state: 'unavailable'}, warnings: []};
@@ -218,7 +230,7 @@ test('the tier helpers mirror the server predicate', () => {
 });
 
 test('connectivity policy: network parity rows parse, with shipped defaults for an older server', () => {
-  const base = {revision: 4, remoteSignInPolicy: 'allow', remoteBitrateLimitKbps: 0, connectionLimit:0,advertiseUrl:'', lanNetworks: [], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: true};
+  const base = {revision: 4, remoteSignInPolicy: 'allow', remoteBitrateLimitKbps: 0, connectionLimit:0,advertiseUrl:'', ownAddressEnabled:false, lanNetworks: [], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: true};
   const older = parseConnectivityPolicy(base);
   assert.deepEqual([older.trustedProxies, older.uploadCapacityKbps, older.pausedSessionTimeoutMinutes, older.advertisedInterface, older.customCertificateDomain], [[], 0, 0, '', '']);
   const newer = parseConnectivityPolicy({...base, trustedProxies: ['127.0.0.1/32'], uploadCapacityKbps: 20000, pausedSessionTimeoutMinutes: 60, advertisedInterface: 'br0',

@@ -30,6 +30,21 @@ test('own address is independent of managed route and cannot smuggle credentials
  for(const bad of ['https://name:secret@example.com','https://example.com/a','http://example.com'])assert.throws(()=>settingsBindingPatch(settingsBinding('remote.externalAddress')!,bad));
 });
 
+test('identity code is a read-only snapshot fact, independent of own-address policy',()=>{
+ const binding=settingsBinding('remote.identityCode')!;
+ const connectivityStatus={identityCode:'JJWY-C8J8-J26F',policy:{ownAddressEnabled:false}} as unknown as import('../src/server-administration.ts').ConnectivityStatus;
+ assert.deepEqual(readSettingsBinding(binding,{connectivityStatus}),{current:'JJWY-C8J8-J26F',effective:'JJWY-C8J8-J26F',default:undefined,source:'snapshot',configOnly:false});
+ assert.equal(readSettingsBinding(binding,{}),undefined);
+ // Neither a policy draft nor TOML can manufacture a value for this row.
+ assert.equal(readSettingsBinding(binding,{forms:{connectivity:{identityCode:'JJWY-C8J8-J26F'}}}),undefined);
+ assert.throws(()=>settingsBindingPatch(binding,'JJWY-C8J8-J26F'));
+ assert.throws(()=>settingsBindingPatch({...binding,readOnly:false},null));
+});
+
+test('retired hardware controls have no Settings binding',()=>{
+ for(const retired of ['quality.playerEngine','audioSubtitles.burnIn','audioSubtitles.passthroughFormats'])assert.equal(settingsBinding(retired),undefined);
+});
+
 test('heavy window edits preserve the independent backup policy and exact day matrix',()=>{
  const backup={id:'backup',enabled:true,cadence:'nightly',days:['monday'],startMinute:180,durationMinutes:240,timezone:'',tasks:['backup']};
  const heavy={id:'heavy',enabled:false,cadence:'nightly',days:['monday','tuesday','wednesday','thursday','friday','saturday','sunday'],startMinute:60,durationMinutes:300,timezone:'',tasks:['analysis','trickplay']};

@@ -40,6 +40,9 @@ func TestMaintenanceConfigurationFileUsesRealIndependentWindows(t *testing.T) {
 	if !heavy.Enabled || heavy.StartMinute != 60 || heavy.DurationMinutes != 300 || !backup.Enabled || backup.StartMinute != 240 || len(backup.Days) != 2 || doc.Settings.BackgroundSpeed != "gentle" {
 		t.Fatal(doc)
 	}
+	if got := dbwork.ReadBackgroundSpeed(ctx, db); got != dbwork.SpeedGentle {
+		t.Fatalf("worker ignored imported speed: %s", got)
+	}
 	if err = dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
 		p, e := workpolicy.ReadTx(ctx, tx)
 		if e != nil {
@@ -58,6 +61,9 @@ func TestMaintenanceConfigurationFileUsesRealIndependentWindows(t *testing.T) {
 	next.BackgroundSpeed = "fast"
 	if _, err = service.SaveMaintenanceSettings(ctx, allow, Change[MaintenanceSettingsDocument]{ExpectedRevision: doc.Revision, OperationID: "configuration-speed", Settings: next}); err != nil {
 		t.Fatal(err)
+	}
+	if got := dbwork.ReadBackgroundSpeed(ctx, db); got != dbwork.SpeedFast {
+		t.Fatalf("worker ignored app speed: %s", got)
 	}
 	if err = store.FlushConfiguration(ctx); err != nil {
 		t.Fatal(err)
