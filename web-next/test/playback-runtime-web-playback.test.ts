@@ -235,6 +235,27 @@ test('a native paint surface belongs only to the loaded current source and disap
   slot.unload(); assert.equal(slot.nativeSurfaceActive, false); slot.dispose();
 });
 
+test('processing facts require the current loaded unheld port and actual observed generation', () => {
+  const slot = new PlayerSlot(); let loaded = 0, generation = 0;
+  let state: import('@core/playback-v1/port.ts').PlayerState = 'loading';
+  let processing: PlaybackMediaPort['audioProcessing'];
+  const real: PlaybackMediaPort = {get loaded() {return loaded;}, settling: false, get audioProcessing() {return processing;},
+    load() {processing = undefined;loaded = 0;}, play() {}, pause() {}, seek() {}, setRate() {}, selectSidecarSubtitle() {},
+    observe: () => ({generation, state, positionMs: 0, rate: 1}), onEvent: () => () => {}, onNotice: () => () => {}, unload() {}, suspend() {}, resume() {}, dispose() {}};
+  const source = {url: '/current', generation: 1, mode: 'direct' as const, startPositionMs: 0, subtitles: [], autoplay: false};
+  slot.mount(real);slot.load(source);assert.equal(slot.audioProcessing, undefined);
+  processing = {generation: 1, eqApplied: true, levelingApplied: false};loaded = 1;
+  assert.equal(slot.audioProcessing, undefined);generation = 1;
+  assert.equal(slot.audioProcessing, undefined);state = 'paused';
+  assert.deepEqual(slot.audioProcessing, processing);
+  for (state of ['loading', 'idle', 'error', 'ended']) assert.equal(slot.audioProcessing, undefined);
+  state = 'playing';slot.hold(true);assert.equal(slot.audioProcessing, undefined);slot.hold(false);
+  processing = {generation: 2, eqApplied: true, levelingApplied: true};assert.equal(slot.audioProcessing, undefined);
+  processing = {generation: 1, eqApplied: false, levelingApplied: true};assert.deepEqual(slot.audioProcessing, processing);
+  slot.load({...source, url: '/other-session-same-generation'});assert.equal(slot.audioProcessing, undefined, 'adapter retires facts for its old private load, even when public generation repeats');
+  slot.dispose();assert.equal(slot.audioProcessing, undefined);
+});
+
 test('frame commands require an unheld settled paused port with matching loaded and observed generations', async () => {
   let loaded=0,generation=0,settling=false,state:import('@core/playback-v1/port.ts').PlayerState='paused',calls=0;
   const slot=new PlayerSlot();

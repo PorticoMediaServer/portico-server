@@ -25,7 +25,7 @@ export type BottomSheetProps = OverlaySurfaceProps & OverlayContentSlots & {
 };
 type Drag = {pointer: number; startY: number; startHeight: number; y: number; time: number; velocity: number};
 
-export function BottomSheet({open, onOpenChange, title, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, detents, detent, onDetentChange, scrollRef, fitContent = false, trigger, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog'}: BottomSheetProps) {
+export function BottomSheet({open, onOpenChange, title, headerAction, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, detents, detent, onDetentChange, scrollRef, fitContent = false, trigger, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog'}: BottomSheetProps) {
   const portalTarget = useOverlayPortalTarget();
   const id = useId(), [viewport, setViewport] = useState(() => typeof window === 'undefined' ? 844 : window.visualViewport?.height ?? window.innerHeight);
   const [active, setActive] = useState(0), [naturalHeight, setNaturalHeight] = useState(0), [element, setElement] = useState<HTMLDivElement | null>(null);
@@ -126,7 +126,7 @@ export function BottomSheet({open, onOpenChange, title, children, description, f
       <div ref={header} className={classes(styles.sheetHeader, headerClassName)} onPointerDown={start} onPointerMove={move} onPointerUp={event => end(event)} onPointerCancel={event => end(event, true)} onLostPointerCapture={event => { if (drag.current) end(event, true); }}>
         <div className={styles.grabber} role="slider" tabIndex={0} aria-label={defaultI18n.t('next.overlays.resizeSheet')} aria-valuemin={limits[0]?.height ?? 0} aria-valuemax={maximum} aria-valuenow={selected?.height ?? maximum} aria-orientation="vertical"
           onKeyDown={event => { const position = Math.max(0, limits.findIndex(value => value.index === selected?.index)); const next = event.key === 'ArrowUp' ? position + 1 : event.key === 'ArrowDown' ? position - 1 : event.key === 'Home' ? 0 : event.key === 'End' ? limits.length - 1 : undefined; if (next !== undefined) { event.preventDefault(); choose(limits[Math.max(0, Math.min(limits.length - 1, next))]!.index); } }}><span /></div>
-        <div className={styles.sheetHeading}><RadixDialog.Title className={styles.sheetTitle}>{title}</RadixDialog.Title>{showCloseButton && <Button variant="text" size="small" className={styles.sheetDone} onClick={() => onOpenChange(false, 'close-button')}>{defaultI18n.t('next.overlays.done')}</Button>}</div>
+        <div className={styles.sheetHeading}><RadixDialog.Title className={styles.sheetTitle}>{title}</RadixDialog.Title>{headerAction}{showCloseButton && <Button variant="text" size="small" className={styles.sheetDone} onClick={() => onOpenChange(false, 'close-button')}>{defaultI18n.t('next.overlays.done')}</Button>}</div>
         {description !== undefined && <RadixDialog.Description id={`${id}-description`} className={styles.sheetDescription}>{description}</RadixDialog.Description>}
       </div>
       <div ref={scrollRef} className={classes(styles.sheetBody, bodyClassName)}><div ref={body}>{children}</div></div>

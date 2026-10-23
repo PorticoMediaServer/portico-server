@@ -48,7 +48,7 @@ export function ServerBand({variant = 'settings', className}: {variant?: 'settin
 
 export type ServerHeaderProps = {
   serverName: string;
-  health: 'normal' | 'attention';
+  health?: 'normal' | 'attention';
   facts?: readonly FactPart[];
   className?: string;
   t?: ShellTranslate;
@@ -60,7 +60,7 @@ export function ServerHeader({serverName, viewerRole, audience, health, facts = 
   return <header className={[styles.header, className].filter(Boolean).join(' ')}>
     <div className={styles.serverPill}><Icon name="i-server" size={16} />{t('next.shell.server')}<span>{t(visibility)}</span></div>
     <div className={styles.nameLine}><b>{serverName}</b><div className={styles.facts}>
-      <span className={styles.health} data-health={health}>{t(health === 'normal' ? 'next.shell.health.normal' : 'next.shell.health.attention')}</span>
+      {health && <span className={styles.health} data-health={health}>{t(health === 'normal' ? 'next.shell.health.normal' : 'next.shell.health.attention')}</span>}
       {facts.map(fact => <span key={fact.id} data-role={fact.role}>{fact.text}</span>)}
     </div></div>
   </header>;

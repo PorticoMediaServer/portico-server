@@ -1,6 +1,10 @@
 /** collections.html 34–36, desktop-app.html f7 and their drawn state frames. */
 export const savedMessages = {
+  'next.saved.optional': 'Optional',
   'next.saved.sections': 'Saved sections',
+  'next.saved.removedPlaylist': 'Removed “{title}” from the playlist.',
+  'next.saved.savedViewsCount': '{count, plural, one {# saved view} other {# saved views}}',
+  'next.saved.viewsHelp': 'Each one is re-run on the server, so it stays current as libraries change.',
   'next.saved.prepared': 'Prepared for you',
   'next.saved.browserNote': 'The server prepares each title, then Save file hands it to this browser. To watch offline inside Portico, with your place remembered, use the phone app.',
   'next.saved.downloaded': 'Downloaded',
@@ -29,6 +33,9 @@ export const savedMessages = {
   'next.saved.otherProfiles': "Other profiles' downloads use {size} on this computer.",
   'next.saved.openServerSettings': 'Open server settings',
   'next.saved.loadFailed': 'Couldn’t load Downloads',
+  'next.saved.loadFailedBody': 'What your server is preparing couldn’t load.',
+  'next.saved.qualitySize': '{quality}, about {size}',
+  'next.saved.expiredHelp': 'The server stopped keeping this ready because it wasn’t fetched in time.',
   'next.saved.phone.emptyBody': "Press and hold a title and choose Download. It's kept here to watch without a connection.",
   'next.saved.phone.storageLimitHelp': 'The most space downloads may use on this phone',
   'next.saved.phone.free': '{size} free on this phone',

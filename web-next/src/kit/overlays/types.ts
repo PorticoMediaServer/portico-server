@@ -7,6 +7,7 @@ export type OverlaySurfaceProps = {
   open: boolean;
   onOpenChange: OverlayChange;
   title: ReactNode;
+  headerAction?: ReactNode;
   children: ReactNode;
   description?: ReactNode;
   footer?: ReactNode;
