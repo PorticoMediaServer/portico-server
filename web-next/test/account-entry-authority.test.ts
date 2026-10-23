@@ -17,7 +17,7 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 async function fixture(required = true) {
   let raw: AppSessionRecord | undefined, disconnected = 0, failRead = false;
   let enrolGate: Promise<void> | undefined, releaseEnrol: (() => void) | undefined, enrolStarted = false;
-  const hints = new Set<() => void>(), tokens: string[] = [];
+  const hints = new Set<() => void>(), tokens: string[] = [], calls: string[] = [], selections: unknown[][] = [];
   const hint = () => {for (const changed of hints) changed();};
   const store = new AppSessionStore({read: async () => raw, change: async update => {raw = update(raw);hint();}});
   const initial = session(), system = {id: serverId, name: 'Actual server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false};
@@ -28,6 +28,7 @@ async function fixture(required = true) {
   const connection = {pin, dispose() {disconnected++;}, getSnapshot: () => ({phase: 'ready'})};
   const api = new HttpLocalApi(origin, '');api.getRouteConnection = () => connection as never;api.setAccessToken = token => {tokens.push(token);};
   api.request = (async path => {
+    calls.push(path);
     if (path === '/v1/system') return system;
     if (path === '/v1/direct') return snapshot();
     if (path === '/v1/direct/two-factor/enrol') {enrolStarted = true;await enrolGate;return {secret: 'ABCDEFGHIJKLMNOP', uri: 'otpauth://totp/Actual?secret=ABCDEFGHIJKLMNOP', recoveryCodes: ['ephemeral-code']};}
@@ -38,13 +39,13 @@ async function fixture(required = true) {
   const selected = store.selected.bind(store);
   store.selected = async () => {if (failRead) throw new Error('fixture-read-failure');return selected();};
   const chosen = {...session('viewer-family'), viewer: {...initial.viewer, role: 'member'}};
-  const entry = new BrowserAccountEntry({store, actions: {switchProfile: async () => {await save(chosen);return chosen;}} as never,
+  const entry = new BrowserAccountEntry({store, actions: {switchProfile: async (...args: unknown[]) => {selections.push(args);await save(chosen);return chosen;}} as never,
     environment: () => ({storage: store.connectionStorage(serverId)}), restore: async captured => ({api, session: captured!}),
     inspect: async () => pin, connect: (async () => ({api, connection})) as never, remember: async () => {},
     observeSelection: changed => {hints.add(changed);return () => {hints.delete(changed);};},
   });
   await entry.loadProfiles();await settle();
-  return {entry, store, initial, chosen, save, hint, hints, tokens, get disconnected() {return disconnected;},
+  return {entry, store, initial, chosen, save, hint, hints, tokens, calls, selections, get disconnected() {return disconnected;},
     failRead: () => {failRead = true;},
     holdEnrol: () => {enrolGate = new Promise(resolve => {releaseEnrol = resolve;});}, releaseEnrol: () => releaseEnrol?.(), get enrolStarted() {return enrolStarted;}};
 }
@@ -76,8 +77,9 @@ test('an idle authority change prevents a late enrollment from returning its sec
 });
 test('own profile admission ignores its own committed hint and starts the new viewer lifetime', async () => {
   const f = await fixture(false);let retired = 0;f.entry.subscribeAuthorityRetired(() => {retired++;});
-  await f.entry.chooseProfile('main');await settle();
+  await f.entry.chooseProfile('main', '1234', true);await settle();
   assert.equal(f.entry.getSnapshot().phase, 'ready');assert.equal((await f.store.selected())?.connection.session.sessionFamilyId, f.chosen.sessionFamilyId);
+  assert.equal(f.selections[0][2], 'main');assert.equal(f.selections[0][3], '1234');assert.equal(f.selections[0][6], true);
   assert.equal(retired, 1);assert.equal(f.hints.size, 1);f.entry.dispose();assert.equal(retired, 2);
 });
 test('a failing view subscriber cannot prevent other secret owners from clearing', async () => {
@@ -91,4 +93,11 @@ test('retiring while an old selection read is delayed cannot cancel a newly capt
   f.store.selected = () => new Promise(resolve => {release = resolve;});f.hint();
   f.entry.cancel();f.store.selected = selected;await f.entry.loadProfiles();await settle();
   release(undefined);await settle();assert.equal(f.entry.getSnapshot().phase, 'two-step-setup');assert.equal(f.hints.size, 1);f.entry.dispose();
+});
+test('profile recovery uses only a current eligible picker and retires with its captured entry', async () => {
+  const required = await fixture();assert.throws(() => required.entry.profileRecovery('main'));required.entry.dispose();
+  const f = await fixture(false);assert.throws(() => f.entry.profileRecovery('missing-profile'));
+  const recovery = f.entry.profileRecovery('main');assert.equal(recovery.getSnapshot().phase, 'password');
+  const before = f.calls.length;await f.save(session('successor'));await settle();
+  await recovery.password('fixture-input');assert.equal(f.calls.length, before);assert.equal(f.entry.getSnapshot().phase, 'welcome');recovery.dispose();f.entry.dispose();
 });

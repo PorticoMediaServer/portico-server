@@ -14,9 +14,10 @@ import {CodedError, unreadableServerResponse} from '@core/server-messages.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {decodePreviewInvitationResponse, decodePostAccessInvitationsAcceptResponse} from '../../../packages/contracts/src/decoders.ts';
 import type {PreviewInvitationResponse} from '../../../packages/contracts/src/types.ts';
-import {browserAppSessions, browserConnectionEnvironment, restoreBrowserConnection} from './server-connections';
+import {browserAppSessions, browserConnectionEnvironment, restoreBrowserConnection, observeBrowserSessionChanges} from './server-connections';
 import {browserAppSessionActions, type BrowserAppSessionActions} from './app-sessions';
 import {browserServerDisplay} from './server-display';
+import {BrowserProfileRecovery} from './profile-recovery';
 
 export type AccountEntryState = Readonly<{
  phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined'|'move-code'|'move-local'|'move-portico'|'two-step-setup';
@@ -355,13 +356,20 @@ export class BrowserAccountEntry {
    this.watchAuthority();
   }catch(error){if(op.current()){this.release();this.publish({phase:'profiles',error});}}
  }
- async chooseProfile(profileId:string,pin=''){
+ async chooseProfile(profileId:string,pin='',remember=false){
   const state=this.state,api=this.api,session=this.session;if(state.phase!=='profiles'||!state.snapshot||state.snapshot.twoStepSetupRequired||!api||!session)return;
   const op=this.operation();this.stopAuthorityWatch();this.publish({...state,busy:true,error:undefined});
-  try{const chosen=await this.ports.actions.switchProfile(api,session,profileId,pin,op.signal,op.current);if(op.current()){this.session=chosen;this.challenge=undefined;this.challengeRevision=undefined;this.retired();if(op.current()){this.publish({...state,phase:'ready',busy:false});this.watchAuthority();}}}
+  try{const chosen=await this.ports.actions.switchProfile(api,session,profileId,pin,op.signal,op.current,remember);if(op.current()){this.session=chosen;this.challenge=undefined;this.challengeRevision=undefined;this.retired();if(op.current()){this.publish({...state,phase:'ready',busy:false});this.watchAuthority();}}}
   catch(error){if(op.current()){this.publish({...state,busy:false,error});this.watchAuthority();}}
+ }
+ profileRecovery(profileId:string){
+  const api=this.api,state=this.state,snapshot=state.snapshot,session=this.session,epoch=this.epoch;
+  if(state.phase!=='profiles'||state.busy||!api||!snapshot||snapshot.twoStepSetupRequired||!state.server||!session)throw new Error('Choose a current server profile first.');
+  return new BrowserProfileRecovery(api,snapshot,profileId,state.server.signIn,
+   ()=>!this.disposed&&this.epoch===epoch&&this.api===api&&this.state.phase==='profiles'&&this.state.snapshot===snapshot&&this.session?.sessionFamilyId===session.sessionFamilyId,
+   grant=>this.temporary(api,grant));
  }
 
  dispose(){this.cancel();this.disposed=true;this.probe.dispose();this.listeners.clear();this.retiredListeners.clear();}
 }
-export function createBrowserAccountEntry(options:Pick<EntryPorts,'invitationDestination'>={}){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,rememberName:(api,name)=>browserServerDisplay().remember(api,name),...options});}
+export function createBrowserAccountEntry(options:Pick<EntryPorts,'invitationDestination'>={}){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,observeSelection:observeBrowserSessionChanges,rememberName:(api,name)=>browserServerDisplay().remember(api,name),...options});}
