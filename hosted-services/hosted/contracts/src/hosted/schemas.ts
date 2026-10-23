@@ -2035,6 +2035,9 @@ export const schemas = {
       },
       "transactionId": {
         "type": "string"
+      },
+      "verifiedEmail": {
+        "type": "string"
       }
     },
     "required": [
@@ -2408,6 +2411,9 @@ export const schemas = {
       },
       "transactionId": {
         "type": "string"
+      },
+      "verifiedEmail": {
+        "type": "string"
       }
     },
     "required": [
@@ -2457,6 +2463,9 @@ export const schemas = {
         "type": "string"
       },
       "transactionId": {
+        "type": "string"
+      },
+      "verifiedEmail": {
         "type": "string"
       }
     },
@@ -2517,6 +2526,9 @@ export const schemas = {
         "type": "string"
       },
       "transactionId": {
+        "type": "string"
+      },
+      "verifiedEmail": {
         "type": "string"
       }
     },
