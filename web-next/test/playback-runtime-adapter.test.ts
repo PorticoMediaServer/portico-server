@@ -674,8 +674,10 @@ test('screen cancellation or navigation during real start cannot adopt late outp
       return response;
     });
     const pending = f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 0}, {signal: abort.signal, isCurrent: () => current});
-    const done = assert.rejects(pending);
+    let settled = false; void pending.then(() => {settled = true;}, () => {settled = true;});
+    const done = assert.rejects(pending, undefined, change);
     await gate.started;
+    assert.equal(settled, false, `${change}: the actual start remains in flight`);
     if (change === 'navigation') current = false;
     else if (change === 'new-play') {await f.runtime.play('newer', 20); await f.arrive();abort.abort();}
     else abort.abort();
