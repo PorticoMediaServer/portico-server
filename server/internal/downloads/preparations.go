@@ -35,9 +35,10 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 	if !validID.MatchString(r.OperationID) || (r.VersionID != "" && (!validID.MatchString(r.VersionID) || r.MediaID == "" || len(r.MediaIDs) > 0 || r.NextAfterMediaID != "")) {
 		return out, ErrInput
 	}
-	r.Quality = r.Quality.withDefault()
-	if e := preparationQuality(string(r.Quality)); e != nil {
-		return out, e
+	if r.Quality != "" {
+		if e := preparationQuality(string(r.Quality)); e != nil {
+			return out, e
+		}
 	}
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassForegroundTransfer)
 	if e != nil {
@@ -48,6 +49,25 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 	now := s.millis()
 	key := operations.ViewerKey(p)
 	scope := "downloads-prepare:" + key
+	// Preserve the existing video omission/original receipt identity. Music
+	// omission is distinct because it resolves through its own saved default.
+	if r.Quality == "" {
+		targets, _, err := expandTargets(ctx, tx, r)
+		if err != nil {
+			return out, err
+		}
+		music := false
+		for _, id := range targets {
+			var song bool
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE public_id=pid_blob(?) AND kind=7)`, id).Scan(&song); err != nil {
+				return out, err
+			}
+			music = music || song
+		}
+		if !music {
+			r.Quality = QualityOriginal
+		}
+	}
 	raw, digest, e := operations.Receipt(tx, scope, r.OperationID, r, now)
 	if e != nil {
 		return out, e
@@ -163,7 +183,11 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 			out.Rejected = append(out.Rejected, Rejection{item, reason})
 			continue
 		}
-		quality := s.resolveQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), string(r.Quality), found)
+		requested, err := requestedDownloadQuality(ctx, tx, p, string(r.Quality), found)
+		if err != nil {
+			return out, err
+		}
+		quality := s.resolveQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), requested, found)
 		// A live claim on the same item and quality is the same claim. Returning
 		// it keeps a client that retried a batch from accumulating duplicates.
 		// One that failed is what the viewer is asking to have another go at:
@@ -197,7 +221,7 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 			continue
 		}
 		estimate, estimated := estimateBytes(quality, recipe, found)
-		if err = storageRoom(tx, quality, estimate); errors.Is(err, ErrStorageFull) {
+		if err = storageRoom(tx, storedQualityBudget(quality, recipe), estimate); errors.Is(err, ErrStorageFull) {
 			out.Rejected = append(out.Rejected, Rejection{item, ReasonStorageFull})
 			refused++
 			continue
@@ -289,7 +313,11 @@ func (s *Service) restart(ctx context.Context, tx *sql.Tx, p identity.Principal,
 	if _, e = tx.ExecContext(ctx, `UPDATE download_preparation_authority SET principal=?,optimization_requested=0,optimization_operation='' WHERE preparation_id=?`, string(principal), current.ID); e != nil {
 		return e
 	}
-	if e = storageRoom(tx, current.Quality, current.Progress.BytesTotal); e != nil {
+	var recipe string
+	if e = tx.QueryRowContext(ctx, `SELECT recipe FROM download_preparations WHERE id=?`, current.ID).Scan(&recipe); e != nil {
+		return e
+	}
+	if e = storageRoom(tx, storedQualityBudget(current.Quality, recipe), current.Progress.BytesTotal); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `DELETE FROM download_grants WHERE preparation_id=?`, current.ID); e != nil {

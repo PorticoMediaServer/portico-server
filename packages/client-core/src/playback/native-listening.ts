@@ -18,7 +18,8 @@ export type NativeListeningStatus=Readonly<{
  owner:string; sequence:number; intent:'playing'|'paused'; rate:number;
  positionSeconds:number; effectiveRate?:number;supportedRates?:readonly number[];rateWaiting?:boolean;rateError?:string; observed:boolean; ready:boolean; seeking:boolean; ended:boolean;
  error:string|null; terminal:boolean; route:string; deadlines:ListeningDeadlines;
- rendering?:boolean;timerStopped?:boolean;expiredTimerRevision?:number;policyRevision?:number;
+ /** Current-song engine facts. Omission is unreported, never evidence an effect ran. */
+ rendering?:boolean;eqApplied?:boolean;levelingApplied?:boolean;timerStopped?:boolean;expiredTimerRevision?:number;policyRevision?:number;
  commandRevision:number; binding:{lease:string;intentId:number;sessionId:string;generation:number;itemId:string}|null;
 }>;
 export function listeningDeadline(value:unknown):value is number|null {
@@ -77,8 +78,6 @@ export type NativeListeningV1Event=NativeListeningStatus&Readonly<{
  /** A queue move the owner made while JS may have slept: the session it left, and the queue
   * header the move returned. Carried until JS acknowledges a later snapshot. */
  transition?:Readonly<{previousSessionId:string;queue:QueueHeader|null}>;
- /** A quiet notice for the viewer (X-02: this audio plays without gapless or normalization). */
- notice?:string;
 }>;
 export type NativeQueueAdvance='next'|'previous'|'entry';
 export interface NativeListeningV1Control {

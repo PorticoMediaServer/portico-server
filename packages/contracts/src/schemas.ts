@@ -608,6 +608,9 @@ export const schemas = {
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -645,6 +648,36 @@ export const schemas = {
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -671,6 +704,11 @@ export const schemas = {
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {
@@ -1507,6 +1545,9 @@ export const schemas = {
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -1544,6 +1585,36 @@ export const schemas = {
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -1570,6 +1641,11 @@ export const schemas = {
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {
@@ -2530,6 +2606,9 @@ export const schemas = {
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -2567,6 +2646,36 @@ export const schemas = {
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -2593,6 +2702,11 @@ export const schemas = {
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {
@@ -7788,6 +7902,9 @@ export const schemas = {
               "container": {
                 "type": "string"
               },
+              "conversionGainDb": {
+                "type": "number"
+              },
               "decoderConfig": {
                 "type": "string"
               },
@@ -7825,6 +7942,36 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "loudnessAppliedDb": {
+                "type": "number"
+              },
+              "loudnessEnvelope": {
+                "properties": {
+                  "endLufs": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "intervalMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "startLufs": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "intervalMs",
+                  "startLufs",
+                  "endLufs"
+                ],
+                "type": "object"
+              },
               "mode": {
                 "type": "string"
               },
@@ -7851,6 +7998,11 @@ export const schemas = {
                   "url"
                 ],
                 "type": "object"
+              },
+              "sourceBitrateBps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "trim": {
                 "properties": {
@@ -8635,6 +8787,9 @@ export const schemas = {
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -8672,6 +8827,36 @@ export const schemas = {
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -8698,6 +8883,11 @@ export const schemas = {
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {
@@ -9664,7 +9854,6 @@ export const schemas = {
         "type": "string"
       },
       "quality": {
-        "default": "original",
         "enum": [
           "original",
           "automatic",
@@ -9674,7 +9863,10 @@ export const schemas = {
           "720p-high",
           "720p-low",
           "480p",
-          "240p"
+          "240p",
+          "cd-quality",
+          "320",
+          "96"
         ],
         "type": "string"
       },
@@ -9964,7 +10156,6 @@ export const schemas = {
         "type": "object"
       },
       "quality": {
-        "default": "original",
         "enum": [
           "original",
           "automatic",
@@ -9974,7 +10165,10 @@ export const schemas = {
           "720p-high",
           "720p-low",
           "480p",
-          "240p"
+          "240p",
+          "cd-quality",
+          "320",
+          "96"
         ],
         "type": "string"
       },
@@ -11490,6 +11684,9 @@ export const schemas = {
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -11527,6 +11724,36 @@ export const schemas = {
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -11553,6 +11780,11 @@ export const schemas = {
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {
@@ -14082,6 +14314,16 @@ export const schemas = {
     "type": "object"
   },
   "DeleteQueueResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteReadingSessionsSessionIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteReadingSessionsSessionIdResponse": {
     "properties": {},
     "required": [],
     "type": "object"
@@ -27826,6 +28068,35 @@ export const schemas = {
               "nullable": true,
               "type": "string"
             },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
+            },
             "available": {
               "type": "boolean"
             },
@@ -28481,6 +28752,35 @@ export const schemas = {
             "addedAt": {
               "nullable": true,
               "type": "string"
+            },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
             },
             "available": {
               "type": "boolean"
@@ -29269,14 +29569,28 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "dsdGainDb": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "gapless": {
+                "type": "boolean"
+              },
+              "neverBoost": {
                 "type": "boolean"
               },
               "normalization": {
                 "type": "string"
+              },
+              "smoothTransitions": {
+                "type": "boolean"
               }
             },
             "required": [
+              "neverBoost",
+              "smoothTransitions",
+              "dsdGainDb",
               "gapless",
               "crossfadeMs",
               "normalization"
@@ -30355,6 +30669,35 @@ export const schemas = {
             "addedAt": {
               "nullable": true,
               "type": "string"
+            },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
             },
             "available": {
               "type": "boolean"
@@ -34156,6 +34499,9 @@ export const schemas = {
   },
   "GetDownloadOptionsResponse": {
     "properties": {
+      "defaultQuality": {
+        "type": "string"
+      },
       "itemId": {
         "type": "string"
       },
@@ -34329,6 +34675,7 @@ export const schemas = {
       }
     },
     "required": [
+      "defaultQuality",
       "itemId",
       "kind",
       "source",
@@ -64923,6 +65270,35 @@ export const schemas = {
             "nullable": true,
             "type": "string"
           },
+          "audioFacts": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "codec": {
+                "type": "string"
+              },
+              "lossless": {
+                "type": "boolean"
+              },
+              "sampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "codec"
+            ],
+            "type": "object"
+          },
           "available": {
             "type": "boolean"
           },
@@ -68737,8 +69113,23 @@ export const schemas = {
               },
               "facts": {
                 "properties": {
+                  "audioBitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "audioChannels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "audioCodec": {
                     "type": "string"
+                  },
+                  "audioSampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "audioTracks": {
                     "maximum": 9007199254740991,
@@ -69281,8 +69672,23 @@ export const schemas = {
             },
             "facts": {
               "properties": {
+                "audioBitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "audioChannels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "audioCodec": {
                   "type": "string"
+                },
+                "audioSampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "audioTracks": {
                   "maximum": 9007199254740991,
@@ -70257,8 +70663,23 @@ export const schemas = {
             },
             "facts": {
               "properties": {
+                "audioBitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "audioChannels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "audioCodec": {
                   "type": "string"
+                },
+                "audioSampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "audioTracks": {
                   "maximum": 9007199254740991,
@@ -90097,6 +90518,35 @@ export const schemas = {
         "nullable": true,
         "type": "string"
       },
+      "audioFacts": {
+        "properties": {
+          "bitDepth": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "channels": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "codec": {
+            "type": "string"
+          },
+          "lossless": {
+            "type": "boolean"
+          },
+          "sampleRate": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "codec"
+        ],
+        "type": "object"
+      },
       "available": {
         "type": "boolean"
       },
@@ -91962,6 +92412,52 @@ export const schemas = {
     "format": "binary",
     "type": "string"
   },
+  "GetItemsItemIdReadingVersionsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetItemsItemIdReadingVersionsResponse": {
+    "properties": {
+      "versions": {
+        "items": {
+          "properties": {
+            "format": {
+              "enum": [
+                "epub",
+                "pdf",
+                "cbz"
+              ],
+              "type": "string"
+            },
+            "inventoryAvailable": {
+              "type": "boolean"
+            },
+            "size": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "sourceId",
+            "format",
+            "size",
+            "inventoryAvailable"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "versions"
+    ],
+    "type": "object"
+  },
   "GetItemsRequest": {
     "properties": {},
     "required": [],
@@ -91975,6 +92471,35 @@ export const schemas = {
             "addedAt": {
               "nullable": true,
               "type": "string"
+            },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
             },
             "available": {
               "type": "boolean"
@@ -93827,6 +94352,35 @@ export const schemas = {
             "addedAt": {
               "nullable": true,
               "type": "string"
+            },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
             },
             "available": {
               "type": "boolean"
@@ -112279,6 +112833,9 @@ export const schemas = {
                   "id": {
                     "type": "string"
                   },
+                  "interlaced": {
+                    "type": "boolean"
+                  },
                   "level": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -112412,6 +112969,9 @@ export const schemas = {
               "container": {
                 "type": "string"
               },
+              "conversionGainDb": {
+                "type": "number"
+              },
               "decoderConfig": {
                 "type": "string"
               },
@@ -112449,6 +113009,36 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "loudnessAppliedDb": {
+                "type": "number"
+              },
+              "loudnessEnvelope": {
+                "properties": {
+                  "endLufs": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "intervalMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "startLufs": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "intervalMs",
+                  "startLufs",
+                  "endLufs"
+                ],
+                "type": "object"
+              },
               "mode": {
                 "type": "string"
               },
@@ -112475,6 +113065,11 @@ export const schemas = {
                   "url"
                 ],
                 "type": "object"
+              },
+              "sourceBitrateBps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "trim": {
                 "properties": {
@@ -116256,14 +116851,28 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "dsdGainDb": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "gapless": {
+                "type": "boolean"
+              },
+              "neverBoost": {
                 "type": "boolean"
               },
               "normalization": {
                 "type": "string"
+              },
+              "smoothTransitions": {
+                "type": "boolean"
               }
             },
             "required": [
+              "neverBoost",
+              "smoothTransitions",
+              "dsdGainDb",
               "gapless",
               "crossfadeMs",
               "normalization"
@@ -116965,6 +117574,165 @@ export const schemas = {
       "status"
     ],
     "type": "object"
+  },
+  "GetReadingItemsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingItemsResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "format": {
+              "enum": [
+                "epub",
+                "pdf",
+                "cbz"
+              ],
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inventoryAvailable": {
+              "type": "boolean"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "libraryId",
+            "title",
+            "format",
+            "sourceId",
+            "inventoryAvailable"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdAssetsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdAssetsResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetReadingSessionsSessionIdPagesPageIndexRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdPagesPageIndexResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetReadingSessionsSessionIdProgressRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdProgressResponse": {
+    "properties": {
+      "progress": {
+        "nullable": true,
+        "properties": {
+          "location": {
+            "properties": {
+              "cfi": {
+                "type": "string"
+              },
+              "format": {
+                "enum": [
+                  "epub",
+                  "pdf",
+                  "cbz"
+                ],
+                "type": "string"
+              },
+              "pageIndex": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "progression": {
+                "type": "number"
+              },
+              "section": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "format",
+              "progression"
+            ],
+            "type": "object"
+          },
+          "observedAt": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "sourceRevision": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sourceId",
+          "sourceRevision",
+          "location",
+          "revision",
+          "observedAt",
+          "stale"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "progress"
+    ],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdSourceRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdSourceResponse": {
+    "format": "binary",
+    "type": "string"
   },
   "GetRemotePlaybackControlsRequest": {
     "properties": {},
@@ -124977,6 +125745,35 @@ export const schemas = {
               "nullable": true,
               "type": "string"
             },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
+            },
             "available": {
               "type": "boolean"
             },
@@ -125605,6 +126402,35 @@ export const schemas = {
             "addedAt": {
               "nullable": true,
               "type": "string"
+            },
+            "audioFacts": {
+              "properties": {
+                "bitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "channels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "codec": {
+                  "type": "string"
+                },
+                "lossless": {
+                  "type": "boolean"
+                },
+                "sampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "codec"
+              ],
+              "type": "object"
             },
             "available": {
               "type": "boolean"
@@ -140122,6 +140948,15 @@ export const schemas = {
     "format": "binary",
     "type": "string"
   },
+  "HeadReadingSessionsSessionIdSourceRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "HeadReadingSessionsSessionIdSourceResponse": {
+    "format": "binary",
+    "type": "string"
+  },
   "HeadV1MediaSubtitlesGrantResourceRevisionFontsFontRequest": {
     "properties": {},
     "required": [],
@@ -140932,6 +141767,9 @@ export const schemas = {
                     },
                     "id": {
                       "type": "string"
+                    },
+                    "interlaced": {
+                      "type": "boolean"
                     },
                     "level": {
                       "maximum": 9007199254740991,
@@ -142765,6 +143603,9 @@ export const schemas = {
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -142802,6 +143643,36 @@ export const schemas = {
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -142828,6 +143699,11 @@ export const schemas = {
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {
@@ -145443,14 +146319,28 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "dsdGainDb": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "gapless": {
+                "type": "boolean"
+              },
+              "neverBoost": {
                 "type": "boolean"
               },
               "normalization": {
                 "type": "string"
+              },
+              "smoothTransitions": {
+                "type": "boolean"
               }
             },
             "required": [
+              "neverBoost",
+              "smoothTransitions",
+              "dsdGainDb",
               "gapless",
               "crossfadeMs",
               "normalization"
@@ -168078,8 +168968,23 @@ export const schemas = {
       },
       "facts": {
         "properties": {
+          "audioBitDepth": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "audioChannels": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "audioCodec": {
             "type": "string"
+          },
+          "audioSampleRate": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "audioTracks": {
             "maximum": 9007199254740991,
@@ -168419,6 +169324,119 @@ export const schemas = {
       "sessionFamilyId",
       "tokenGeneration",
       "authorizationHorizon"
+    ],
+    "type": "object"
+  },
+  "PostReadingSessionsRequest": {
+    "properties": {
+      "itemId": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "itemId",
+      "sourceId"
+    ],
+    "type": "object"
+  },
+  "PostReadingSessionsResponse": {
+    "properties": {
+      "format": {
+        "enum": [
+          "epub",
+          "pdf",
+          "cbz"
+        ],
+        "type": "string"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "metadata": {
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "ltr",
+              "rtl",
+              "vertical"
+            ],
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "pageNames": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "resources": {
+        "items": {
+          "properties": {
+            "mime": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "size": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "path",
+            "mime",
+            "size"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "sessionId": {
+        "type": "string"
+      },
+      "size": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "spine": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "sessionId",
+      "itemId",
+      "sourceId",
+      "revision",
+      "format",
+      "size",
+      "metadata"
     ],
     "type": "object"
   },
@@ -171121,6 +172139,9 @@ export const schemas = {
               "container": {
                 "type": "string"
               },
+              "conversionGainDb": {
+                "type": "number"
+              },
               "decoderConfig": {
                 "type": "string"
               },
@@ -171158,6 +172179,36 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "loudnessAppliedDb": {
+                "type": "number"
+              },
+              "loudnessEnvelope": {
+                "properties": {
+                  "endLufs": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "intervalMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "startLufs": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "intervalMs",
+                  "startLufs",
+                  "endLufs"
+                ],
+                "type": "object"
+              },
               "mode": {
                 "type": "string"
               },
@@ -171184,6 +172235,11 @@ export const schemas = {
                   "url"
                 ],
                 "type": "object"
+              },
+              "sourceBitrateBps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "trim": {
                 "properties": {
@@ -171821,6 +172877,9 @@ export const schemas = {
       "libraries": {
         "items": {
           "properties": {
+            "kind": {
+              "type": "string"
+            },
             "name": {
               "type": "string"
             }
@@ -179785,6 +180844,127 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutReadingSessionsSessionIdProgressRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "location": {
+        "properties": {
+          "cfi": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "epub",
+              "pdf",
+              "cbz"
+            ],
+            "type": "string"
+          },
+          "pageIndex": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "progression": {
+            "type": "number"
+          },
+          "section": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "progression"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "location"
+    ],
+    "type": "object"
+  },
+  "PutReadingSessionsSessionIdProgressResponse": {
+    "properties": {
+      "progress": {
+        "nullable": true,
+        "properties": {
+          "location": {
+            "properties": {
+              "cfi": {
+                "type": "string"
+              },
+              "format": {
+                "enum": [
+                  "epub",
+                  "pdf",
+                  "cbz"
+                ],
+                "type": "string"
+              },
+              "pageIndex": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "progression": {
+                "type": "number"
+              },
+              "section": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "format",
+              "progression"
+            ],
+            "type": "object"
+          },
+          "observedAt": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "sourceRevision": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sourceId",
+          "sourceRevision",
+          "location",
+          "revision",
+          "observedAt",
+          "stale"
+        ],
+        "type": "object"
+      },
+      "saved": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "progress",
+      "saved"
+    ],
+    "type": "object"
+  },
   "PutSavedPinsKindIdRequest": {
     "properties": {
       "expectedRevision": {
@@ -181218,6 +182398,9 @@ export const schemas = {
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -181255,6 +182438,36 @@ export const schemas = {
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -181281,6 +182494,11 @@ export const schemas = {
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {
@@ -192893,6 +194111,9 @@ export const schemas = {
               "container": {
                 "type": "string"
               },
+              "conversionGainDb": {
+                "type": "number"
+              },
               "decoderConfig": {
                 "type": "string"
               },
@@ -192930,6 +194151,36 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "loudnessAppliedDb": {
+                "type": "number"
+              },
+              "loudnessEnvelope": {
+                "properties": {
+                  "endLufs": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "intervalMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "startLufs": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "intervalMs",
+                  "startLufs",
+                  "endLufs"
+                ],
+                "type": "object"
+              },
               "mode": {
                 "type": "string"
               },
@@ -192956,6 +194207,11 @@ export const schemas = {
                   "url"
                 ],
                 "type": "object"
+              },
+              "sourceBitrateBps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "trim": {
                 "properties": {
@@ -193939,6 +195195,9 @@ export const schemas = {
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -193976,6 +195235,36 @@ export const schemas = {
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -194002,6 +195291,11 @@ export const schemas = {
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {

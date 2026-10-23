@@ -63,7 +63,7 @@ export interface QueueController {
   audioPrepared(token: string): void;
   commitAudio(token: string): Promise<void>;
   audioBoundary(token: string, position: number): Promise<void>;
-  discardAudio(message: string): void;
+  discardAudio(): void;
   audioRenderFailed(message: string): void;
 }
 

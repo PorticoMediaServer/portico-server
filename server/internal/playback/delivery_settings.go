@@ -33,10 +33,11 @@ type DeliveryConfiguration struct {
 	RemuxEnabled           bool `json:"remuxEnabled"`
 
 	// Server clamps narrow every viewer preference. Zero means "no clamp".
-	MaxVideoBitrateBPS int  `json:"maxVideoBitrateBps"`
-	MaxAudioBitrateBPS int  `json:"maxAudioBitrateBps"`
-	MaxVideoHeight     int  `json:"maxVideoHeight"`
-	AllowHDR           bool `json:"allowHDR"`
+	MaxVideoBitrateBPS int    `json:"maxVideoBitrateBps"`
+	MaxAudioBitrateBPS int    `json:"maxAudioBitrateBps"`
+	MaxVideoHeight     int    `json:"maxVideoHeight"`
+	MaxMusicQuality    string `json:"maxMusicQuality"`
+	AllowHDR           bool   `json:"allowHDR"`
 
 	// Owner ceilings on simultaneous conversions. Zero means unlimited; the
 	// host-capacity bound on running converters still applies underneath. A
@@ -75,6 +76,7 @@ func DefaultDeliveryConfiguration() DeliveryConfiguration {
 	return DeliveryConfiguration{
 		HardwareBackend: "auto",
 		OutputFormat:    "auto", DownloadMaxQuality: "original",
+		MaxMusicQuality:        "original",
 		SessionStorageMiB:      4096,
 		ToneMapping:            true,
 		ToneMapAlgorithm:       decoder.DefaultToneMapAlgorithm,
@@ -92,6 +94,11 @@ func DefaultDeliveryConfiguration() DeliveryConfiguration {
 // default for that field alone.
 func (c DeliveryConfiguration) Normalized() DeliveryConfiguration {
 	d := DefaultDeliveryConfiguration()
+	switch c.MaxMusicQuality {
+	case "original", "cd-quality", "320", "96":
+	default:
+		c.MaxMusicQuality = "original"
+	}
 	// Until the canonical registry supplies a validated mode, the real owner
 	// TranscodingEnabled input remains authoritative. Absence is not an "all" write.
 	if c.ConversionMode != "all" && c.ConversionMode != "sound" && c.ConversionMode != "never" {

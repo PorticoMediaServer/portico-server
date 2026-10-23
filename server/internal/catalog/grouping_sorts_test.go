@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -236,8 +237,10 @@ func TestGroupingKindSortsFollowSourceEdits(t *testing.T) {
 func TestGroupingCursorSurvivesRemovedAnchorAndFencesSeed(t *testing.T) {
 	c := catalogtest.Open(t)
 	library := c.Library("m", "Movies", "movie", "/m")
+	ids := map[string]int64{}
 	for i := 0; i < 7; i++ {
 		item := c.Movie(library, fmt.Sprintf("/m/%d.mkv", i), fmt.Sprintf("Movie %d", i), 2000)
+		ids[item.Public] = item.ID
 		c.Fields(item.ID, map[string]any{"release_date": fmt.Sprintf("2020-01-%02d", i+1)})
 	}
 	c.Drain()
@@ -248,14 +251,21 @@ func TestGroupingCursorSurvivesRemovedAnchorAndFencesSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.Exec(`DELETE FROM catalog_entities WHERE public_id=pid_blob(?)`, first.Entries[1].ID)
+	c.Delete(ids[first.Entries[1].ID])
 	c.Drain()
 	r.Cursor = first.PageInfo.NextCursor
-	next, err := s.BrowseEntities(v, r)
-	if err != nil || len(next.Entries) != 2 || next.Entries[0].Title != "Movie 2" {
-		t.Fatalf("removed anchor %+v %v", next, err)
+	if _, err := s.BrowseEntities(v, r); !errors.Is(err, ErrStaleContinuation) {
+		t.Fatalf("removed anchor did not invalidate its old ordering: %v", err)
 	}
+	// A published ordering requires a range recovery, whose missing anchor
+	// retains the viewport's position in the current list.
 	r.Cursor = ""
+	r.Range = &BrowseRange{Start: 1, Revision: first.PageInfo.Revision, AnchorID: first.Entries[1].ID}
+	next, err := s.BrowseEntities(v, r)
+	if err != nil || next.PageInfo.Total != 6 || next.PageInfo.Start != 1 || len(next.Entries) != 2 || next.Entries[0].Title != "Movie 2" || next.Entries[1].Title != "Movie 3" {
+		t.Fatalf("removed anchor recovery %+v %v", next, err)
+	}
+	r.Range = nil
 	r.Sort = []BrowseSortSelection{{Field: "random", Direction: "asc", Seed: 123}}
 	first, err = s.BrowseEntities(v, r)
 	if err != nil {

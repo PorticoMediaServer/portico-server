@@ -38,6 +38,9 @@ func Failed(ctx context.Context, q Querier, asset string) (bool, error) {
 // Save records a measurement against the asset's current size and mtime and
 // clears any recorded failure.
 func Save(ctx context.Context, db *sql.DB, asset string, f Facts) error {
+	if f.TrimSource == "mpc-header-pending" {
+		return ErrInconsistent
+	}
 	gated, err := dbwork.Begin(ctx, db, dbwork.ClassBackgroundMedia)
 	if err != nil {
 		return err

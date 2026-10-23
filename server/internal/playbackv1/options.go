@@ -68,6 +68,7 @@ type Part struct {
 	SizeBytes  int64  `json:"sizeBytes"`
 }
 type VideoStream struct {
+	Interlaced                 *bool   `json:"interlaced,omitempty"`
 	ChromaSubsampling          string  `json:"chromaSubsampling,omitempty"`
 	FrameRateNumerator         int     `json:"frameRateNumerator,omitempty"`
 	FrameRateDenominator       int     `json:"frameRateDenominator,omitempty"`
@@ -316,12 +317,14 @@ func resolutionLabel(height int) string {
 }
 
 func hdrName(transfer, detail string) string {
-	if strings.Contains(detail, "dolby_vision") || strings.Contains(detail, "\"dovi") {
+	var stored assets.Stream
+	stored.DecodeDetail(detail)
+	if stored.Detail.DynamicRange == assets.RangeDolbyVision {
 		return "dolbyvision"
 	}
 	switch transfer {
 	case "smpte2084":
-		if strings.Contains(detail, "hdr10Plus") || strings.Contains(detail, "hdr10plus") || strings.Contains(detail, "hdr10_plus") {
+		if stored.Detail.HDR10Plus {
 			return "hdr10plus"
 		}
 		return "hdr10"
@@ -458,7 +461,7 @@ func (s *Service) streams(ctx context.Context, tx *sql.Tx, asset string, v *Vers
 		lower := strings.ToLower(title)
 		switch kind {
 		case "video":
-			v.Video = append(v.Video, VideoStream{ChromaSubsampling: facts.ChromaSubsampling, FrameRateNumerator: facts.FrameRateNumerator, FrameRateDenominator: facts.FrameRateDenominator, FrameRateMode: facts.FrameRateMode, DolbyVisionProfile: facts.DolbyVisionProfile, DolbyVisionCompatibility: facts.DolbyVisionCompatibility, DolbyVisionRPU: facts.DolbyVisionRPU, DolbyVisionBaseLayer: facts.DolbyVisionBaseLayer, DolbyVisionEnhancementType: facts.DolbyVisionEnhancementType, DolbyVisionCMVersion: facts.DolbyVisionCMVersion, HDR10Plus: facts.HDR10Plus, MasterDisplay: facts.MasterDisplay, MaxCLL: facts.MaxCLL, ID: streamID("v", index), Codec: codec, Profile: strings.ToLower(facts.Profile), Level: facts.Level, BitDepth: facts.BitDepth, Width: facts.Width, Height: facts.Height, Fps: facts.FrameRate, HDR: hdrName(transfer, detail), BitrateKbps: int(facts.BitRate / 1000)})
+			v.Video = append(v.Video, VideoStream{Interlaced: facts.ObservedInterlaced(), ChromaSubsampling: facts.ChromaSubsampling, FrameRateNumerator: facts.FrameRateNumerator, FrameRateDenominator: facts.FrameRateDenominator, FrameRateMode: facts.FrameRateMode, DolbyVisionProfile: facts.DolbyVisionProfile, DolbyVisionCompatibility: facts.DolbyVisionCompatibility, DolbyVisionRPU: facts.DolbyVisionRPU, DolbyVisionBaseLayer: facts.DolbyVisionBaseLayer, DolbyVisionEnhancementType: facts.DolbyVisionEnhancementType, DolbyVisionCMVersion: facts.DolbyVisionCMVersion, HDR10Plus: facts.HDR10Plus, MasterDisplay: facts.MasterDisplay, MaxCLL: facts.MaxCLL, ID: streamID("v", index), Codec: codec, Profile: strings.ToLower(facts.Profile), Level: facts.Level, BitDepth: facts.BitDepth, Width: facts.Width, Height: facts.Height, Fps: facts.FrameRate, HDR: hdrName(transfer, detail), BitrateKbps: int(facts.BitRate / 1000)})
 		case "audio":
 			v.Audio = append(v.Audio, AudioStream{Variant: facts.AudioVariant, ObjectAudio: facts.ObjectAudio, SampleRate: facts.SampleRate, BitDepth: facts.BitsPerSample, DTSX: facts.ObjectAudio == "dtsx", ID: streamID("a", index), Codec: codec, Channels: channels, Layout: layout, Atmos: facts.ObjectAudio == "atmos", Language: language, Title: title, Default: isDefault, Commentary: strings.Contains(lower, "commentary"), VisualImpaired: facts.AudioDescription})
 		case "subtitle":
@@ -489,8 +492,9 @@ type Reach struct {
 	AdminMaxVideoBitrateBPS int
 	// SavedQuality is the viewer's saved default quality for this reach
 	// ("original", "automatic" or a ladder id); empty applies the link/kind default.
-	SavedQuality   string
-	TransportClass string
+	SavedQuality      string
+	SavedMusicQuality string
+	TransportClass    string
 	// DeviceID is the device asking, whose capability document decides whether
 	// a previewed subtitle would be drawn by the device or burned in.
 	DeviceID string
@@ -584,7 +588,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 	}
 	if preview.Quality.Mode == "" {
-		preview.Quality = savedQuality(playback.DefaultSavedQuality(reach.SavedQuality, reach.TransportClass, audioOnly))
+		preview.Quality = defaultQuality(reach.SavedQuality, reach.SavedMusicQuality, reach.TransportClass, kind)
 	}
 	preview.Quality.Step = ""
 	if preview.VersionID == "" && !audioOnly && len(out.Versions) > 1 {
@@ -629,6 +633,11 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 	}
 	facts := SourceFacts{BitrateKbps: version.BitrateKbps}
+	if musicKind(kind) && version.SizeBytes > 0 && version.DurationMs > 0 {
+		// Round the whole-file upper bound up: truncation must not label a
+		// file just above a music ceiling as source-equivalent.
+		facts.BitrateKbps = int((version.SizeBytes*8 + version.DurationMs - 1) / version.DurationMs)
+	}
 	if len(version.Video) > 0 {
 		facts.Height = version.Video[0].Height
 		if version.Video[0].BitrateKbps > 0 {
@@ -636,6 +645,9 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 	}
 	out.Qualities = qualityOptions(facts, audioOnly || len(version.Video) == 0)
+	if musicKind(kind) {
+		out.Qualities = musicQualityOptions(facts)
+	}
 	// Chapters and markers are the chosen version's, part after part on one
 	// timeline (each part's starts offset by the parts before it).
 	offset := int64(0)
@@ -672,7 +684,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		offset += part.DurationMs
 	}
 	done()
-	out.Preferred = &Preferred{VersionID: version.ID, Reason: "default", Quality: savedQuality(playback.DefaultSavedQuality(reach.SavedQuality, reach.TransportClass, audioOnly))}
+	out.Preferred = &Preferred{VersionID: version.ID, Reason: "default", Quality: defaultQuality(reach.SavedQuality, reach.SavedMusicQuality, reach.TransportClass, kind)}
 	if s.Playback != nil {
 		plan, err := s.Playback.PlanV1(ctx, p, item, choice)
 		switch {

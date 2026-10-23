@@ -5,6 +5,13 @@ package operations
 // A new registry field without an owner fails the registry contract test.
 var preferenceConsumers = func() map[string]string {
 	m := map[string]string{
+		"music.qualityHome":                   "server.playback.delivery_policy",
+		"music.qualityAway":                   "server.playback.delivery_policy",
+		"music.qualityMobile":                 "server.playback.delivery_policy",
+		"music.qualityDownloads":              "server.downloads.quality",
+		"music.neverBoost":                    "client.audio_effects",
+		"music.smoothTransitions":             "client.audio_effects",
+		"music.dsdGainDb":                     "server.playback.audio_conversion",
 		"playback.skipBackMs":                 "client.playback.controls",
 		"playback.skipForwardMs":              "client.playback.controls",
 		"playback.autoplayNext":               "client.playback.continuation",
@@ -69,11 +76,14 @@ var preferenceConsumers = func() map[string]string {
 // only from the effective registry values. Clients apply it to their renderer
 // and save edits with PATCH /v1/preferences rather than a second settings store.
 type AudioEffectPreferences struct {
-	Gapless       bool   `json:"gapless"`
-	CrossfadeMs   int    `json:"crossfadeMs"`
-	Normalization string `json:"normalization"`
+	NeverBoost         bool   `json:"neverBoost"`
+	SmoothTransitions  bool   `json:"smoothTransitions"`
+	DSDGainDB          int    `json:"dsdGainDb"`
+	Gapless            bool   `json:"gapless"`
+	CrossfadeMs        int    `json:"crossfadeMs"`
+	Normalization      string `json:"normalization"`
 }
 
 func (v PreferenceValues) AudioEffects() AudioEffectPreferences {
-	return AudioEffectPreferences{Gapless: v.Bool("music.gapless"), CrossfadeMs: v.Int("music.crossfadeMs"), Normalization: v.Text("music.audioNormalization")}
+	return AudioEffectPreferences{NeverBoost: v.Bool("music.neverBoost"), SmoothTransitions: v.Bool("music.smoothTransitions"), DSDGainDB: v.Int("music.dsdGainDb"), Gapless: v.Bool("music.gapless"), CrossfadeMs: v.Int("music.crossfadeMs"), Normalization: v.Text("music.audioNormalization")}
 }
