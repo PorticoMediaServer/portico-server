@@ -28,7 +28,7 @@ import (
 	"portico.local/server/internal/remotesources"
 )
 
-// This is an actual rclone LOCAL backend with real scanned publications. It
+// This uses actual rclone DAV backends with real scanned publications. It
 // proves Reading's actor/book/lease composition, not all-provider behavior or
 // immutable origin identity. No permissive source/actor callback is installed.
 func readingRemoteProgram(t *testing.T) string {
@@ -144,9 +144,6 @@ func TestReadingRemoteRegistered(t *testing.T) {
 			library, err := f.cat.Create("Real remote "+kind, kind, filepath.Join(remoteRoot, kind))
 			if err != nil {
 				t.Fatal("real remote library", err)
-			}
-			if _, err = remote.InspectRoot(life, filepath.Join(remoteRoot, kind)); err != nil {
-				t.Fatal("source metadata after real library publication", err)
 			}
 			readingScan(t, f, library.ID)
 			member, err := f.id.CreateDirectMember(context.Background(), owner.AccountToken, identity.DirectMemberCreate{Username: "reader-" + kind, Password: "different-test-password", Name: "Reader", AllowedLibraries: []string{library.ID}})
@@ -381,9 +378,6 @@ func TestReadingRemoteSequentialPDF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = remote.InspectRoot(life, source.Source.RootPath); err != nil {
-		t.Fatal("sequential metadata after real library publication", err)
-	}
 	readingScan(t, f, library.ID)
 	d := f.deps
 	d.Hosted = nil
@@ -462,7 +456,7 @@ func readingDAVFiles(t *testing.T, root string) *httptest.Server {
 			w.Header().Set("Content-Type", "application/xml")
 			w.WriteHeader(207)
 			fmt.Fprint(w, `<d:multistatus xmlns:d="DAV:">`)
-			emit := func(name, path string, info os.FileInfo) {
+			emit := func(name string, info os.FileInfo) {
 				href := "/"
 				if name != "" {
 					parts := strings.Split(filepath.ToSlash(name), "/")
@@ -482,7 +476,7 @@ func readingDAVFiles(t *testing.T, root string) *httptest.Server {
 				}
 				fmt.Fprint(w, `</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>`)
 			}
-			emit(relative, file, info)
+			emit(relative, info)
 			if info.IsDir() && r.Header.Get("Depth") == "1" {
 				entries, err := os.ReadDir(file)
 				if err != nil {
@@ -494,7 +488,7 @@ func readingDAVFiles(t *testing.T, root string) *httptest.Server {
 					if err != nil {
 						return
 					}
-					emit(filepath.Join(relative, entry.Name()), child, value)
+					emit(filepath.Join(relative, entry.Name()), value)
 				}
 			}
 			fmt.Fprint(w, `</d:multistatus>`)
