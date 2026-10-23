@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {heroSpec} from '@design';
 import {HomeService, type HomeSnapshot} from '@core/home-service.ts';
@@ -11,7 +11,7 @@ import {homeChannelSelection, homeEntryCapabilities} from '@core/home-selection.
 import {homeCollectionCaption} from '@core/presentation/home-spotlight.ts';
 import {channelMonograms, programmeFactParts, type TimeEnvironment} from '@portico/client-core/kit-model';
 import {useFreshness, usePooledService, useQuietRefresh} from '../../platform/freshness';
-import {Artwork, AmbientArt, GeneratedArt} from '../../kit/artwork';
+import {Artwork, AmbientArt, ColourBackdrop, GeneratedArt} from '../../kit/artwork';
 import {Hero, HeroFacts, type HeroCandidate, type LayoutPlatform} from '../../kit/layout';
 import {Button} from '../../kit/controls';
 import {CollectionBanner, LiveCard, PosterCard, RankedCard, SquareCard, WideCard, type CardSelection} from '../../kit/cards';
@@ -20,6 +20,7 @@ import type {ShellArtwork} from '../../shell/artwork';
 import {useShellWidth} from '../../shell/viewport';
 import {currentHomeLive, homeCardModel, homeLiveDeadline, homePlaybackTarget, homeSpotlights} from './model';
 import {PagedShelf} from '../browse/PagedShelf';
+import {cardScale, type ScreenAppearance} from '../browse/appearance';
 import styles from './home.module.css';
 import type {HomeCustomizationBindings} from './customization';
 import {HomeCustomizeEntry} from './Customize';
@@ -45,8 +46,8 @@ export type HomeEffects = Readonly<{
   reportError: (error: unknown) => void;
   openHome?: () => void;
 }>;
-export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; serverName?: string; customization?: HomeCustomizationBindings}>;
-type HomePresentation = Pick<HomeBindings, 'artwork' | 'effects' | 'selection' | 'time' | 'reducedMotion'>;
+export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; appearance?: ScreenAppearance; serverName?: string; customization?: HomeCustomizationBindings}>;
+type HomePresentation = Pick<HomeBindings, 'artwork' | 'effects' | 'selection' | 'time' | 'reducedMotion' | 'appearance'>;
 const t = defaultI18n.t;
 const dependencies = [dependsOn.libraries, dependsOn.content(), dependsOn.order(), dependsOn.personal(), dependsOn.progress(), dependsOn.settings('preferences'), dependsOn.settings('server'), dependsOn.list('recommendations'), dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.event('stream.resync')];
 const pageSubscribe = (listener: () => void) => { document.addEventListener('visibilitychange', listener); return () => document.removeEventListener('visibilitychange', listener); };
@@ -124,7 +125,7 @@ export function HomeScreen(bindings: HomeBindings) {
 }
 
 type Spotlight = Omit<ReturnType<typeof homeSpotlights>[number], 'reason'> & HeroCandidate & {causalReason: HomeReason; source: HomeSpotlight};
-export function HomeView({service, customization, document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
+export function HomeView({service, customization, document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion, appearance}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
   const width = useShellWidth(), platform: LayoutPlatform = width >= 1024 ? 'desktop' : 'phone-web';
   const heroPixels = Math.max(width, heroSpec.backdropWidth[platform === 'desktop' ? 'web' : 'phone']) * devicePixelRatio;
   const hero = useVisible(), env = useMemo(() => ({t, locale: time.locale}), [time.locale]);
@@ -140,10 +141,10 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
     if (target) void effects.play(entry, resume).catch(effects.reportError);
   };
   return <div className={styles.home} data-home-document={document.viewerFence}>
-    {candidates.length > 0 && <div ref={hero.ref}><Hero<Spotlight> candidates={candidates} platform={platform} visible={hero.visible} reducedMotion={reducedMotion}
+    {candidates.length > 0 && <div ref={hero.ref}><Hero<Spotlight> candidates={candidates} platform={platform} visible={hero.visible} reducedMotion={appearance?.reducedMotion ?? reducedMotion}
       renderReason={slide => slide.reason}
       renderMetadata={slide => <HeroFacts parts={slide.facts} platform={platform} />}
-      renderArtwork={(slide, context) => <AmbientArt source={artwork.ambient(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, {group: 'home-hero', order: context.index, priority: 'high'})}
+      renderArtwork={(slide, context) => appearance?.showBackdrops === false ? <ColourBackdrop shape="side" fill/> : <AmbientArt source={artwork.ambient(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, {group: 'home-hero', order: context.index, priority: 'high'})}
         foreground={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, heroPixels, 16 / 9, {group: 'home-hero', order: context.index, priority: 'high', large: true})}
         treatment={platform === 'desktop' ? 'hero' : 'phone'} visible={context.visible} onReady={context.onReady} onError={context.onError} />}
       renderThumbnail={(slide, context) => <Artwork source={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, 132 * devicePixelRatio, 16 / 9, {group: 'home-thumbnails', order: context.index})} alt="" visible={context.visible} />}
@@ -156,7 +157,7 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
     {selection.toolbar}
     <div className={styles.rows} data-with-hero={candidates.length > 0}>
       {rows.map((row, index) => <HomeRowView key={row.id} row={row} rowIndex={index} platform={platform} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}
-        artwork={artwork} effects={effects} selection={selection} time={time} reducedMotion={reducedMotion} />)}
+        artwork={artwork} effects={effects} selection={selection} time={time} appearance={appearance} reducedMotion={appearance?.reducedMotion ?? reducedMotion} />)}
       {customization && <HomeCustomizeEntry service={service} binding={customization}/>}
     </div>
   </div>;
@@ -185,12 +186,13 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bi
     onSeeAll: row.seeAll && (!phone || !['continue', 'continue_books', 'community_watching'].includes(row.id)) ? () => bindings.effects.openSeeAll(row.seeAll!) : undefined};
   const wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
   const ranked = row.id === 'community_watching' && !!row.period;
-  const cardWidth = ranked ? platform === 'desktop' ? 262 : 186 : wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118;
+  const scale = cardScale(bindings.appearance);
+  const cardWidth = (ranked ? platform === 'desktop' ? 262 : 186 : wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118) * scale;
   const live = currentHomeLive(row.live, nowMs);
   if (row.live) {
     if (!live) return null;
     const marks = channelMonograms({kind: 'authoritative', channels: live.channels.map(({channel}) => ({sourceId: channel.sourceId, id: channel.id, mark: channel.mark}))});
-    const liveWidth = platform === 'desktop' ? 316 : 244, liveHeight = platform === 'desktop' ? 178 : 140;
+    const liveWidth = (platform === 'desktop' ? 316 : 244) * scale, liveHeight = (platform === 'desktop' ? 178 : 140) * scale;
     return <PagedShelf {...header} items={live.channels} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={liveWidth} artworkRatio={liveWidth / liveHeight} getKey={value => JSON.stringify([value.channel.sourceId, value.channel.id])} reducedMotion={bindings.reducedMotion}
       onVisibleRange={onRange}
       renderItem={(item, context) => <VisibleLive item={item} mark={marks.get(item.channel.sourceId)!.get(item.channel.id)!} nowMs={nowMs} order={rowIndex * 1000 + context.index} row={row} {...bindings} />} />;
@@ -199,49 +201,50 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bi
     return <VisibleCollection row={row} rowIndex={rowIndex} {...bindings} />;
   }
   if (!row.entries.length) return null;
-  return <PagedShelf {...header} items={row.entries} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={cardWidth} artworkRatio={ranked ? cardWidth / (platform === 'desktop' ? 255 : 174) : wide ? 16 / 9 : square ? 1 : 2 / 3} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={onRange}
+  return <PagedShelf {...header} items={row.entries} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={cardWidth} artworkRatio={ranked ? cardWidth / ((platform === 'desktop' ? 255 : 174) * scale) : wide ? 16 / 9 : square ? 1 : 2 / 3} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={onRange}
     renderItem={(entry, context) => <VisibleCard entry={entry} row={row} rowIndex={rowIndex} index={context.index} platform={platform} {...bindings} />} />;
 }
 
-function VisibleCollection({row, rowIndex, artwork, effects, selection, time}: HomePresentation & {row: HomeRow; rowIndex: number}) {
+function VisibleCollection({row, rowIndex, artwork, effects, selection, time, appearance}: HomePresentation & {row: HomeRow; rowIndex: number}) {
   const interest = useVisible(), collection = row.collection!;
   const open = () => effects.openSeeAll({type: 'collection', resourceId: collection.collection.id, libraryId: collection.collection.libraryId});
   return <div ref={interest.ref} className={styles.collection}><CollectionBanner model={{title: collection.collection.name, caption: homeCollectionCaption(collection, {t, locale: time.locale})}} kindLabel={t('next.home.collection')}
     visible={interest.visible}
     selection={selection.collection(row)}
-    artwork={artwork.foreground(collection.backdropUrl, 1312 * devicePixelRatio, 16 / 9, {order: rowIndex * 1000, group: row.id})}
-    ambient={artwork.ambient(collection.backdropUrl, {order: rowIndex * 1000, group: row.id})}
+    artwork={appearance?.showBackdrops === false ? undefined : artwork.foreground(collection.backdropUrl, 1312 * devicePixelRatio, 16 / 9, {order: rowIndex * 1000, group: row.id})}
+    ambient={appearance?.showBackdrops === false ? undefined : artwork.ambient(collection.backdropUrl, {order: rowIndex * 1000, group: row.id})}
     covers={collection.members.slice(0, 4).flatMap((entry, index) => { const art = artwork.foreground(entry.posterUrl, 50 * devicePixelRatio, 2 / 3, {order: rowIndex * 1000 + index, group: row.id}); return art ? [art] : []; })}
     actionLabel={t('next.home.openCollection')} actionVariant="glass" onAction={open} onNavigate={open} /></div>;
 }
 
-function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, selection, time}: HomePresentation & {entry: ContentEntry; row: HomeRow; rowIndex: number; index: number; platform: LayoutPlatform}) {
+function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, selection, time, appearance}: HomePresentation & {entry: ContentEntry; row: HomeRow; rowIndex: number; index: number; platform: LayoutPlatform}) {
   const interest = useVisible(), wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
-  const width = wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118;
+  const scale = cardScale(appearance), width = (wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118) * scale;
   const resume = row.resumes?.find(value => value.entryId === entry.id)?.target ?? entry;
   const target = homePlaybackTarget(entry, resume);
   const model = homeCardModel(wide ? resume : entry, wide, {t, locale: time.locale});
   const source = wide ? entry.backdropUrl ?? entry.posterUrl : entry.posterUrl;
-  const props = {model, visible: interest.visible, watched: entry.watched, isNew: entry.new,
+  const props = {model, visible: interest.visible, watched: entry.watched, isNew: entry.new, style: {width: '100%'},
     artwork: artwork.foreground(source, width * devicePixelRatio, wide ? 16 / 9 : square ? 1 : 2 / 3, {order: rowIndex * 1000 + index, group: row.id}),
-    ambient: square ? artwork.ambient(source, {order: rowIndex * 1000 + index, group: row.id}) : undefined,
+    ambient: square && appearance?.showBackdrops !== false ? artwork.ambient(source, {order: rowIndex * 1000 + index, group: row.id}) : undefined,
     fallback: <GeneratedArt glyph={Array.from((entry.displayTitle ?? entry.title).trim())[0] ?? ''} />,
     onNavigate: () => effects.openEntry(entry),
     onPlay: target ? () => { void effects.play(entry, resume).catch(effects.reportError); } : undefined,
     selection: selection.card(row, entry),
     onMore: selection.moreAvailable(entry) ? (anchor: HTMLButtonElement) => effects.openMore(row, entry, anchor) : undefined,
     moreExpanded: selection.moreExpanded(row, entry)};
-  return <div ref={interest.ref}>{row.id === 'community_watching' && row.period ? <RankedCard {...props} rank={row.start + index + 1} /> : wide ? <WideCard {...props} /> : square ? <SquareCard {...props} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'} /> : <PosterCard {...props} />}</div>;
+  const ranked = row.id === 'community_watching' && !!row.period;
+  return <div ref={interest.ref} className={ranked ? styles.scaledRanked : undefined} style={ranked ? {'--home-card-scale': scale} as CSSProperties : undefined}>{ranked ? <RankedCard {...props} rank={row.start + index + 1} /> : wide ? <WideCard {...props} /> : square ? <SquareCard {...props} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'} /> : <PosterCard {...props} />}</div>;
 }
 
-function VisibleLive({item, mark, nowMs, order, row, artwork, effects, time, selection}: HomePresentation & {item: HomeChannel; mark: Parameters<typeof LiveCard>[0]['channel']['mark']; nowMs: number; order: number; row: HomeRow}) {
-  const interest = useVisible(), {channel} = item;
+function VisibleLive({item, mark, nowMs, order, row, artwork, effects, time, selection, appearance}: HomePresentation & {item: HomeChannel; mark: Parameters<typeof LiveCard>[0]['channel']['mark']; nowMs: number; order: number; row: HomeRow}) {
+  const interest = useVisible(), width = useShellWidth(), {channel} = item;
   const programme = channel.programmes.find(item => Date.parse(item.start) <= nowMs && nowMs < Date.parse(item.end));
   const start = programme && Date.parse(programme.start), end = programme && Date.parse(programme.end);
   const current = () => !!currentHomeLive(row.live, Date.now()) && !!selection.channel(row, item);
   const play = () => { if (current()) void effects.playChannel(channel).catch(effects.reportError); };
   const canPlay = homeChannelSelection(item, {platform: 'web', playbackAvailable: true, queueAvailable: true}).capabilities.play;
-  return <div ref={interest.ref}><LiveCard channel={{sourceId: channel.sourceId, id: channel.id, name: channel.name, number: channel.number, mark}}
+  return <div ref={interest.ref}><LiveCard style={{width: '100%', height: (width >= 1024 ? 178 : 140) * cardScale(appearance)}} channel={{sourceId: channel.sourceId, id: channel.id, name: channel.name, number: channel.number, mark}}
     programme={programme ? {title: programme.title, facts: programmeFactParts({startMs: start, endMs: end, subtitle: programme.subtitle, categories: programme.categories, rating: programme.rating?.value, flags: programme.flags, recording: programme.recordingState === 'recording'}, time, nowMs), progress: start !== undefined && end !== undefined && end > start ? (nowMs - start) / (end - start) : undefined, live: programme.flags?.live === true, isNew: programme.flags?.new === true, premiere: programme.flags?.premiere === true} : undefined}
     visible={interest.visible} selection={selection.channel(row, item)} logo={artwork.foreground(channel.logoPath, 34 * devicePixelRatio, 1, {group: row.id, order})} onNavigate={canPlay ? play : () => { if (current()) effects.openSeeAll({type: 'guide', sourceId: channel.sourceId}); }} onPlay={canPlay ? play : undefined} /></div>;
 }

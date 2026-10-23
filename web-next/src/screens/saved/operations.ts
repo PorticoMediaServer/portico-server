@@ -20,9 +20,10 @@ export class SavedOperations {
     } finally { this.pending.delete(controller); }
   }
 
-  dispose(): void {
-    this.closed = true;
+  abortPending(): void {
     for (const controller of this.pending) controller.abort();
     this.pending.clear();
   }
+
+  dispose(): void { this.closed = true; this.abortPending(); }
 }
