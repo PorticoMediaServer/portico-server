@@ -25,6 +25,7 @@ import {TitleTabs} from './TitleTabs';
 import {ScreenProblem} from './ScreenProblem';
 import {runScreenCommand} from './context';
 import {DetailLoading} from './Loading';
+import {GenreNames} from './GenreNames';
 export {DetailLoading} from './Loading';
 
 export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string};
@@ -66,7 +67,7 @@ function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; dat
     <div className={styles.copy}>
       {data.collections?.[0] && <button className={styles.collection} type="button" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); })}>{data.collections[0].name}</button>}
       <Lockup title={item.title} platform={phone ? 'phone-web' : 'desktop'} />
-      <TitleFactsLine parts={parts} />
+      <TitleFactsLine parts={parts} genres={<GenreNames names={metadata.genres.map(value => value.name)} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} />} />
       {facts?.tagline && <p className={styles.tagline}>{facts.tagline}</p>}
       {item.overview && <TitleProse variant="hero" className={styles.blurb}>{item.overview}</TitleProse>}
       {(directed.length > 0 || starring.length > 0) && <div className={styles.credits}>{directed.length > 0 && <CreditLine message="title.directedBy" credits={directed} binding={binding} data={data} />}{starring.length > 0 && <CreditLine message="title.starring" credits={starring} binding={binding} data={data} />}</div>}
@@ -125,7 +126,7 @@ export function TitleDetails({binding, data}: {binding: DetailBindings; data: De
   const rows: (readonly [string, ReactNode])[] = [
     [t('title.releaseDate'), calendarDate(facts?.releaseDate, locale())],
     [t('library.column.runtime'), titleFactParts({durationSeconds: item.duration}, env).find(part => part.id === 'duration')?.text],
-    [t('title.genres'), metadata.genres.map(value => value.name).join(', ')],
+    [t('title.genres'), metadata.genres.length ? <GenreNames names={metadata.genres.map(value => value.name)} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} /> : undefined],
     [t('title.directedByLabel'), directors.length ? <CreditNames binding={binding} data={data} credits={directors} /> : undefined],
     [t('title.writtenByLabel'), writers.length ? <CreditNames binding={binding} data={data} credits={writers} /> : undefined],
     [t('title.studio'), facts?.studio], [t('title.network'), facts?.network], [t('title.country'), facts?.country], [t('title.edition'), facts?.edition],

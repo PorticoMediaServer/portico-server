@@ -5,6 +5,7 @@ import {screenLifetime, type ScreenContext} from './context';
 import {getContainerState, setContainerFlag, setContainerState, type ContainerState} from '@core/container-state.ts';
 import {createRecommendations} from './recommendations';
 import {titleView} from './view-state';
+import {openGenre} from './genre-binding';
 
 export function createShowBindings(context: ScreenContext) {
   const life = screenLifetime(context), service = new ShowWorkspaceService({api: life.api, scope: context.scope});
@@ -23,6 +24,11 @@ export function createShowBindings(context: ScreenContext) {
   };
   return {
     context, service, episode, primary, current, recommendations, view,
+    browseGenre(data: ShowWorkspaceData, genre: string) {
+      current(data);
+      if (!data.show.genres?.includes(genre)) throw new DOMException('Show genre changed', 'AbortError');
+      return openGenre(context, life.api, data.scope.libraryId, genre, () => current(data), life.signal());
+    },
     subject() { const route = service.getSnapshot().route; return life.current() && route?.showId === subject?.showId && route?.libraryId === subject?.libraryId ? subject?.title : undefined; },
     personal: {getSnapshot: () => personal, getBusy: () => busy, subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; }},
     async select(route: ShowWorkspaceRoute, signal?: AbortSignal) {

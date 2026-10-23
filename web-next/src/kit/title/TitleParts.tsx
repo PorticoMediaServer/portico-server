@@ -10,8 +10,8 @@ export function TitleProse({variant = 'body', className, ...props}: HTMLAttribut
   return <p {...props} data-variant={variant} className={[styles.prose, className].filter(Boolean).join(' ')} />;
 }
 /** Title pages and Top result put a border around kind/rating only, never runtime. */
-export function TitleFactsLine({parts}: {parts: readonly FactPart[]}) {
-  return <div className={styles.facts}>{parts.map(part => <span key={part.id} data-fact={part.id} data-role={part.role}>{part.text}</span>)}</div>;
+export function TitleFactsLine({parts, genres}: {parts: readonly FactPart[]; genres?: ReactNode}) {
+  return <div className={styles.facts}>{parts.map(part => <span key={part.id} data-fact={part.id} data-role={part.role}>{part.id === 'genres' && genres ? genres : part.text}</span>)}</div>;
 }
 /** Artwork-led Top result, desktop-search frame 4. Its heading scale is specific to this frame. */
 export function SearchResultHero({title, eyebrow, artwork, facts, synopsis, actions}: {title: string; eyebrow: string; artwork: ReactNode; facts: ReactNode; synopsis?: string; actions: ReactNode}) {

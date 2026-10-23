@@ -9,6 +9,7 @@ import {versionDeletionService, deletionAllowed, type VersionDeletePreview} from
 import {findLibraryFile, libraryFolders, folderOfPath, separateLibraryFile, canMergeTitles, mergeTitles, SPLITTABLE_KINDS} from '@core/title-identity.ts';
 import {validateContentEntry, type ContentEntry} from '@core/library-content.ts';
 import {titleView} from './view-state';
+import {openGenre} from './genre-binding';
 
 /** Constructor is inert. Only select/readFileInfo/readVersions perform reads. */
 export function createDetailBindings(context: ScreenContext) {
@@ -79,6 +80,11 @@ export function createDetailBindings(context: ScreenContext) {
     context, service, select, current, recommendations, view,
     subject() { const target = service.getSnapshot().target; return life.current() && target?.itemId === subject?.itemId && target?.libraryId === subject?.libraryId ? subject?.title : undefined; },
     readFileInfo: files, readVersions: versions,
+    browseGenre(data: DetailProjection, genre: string) {
+      current(data);
+      if (!data.metadata.genres.some(value => value.name === genre)) throw new DOMException('Title genre changed', 'AbortError');
+      return openGenre(context, life.api, data.scope.libraryId, genre, () => current(data), life.signal());
+    },
     async previewDelete(data: DetailProjection, captured: FileInfoProjection, fileId: string, signal?: AbortSignal) {
       await authorizeFileCommand(data, captured, 'delete', fileId, signal);
       const preview = await versionDeletionService(commandApi(signal).request).preview(data.item.id, fileId);

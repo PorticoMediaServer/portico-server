@@ -8,6 +8,7 @@ import {createSearchBindings} from '../src/screens/search/bindings.ts';
 import {createEntryDetailsBindings} from '../src/screens/detail/entry-details.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
 import type {ContentEntry} from '@core/library-content.ts';
+import {browseCapabilitiesPath} from '@core/browse.ts';
 import {setImmediate} from 'node:timers/promises';
 
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return {promise, resolve}; }
@@ -218,4 +219,40 @@ test('a removed title retains only its genuine same-target subject and clears it
   assert.equal(binding.service.getSnapshot().data, null); assert.equal(binding.subject(), 'one');
   await binding.select({libraryId: 'library', itemId: 'another'}); assert.equal(binding.subject(), undefined);
   binding.dispose(); assert.equal(binding.subject(), undefined);
+});
+
+const genreCapabilities = () => ({
+  library: {id: 'library', name: 'Movies', kind: 'movie', defaultView: 'discover'},
+  pivots: [{id: 'movies', labelKey: 'library.movies', entityKinds: ['movie'], defaultSort: [], supportedViews: ['grid', 'list'], browsable: true}],
+  resolvedPivot: null,
+  fields: [{id: 'genre', labelKey: 'browse.field.genre', type: 'identity-set', operators: ['equals', 'contains'], controlHint: 'facet-multi-select', complexity: 'quick', cost: 'indexed-join', applicableKinds: ['movie']}],
+  sorts: [], quickFilters: [],
+  queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 40, maximumLimit: 100, cursorTtlMs: 1800000},
+});
+const genrePage = () => ({...detailPage('one'), metadata: {status: 'unavailable', ratings: [], genres: [{id: 'genre', name: 'Action'}], credits: []}});
+
+test('genre navigation validates the library vocabulary and leaves its default view to the parent', async () => {
+  const destinations: unknown[] = [];
+  const owner = setup(async path => path === browseCapabilitiesPath('library', '') ? genreCapabilities() : genrePage());
+  const binding = createDetailBindings({...owner.context, effects: {...owner.context.effects, openBrowse: selector => { destinations.push(selector); }}});
+  await binding.select({libraryId: 'library', itemId: 'one'});
+  const page = binding.service.getSnapshot().data!;
+  await binding.browseGenre(page, 'Action');
+  assert.deepEqual(destinations, [{libraryId: 'library', query: {field: 'genre', operator: 'equals', value: 'Action'}}]);
+  const requests = owner.requests();
+  assert.throws(() => binding.browseGenre(page, 'Unknown'), {name: 'AbortError'});
+  assert.equal(owner.requests(), requests);
+  binding.dispose();
+});
+
+test('a late genre vocabulary cannot navigate after an authority handover', async () => {
+  const response = deferred<unknown>(); let destinations = 0;
+  const owner = setup(async path => path === browseCapabilitiesPath('library', '') ? response.promise : genrePage());
+  const binding = createDetailBindings({...owner.context, effects: {...owner.context.effects, openBrowse: () => { destinations++; }}});
+  await binding.select({libraryId: 'library', itemId: 'one'});
+  const navigation = binding.browseGenre(binding.service.getSnapshot().data!, 'Action');
+  owner.retire(); response.resolve(genreCapabilities());
+  await assert.rejects(navigation, {name: 'AbortError'});
+  assert.equal(destinations, 0);
+  binding.dispose();
 });

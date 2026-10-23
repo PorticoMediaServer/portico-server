@@ -104,9 +104,9 @@ function MergeTitle({binding, data, files, onClose, returnFocusRef}: Props) {
   };
   return <Dialog open onOpenChange={value => { if (!value) close(); }} title={t(candidate ? 'web.merge.title' : 'title.merge.action')} width={480} returnFocusRef={returnFocusRef} dismissOnOutsidePress={!busy} dismissOnBack={!busy} showCloseButton={!busy}
     footer={<><Button size="compact" variant="ghost" onClick={close} disabled={busy}>{t('action.cancel')}</Button>{candidate && <Button size="compact" variant="primary" loading={busy} onClick={() => { void confirm(); }}>{t('web.selection.merge')}</Button>}</>}>
-    <div className={styles.manageBody}>{!candidate ? <><TextField variant="search" aria-label={t('web.search.title')} value={query} onChange={event => setQuery(event.currentTarget.value)} />{entries.map(entry => <Button key={entry.id} size="compact" variant="text" onClick={() => setCandidate(entry)}>{entry.title}{entry.year && <span>{entry.year}</span>}</Button>)}</> : <>
-      <Segmented aria-label={t('web.merge.keep')} value={keepId} onValueChange={setKeepId} disabled={busy} items={[data.item, candidate].map(entry => ({value: entry.id, label: entry.title}))} />
-      <TitleProse>{t(mergeExplanation(data.item.kind), {title: keepId === data.item.id ? candidate.title : data.item.title})}</TitleProse>
+    <div className={styles.manageBody}>{!candidate ? <><TextField variant="search" aria-label={t('web.search.title')} value={query} onChange={event => setQuery(event.currentTarget.value)} />{entries.map(entry => <Button key={entry.id} size="compact" variant="text" onClick={() => setCandidate(entry)}>{entry.displayTitle ?? entry.title}{entry.year && <span>{entry.year}</span>}</Button>)}</> : <>
+      <Segmented aria-label={t('web.merge.keep')} value={keepId} onValueChange={setKeepId} disabled={busy} items={[{value: data.item.id, label: data.item.title}, {value: candidate.id, label: candidate.displayTitle ?? candidate.title}]} />
+      <TitleProse>{t(mergeExplanation(data.item.kind), {title: keepId === data.item.id ? candidate.displayTitle ?? candidate.title : data.item.title})}</TitleProse>
     </>}{failed && <ScreenFailure retry={() => { void confirm(); }} />}{snapshot.phase === 'error' && <ScreenFailure retry={() => { void search.service.retry(); }} />}</div>
   </Dialog>;
 }

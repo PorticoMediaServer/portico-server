@@ -39,7 +39,7 @@ export function TopResult({binding, result}: {binding: SearchBindings; result: T
   const kind = topResultKindLabel(result.group), allFacts = kind ? [{id: 'kind', role: 'context' as const, text: t(kind)}, ...facts] : facts;
   const next = series?.nextUp, code = next && episodeCode(next, t), action = primary.data?.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
   const showPlay = () => runScreenCommand(binding.context, () => { if (series && primary.data && action) { show.current(series); return show.primary.play(primary.data, action.id); } });
-  return <SearchResultHero title={entry.title} eyebrow={t('search.topResult')} facts={<TitleFactsLine parts={allFacts} />} synopsis={movie?.item.overview ?? series?.show.overview ?? media?.overview}
+  return <SearchResultHero title={media?.displayTitle ?? entry.title} eyebrow={t('search.topResult')} facts={<TitleFactsLine parts={allFacts} />} synopsis={movie?.item.overview ?? series?.show.overview ?? media?.overview}
     artwork={<AmbientArt treatment="title" source={preferenceValue<boolean>(preferences, 'appearance.showBackdrops') ? binding.context.artwork.ambient(source) : undefined} foreground={preferenceValue<boolean>(preferences, 'appearance.showBackdrops') ? binding.context.artwork.foreground(source, 1600, 16 / 9) : undefined} foregroundFrameStyle={{left: '30%', width: '70%', height: '100%'}} position="50% 6%" />}
     actions={movie ? <TitleActions binding={title} data={movie} topResult /> : series ? <div className={detailStyles.actions}>
       {action && <Button variant="primary" icon="i-play" onClick={showPlay}>{code ? t((next?.progressSeconds ?? 0) > 0 ? 'title.resumeEpisode' : 'title.playEpisode', {code}) : t('next.controls.play')}</Button>}
