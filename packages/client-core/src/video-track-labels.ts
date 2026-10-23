@@ -41,19 +41,22 @@ function audioParts(track: AudioStream, words: VideoTrackWords) {
   const layout = layoutName(track, words);
   return {format, objects, layout};
 }
-/** Technical format only: never the track's language/title or a viewer's choice. */
-export function videoAudioFormatName(track: AudioStream, words: VideoTrackWords): string {
+function audioFormatName(track: AudioStream, words: VideoTrackWords, separator: string): string {
   const {format, objects, layout} = audioParts(track, words);
   const named = format && objects === 'atmos' ? words.withAtmos(format) : format;
-  const rest = [named, layout].filter(Boolean).join(', ');
+  const rest = [named, layout].filter(Boolean).join(separator);
   return rest && objects === 'dtsx' ? words.withDtsx(rest) : rest;
+}
+/** Version/file format only, with the chooser's space-separated format and layout. */
+export function videoAudioFormatName(track: AudioStream, words: VideoTrackWords): string {
+  return audioFormatName(track, words, ' ');
 }
 /** Picture facts only; unknown scan never becomes a p/i suffix. */
 export function videoPictureName(video: VideoStream, words: Pick<VideoTrackWords, 'fourK'>): string {
   const width = video.width ?? 0, height = video.height ?? 0;
   const resolution = width >= 3840 || height >= 2160 ? words.fourK : height > 0 && Number.isSafeInteger(height) && typeof video.interlaced === 'boolean' ? `${height}${video.interlaced ? 'i' : 'p'}` : '';
   const ranges: Readonly<Record<string, string>> = {dolbyvision: 'Dolby Vision', dolby_vision: 'Dolby Vision', hdr10plus: 'HDR10+', hdr10_plus: 'HDR10+', hdr10: video.hdr10Plus === true ? 'HDR10+' : 'HDR10', hlg: 'HLG'};
-  return [resolution, ranges[video.hdr ?? '']].filter(Boolean).join(', ');
+  return [resolution, ranges[video.hdr ?? '']].filter(Boolean).join(' ');
 }
 export type VideoTrackNameParts = Readonly<{first: string; rest: string; label: string; title?: string; language?: string; format?: string; objectAudio?: string; layout?: string; subtitleOrigin?: SubtitleStream['source']}>;
 /** Menus consume explicit parts. Rendition identity labels never enter this function. */
@@ -61,7 +64,7 @@ export function videoTrackName(track: AudioStream | SubtitleStream, words: Video
   const title = track.title?.trim() || undefined, language = track.language || undefined;
   const first = title ?? (language ? words.language(language) : '');
   if ('codec' in track) {
-    const parts = audioParts(track, words), rest = videoAudioFormatName(track, words);
+    const parts = audioParts(track, words), rest = audioFormatName(track, words, ', ');
     return {first, rest, label: [first, rest].filter(Boolean).join(', '), title, language, format: parts.format || undefined, objectAudio: parts.objects, layout: parts.layout};
   }
   const format = SUBTITLES[track.format.toLowerCase()] ?? technical(track.format);
