@@ -10737,6 +10737,33 @@ export const routes = [
       "account_move_waiting",
       "move_collision",
       "move_code_invalid",
+      "portico_services_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_auth_portico_return_prepare",
+    "method": "POST",
+    "path": "/v1/auth/portico-return/prepare",
+    "summary": "Prepare a return from an existing verified server origin",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 2048,
+    "headers": [
+      "X-Portico-Installation-Id"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "rate_limited",
+      "sign_in_kind_local",
+      "portico_services_unavailable",
       "internal"
     ],
     "status": 200,
@@ -18019,6 +18046,7 @@ export const routePaths = {
   "post_auth_owner_reset_request": "/v1/auth/owner-reset/request",
   "post_auth_owner_reset_verify": "/v1/auth/owner-reset/verify",
   "post_auth_portico_return_exchange": "/v1/auth/portico-return/exchange",
+  "post_auth_portico_return_prepare": "/v1/auth/portico-return/prepare",
   "post_auth_refresh": "/v1/auth/refresh",
   "post_auth_register": "/v1/auth/register",
   "post_auth_remembered_accounts": "/v1/auth/remembered-accounts",

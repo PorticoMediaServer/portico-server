@@ -1,0 +1,60 @@
+import {CAST_NAMESPACE, parseCastEvent, type CastEvent, type CastTransport} from '@core/cast/index.ts';
+import type {CastContext, CastFramework, CastMessageListener, CastSession, CastSessionEvent} from './sdk';
+
+export type ConfirmedCastDevice = Readonly<{name: string; id?: string}>;
+export type CastReceiverStatus = Extract<CastEvent, {type: 'status'}>;
+
+/** The controller tolerates missing status numbers as zero. A confirmed playback fact cannot. */
+function reportedStatus(raw: string): CastReceiverStatus | undefined {
+  if (raw.length > 65536) return undefined;
+  let payload: unknown;
+  try { payload = JSON.parse(raw); } catch { return undefined; }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return undefined;
+  const fields = payload as Record<string, unknown>;
+  if (fields.type !== 'status' || typeof fields.itemId !== 'string' || !fields.itemId.trim()
+      || typeof fields.positionSeconds !== 'number' || !Number.isFinite(fields.positionSeconds) || fields.positionSeconds < 0
+      || typeof fields.durationSeconds !== 'number' || !Number.isFinite(fields.durationSeconds) || fields.durationSeconds < 0
+      || typeof fields.paused !== 'boolean') return undefined;
+  const event = parseCastEvent(payload);
+  return event?.type === 'status' ? event : undefined;
+}
+
+/** Only a selected SDK session supplies a receiver's name and id. */
+export function confirmedCastDevice(session: CastSession): ConfirmedCastDevice | undefined {
+  const device = session.getCastDevice();
+  const name = typeof device.friendlyName === 'string' ? device.friendlyName.trim().slice(0, 64) : '';
+  if (!name) return undefined;
+  return Object.freeze({name, ...(typeof device.label === 'string' && device.label ? {id: device.label} : {})});
+}
+
+/** Portico's custom channel only. No CAF media load or media/grant URL is accepted here. */
+export function castTransportFor(session: CastSession, context: CastContext, framework: CastFramework, observeStatus?: (status: CastReceiverStatus) => void): CastTransport {
+  const device = session.getCastDevice();
+  return {
+    deviceName: typeof device.friendlyName === 'string' ? device.friendlyName.trim().slice(0, 64) : '',
+    ...(typeof device.label === 'string' && device.label ? {deviceId: device.label} : {}),
+    send: command => session.sendMessage(CAST_NAMESPACE, command).then(() => undefined),
+    onMessage: receive => {
+      const listener: CastMessageListener = (_namespace, raw) => {
+        const status = reportedStatus(raw);
+        if (status) observeStatus?.(status);
+        receive(raw);
+      };
+      session.addMessageListener(CAST_NAMESPACE, listener);
+      return () => session.removeMessageListener(CAST_NAMESPACE, listener);
+    },
+    onSessionEnd: ended => {
+      const listener = (event: CastSessionEvent) => {
+        if (event.sessionState !== framework.SessionState.SESSION_ENDED && event.sessionState !== framework.SessionState.SESSION_START_FAILED) return;
+        const current = context.getCurrentSession();
+        if (!current || current === session) ended();
+      };
+      const type = framework.CastContextEventType.SESSION_STATE_CHANGED;
+      context.addEventListener(type, listener);
+      return () => context.removeEventListener(type, listener);
+    },
+    end: stopReceiver => {
+      try { void Promise.resolve(session.endSession(stopReceiver)).catch(() => {}); } catch { /* The SDK may have already ended it. */ }
+    },
+  };
+}
