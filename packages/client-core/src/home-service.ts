@@ -92,11 +92,14 @@ export class HomeService {
   private hydrations = new Set<AbortController>();
   private readonly api: () => HomeApi;
   private readonly timeoutMs: number;
+  private readonly initialLimit: number | undefined;
 
   /** `api` may be a function so a renewed sign-in is picked up without a new service. */
-  constructor(api: HomeApi | (() => HomeApi), options: {timeoutMs?: number} = {}) {
+  constructor(api: HomeApi | (() => HomeApi), options: {timeoutMs?: number; initialLimit?: number} = {}) {
+    if (options.initialLimit !== undefined && (!Number.isSafeInteger(options.initialLimit) || options.initialLimit < 1 || options.initialLimit > 60)) throw new RangeError('Home initialLimit must be an integer from 1 to 60');
     this.api = typeof api === 'function' ? api : () => api;
     this.timeoutMs = options.timeoutMs ?? 15_000;
+    this.initialLimit = options.initialLimit;
   }
 
   getSnapshot = (): HomeSnapshot => this.state;
@@ -123,7 +126,7 @@ export class HomeService {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
           const row = await Promise.race([
-            fetchHomeRow(this.api(), descriptor.id, {limit: descriptor.limit || undefined}, controller.signal),
+            fetchHomeRow(this.api(), descriptor.id, {limit: this.initialLimit ?? (descriptor.limit || undefined)}, controller.signal),
             new Promise<never>((_, reject) => {
               abort = () => reject(Object.assign(new Error('home_row_cancelled'), {name: 'AbortError'}));
               controller.signal.addEventListener('abort', abort, {once: true});
@@ -160,7 +163,7 @@ export class HomeService {
     signal.addEventListener('abort', stop, {once: true});
     try {
       return await Promise.race([
-        fetchHome(this.api(), undefined, controller.signal),
+        fetchHome(this.api(), this.initialLimit, controller.signal),
         new Promise<never>((_, reject) => {
           abort = () => reject(Object.assign(new Error('home_read_cancelled'), {name: 'AbortError'}));
           controller.signal.addEventListener('abort', abort, {once: true});

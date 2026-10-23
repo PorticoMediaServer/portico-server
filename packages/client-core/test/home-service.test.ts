@@ -20,6 +20,24 @@ function document(rows: any[], changes: Record<string, unknown> = {}): any {
 const api = (handler: (path: string, method?: string, body?: any) => unknown): HomeApi => ({request: async <T>(path: string, method?: string, body?: unknown) => handler(path, method, body) as T});
 const ids = (service: HomeService, rowId: string) => service.getSnapshot().document!.rows.find(r => r.id === rowId)!.entries.map(e => e.id).join(',');
 
+test('an explicit initial window reaches both Home and deferred shelves; omission keeps the default request', async () => {
+  for (const limit of [undefined, 20]) {
+    const seen: string[] = [];
+    const service = new HomeService(api(path => {
+      seen.push(path);
+      if (path === '/v1/home' + (limit ? '?limit=' + limit : '')) return document([row('recent', [], {deferred: true, limit: limit ?? 12})]);
+      if (path === '/v1/home/rows/recent?limit=' + (limit ?? 12)) return row('recent', Array.from({length: limit ?? 12}, (_, i) => 'm' + i));
+      throw new Error(path);
+    }), {initialLimit: limit});
+    await service.load();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(seen, ['/v1/home' + (limit ? '?limit=' + limit : ''), '/v1/home/rows/recent?limit=' + (limit ?? 12)]);
+    assert.equal(service.getSnapshot().document?.rows[0]?.entries.length, limit ?? 12);
+    service.dispose();
+  }
+  for (const initialLimit of [0, -1, 61, 1.5, NaN, Infinity]) assert.throws(() => new HomeService(api(() => document([])), {initialLimit}), RangeError);
+});
+
 test('a quiet read updates Home in place: unchanged rows are the same objects, a new card arrives, nothing is blanked', async () => {
   let current = document([row('continue', ['a', 'b']), row('recent', ['m1', 'm2'])]);
   const service = new HomeService(api(() => JSON.parse(JSON.stringify(current))));
