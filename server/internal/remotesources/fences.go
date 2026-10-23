@@ -39,7 +39,7 @@ func (s *Service) ValidateScan(ctx context.Context, tx *sql.Tx, job, root string
 	}
 	var expected, current string
 	var removed bool
-	err := tx.QueryRowContext(ctx, `SELECT g.generation,CASE WHEN r.kind='rclone' THEN CAST(m.generation AS TEXT) ELSE CAST(r.generation AS TEXT) END,r.removed FROM remote_scan_generations g JOIN remote_sources r ON r.id=g.source_id LEFT JOIN mount_backend_configs m ON m.mount_id=r.mount_id WHERE g.job_id=? AND r.id=?`, job, b.ID).Scan(&expected, &current, &removed)
+	err := tx.QueryRowContext(ctx, `SELECT g.generation,CASE WHEN r.kind IN('rclone','sftp','smb') THEN CAST(m.generation AS TEXT) ELSE CAST(r.generation AS TEXT) END,r.removed FROM remote_scan_generations g JOIN remote_sources r ON r.id=g.source_id LEFT JOIN mount_backend_configs m ON m.mount_id=r.mount_id WHERE g.job_id=? AND r.id=?`, job, b.ID).Scan(&expected, &current, &removed)
 	if err != nil || removed || expected != current {
 		return storage.ErrRemoteChanged
 	}
@@ -52,7 +52,7 @@ func (s *Service) RecordReference(ctx context.Context, tx *sql.Tx, path, revisio
 	}
 	var generation string
 	var removed bool
-	err := tx.QueryRowContext(ctx, `SELECT CASE WHEN r.kind='rclone' THEN CAST(m.generation AS TEXT) ELSE CAST(r.generation AS TEXT) END,r.removed FROM remote_sources r LEFT JOIN mount_backend_configs m ON m.mount_id=r.mount_id WHERE r.id=?`, b.ID).Scan(&generation, &removed)
+	err := tx.QueryRowContext(ctx, `SELECT CASE WHEN r.kind IN('rclone','sftp','smb') THEN CAST(m.generation AS TEXT) ELSE CAST(r.generation AS TEXT) END,r.removed FROM remote_sources r LEFT JOIN mount_backend_configs m ON m.mount_id=r.mount_id WHERE r.id=?`, b.ID).Scan(&generation, &removed)
 	if err != nil || removed || !strings.HasPrefix(revision, generation+":") {
 		return storage.ErrRemoteChanged
 	}

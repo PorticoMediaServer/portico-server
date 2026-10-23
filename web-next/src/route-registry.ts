@@ -8,7 +8,7 @@ export const webScreenPaths = Object.freeze({
   live: '/live', saved: '/saved', item: '/item/$itemId', homeRow: '/home/rows/$rowId',
   player: '/player', settings: '/settings', dashboard: '/dashboard', notifications: '/notifications',
   profiles: '/profiles', servers: '/servers', account: '/account', signIn: '/sign-in',
-  together: '/watch-together', feedback: '/feedback', help: '/help',
+  together: '/watch-together', help: '/help',
   person: '/person/$personId', read: '/read/$itemId',
 } as const);
 export type WebScreenId = keyof typeof webScreenPaths;
@@ -34,13 +34,41 @@ export function defineWebScreen<T extends WebScreenDefinition>(definition: T): R
   if (definition.retainedHost && definition.id === 'player') throw new Error('player-already-has-playback-host');
   return Object.freeze({...definition});
 }
-export type WebScreenModule = Readonly<{default: WebScreenDefinition | readonly WebScreenDefinition[]}>;
+export type WebActionId = 'feedback';
+export type WebActionDefinition = Readonly<{
+  kind: 'action'; id: WebActionId; host: ComponentType;
+  subscribe: (listener: () => void) => () => void;
+  /** The action owner projects genuine canSubmit and captured currentness. */
+  getSnapshot: () => boolean;
+  /** Menu entries have no target. Rich context stays in the domain's typed API. */
+  invoke: () => void;
+}>;
+export function defineWebAction(definition: Omit<WebActionDefinition, 'kind'>): WebActionDefinition {
+  if (definition.id !== 'feedback') throw new Error('unknown-web-action');
+  if (typeof definition.subscribe !== 'function' || typeof definition.getSnapshot !== 'function' || typeof definition.invoke !== 'function') throw new Error('invalid-web-action');
+  return Object.freeze({...definition, kind: 'action'});
+}
+/** Availability is reread on the gesture, so an old menu closure grants nothing. */
+export function invokeWebAction(action: WebActionDefinition | undefined, isCurrent: () => boolean): boolean {
+  if (!isCurrent() || action?.getSnapshot() !== true) return false;
+  action.invoke(); return true;
+}
+type WebRegistration = WebScreenDefinition | WebActionDefinition;
+export type WebScreenModule = Readonly<{default: WebRegistration | readonly WebRegistration[]}>;
+const isAction = (value: WebRegistration): value is WebActionDefinition => 'kind' in value && value.kind === 'action';
 /** Duplicate owners fail at startup rather than silently replacing a registered screen. */
 export function createWebScreenRegistry(modules: Readonly<Record<string, WebScreenModule>>) {
   const definitions = new Map<WebScreenId, WebScreenDefinition>();
+  const actions = new Map<WebActionId, WebActionDefinition>();
   for (const filename of Object.keys(modules).sort()) {
     const exported = modules[filename].default;
-    for (const value of Array.isArray(exported) ? exported : [exported]) {
+    const values: readonly WebRegistration[] = Array.isArray(exported) ? exported : [exported as WebRegistration];
+    for (const value of values) {
+      if (isAction(value)) {
+        const action = defineWebAction(value);
+        if (actions.has(action.id)) throw new Error(`duplicate-web-action:${action.id}`);
+        actions.set(action.id, action); continue;
+      }
       const definition = defineWebScreen(value);
       if (definitions.has(definition.id)) throw new Error(`duplicate-web-screen:${definition.id}`);
       definitions.set(definition.id, definition);
@@ -48,6 +76,8 @@ export function createWebScreenRegistry(modules: Readonly<Record<string, WebScre
   }
   return Object.freeze({
     get: (id: WebScreenId) => definitions.get(id),
+    getAction: (id: WebActionId) => actions.get(id),
+    actions: () => [...actions.values()],
     retainedHosts: () => [...definitions.values()].filter(value => value.retainedHost).map(value => ({id: value.id, component: value.retainedHost!})),
     validateSearch: (id: WebScreenId, raw: WebScreenSearch, fallback: WebScreenSearchValidator = () => ({})): WebScreenSearch => {
       const parsed = (definitions.get(id)?.validateSearch ?? fallback)(raw);

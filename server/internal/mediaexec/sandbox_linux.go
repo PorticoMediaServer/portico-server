@@ -12,14 +12,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
 // Paths a hardware job may read: the system's driver libraries (VA-API and
 // Quick Sync drivers, libcuda and the NVENC runtime are loaded at run time from
 // here) and the device description sysfs gives them. None of them is private.
-var hardwareReadable = []string{"/usr/lib", "/usr/lib64", "/usr/lib32", "/lib", "/lib64", "/usr/local/lib", "/etc/ld.so.cache", "/etc/ld.so.conf", "/etc/ld.so.conf.d", "/usr/share/vulkan", "/usr/share/glvnd", "/usr/share/libdrm", "/etc/OpenCL", "/sys"}
+var hardwareReadable = []string{"/usr/lib", "/usr/lib64", "/usr/lib32", "/lib", "/lib64", "/usr/local/lib", "/etc/ld.so.cache", "/etc/ld.so.conf", "/etc/ld.so.conf.d", "/usr/share/vulkan", "/etc/vulkan", "/usr/lib/wsl", "/usr/share/glvnd", "/usr/share/libdrm", "/etc/OpenCL", "/sys"}
 
 func bwrapPath() (string, error) {
 	path, err := exec.LookPath("bwrap")
@@ -29,22 +28,11 @@ func bwrapPath() (string, error) {
 	return filepath.Abs(path)
 }
 
-var libraryCache sync.Map // executable identity → []string
-
 func librariesFor(executable string, extra []string) ([]string, error) {
-	key := executable + "\x00" + strings.Join(extra, "\x00")
-	if info, err := os.Stat(executable); err == nil {
-		key += fmt.Sprintf("\x00%d\x00%d", info.Size(), info.ModTime().UnixNano())
-	}
-	if cached, ok := libraryCache.Load(key); ok {
-		return cached.([]string), nil
-	}
-	libraries, err := ResolveLibraries(executable, executable, extra)
-	if err != nil {
-		return nil, err
-	}
-	libraryCache.Store(key, libraries)
-	return libraries, nil
+	// ResolveLibraries already memoizes ELF parsing while revalidating every
+	// alias, library and searched directory. An executable-only outer cache
+	// must not bypass those checks after a dependency or RUNPATH change.
+	return ResolveLibraries(executable, executable, extra)
 }
 
 // probeSandbox starts a trivial program (true) inside the sandbox a job gets,
@@ -112,6 +100,9 @@ func LinuxHardwareSandboxArgs(environment [][2]string) []string {
 		args = append(args, "--ro-bind-try", dir, dir)
 	}
 	args = append(args, "--dev-bind-try", "/dev/dri", "/dev/dri")
+	for _, device := range []string{"/dev/dxg", "/dev/mpp_service", "/dev/rga", "/dev/dma_heap"} {
+		args = append(args, "--dev-bind-try", device, device)
+	}
 	devices, _ := filepath.Glob("/dev/nvidia*")
 	sort.Strings(devices)
 	for _, device := range devices {

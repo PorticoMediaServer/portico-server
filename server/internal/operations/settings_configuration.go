@@ -197,7 +197,9 @@ func (s *Store) InitializeConfiguration(ctx context.Context, path string) error 
 		return err
 	}
 	if pending > 0 {
-		return s.FlushConfiguration(ctx)
+		if err := s.FlushConfiguration(ctx); err != nil {
+			return err
+		}
 	}
 	return s.ImportConfiguration(ctx)
 }
@@ -569,13 +571,20 @@ func (s *Store) FlushConfiguration(ctx context.Context) error {
 	if err = s.ConfigFile.Patch(patch); err != nil {
 		return err
 	}
+	return s.acknowledgeConfigurationProjection(ctx, queued)
+}
+
+func (s *Store) acknowledgeConfigurationProjection(ctx context.Context, queued map[string]int64) error {
 	return dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
 		for field, revision := range queued {
 			if _, e := tx.ExecContext(ctx, `DELETE FROM server_configuration_pending WHERE field=? AND revision=?`, field, revision); e != nil {
 				return e
 			}
 		}
-		_, e := tx.ExecContext(ctx, `UPDATE server_configuration_state SET pending_revision=0 WHERE singleton=1 AND pending_revision=?`, pending)
+		// Domain revisions are independent. A newer queued domain write may have
+		// a lower revision than this snapshot, so a max-revision CAS cannot prove
+		// that the queue is empty. Recompute from the surviving rows atomically.
+		_, e := tx.ExecContext(ctx, `UPDATE server_configuration_state SET pending_revision=coalesce((SELECT max(revision) FROM server_configuration_pending),0) WHERE singleton=1`)
 		return e
 	})
 }

@@ -2,8 +2,10 @@ package operations
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/dbwork"
 	"strings"
 	"testing"
 
@@ -209,6 +211,44 @@ func TestSettingsConfigurationPreservesIndependentFileEditWhileAppProjectionPend
 	}
 }
 
+func TestSettingsConfigurationRestartImportsIndependentEditsAfterDrainingProjection(t *testing.T) {
+	s, owner, authorize := consoleFixture(t)
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "portico.toml")
+	if err := s.InitializeConfiguration(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := s.Settings(ctx, authorize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := doc.Requested
+	values.Name = "Committed app name"
+	s.ConfigFile = nil // Process ended after the database commit, before projection.
+	if _, err = s.ApplySettings(ctx, owner, authorize, SettingsChange{doc.Revision, "restart-independent-edit", values}); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, []byte("[general]\nname='Older file name'\n[streaming]\nmusic_away_quality='96'\noutput_format='h264'\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	restarted := New(s.DB)
+	if err = restarted.InitializeConfiguration(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	current, err := restarted.Settings(ctx, authorize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Requested.Name != "Committed app name" || current.Requested.MusicAwayQuality != "96" || current.Requested.OutputFormat != "h264" {
+		t.Fatal("restart failed to combine the committed app edit with independent file policy", current)
+	}
+	// The flushed loader already knows these exact bytes: a watcher won't produce
+	// another event to rescue a skipped startup import.
+	if changed, err := restarted.ConfigFile.Reload(); err != nil || changed {
+		t.Fatal(changed, err)
+	}
+}
+
 func TestSettingsConfigurationCanonicalVideoPolicyAndManualUploadRange(t *testing.T) {
 	s, owner, authorize := consoleFixture(t)
 	ctx := context.Background()
@@ -260,5 +300,39 @@ func TestSettingsConfigurationReportsExistingServerPolicySource(t *testing.T) {
 	}
 	if len(found) != 2 {
 		t.Fatal("existing policy fields missing", found)
+	}
+}
+
+func TestSettingsConfigurationProjectionAcknowledgementPreservesLowerDomainRevision(t *testing.T) {
+	s, _, _ := consoleFixture(t)
+	ctx := context.Background()
+	enqueue := func(field string, revision int64) {
+		t.Helper()
+		if err := dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error { return QueueConfigurationProjectionTx(ctx, tx, field, revision) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	enqueue("name", 20)
+	// The file writer captured this row before another normalized domain commits.
+	written := map[string]int64{"name": 20}
+	enqueue("musicAwayQuality", 2)
+	if err := s.acknowledgeConfigurationProjection(ctx, written); err != nil {
+		t.Fatal(err)
+	}
+	var pending, queued int64
+	if err := s.DB.QueryRow(`SELECT pending_revision FROM server_configuration_state WHERE singleton=1`).Scan(&pending); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.QueryRow(`SELECT revision FROM server_configuration_pending WHERE field='musicAwayQuality'`).Scan(&queued); err != nil {
+		t.Fatal(err)
+	}
+	if pending != 2 || queued != 2 {
+		t.Fatal("later domain commit became invisible to the file drainer", pending, queued)
+	}
+	if err := s.acknowledgeConfigurationProjection(ctx, map[string]int64{"musicAwayQuality": 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.QueryRow(`SELECT pending_revision FROM server_configuration_state WHERE singleton=1`).Scan(&pending); err != nil || pending != 0 {
+		t.Fatal(pending, err)
 	}
 }

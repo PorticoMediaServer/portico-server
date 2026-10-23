@@ -5,6 +5,7 @@ export const shared = {
   'next.auth.tv.requiredTwoStepBody': '{server} asks for two-step verification on this account. Turn it on from your phone or computer, then sign in again.',
   'next.auth.tv.requiredPasswordBody': '{server} asks for a new password on this account. Choose one from your phone or computer, then sign in again.',
   'next.auth.tv.handoffHint': 'Scan the code with your phone, or go to this address on a computer.',
+  'next.auth.tv.forgotPINBody': 'Manage profiles, PINs and two-step verification on your phone or computer.',
   // Drawn playback clocks: desktop-player f1 and phone-player r4 (812dacac).
   'next.watch.remaining': '−{time}',
   'next.watch.clockDivider': '/ {time}',

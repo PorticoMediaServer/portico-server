@@ -84,6 +84,10 @@ func TestRestrictedProfileWriteRouteMatrix(t *testing.T) {
 	probed := 0
 	for _, pattern := range patterns {
 		route := routes[pattern]
+		if route.check != nil {
+			t.Run(pattern, route.check)
+			continue
+		}
 		if route.probes == nil {
 			if route.reason == "" {
 				t.Errorf("%s: an exemption needs a reason", pattern)
@@ -342,6 +346,7 @@ func hiddenReferenceDigest(t *testing.T, m *restrictionEnv) string {
 }
 
 type writeRoute struct {
+	check  func(*testing.T)
 	probes func(m *restrictionEnv) []idProbe
 	reason string
 }
@@ -396,7 +401,11 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
-		"DELETE /v1/me/removed-titles/{id}": perHidden("DELETE", "/v1/me/removed-titles/ID", "", "item"),
+		"POST /v1/reading/sessions":                     {check: readingRestrictionCheck("POST /v1/reading/sessions")},
+		"HEAD /v1/reading/sessions/{sessionId}/source":  {check: readingRestrictionCheck("HEAD /v1/reading/sessions/{sessionId}/source")},
+		"PUT /v1/reading/sessions/{sessionId}/progress": {check: readingRestrictionCheck("PUT /v1/reading/sessions/{sessionId}/progress")},
+		"DELETE /v1/reading/sessions/{sessionId}":       {check: readingRestrictionCheck("DELETE /v1/reading/sessions/{sessionId}")},
+		"DELETE /v1/me/removed-titles/{id}":             perHidden("DELETE", "/v1/me/removed-titles/ID", "", "item"),
 		"POST /v1/home/destination-picker": writeProbes(func(m *restrictionEnv) []idProbe {
 			var out []idProbe
 			for _, kind := range []string{"playlist", "collection"} {
@@ -687,7 +696,6 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"PATCH /v1/devices/{id}":                            writeExempt(reasonOwnSession),
 		"DELETE /v1/devices/{id}":                           writeExempt(reasonOwnSession),
 		"DELETE /v1/devices/{id}/sessions":                  writeExempt(reasonOwnSession),
-		"POST /v1/devices/{id}/approval":                    writeExempt(reasonOwnSession),
 		"POST /v1/devices/{id}/sessions/bind":               writeExempt(reasonOwnSession),
 		"POST /v1/quick-connect":                            writeExempt(reasonSignIn),
 		"POST /v1/quick-connect/decision":                   writeExempt(reasonOwnSession),
@@ -697,6 +705,10 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/setup/browser":                            writeExempt(reasonSignIn),
 		"POST /v1/auth/portico-return/exchange":             writeExempt(reasonSignIn),
 		"POST /v1/auth/portico-return/prepare":              writeExempt(reasonSignIn),
+		"POST /v1/auth/move/password":                       writeExempt("a Waiting account's old password proves only that account's move; no catalogue lookup"),
+		"POST /v1/auth/move/code":                           writeExempt("one-use account move code preview; no catalogue lookup"),
+		"POST /v1/auth/move/local":                          writeExempt("one-use code creates only the captured account's local sign-in; no catalogue lookup"),
+		"POST /v1/auth/move/portico":                        writeExempt("signed identity links only the captured Waiting account; no catalogue lookup"),
 		"POST /v1/setup/account/complete":                   writeExempt(reasonSignIn),
 		"POST /v1/auth/owner-reset/request":                 writeExempt(reasonSignIn),
 		"POST /v1/auth/owner-reset/verify":                  writeExempt(reasonSignIn),
@@ -732,6 +744,10 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"DELETE /v1/direct/two-factor":                      writeExempt(reasonOwnSession),
 		"POST /v1/direct/two-factor/enrol":                  writeExempt(reasonOwnSession),
 		"POST /v1/direct/two-factor/verify":                 writeExempt(reasonOwnSession),
+
+		// Hierarchical People device retirement returns no catalogue content.
+		"POST /v1/direct/members/{id}/devices/sign-out":            writeExempt("live main-profile administrator hierarchy retires only that member's device families; no catalogue ids"),
+		"POST /v1/direct/members/{id}/devices/{deviceId}/sign-out": writeExempt("live main-profile administrator hierarchy retires only that member's exact device family; no catalogue ids"),
 
 		// Registrations the lane table records in unusual forms.
 		"/":                                    writeExempt("the web app shell and first-run setup page (installation.go): static; no catalogue ids"),
