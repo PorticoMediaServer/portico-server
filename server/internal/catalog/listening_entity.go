@@ -163,7 +163,7 @@ func (s *Service) listeningArtistFacts(viewer Viewer, id string, out *ContentEnt
 	}
 	visible, visibleArgs := viewer.itemVisibilitySQL("song.entity_id")
 	var albums int
-	if err := s.read().QueryRow(`SELECT count(DISTINCT song.album_id) FROM (SELECT s.entity_id FROM catalog_entities a JOIN catalog_albums al ON al.artist_id=a.id JOIN catalog_songs s ON s.album_id=al.entity_id WHERE a.public_id=pid_blob(?) UNION SELECT sa.song_id FROM catalog_entities a JOIN catalog_song_artists sa ON sa.artist_id=a.id WHERE a.public_id=pid_blob(?)) mine JOIN catalog_songs song ON song.entity_id=mine.entity_id WHERE `+visible, append([]any{id, id}, visibleArgs...)...).Scan(&albums); err != nil {
+	if err := s.read().QueryRow(`SELECT count(DISTINCT song.album_id) FROM (SELECT s.entity_id FROM catalog_entities a JOIN catalog_albums al ON al.artist_id=a.id JOIN catalog_songs s ON s.album_id=al.entity_id WHERE a.public_id=pid_blob(?) UNION SELECT sa.song_id FROM catalog_entities a JOIN catalog_song_artists sa ON sa.artist_id=a.id WHERE a.public_id=pid_blob(?)) mine CROSS JOIN catalog_songs song ON song.entity_id=mine.entity_id WHERE `+visible, append([]any{id, id}, visibleArgs...)...).Scan(&albums); err != nil {
 		return err
 	}
 	out.AlbumCount = &albums
@@ -177,7 +177,7 @@ func (s *Service) listeningArtistFacts(viewer Viewer, id string, out *ContentEnt
 	mine(song) AS (
 	 SELECT sa.song_id song FROM catalog_song_artists sa INDEXED BY catalog_song_artists_artist WHERE sa.artist_id=(SELECT id FROM artist)
 	 UNION SELECT s.entity_id FROM catalog_albums a INDEXED BY catalog_albums_artist CROSS JOIN catalog_entities ae ON ae.id=a.entity_id AND ae.retired=0 CROSS JOIN catalog_songs s INDEXED BY catalog_songs_album_order ON s.album_id=a.entity_id WHERE a.artist_id=(SELECT id FROM artist))
-	SELECT g.source_name FROM mine JOIN catalog_term_sources g ON g.entity_id=mine.song JOIN catalog_terms t ON t.id=g.term_id AND t.vocab=?
+	SELECT g.source_name FROM mine CROSS JOIN catalog_term_sources g ON g.entity_id=mine.song JOIN catalog_terms t ON t.id=g.term_id AND t.vocab=?
 	WHERE g.provider='local' AND trim(g.source_name)<>'' AND `+strings.ReplaceAll(visible, "song.entity_id", "mine.song")+` GROUP BY lower(g.source_name) ORDER BY count(*) DESC,min(g.source_name) LIMIT 3`, append([]any{id, int(compactcatalog.VocabGenre)}, visibleArgs...)...)
 	if err != nil {
 		return err
