@@ -54,6 +54,30 @@ def main():
               '--enable-nvenc', '--enable-nvdec', '--enable-amf']
     options['FF_CONFIGURE'] += ' ' + ' '.join(common)
     source_sha = digest(args.source)
+    # Snapshot the small job inputs before either build. Switching the lane's
+    # branch to publish an independent checked component cannot change a
+    # running container's helper, compiler capture or source lock.
+    inputs = {'build-portico-disc.py': root / 'scripts/build-portico-disc.py',
+              'capture-compiler.py': root / 'scripts/capture-ffmpeg-compiler.py',
+              'sources.lock.json': root / 'third_party/ffmpeg/sources.lock.json',
+              'portico-disc.c': work / 'recipe/portico-disc/portico-disc.c',
+              'LICENSE': work / 'recipe/portico-disc/LICENSE',
+              'Dockerfile': work / 'recipe/Dockerfile'}
+    hashes = {name: digest(path) for name, path in inputs.items()}
+    key = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
+    frozen = work / 'linux-build-inputs' / key
+    frozen.mkdir(parents=True, exist_ok=True)
+    for name, source in inputs.items():
+        destination = frozen / name
+        if destination.exists():
+            if digest(destination) != hashes[name]:
+                raise ValueError('Frozen build input changed: ' + name)
+        else:
+            shutil.copyfile(source, destination)
+        if digest(destination) != hashes[name]:
+            raise ValueError('Build input changed during capture: ' + name)
+    (work / 'linux-build-inputs.json').write_text(json.dumps({'files': hashes,
+        'sourceArchiveSHA256': source_sha, 'compilerImage': lock['linuxSourceBuild']['compilerImage']}, indent=2) + '\n')
     results = []
     for index in (1, 2):
         build = work / 'linux-compile'
@@ -88,10 +112,10 @@ cp COPYING.GPLv3 /ffbuild/prefix/COPYING.GPLv3
                 '--label', 'portico.lane=hardware-r29',
                 '-v', str(build) + ':/ffbuild', '-v', str(prefix) + ':/opt/ffbuild:ro',
                 '-v', str(args.source.resolve()) + ':/source.tar.xz:ro',
-                '-v', str(work / 'recipe/portico-disc') + ':/disc:ro',
-                '-v', str(root / 'scripts/build-portico-disc.py') + ':/build-portico-disc.py:ro',
-                '-v', str(root / 'scripts/capture-ffmpeg-compiler.py') + ':/capture-compiler.py:ro',
-                '-v', str(root / 'third_party/ffmpeg/sources.lock.json') + ':/sources.lock.json:ro',
+                '-v', str(frozen) + ':/disc:ro',
+                '-v', str(frozen / 'build-portico-disc.py') + ':/build-portico-disc.py:ro',
+                '-v', str(frozen / 'capture-compiler.py') + ':/capture-compiler.py:ro',
+                '-v', str(frozen / 'sources.lock.json') + ':/sources.lock.json:ro',
                 '-e', 'SOURCE_DATE_EPOCH=' + str(lock['sourceDateEpoch']),
                 '-e', 'TMPDIR=/ffbuild/tmp',
                 '-e', 'PORTICO_DISC_SOURCE_COMMIT=' + os.environ['PORTICO_DISC_SOURCE_COMMIT']]

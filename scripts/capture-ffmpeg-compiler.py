@@ -47,7 +47,8 @@ def main():
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
     runtimes = {}
-    for compiler, archive in [('CC', 'libgcc.a'), ('CXX', 'libstdc++.a')]:
+    for compiler, archive in [('CC', 'libgcc.a'), ('CC', 'libgcc_eh.a'),
+                              ('CC', 'libgomp.a'), ('CXX', 'libstdc++.a')]:
         command = shlex.split(os.environ[compiler])
         version = subprocess.check_output(command + ['-dumpfullversion'], text=True).strip()
         if version != inputs['gccVersion']:
@@ -60,7 +61,11 @@ def main():
     if digest(config) != inputs['configurationSHA256']:
         raise ValueError('Compiler build configuration changed')
     shutil.copyfile(config, output / 'compiler-source/crosstool-ng.config.bz2')
+    tools = {name: subprocess.check_output(shlex.split(os.environ[name]) + ['--version'], text=True).splitlines()[0]
+             for name in ('CC', 'CXX', 'LD', 'AR', 'RANLIB', 'NM')}
+    tools['clang'] = subprocess.check_output(['clang', '--version'], text=True).splitlines()[0]
     record = {'compilerImage': lock['compilerImage'], 'implibCommit': commit,
+              'toolVersions': tools,
               'runtimeArchives': runtimes, 'notices': inputs['notices'],
               'configurationSHA256': digest(config),
               'importWrapperSources': {str(p.relative_to(sources)): digest(p)
