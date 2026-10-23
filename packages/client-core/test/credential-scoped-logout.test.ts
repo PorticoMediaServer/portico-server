@@ -6,7 +6,7 @@ const session = (name: string): HostedSession => ({
   accessToken: `access-${name}`, refreshToken: `refresh-${name}`, familyId: `family-${name}`,
   expiresAt: new Date(Date.now() + 3600000).toISOString(),
   refreshExpiresAt: new Date(Date.now() + 86400000).toISOString(),
-  account: {id: name, username: name, displayName: name}, profiles: [{id: `profile-${name}`, name}],
+  account: {id: name, username: name, displayName: name},
 });
 const scopeA = {accountId: 'A', familyId: 'family-A'};
 function fixture() {

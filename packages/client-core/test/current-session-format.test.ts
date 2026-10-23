@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {parseLocalSession} from '../src/local-session.ts';
 import {parseNativeCredentialRecord,parseBrowserCredentialRecord,parseNativeCredentialJSON} from '../src/credential-format.ts';
 const local=()=>({accessToken:'test-access',expiresAt:'2099-01-01T00:00:00.123456789Z',sessionFamilyId:'family_A',tokenGeneration:'9223372036854775807',authorizationHorizon:'2099-01-02T00:00:00Z',viewer:{accountId:'a',profileId:'p',serverId:'s',authority:'local',role:'owner'}});
-const hosted=()=>({accessToken:'test-access',refreshToken:'test-refresh',familyId:'family_A',expiresAt:'2000-01-01T00:00:00Z',refreshExpiresAt:'2099-01-02T00:00:00Z',account:{id:'a',username:'user',displayName:'User'},profiles:[{id:'p',name:'Profile'}]});
+const hosted=()=>({accessToken:'test-access',refreshToken:'test-refresh',familyId:'family_A',expiresAt:'2000-01-01T00:00:00Z',refreshExpiresAt:'2099-01-02T00:00:00Z',account:{id:'a',username:'user',displayName:'User'}});
 const record=()=>({version:1,active:{session:hosted(),authority:'test-refresh',context:{profileId:'p'},pendingRequestId:'913e39bf-dada-4ccc-8b29-c4f87706b61a'},revocations:['older-current-refresh']});
 test('current local envelope preserves all family metadata and captured viewer binding',()=>{
  const input=local(),parsed=parseLocalSession(input,{authority:'local',serverId:'s'});assert.deepEqual(parsed,input);assert.ok(Object.isFrozen(parsed));assert.ok(Object.isFrozen(parsed.viewer));

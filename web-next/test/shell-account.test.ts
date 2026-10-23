@@ -43,7 +43,7 @@ function identity(username?: string, profileName = 'Evening profile'): ShellIden
   return {username, profileName, serverName: 'Study server', profileArt: 'mint', primaryProfile: true,
     viewer: {serverId: 'server-a', accountId: 'account-a', profileId: 'profile-a', authority: 'local', role: 'owner'},
     profiles: [{id: 'profile-a', name: profileName, initial: 'E', art: 'mint'}, {id: 'profile-b', name: 'Kids', initial: 'K'}],
-    canManageProfiles: true, accountFacts: [{id: 'server', text: 'Study server', role: 'context'}],
+    capabilities:{manageAccount:true,managePeople:true,manageServer:true,manageSignIn:true},canManageProfiles: true, accountFacts: [{id: 'server', text: 'Study server', role: 'context'}],
     libraries: [], liveAvailable: false, unread: 2, showNotificationDot: true};
 }
 function render(value: ShellIdentity, signOut = () => {}) {
@@ -80,4 +80,10 @@ test('a new account/profile authority replaces the displayed username and preser
   next.actions.signOut(); assert.equal(signedOut, 1);
   next.actions.switchProfile(nextIdentity.profiles[1]);
   assert.deepEqual(navigated.pop(), {to: '/profiles', search: {profileId: 'profile-b'}});
+});
+
+test('non-main profile cannot receive Manage or Add actions from the actual Shell boundary',()=>{
+ const source=identity('owner');const menu=render({...source,primaryProfile:false,canManageProfiles:false,capabilities:{manageAccount:false,managePeople:false,manageServer:false,manageSignIn:false}});
+ assert.equal(menu.actions.manageProfiles,undefined);assert.equal(menu.actions.addProfile,undefined);assert.equal(menu.serverAction,undefined);
+ assert.equal(menu.signOutLabel,'Sign out of Study server');
 });

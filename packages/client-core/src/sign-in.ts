@@ -25,6 +25,10 @@ export function signInLabelKey(kind: SignInKind) {
   if (kind !== 'local' && kind !== 'portico') throw new RouteError('invalid_sign_in_kind', 'Choose a server sign-in kind.');
   return kind === 'portico' ? accountSignInKeys.signedInPortico : accountSignInKeys.signedInLocal;
 }
+/** Opens this server's actual Sign-in settings. No member secret or Hosted origin is carried. */
+export function serverSignInSettingsURL(serverOrigin:string):string {
+  return new URL('/settings?scope=server&section=signin',routeOrigin(serverOrigin)).href;
+}
 export type ServerSignInSnapshot = Readonly<{
   phase: 'idle' | 'probing' | 'ready' | 'error'; origin?: string; server?: ServerSignIn;
   destination?: 'portico-account' | 'local-account' | 'setup'; error?: unknown;
