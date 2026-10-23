@@ -39,6 +39,20 @@ test('offline deflated CBZ extraction does not require a native DecompressionStr
     try{assert.deepEqual((await archive.page(0,{width:300,signal:signal()})).bytes,png);}finally{archive.dispose();}
   }finally{if(previous)Object.defineProperty(globalThis,'DecompressionStream',previous);else Reflect.deleteProperty(globalThis,'DecompressionStream');}
 });
+
+test('bundled DEFLATE fallback retains CRC, expansion, exact-size and cancellation fences',async()=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'DecompressionStream');
+  // Some hosts expose the constructor but cannot accept deflate-raw.
+  Object.defineProperty(globalThis,'DecompressionStream',{configurable:true,value:class {constructor(){throw new TypeError('format unavailable');}}});
+  try {
+    const input=source(zip([{name:'page.png',bytes:png,deflate:true}])),[entry]=await readDirectory(input,signal());
+    assert.deepEqual(await readEntry(input,entry,signal()),png);assert.ok(input.reads.every(range=>range.endExclusive-range.start<=archiveLimits.rangeBytes));
+    const lying=source(zip([{name:'page.png',bytes:Buffer.alloc(10000),deflate:true}])),[large]=await readDirectory(lying,signal());
+    await assert.rejects(readEntry(lying,large,signal(),{...archiveLimits,pageBytes:100}),{code:'archive_limit'});
+    await assert.rejects(readEntry(input,{...entry,crc:0},signal()),{code:'archive_invalid'});
+    const abort=new AbortController();abort.abort();await assert.rejects(readEntry(input,entry,abort.signal),{name:'AbortError'});
+  }finally{if(previous)Object.defineProperty(globalThis,'DecompressionStream',previous);else Reflect.deleteProperty(globalThis,'DecompressionStream');}
+});
 test('central directory CRC, local name, truncation and overlapping data fail closed',async()=>{
   const good=zip([{name:'p.png',bytes:png}]);
   const corrupt=Buffer.from(good);corrupt[35]^=1;let s=source(corrupt);const [entry]=await readDirectory(s,signal());await assert.rejects(readEntry(s,entry,signal()),{code:'archive_invalid'});

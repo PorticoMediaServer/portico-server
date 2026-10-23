@@ -1,0 +1,111 @@
+import type {ReadingSession,ReadingLocation,ReadingProgress} from '@portico/client-core';
+import type {ReaderSource,ReaderFormat,ReaderMetadata,ReaderLocation,ReaderRange} from './ports.ts';
+import type {ComicPageProvider} from './comic/archive.ts';
+import {rasterInfo} from './comic/image.ts';
+import {abortScope} from './abort.ts';
+import {ReaderError,throwIfAborted} from './errors.ts';
+import {validateLocation} from './controller.ts';
+
+/** Derived from the canonical captured facade. Native byte bridges implement
+ * these same public callbacks; no HTTP client, token or URL enters an engine. */
+export type ReaderSessionInput=Pick<ReadingSession,'manifest'|'signal'|'headPDF'|'readRange'|'readAsset'|'page'>;
+export type ReadingPublication=Readonly<{
+  format:ReaderFormat;source:ReaderSource;metadata:ReaderMetadata;signal:AbortSignal;
+  comicPages?:(source:ReaderSource,signal:AbortSignal)=>Promise<ComicPageProvider>;
+  resumeLocation(progress:ReadingProgress):ReaderLocation|null;
+  /** Local retirement only. The caller still owns captured session.close(). */
+  dispose():void;
+}>;
+
+export function readerLocationFromReading(location:ReadingLocation):ReaderLocation {
+  let result:ReaderLocation;
+  if(location.format==='epub') {
+    if(typeof location.cfi!=='string'||location.pageIndex!==undefined)throw new ReaderError('invalid_location');
+    result={format:'epub',cfi:location.cfi,progression:location.progression,...location.section===undefined?{}:{section:location.section}};
+  } else if(location.format==='pdf'||location.format==='cbz') {
+    if(location.pageIndex===undefined||location.cfi!==undefined||location.section!==undefined)throw new ReaderError('invalid_location');
+    result={format:location.format,page:location.pageIndex,progression:location.progression};
+  } else throw new ReaderError('invalid_location');
+  validateLocation(result,result.format);return Object.freeze(result);
+}
+export function readingLocationFromReader(location:ReaderLocation):ReadingLocation {
+  validateLocation(location,location.format);
+  // Observed chrome labels/chapters are not wire location fields.
+  return Object.freeze(location.format==='epub'?{format:'epub',cfi:location.cfi,progression:location.progression,
+    ...location.section===undefined?{}:{section:location.section}}:{format:location.format,pageIndex:location.page,progression:location.progression});
+}
+
+export async function createReadingPublication(session:ReaderSessionInput,callerSignal?:AbortSignal):Promise<ReadingPublication> {
+  const manifest=session.manifest,{sourceId:id,revision,size,sessionId}=manifest,life=new AbortController();
+  const scope=abortScope([session.signal,life.signal,...callerSignal?[callerSignal]:[]]),signal=scope.signal;
+  const current=()=>{
+    throwIfAborted(signal);
+    if(session.manifest!==manifest||manifest.sourceId!==id||manifest.revision!==revision||manifest.size!==size||manifest.sessionId!==sessionId)
+      throw new ReaderError('invalid_source');
+  };
+  async function run<T>(taskSignal:AbortSignal,work:(signal:AbortSignal)=>Promise<T>):Promise<T> {
+    current();const task=abortScope([signal,taskSignal]);
+    try{throwIfAborted(task.signal);const value=await work(task.signal);throwIfAborted(task.signal);current();return value;}
+    finally{task.dispose();}
+  }
+  const dispose=()=>{life.abort();scope.dispose();};
+  try {
+    current();const format=manifest.format;
+    if(format!=='epub'&&format!=='pdf'&&format!=='cbz')throw new ReaderError('unsupported_format');
+    if(!id||!revision||!Number.isSafeInteger(size)||size<1)throw new ReaderError('invalid_source');
+    const direction=manifest.metadata.direction;
+    if(direction!==undefined&&direction!=='ltr'&&direction!=='rtl'&&direction!=='vertical')throw new ReaderError('invalid_source');
+    const metadata:ReaderMetadata=Object.freeze({...manifest.metadata,direction,
+      ...format==='cbz'?{pageCount:manifest.pageNames!.length}:{}});
+    let source:ReaderSource;
+    if(format==='pdf') {
+      await session.headPDF(signal);current();
+      source=Object.freeze({id,revision,size,async read(range:ReaderRange,taskSignal:AbortSignal) {
+        const length=range.endExclusive-range.start;
+        if(!Number.isSafeInteger(range.start)||!Number.isSafeInteger(range.endExclusive)||range.start<0||length<0||range.endExclusive>size)
+          throw new ReaderError('invalid_source');
+        if(length>65536)throw new ReaderError('limit_exceeded');
+        return run(taskSignal,async active=>{
+          if(length===0)return new Uint8Array();const bytes=await session.readRange(range,active);
+          if(!(bytes instanceof Uint8Array)||bytes.length!==length)throw new ReaderError('invalid_source');return bytes.slice();
+        });
+      }});
+    } else if(format==='epub') {
+      const entries=Object.freeze((manifest.resources??[]).map(entry=>Object.freeze({...entry})));
+      source=Object.freeze({id,revision,size,resources:Object.freeze({entries,async read(path:string,taskSignal:AbortSignal) {
+        const entry=entries.find(entry=>entry.path===path);if(!entry)throw new ReaderError('invalid_source');
+        return run(taskSignal,async active=>{const bytes=await session.readAsset(path,active);
+          if(!(bytes instanceof Uint8Array)||bytes.length!==entry.size)throw new ReaderError('invalid_source');return bytes.slice();});
+      }})});
+    } else source=Object.freeze({id,revision,size});
+    const publication:ReadingPublication={format,source,metadata,signal,dispose,
+      resumeLocation(response) {
+        current();const progress=response.progress;if(progress===null)return null;
+        if(progress.sourceId!==id)throw new ReaderError('invalid_source');
+        if(progress.stale||progress.sourceRevision!==revision)return null;
+        const location=readerLocationFromReading(progress.location);validateLocation(location,format);return location;
+      },
+      ...format==='cbz'?{async comicPages(candidate:ReaderSource,parent:AbortSignal):Promise<ComicPageProvider> {
+        current();throwIfAborted(parent);if(candidate!==source)throw new ReaderError('invalid_source');
+        const providerLife=new AbortController(),providerScope=abortScope([signal,parent,providerLife.signal]);
+        const provider:ComicPageProvider={id,revision,pageCount:manifest.pageNames!.length,metadata,
+          async page(index,options) {
+            throwIfAborted(providerScope.signal);
+            if(!Number.isInteger(index)||index<0||index>=provider.pageCount||!Number.isInteger(options.width)||options.width<32||options.width>2048)
+              throw new ReaderError('invalid_location');
+            const task=abortScope([providerScope.signal,options.signal]);
+            try{return await run(task.signal,async active=>{
+              const page=await session.page(index,{width:options.width,signal:active});
+              if(page.index!==index||page.name!==manifest.pageNames![index]||!(page.bytes instanceof Uint8Array)||page.bytes.length>16*1024*1024)
+                throw new ReaderError('invalid_book');
+              const image=rasterInfo(page.bytes);
+              if(image.mime!==page.mime||image.width>options.width)throw new ReaderError('invalid_book');
+              return Object.freeze({index,name:page.name,bytes:page.bytes.slice(),image});
+            });}finally{task.dispose();}
+          },dispose(){providerLife.abort();providerScope.dispose();}};
+        return Object.freeze(provider);
+      }}:{}
+    };
+    return Object.freeze(publication);
+  }catch(error){dispose();throw error;}
+}
