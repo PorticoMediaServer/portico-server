@@ -37,6 +37,15 @@ export function createLiveBindings(context: ScreenContext, options: LegacyGuideO
       const value = await fetchGuideSourceSummaries(api, context.scope.serverId, options.timezone, life.signal());
       life.assert();return value;
     },
+    async refresh(signal?: AbortSignal) {
+      const active = life.signal(signal);active.throwIfAborted();
+      const value = await fetchGuideSourceSummaries(api, context.scope.serverId, options.timezone, active);
+      life.assert();active.throwIfAborted();
+      // Membership, marks and favorites order may all have changed. Forget the
+      // prior revision and re-read only each store's current bounded viewport.
+      for (const current of stores) current.reset();
+      return value;
+    },
     async selectedChannel(target: Readonly<{sourceId: string; channelId: string; provenance: ChannelKind}>, signal?: AbortSignal) {
       const route = {kind: target.provenance, sourceId: target.sourceId, timezone: options.timezone, search: '', ...guideWindow()};
       const params = new URLSearchParams({...route, channels: target.channelId, limit: '1'});
