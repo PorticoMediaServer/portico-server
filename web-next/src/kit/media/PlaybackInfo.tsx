@@ -1,3 +1,4 @@
+import {useOverlayPortalTarget} from '../overlays/portal-target';
 import {Fragment, useRef, type RefObject} from 'react';
 import {Dialog} from 'radix-ui';
 import {Icon} from '../Icon';
@@ -40,8 +41,9 @@ function RouteStepper({route, copy}: {route: PlaybackRoute; copy: PlaybackInfoCo
 
 /** An independent panel sibling. Opening it never replaces, pauses or remounts the media view. */
 export function PlaybackInfo({projection, copy, layout = 'desktop', open, onOpenChange, returnFocusRef, phoneTop}: PlaybackInfoProps) {
+  const portalTarget = useOverlayPortalTarget();
   const close = useRef<HTMLButtonElement>(null), blocks = useRef<(HTMLElement | null)[]>([]);
-  return <Dialog.Root open={open} onOpenChange={onOpenChange} modal={layout === 'tv'}><Dialog.Portal>
+  return <Dialog.Root open={open} onOpenChange={onOpenChange} modal={layout === 'tv'}><Dialog.Portal container={portalTarget}>
     {layout === 'tv' && <Dialog.Overlay className={styles.signalScrim} />}
     <Dialog.Content className={styles.playbackInfo} data-layout={layout} style={layout === 'phone' && phoneTop !== undefined ? {top: phoneTop} : undefined}
       aria-describedby={undefined} onCloseAutoFocus={event => { event.preventDefault(); returnFocusRef.current?.focus({preventScroll: true}); }}

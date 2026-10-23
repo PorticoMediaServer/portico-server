@@ -193,6 +193,9 @@ export class LocalSessionRefresher implements AuthRecovery {
     const changed = visible.accessToken !== this.session.accessToken;
     this.session = Object.freeze(visible);
     if (changed) { this.o.api.setAccessToken(visible.accessToken); this.o.onRotated?.(this.session); }
+    // Adoption may synchronously retire this authority and stop the refresher.
+    // Keep that terminal state before publishing or installing another timer.
+    if (this.done) return;
     this.schedulePermissions();
     this.publish({phase: 'active', expiresAt: visible.expiresAt, failures: 0, error: undefined});
     this.schedule();

@@ -76,7 +76,7 @@ export class DecodeAudioRender {
 
   constructor(service: PlaybackService, url: (path: string) => string, element: HTMLVideoElement, sameAlbum: SameAlbum = () => false, byteCache: ByteCache = audioByteCache) {
     this.service = service; this.url = url; this.element = element; this.sameAlbum = sameAlbum; this.byteCache = byteCache;
-    this.listening = service as unknown as ListeningEffectsPort;
+    this.listening = service;
     this.snapshot = service.getSnapshot();
     // On iPhone and iPad, audio from a bare AudioContext follows the silent switch and stops when
     // the page goes to the background unless the page says it is playing media.
@@ -137,7 +137,7 @@ export class DecodeAudioRender {
       const current = this.service.getSnapshot();
       if (this.disposed || attempt !== this.resumeAttempt || revision !== this.revision || current.intentId !== before.intentId || sessionKey(current.session) !== key || current.intent !== 'playing') return;
       this.service.pause();
-      this.listening.listeningNotice?.('audio_autoplay_blocked');
+      this.listening.listeningNotice('audio_autoplay_blocked');
     };
     void this.context.resume().then(() => { if (this.context.state !== 'running') refused(); }, refused);
     // AudioContext.resume may remain pending under autoplay policy. An actual media-element
@@ -172,7 +172,7 @@ export class DecodeAudioRender {
     return {unlock: () => range.unlock(), close: () => { abort.abort(); range.close(); }, prefetchAll: () => range.prefetchAll(), open};
   }
 
-  private gainFor(plan: AudioRenderV2) { return audioGainLinear(plan, this.snapshot.audioEffects.settings.normalization); }
+  private gainFor(plan: AudioRenderV2) { const settings = this.snapshot.audioEffects.settings; return audioGainLinear(plan, settings.normalization, 0, settings.neverBoost === true); }
 
   /** A deck for `plan` from `fromFrame`; at a speed other than 1 the audio is time-stretched so
    * it keeps its pitch (§9.6 rule 3). */
@@ -399,7 +399,8 @@ export class DecodeAudioRender {
     const levelingGain = this.primary.deck.norm.gain.value;
     return {engine:'web-audio',bitPerfect:false,sourceRate:plan.sampleRate,contextRate:this.context.sampleRate,
       resampledToContext:plan.sampleRate!==this.context.sampleRate,deviceRate:null,browserMayResample:true,
-      sourceChannels:plan.channels,outputChannels:Math.min(plan.channels,this.outputCount),eqApplied:!this.equalizerFailed && this.equalizer.settings.enabled,levelingApplied:Number.isFinite(levelingGain) && levelingGain !== 1,clock:this.carrier.carrying?'unmeasured-carrier':this.clockBasis};
+      sourceChannels:plan.channels,outputChannels:Math.min(plan.channels,this.outputCount),eqApplied:!this.equalizerFailed && this.equalizer.settings.enabled,levelingApplied:Number.isFinite(levelingGain) && levelingGain !== 1,
+      ...(Number.isFinite(levelingGain) && levelingGain > 0 ? {levelingGainDb:20*Math.log10(levelingGain)} : {}),clock:this.carrier.carrying?'unmeasured-carrier':this.clockBasis};
   }
 
   private reportProcessing(): void {
@@ -409,7 +410,7 @@ export class DecodeAudioRender {
     const key = `${snapshot.intentId}:${session.id}:${session.generation}:${value.eqApplied}:${value.levelingApplied}`;
     if (key === this.processingReport) return;
     this.processingReport = key;
-    this.listening.audioProcessingApplied?.({intentId: snapshot.intentId, sessionId: session.id, generation: session.generation}, value);
+    this.listening.audioProcessingApplied({intentId: snapshot.intentId, sessionId: session.id, generation: session.generation}, value);
   }
 
   transportPosition() { return this.primary ? this.position() : this.snapshot.positionSeconds; }

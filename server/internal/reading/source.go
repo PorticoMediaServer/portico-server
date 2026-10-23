@@ -131,6 +131,11 @@ type Source struct {
 	closeOnce sync.Once
 }
 
+// Context carries both this request's cancellation and the captured reader
+// session's retirement. Buffered parsing and image work use the same lifetime
+// as source extents; a closed book must also stop work after bytes were read.
+func (f *Source) Context() context.Context { return f.ctx }
+
 func (s *Service) Open(ctx context.Context, p identity.Principal, item, sourceID, expected string) (*Source, error) {
 	v, err := s.Resolve(ctx, p, item, sourceID)
 	if err != nil {
