@@ -221,3 +221,30 @@ func TestRegisteredReturnLocalOwnerOutcomesPreserveProfilesAndRejectMerge(t *tes
 		})
 	}
 }
+
+func TestRegisteredReturnConsumerRejectsSignedOtherServerAndAccount(t *testing.T) {
+	f := newClaimFixture(t)
+	ctx := context.Background()
+	installation := strings.Repeat("i", 43)
+	challenge, _, e := f.service.IssueChallenge(ctx, installation)
+	if e != nil {
+		t.Fatal(e)
+	}
+	q := RegisteredReturnExchange{ServerChallenge: challenge, InstallationID: installation, RegistrationID: "ret_verified_fixture", Purpose: "setup"}
+	c := serverReturnAssertion{Kind: "portico.server-return.v1", AccountID: f.installed.AccountID, Username: "verified_username", ServerID: f.id.ID(), Challenge: challenge, Nonce: strings.Repeat("n", 32), IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute), Purpose: q.Purpose, InstallationID: installation, RegistrationID: q.RegistrationID, ClaimOperationID: f.installed.OperationID, ClaimGeneration: 1, CredentialGeneration: 1}
+	goodRaw, _ := json.Marshal(c)
+	good := Signed{Payload: base64.RawURLEncoding.EncodeToString(goodRaw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(f.hostedKey, goodRaw)), KeyID: "pin1", Certificate: testSigningCertificate(f.hostedKey, "pin1")}
+	if verified, e := f.service.verifyEnvelope(ctx, good); e != nil || !bytes.Equal(verified, goodRaw) {
+		t.Fatal("fixture did not establish genuine producer signature", e)
+	}
+
+	for _, change := range []func(*serverReturnAssertion){func(c *serverReturnAssertion) { c.ServerID = "srv_other" }, func(c *serverReturnAssertion) { c.AccountID = "different-account" }, func(c *serverReturnAssertion) { c.ClaimGeneration = 2 }, func(c *serverReturnAssertion) { c.ExpiresAt = time.Now().UTC().Add(-time.Second) }} {
+		bad := c
+		change(&bad)
+		raw, _ := json.Marshal(bad)
+		signed := Signed{Payload: base64.RawURLEncoding.EncodeToString(raw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(f.hostedKey, raw)), KeyID: "pin1", Certificate: testSigningCertificate(f.hostedKey, "pin1")}
+		if _, e = f.service.verifyRegisteredReturn(ctx, signed, q); e == nil {
+			t.Fatal("signed wrong authority admitted")
+		}
+	}
+}
