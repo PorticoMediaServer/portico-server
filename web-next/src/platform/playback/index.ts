@@ -14,4 +14,6 @@ export {videoPresentationLayout, VideoPresentationContinuity} from './video-pres
 export type {PlaybackWindow, VideoPresentationLayout} from './video-presentation.ts';
 export {readPlaybackTrickplay} from './trickplay.ts';
 export type {PlaybackTrickplaySource, PlaybackTrickplaySelection} from './trickplay.ts';
+export {playbackPolicyNext} from './policy.ts';
+export type {WebPlaybackPolicyAction, WebPlaybackPolicyNext} from './policy.ts';
 export {loadDeviceEqualizer, saveDeviceEqualizer, resetDeviceEqualizer, subscribeDeviceEqualizer} from './audio/equalizer-store.ts';

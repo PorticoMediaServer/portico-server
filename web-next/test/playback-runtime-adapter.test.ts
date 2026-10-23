@@ -8,6 +8,7 @@ import type {ServerEvent} from '@core/playback-v1/types.ts';
 import {WebShellPlaybackRuntime} from '../src/platform/playback/runtime.ts';
 import {ByteCache} from '../src/platform/playback/audio/bytes.ts';
 import {PlayOnController, type WebCastPort} from '../src/platform/playback/play-on.ts';
+import {playbackPolicyNext} from '../src/platform/playback/policy.ts';
 import {WebCastSender, type CastBrowser, type CastSession} from '../src/platform/cast/index.ts';
 import type {WebPlaybackSettings, WebPlaybackSource} from '../src/platform/playback/types.ts';
 import type {SelectionContext} from '@core/selection-model/types.ts';
@@ -261,6 +262,192 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, e
   return {runtime, source, api, server, log, video, hls, clock, arrive, arriveLive, offers, expireLiveBookmark: () => { channels.windowStartMs = 50000; }, invalidate: () => { current = false; }, callbacks: () => [...callbacks.values()].reduce((n, v) => n + v.size, 0), intercept: (fn: typeof intercept) => { intercept = fn; }, changeViewerFence: () => { viewerFence = 'other_detail_viewer'; }};
 }
 function deferred() { let resolve!: () => void, enter!: () => void; const promise = new Promise<void>(r => { resolve = r; }), started = new Promise<void>(r => { enter = r; }); return {started, resolve, hold: async () => { enter(); await promise; }}; }
+
+const introMarker = {id: 'intro', kind: 'intro', startMs: 30000, endMs: 80000, automaticSafe: true};
+const creditsMarker = {id: 'credits', kind: 'credits', startMs: 7100000, endMs: 7200000, automaticSafe: true};
+function policyFixture(f: ReturnType<typeof setup>, markers = [introMarker, creditsMarker], postPlay: Record<string, unknown> = {}) {
+  f.intercept(async (request, response) => {
+    if (request.path.includes('/playback-offers?')) {
+      const body = response.body as {current: {sourceId: string}};
+      return {...response, body: {...body, markers: {sourceId: body.current.sourceId, revision: 'markers_1', markers}}};
+    }
+    if (request.method === 'GET' && /^\/v1\/queues\/[^/]+$/.test(request.path)) return {...response, body: {...response.body as object, postPlay: {autoplay: true, countdownMs: 5000, ...postPlay}}};
+    if (request.method === 'GET' && request.path.includes('/window?')) {
+      const body = response.body as {items: object[]};
+      return {...response, body: {...body, items: body.items.map(item => ({...item, durationMs: 7200000}))}};
+    }
+    const body = response.body as {queue?: object; window?: object[]} | undefined;
+    if (body?.queue) return {...response, body: {...body, queue: {...body.queue, postPlay: {autoplay: true, countdownMs: 5000, ...postPlay}}, ...(body.window ? {window: body.window.map(item => ({...item, durationMs: 7200000}))} : {})}};
+    return response;
+  });
+}
+async function policyQueue(f: ReturnType<typeof setup>) {
+  await f.runtime.selectionPlayback(() => true).play({context: selectionContext, items: [selectionLeaf('first'), selectionLeaf('next')], signal: new AbortController().signal});
+  await f.arrive();
+  const fence = f.runtime.getSnapshot().fence!;
+  assert.ok(fence, 'the coherent source/queue fixture must publish a real fence');
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  f.runtime.open(fence);
+  return fence;
+}
+
+test('policy actions execute only the rendered marker and record a real manual skip on the actual session', async t => {
+  const f = setup(t, {skipModes: () => ({intro: 'ask', recap: 'ask', credits: 'ask'})});
+  policyFixture(f); const fence = await policyQueue(f);
+  f.video.advance(40); await settle();
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt?.kind, 'skip');
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'skip', markerId: 'old-intro'}), /playback_policy_unavailable/);
+  const loads = f.video.loads;
+  await f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'});
+  assert.equal(f.video.loads, loads, 'a skip seeks the same actual media attachment');
+  assert.equal(f.runtime.getSnapshot().playback.pendingSeek!.positionSeconds, 79);
+  assert.notEqual(f.runtime.getSnapshot().playback.positionSeconds, 79, 'the UI does not fabricate a seek landing');
+  f.video.land(79); await settle(); f.clock.advance(10000); await settle();
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 79);
+  assert.ok(f.log.some(request => request.path.endsWith('/timeline') && JSON.stringify(request.body).includes('"skipped":{"markerId":"intro","mode":"manual","positionMs":40000}')));
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'}), /playback_policy_unavailable/);
+});
+
+test('policy dismissal is marker-scoped and automatic Undo returns to the actual pre-skip position', async t => {
+  const f = setup(t, {skipModes: () => ({intro: 'ask', recap: 'ask'})});
+  policyFixture(f, [introMarker, {id: 'recap', kind: 'recap', startMs: 100000, endMs: 120000, automaticSafe: true}]);
+  const fence = await policyQueue(f); f.video.advance(40); await settle();
+  await f.runtime.policyAction(fence, {kind: 'dismiss', markerId: 'intro'});
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt, null); assert.equal(f.video.seeking, false);
+  f.video.advance(105); await settle();
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt?.kind, 'skip');
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'dismiss', markerId: 'intro'}), /playback_policy_unavailable/);
+
+  const a = setup(t, {skipModes: () => ({intro: 'auto'})}); policyFixture(a);
+  const automatic = await policyQueue(a); a.video.advance(38); await settle();
+  assert.equal(a.runtime.getSnapshot().presentation!.policy!.undo?.marker.id, 'intro');
+  a.video.land(79); await settle(); await a.runtime.pause(automatic);
+  a.clock.advance(3000); await a.runtime.policyAction(automatic, {kind: 'undo', markerId: 'intro'});
+  assert.equal(a.runtime.getSnapshot().playback.pendingSeek!.positionSeconds, 38);
+  a.video.land(38); await settle(); await a.runtime.resume(automatic);
+  assert.equal(a.runtime.getSnapshot().presentation!.policy!.undo, null);
+  assert.equal(a.runtime.getSnapshot().playback.pendingSeek, undefined, 'the undone marker does not automatically skip again');
+});
+
+test('Undo expires on the real policy clock while paused and the quiet dock never exposes it later', async t => {
+  for (const collapsed of [false, true]) {
+    const f = setup(t, {skipModes: () => ({intro: 'auto'})}); policyFixture(f);
+    const fence = await policyQueue(f); if (collapsed) f.runtime.collapse(fence);
+    f.video.advance(38); await settle(); f.video.land(79); await settle(); await f.runtime.pause(fence);
+    if (collapsed) { f.runtime.open(fence); assert.equal(f.runtime.getSnapshot().presentation!.policy!.undo, null); }
+    else assert.ok(f.runtime.getSnapshot().presentation!.policy!.undo);
+    f.clock.advance(6000); await settle();
+    assert.equal(f.runtime.getSnapshot().presentation!.policy!.undo, null);
+    await assert.rejects(f.runtime.policyAction(fence, {kind: 'undo', markerId: 'intro'}), /playback_policy_unavailable/);
+  }
+});
+
+test('Play now uses the actual next occurrence before completion and double activation cannot move twice', async t => {
+  const f = setup(t, {skipModes: () => ({credits: 'ask'})}); policyFixture(f);
+  const fence = await policyQueue(f); f.video.advance(7110); await settle();
+  const next = playbackPolicyNext(f.runtime.getSnapshot(), fence)!;
+  assert.equal(next.itemId, 'next'); assert.equal(next.title, 'Title next');
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'play-now', nextEntryId: 'unrelated'}), /playback_policy_unavailable/);
+  const play = f.runtime.policyAction(fence, {kind: 'play-now', nextEntryId: next.entryId});
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'play-now', nextEntryId: next.entryId}), /stale_playback_command|playback_policy_unavailable/);
+  await play; await f.arrive();
+  const moves = f.log.filter(request => request.path.endsWith(':advance'));
+  assert.equal(moves.length, 1); assert.deepEqual(moves[0]!.body, {reason: 'next'});
+  assert.equal(f.runtime.getSnapshot().playback.itemId, 'next'); assert.equal(f.video.paused, false);
+});
+
+test('explicit automatic credits advance uses the real completion request before media end in both expanded and quiet modes', async t => {
+  for (const collapsed of [false, true]) {
+    const f = setup(t, {skipModes: () => ({credits: 'ask'})}); policyFixture(f, [creditsMarker], {startDuringCredits: true});
+    const fence = await policyQueue(f); if (collapsed) f.runtime.collapse(fence);
+    f.video.advance(7110); await settle();
+    assert.equal(f.runtime.getSnapshot().playback.phase, 'ready');
+    f.clock.advance(5000); await f.arrive();
+    const moves = f.log.filter(request => request.path.endsWith(':advance'));
+    assert.equal(moves.length, 1); assert.deepEqual(moves[0]!.body, {reason: 'completion'});
+    assert.equal(f.runtime.getSnapshot().playback.itemId, 'next'); assert.equal(f.video.ended, false);
+    assert.equal(f.runtime.getSnapshot().presentation!.expanded, !collapsed);
+  }
+});
+
+test('Watch credits suppresses only early advance; the real confirmed end still runs its queue policy', async t => {
+  const f = setup(t, {skipModes: () => ({credits: 'ask'})}); policyFixture(f, [creditsMarker], {startDuringCredits: true});
+  const fence = await policyQueue(f); f.video.advance(7110); await settle();
+  const prompt = f.runtime.getSnapshot().presentation!.policy!.prompt!;
+  if (prompt.kind !== 'up-next') assert.fail('real credits offer required');
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'watch-credits', offerId: 'old-offer'}), /playback_policy_unavailable/);
+  await f.runtime.policyAction(fence, {kind: 'watch-credits', offerId: prompt.offer.id});
+  f.clock.advance(10000); await settle();
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 0);
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt, null);
+  f.video.finish(); await settle(); f.clock.advance(5000); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().playback.itemId, 'next');
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 1);
+});
+
+test('credits followed by a scene never auto-advance early and pausing freezes the explicit early countdown', async t => {
+  const scene = setup(t, {skipModes: () => ({credits: 'ask'})});
+  policyFixture(scene, [{...creditsMarker, endMs: 7160000}], {startDuringCredits: true});
+  await policyQueue(scene); scene.video.advance(7110); await settle();
+  const prompt = scene.runtime.getSnapshot().presentation!.policy!.prompt;
+  assert.equal(prompt?.kind === 'up-next' && prompt.sceneAfterCredits, true);
+  scene.clock.advance(10000); await settle(); assert.equal(scene.log.filter(request => request.path.endsWith(':advance')).length, 0);
+  const paused = setup(t, {skipModes: () => ({credits: 'ask'})}); policyFixture(paused, [creditsMarker], {startDuringCredits: true});
+  const fence = await policyQueue(paused); paused.video.advance(7110); await settle(); await paused.runtime.pause(fence);
+  paused.clock.advance(10000); await settle(); assert.equal(paused.log.filter(request => request.path.endsWith(':advance')).length, 0);
+  await paused.runtime.resume(fence); paused.clock.advance(5000); await paused.arrive();
+  assert.equal(paused.runtime.getSnapshot().playback.itemId, 'next');
+});
+
+test('Still watching waits for confirmed completion and only the explicit current response can continue', async t => {
+  const f = setup(t); policyFixture(f, [], {passoutCheckDue: true}); const fence = await policyQueue(f);
+  const next = playbackPolicyNext(f.runtime.getSnapshot(), fence)!;
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'continue', nextEntryId: next.entryId}), /playback_policy_unavailable/);
+  f.video.finish(); await settle(); f.clock.advance(15000); await settle();
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.attention, 'still-watching');
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, false);
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'play-now', nextEntryId: next.entryId}), /playback_policy_unavailable/);
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 0);
+  await f.runtime.policyAction(fence, {kind: 'continue', nextEntryId: next.entryId}); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().playback.itemId, 'next');
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 1);
+});
+
+test('canceling a confirmed end countdown produces real Replay without advancing or fabricating another session', async t => {
+  const f = setup(t); policyFixture(f, []); const fence = await policyQueue(f);
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'cancel-autoplay'}), /playback_policy_unavailable/);
+  f.video.finish(); await settle();
+  await f.runtime.policyAction(fence, {kind: 'cancel-autoplay'}); f.clock.advance(10000); await settle();
+  const snapshot = f.runtime.getSnapshot();
+  assert.equal(snapshot.fence!.sessionId, fence.sessionId); assert.equal(snapshot.presentation!.finished, true);
+  assert.ok(snapshot.presentation!.controls.includes('replay'));
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 0);
+  await f.runtime.replay(fence); await f.arrive(); assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 0);
+});
+
+test('a button arriving after the actual countdown deadline cannot claim it canceled an already committed advance', async t => {
+  const f = setup(t); policyFixture(f, []); const fence = await policyQueue(f);
+  f.video.finish(); await settle(); f.clock.advance(5000);
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'cancel-autoplay'}), /playback_policy_unavailable|stale_playback_command/);
+  await f.arrive(); assert.equal(f.runtime.getSnapshot().playback.itemId, 'next');
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 1);
+});
+
+test('policy actions and next metadata reject stale full fences, collapsed prompts and retired authority', async t => {
+  const f = setup(t, {skipModes: () => ({intro: 'ask'})}); policyFixture(f); const fence = await policyQueue(f);
+  f.video.advance(40); await settle();
+  for (const other of [{...fence, generation: fence.generation + 1}, {...fence, sourceId: 'other'}, {...fence, entryId: 'other'}, {...fence, sessionId: 'other'}, {...fence, playback: {...fence.playback, scope: {...fence.playback.scope, profileId: 'other'}}}]) {
+    assert.equal(playbackPolicyNext(f.runtime.getSnapshot(), other), null);
+    await assert.rejects(f.runtime.policyAction(other, {kind: 'skip', markerId: 'intro'}), /stale_playback_command/);
+  }
+  const snapshot = f.runtime.getSnapshot(), view = snapshot.queueView!, next = playbackPolicyNext(snapshot, fence)!;
+  assert.ok(next); assert.equal(Object.isFrozen(next), true);
+  assert.equal(playbackPolicyNext({...snapshot, queueView: {...view, current: {...view.current!, generation: fence.generation + 1}}}, fence), null);
+  assert.equal(playbackPolicyNext({...snapshot, queueView: {...view, items: view.items.map(item => item.entryId === next.entryId ? {...item, title: ''} : item)}}, fence), null);
+  assert.equal(playbackPolicyNext({...snapshot, queueView: {...view, postPlay: {...view.postPlay, nextEntryId: 'other'}}}, fence), null);
+  f.runtime.collapse(fence); await assert.rejects(f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'}), /playback_policy_unavailable/);
+  f.runtime.open(fence); f.invalidate(); await assert.rejects(f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'}), /stale_playback_command/);
+});
 
 /** The platform sender boundary; SDK transport/picker qualification stays with its owner. */
 class ControlledCastSender implements WebCastPort {

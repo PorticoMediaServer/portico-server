@@ -16,7 +16,7 @@ import {PlayerOffersService, type PlayerOffersData} from '@core/player-offers.ts
 import {SubtitleService, fetchSubtitleDocument, type SubtitleDocument, type SubtitleSnapshot} from '@core/subtitles.ts';
 import type {PlaybackOptions, Session} from '@core/playback-v1/types.ts';
 import type {PlaybackSubject} from '@core/presentation/kit-model/index.ts';
-import {PlaybackDock, PlaybackPolicy, PlayerSessionChoices, playbackFence, queueScope, sameFence, type DockPlayback, type DockTransition, type PlaybackFence, type PolicyView} from '../../../../packages/player-core/src/index.ts';
+import {PlaybackDock, PlaybackPolicy, PlayerSessionChoices, playbackFence, queueScope, sameFence, type DockPlayback, type DockTransition, type PlaybackFence, type PolicyCommand, type PolicyView, type QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import {WebPlayback} from './web-playback.ts';
 import {DecodeAudioRender} from './DecodeAudioRender.ts';
 import {loadDeviceEqualizer, subscribeDeviceEqualizer} from './audio/equalizer-store.ts';
@@ -29,6 +29,7 @@ import {entrySubject, itemSubject} from './subject.ts';
 import {playbackEnvironment} from './environment.ts';
 import {browserClientProfile} from './client-profile.ts';
 import {selectionSegments, selectionStartSeconds} from './selection.ts';
+import {currentPolicyQueue, type WebPlaybackPolicyAction} from './policy.ts';
 import type {VideoLike} from './web-media-player.ts';
 import type {WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart, WebPlaybackVersionStart} from './types.ts';
 
@@ -81,6 +82,7 @@ export class WebShellPlaybackRuntime {
   private operation = 0;
   private runtimeProblem?: string;
   private policyView: PolicyView | null = null;
+  private policyAdvanceFence?: QueuePlaybackFence;
   private timer?: unknown;
   private lifecycle: (() => void)[] = [];
   private readonly capabilityPublisher: CapabilityPublisher;
@@ -456,6 +458,7 @@ export class WebShellPlaybackRuntime {
       }
       this.selectSource(stack, playback, session);
       const offers = this.offers(stack, playback), fence = this.fence(stack, playback, session, offers);
+      if (this.policyAdvanceFence && (!fence || !sameFence(this.policyAdvanceFence, fence))) this.policyAdvanceFence = undefined;
       let presentation: WebPlaybackPresentation | undefined;
       if (fence && stack.subject) {
         this.choices.begin(fence.playback); this.choices.bindSource(fence);
@@ -486,7 +489,6 @@ export class WebShellPlaybackRuntime {
         const listening = stack.queue.listening.getSnapshot();
         const listeningFinished = confirmed && stack.subject.kind !== 'video' &&
           (!queue.next.available || listening.stopped || listening.preferences?.autoplayNext === false);
-        const finished = !!(completion && (!completion.nextAvailable || !completion.postPlay.autoplay) || listeningFinished);
         // Start the end countdown only after the actual controller has published its hold.
         // With a zero countdown, consuming an earlier raw media end loses the advance.
         const result = fence.kind === 'queue' ? this.policy.update({fence, nowMs: (this.env.timers?.now ?? Date.now)(), positionSeconds: Math.min(playback.duration || Infinity, playback.positionSeconds), durationSeconds: playback.duration, rate: speed, playing: local.playing, expanded: stack.expanded, ended: !!completion, kind: stack.subject.kind === 'video' ? stack.subject.item.kind : stack.subject.kind, modes: this.source.settings.skipModes(), postPlay: queue?.postPlay ?? null, ...(playback.phase === 'error' ? {attention: playback.ended?.reason === 'terminated' ? 'owner-stopped' as const : 'playback-error' as const} : {})}) : null;
@@ -495,10 +497,11 @@ export class WebShellPlaybackRuntime {
           if (command.kind === 'expand') { stack.expanded = true; this.dock.expand(fence); }
           else if (command.kind === 'seek') { stack.service.seek(command.positionSeconds); stack.service.markerSkipped(command.markerId, 'automatic', playback.positionSeconds); }
           else {
-            const captured = fence;
-            queueMicrotask(() => { if (this.matches(captured)) void stack.queue.continueCompletion(command.mode).catch(() => { if (this.current(stack)) { this.runtimeProblem = 'playback_advance_failed'; this.sync(); } }); });
+            this.policyAdvanceFence = command.fence;
+            queueMicrotask(() => { if (this.matches(command.fence)) void this.advancePolicy(stack, command).catch(() => { if (this.current(stack)) { this.runtimeProblem = 'playback_advance_failed'; this.sync(); } }); });
           }
         }
+        const finished = !!(completion && !this.policyView?.attention && (!completion.nextAvailable || !completion.postPlay.autoplay || this.policyView?.replay) || listeningFinished);
         const controls: WebPlaybackPresentation['controls'][number][] = finished ? ['replay'] : playback.phase === 'ended' || playback.phase === 'error' ? [] : [playback.intent === 'playing' ? 'pause' : 'play'];
         if (!playback.ended && (finished || ['ready', 'starting'].includes(playback.phase))) controls.push('seek');
         if (fence.kind === 'queue' && queue?.next.available && !playback.ended) controls.push('next');
@@ -597,7 +600,82 @@ export class WebShellPlaybackRuntime {
 
   private schedulePolicy(): void {
     this.clearTimer(this.timer); this.timer = undefined;
-    if (this.snapshot?.fence && this.stack.queue.getSnapshot().completion && !this.disposed) this.timer = this.setTimer(() => { this.timer = undefined; this.sync(); }, 250);
+    const post = this.snapshot?.queueView?.postPlay;
+    // The dock deliberately hides the offer, but its explicit during-credits setting still
+    // runs the same policy. Do not depend on a rendered card to advance that quiet queue.
+    const earlyCountdown = this.snapshot?.subject?.kind === 'video' && this.snapshot.presentation?.playing && post?.available && post.autoplay && post.startDuringCredits;
+    // Undo expires even while paused. Early credits count the same actual policy clock as the
+    // end card, including when a media element has not emitted another timeupdate yet.
+    if (this.snapshot?.fence && (this.stack.queue.getSnapshot().completion || this.policyView?.undo || earlyCountdown) && !this.disposed) this.timer = this.setTimer(() => { this.timer = undefined; this.sync(); }, 250);
+  }
+  private async advancePolicy(stack: Stack, command: Extract<PolicyCommand, {kind: 'advance'}>): Promise<void> {
+    const fence = command.fence;
+    this.require(fence);
+    const state = stack.queue.getSnapshot(), view = currentPolicyQueue(this.snapshot, fence);
+    if (!view || !view.next.available || view.next.entryId !== command.nextEntryId || view.postPlay.nextEntryId !== command.nextEntryId) problem('playback_policy_unavailable');
+    const held = state.completion, playback = stack.service.getSnapshot();
+    if (held && held.sessionId === fence.sessionId && held.intentId === playback.intentId && held.nextEntryId === command.nextEntryId && playback.phase === 'ended') {
+      await stack.queue.continueCompletion(command.mode);
+    } else {
+      if (playback.phase !== 'ready' || command.mode === 'still-watching' || view.postPlay.passoutCheckDue || command.mode === 'automatic' && (!view.postPlay.autoplay || !view.postPlay.startDuringCredits)) problem('playback_policy_unavailable');
+      if (command.mode === 'automatic') await stack.queue.advanceFromCredits(view.queue.id, view.queue.revision);
+      else await stack.queue.next(view.queue.id, view.queue.revision);
+    }
+    if (this.current(stack)) this.sync();
+  }
+
+  /** Execute only the prompt the caller actually rendered, through the existing policy and
+   * queue controllers. No UI-supplied position, synthetic completion or queue ordering. */
+  async policyAction(expected: QueuePlaybackFence, action: WebPlaybackPolicyAction): Promise<void> {
+    if (expected.kind !== 'queue') problem('playback_policy_unavailable');
+    const fence = playbackFence(expected);
+    this.require(fence); this.sync();
+    const stack = this.require(fence), view = currentPolicyQueue(this.snapshot, fence), policy = this.policyView;
+    const playback = stack.service.getSnapshot();
+    if (!view || !stack.expanded || !policy || playback.ended || sameFence(this.policyAdvanceFence, fence)
+      || playback.pendingSeek && action.kind !== 'undo') problem('playback_policy_unavailable');
+    const prompt = policy.prompt;
+    let command: PolicyCommand | null = null;
+    switch (action.kind) {
+      case 'skip':
+      case 'dismiss':
+        if (prompt?.kind !== 'skip' || prompt.marker.id !== action.markerId) problem('playback_policy_unavailable');
+        if (action.kind === 'skip') command = this.policy.skip(fence);
+        else if (!this.policy.dismiss(fence)) problem('playback_policy_unavailable');
+        break;
+      case 'undo':
+        if (policy.undo?.marker.id !== action.markerId) problem('playback_policy_unavailable');
+        command = this.policy.undoSkip(fence, (this.env.timers?.now ?? Date.now)());
+        break;
+      case 'watch-credits':
+        if (prompt?.kind !== 'up-next' || prompt.offer.id !== action.offerId || !this.policy.dismiss(fence)) problem('playback_policy_unavailable');
+        break;
+      case 'play-now':
+      case 'continue': {
+        const held = stack.queue.getSnapshot().completion;
+        const finished = !!held && held.sessionId === fence.sessionId && held.intentId === stack.service.getSnapshot().intentId;
+        if (!view.next.available || view.next.entryId !== action.nextEntryId || view.postPlay.nextEntryId !== action.nextEntryId
+          || (action.kind === 'continue' ? !finished || policy.attention !== 'still-watching' : policy.attention || !finished && prompt?.kind !== 'up-next')) problem('playback_policy_unavailable');
+        command = this.policy.advance(fence, action.kind === 'continue' ? 'still-watching' : 'manual');
+        break;
+      }
+      case 'cancel-autoplay': {
+        const held = stack.queue.getSnapshot().completion;
+        if (!held || held.sessionId !== fence.sessionId || held.intentId !== stack.service.getSnapshot().intentId || policy.attention || policy.replay || !held.nextAvailable) problem('playback_policy_unavailable');
+        this.policy.cancelAutoplay(fence);
+        break;
+      }
+      default: problem('playback_policy_unavailable');
+    }
+    if (action.kind === 'skip' || action.kind === 'undo' || action.kind === 'play-now' || action.kind === 'continue') {
+      if (!command) problem('playback_policy_unavailable');
+      if (command.kind === 'seek') {
+        const from = stack.service.getSnapshot().positionSeconds;
+        stack.service.seek(command.positionSeconds);
+        if (command.reason === 'manual-skip') stack.service.markerSkipped(command.markerId, 'manual', from);
+      } else if (command.kind === 'advance') { this.policyAdvanceFence = fence; await this.advancePolicy(stack, command); }
+    }
+    if (this.current(stack)) this.sync();
   }
   private matches(fence: PlaybackFence): boolean { return this.current() && sameFence(this.snapshot?.fence, fence) && sameFence(this.dock.getSnapshot().local?.fence, fence); }
   private require(fence: PlaybackFence): Stack { if (!this.matches(fence)) problem('stale_playback_command'); return this.stack; }
