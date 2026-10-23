@@ -48,16 +48,20 @@ import (
 	"portico.local/server/internal/playbackv1"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/rcloneprogram"
+	"portico.local/server/internal/reading"
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/social"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
+	"portico.local/server/internal/telemetry"
 	"portico.local/server/internal/webhooks"
 )
 
 type Dependencies struct {
+	TelemetryContext  context.Context
+	streamTraffic     *telemetry.Traffic
 	RcloneProgram     *rcloneprogram.Status
 	StorageLayout     *storagepaths.Layout
 	ConnectionUsage   func() ConnectionUsage
@@ -110,6 +114,7 @@ type Dependencies struct {
 	DB                *sql.DB
 	Identity          *identity.Service
 	Catalog           *catalog.Service
+	Reading           *reading.Service
 	Ingestion         *ingestion.Service
 	Playback          *playback.Service
 	Hosted            *hosted.Service
@@ -751,6 +756,7 @@ func (d Dependencies) itemAccess(ctx context.Context, p identity.Principal, id s
 	return d.restrictedItem((&http.Request{}).WithContext(ctx), p, id)
 }
 func New(d Dependencies) http.Handler {
+	d.streamTraffic = &telemetry.Traffic{}
 	d.configurePlaybackEvidence()
 	if d.Storage == nil {
 		if binary, e := os.Executable(); e == nil {
@@ -824,6 +830,12 @@ func New(d Dependencies) http.Handler {
 		})
 	}
 	d.v1 = newPlaybackV1(d)
+	if d.Reading == nil {
+		d.Reading = d.readingService()
+	}
+	if d.v1 != nil {
+		d.v1.Traffic = d.streamTraffic
+	}
 	d.social = d.Social()
 	if registry, err := FoundationRegistry(d); err != nil {
 		panic(err)

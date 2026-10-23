@@ -1,8 +1,9 @@
-import type {HttpLocalApi,LocalSession} from '@core/index.ts';
+import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {RouteConnection,sessionRoute} from '@core/route-connection';
 import {RouteError} from '@core/route-identity';
 import {restoreNativeSession,forgetNativeSession,savedConnectionDamaged,type RememberedServer,type ServerConnectionStorage,type HostedConnectionSource,type ConnectionEnvironment} from '@core/server-connections';
 import {browserAccount} from './account';
+import {AppSessionStore, type AppSessionRecord, type NewServerConnection} from '@core/app-sessions.ts';
 
 /** Version 1 is encrypted with a non-exportable key. Version 2 is plain JSON, used where the
  * page has no `crypto.subtle` (a server's web app over plain HTTP on the LAN): HTTP is
@@ -13,7 +14,8 @@ const canEncrypt=()=>!!globalThis.crypto?.subtle;
 /** Native credentials are never ordinary drafts/localStorage. The non-exportable
  * AES key and authenticated encrypted record are separate IndexedDB values. */
 export class BrowserProtectedStore<RecordType> {
- constructor(private readonly databaseName='portico.server-connections.v1'){}
+ constructor(private readonly databaseName='portico.server-connections.v1', private readonly maximumBytes=192000, private readonly encryptedOnly=false){}
+ private requireEncryption(){if(this.encryptedOnly&&!canEncrypt())throw new RouteError('secure_context_required','This continuation requires protected browser storage.');}
  private async transaction<T>(mode:IDBTransactionMode,work:(store:IDBObjectStore,done:(v:T)=>void)=>void):Promise<T>{
   return new Promise((resolve,reject)=>{let db:IDBDatabase|undefined,tx:IDBTransaction|undefined,done=false,value:T;const finish=(error?:unknown)=>{if(done)return;done=true;clearTimeout(timer);db?.close();error?reject(new Error('The saved server connection could not be read or written.')):resolve(value);};const timer=setTimeout(()=>{try{tx?.abort();}catch{}finish(new Error());},5000);
    const request=indexedDB.open(this.databaseName,1);request.onupgradeneeded=()=>request.result.createObjectStore('vault');request.onerror=()=>finish(request.error);request.onblocked=()=>finish(new Error());request.onsuccess=()=>{db=request.result;if(done){db.close();return;}try{tx=db.transaction('vault',mode,mode==='readwrite'?{durability:'strict'}:undefined);if(mode==='readwrite'&&tx.durability!=='strict')throw new Error();tx.oncomplete=()=>finish();tx.onabort=()=>finish(tx?.error);tx.onerror=()=>finish(tx?.error);work(tx.objectStore('vault'),v=>{value=v;});}catch(e){try{tx?.abort();}catch{}finish(e);}};
@@ -33,16 +35,16 @@ export class BrowserProtectedStore<RecordType> {
  }
  private async decode(values:{key?:CryptoKey;record?:Vault}):Promise<RecordType|undefined>{
   if(!values.record)return;
-  if(values.record.version===2){if(typeof values.record.plain!=='string'||values.record.plain.length>196608)throw this.damaged();try{return JSON.parse(values.record.plain);}catch{throw this.damaged();}}
+  if(values.record.version===2){if(this.encryptedOnly||typeof values.record.plain!=='string'||values.record.plain.length>this.maximumBytes+16)throw this.damaged();try{return JSON.parse(values.record.plain);}catch{throw this.damaged();}}
   // An encrypted record where nothing can decrypt it is as good as absent; the next save replaces it.
   if(!canEncrypt())return;
-  if(!this.usable(values.key)||values.record.version!==1||!(values.record.iv instanceof Uint8Array)||values.record.iv.length!==12||!(values.record.cipher instanceof ArrayBuffer)||values.record.cipher.byteLength>196608)throw this.damaged();
+  if(!this.usable(values.key)||values.record.version!==1||!(values.record.iv instanceof Uint8Array)||values.record.iv.length!==12||!(values.record.cipher instanceof ArrayBuffer)||values.record.cipher.byteLength>this.maximumBytes+16)throw this.damaged();
   let clear:ArrayBuffer;
   // Failed authentication is the same answer every time; any other failure to decrypt is not known to be.
   try{clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(values.record.iv),additionalData:new TextEncoder().encode(this.databaseName)},values.key,values.record.cipher);}catch(e){throw (e as {name?:unknown}|null)?.name==='OperationError'?this.damaged():e;}
   try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(clear));}catch{throw this.damaged();}finally{new Uint8Array(clear).fill(0);}
  }
- read(){return this.exclusive(async()=>this.decode(await this.values()));}
+ read(){this.requireEncryption();return this.exclusive(async()=>{this.requireEncryption();return this.decode(await this.values());});}
  /** The whole read, decision and write in one database transaction. Where the page has no
   * `crypto.subtle` it has no Web Locks either (plain HTTP), so `exclusive` only orders work
   * inside this tab; the database's own transactions are what order two tabs. Nothing here needs
@@ -57,17 +59,18 @@ export class BrowserProtectedStore<RecordType> {
      // An encrypted record cannot be opened here, and a plain one that does not parse is damaged:
      // both read as absent, exactly as `decode` and `change` treat them.
      let current:RecordType|undefined;
-     if(record?.version===2&&typeof record.plain==='string'&&record.plain.length<=196608){try{current=JSON.parse(record.plain);}catch{current=undefined;}}
+     if(record?.version===2&&typeof record.plain==='string'&&record.plain.length<=this.maximumBytes+16){try{current=JSON.parse(record.plain);}catch{current=undefined;}}
      const next=update(current);
      if(next===current){done();return;}
      if(!next){store.delete('selected');done();return;}
-     const plain=JSON.stringify(next);if(new TextEncoder().encode(plain).length>192000)throw new Error('Saved server routes exceeded their limit.');
+     const plain=JSON.stringify(next);if(new TextEncoder().encode(plain).length>this.maximumBytes)throw new Error('Saved server routes exceeded their limit.');
      store.put({version:2,plain} satisfies Vault,'selected');done();
     }catch{try{store.transaction.abort();}catch{}}
    };
   });
  }
- change(update:(current:RecordType|undefined)=>RecordType|undefined):Promise<void>{return this.exclusive(async()=>{
+ change(update:(current:RecordType|undefined)=>RecordType|undefined):Promise<void>{this.requireEncryption();return this.exclusive(async()=>{
+  this.requireEncryption();
   if(!canEncrypt())return this.changeInOneTransaction(update);
   const values=await this.values();
   // A damaged record is treated as absent: a save replaces it, and an update that saves nothing
@@ -77,15 +80,20 @@ export class BrowserProtectedStore<RecordType> {
   const next=update(current);
   if(next===current)return;
   if(!next){await this.transaction<void>('readwrite',(store,done)=>{store.delete('selected');done();});return;}
-  const bytes=new TextEncoder().encode(JSON.stringify(next));if(bytes.length>192000)throw new Error('Saved server routes exceeded their limit.');
+  const bytes=new TextEncoder().encode(JSON.stringify(next));if(bytes.length>this.maximumBytes)throw new Error('Saved server routes exceeded their limit.');
   let key=this.usable(values.key)?values.key:undefined;if(!key){if(values.record&&!damaged)throw new Error('The credential encryption key is missing.');key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
   const iv=crypto.getRandomValues(new Uint8Array(12));let cipher:ArrayBuffer;try{cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode(this.databaseName)},key,bytes);}finally{bytes.fill(0);}
   await this.transaction<void>('readwrite',(store,done)=>{if(key!==values.key)store.put(key,'key');store.put({version:1,iv,cipher} satisfies Vault,'selected');done();});
  });}
 }
-let environment:ConnectionEnvironment|undefined,active:RouteConnection|undefined,networkRevision=0;
-export function browserConnectionEnvironment():ConnectionEnvironment {
- if(environment)return environment;environment={storage:new BrowserProtectedStore<RememberedServer>()};
+let sessions:AppSessionStore|undefined;
+export function browserAppSessions():AppSessionStore {
+ return sessions ??= new AppSessionStore(new BrowserProtectedStore<AppSessionRecord>('portico.app-sessions.v1',4*1024*1024));
+}
+let listening=false,active:RouteConnection|undefined,networkRevision=0;
+export function browserConnectionEnvironment(serverId?:string,admission?:NewServerConnection):ConnectionEnvironment {
+ const store=browserAppSessions(),environment:ConnectionEnvironment={storage:serverId?store.connectionStorage(serverId,admission):store.selectedStorage()};
+ if(listening)return environment;listening=true;
  const changed=()=>active?.networkChanged('browser:'+ ++networkRevision);
  addEventListener('online',changed);addEventListener('offline',changed);
  const connection=(navigator as Navigator&{connection?:EventTarget}).connection;connection?.addEventListener('change',()=>{activeApi?.setTransportClass(linkType());changed();});
@@ -106,5 +114,8 @@ export function browserHostedSource(accountId:string):HostedConnectionSource {
   await central.service.synchronize();const session=await central.service.accessSession();if(session.account.id!==accountId)throw new Error('The saved server belongs to a different Portico Account.');return central.api.send<T>(path,'GET',undefined,signal,session.accessToken);
  }};
 }
-export async function restoreBrowserConnection(expected:LocalSession){const env=browserConnectionEnvironment(),central=browserAccount();return restoreNativeSession(env,record=>record.hosted?.origin===central.api.origin?browserHostedSource(record.hosted.accountId):undefined,expected);}
-export async function forgetBrowserConnection(session:LocalSession){const env=browserConnectionEnvironment();const captured=sessionRoute(session.accessToken);await forgetNativeSession(env,session);const retained=await env.storage.read();if(retained&&sessionRoute(retained.session.accessToken)===captured)return;if(active===captured)active=undefined;setTimeout(()=>{if(active!==captured)captured?.dispose();},16000);}
+export async function restoreBrowserConnection(expected:LocalSession){
+ const env=browserConnectionEnvironment(expected.viewer.serverId);
+ return restoreNativeSession(env,record=>{if(!record.hosted)return;const central=browserAccount();return record.hosted.origin===central.api.origin?browserHostedSource(record.hosted.accountId):undefined;},expected);
+}
+export async function forgetBrowserConnection(session:LocalSession){const env=browserConnectionEnvironment(session.viewer.serverId);const captured=sessionRoute(session.accessToken);await forgetNativeSession(env,session);const retained=await env.storage.read();if(retained&&sessionRoute(retained.session.accessToken)===captured)return;if(active===captured)active=undefined;setTimeout(()=>{if(active!==captured)captured?.dispose();},16000);}

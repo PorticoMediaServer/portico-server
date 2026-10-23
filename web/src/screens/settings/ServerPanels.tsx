@@ -11,7 +11,7 @@ import {TunersGroup} from '../server/DVRSettings';
 import {LibraryChannelsPanel} from '../server/Channels';
 import {AccountsPanel} from '../server/People';
 import {AccountDevices, InvitationsPanel} from '../server/Access';
-import {APIKeysPanel, MemberTokensPanel} from '../server/ApiAccess';
+import {APIKeysPanel} from '../server/ApiAccess';
 import {WebhooksPanel} from '../server/Webhooks';
 import {AssistantsPanel} from '../server/Assistants';
 import {MetadataSettingsPanel} from '../server/MetadataSettings';
@@ -55,7 +55,6 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.invitations': return <InvitationsPanel />;
     case 'server.devices': return <AccountDevices />;
     case 'server.apiKeys': return <APIKeysPanel />;
-    case 'server.memberTokens': return <MemberTokensPanel />;
     case 'server.webhooks': return <WebhooksPanel />;
     case 'server.assistants': return <AssistantsPanel />;
     case 'server.metadataSettings': return <MetadataSettingsPanel />;

@@ -486,7 +486,7 @@ func mcpTools() []mcpTool {
 	r, run = simple("GET", "/v1/admin/access/members", nil, []string{"cursor", "limit"}, nil)
 	add(mcpTool{Name: "list_members", Title: "List members", Description: "List the people who have an account on this server, with each one's role, whether they are disabled, which libraries they can see and their limits.", Role: identity.TierAdmin, ReadOnly: true, Properties: page(map[string]any{"limit": whole("How many in a page.", 1, 100)})}, r, run)
 
-	r, run = simple("GET", "/v1/admin/play-history", nil, []string{"accountId", "libraryId", "period", "cursor", "limit"}, nil)
+	r, run = simple("GET", "/v1/admin/play-history", nil, []string{"accountId", "libraryId", "period", "cursor", "limit", "timeZone", "until", "media", "q", "sort", "direction"}, nil)
 	add(mcpTool{Name: "play_history", Title: "Play history", Description: "List what has been played on the server and by whom, newest first.", Role: identity.TierAdmin, ReadOnly: true,
 		Properties: page(map[string]any{"accountId": text("Optional: one member's plays only."), "libraryId": text("Optional: plays from one library only."), "period": choice("How far back. Default: 24h.", "24h", "7d", "30d", "90d", "all"), "limit": whole("How many in a page.", 1, 200)})}, r, run)
 

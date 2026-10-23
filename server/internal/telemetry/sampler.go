@@ -47,12 +47,13 @@ const gpuInterval = 15 * time.Second
 const warmingUp = "Waiting for a second reading before a rate can be reported."
 
 type hostSampler struct {
-	state string
-	mu    sync.Mutex
-	cpu   cpuCounter
-	disk  counter
-	net   counter
-	gpu   gpuCache
+	state   string
+	mu      sync.Mutex
+	cpu     cpuCounter
+	disk    counter
+	net     counter
+	gpu     gpuCache
+	process processCounter
 }
 
 // HostSampler samples this host. state is the server state directory, which
@@ -73,6 +74,7 @@ func (s *hostSampler) Sample(ctx context.Context, at int64) Sample {
 	out.Metrics["cpu"] = sampleCPU(ctx, &s.cpu)
 	memory, used, total := sampleMemory(ctx)
 	out.Metrics["memory"], out.MemoryUsedBytes, out.MemoryTotalBytes = memory, used, total
+	out.Metrics["processCPU"], out.Metrics["processMemory"] = sampleProcess(ctx, &s.process, at, total)
 
 	disk, diskDetail := readDiskCounter(ctx, s.state)
 	s.disk = rate(out, "diskRead", "diskWrite", s.disk, at, disk, diskDetail)

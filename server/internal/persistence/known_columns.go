@@ -7,7 +7,8 @@ package persistence
 // It exists so a database can be asked whether it still has the columns this
 // build's statements name, without anything to compare it against but the
 // build itself.
-const knownSchemaColumns = `access_invitations.accepted_ms
+const knownSchemaColumns = `
+access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
 access_invitations.bound_username
@@ -33,6 +34,9 @@ account_portico_links.account_id
 account_portico_links.consent
 account_portico_links.hosted_account_id
 account_portico_links.unindexed
+account_stream_limits.account_id
+account_stream_limits.mode
+account_stream_limits.stream_limit
 accounts.display_name
 accounts.email
 accounts.epoch
@@ -2137,6 +2141,18 @@ identity_service_outbox.operation_id
 identity_service_outbox.payload
 identity_service_outbox.server_id
 identity_service_outbox.signature
+identity_sign_in_policy.ended_sessions_days
+identity_sign_in_policy.member_reset_code_minutes
+identity_sign_in_policy.password_attempts
+identity_sign_in_policy.password_min_length
+identity_sign_in_policy.pin_attempts
+identity_sign_in_policy.pin_remember_days
+identity_sign_in_policy.remember_accounts
+identity_sign_in_policy.require_two_step
+identity_sign_in_policy.revision
+identity_sign_in_policy.singleton
+identity_sign_in_policy.stay_signed_in_days
+identity_sign_in_policy.updated_ms
 identity_state.revision
 identity_state.sign_in_kind
 identity_state.singleton
@@ -2394,6 +2410,7 @@ library_network_policy.revision
 library_revisions.library_id
 library_revisions.order_revision
 library_revisions.revision
+library_scan_policies.episode_thumbnail_mode
 library_scan_policies.library_id
 library_scan_policies.operations_json
 library_scan_policies.revision
@@ -3601,7 +3618,10 @@ play_history.episode
 play_history.id
 play_history.item_id
 play_history.kind
+play_history.last_position_ms
+play_history.last_state
 play_history.library_id
+play_history.location
 play_history.parent_title
 play_history.platform
 play_history.playback_id
@@ -3613,6 +3633,10 @@ play_history.started_ms
 play_history.title
 play_history.updated_ms
 play_history.user_name
+play_history.watched_ms
+play_history_time.bucket_ms
+play_history_time.history_id
+play_history_time.watched_ms
 playback_admin_operations.actor
 playback_admin_operations.created_at
 playback_admin_operations.fingerprint
@@ -3959,6 +3983,7 @@ playback_v1_sessions.state
 playback_v1_sessions.subtitle_track_id
 playback_v1_sessions.transfer_id
 playback_v1_sessions.updated_ms
+playback_v1_sessions.upload_limited
 playback_v1_sessions.version_id
 playback_vod_intervals.attempts
 playback_vod_intervals.bytes
@@ -4025,6 +4050,31 @@ portico_admitted_families.family_id
 portico_admitted_families.signer_key_id
 portico_factor_challenges.signer_key_id
 portico_factor_challenges.token_hash
+preference_list_items.account_id
+preference_list_items.authority
+preference_list_items.device_key
+preference_list_items.key
+preference_list_items.position
+preference_list_items.profile_id
+preference_list_items.scope
+preference_list_items.value
+preference_scopes.account_id
+preference_scopes.authority
+preference_scopes.device_key
+preference_scopes.profile_id
+preference_scopes.revision
+preference_scopes.scope
+preference_scopes.updated_ms
+preference_values.account_id
+preference_values.authority
+preference_values.bool_value
+preference_values.device_key
+preference_values.key
+preference_values.kind
+preference_values.number_value
+preference_values.profile_id
+preference_values.scope
+preference_values.text_value
 prepared_media_jobs.asset_id
 prepared_media_jobs.bytes
 prepared_media_jobs.cleaned_generation
@@ -4207,6 +4257,20 @@ quick_connect_v1.secret_hash
 quick_connect_v1.status
 quick_connect_v1.token_hash
 quick_connect_v1.user_hash
+reading_progress.asset_id
+reading_progress.cfi
+reading_progress.format
+reading_progress.item_id
+reading_progress.observed_at
+reading_progress.owner_key
+reading_progress.page_index
+reading_progress.progression
+reading_progress.revision
+reading_progress.section
+reading_progress.source_revision
+reading_publications.asset_id
+reading_publications.format
+reading_publications.item_id
 rec_data_revision.id
 rec_data_revision.revision
 rec_profile_jobs.profile_id
@@ -4299,6 +4363,16 @@ restrictions.allowed_libraries
 restrictions.profile_id
 restrictions.revision
 restrictions.revoked
+retained_reading_progress.cfi
+retained_reading_progress.format
+retained_reading_progress.observed_at
+retained_reading_progress.page_index
+retained_reading_progress.progression
+retained_reading_progress.revision
+retained_reading_progress.section
+retained_reading_progress.source_id
+retained_reading_progress.source_revision
+retained_reading_progress.state_id
 retained_title_identities.identity
 retained_title_identities.profile_id
 retained_title_identities.state_id
@@ -4784,8 +4858,14 @@ subtitle_sidecars.id
 subtitle_sidecars.modified_ns
 subtitle_sidecars.path
 subtitle_sidecars.size
-telemetry_rollups.body
-telemetry_rollups.minute_ms
+telemetry_rollups.bucket_ms
+telemetry_rollups.detail
+telemetry_rollups.first_event_ms
+telemetry_rollups.last_event_ms
+telemetry_rollups.metric
+telemetry_rollups.samples
+telemetry_rollups.status
+telemetry_rollups.total
 topshelf_tokens.account_id
 topshelf_tokens.authority
 topshelf_tokens.device_id
@@ -4986,4 +5066,5 @@ webhooks.name
 webhooks.revision
 webhooks.secret
 webhooks.updated_ms
-webhooks.url`
+webhooks.url
+`

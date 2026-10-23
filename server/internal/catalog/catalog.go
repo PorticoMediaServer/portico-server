@@ -425,6 +425,12 @@ func (s *Service) CommitMedia(ctx context.Context, job, library, path string, f 
 	if e = tx.QueryRow(`SELECT kind,root FROM libraries WHERE id=?`, library).Scan(&kind, &root); e != nil {
 		return e
 	}
+	if kind == "book" || kind == "comic" {
+		if _, e = attachReadingTx(ctx, tx, library, kind, aid, path); e != nil {
+			return e
+		}
+		return gated3.Commit()
+	}
 	if kind != "music" && kind != "audiobook" && f.VideoCodec == "" && f.Container != "strm" && !f.InventoryOnly {
 		return errors.New("video library source has no timed video stream")
 	}

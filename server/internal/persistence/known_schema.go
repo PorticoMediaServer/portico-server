@@ -468,6 +468,7 @@ index play_history_account
 index play_history_library
 index play_history_listen_profile
 index play_history_recent
+index play_history_time_bucket
 index playback_admin_retention
 index playback_channel_sessions_live
 index playback_origin_associations_asset
@@ -514,6 +515,7 @@ index queue_v1_snapshots_queue
 index queues_v1_idle
 index queues_v1_owner
 index quick_connect_expiry_v1
+index reading_progress_publication
 index rec_profile_signals_positive_recent
 index rec_profile_signals_recent
 index rec_profile_signals_work
@@ -581,6 +583,7 @@ table access_invitations
 table access_limits
 table access_receipts
 table account_portico_links
+table account_stream_limits
 table accounts
 table admin_channel_logos
 table admin_channel_numbers
@@ -918,6 +921,7 @@ table identity_refresh_credentials
 table identity_refresh_predecessors
 table identity_refresh_receipts
 table identity_service_outbox
+table identity_sign_in_policy
 table identity_state
 table identity_unknown_attempts
 table inventory_analysis_queue
@@ -1117,6 +1121,7 @@ table personal_snapshots
 table personal_watched_intents
 table play_counts
 table play_history
+table play_history_time
 table playback_admin_operations
 table playback_artifacts
 table playback_audio_plans
@@ -1176,6 +1181,9 @@ table playlist_shares
 table policy
 table portico_admitted_families
 table portico_factor_challenges
+table preference_list_items
+table preference_scopes
+table preference_values
 table prepared_media_jobs
 table prepared_media_session_pins
 table prepared_media_source_revisions
@@ -1198,6 +1206,8 @@ table queue_v1_segments
 table queue_v1_snapshots
 table queues_v1
 table quick_connect_v1
+table reading_progress
+table reading_publications
 table rec_data_revision
 table rec_profile_jobs
 table rec_profile_revisions
@@ -1218,6 +1228,7 @@ table remote_sources
 table reset_file_sessions
 table restriction_outbox
 table restrictions
+table retained_reading_progress
 table retained_title_identities
 table retained_title_state
 table retained_title_state_counts

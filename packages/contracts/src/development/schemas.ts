@@ -84,6 +84,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "challenge": {
         "properties": {
           "expiresAt": {
@@ -100,9 +123,6 @@ export const schemas = {
         "type": "object"
       },
       "custodyPending": {
-        "type": "boolean"
-      },
-      "deviceApprovalPending": {
         "type": "boolean"
       },
       "deviceId": {
@@ -255,6 +275,9 @@ export const schemas = {
           "authorizationHorizon"
         ],
         "type": "object"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -262,7 +285,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   }

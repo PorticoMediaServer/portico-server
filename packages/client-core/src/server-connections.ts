@@ -7,6 +7,7 @@ import {hostedGate} from './hosted-gate.ts';
 import {ApiError,HttpLocalApi,type HostedServer,type LocalSession} from './index.ts';
 import {credentialLock,installationIdentity} from './installation.ts';
 import {parseLocalSession} from './local-session.ts';
+import {parseServerSignIn} from './sign-in.ts';
 import {RouteConnection,bindSessionRoute,forgetSessionRoute,sessionRoute,sessionRoute as sessionRouteForRotation,type DiscoveryRoute,type RouteMemory} from './route-connection.ts';
 import {RouteError,routeBase64,probeRoute,routeOrigin,routeJSON,serverPin,sameServerPin,verifyRoutes,webRouteCrypto,type RouteCrypto,type RouteKey,type ServerPin,type SignedRoutes,type VerifiedRoutes} from './route-identity.ts';
 export type RememberedServer = {
@@ -29,23 +30,9 @@ export interface ServerConnectionStorage {
 }
 export type ConnectionEnvironment={storage:ServerConnectionStorage;fetcher?:typeof fetch;crypto?:RouteCrypto;discover?:(signal:AbortSignal)=>Promise<readonly DiscoveryRoute[]>};
 export type HostedConnectionSource={origin:string;accountId:string;request:<T>(path:string,signal:AbortSignal)=>Promise<T>};
+export {parseRememberedServer,savedConnectionDamaged} from './remembered-server.ts';
+import {parseRememberedServer,savedConnectionDamaged,hostedOrigin} from './remembered-server.ts';
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
-/** A store's (or this module's) report that the saved record is there but can never be read. Told
- * by its code, so a platform store's own error object can carry it across a native bridge. */
-export const savedConnectionDamaged=(e:unknown):boolean=>(e as {code?:unknown}|null)?.code==='invalid_saved_connection';
-export function parseRememberedServer(value:unknown):RememberedServer|undefined {
- if(value===null||value===undefined)return;
- if(!object(value)||value.version!=='1'||typeof value.logicalOrigin!=='string'||!object(value.pin)||!object(value.routes)||!Array.isArray(value.routes.paired)||value.routes.paired.length>8)throw new RouteError('invalid_saved_connection','Saved server connection is incomplete. Sign in again to establish its identity.');
- const session=parseLocalSession(value.session,{},{stored:true}),pin=value.pin;
- if(pin.serverId!==session.viewer.serverId||typeof pin.publicKey!=='string'||typeof pin.fingerprint!=='string'||value.logicalOrigin!==routeOrigin(value.logicalOrigin))throw new RouteError('invalid_saved_connection','Saved server identity is incomplete.');
- const result:RememberedServer={version:'1',logicalOrigin:value.logicalOrigin,session,pin:pin as ServerPin,routes:{paired:value.routes.paired.map(v=>routeOrigin(String(v))),...(typeof value.routes.lastGood==='string'?{lastGood:routeOrigin(value.routes.lastGood)}:{})}};
- if(value.pendingRefresh!==undefined){if(typeof value.pendingRefresh!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(value.pendingRefresh))throw new RouteError('invalid_saved_connection','Saved renewal state is invalid.');result.pendingRefresh=value.pendingRefresh;}
- if(value.selectionId!==undefined){if(typeof value.selectionId!=='string'||!/^[-_A-Za-z0-9]{32}$/.test(value.selectionId))throw new RouteError('invalid_saved_connection','Saved selection identity is invalid.');result.selectionId=value.selectionId;}
- if(value.hosted!==undefined){if(!object(value.hosted)||typeof value.hosted.origin!=='string'||typeof value.hosted.accountId!=='string'||!object(value.hosted.key)||typeof value.hosted.key.keyId!=='string'||typeof value.hosted.key.publicKey!=='string'||(session.viewer.authority==='hosted'&&value.hosted.accountId!==session.viewer.accountId)||!['hosted','local'].includes(session.viewer.authority))throw new RouteError('invalid_saved_connection','Saved account route authority is incomplete.');result.hosted={origin:hostedOrigin(value.hosted.origin),accountId:value.hosted.accountId,key:{keyId:value.hosted.key.keyId,publicKey:value.hosted.key.publicKey}};}
- for(const name of ['current','previous'] as const){const v=value.routes[name];if(v!==undefined){if(!object(v)||typeof v.payload!=='string'||typeof v.signature!=='string'||v.payload.length>50000||v.signature.length!==86)throw new RouteError('invalid_saved_connection','Saved route evidence is incomplete.');result.routes[name]={payload:v.payload,signature:v.signature};}}
- return result;
-}
-function hostedOrigin(origin:string):string {const value=routeOrigin(origin),u=new URL(value);if(u.protocol!=='https:'&&!['localhost','127.0.0.1','[::1]'].includes(u.hostname))throw new RouteError('invalid_account_origin','Portico Account services require HTTPS.');return value;}
 function memoryRecord(memory:RouteMemory):RememberedServer['routes']{return {current:memory.current?.envelope,previous:memory.previous?.envelope,paired:[...memory.paired],lastGood:memory.lastGood};}
 async function routeKey(source:HostedConnectionSource,env:ConnectionEnvironment,signal:AbortSignal):Promise<RouteKey>{
  const origin=hostedOrigin(source.origin),response=await (env.fetcher??globalThis.fetch)((origin) + hostedRoutePath("keys_get"),{signal,redirect:'error',credentials:'omit',headers:{Accept:'application/json'}}),key=await routeJSON(response,signal,2048);
@@ -77,13 +64,29 @@ export async function connectHostedServer(server:HostedServer,source:HostedConne
  const connection=new RouteConnection({pin:verified.document,logicalOrigin:origin,memory:{current:verified,paired:[]},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover,fresh:async signal=>{const next=await currentDocument(source,env,verified.document,hosted.key,signal);hosted.key=next.key;return next.routes;}});
  try{await connection.resolve(signal);const api=new HttpLocalApi(origin,'',env.fetcher);api.useRoutes(connection);return {api,connection,hosted};}catch(e){connection.dispose();throw e;}
 }
-/** Explicit local pairing precedes credential entry. A public self-signed key is
- * not silently trusted; UI must display and confirm this pin. */
+/** Anonymous proof precedes credential entry. Native decides certificate trust first;
+ * browsers use their system trust store. No explicit fingerprint confirmation is shown.
+ * First-contact callers must also apply assertFirstContactIdentity to saved route owners. */
 export async function inspectDirectServer(origin:string,env:ConnectionEnvironment,signal:AbortSignal):Promise<ServerPin>{return probeRoute(routeOrigin(origin),undefined,{fetcher:env.fetcher,crypto:env.crypto,signal});}
 export async function connectPairedServer(origin:string,pin:ServerPin,env:ConnectionEnvironment,signal:AbortSignal):Promise<{api:HttpLocalApi;connection:RouteConnection}>{
  const checked=await serverPin(pin.serverId,pin.publicKey,pin.fingerprint,env.crypto);
  const connection=new RouteConnection({pin:checked,logicalOrigin:routeOrigin(origin),memory:{paired:[routeOrigin(origin)]},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover});
  try{await connection.resolve(signal);const api=new HttpLocalApi(connection.logicalOrigin,'',env.fetcher);api.useRoutes(connection);return{api,connection};}catch(e){connection.dispose();throw e;}
+}
+/** A Waiting member may prove this server before it has a Hosted directory row.
+ * Pairing proves the exact server; the authenticated account source supplies only
+ * its route-key binding. This reads no member routes and saves no credential. */
+export async function connectPairedPorticoServer(origin:string,pin:ServerPin,source:HostedConnectionSource,env:ConnectionEnvironment,signal:AbortSignal):Promise<{api:HttpLocalApi;connection:RouteConnection;hosted:NonNullable<RememberedServer['hosted']>}>{
+ const accountOrigin=hostedOrigin(source.origin);
+ if(!/^[A-Za-z0-9_-]{1,128}$/.test(source.accountId))throw new RouteError('identity_mismatch','Choose the Portico Account before signing in to this server.');
+ signal.throwIfAborted();
+ const paired=await connectPairedServer(origin,pin,env,signal);
+ try{
+  const system=parseServerSignIn(await paired.api.request(routePath('get_system'),'GET',undefined,signal));
+  if(system.id!==pin.serverId||system.signIn!=='portico')throw new RouteError('identity_mismatch','This server does not use Portico Accounts.');
+  const key=await routeKey(source,env,signal);signal.throwIfAborted();
+  return {...paired,hosted:{origin:accountOrigin,accountId:source.accountId,key}};
+ }catch(error){paired.connection.dispose();throw error;}
 }
 export async function rememberNativeSession(api:HttpLocalApi,session:LocalSession,env:ConnectionEnvironment,hosted?:RememberedServer['hosted'],isCurrent:()=>boolean=()=>true):Promise<void>{
  const parsed=parseLocalSession(session),connection=api.getRouteConnection();if(!connection||connection.getSnapshot().phase!=='ready'||connection.pin.serverId!==parsed.viewer.serverId)throw new RouteError('identity_mismatch','Verify this server before saving its sign-in.');

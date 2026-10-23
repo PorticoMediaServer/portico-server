@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {AccountAttemptIds,HostedAccountClient,MFARequiredError,accountReturnHandoff,nativeAccountReturn,parseAccountReturn,parseAccountSession,parseNativeAccountContinuation,parseSecurityResult,parseSecurityState,parseIdentityOptions,parseIdentityTransaction,providerRedirect,CredentialSessionService,type CredentialApi,type CredentialRecord,type HostedSession} from '../src/index.ts';
-const session:HostedSession={account:{id:'acct_A',username:'alice',displayName:'Alice'},profiles:[{id:'profile_A',name:'Alice'}],familyId:'family_A',accessToken:'access_A',expiresAt:'2030-01-01T00:00:00Z',refreshExpiresAt:'2030-01-08T00:00:00Z',refreshToken:'refresh_A'};
+const session:HostedSession={account:{id:'acct_A',username:'alice',displayName:'Alice'},familyId:'family_A',accessToken:'access_A',expiresAt:'2030-01-01T00:00:00Z',refreshExpiresAt:'2030-01-08T00:00:00Z',refreshToken:'refresh_A'};
 const mfa={mfaRequired:true,challengeId:'challenge_A',challengeToken:'opaque_factor',expiresAt:'2030-01-01T00:00:00Z'};
 test('session parser separates browser/native credentials and MFA continuation',()=>{
  assert.deepEqual(parseAccountSession(session,'native'),session);
  const {refreshToken,...browser}=session;assert.deepEqual(parseAccountSession(browser,'browser'),browser);
  assert.throws(()=>parseAccountSession(session,'browser'));assert.throws(()=>parseAccountSession(browser,'native'));
  assert.throws(()=>parseAccountSession(mfa,'native'),MFARequiredError);
- assert.throws(()=>parseAccountSession({...session,profiles:[session.profiles[0],session.profiles[0]]},'native'));
+ assert.throws(()=>parseAccountSession({...session,profiles:[]},'native'));
 });
 test('security responses cannot be applied to another account or family',()=>{
  const state={accountId:'acct_A',familyId:'family_A',contactAddress:'alice@example.test',privateEmail:false,hasPassword:true,mfaEnabled:false,recoveryCodesRemaining:0,providers:[]};
@@ -114,7 +114,7 @@ test('automatic browser approval cannot overwrite an already selected account',a
 test('A80: the deletion preview needs no proof; the final deletion sends the typed confirmation', async () => {
   const {HostedAccountClient} = await import('../src/hosted-security.ts');
   const calls: {path: string; method: string; body: any; token?: string}[] = [];
-  const preview = {deletionToken: 'tok_' + 'a'.repeat(20), expiresAt: '2026-09-23T08:00:00Z', ownedServers: [{id: 'srv_1', name: 'Home'}], affectedServers: [{id: 'srv_1', name: 'Home'}, {id: 'srv_2', name: 'Cabin'}], profileCount: 2, requiredDisposition: 'delete_owned_personal_resources', canDelete: true};
+  const preview = {deletionToken: 'tok_' + 'a'.repeat(20), expiresAt: '2026-09-23T08:00:00Z', ownedServers: [{id: 'srv_1', name: 'Home'}], affectedServers: [{id: 'srv_1', name: 'Home'}, {id: 'srv_2', name: 'Cabin'}], canDelete: true};
   const client = new HostedAccountClient('https://account.example', 'browser', async (path, method, body, _signal, token) => {
     calls.push({path, method, body, token});
     if (path === '/v1/account/deletion/preview') return preview;
@@ -125,7 +125,7 @@ test('A80: the deletion preview needs no proof; the final deletion sends the typ
   assert.deepEqual(calls[0], {path: '/v1/account/deletion/preview', method: 'POST', body: {purpose: 'account_deletion_preview', target: '', operationId: 'op_' + 'b'.repeat(20)}, token: 'access'});
   assert.equal('proof' in calls[0]!.body, false);
   const receipt = await client.acceptDeletion(p, '  Sam@Example.com ', 'access');
-  assert.deepEqual(calls[1]!.body, {deletionToken: preview.deletionToken, disposition: 'delete_owned_personal_resources', confirmation: 'Sam@Example.com'});
+  assert.deepEqual(calls[1]!.body, {deletionToken: preview.deletionToken, disposition: '', confirmation: 'Sam@Example.com'});
   assert.equal(receipt.accountDeleted, true);
   await assert.rejects(() => client.acceptDeletion(p, '   ', 'access'));
 });

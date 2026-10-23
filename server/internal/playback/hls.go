@@ -99,6 +99,7 @@ type HLS struct {
 type hlsWindow struct {
 	publicationError error
 	videoConversion  bool
+	audioConversion  bool
 	start            int
 	served           int
 	produced         int
@@ -335,6 +336,11 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		h.failed(ctx, id)
 		return
 	}
+	h.mu.Lock()
+	if w := h.windows[id]; w != nil && delivery != nil {
+		w.audioConversion = delivery.AudioAction == "convert"
+	}
+	h.mu.Unlock()
 	h.selectOutputBackend(ctx, id, delivery)
 	input, remoteInput, e := h.openWindowInput(ctx, id, delivery)
 	if e != nil {
