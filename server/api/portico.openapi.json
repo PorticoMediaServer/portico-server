@@ -18753,6 +18753,34 @@
         ],
         "type": "object"
       },
+      "GetAdminBackupSettingsRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetAdminBackupSettingsResponse": {
+        "properties": {
+          "backupFolder": {
+            "type": "string"
+          },
+          "includeArtwork": {
+            "type": "boolean"
+          },
+          "passphraseProtected": {
+            "type": "boolean"
+          },
+          "passphraseSet": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "backupFolder",
+          "includeArtwork",
+          "passphraseProtected",
+          "passphraseSet"
+        ],
+        "type": "object"
+      },
       "GetAdminBackupsRequest": {
         "properties": {},
         "required": [],
@@ -18770,6 +18798,9 @@
                 },
                 "createdAt": {
                   "type": "string"
+                },
+                "encrypted": {
+                  "type": "boolean"
                 },
                 "id": {
                   "type": "string"
@@ -18801,6 +18832,27 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "lastBackup": {
+            "properties": {
+              "backupId": {
+                "type": "string"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "jobId": {
+                "type": "string"
+              },
+              "outcome": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "jobId",
+              "outcome"
+            ],
+            "type": "object"
           },
           "lastRestore": {
             "properties": {
@@ -162815,6 +162867,9 @@
           "operationId": {
             "type": "string"
           },
+          "passphrase": {
+            "type": "string"
+          },
           "source": {
             "properties": {
               "backupId": {
@@ -187721,6 +187776,47 @@
           "limits",
           "profileNames",
           "liveState"
+        ],
+        "type": "object"
+      },
+      "PutAdminBackupSettingsRequest": {
+        "properties": {
+          "backupFolder": {
+            "type": "string"
+          },
+          "includeArtwork": {
+            "type": "boolean"
+          },
+          "passphrase": {
+            "type": "string"
+          },
+          "passphraseProtected": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "PutAdminBackupSettingsResponse": {
+        "properties": {
+          "backupFolder": {
+            "type": "string"
+          },
+          "includeArtwork": {
+            "type": "boolean"
+          },
+          "passphraseProtected": {
+            "type": "boolean"
+          },
+          "passphraseSet": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "backupFolder",
+          "includeArtwork",
+          "passphraseProtected",
+          "passphraseSet"
         ],
         "type": "object"
       },
@@ -215468,6 +215564,9 @@
                           "createdAt": {
                             "type": "string"
                           },
+                          "encrypted": {
+                            "type": "boolean"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -215498,6 +215597,27 @@
                         "type": "object"
                       },
                       "type": "array"
+                    },
+                    "lastBackup": {
+                      "properties": {
+                        "backupId": {
+                          "type": "string"
+                        },
+                        "errorCode": {
+                          "type": "string"
+                        },
+                        "jobId": {
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "jobId",
+                        "outcome"
+                      ],
+                      "type": "object"
                     },
                     "lastRestore": {
                       "properties": {
@@ -215772,6 +215892,9 @@
                   "operationId": {
                     "type": "string"
                   },
+                  "passphrase": {
+                    "type": "string"
+                  },
                   "source": {
                     "properties": {
                       "backupId": {
@@ -215864,6 +215987,187 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/backups/settings": {
+      "get": {
+        "operationId": "get_admin_backup_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "backupFolder": {
+                      "type": "string"
+                    },
+                    "includeArtwork": {
+                      "type": "boolean"
+                    },
+                    "passphraseProtected": {
+                      "type": "boolean"
+                    },
+                    "passphraseSet": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "backupFolder",
+                    "includeArtwork",
+                    "passphraseProtected",
+                    "passphraseSet"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read backup destination and protection",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "administration_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      },
+      "put": {
+        "operationId": "put_admin_backup_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "backupFolder": {
+                    "type": "string"
+                  },
+                  "includeArtwork": {
+                    "type": "boolean"
+                  },
+                  "passphrase": {
+                    "type": "string"
+                  },
+                  "passphraseProtected": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "backupFolder": {
+                      "type": "string"
+                    },
+                    "includeArtwork": {
+                      "type": "boolean"
+                    },
+                    "passphraseProtected": {
+                      "type": "boolean"
+                    },
+                    "passphraseSet": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "backupFolder",
+                    "includeArtwork",
+                    "passphraseProtected",
+                    "passphraseSet"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Set backup destination, artwork inclusion and passphrase protection",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "invalid_request",
+          "administration_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 8192,
         "x-scope": "admin"
       }
     },

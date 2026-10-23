@@ -630,6 +630,8 @@ table authorization_family_grants
 table authorization_family_renewals
 table authorization_family_tokens
 table authorization_session_families
+table backup_destinations
+table backup_settings
 table book_resume
 table catalog_albums
 table catalog_artists
@@ -2553,8 +2555,7 @@ view catalog_related_facets_serving
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context
-`
+view listening_book_context`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

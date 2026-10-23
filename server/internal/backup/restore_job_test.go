@@ -46,7 +46,7 @@ func TestRestoreProgressSurvivesRequestCancellation(t *testing.T) {
 
 func TestSeparateBackupDestinationAndRestoreRefusalWithoutLock(t *testing.T) {
 	svc, state, _ := testService(t)
-	directory := filepath.Join(t.TempDir(), "copies")
+	directory := t.TempDir()
 	if err := svc.SetDirectory(directory); err != nil {
 		t.Fatal(err)
 	}

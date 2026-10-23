@@ -421,6 +421,12 @@ authorization_session_families.revoked_at
 authorization_session_families.revoked_reason
 authorization_session_families.role
 authorization_session_families.server_id
+backup_destinations.path
+backup_settings.backup_folder
+backup_settings.include_artwork
+backup_settings.passphrase_protected
+backup_settings.passphrase_sealed
+backup_settings.singleton
 book_resume.book_id
 book_resume.completed
 book_resume.item_id

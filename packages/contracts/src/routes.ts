@@ -1592,6 +1592,24 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_admin_backup_settings",
+    "method": "GET",
+    "path": "/v1/admin/backups/settings",
+    "summary": "Read backup destination and protection",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_admin_backups",
     "method": "GET",
     "path": "/v1/admin/backups",
@@ -13109,6 +13127,25 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "put_admin_backup_settings",
+    "method": "PUT",
+    "path": "/v1/admin/backups/settings",
+    "summary": "Set backup destination, artwork inclusion and passphrase protection",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 8192,
+    "errors": [
+      "unauthorized",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "put_admin_console_schedules",
     "method": "PUT",
     "path": "/v1/admin/console/schedules",
@@ -17250,6 +17287,7 @@ export const routePaths = {
   "get_admin_activity": "/v1/admin/activity",
   "get_admin_analysis_operations": "/v1/admin/analysis-operations",
   "get_admin_attention": "/v1/admin/attention",
+  "get_admin_backup_settings": "/v1/admin/backups/settings",
   "get_admin_backups": "/v1/admin/backups",
   "get_admin_console_accounts": "/v1/admin/console/accounts",
   "get_admin_console_alerts": "/v1/admin/console/alerts",
@@ -17742,6 +17780,7 @@ export const routePaths = {
   "put_admin_access_member_notes": "/v1/admin/access/members/{id}/notes",
   "put_admin_access_members_id_limits": "/v1/admin/access/members/{id}/limits",
   "put_admin_access_members_id_role": "/v1/admin/access/members/{id}/role",
+  "put_admin_backup_settings": "/v1/admin/backups/settings",
   "put_admin_console_schedules": "/v1/admin/console/schedules",
   "put_admin_dvr_recording_groups_id": "/v1/admin/dvr/recording-groups/{id}",
   "put_admin_dvr_recording_permissions": "/v1/admin/dvr/recording-permissions",

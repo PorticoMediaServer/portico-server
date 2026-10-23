@@ -88,3 +88,25 @@ test('restore receipt survives missing the staged response during restart',async
  const result=await restoreBackup(api,SERVER,'operation-1',{backupId:backup.id});
  assert.equal(result.validation.integrity,'ok');
 });
+
+test('backup settings transport publishes only presence and encrypted restore keeps the secret out of its source',async()=>{
+ const {getBackupSettings,updateBackupSettings}=await import('../src/backups.ts');
+ const calls:{path:string;method:string;body:unknown}[]=[];
+ const settings={backupFolder:'/mnt/backup',includeArtwork:true,passphraseProtected:true,passphraseSet:true};
+ const api=transport(path=>{
+  if(path==='/v1/admin/backups/settings')return envelope({...settings,passphrase:'must never escape parser'});
+  if(path==='/v1/admin/backups/restore')return envelope({jobId:'private-restore'});
+  return envelope({backups:[{...backup,encrypted:true}],restore:{jobId:'private-restore',phase:'staged',bytesDone:1,bytesTotal:1,result:{staged:true,restartRequired:true,validation:{schemaVersion:1,integrity:'ok'}}}});
+ },calls);
+ assert.deepEqual(await getBackupSettings(api,SERVER),settings);
+ assert.deepEqual(await updateBackupSettings(api,SERVER,{passphraseProtected:true,passphrase:'private fixture phrase'}),settings);
+ await restoreBackup(api,SERVER,'restore-private',{backupId:backup.id},undefined,'private fixture phrase');
+ assert.deepEqual(calls[2].body,{operationId:'restore-private',source:{backupId:backup.id},passphrase:'private fixture phrase'});
+ const listed=await getBackups(api,SERVER);assert.equal(listed.backups[0].encrypted,true);
+});
+
+
+test('a failed backup is never reported as completed when its running job clears',async()=>{
+ const api=transport(()=>envelope({backups:[],lastBackup:{jobId:'failed-job',outcome:'failed',errorCode:'insufficient_disk'}}));
+ await assert.rejects(()=>waitForBackupCompletion(()=>getBackups(api,SERVER),{intervalMs:1}),(e:unknown)=>(e as {code?:string}).code==='insufficient_disk');
+});

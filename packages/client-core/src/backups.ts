@@ -32,8 +32,8 @@ export async function deleteBackup(transport:BackupTransport,serverId:string,bac
 /** restoreBackup stages a backup (by list id) or a server path (a backup folder or a `.db` file)
  * and answers `{staged, restartRequired}`. A 4xx refusal carries one of the spec §4 codes
  * (`isRestoreRefusalCode`), which the console maps to catalogue copy. */
-export async function restoreBackup(transport:BackupTransport,serverId:string,operationId:string,source:RestoreSource,signal?:AbortSignal):Promise<RestoreStaged>{
- const receipt=parseEnvelope(await transport.request<unknown>(RESTORE_PATH,'POST',{operationId,source},signal),serverId,v=>{
+export async function restoreBackup(transport:BackupTransport,serverId:string,operationId:string,source:RestoreSource,signal?:AbortSignal,passphrase?:string):Promise<RestoreStaged>{
+ const receipt=parseEnvelope(await transport.request<unknown>(RESTORE_PATH,'POST',{operationId,source,...(passphrase!==undefined?{passphrase}:{})},signal),serverId,v=>{
   if(typeof v!=='object'||v===null||typeof (v as {jobId?:unknown}).jobId!=='string')throw new Error('Invalid restore receipt.');
   return (v as {jobId:string}).jobId;
  }).result;
@@ -100,7 +100,10 @@ export async function waitForBackupCompletion(get:()=>Promise<BackupsDocument>,o
   options.signal?.throwIfAborted();
   const doc=await get();
   options.onProgress?.(doc);
-  if(!doc.running)return doc;
+  if(!doc.running){
+   if(doc.lastBackup?.outcome==='failed')throw Object.assign(new Error('The backup could not be completed.'),{code:doc.lastBackup.errorCode??'internal'});
+   return doc;
+  }
   if(Date.now()-started>timeoutMs)throw Object.assign(new Error('The backup is still running.'),{code:'backup_progress_timeout'});
   await delay(intervalMs,options.signal);
  }
@@ -128,4 +131,20 @@ export async function waitForServerAnswer(get:()=>Promise<BackupsDocument>,optio
 /** Restart is owner-only and works for portable launches as well as services. */
 export async function restartServer(transport:BackupTransport,signal?:AbortSignal):Promise<void>{
  await transport.request<RouteResponse<"post_admin_restart">>(routePath("post_admin_restart"),'POST',routeBody("post_admin_restart", {}),signal);
+}
+
+export type BackupSettings=Readonly<{backupFolder:string;includeArtwork:boolean;passphraseProtected:boolean;passphraseSet:boolean}>;
+export type BackupSettingsPatch=Readonly<{backupFolder?:string;includeArtwork?:boolean;passphraseProtected?:boolean;passphrase?:string}>;
+function parseBackupSettings(v:unknown):BackupSettings{
+ if(typeof v!=='object'||v===null)throw new Error('Invalid backup settings.');
+ const s=v as Record<string,unknown>;
+ if(typeof s.backupFolder!=='string'||s.backupFolder.length>8192||typeof s.includeArtwork!=='boolean'||typeof s.passphraseProtected!=='boolean'||typeof s.passphraseSet!=='boolean')throw new Error('Invalid backup settings.');
+ return Object.freeze({backupFolder:s.backupFolder,includeArtwork:s.includeArtwork,passphraseProtected:s.passphraseProtected,passphraseSet:s.passphraseSet});
+}
+/** Secret write input is never retained or returned by the settings read facade. */
+export async function getBackupSettings(transport:BackupTransport,serverId:string,signal?:AbortSignal):Promise<BackupSettings>{
+ return parseEnvelope(await transport.request<unknown>(routePath('get_admin_backup_settings'),'GET',undefined,signal),serverId,parseBackupSettings).result;
+}
+export async function updateBackupSettings(transport:BackupTransport,serverId:string,patch:BackupSettingsPatch,signal?:AbortSignal):Promise<BackupSettings>{
+ return parseEnvelope(await transport.request<unknown>(routePath('put_admin_backup_settings'),'PUT',routeBody('put_admin_backup_settings',patch),signal),serverId,parseBackupSettings).result;
 }

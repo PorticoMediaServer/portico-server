@@ -72,6 +72,7 @@ export function decodeGetAdminAccessMembersIdLimitsResponse(input: unknown): typ
 export function decodeGetAdminActivityResponse(input: unknown): types.GetAdminActivityResponse { return decode("GetAdminActivityResponse", input) as types.GetAdminActivityResponse; }
 export function decodeGetAdminAnalysisOperationsResponse(input: unknown): types.GetAdminAnalysisOperationsResponse { return decode("GetAdminAnalysisOperationsResponse", input) as types.GetAdminAnalysisOperationsResponse; }
 export function decodeGetAdminAttentionResponse(input: unknown): types.GetAdminAttentionResponse { return decode("GetAdminAttentionResponse", input) as types.GetAdminAttentionResponse; }
+export function decodeGetAdminBackupSettingsResponse(input: unknown): types.GetAdminBackupSettingsResponse { return decode("GetAdminBackupSettingsResponse", input) as types.GetAdminBackupSettingsResponse; }
 export function decodeGetAdminBackupsResponse(input: unknown): types.GetAdminBackupsResponse { return decode("GetAdminBackupsResponse", input) as types.GetAdminBackupsResponse; }
 export function decodeGetAdminConsoleAccountsResponse(input: unknown): types.GetAdminConsoleAccountsResponse { return decode("GetAdminConsoleAccountsResponse", input) as types.GetAdminConsoleAccountsResponse; }
 export function decodeGetAdminConsoleAlertsResponse(input: unknown): types.GetAdminConsoleAlertsResponse { return decode("GetAdminConsoleAlertsResponse", input) as types.GetAdminConsoleAlertsResponse; }
@@ -564,6 +565,7 @@ export function decodePutAdminAccessInvitationResponse(input: unknown): types.Pu
 export function decodePutAdminAccessMemberNotesResponse(input: unknown): types.PutAdminAccessMemberNotesResponse { return decode("PutAdminAccessMemberNotesResponse", input) as types.PutAdminAccessMemberNotesResponse; }
 export function decodePutAdminAccessMembersIdLimitsResponse(input: unknown): types.PutAdminAccessMembersIdLimitsResponse { return decode("PutAdminAccessMembersIdLimitsResponse", input) as types.PutAdminAccessMembersIdLimitsResponse; }
 export function decodePutAdminAccessMembersIdRoleResponse(input: unknown): types.PutAdminAccessMembersIdRoleResponse { return decode("PutAdminAccessMembersIdRoleResponse", input) as types.PutAdminAccessMembersIdRoleResponse; }
+export function decodePutAdminBackupSettingsResponse(input: unknown): types.PutAdminBackupSettingsResponse { return decode("PutAdminBackupSettingsResponse", input) as types.PutAdminBackupSettingsResponse; }
 export function decodePutAdminConsoleSchedulesResponse(input: unknown): types.PutAdminConsoleSchedulesResponse { return decode("PutAdminConsoleSchedulesResponse", input) as types.PutAdminConsoleSchedulesResponse; }
 export function decodePutAdminDvrRecordingGroupsIdResponse(input: unknown): types.PutAdminDvrRecordingGroupsIdResponse { return decode("PutAdminDvrRecordingGroupsIdResponse", input) as types.PutAdminDvrRecordingGroupsIdResponse; }
 export function decodePutAdminDvrRecordingPermissionsResponse(input: unknown): types.PutAdminDvrRecordingPermissionsResponse { return decode("PutAdminDvrRecordingPermissionsResponse", input) as types.PutAdminDvrRecordingPermissionsResponse; }
