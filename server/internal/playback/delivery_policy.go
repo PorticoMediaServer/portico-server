@@ -147,7 +147,7 @@ func SavedQualityPreference(values DeliveryPreferenceReader, class NetworkClass)
 
 // DefaultSavedQuality applies only when no explicit choice exists. Cellular
 // is the existing normalized transport declaration, never inferred from remote
-// reach or device class. Music and other audio keep Original on every link.
+// reach or device class. Audio fallback keeps Original; music has its own source-defined defaults.
 func DefaultSavedQuality(saved, transport string, audioOnly bool) string {
 	if saved != "" {
 		if ValidSavedQuality(saved) {

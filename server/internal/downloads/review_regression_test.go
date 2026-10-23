@@ -83,6 +83,7 @@ func TestGrantUsesTitlesCurrentLibrary(t *testing.T) {
 }
 func TestOlderOfflinePlayKeepsLatestPlayDate(t *testing.T) {
 	h := newHarness(t)
+	shareOfflineFixture(t, h)
 	ctx := context.Background()
 	for i, age := range []time.Duration{time.Minute, 2 * time.Minute} {
 		play := []ProgressEntry{{PlayID: []string{"newer", "older"}[i], ItemID: h.item, PositionSeconds: 60, Ended: true, ObservedAt: h.now.Add(-age).Format(time.RFC3339)}}

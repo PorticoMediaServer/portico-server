@@ -75,7 +75,7 @@ func TestQualityDefaultsR25OptionalRequestSchema(t *testing.T) {
 		}
 	}
 	quality := schema["properties"].(map[string]any)["quality"].(map[string]any)
-	if quality["default"] != "original" || len(quality["enum"].([]string)) != 9 {
+	if quality["default"] != nil || len(quality["enum"].([]string)) != 12 {
 		t.Fatal(quality)
 	}
 }

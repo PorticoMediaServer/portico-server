@@ -189,10 +189,18 @@ func scanScanPolicy(row interface{ Scan(...any) error }) (ScanPolicy, error) {
 	return p, err
 }
 func (s *Service) ScanPolicy(ctx context.Context, library string) (ScanPolicy, error) {
-	return scanScanPolicy(s.read().QueryRowContext(ctx, `SELECT `+scanPolicyColumns+` FROM library_scan_policies WHERE library_id=?`, library))
+	p, e := scanScanPolicy(s.read().QueryRowContext(ctx, `SELECT `+scanPolicyColumns+` FROM library_scan_policies WHERE library_id=?`, library))
+	if e != nil {
+		return p, e
+	}
+	return musicLoudnessPolicy(ctx, s.read(), library, p)
 }
 func ScanPolicyTx(ctx context.Context, tx *sql.Tx, library string) (ScanPolicy, error) {
-	return scanScanPolicy(tx.QueryRowContext(ctx, `SELECT `+scanPolicyColumns+` FROM library_scan_policies WHERE library_id=?`, library))
+	p, e := scanScanPolicy(tx.QueryRowContext(ctx, `SELECT `+scanPolicyColumns+` FROM library_scan_policies WHERE library_id=?`, library))
+	if e != nil {
+		return p, e
+	}
+	return musicLoudnessPolicy(ctx, tx, library, p)
 }
 
 const sourceColumns = `id,library_id,kind,name,configured_root,root,classification,generation,health,enabled,follow_symlinks,interval_seconds,next_scan_at,last_complete_at,last_progress_at,root_identity,incarnation,identity_confirmed`
@@ -553,4 +561,19 @@ func (s *Service) createFolders(ctx context.Context, name, kind string, folders 
 		}
 		return nil
 	})
+}
+
+// A file-list-only scan never opens media; every other music scan measures
+// source loudness so gain does not depend on the selected enrichment tier.
+func musicLoudnessPolicy(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, library string, p ScanPolicy) (ScanPolicy, error) {
+	var kind string
+	if e := q.QueryRowContext(ctx, `SELECT kind FROM libraries WHERE id=?`, library).Scan(&kind); e != nil {
+		return p, e
+	}
+	if kind == "music" && p.Tier != "file_list_only" && !p.Allows("loudness") {
+		p.Operations = append(append([]string{}, p.Operations...), "loudness")
+	}
+	return p, nil
 }

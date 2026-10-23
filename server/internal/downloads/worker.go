@@ -428,7 +428,7 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 	if reason := s.conversionPolicyReason(ctx, tx, quality, recipeID, found); reason != "" {
 		return out, terminal(ctx, gated2, id, StateUnavailable, reason, now)
 	}
-	if quality != QualityOriginal {
+	if quality != QualityOriginal || recipeID != "" {
 		if s.optimizer != nil && principal.Role == "owner" && stored != "" && !requested {
 			rung, ok := ladderRung(quality)
 			if !ok && recipeID == "" {

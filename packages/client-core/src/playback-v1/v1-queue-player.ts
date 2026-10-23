@@ -985,8 +985,8 @@ export class V1QueuePlayer implements QueueController {
   async commitAudio(token: string): Promise<void> {
     const prepared = this.prepared, p = this.playback.getSnapshot();
     if (this.audioCommitting || this.disposed || !prepared || prepared.token !== token || this.audioReadyToken !== token || p.audioEffects.prepared?.token !== token) return;
-    if (!this.listening.mayTransition(Math.max(0, p.duration - p.positionSeconds) / Math.max(.25, p.audioEffects.rate))) { this.discardAudio('Listening policy changed; the prepared edge was canceled.'); return; }
-    if (prepared.expiresAtMs <= Date.now()) { this.discardAudio('Audio preparation expired; this edge will use ordinary playback.'); return; }
+    if (!this.listening.mayTransition(Math.max(0, p.duration - p.positionSeconds) / Math.max(.25, p.audioEffects.rate))) { this.discardAudio(); return; }
+    if (prepared.expiresAtMs <= Date.now()) { this.discardAudio(); return; }
     this.audioCommitting = true;
     const generation = this.generation, intent = p.intentId;
     try {
@@ -1008,7 +1008,7 @@ export class V1QueuePlayer implements QueueController {
         await this.adoptPlayback(r.session, playback, this.playback.beginQueueIntent(prepared.itemId));
       }
     } catch (e) {
-      if (generation === this.generation && !this.disposed) this.discardAudio(e instanceof PlaybackApiError && e.code === 'prepared_expired' ? 'Audio preparation expired; this edge will use ordinary playback.' : 'The next audio item could not be prepared; continuing with ordinary playback.');
+      if (generation === this.generation && !this.disposed) this.discardAudio();
     } finally {
       this.audioCommitting = false;
     }
@@ -1023,10 +1023,10 @@ export class V1QueuePlayer implements QueueController {
 
   /** A preparation this device drops: the track ends and advances as usual (the server's token
    * expires or is canceled by the next command). */
-  discardAudio(message: string) {
+  discardAudio() {
     this.prepared = undefined; this.audioReadyToken = undefined;
     this.playback.clearPreparedAudio();
-    if (this.playback.getSnapshot().phase !== 'error') this.playback.audioEffectsNotice(message);
+    this.playback.audioDiagnostic('audio_transition_unavailable');
   }
 
   invalidateAudioPreparation() {

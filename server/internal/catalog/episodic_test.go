@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/persistence"
 	"testing"
@@ -255,8 +256,12 @@ func TestAbsoluteAnimeRemainsUnassignedUntilOwnerCorrection(t *testing.T) {
 	if err != nil || len(episodes) != 1 || episodes[0].Episode.SeasonNumber != nil || episodes[0].Episode.Numbering != "absolute" {
 		t.Fatal(episodes, err)
 	}
+	originalID, assetToken := episodes[0].ID, episodes[0].Sources[0].ID
+	if _, err = db.Exec(`INSERT INTO personal_items(profile_id,item_id,favorite,revision) SELECT 'p',id,1,1 FROM catalog_entities WHERE public_id=pid_blob(?)`, originalID); err != nil {
+		t.Fatal(err)
+	}
 	season := 2
-	if err = s.AssignEpisodes(context.Background(), lib.ID, EpisodeAssignment{AssetID: episodes[0].Sources[0].ID, ShowTitle: "Anime", Numbering: "seasonal", SeasonNumber: &season, EpisodeNumbers: []int{4}}); err != nil {
+	if err = s.AssignEpisodes(context.Background(), lib.ID, EpisodeAssignment{AssetID: assetToken, ShowTitle: "Anime", Numbering: "seasonal", SeasonNumber: &season, EpisodeNumbers: []int{4}}); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.CommitMedia(context.Background(), "animejob", lib.ID, path, facts); err != nil {
@@ -274,6 +279,58 @@ func TestAbsoluteAnimeRemainsUnassignedUntilOwnerCorrection(t *testing.T) {
 	mapped, _, err := s.Episodes(Viewer{Libraries: []string{lib.ID}}, "", seasons[0].ID, "", 10)
 	if err != nil || len(mapped) != 1 || mapped[0].Episode.Number != 4 || mapped[0].Episode.ProviderMatchStatus != "unmatched" {
 		t.Fatal(mapped, err)
+	}
+	var retired, favorite bool
+	if err = db.QueryRow(`SELECT e.retired,p.favorite FROM catalog_entities e JOIN personal_items p ON p.item_id=e.id AND p.profile_id='p' WHERE e.public_id=pid_blob(?)`, originalID).Scan(&retired, &favorite); err != nil || !retired || !favorite {
+		t.Fatal("superseded identity or personal intent was lost", retired, favorite, err)
+	}
+	// Returning to that interpretation revives the same logical identity and
+	// file. Reassignment must not manufacture another episode or lose history.
+	if err = s.AssignEpisodes(context.Background(), lib.ID, EpisodeAssignment{AssetID: assetToken, ShowTitle: "Anime", Numbering: "absolute", EpisodeNumbers: []int{1}}); err != nil {
+		t.Fatal(err)
+	}
+	episodicDrain(t, db)
+	unassigned, _, err = s.Episodes(Viewer{Profile: "p", Libraries: []string{lib.ID}}, shows[0].ID, "", "", 10)
+	if err != nil || len(unassigned) != 1 || unassigned[0].ID != originalID || len(unassigned[0].Sources) != 1 || unassigned[0].Sources[0].ID != assetToken {
+		t.Fatal("earlier interpretation did not retain its identity and source", unassigned, err)
+	}
+	if err = db.QueryRow(`SELECT p.favorite FROM personal_items p JOIN catalog_entities e ON e.id=p.item_id WHERE e.public_id=pid_blob(?) AND p.profile_id='p'`, originalID).Scan(&favorite); err != nil || !favorite {
+		t.Fatal("returning to an interpretation lost personal intent", favorite, err)
+	}
+}
+
+func TestEpisodeReassignmentKeepsAnInterpretationWithAnotherSource(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("anime", "Anime", "anime", "/anime")
+	show := c.Show(lib, "Anime", 0)
+	var first, second string
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		for _, path := range []string{"/anime/one.mkv", "/anime/two.mkv"} {
+			_, token, err := compactcatalog.UpsertAssetTx(ctx, tx, compactcatalog.Asset{Path: path, Container: "mkv", VideoCodec: "h264", Duration: 60})
+			if err != nil {
+				return err
+			}
+			if first == "" {
+				first = token
+			} else {
+				second = token
+			}
+			if err = New(c.DB).commitEpisodes(tx, "anime", token, path, EpisodeNaming{ShowTitle: "Anime", Season: -1, Numbering: "absolute", Numbers: []int{1}}, false); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	c.Drain()
+	s := New(c.DB)
+	season := 2
+	if err := s.AssignEpisodes(context.Background(), "anime", EpisodeAssignment{AssetID: first, ShowTitle: "Anime", Numbering: "seasonal", SeasonNumber: &season, EpisodeNumbers: []int{4}}); err != nil {
+		t.Fatal(err)
+	}
+	c.Drain()
+	items, _, err := s.Episodes(Viewer{Libraries: []string{"anime"}}, show.Public, "", "", 10)
+	if err != nil || len(items) != 1 || len(items[0].Sources) != 1 || items[0].Sources[0].ID != second || items[0].Episode.Numbering != "absolute" {
+		t.Fatal("another source's interpretation was retired", items, err)
 	}
 }
 

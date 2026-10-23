@@ -20,7 +20,7 @@ export type ListeningItem=Readonly<{itemId:string;libraryId:string;kind:string;b
 export type ListeningRequest=(path:string,body?:unknown,method?:'GET'|'POST'|'PUT',signal?:AbortSignal)=>Promise<unknown>;
 export type SleepChoice='off'|'chapter'|'item'|'book'|15|30|45|60|90;
 export type ListeningTimer=Readonly<{choice:SleepChoice;label:string;deadline?:number;wallDeadline?:number;libraryId?:string;endSeconds?:number;itemId?:string;bookId?:string;sessionId?:string;generation?:number}>;
-export type ListeningSnapshot=Readonly<{rewind?:Readonly<{seconds:number;fromSeconds:number;toSeconds:number;messageKey:'listening.rewound'}>; phase:'loading'|'ready'|'saving'|'error'|'disposed';preferences:ListeningPreferences|null;context:ListeningItem|null;rate:number;timer:ListeningTimer|null;timerLoading:boolean;stopped:boolean;message:string|null;error:string|null}>;
+export type ListeningSnapshot=Readonly<{eqApplied:boolean;levelingApplied:boolean;rewind?:Readonly<{seconds:number;fromSeconds:number;toSeconds:number;messageKey:'listening.rewound'}>; phase:'loading'|'ready'|'saving'|'error'|'disposed';preferences:ListeningPreferences|null;context:ListeningItem|null;rate:number;timer:ListeningTimer|null;timerLoading:boolean;stopped:boolean;message:string|null;error:string|null}>;
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const id=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
@@ -69,7 +69,7 @@ export async function loadListeningSelection(request:ListeningRequest,scope:Queu
 }
 
 export class ListeningService {
- private state:ListeningSnapshot=Object.freeze({phase:'loading',preferences:null,context:null,rate:1,timer:null,timerLoading:false,stopped:false,message:null,error:null});
+ private state:ListeningSnapshot=Object.freeze({eqApplied:false,levelingApplied:false,phase:'loading',preferences:null,context:null,rate:1,timer:null,timerLoading:false,stopped:false,message:null,error:null});
  private listeners=new Set<()=>void>();private disposed=false;private connected=false;private abort=new AbortController();private unsubscribe?:()=>void;private interval?:ReturnType<typeof setInterval>;
  private contextGeneration=0;private timerGeneration=0;private prefGeneration=0;private itemId='';private lastRateKey='';private lastActivity:number;private chapters?:PlayerChaptersService;private sessionKey='';
  private pausedBook?:{session:string;at:number};
@@ -111,6 +111,8 @@ export class ListeningService {
   if(this.state.rate!==rate)this.publish({rate});if(key!==this.lastRateKey){this.lastRateKey=key;if(s.session&&!s.channel&&!this.playback.isNativeListening?.())this.playback.setPlaybackRate(rate);}
  }
  private observe(){if(this.disposed)return;const p=this.playback.getSnapshot();let item=p.channel?'':p.itemId??'';
+  const eqApplied=p.audioEffects.eqApplied,levelingApplied=p.audioEffects.levelingApplied;
+  if(this.state.eqApplied!==eqApplied||this.state.levelingApplied!==levelingApplied)this.publish({eqApplied,levelingApplied});
   // With a kind hook, an item is decided once its session exists (until then it waits).
   if(item&&this.listens&&item!==this.itemId&&!p.session)item=this.itemId;
   const sessionKey=`${p.session?.id??''}:${p.session?.generation??0}`;
@@ -180,7 +182,7 @@ export class ListeningService {
  /** Listening queues continue unless stopped by a timer or awaiting their item's context.
   * Loading preferences does not decide whether an album or audiobook part continues. */
  mayAdvance(){this.tick();return !this.disposed&&!this.state.stopped&&(!this.itemId||!!this.state.context);}
- dispose(){if(this.disposed)return;this.disposed=true;this.abort.abort();this.unsubscribe?.();clearInterval(this.interval);this.chapters?.dispose();this.state=Object.freeze({...this.state,phase:'disposed',preferences:null,context:null,timer:null,stopped:false});this.listeners.clear();}
+ dispose(){if(this.disposed)return;this.disposed=true;this.abort.abort();this.unsubscribe?.();clearInterval(this.interval);this.chapters?.dispose();this.state=Object.freeze({...this.state,phase:'disposed',eqApplied:false,levelingApplied:false,preferences:null,context:null,timer:null,stopped:false});this.listeners.clear();}
 }
 
 export async function readListeningItem(request:ListeningRequest,scope:QueueScope,itemId:string,signal?:AbortSignal){return parseItem(listeningData(await request(encodedRoutePath("get_items_id_listening", {"id": encodeURIComponent(itemId)}),undefined,'GET',signal),scope),itemId);}
