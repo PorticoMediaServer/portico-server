@@ -11,6 +11,20 @@ VERSION="$(readlock ffmpeg version)"
 ARCHIVE="$WORK/jellyfin-ffmpeg-source.tar.gz"
 SOURCE="$WORK/ffmpeg-$VERSION.tar.xz"
 export SOURCE_DATE_EPOCH="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["sourceDateEpoch"])' "$ROOT/third_party/ffmpeg/sources.lock.json")"
+# The helper is owned by the video source lane. A job must name its checked
+# source commit explicitly; an uncommitted or unrelated WIP file is not intake.
+DISC_SOURCE="$ROOT/third_party/portico-disc/portico-disc.c"
+if [[ "${PORTICO_FFMPEG_SOURCE_ONLY:-0}" != 1 ]]; then
+  [[ ${PORTICO_DISC_SOURCE_COMMIT:-} =~ ^[0-9a-f]{40}$ ]] || { echo 'Set PORTICO_DISC_SOURCE_COMMIT to the checked disc source commit' >&2; exit 1; }
+  git -C "$ROOT" diff --quiet HEAD -- third_party/portico-disc/portico-disc.c
+  [[ -f "$DISC_SOURCE" && ! -L "$DISC_SOURCE" ]] || { echo 'Checked disc source is missing' >&2; exit 1; }
+  git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:third_party/portico-disc/portico-disc.c" > "$WORK/checked-portico-disc.c"
+  cmp "$WORK/checked-portico-disc.c" "$DISC_SOURCE"
+  git -C "$ROOT" diff --quiet HEAD -- third_party/portico-disc/LICENSE
+  git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:third_party/portico-disc/LICENSE" > "$WORK/checked-portico-disc.LICENSE"
+  cmp "$WORK/checked-portico-disc.LICENSE" "$ROOT/third_party/portico-disc/LICENSE"
+  [[ ${PORTICO_DISC_FIXTURES_SHA256:-} =~ ^[0-9a-f]{64}$ && -f ${PORTICO_DISC_FIXTURES:-} ]] || { echo 'Provide the checked disc fixture manifest and SHA256' >&2; exit 1; }
+fi
 curl --fail --location --retry 3 "$(readlock ffmpeg source)" -o "$ARCHIVE"
 python3 "$ROOT/scripts/prepare-ffmpeg-source.py" "$WORK/patched-source" --archive "$ARCHIVE"
 python3 "$ROOT/scripts/archive-ffmpeg-source.py" "$WORK/patched-source" "$SOURCE" "$SOURCE_DATE_EPOCH"
@@ -35,6 +49,8 @@ case "$TARGET" in
   mkdir -p "$WORK/recipe/packages";python3 "$ROOT/scripts/archive-ffmpeg-source.py" "$WORK/patched-source" "$WORK/recipe/packages/FFmpeg-release-$VERSION.tar.gz" "$SOURCE_DATE_EPOCH"
   (cd "$WORK/recipe" && FFMPEG_VERSION="$VERSION" SKIPINSTALL=yes SKIPRAV1E=yes ./build-ffmpeg --build --enable-gpl)
   INPUT="$WORK/recipe/workspace"
+  python3 "$ROOT/scripts/build-portico-disc.py" --source "$WORK/checked-portico-disc.c" --source-commit "$PORTICO_DISC_SOURCE_COMMIT" --prefix "$INPUT" --output "$INPUT/bin/portico-disc" --metadata "$INPUT/portico-disc-build.json" --target "$TARGET"
+  cp "$WORK/checked-portico-disc.LICENSE" "$INPUT/portico-disc-LICENSE"
   mkdir -p "$INPUT/LICENSES"
   python3 - "$WORK/recipe/packages" "$INPUT/LICENSES" <<'PYLICENSE'
 import pathlib,shutil,sys
@@ -49,11 +65,15 @@ PYLICENSE
   git -C "$WORK/recipe" checkout --detach "$(readlock btbn commit)"
   # These generated recipe files are owned by this build. Restore only the
   # patched files so a resumed job cannot accumulate overlapping edits.
-  git -C "$WORK/recipe" restore --source="$(readlock btbn commit)" -- build.sh images/base-linux64/ct-ng-config images/base-linuxarm64/ct-ng-config
+  git -C "$WORK/recipe" restore --source="$(readlock btbn commit)" -- build.sh images/base-linux64/ct-ng-config images/base-linuxarm64/ct-ng-config scripts.d/50-dvd/30-libdvdcss.sh scripts.d/50-dvd/40-libdvdread.sh
   for patch in btbn-gnu-ncurses-mirror.patch btbn-verified-source.patch; do
     if git -C "$WORK/recipe" apply --check "$ROOT/third_party/ffmpeg/patches/$patch"; then git -C "$WORK/recipe" apply "$ROOT/third_party/ffmpeg/patches/$patch"; else git -C "$WORK/recipe" apply --reverse --check "$ROOT/third_party/ffmpeg/patches/$patch"; fi
   done
   if ! grep -q 'std::system_error in the Windows Graphics Capture' "$WORK/recipe/build.sh"; then "$ROOT/scripts/patch-btbn-winarm64-system-error.sh" "$WORK/recipe/build.sh"; fi
+  mkdir -p "$WORK/recipe/portico-disc"
+  cp "$WORK/checked-portico-disc.c" "$WORK/recipe/portico-disc/portico-disc.c"
+  cp "$WORK/checked-portico-disc.LICENSE" "$WORK/recipe/portico-disc/LICENSE"
+  cp "$ROOT/scripts/build-portico-disc.py" "$WORK/recipe/portico-disc/build-portico-disc.py"
   python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$WORK/patched-source" "$TARGET"
   cp "$SOURCE" "$WORK/recipe/portico-ffmpeg-source.tar.xz"
   (cd "$WORK/recipe" && export GIT_BRANCH_OVERRIDE="n$VERSION" && ./makeimage.sh "$native" gpl 8.1 && ./build.sh "$native" gpl 8.1)
@@ -70,12 +90,18 @@ PY
 esac
 mkdir -p "$WORK/provenance"
 mkdir -p "$WORK/provenance/contract" "$WORK/provenance/scripts"
+mkdir -p "$WORK/provenance/portico-disc"
+cp "$WORK/checked-portico-disc.c" "$WORK/provenance/portico-disc/portico-disc.c"
+cp "$WORK/checked-portico-disc.LICENSE" "$WORK/provenance/portico-disc/LICENSE"
 cp "$ROOT/third_party/ffmpeg/"*.json "$ROOT/third_party/ffmpeg/NOTICE.md" "$WORK/provenance/contract/"
 cp -R "$ROOT/third_party/ffmpeg/patches" "$WORK/provenance/contract/"
 cp "$ROOT/scripts/build-ffmpeg.sh" "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$ROOT/scripts/patch-btbn-winarm64-system-error.sh" "$ROOT/scripts/prepare-ffmpeg-source.py" "$ROOT/scripts/archive-ffmpeg-source.py" "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/provenance/scripts/"
+cp "$ROOT/scripts/build-portico-disc.py" "$ROOT/scripts/build-macos-ffmpeg-extras.sh" "$WORK/provenance/scripts/"
+cp "$ROOT/scripts/verify-ffmpeg-bundle.sh" "$ROOT/scripts/verify-ffmpeg-manifest.py" "$ROOT/scripts/verify-ffmpeg-features.py" "$ROOT/scripts/verify-disc-bundle.py" "$WORK/provenance/scripts/"
 cp "$ARCHIVE" "$SOURCE" "$WORK/provenance/"
 # Include dependency sources and exact recipe, excluding only output binaries and git metadata.
 tar -C "$WORK" --exclude=recipe/.git --exclude=recipe/workspace --exclude=recipe/artifacts --exclude=recipe/.cache/images -cJf "$WORK/corresponding-source.tar.xz" recipe provenance
 python3 "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$INPUT" "$TARGET" "$WORK/bundle" "$WORK/corresponding-source.tar.xz"
+"$ROOT/scripts/verify-ffmpeg-bundle.sh" "$WORK/bundle"
 tar -C "$WORK/bundle" -cJf "$WORK/portico-ffmpeg-$TARGET.tar.xz" .
 echo "$WORK/portico-ffmpeg-$TARGET.tar.xz"

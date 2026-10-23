@@ -416,9 +416,9 @@
       }
     ]
   },
-  "toolchainRevision": 2,
-  "dependencyCacheRevision": 2,
-  "releaseTag": "ffmpeg-8.1.3-jellyfin-portico.2",
+  "toolchainRevision": 3,
+  "dependencyCacheRevision": 3,
+  "releaseTag": "ffmpeg-8.1.3-jellyfin-portico.3",
   "btbn": {
     "repository": "https://github.com/BtbN/FFmpeg-Builds.git",
     "commit": "48576f197ad1c2afb2e0b8efe204919a1afbff54",

@@ -1,9 +1,10 @@
 {
   "schemaVersion": 1,
-  "contractId": "portico-jellyfin-media-toolchain-v2",
+  "contractId": "portico-jellyfin-media-toolchain-v3",
   "executables": [
     "ffmpeg",
-    "ffprobe"
+    "ffprobe",
+    "portico-disc"
   ],
   "features": [
     {
@@ -244,6 +245,24 @@
       "acceptable": [
         "libdvdnav",
         "libdvdread"
+      ]
+    },
+    {
+      "id": "disc.protocol",
+      "kind": "protocol",
+      "required": true,
+      "acceptable": [
+        "bluray"
+      ]
+    },
+    {
+      "id": "disc.demuxer",
+      "kind": "demuxer",
+      "required": true,
+      "acceptable": [
+        "mpegts",
+        "dvdvideo",
+        "ffmetadata"
       ]
     },
     {

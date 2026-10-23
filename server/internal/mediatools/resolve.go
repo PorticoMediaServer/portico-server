@@ -62,7 +62,7 @@ func VerifyBundle(root string) error {
 	if targetOS == "" || targetArch == "" || m.Target != targetOS+"-"+targetArch {
 		return fmt.Errorf("bundle target %q does not match this host", m.Target)
 	}
-	required := []string{"corresponding-source.tar.xz", "NOTICE.md", "sources.lock.json", "requirements.v1.json", "bin/" + Name("ffmpeg"), "bin/" + Name("ffprobe")}
+	required := []string{"corresponding-source.tar.xz", "NOTICE.md", "sources.lock.json", "requirements.v1.json", "portico-disc-build.json", "LICENSES/portico-disc.txt", "bin/" + Name("ffmpeg"), "bin/" + Name("ffprobe"), "bin/" + Name("portico-disc")}
 	for _, name := range required {
 		if _, ok := m.Files[name]; !ok {
 			return fmt.Errorf("missing provenance or tool: %s", name)
@@ -176,6 +176,9 @@ func DevelopmentTool(tool string) (string, error) {
 	return RepositoryTool(tool, starts...)
 }
 func Resolve(tool string) string {
+	if tool == "portico-disc" {
+		return resolveDisc()
+	}
 	if configured := activePair.Load(); configured != nil {
 		switch tool {
 		case "ffmpeg":
@@ -208,6 +211,28 @@ func Resolve(tool string) string {
 		return path
 	}
 	return name
+}
+
+// The disc reader parses the same untrusted input as FFmpeg. Its ABI and
+// libraries belong to that bundle; an unrelated PATH executable or independent
+// environment override must not silently replace it.
+func resolveDisc() string {
+	ffmpeg := Resolve("ffmpeg")
+	if !filepath.IsAbs(ffmpeg) {
+		return "\x00portico-disc requires a verified media bundle"
+	}
+	root := filepath.Dir(filepath.Dir(ffmpeg))
+	if filepath.Clean(ffmpeg) != filepath.Join(root, "bin", Name("ffmpeg")) {
+		return "\x00portico-disc requires the selected bundle's FFmpeg"
+	}
+	if err := VerifyBundle(root); err != nil {
+		return "\x00unverified disc toolchain: " + err.Error()
+	}
+	path, err := exec.LookPath(filepath.Join(root, "bin", Name("portico-disc")))
+	if err != nil {
+		return "\x00unavailable bundled disc tool: " + err.Error()
+	}
+	return path
 }
 
 // ResolvePair verifies a discovered bundle once and selects its companion probe.

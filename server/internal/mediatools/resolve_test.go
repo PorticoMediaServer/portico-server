@@ -16,7 +16,7 @@ func fixtureBundle(t *testing.T) (string, string) {
 	root := t.TempDir()
 	bundle := filepath.Join(root, "third_party", "ffmpeg", "bundle")
 	m := manifest{SchemaVersion: 1, LicenseMode: "gpl3", Target: map[string]string{"darwin": "macos", "linux": "linux", "windows": "windows"}[runtime.GOOS] + "-" + map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH], Files: map[string]string{}}
-	for _, name := range []string{"bin/" + Name("ffmpeg"), "bin/" + Name("ffprobe"), "corresponding-source.tar.xz", "NOTICE.md", "sources.lock.json", "requirements.v1.json", "LICENSES/GPL"} {
+	for _, name := range []string{"bin/" + Name("ffmpeg"), "bin/" + Name("ffprobe"), "bin/" + Name("portico-disc"), "portico-disc-build.json", "corresponding-source.tar.xz", "NOTICE.md", "sources.lock.json", "requirements.v1.json", "LICENSES/GPL", "LICENSES/portico-disc.txt"} {
 		path := filepath.Join(bundle, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 			t.Fatal(err)

@@ -33,6 +33,15 @@ if target.startswith('macos'):
     sys.exit(0)
 
 # BtbN disables Linux ARM VAAPI by default, although libva supports it.
+# Its GPL recipe normally adds CSS decryption. Keep navigation/readers, with
+# no decryption library stage or dvdread decryption dependency.
+(recipe / 'scripts.d/50-dvd/30-libdvdcss.sh').unlink(missing_ok=True)
+path = recipe / 'scripts.d/50-dvd/40-libdvdread.sh'
+text = path.read_text()
+if '-Dlibdvdcss=enabled' not in text:
+    raise ValueError('BtbN dvdread decryption option changed')
+path.write_text(text.replace('-Dlibdvdcss=enabled', '-Dlibdvdcss=disabled'))
+
 path = recipe / 'scripts.d/50-vaapi/50-libva.sh'
 text = path.read_text().replace('    [[ $TARGET == linuxarm64 ]] && return -1\n', '')
 text = text.replace('elif [[ $TARGET == win* ]]; then', '''elif [[ $TARGET == linuxarm64 ]]; then
@@ -68,5 +77,22 @@ if needle not in text:
     raise ValueError('BtbN configure invocation changed')
 text = text.replace(needle, '--extra-version="Portico-Jellyfin" ' + flags)
 text = text.replace('make -j\\$(nproc) V=1', 'make -j' + str(max(1, int(__import__('os').environ.get('PORTICO_BUILD_JOBS', '4')))) + ' V=1')
+# This is the final FFmpeg container, after the same dependency prefix has been
+# built. The helper uses its compiler, pc files and static archives, not a host SDK.
+install = '    make install install-doc\n'
+if install not in text:
+    raise ValueError('BtbN install boundary changed')
+disc = ('    CFLAGS="\\$FF_CFLAGS" LDFLAGS="\\$FF_LDFLAGS \\$FF_LDEXEFLAGS" LIBS="\\$FF_LIBS" '
+        'python3 /portico-disc/build-portico-disc.py --source /portico-disc/portico-disc.c '
+        '--source-commit "' + __import__('os').environ['PORTICO_DISC_SOURCE_COMMIT'] + '" '
+        '--prefix "\\$FFBUILD_PREFIX" --output /ffbuild/prefix/bin/portico-disc' +
+        ('.exe' if target.startswith('windows') else '') +
+        ' --metadata /ffbuild/prefix/share/doc/ffmpeg/portico-disc-build.json --target ' + target + '\n'
+        '    cp /portico-disc/LICENSE /ffbuild/prefix/share/doc/ffmpeg/portico-disc-LICENSE\n')
+text = text.replace(install, install + disc, 1)
+mount = '-v "$BUILD_SCRIPT":/build.sh "$IMAGE" bash /build.sh'
+if mount not in text:
+    raise ValueError('BtbN final build mount changed')
+text = text.replace(mount, '-v "$BUILD_SCRIPT":/build.sh -v "$PWD/portico-disc":/portico-disc:ro -e SOURCE_DATE_EPOCH "$IMAGE" bash /build.sh', 1)
 path.write_text(text)
 print('Configured source recipe for ' + target)

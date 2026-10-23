@@ -32,11 +32,13 @@ portico_cmake -DWITH_OPENMP=OFF -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_P
 portico_clone fontconfig
 portico_meson -Dtests=disabled -Dtools=disabled -Ddoc=disabled -Dxml-backend=libxml2
 portico_clone dvdread
-portico_meson -Ddefault_library=static
+portico_meson -Ddefault_library=static -Dlibdvdcss=disabled
 portico_clone dvdnav
 portico_meson -Ddefault_library=static
+portico_clone udfread
+portico_meson -Denable_examples=false
 portico_clone bluray
-portico_meson -Denable_docs=false -Denable_tools=false -Denable_examples=false -Dbdj_jar=disabled -Dfontconfig=enabled -Dfreetype=enabled -Dlibxml2=disabled
+portico_meson -Denable_docs=false -Denable_tools=false -Denable_examples=false -Dbdj_jar=disabled -Dfontconfig=enabled -Dfreetype=enabled -Dlibxml2=disabled -Dlibudfread=enabled
 portico_clone vulkanHeaders
 portico_cmake -DVULKAN_HEADERS_ENABLE_TESTS=OFF
 portico_clone vulkanLoader
