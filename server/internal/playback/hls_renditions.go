@@ -25,15 +25,16 @@ import (
 // AudioRenditionPlan describes independently produced audio on the source clock.
 // A published but unrequested rendition owns no process or generated segments.
 type AudioRenditionPlan struct {
-	Variant     string `json:"variant,omitempty"`
-	ObjectAudio string `json:"objectAudio,omitempty"`
-	CoreExtract bool   `json:"coreExtract,omitempty"`
-	Passthrough bool   `json:"passthrough"`
-	Failure     string `json:"failure,omitempty"`
-	Ordinal     int    `json:"ordinal"`
-	StreamIndex int    `json:"streamIndex"`
-	Action      string `json:"action"`
-	Codec       string `json:"codec"`
+	LabelParts  *TrackLabelParts `json:"labelParts,omitempty"`
+	Variant     string           `json:"variant,omitempty"`
+	ObjectAudio string           `json:"objectAudio,omitempty"`
+	CoreExtract bool             `json:"coreExtract,omitempty"`
+	Passthrough bool             `json:"passthrough"`
+	Failure     string           `json:"failure,omitempty"`
+	Ordinal     int              `json:"ordinal"`
+	StreamIndex int              `json:"streamIndex"`
+	Action      string           `json:"action"`
+	Codec       string           `json:"codec"`
 	// Packaging is derived from the containing delivery plan, including when
 	// that plan is loaded. It is not another persisted or public decision.
 	Packaging     string `json:"-"`
@@ -125,10 +126,10 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 		if r.Codec == "flac" || r.Codec == "pcm" {
 			r.BitDepth = flacDepth(&a, client.audioCodec(r.Codec))
 		}
-		r.Label = fmt.Sprintf("%s, %s", r.Language, audioDisplayName(r.Variant, r.Codec, r.ObjectAudio))
-		if r.ChannelLayout != "" {
-			r.Label += ", " + r.ChannelLayout
-		}
+		parts := AudioTrackLabel(r.Title, a.Language, r.Codec, r.Variant, r.ObjectAudio, r.ChannelLayout)
+		r.LabelParts = &parts
+		// NAME remains the checked stable rendition identity. UI names use parts.
+		r.Label = fmt.Sprintf("%s · %s · track %d", r.Language, strings.ToUpper(r.Codec), a.Ordinal+1)
 		if a.Title != "" {
 			r.Label = a.Title + " · " + r.Label
 		}

@@ -16,10 +16,11 @@ import (
 // again), the presentation's new stream (a new grant and media generation on
 // the same playback session).
 type subtitleResult struct {
-	files    []SubtitleFile
-	shown    *PresentationSubtitle
-	language string
-	replaced *subtitles.Presentation
+	labelParts *playback.TrackLabelParts
+	files      []SubtitleFile
+	shown      *PresentationSubtitle
+	language   string
+	replaced   *subtitles.Presentation
 }
 
 // applySubtitles selects subtitles on one presentation through the subtitle
@@ -59,6 +60,8 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			if chosen == nil || !chosen.Enabled {
 				return out, &FieldError{Path: "subtitles.trackId"}
 			}
+			label := playback.SubtitleTrackLabel(chosen.Title, chosen.Language, chosen.Format, chosen.Origin)
+			out.labelParts = &label
 			burns := chosen.Renderer == "burn_in"
 			out.language = chosen.Language
 			switch {
@@ -84,7 +87,7 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 						out.replaced = off.Presentation
 					}
 				}
-				out.shown = &PresentationSubtitle{TrackID: chosen.ID, Kind: subtitleKindOf(chosen.Format), Delivery: "device"}
+				out.shown = &PresentationSubtitle{LabelParts: out.labelParts, TrackID: chosen.ID, Kind: subtitleKindOf(chosen.Format), Delivery: "device"}
 				return out, nil
 			}
 			m.Mode, m.ResourceID, m.ResourceRevision = "track", chosen.ID, chosen.Revision
@@ -106,11 +109,13 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 		}
 	}
 	if plan.Selected != nil {
+		label := playback.SubtitleTrackLabel(plan.Selected.Title, plan.Selected.Language, plan.Selected.Format, plan.Selected.Origin)
+		out.labelParts = &label
 		out.language = plan.Selected.Language
 		switch {
 		case plan.DocumentURL != "" && plan.Renderer == "external_text":
 			out.files = append(out.files, SubtitleFile{TimeDomain: "source-relative", TrackID: plan.Selected.ID, Format: "webvtt", URL: plan.DocumentURL + ".vtt"})
-			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: playback.SubtitleText, Delivery: "sidecar"}
+			out.shown = &PresentationSubtitle{LabelParts: out.labelParts, TrackID: plan.Selected.ID, Kind: playback.SubtitleText, Delivery: "sidecar"}
 		case plan.Renderer == "client":
 			// The original file, for a device that draws styled or image subtitles itself.
 			for _, d := range plan.Selected.Deliveries {
@@ -119,9 +124,9 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 					out.files = append(out.files, SubtitleFile{TimeDomain: "source-relative", TrackID: plan.Selected.ID, Format: d.Format, OffsetMs: offsetUS / 1000, URL: d.URL, CompanionURL: d.CompanionURL, FontsURL: d.FontsURL, LinesURL: d.LinesURL})
 				}
 			}
-			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: subtitleKindOf(plan.Selected.Format), Delivery: "device"}
+			out.shown = &PresentationSubtitle{LabelParts: out.labelParts, TrackID: plan.Selected.ID, Kind: subtitleKindOf(plan.Selected.Format), Delivery: "device"}
 		case plan.Renderer == "burn_in":
-			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: subtitleKindOf(plan.Selected.Format), Delivery: "burn"}
+			out.shown = &PresentationSubtitle{LabelParts: out.labelParts, TrackID: plan.Selected.ID, Kind: subtitleKindOf(plan.Selected.Format), Delivery: "burn"}
 		}
 	}
 	return out, nil

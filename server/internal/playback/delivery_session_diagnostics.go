@@ -121,6 +121,21 @@ func SessionDeliveryTx(ctx context.Context, tx *sql.Tx, settings DeliverySetting
 		rendering = "burn"
 	}
 	out.PlaybackInfo = PlaybackInfoForPlan(*plan, rendering)
+	// This is the committed selected resource, with no render URL or font path.
+	var format, language, title, origin, renderer string
+	subtitleErr := tx.QueryRowContext(ctx, `SELECT r.format,r.language,r.title,r.origin,st.renderer FROM playback_subtitle_state st JOIN subtitle_revisions r ON r.resource_id=st.resource_id AND r.revision=st.resource_revision JOIN playback_sessions ps ON ps.id=st.session_id AND ps.generation=st.generation WHERE st.session_id=? AND st.resource_id<>''`, session).Scan(&format, &language, &title, &origin, &renderer)
+	if subtitleErr != nil && !errors.Is(subtitleErr, sql.ErrNoRows) {
+		return nil, subtitleErr
+	}
+	if subtitleErr == nil {
+		out.PlaybackInfo = PlaybackInfoForPlan(*plan, renderer)
+		parts := SubtitleTrackLabel(title, language, format, origin)
+		out.PlaybackInfo.SetSubtitleTrack(&parts)
+	}
+	out.PlaybackInfo.Observed, err = ReadObservedPlayback(ctx, tx, session)
+	if err != nil {
+		return nil, err
+	}
 	if burned {
 		out.Streams = append(out.Streams, SessionStreamDecision{Kind: "subtitle", InputCodec: "", OutputCodec: "", Action: "burn_in"})
 	}

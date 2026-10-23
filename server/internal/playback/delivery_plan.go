@@ -1175,6 +1175,9 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 	}
 	for i := range p.Renditions {
 		p.Renditions[i].Packaging = p.OutputContainer
+		r := &p.Renditions[i]
+		parts := AudioTrackLabel(r.Title, r.Language, r.Codec, r.Variant, r.ObjectAudio, r.ChannelLayout)
+		r.LabelParts = &parts
 	}
 	return p, nil
 }
@@ -1213,7 +1216,13 @@ func persistDeliveryPlan(tx *sql.Tx, session string, p *DeliveryPlan) error {
 	if err != nil {
 		return err
 	}
-	renditions, err := json.Marshal(p.Renditions)
+	// Label parts are a derived public projection of the stored flat facts.
+	// Do not add another persisted object graph or change the HLS identity label.
+	storedRenditions := append([]AudioRenditionPlan(nil), p.Renditions...)
+	for i := range storedRenditions {
+		storedRenditions[i].LabelParts = nil
+	}
+	renditions, err := json.Marshal(storedRenditions)
 	if err != nil {
 		return err
 	}

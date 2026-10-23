@@ -387,21 +387,22 @@ func (s *Service) Stop(ctx context.Context, c Caller, id string, positionMs *int
 
 // Report is one timeline report (spec §6, §17.6).
 type Report struct {
-	Seq             int64          `json:"seq"`
-	Generation      int            `json:"generation"`
-	State           string         `json:"state"`
-	PositionMs      int64          `json:"positionMs"`
-	PartIndex       *int           `json:"partIndex,omitempty"`
-	Rate            float64        `json:"rate,omitempty"`
-	BufferedMs      int64          `json:"bufferedMs,omitempty"`
-	BandwidthKbps   int64          `json:"bandwidthKbps,omitempty"`
-	DroppedFrames   int64          `json:"droppedFrames,omitempty"`
-	Volume          *float64       `json:"volume,omitempty"`
-	Muted           *bool          `json:"muted,omitempty"`
-	AudioTrackID    string         `json:"audioTrackId,omitempty"`
-	SubtitleTrackID *TrackRef      `json:"subtitleTrackId,omitempty"`
-	Skipped         *SkipReport    `json:"skipped,omitempty"`
-	Error           *ReportedError `json:"error,omitempty"`
+	ObservedPlayback *playback.ObservedPlayback `json:"observedPlayback,omitempty"`
+	Seq              int64                      `json:"seq"`
+	Generation       int                        `json:"generation"`
+	State            string                     `json:"state"`
+	PositionMs       int64                      `json:"positionMs"`
+	PartIndex        *int                       `json:"partIndex,omitempty"`
+	Rate             float64                    `json:"rate,omitempty"`
+	BufferedMs       int64                      `json:"bufferedMs,omitempty"`
+	BandwidthKbps    int64                      `json:"bandwidthKbps,omitempty"`
+	DroppedFrames    int64                      `json:"droppedFrames,omitempty"`
+	Volume           *float64                   `json:"volume,omitempty"`
+	Muted            *bool                      `json:"muted,omitempty"`
+	AudioTrackID     string                     `json:"audioTrackId,omitempty"`
+	SubtitleTrackID  *TrackRef                  `json:"subtitleTrackId,omitempty"`
+	Skipped          *SkipReport                `json:"skipped,omitempty"`
+	Error            *ReportedError             `json:"error,omitempty"`
 }
 
 // SkipReport is a marker the viewer skipped (spec §4.2): the segment marker's
@@ -427,6 +428,9 @@ type timelineHook func(ctx context.Context, tx *sql.Tx, r row, report Report, no
 // a lower seq renew the lease but change nothing (invariant 3). It returns the
 // cadence for Report-Every-Ms.
 func (s *Service) Timeline(ctx context.Context, c Caller, id string, report Report) (time.Duration, error) {
+	if !report.ObservedPlayback.Valid() {
+		return 0, &FieldError{Path: "observedPlayback"}
+	}
 	switch report.State {
 	case "playing", "paused", "buffering", "ended", "error":
 	default:
@@ -522,6 +526,9 @@ func (s *Service) Timeline(ctx context.Context, c Caller, id string, report Repo
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
 			return nil
+		}
+		if err = playback.StoreObservedPlaybackTx(ctx, tx, r.id, c.DeviceID, report.Generation, report.Seq, now.UnixMilli(), report.ObservedPlayback); err != nil {
+			return err
 		}
 		r.state, r.position, r.lastSeq, r.partIndex, r.audioTrack, r.subtitleTrack, r.revision, r.lease = state, report.PositionMs, report.Seq, part, audio, subtitle, revision, lease
 		if changed {

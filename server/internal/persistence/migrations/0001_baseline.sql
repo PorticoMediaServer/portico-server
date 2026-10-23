@@ -8464,3 +8464,13 @@ CREATE TABLE disc_main_titles(
  asset_id TEXT NOT NULL REFERENCES asset_discs(asset_id) ON DELETE CASCADE,
  title_key TEXT NOT NULL,source_size INTEGER NOT NULL,source_modified_ns INTEGER NOT NULL,
  PRIMARY KEY(item_id,asset_id)) STRICT;
+
+-- Actual client observations are generation-bound scalar facts. They never
+-- replace capability documents, source facts, or requested settings.
+CREATE TABLE playback_observed_output(
+ session_id TEXT PRIMARY KEY REFERENCES playback_v1_sessions(id) ON DELETE CASCADE,
+ generation INTEGER NOT NULL CHECK(generation>0),seq INTEGER NOT NULL CHECK(seq>=0),observed_ms INTEGER NOT NULL,
+ screen_known INTEGER NOT NULL CHECK(screen_known IN(0,1)),dynamic_range TEXT NOT NULL,refresh_hz REAL NOT NULL,
+ audio_known INTEGER NOT NULL CHECK(audio_known IN(0,1)),audio_handling TEXT NOT NULL,audio_codec TEXT NOT NULL,object_audio TEXT NOT NULL,
+ channels INTEGER NOT NULL,channel_layout TEXT NOT NULL,sample_rate INTEGER NOT NULL,bit_depth INTEGER NOT NULL,
+ subtitles_known INTEGER NOT NULL CHECK(subtitles_known IN(0,1)),subtitle_rendering TEXT NOT NULL,delivered_kbps INTEGER NOT NULL) STRICT;

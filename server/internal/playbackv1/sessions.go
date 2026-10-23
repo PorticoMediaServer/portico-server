@@ -214,7 +214,8 @@ type SubtitleFile struct {
 
 // PresentationSubtitle is the subtitle track a presentation shows.
 type PresentationSubtitle struct {
-	TrackID string `json:"trackId"`
+	LabelParts *playback.TrackLabelParts `json:"labelParts,omitempty"`
+	TrackID    string                    `json:"trackId"`
 	// Kind is the capability name of the track's format: text, ass, pgs,
 	// vobsub or dvb.
 	Kind string `json:"kind"`
@@ -774,6 +775,10 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		return media, Presentation{}, err
 	}
 	view.Subtitles, view.Subtitle = result.files, result.shown
+	// Recompute after the actual subtitle selection. describe ran before it.
+	if plan != nil {
+		s.describe(&view, *plan, choice)
+	}
 	if result.replaced != nil {
 		// Burn-in: the same playback session, re-planned with the subtitle in the
 		// video, under a new grant and generation.
@@ -796,6 +801,9 @@ func (s *Service) describe(view *Presentation, plan playback.DeliveryPlan, choic
 		rendering = view.Subtitle.Delivery
 	}
 	view.PlaybackInfo = playback.PlaybackInfoForPlan(plan, rendering)
+	if view.Subtitle != nil {
+		view.PlaybackInfo.SetSubtitleTrack(view.Subtitle.LabelParts)
+	}
 	view.BitrateKbps = planKbps(plan)
 	view.Container = plan.OutputContainer
 	view.VideoHeight = playback.ActivityVideoHeight(plan)
@@ -1282,7 +1290,16 @@ func (s *Service) Get(ctx context.Context, c Caller, id string) (SessionView, er
 	if err != nil {
 		return SessionView{}, err
 	}
-	return s.view(s.endIfChannelRefused(ctx, r)), nil
+	r = s.endIfChannelRefused(ctx, r)
+	view := s.view(r)
+	if view.Presentation.PlaybackInfo != nil && r.media != "" && r.ended == 0 {
+		observed, err := playback.ReadObservedPlayback(ctx, s.DB, r.media, r.generation)
+		if err != nil {
+			return SessionView{}, err
+		}
+		view.Presentation.PlaybackInfo.Observed = observed
+	}
+	return view, nil
 }
 
 // endIfChannelRefused ends a live channel session the viewer is no longer
