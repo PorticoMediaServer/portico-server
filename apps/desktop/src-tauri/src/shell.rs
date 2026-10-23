@@ -1,6 +1,7 @@
 use crate::{audio::AudioOutput,boundary::{self,Command,Error,Observation,Result},mpv::{Api,Mpv}};
 use std::{path::PathBuf,sync::{Arc,Mutex}};
 use tauri::{Manager,WebviewWindow};
+use crate::{equalizer::{EqualizerChange,EqualizerSnapshot},equalizer_store::EqualizerStore};
 
 #[cfg(target_os="linux")]
 #[path="surface_linux.rs"] mod surface;
@@ -10,6 +11,7 @@ use tauri::{Manager,WebviewWindow};
 #[path="surface_windows.rs"] mod surface;
 
 pub struct EngineState(pub Mutex<std::result::Result<Arc<Mpv>,Error>>);
+pub struct EqualizerState(pub Mutex<std::result::Result<EqualizerStore,Error>>);
 fn caller(window:&WebviewWindow)->Result<()> {
     boundary::local_origin(window.label(),window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str(),cfg!(debug_assertions))
 }
@@ -28,6 +30,23 @@ fn desktop_observe(window:WebviewWindow,state:tauri::State<EngineState>)->Result
 fn desktop_audio_facts(window:WebviewWindow,state:tauri::State<EngineState>)->Result<crate::audio::AudioFacts> {
     caller(&window)?;
     Ok(state.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().map_err(|e|*e)?.audio_facts())
+}
+#[tauri::command]
+fn desktop_equalizer(window:WebviewWindow,equalizer:tauri::State<EqualizerState>,engine:tauri::State<EngineState>)->Result<EqualizerSnapshot> {
+    caller(&window)?;
+    let store=equalizer.0.lock().map_err(|_|Error::PreferencesUnavailable)?;
+    let saved=store.as_ref().map_err(|error|*error)?.read()?;
+    let applied=engine.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().map(|native|native.equalizer_matches(&saved.settings)).unwrap_or(false);
+    Ok(EqualizerSnapshot{revision:saved.revision,settings:saved.settings,applied})
+}
+#[tauri::command]
+fn desktop_equalizer_change(window:WebviewWindow,equalizer:tauri::State<EqualizerState>,engine:tauri::State<EngineState>,change:EqualizerChange)->Result<EqualizerSnapshot> {
+    caller(&window)?;
+    let mut store=equalizer.0.lock().map_err(|_|Error::PreferencesUnavailable)?;
+    let native=engine.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().ok().cloned();
+    let saved=store.as_mut().map_err(|error|*error)?.change(change,|settings|native.as_ref().map(|player|player.apply_equalizer(settings)).unwrap_or(Ok(())))?;
+    let applied=native.as_ref().map(|player|player.equalizer_matches(&saved.settings)).unwrap_or(false);
+    Ok(EqualizerSnapshot{revision:saved.revision,settings:saved.settings,applied})
 }
 #[tauri::command]
 fn desktop_surface(window:WebviewWindow,state:tauri::State<EngineState>,bounds:crate::boundary::SurfaceBounds,generation:u64)->Result<()> {
@@ -67,8 +86,14 @@ fn library(app:&tauri::AppHandle)->Result<PathBuf> {
 pub fn run() {
     let builder=tauri::Builder::default()
         .manage(EngineState(Mutex::new(Err(Error::EngineUnavailable))))
-        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_surface,desktop_spike_report])
+        .manage(EqualizerState(Mutex::new(Err(Error::PreferencesUnavailable))))
+        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change])
         .setup(|app| {
+            // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
+            let preference_error=||std::io::Error::other("device_preferences_unavailable");
+            let path=app.path().app_local_data_dir().map_err(|_|preference_error())?.join("equalizer.sqlite3");
+            let store=EqualizerStore::open(&path).map_err(|_|preference_error())?;
+            *app.state::<EqualizerState>().0.lock().map_err(|_|preference_error())?=Ok(store);
             let main=tauri::WebviewWindowBuilder::new(app,"main",tauri::WebviewUrl::App("index.html".into()))
                 .title("Portico").inner_size(1440.0,900.0).min_inner_size(360.0,480.0)
                 .transparent(true)
@@ -82,7 +107,16 @@ pub fn run() {
             let handle=app.handle().clone();
             let lib=library(app.handle()).and_then(|p|Api::open(&p));
             main.with_webview(move |webview| {
-                let result=lib.and_then(|api|surface::attach(&webview,api,&AudioOutput::default()));
+                // Keep the same store->engine lock order as preference commands. A setting
+                // saved while the webview starts must not be replaced by an earlier copy.
+                let equalizer_state=handle.state::<EqualizerState>();
+                let preferences=equalizer_state.0.lock();
+                let result=(||->Result<Arc<Mpv>>{
+                    let store=preferences.as_ref().map_err(|_|Error::PreferencesUnavailable)?;
+                    let equalizer=store.as_ref().map_err(|error|*error)?.read()?.settings;
+                    let native=lib.and_then(|api|surface::attach(&webview,api,&AudioOutput::default()))?;
+                    native.apply_equalizer(&equalizer)?;Ok(native)
+                })();
                 #[cfg(debug_assertions)]
                 if let Ok(engine)=&result {if let Some(path)=std::env::var_os("PORTICO_SPIKE_MEDIA"){
                     let ready=surface::bounds(&webview,crate::boundary::SurfaceBounds{x:0.0,y:0.0,width:1440.0,height:900.0}).is_ok();

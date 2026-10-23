@@ -11,6 +11,8 @@ pub enum Error {
     StaleGeneration,
     EngineUnavailable,
     EngineFailure,
+    PreferencesUnavailable,
+    PreferencesConflict,
     Unsupported,
 }
 pub type Result<T> = std::result::Result<T, Error>;

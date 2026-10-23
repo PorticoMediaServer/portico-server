@@ -40,6 +40,11 @@ pub struct AudioFacts {
     pub output_format: Option<String>,
     /// No inferred bit-perfect flag: only an output capture can prove it.
     pub bit_exact_capture_verified: bool,
+    pub equalizer_enabled: bool,
+    pub equalizer_applied: bool,
+    /// The signal-path UI must use the approved i18n text "EQ on, not bit-perfect".
+    /// This fact cannot be promoted to a physical output/capture claim.
+    pub bit_perfect_excluded_by_equalizer: bool,
 }
 
 /// Compare interleaved decoded PCM, preserving depth/rate/channels and exact frame count.
