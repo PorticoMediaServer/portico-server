@@ -3,7 +3,9 @@ import {createRoot} from 'react-dom/client';
 import {useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../src/kit/controls/Button';
-import {Menu, TouchMenuTitle, type MenuEntry} from '../../src/kit/overlays/Popover';
+import {IconSprite} from '../../src/kit/Icon';
+import {ServerMark} from '../../src/kit/shell/ServerIdentity';
+import {Menu, TouchMenuOwner, TouchMenuTitle, type MenuEntry} from '../../src/kit/overlays/Popover';
 import '../../src/kit/tokens.css';
 import '../../src/kit/fonts.css';
 import '../../src/bootstrap.css';
@@ -23,26 +25,27 @@ function TouchMenuReference() {
   // native-only Download reference row. This is not web product menu eligibility.
   const items: MenuEntry[] = [
     action('play', t('entry.play'), 'i-play'),
-    action('watchlist', t('entry.addToWatchlist'), 'i-bookmark'),
-    action('watched', t(compact ? 'entry.markWatched' : 'entry.markUnwatched'), compact ? 'i-check' : 'i-eyeoff'),
+    action('watchlist', t('entry.addToWatchlist'), 'i-plus'),
+    action('watched', t(compact ? 'entry.markWatched' : 'entry.markUnwatched'), 'i-check'),
     action('favorite', t('next.overlays.favorite'), 'i-heart'),
     action('rate', t('entry.rate'), 'i-star'),
     action('playlist', t('next.overlays.playlist'), 'i-listadd'),
     action('collection', t('next.overlays.collection'), 'i-layers'),
     action('download', t('next.overlays.download'), 'i-download'),
     action('select', t('next.selection.select'), 'i-check'),
+    ...(!compact ? [{id: 'file-separator', separator: true as const}] : []),
     action('file-info', t('next.overlays.fileInfo'), 'i-info'),
-    {id: 'owner', section: true, ownerOnly: true, label: t('next.overlays.owner')},
+    {id: 'owner', section: true, ownerOnly: true, label: compact ? <TouchMenuOwner mark={<ServerMark size={24} />}>{t('next.overlays.owner')}</TouchMenuOwner> : t('next.overlays.owner')},
     action('edit', t('next.overlays.editMetadata'), 'i-edit'),
     action('refresh', t('next.overlays.refreshMetadata'), 'i-refresh'),
     action('delete', t('next.overlays.delete'), 'i-trash', true),
   ];
   return <div data-component-only="touch-menu" style={{height: '100dvh', background: 'var(--color-ink)'}}>
     <div style={{position: 'absolute', left: compact ? 20 : 280, top: compact ? 20 : 360}}><Button ref={anchor} icon="i-more" iconOnly variant="glass" aria-label={t('next.overlays.more')} onClick={() => setOpen(true)} /></div>
-    <Menu open={open} onOpenChange={setOpen} anchorRef={anchor} touchContext items={items} title={compact
-      ? <TouchMenuTitle title={reference.title} kind={t('search.kind.movie')} year={defaultI18n.number(reference.year, {useGrouping: false})}
+    <Menu open={open} onOpenChange={setOpen} anchorRef={anchor} touchContext items={items} title={
+      <TouchMenuTitle title={reference.title} compact={compact} kind={t('search.kind.movie')} year={defaultI18n.number(reference.year, {useGrouping: false})}
         artwork={<img alt="" src={`${referenceOrigin}/assets/pool/movies/${reference.art}`} style={{width: '100%', height: '100%', objectFit: 'cover'}} />} />
-      : reference.title} />
+      } />
   </div>;
 }
-createRoot(document.getElementById('root')!).render(<TouchMenuReference />);
+createRoot(document.getElementById('root')!).render(<><IconSprite /><TouchMenuReference /></>);

@@ -8,7 +8,7 @@ import {homeEntryCapabilities} from '@core/home-selection.ts';
 import {Artwork} from '../kit/artwork';
 import {Button, Select} from '../kit/controls';
 import {Banner, Dialog, Menu, type MenuEntry} from '../kit/overlays';
-import {TouchMenuTitle} from '../kit/overlays/Popover';
+import {TouchMenuOwner, TouchMenuTitle} from '../kit/overlays/Popover';
 import {BulkEditor, DeleteMediaDialog, MixedEditExplainer, PhoneActionBar, SelectionBar} from '../kit/selection';
 import {OwnerTag, ServerAudienceTag, ServerMark, type EditorAudience} from '../kit/shell';
 import type {IconName} from '../kit/Icon';
@@ -32,7 +32,7 @@ export type SelectionRendererSource = Readonly<{
 const t = defaultI18n.t;
 const menuIcons: Record<EntryActionId, IconName> = {
   play: 'i-play', resume: 'i-play', playFromStart: 'i-restart', playNext: 'i-queue', addToQueue: 'i-queue',
-  watchWithGroup: 'i-together', addToGroupQueue: 'i-queue', watchlist: 'i-bookmark', favorite: 'i-heart',
+  watchWithGroup: 'i-together', addToGroupQueue: 'i-queue', watchlist: 'i-plus', favorite: 'i-heart',
   watched: 'i-check', removeFromContinueWatching: 'i-x', notInterested: 'i-eyeoff', rate: 'i-star',
   addToPlaylist: 'i-listadd', addToCollection: 'i-layers', download: 'i-download', details: 'i-info',
   editMetadata: 'i-edit', refreshMetadata: 'i-refresh', separateArtist: 'i-link', delete: 'i-trash',
@@ -80,13 +80,13 @@ export function SelectionSurfaces({source}: {source: SelectionRendererSource}) {
   const entry = menu?.member.entry;
   const kindKey = entry?.kind === 'movie' ? 'search.kind.movie' : entry?.kind === 'show' ? 'search.kind.show'
     : entry?.kind === 'artist' ? 'search.kind.artist' : entry?.kind === 'album' ? 'search.kind.album' : undefined;
-  const menuTitle = touchMenu && display ? width < 600 ? <TouchMenuTitle title={display.title}
+  const menuTitle = touchMenu && display ? <TouchMenuTitle title={display.title} compact={width < 600}
     artwork={display.posterUrl ? <Artwork alt="" source={source.artwork.foreground(display.posterUrl, 80 * (globalThis.devicePixelRatio || 1), 2 / 3, {group: 'home-menu', priority: 'high'})} /> : undefined}
-    kind={kindKey ? t(kindKey) : undefined} year={entry?.year === undefined ? undefined : defaultI18n.number(entry.year, {useGrouping: false})} /> : display.title
+    kind={kindKey ? t(kindKey) : undefined} year={entry?.year === undefined ? undefined : defaultI18n.number(entry.year, {useGrouping: false})} />
     : t('next.home.moreFor', {title: display?.title ?? ''});
   const rating = menu?.member.entry && homeEntryCapabilities(menu.member.entry, {platform: 'web', playbackAvailable: true, queueAvailable: true}).rating;
   const entries: MenuEntry[] = menu?.groups.flatMap((group, groupIndex) => [
-    ...(group.title ? [{id: 'group:' + group.id, section: true as const, label: t(group.title), ownerOnly: group.id === 'manage'}] : groupIndex === 0 ? [] : [{id: 'group:' + group.id, separator: true as const}]),
+    ...(group.title ? [{id: 'group:' + group.id, section: true as const, label: touchMenu && width < 600 && group.id === 'manage' ? <TouchMenuOwner mark={<ServerMark size={24} />}>{t(group.title)}</TouchMenuOwner> : t(group.title), ownerOnly: group.id === 'manage'}] : groupIndex === 0 ? [] : [{id: 'group:' + group.id, separator: true as const}]),
     ...group.actions.map(action => ({id: action.id, label: action.id === 'rate' && rating != null ? t(action.label, {stars: defaultI18n.number(rating / 2)}) : t(action.label), icon: menuIcons[action.id],
       selected: action.selected, destructive: action.destructive, onSelect: () => run(source, () => controller.executeMenu(action.id))})),
   ]) ?? [];

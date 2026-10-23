@@ -8,10 +8,16 @@ import styles from './overlays.module.css';
 import touchStyles from './touch-menu.module.css';
 
 /** select17: caller-supplied facts from the captured current item, without invented metadata. */
-export function TouchMenuTitle({title, artwork, kind, year}: {title: string; artwork?: ReactNode; kind?: string; year?: string}) {
-  return <span className={touchStyles.title}>{artwork && <span className={touchStyles.art}>{artwork}</span>}<span className={touchStyles.text}>
-    <b>{title}</b>{(kind || year) && <span className={touchStyles.facts}>{kind && <span>{kind}</span>}{year && <span>{year}</span>}</span>}
+export function TouchMenuTitle({title, artwork, kind, year, compact = true}: {title: string; artwork?: ReactNode; kind?: string; year?: string; compact?: boolean}) {
+  const facts = compact ? [kind, year] : [year, kind];
+  return <span className={classes(touchStyles.title, !compact && touchStyles.anchoredTitle)}>{compact && artwork && <span className={touchStyles.art}>{artwork}</span>}<span className={touchStyles.text}>
+    <b>{title}</b>{facts.some(Boolean) && <span className={touchStyles.facts}>{facts.map((fact, index) => fact && <span key={index}>{fact}</span>)}</span>}
   </span></span>;
+}
+
+/** The existing admitted owner group supplies its mark and approved audience copy. */
+export function TouchMenuOwner({mark, children, audience}: {mark: ReactNode; children: ReactNode; audience?: ReactNode}) {
+  return <span className={touchStyles.ownerTitle}>{mark}<span>{children}</span>{audience !== undefined && <span className={touchStyles.audience}>{audience}</span>}</span>;
 }
 
 export type PopoverProps = AnchoredOverlayProps & {role?: 'dialog' | 'menu'; onContentKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void; touchContext?: boolean};
@@ -56,7 +62,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
       {left: spotlight.right, top: spotlight.top, right: 0, height: spotlight.height},
     ].map((rect, index) => <div key={index} style={{position: 'absolute', background: 'rgba(3,8,12,.58)', ...rect}} />)}</div>}<div style={{pointerEvents: 'none'}}><RadixPopover.Content forceMount ref={motionRef}
       side={touchContext ? spotlight && spotlight.right + 312 > window.innerWidth - 8 ? 'left' : 'right' : placement.startsWith('top') ? 'top' : 'bottom'} align={touchContext ? 'start' : placement.endsWith('start') ? 'start' : 'end'} sideOffset={touchContext ? 12 : sideOffset} alignOffset={alignOffset} updatePositionStrategy={touchContext ? 'always' : 'optimized'} collisionPadding={8}
-      id={`${id}-content`} className={classes(styles.popover, className)} style={{'--overlay-width': `${touchContext ? 300 : width}px`, pointerEvents: open ? 'auto' : 'none', ...(touchContext ? {borderRadius: 16, padding: 8, overflow: 'visible', background: 'rgba(22,44,58,.97)', backdropFilter: 'blur(26px) saturate(1.3)'} : {})} as OverlayStyle} role={role} aria-modal={modal && role === 'dialog' && open || undefined}
+      id={`${id}-content`} className={classes(styles.popover, touchContext && touchStyles.popover, className)} style={{'--overlay-width': `${touchContext ? 300 : width}px`, pointerEvents: open ? 'auto' : 'none', ...(touchContext ? {borderRadius: 16, padding: 8, overflow: 'visible', background: 'rgba(22,44,58,.97)', backdropFilter: 'blur(26px) saturate(1.3)'} : {})} as OverlayStyle} role={role} aria-modal={modal && role === 'dialog' && open || undefined}
       aria-label={accessibilityLabel} aria-labelledby={accessibilityLabel ? undefined : `${id}-title`} aria-describedby={description === undefined ? undefined : `${id}-description`}
       data-state={open ? 'open' : 'closed'} data-within-dialog={withinDialog || undefined} data-testid={testID}
       onOpenAutoFocus={focus.onOpenAutoFocus} onCloseAutoFocus={focus.onCloseAutoFocus}
@@ -70,7 +76,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
         const next = position < 0 ? candidates[0] : candidates[(position + (event.shiftKey ? -1 : 1) + candidates.length) % candidates.length];
         onOpenChange(false, 'action'); focusElement(next);
       } }}>
-      {touchContext ? <div id={`${id}-title`} style={{padding: '6px 20px 10px', margin: '0 -8px 6px', borderBottom: '1px solid rgba(237,245,250,.08)', fontSize: 15, fontWeight: 800}}>{title}</div> : <span id={`${id}-title`} className={styles.visuallyHidden}>{title}</span>}
+      {touchContext ? <div id={`${id}-title`} className={touchStyles.popoverTitle}>{title}</div> : <span id={`${id}-title`} className={styles.visuallyHidden}>{title}</span>}
       {description !== undefined && <div id={`${id}-description`} className={styles.popoverDescription}>{description}</div>}
       {children}
       {touchContext && <RadixPopover.Arrow width={14} height={7} style={{fill: 'rgba(22,44,58,.97)'}} />}

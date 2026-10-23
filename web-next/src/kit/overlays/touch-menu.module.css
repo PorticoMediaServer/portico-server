@@ -2,14 +2,28 @@
 .art { display: block; flex: none; width: 40px; height: 60px; border-radius: 6px; overflow: hidden; }
 .text { min-width: 0; }
 .text > b { display: block; font-size: 17px; font-weight: 800; letter-spacing: -.015em; line-height: normal; }
-.facts { display: flex; gap: 8px; margin-top: 2px; color: var(--color-text-tertiary); font-size: 13px; font-weight: 500; letter-spacing: 0; line-height: normal; }
+.facts { display: flex; gap: 12px; margin-top: 2px; color: var(--color-text-tertiary); font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: normal; }
+.anchoredTitle .text > b { font-size: 15px; letter-spacing: 0; }
+.anchoredTitle .facts { margin-top: 1px; font-size: 12.5px; }
+.popoverTitle { padding: 6px 12px 10px 20px; margin: 0 -8px 6px; border-bottom: 1px solid rgba(237,245,250,.08); font-size: 15px; font-weight: 800; }
+.popover.popover { box-shadow: inset 0 0 0 1px rgba(237,245,250,.1), 0 36px 70px -20px rgba(0,0,0,.92); }
+.popover .row { gap: 14px; border-radius: 10px; }
+.popover [data-menu-icon] { color: var(--color-text-secondary); }
+.popover [data-owner-only="true"]::before, .popover [role="separator"] { margin: 6px 4px; background: rgba(237,245,250,.08); }
+.popover [data-owner-only="true"] > div:first-child { padding: 8px 12px 4px; font-size: 12.5px; }
+.ownerTitle { display: flex; align-items: center; gap: 10px; color: var(--color-text); }
+.audience { margin-left: auto; padding: 3px 8px; border-radius: 6px; background: rgba(7,16,24,.6); color: var(--color-text-secondary); font-size: 12px; font-weight: 700; white-space: nowrap; }
 .row { height: 44px; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--color-text); }
 .sheet.sheet { padding-bottom: max(30px, env(safe-area-inset-bottom)); }
 .sheet.sheet [role="group"] { margin: 0; }
 .sheet.sheet [role="group"] > div:last-child { background: transparent; border-radius: 0; overflow: visible; box-shadow: none; }
 .sheet.sheet .row { padding: 2px 20px; gap: 14px; font-size: 16px; border-radius: 0; }
+.sheet.sheet .row:hover { background: rgba(237,245,250,.06); }
 .sheet .row + .row::before { display: none; }
-.sheet [data-menu-icon] { width: 24px; height: 24px; border-radius: 0; background: transparent; }
+.sheet.sheet [data-menu-icon] { width: 24px; height: 24px; border-radius: 0; background: transparent; color: var(--color-text-secondary); }
+.sheet [data-menu-icon] > svg { width: 24px; height: 24px; }
 .sheet.sheet [data-owner-only="true"] { margin: 8px 12px 0; padding: 4px 0; border-radius: 16px; background: radial-gradient(120% 100% at 100% 0%, rgba(47,134,187,.24), transparent 62%), #0b1822; box-shadow: inset 0 0 0 1px rgba(92,179,226,.18); }
 .sheet.sheet [data-owner-only="true"] > div:first-child { margin: 0; padding: 10px 14px 2px; font-size: 13.5px; font-weight: 800; }
 .sheet.sheet [data-owner-only="true"] .row { padding-right: 14px; padding-left: 14px; }
+.sheet.sheet [data-owner-only="true"] .row:first-child [data-menu-icon] { color: var(--color-accent-strong); }
+.sheet.sheet .row[data-destructive="true"], .sheet.sheet .row[data-destructive="true"] [data-menu-icon], .popover .row[data-destructive="true"] [data-menu-icon] { color: var(--color-record); }

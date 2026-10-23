@@ -86,7 +86,13 @@ try {
     await target.call('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [{...point, radiusX: 1, radiusY: 1, force: 1}]});
     await target.call('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
     await settle();
+    if (item.id === 'compact') {
+      const hover = await target.evaluate(`(()=>{const r=[...document.querySelectorAll('[data-menu-item]')].find(e=>e.textContent===${JSON.stringify('Select')}).getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+      await target.call('Input.dispatchMouseEvent', {type: 'mouseMoved', ...hover});
+    }
     const selector = item.id === 'compact' ? '[role=dialog]' : '[role=menu]';
+    const unresolved = await target.evaluate(`(()=>[...document.querySelectorAll(${JSON.stringify(selector)}+' use')].map(e=>e.getAttribute('href')).filter(id=>!document.getElementById(id.slice(1))))()`);
+    if (unresolved.length) throw new Error(`Missing document icon symbols: ${unresolved.join(',')}`);
     const buildFacts = await measure(selector), buildClip = await bounds(selector);
     const buildImage = await screenshot(`${item.id}-build.jpg`, buildClip);
     results.push({id: item.id, qualification: 'component-only; exact frame supplied rows, no application/authority/dispatch acceptance', reference: referenceFacts, build: buildFacts, referenceClip, buildClip});
