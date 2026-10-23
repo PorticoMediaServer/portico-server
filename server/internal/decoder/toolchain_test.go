@@ -2,10 +2,28 @@ package decoder
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"portico.local/server/internal/decodertest"
 	"testing"
 )
+
+func TestToolchainFactsKeepsJoinQualificationPrivate(t *testing.T) {
+	raw, err := json.Marshal(ToolchainFacts{DolbyVisionDualLayerJoin: true, DolbyVisionProfile7To81: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := wire["dolbyVisionDualLayerJoin"]; exists {
+		t.Fatal("private join qualification escaped through the capacity toolchain response")
+	}
+	if wire["dolbyVisionProfile7To81"] != true {
+		t.Fatal("existing public profile conversion fact changed")
+	}
+}
 
 func TestToolchainListFormats(t *testing.T) {
 	for _, version := range []string{"4.4", "6.1", "8.1"} {

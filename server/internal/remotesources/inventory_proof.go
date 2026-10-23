@@ -97,7 +97,10 @@ func (s *Service) VerifyInventoryDirectory(ctx context.Context, job, directory, 
 		return storage.ErrRemoteChanged
 	}
 	var changed bool
-	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT name,snapshot FROM remote_listing_entries WHERE listing_id=? EXCEPT SELECT name,snapshot FROM remote_listing_entries WHERE listing_id=?) OR EXISTS(SELECT name,snapshot FROM remote_listing_entries WHERE listing_id=? EXCEPT SELECT name,snapshot FROM remote_listing_entries WHERE listing_id=?)`, listing, page.ID, page.ID, listing).Scan(&changed)
+	// Compare file/directory evidence, not publication CAS or process custody.
+	// A verification pass captures a later expected observation revision.
+	const evidence = `name,json_remove(snapshot,'$.expectedObservationRevision','$.processEpoch','$.readProfile')`
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT `+evidence+` FROM remote_listing_entries WHERE listing_id=? EXCEPT SELECT `+evidence+` FROM remote_listing_entries WHERE listing_id=?) OR EXISTS(SELECT `+evidence+` FROM remote_listing_entries WHERE listing_id=? EXCEPT SELECT `+evidence+` FROM remote_listing_entries WHERE listing_id=?)`, listing, page.ID, page.ID, listing).Scan(&changed)
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,80 @@
+package remotesources
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"portico.local/server/internal/dbwork"
+)
+
+// The selected-artwork facts are a fixture, not a production metadata reader.
+// Actor, target, source, profile and publication checks use the real DB paths.
+func episodeReadFixture(t *testing.T) (observationFixture, EpisodeAuthorityResolver, EpisodeAuthorityRequest, *episodeFactsFixture) {
+	t.Helper()
+	f := newObservationFixture(t)
+	if _, err := f.record(t, scanFacts("episode-source"), 0); err != nil {
+		t.Fatal(err)
+	}
+	revision := f.catalogObservationRevision(t)
+	for _, statement := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO catalog_assets(token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration) VALUES('asset',?,16,23,'mkv','h264','aac',1920,1080,60)`, []any{f.file}},
+		{`INSERT INTO catalog_entities(public_id,library_id,kind,title,sort_key,sort_head) SELECT X'00112233445566778899AABBCCDDEEFF',id,4,'Episode','episode','e' FROM catalog_libraries WHERE library_id=?`, []any{f.library}},
+		{`INSERT INTO catalog_asset_links(entity_id,asset_id) SELECT e.id,a.id FROM catalog_entities e CROSS JOIN catalog_assets a WHERE a.token='asset'`, nil},
+		{`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state) SELECT 'object',id,'asset',incarnation,'film.mkv',?,'{}',16,23,'available' FROM library_sources WHERE id=?`, []any{revision, f.library}},
+	} {
+		if _, err := f.s.db.Exec(statement.sql, statement.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	identities, owner, _ := observationOwner(t, f)
+	var episode string
+	if err := f.s.db.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE kind=4`).Scan(&episode); err != nil {
+		t.Fatal(err)
+	}
+	facts := &episodeFactsFixture{mode: "off", artworkRevision: "artwork-1"}
+	resolver := EpisodeAuthorityResolver{Sources: f.s, Identities: identities, Episodes: facts}
+	request := EpisodeAuthorityRequest{Target: EpisodeTarget{LibraryID: f.library, LibrarySourceID: f.library, ObjectID: "object", SourceRevision: revision, EpisodeID: episode}, Purpose: EpisodeExplicitOneEpisode, Owner: owner, Operation: "episode_thumbnail", CostClass: "decode"}
+	return f, resolver, request, facts
+}
+
+func TestEpisodeReadSourceCaptureRetainsPurposeWithoutOpening(t *testing.T) {
+	for _, mode := range []string{"off", "provider", "provider_then_made"} {
+		t.Run(mode, func(t *testing.T) {
+			f, resolver, request, facts := episodeReadFixture(t)
+			facts.mode = mode
+			ctx := context.Background()
+			view, err := dbwork.BeginSnapshot(ctx, f.s.db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			source, err := resolver.ResolveEpisodeReadSourceTx(ctx, view.Tx(), request, func() { t.Error("permission failure became changed-file notice") })
+			view.Rollback()
+			if err != nil || source == nil {
+				t.Fatal("explicit known mode with absent source profile", err)
+			}
+			defer source.Close()
+			if len(f.s.serveLeases) != 0 || source.remote == nil || source.remote.processGeneration != "" {
+				t.Fatal("DB-only capture invented a physical process")
+			}
+			// Explicit source authority survives known automatic-art/mode changes.
+			facts.mode, facts.artworkRevision = "provider", "artwork-2"
+			facts.still, facts.providerResolved, facts.generationNeeded = true, false, false
+			if _, err = f.s.db.Exec(`UPDATE library_scan_policies SET revision=revision+1 WHERE library_id=?`, f.library); err != nil {
+				t.Fatal(err)
+			}
+			if err = source.Authorize(ctx, "episode_thumbnail", "decode", true); err != nil {
+				t.Fatal("automatic facts became explicit permission", err)
+			}
+			if err = source.Authorize(ctx, "episode_thumbnail", "decode", false); !errors.Is(err, ErrEpisodeAuthority) {
+				t.Fatal("captured purpose changed", err)
+			}
+			if err = source.Authorize(ctx, "episode_thumbnail", "decode", true); err == nil {
+				t.Fatal("failed purpose check revived")
+			}
+		})
+	}
+}

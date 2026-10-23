@@ -1,6 +1,6 @@
 import {AccountAttemptIds, MFARequiredError, type IdentityOptions, type IdentityProvider, type IdentityTransaction, type MFAChallenge, type Registration} from '@core/hosted-security.ts';
 import {routeBody, routePath} from '../../../packages/contracts/src/hosted/routes.ts';
-import {accountIdentity, currentAccountWork, type AccountIdentity, type ServicesAccount} from './session';
+import {accountIdentity, currentAccountWork, sameAccount, type AccountIdentity, type ServicesAccount} from './session';
 
 export type AuthMode = 'signin' | 'create' | 'verify' | 'forgot' | 'sent' | 'factor' | 'recovery' | 'provider' | 'ready';
 export type AuthSnapshot = Readonly<{mode: AuthMode; options?: IdentityOptions; registration?: Registration; provider?: IdentityProvider; suggestedName?: string; verifiedEmail?: string; busy: boolean; retryAt: number; resends: number; error?: unknown}>;
@@ -20,6 +20,13 @@ export class ServicesAuthFlow {
     this.state = {mode, busy: false, retryAt: 0, resends: 0};
   }
   getSnapshot = () => this.state;
+  /** Presentation reads the canonical session only while its accepted family is current. */
+  readyAccount() {
+    if (this.state.mode !== 'ready' || !this.readyIdentity) return;
+    const session = this.account.service.getSnapshot().session;
+    if (!session?.familyId || !sameAccount(this.readyIdentity, accountIdentity(session))) return;
+    return {name: session.account.displayName, username: session.account.username};
+  }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(value: Partial<AuthSnapshot>) { if (this.disposed) return; this.state = {...this.state, ...value}; for (const listener of this.listeners) listener(); }
   dispose() { this.disposed = true; this.operation?.abort(); this.listeners.clear(); this.challenge = undefined; this.transaction = undefined; this.ids.clear(); }
