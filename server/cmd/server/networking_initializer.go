@@ -134,7 +134,7 @@ func initializeCurrentClaimControl(db *sql.DB, state string, id *identity.Servic
 	if e = control.UseCurrentClaims(store, runner, transport); e != nil {
 		return nil, e
 	}
-	if e = control.ConfigureClaimCleanup(keys); e != nil {
+	if e = control.ConfigureIdentityDepartures(keys); e != nil {
 		return nil, e
 	}
 	id.PrepareIdentityDeparture = control.PrepareIdentityDeparture

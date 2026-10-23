@@ -17,10 +17,12 @@ import (
 )
 
 type localWebClaim struct {
-	Signed    claimweb.Signed `json:"signed"`
-	Code      string          `json:"code"`
-	URL       string          `json:"url"`
-	ExpiresAt time.Time       `json:"expiresAt"`
+	Signed             claimweb.Signed  `json:"signed"`
+	OwnerStart         *claimweb.Signed `json:"ownerStart,omitempty"`
+	OwnerTransactionID string           `json:"ownerTransactionId,omitempty"`
+	Code               string           `json:"code"`
+	URL                string           `json:"url"`
+	ExpiresAt          time.Time        `json:"expiresAt"`
 }
 
 func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address string) (localWebClaim, error) {
@@ -31,6 +33,11 @@ func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address stri
 	}
 	if v.Stage != Prepared {
 		return out, ErrStale
+	}
+	// An unclaimed Local switch needs its distinct frozen owner start. The
+	// ordinary claim path cannot create an unbound browser continuation.
+	if v.Purpose == "switch" && v.CurrentOwnerAccountID == "" {
+		return out, ErrInvalid
 	}
 	// Public proof and code survive a UI remount; private signing material never leaves its store.
 	var saved string
@@ -71,6 +78,9 @@ func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address stri
 	out.ExpiresAt = q.ExpiresAt
 	encoded, _ := json.Marshal(out)
 	_, e = dbwork.ExecWrite(ctx, h.store.db, dbwork.ClassInteractive, `INSERT INTO networking_web_claims(operation_id,request) VALUES(?,?) ON CONFLICT(operation_id) DO NOTHING`, v.OperationID, string(encoded))
+	if e == nil {
+		h.wakeClaimRecovery()
+	}
 	return out, e
 }
 
@@ -183,6 +193,7 @@ func (h *ClaimHandler) watchWebClaim(ctx context.Context, expected ClaimExpected
 			if !decided {
 				// Hosted could not be asked (or the stream broke): the next wait asks again.
 				h.webWatches.CompareAndDelete(expected.OperationID, watch)
+				h.wakeClaimRecovery()
 				return
 			}
 			// A page that asks again shortly afterwards reads this answer; after
@@ -209,7 +220,7 @@ func (h *ClaimHandler) ResumeWebClaims(ctx context.Context, guard func(resume st
 	if h == nil || guard == nil {
 		return
 	}
-	rows, e := h.store.db.QueryContext(ctx, `SELECT watch FROM networking_web_claims WHERE watch<>''`)
+	rows, e := h.store.db.QueryContext(ctx, `SELECT w.watch FROM networking_web_claims w JOIN networking_claim_intents i ON i.operation_id=w.operation_id WHERE w.watch<>'' AND i.stage IN('prepared','approved','finalizing','retrieving')`)
 	if e != nil {
 		log.Printf("Pending Portico Account approvals could not be read: %v", e)
 		return
