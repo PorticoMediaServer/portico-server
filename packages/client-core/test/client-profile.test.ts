@@ -273,7 +273,10 @@ test('Apple exact MIME and route facts narrow DV and JOC without invented output
  assert.deepEqual(exact.engines.native.video!.find(v=>v.codec==='hevc')!.dolbyVisionProfiles,[5,8]);
  assert.equal(exact.audioOutput!.maxChannels,2);assert.deepEqual(exact.engines.native.audio!.find(a=>a.codec==='eac3')!.objectAudio,['atmos']);
  assert.equal(exact.engines.native.audio!.some(a=>a.codec==='truehd'),false);
- assert.deepEqual(appleProfile(options,{videoEligibility:{dolbyVision81:true,dolbyVision84:false}}).engines.native.video!.find(v=>v.codec==='hevc')!.dolbyVisionProfiles,[]);
+ const only81=appleProfile(options,{videoEligibility:{dolbyVision81:true,dolbyVision84:false}}).engines.native.video!.find(v=>v.codec==='hevc')!;
+ assert.deepEqual(only81.dolbyVisionProfiles,[8]);assert.deepEqual(only81.dolbyVisionProfile8Compatibility,[1]);
+ const only84=appleProfile(options,{videoEligibility:{dolbyVision84:true}}).engines.native.video!.find(v=>v.codec==='hevc')!;
+ assert.deepEqual(only84.dolbyVisionProfiles,[8]);assert.deepEqual(only84.dolbyVisionProfile8Compatibility,[4]);
  assert.equal(appleProfile(options,{audio:{maximumOutputNumberOfChannels:1,spatial:true}}).audioOutput!.maxChannels,1);
  assert.equal(appleDeclaredProfile(options).engines.native.audio!.find(a=>a.codec==='eac3')!.objectAudio,undefined);
 });

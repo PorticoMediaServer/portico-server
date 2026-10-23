@@ -44,7 +44,7 @@ export type ClientDisplay={width?:number;height?:number;dynamicRanges?:DynamicRa
 export type AudioVariant='dts_core'|'dts_hd_hra'|'dts_hd_ma'|'dtsx'|'dts_express'|'truehd'|'truehd_atmos'|'ac3'|'eac3'|'eac3_joc'|'ac4'|'lpcm';
 export type ClientVideoCodec={chromaSubsampling?:('4:2:0'|'4:2:2'|'4:4:4'|'4:0:0')[];frameRateModes?:('constant'|'variable')[];codec:string;profiles?:string[];maxLevel?:number;bitDepths?:number[];maxWidth?:number;maxHeight?:number;maxFrameRate?:number;maxBitrateBps?:number;
  /** What the decoder decodes. Whether it can be shown is the display's list or the engine's `toneMapsHdr`. */
- dynamicRanges?:DynamicRange[];dolbyVisionProfiles?:number[];interlaced?:boolean;
+ dynamicRanges?:DynamicRange[];dolbyVisionProfiles?:number[];dolbyVisionProfile8Compatibility?:(1|2|4)[];interlaced?:boolean;
  /** The only sample entries the engine plays from an original file (AVFoundation: `hvc1`, not `hev1`). */
  codecTags?:string[];
  /** The decoder's operating points ("4K at 30, 1080p at 60"; 10-bit only to 1080p). When stated, a
@@ -114,6 +114,7 @@ function engineProblem(e:EngineCapabilities|undefined,path:string):string|null{
   if((v.bitDepths??[]).length>8||!(v.bitDepths??[]).every(x=>Number.isInteger(x)&&x>=1&&x<=16))return path+'.video.'+v.codec+'.bitDepths';
   if(v.limits!==undefined&&!(Array.isArray(v.limits)&&v.limits.length<=16&&v.limits.every(limitAccepted)))return path+'.video.'+v.codec+'.limits';
   if((v.dolbyVisionProfiles??[]).length>16||!(v.dolbyVisionProfiles??[]).every(x=>Number.isInteger(x)&&x>=1&&x<=31))return path+'.video.'+v.codec+'.dolbyVisionProfiles';
+  if(v.dolbyVisionProfile8Compatibility!==undefined&&!(Array.isArray(v.dolbyVisionProfile8Compatibility)&&v.dolbyVisionProfile8Compatibility.length<=3&&new Set(v.dolbyVisionProfile8Compatibility).size===v.dolbyVisionProfile8Compatibility.length&&v.dolbyVisionProfile8Compatibility.every(x=>[1,2,4].includes(x))))return path+'.video.'+v.codec+'.dolbyVisionProfile8Compatibility';
   if(v.chromaSubsampling!==undefined&&!(Array.isArray(v.chromaSubsampling)&&v.chromaSubsampling.length<=4&&v.chromaSubsampling.every(x=>['4:2:0','4:2:2','4:4:4','4:0:0'].includes(x))))return path+'.video.'+v.codec+'.chromaSubsampling';
   if(v.frameRateModes!==undefined&&!(Array.isArray(v.frameRateModes)&&v.frameRateModes.length<=2&&v.frameRateModes.every(x=>['constant','variable'].includes(x))))return path+'.video.'+v.codec+'.frameRateModes';
   if(v.evidence!==undefined&&!evidences.includes(v.evidence))return path+'.video.'+v.codec+'.evidence';
@@ -697,14 +698,16 @@ export function appleProfile(options:{television:boolean;osVersion?:string;model
  const hardwareHevc=facts.hardwareDecode?.hevc===true;
  engine.toneMapsHdr=hardwareHevc;
  hevc.dynamicRanges=hardwareHevc?[...new Set<DynamicRange>(['sdr','hdr10','hlg',...display])]:[...display];
- // Profile 5 is single-layer Dolby Vision; 8.1 and 8.4 carry an HDR10 or HLG base. With the
- // Dolby Vision decoder in hardware AVPlayer handles both, on an SDR screen too.
+ // Exact AVURLAsset MIME eligibility describes parser support, separately
+ // from available display modes and the actual applied-output observations.
  const dvProfiles:number[]=[];
  if(facts.videoEligibility?.dolbyVision5===true)dvProfiles.push(5);
- // The current profile-list contract groups all of profile 8. Until it can
- // express compatibility separately, require both actually tested variants.
- if(facts.videoEligibility?.dolbyVision81===true&&facts.videoEligibility?.dolbyVision84===true)dvProfiles.push(8);
+ const dv8Compatibility:(1|2|4)[]=[];
+ if(facts.videoEligibility?.dolbyVision81===true)dv8Compatibility.push(1);
+ if(facts.videoEligibility?.dolbyVision84===true)dv8Compatibility.push(4);
+ if(dv8Compatibility.length)dvProfiles.push(8);
  hevc.dolbyVisionProfiles=dvProfiles;
+ if(dv8Compatibility.length)hevc.dolbyVisionProfile8Compatibility=dv8Compatibility;
  if(dvProfiles.length){if(!hevc.dynamicRanges.includes('dolby_vision'))hevc.dynamicRanges=[...hevc.dynamicRanges,'dolby_vision'];}
  else hevc.dynamicRanges=hevc.dynamicRanges.filter(x=>x!=='dolby_vision');
  // The Apple TV HD (AppleTV5,x) and devices without hardware HEVC decode H.264 up to 1080p only;
