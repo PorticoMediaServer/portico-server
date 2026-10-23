@@ -1,0 +1,48 @@
+import type {BrowserAccountEntry} from '../../platform/account-entry';
+import {RequiredFactorForm} from './required-factor';
+
+type SignInPort = Pick<BrowserAccountEntry, 'getSnapshot' | 'subscribeAuthorityRetired' | 'signIn' | 'completeChallenge' | 'beginRequiredTwoStep' | 'confirmRequiredTwoStep'>;
+export type SignInFormState = Readonly<{username: string; inputEpoch: number; busy: boolean; factor?: RequiredFactorForm}>;
+
+/** Only the live submitted password bridges password/MFA to required setup.
+ * Entry remains the sole owner of sessions, proofs, currentness and admission. */
+export class AccountSignInForm {
+  private state: SignInFormState = Object.freeze({username: '', inputEpoch: 0, busy: false});
+  private readonly listeners = new Set<() => void>();
+  private readonly off: () => void;
+  private epoch = 0;
+  private disposed = false;
+  #password = '';
+  constructor(private readonly entry: SignInPort) {this.off = entry.subscribeAuthorityRetired(this.clear);}
+  getSnapshot = () => this.state;
+  subscribe = (listener: () => void) => {this.listeners.add(listener); return () => {this.listeners.delete(listener);};};
+  private publish(value: SignInFormState) {if (!this.disposed) {this.state = Object.freeze(value); for (const listener of this.listeners) listener();}}
+  clear = () => {
+    ++this.epoch; this.#password = ''; this.state.factor?.dispose();
+    this.publish({username: this.state.username, inputEpoch: this.state.inputEpoch + 1, busy: false});
+  };
+  setUsername(username: string) {if (!this.disposed) this.publish({...this.state, username});}
+  private async continuation(epoch: number) {
+    if (this.disposed || this.epoch !== epoch) return;
+    const phase = this.entry.getSnapshot().phase;
+    if (phase === 'two-step-setup' && this.#password) {
+      const factor = new RequiredFactorForm(this.entry, this.#password, () => !this.disposed && this.epoch === epoch);
+      this.#password = ''; this.publish({...this.state, factor});
+      await factor.enrol();
+    } else if (phase !== 'challenge') this.#password = '';
+  }
+  async signIn(username: string, password: string) {
+    if (this.disposed || this.state.busy || !username || !password || this.entry.getSnapshot().phase !== 'password') return;
+    this.clear(); const epoch = this.epoch; this.#password = password;
+    this.publish({...this.state, username, busy: true});
+    try {await this.entry.signIn(username, password); await this.continuation(epoch);}
+    finally {if (!this.disposed && this.epoch === epoch) this.publish({...this.state, busy: false});}
+  }
+  async completeChallenge(code: string) {
+    if (this.disposed || this.state.busy || this.entry.getSnapshot().phase !== 'challenge' || !code.trim()) return;
+    const epoch = this.epoch; this.publish({...this.state, busy: true});
+    try {await this.entry.completeChallenge(code); await this.continuation(epoch);}
+    finally {if (!this.disposed && this.epoch === epoch) this.publish({...this.state, busy: false});}
+  }
+  dispose() {if (this.disposed) return; this.clear(); this.disposed = true; this.off(); this.listeners.clear();}
+}

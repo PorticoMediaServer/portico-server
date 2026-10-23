@@ -127,7 +127,7 @@ func TestMCPEveryToolReachesItsRoute(t *testing.T) {
 	refused("control_playback", `{"sessionId":"nosuch","action":"pause"}`, "not available")
 	refused("control_member_playback", `{"sessionId":"nosuch","action":"seek","positionMs":1000}`, "not available")
 	ok("list_members", `{}`, `"username":"member"`)
-	ok("play_history", `{"period":"7d"}`)
+	ok("play_history", `{"period":"7d","timeZone":"America/Halifax","until":"2026-10-22T12:00:00Z"}`)
 	// The server.
 	ok("server_status", `{}`, `"ready":true`)
 	refused("server_health", `{"panel":"storage"}`, "could not be completed")
