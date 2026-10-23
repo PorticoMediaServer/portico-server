@@ -38,9 +38,24 @@ type TranscodeSettings struct {
 // package never guesses: an unprobed backend is reported unsupported with the
 // reason named.
 type HardwareProbe struct {
-	Backend   string `json:"backend"`
-	Supported bool   `json:"supported"`
-	Detail    string `json:"detail"`
+	Device               string          `json:"device,omitempty"`
+	Name                 string          `json:"name,omitempty"`
+	Driver               string          `json:"driver,omitempty"`
+	DriverVersion        string          `json:"driverVersion,omitempty"`
+	DecodeCodecs         map[string]bool `json:"decodeCodecs,omitempty"`
+	OutputEncoders       map[string]bool `json:"outputEncoders,omitempty"`
+	ToneMapping          bool            `json:"toneMapping"`
+	Deinterlacing        bool            `json:"deinterlacing"`
+	SubtitleOverlay      bool            `json:"subtitleOverlay"`
+	DolbyVisionReshaping bool            `json:"dolbyVisionReshaping"`
+	ActiveSessions       int             `json:"activeSessions"`
+	SessionLimit         int             `json:"sessionLimit"`
+	LimitSource          string          `json:"limitSource,omitempty"`
+	LastError            string          `json:"lastError,omitempty"`
+	Remedy               string          `json:"remedy,omitempty"`
+	Backend              string          `json:"backend"`
+	Supported            bool            `json:"supported"`
+	Detail               string          `json:"detail"`
 }
 
 // HardwareProbeSource is implemented by the delivery service. Device is the

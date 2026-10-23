@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -133,5 +134,23 @@ func TestCapacityComposerUsesTheAppliedCacheDirectory(t *testing.T) {
 	}
 	if got := operations.ConversionDirectory(capacity.State, ""); got != filepath.Join(cache, "hls") {
 		t.Fatal(got)
+	}
+}
+
+func TestHardwareReprobeRouteChecksOwnerAndBody(t *testing.T) {
+	mux, owner, member := telemetryFixture(t)
+	for _, tc := range []struct {
+		token, body string
+		status      int
+	}{{"", "", 401}, {member, "", 403}, {owner, "{}", 400}, {owner, "", 200}} {
+		req := httptest.NewRequest("POST", "/v1/admin/transcode/hardware/reprobe", strings.NewReader(tc.body))
+		if tc.token != "" {
+			req.Header.Set("Authorization", "Bearer "+tc.token)
+		}
+		out := httptest.NewRecorder()
+		mux.ServeHTTP(out, req)
+		if out.Code != tc.status {
+			t.Fatalf("status %d want %d: %s", out.Code, tc.status, out.Body.String())
+		}
 	}
 }

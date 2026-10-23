@@ -10326,6 +10326,27 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "post_admin_transcode_hardware_reprobe",
+    "method": "POST",
+    "path": "/v1/admin/transcode/hardware/reprobe",
+    "summary": "Reprobe server hardware",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "post_albums_id_metadata_musicbrainz_policy",
     "method": "POST",
     "path": "/v1/albums/{id}/metadata/musicbrainz/policy",
@@ -17618,6 +17639,7 @@ export const routePaths = {
   "post_admin_segments_titles_id_redetect": "/v1/admin/segments/titles/{id}/redetect",
   "post_admin_state_permissions_fix": "/v1/admin/state-permissions:fix",
   "post_admin_storage_usage_category_cleanup": "/v1/admin/storage-usage/{category}/cleanup",
+  "post_admin_transcode_hardware_reprobe": "/v1/admin/transcode/hardware/reprobe",
   "post_albums_id_metadata_musicbrainz_policy": "/v1/albums/{id}/metadata/musicbrainz/policy",
   "post_albums_id_metadata_musicbrainz_retry": "/v1/albums/{id}/metadata/musicbrainz/retry",
   "post_albums_id_metadata_musicbrainz_search": "/v1/albums/{id}/metadata/musicbrainz/search",

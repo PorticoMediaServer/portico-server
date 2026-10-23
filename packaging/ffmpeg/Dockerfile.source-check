@@ -1,0 +1,36 @@
+# Development source qualification, never a replacement release bundle.
+FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
+RUN sed -i 's/Components: main/Components: main contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources \
+ && apt-get update && apt-get install -y --no-install-recommends \
+ build-essential clang-19 lld-19 nasm pkg-config git ca-certificates python3 xz-utils \
+ libva-dev libdrm-dev libvpl-dev ocl-icd-opencl-dev libvulkan-dev libplacebo-dev \
+ libdav1d-dev libsvtav1enc-dev libx264-dev libx265-dev libzimg-dev libass-dev \
+ libfontconfig-dev libfreetype-dev libfribidi-dev libharfbuzz-dev libsoxr-dev \
+ libbluray-dev libdvdnav-dev libdvdread-dev libopus-dev libvpx-dev libzvbi-dev \
+ intel-media-va-driver mesa-va-drivers mesa-vulkan-drivers libvpl2 libmfx-gen1.2 \
+ mesa-opencl-icd libvulkan1 ocl-icd-libopencl1 vainfo clinfo vulkan-tools \
+ && rm -rf /var/lib/apt/lists/*
+COPY ffmpeg-source.tar.xz /source.tar.xz
+RUN mkdir /source && tar -xf /source.tar.xz -C /source --strip-components=1 \
+ && git init /nv-codec-headers && git -C /nv-codec-headers remote add origin https://github.com/FFmpeg/nv-codec-headers.git \
+ && git -C /nv-codec-headers fetch --depth=1 origin ced4f8eba3ba5dd431932cba17928f0dffdaeb2b \
+ && git -C /nv-codec-headers checkout --detach FETCH_HEAD \
+ && make -C /nv-codec-headers install \
+ && git init /amf && git -C /amf remote add origin https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git \
+ && git -C /amf sparse-checkout init --cone && git -C /amf sparse-checkout set amf/public/include \
+ && git -C /amf fetch --filter=blob:none --depth=1 origin c35f613aea2e5057a688c979e75b1cf24253297e \
+ && git -C /amf checkout --detach FETCH_HEAD \
+ && cp -R /amf/amf/public/include /usr/local/include/AMF
+ENV SOURCE_DATE_EPOCH=1790508678
+WORKDIR /source
+RUN ./configure --prefix=/opt/ffmpeg --disable-debug --disable-doc --disable-ffplay \
+ --enable-gpl --enable-version3 --disable-nonfree --disable-libfdk-aac \
+ --enable-vaapi --enable-libdrm --enable-libvpl --enable-opencl --enable-vulkan \
+ --enable-libplacebo --enable-ffnvcodec --enable-cuda-llvm --nvcc=clang-19 --enable-nvenc --enable-nvdec --enable-amf \
+ --enable-libdav1d --enable-libsvtav1 --enable-libx264 --enable-libx265 --enable-libzimg \
+ --enable-libass --enable-fontconfig --enable-libfreetype --enable-libfribidi --enable-libharfbuzz \
+ --enable-libsoxr --enable-libbluray --enable-libdvdnav --enable-libdvdread --enable-libopus \
+ --enable-libvpx --enable-libzvbi --cc=clang-19 --extra-version=Portico-Jellyfin-source-check \
+ && make -j2 && make install \
+ && dpkg-query -W > /opt/ffmpeg/dependency-versions.txt
+WORKDIR /opt/ffmpeg

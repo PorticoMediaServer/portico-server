@@ -75,7 +75,7 @@ func (s *Service) HardwareReport(ctx context.Context) []decoder.HardwareProbe {
 	if s.hardware == nil || s.hardwareFFmpeg == "" {
 		return []decoder.HardwareProbe{{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeAvailable, Encoder: "libx264"}}
 	}
-	return s.hardware.Report(ctx, s.hardwareFFmpeg, cfg.HardwareDevice)
+	return s.hardware.CachedReport(s.hardwareFFmpeg, cfg.HardwareDevice)
 }
 
 // selectHardware resolves the backend for one session. Selection is cached by

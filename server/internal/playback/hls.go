@@ -551,6 +551,18 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		close(watchDone)
 	}
 	run := func(plan *DeliveryPlan) (error, string) {
+		if plan != nil && plan.VideoAction == "convert" {
+			probe := decoder.HardwareProbe{Backend: decoder.HardwareBackend(plan.HardwareBackend), Device: plan.HardwareDevice, Available: plan.HardwareBackend != "software" && plan.HardwareBackend != ""}
+			if plan.ConversionProbe != nil {
+				probe = *plan.ConversionProbe
+			}
+			release, err := decoder.TryHardwareSession(probe)
+			if err != nil {
+				return err, err.Error()
+			}
+			defer release()
+		}
+
 		if remoteInput != nil {
 			err := remoteInput.Run(processCtx, dir, func(url string) (subtitles.WindowCommand, error) {
 				path = url
@@ -623,12 +635,29 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 	// wedged, a session limit on a consumer GPU. The viewer is not told about
 	// any of that. The same window is run again in software, and the stored plan
 	// is changed so later windows do not repeat the failure.
-	if e != nil && !throttled() && ctx.Err() == nil && delivery != nil && delivery.VideoAction == "convert" && delivery.HardwareBackend != "" && delivery.HardwareBackend != string(decoder.BackendSoftware) {
+	failedHardware := []decoder.HardwareProbe{}
+	failedHardwareErrors := []error{}
+	for e != nil && !throttled() && ctx.Err() == nil && delivery != nil && delivery.VideoAction == "convert" && delivery.HardwareBackend != "" && delivery.HardwareBackend != string(decoder.BackendSoftware) {
 		failedBackend := delivery.HardwareBackend
+		failedDevice := delivery.HardwareDevice
+		failedHardware = append(failedHardware, decoder.HardwareProbe{Backend: decoder.HardwareBackend(failedBackend), Device: failedDevice})
+		failedHardwareErrors = append(failedHardwareErrors, e)
+		depth := 8
+		if delivery.ConversionTarget != nil {
+			depth = delivery.ConversionTarget.BitDepth
+		}
+		nextProbe := decoder.NextHardwareProbe(h.binary, failedHardware, delivery.OutputVideoCodec, depth)
 		software := *delivery
-		software.HardwareBackend, software.HardwareNative, software.HardwareDevice = string(decoder.BackendSoftware), false, ""
+		software.HardwareBackend, software.HardwareNative, software.HardwareDevice = string(nextProbe.Backend), nextProbe.NativeFilters, nextProbe.Device
+		software.ConversionProbe = &nextProbe
 		software.ReasonCodes = append(append([]string{}, delivery.ReasonCodes...), ReasonHardwareFailedSoftware)
-		h.recordSoftwareFallback(ctx, id, failedBackend, diagnostic)
+		if nextProbe.Backend == decoder.BackendSoftware {
+			h.recordSoftwareFallback(ctx, id, failedBackend, diagnostic)
+		} else {
+			write, stop := persist(ctx)
+			_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_delivery_plans SET hardware_backend=?,hardware_native=?,hardware_device=? WHERE session_id=?`, string(nextProbe.Backend), nextProbe.NativeFilters, nextProbe.Device, id)
+			stop()
+		}
 		delivery = &software
 		if staging != "" {
 			_ = os.RemoveAll(staging)
@@ -667,7 +696,11 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		}
 		retryCancelled := ctx.Err() != nil || !currentWindow || processCtx.Err() != nil && !softwareThrottled
 		if hardwareFailureConfirmed(e, retryCancelled, softwareThrottled, from, beforeRetry, softwareProduced) {
-			decoder.RecordHardwareFailure(decoder.HardwareBackend(failedBackend))
+			for i, failed := range failedHardware {
+				if !errors.Is(failedHardwareErrors[i], decoder.ErrHardwareBusy) {
+					decoder.RecordHardwareDeviceFailure(failed.Backend, failed.Device)
+				}
+			}
 		}
 	}
 	if e != nil && !throttled() && ctx.Err() == nil {

@@ -16,17 +16,18 @@ import (
 )
 
 type ToolchainFacts struct {
-	BitstreamFilters map[string]bool `json:"bitstreamFilters"`
-	VulkanAvailable  bool            `json:"vulkanAvailable"`
-	OpenCLAvailable  bool            `json:"openclAvailable"`
-	Version          string          `json:"version"`
-	Configuration    string          `json:"configuration"`
-	Encoders         map[string]bool `json:"encoders"`
-	Decoders         map[string]bool `json:"decoders"`
-	Filters          map[string]bool `json:"filters"`
-	Muxers           map[string]bool `json:"muxers"`
-	HWAccels         map[string]bool `json:"hwaccels"`
-	Identity         string          `json:"identity"`
+	FilterOptions    map[string]map[string]bool `json:"filterOptions,omitempty"`
+	BitstreamFilters map[string]bool            `json:"bitstreamFilters"`
+	VulkanAvailable  bool                       `json:"vulkanAvailable"`
+	OpenCLAvailable  bool                       `json:"openclAvailable"`
+	Version          string                     `json:"version"`
+	Configuration    string                     `json:"configuration"`
+	Encoders         map[string]bool            `json:"encoders"`
+	Decoders         map[string]bool            `json:"decoders"`
+	Filters          map[string]bool            `json:"filters"`
+	Muxers           map[string]bool            `json:"muxers"`
+	HWAccels         map[string]bool            `json:"hwaccels"`
+	Identity         string                     `json:"identity"`
 }
 
 var installedToolchain atomic.Pointer[ToolchainFacts]
@@ -151,6 +152,31 @@ func ProbeToolchain(ctx context.Context, ffmpeg string) (ToolchainFacts, error) 
 		case "bsfs":
 			out.BitstreamFilters = parseToolList(raw, kind)
 		}
+	}
+	out.FilterOptions = map[string]map[string]bool{}
+	for _, filter := range []string{"tonemap_cuda", "tonemap_opencl", "tonemap_videotoolbox", "libplacebo"} {
+		if !out.Filters[filter] {
+			continue
+		}
+		bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
+		cmd, e := mediaexec.CommandContext(bounded, mediaexec.Job{Executable: path, Args: []string{"-hide_banner", "-h", "filter=" + filter}})
+		if e == nil {
+			buffer := &toolOutput{}
+			cmd.Stdout = buffer
+			cmd.Stderr = buffer
+			cmd.WaitDelay = time.Second
+			if cmd.Run() == nil {
+				options := map[string]bool{}
+				for _, line := range strings.Split(buffer.String(), "\n") {
+					words := strings.Fields(line)
+					if len(words) > 1 && strings.HasPrefix(words[1], "<") {
+						options[words[0]] = true
+					}
+				}
+				out.FilterOptions[filter] = options
+			}
+		}
+		cancel()
 	}
 	if out.Version == "" || len(out.Encoders) == 0 || len(out.Muxers) == 0 {
 		return ToolchainFacts{}, errors.New("incomplete toolchain probe")

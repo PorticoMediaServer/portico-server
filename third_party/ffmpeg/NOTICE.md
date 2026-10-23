@@ -8,6 +8,15 @@ bundle verifier rejects missing source, modified binaries and missing features.
 Do not label an external PATH binary as a qualified bundle.
 
 Pinned source and recipes: sources.lock.json. Feature contract: requirements.v1.json.
-The macOS recipe uses zimg for HDR conversion and includes libvpx on both native
-architectures. Vulkan/MoltenVK acceleration remains optional and requires a
-successful runtime hardware probe.
+The FFmpeg source is Jellyfin's GPLv3 release with every pinned patch applied
+in series order. Portico prohibits libfdk-aac even though an upstream patch
+changes its configure licence classification. Required target hardware features
+are compile-time release gates; each host still earns availability with bounded
+real codec and filter probes. Source preparation does not qualify a binary.
+
+The macOS recipe builds its additional dependencies from pinned source commits
+in macos-extras.lock.json. Intel runtime OpenCL drivers in intel-drivers.lock.json
+are separate user-space driver packages, downloaded only from official Intel
+releases with SHA256 checks, retaining their installed copyright notices. Both
+modern and legacy ICDs are installed because their supported GPU generations
+differ. These driver packages do not substitute for Portico's FFmpeg source build.

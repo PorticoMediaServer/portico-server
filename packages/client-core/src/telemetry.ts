@@ -19,7 +19,7 @@ export type TelemetrySample={at:number;metrics:Record<MetricName,Metric>;memoryU
 export type TelemetryPoint={t:number;v:number};
 export type TelemetryReading={window:TelemetryWindow;series:Record<MetricName,TelemetryPoint[]>;status:Record<MetricName,Metric>;observedAt:number};
 
-export type HardwareProbe={backend:string;supported:boolean;detail:string};
+export type HardwareProbe={backend:string;supported:boolean;detail:string;device?:string;name?:string;driver?:string;driverVersion?:string;decodeCodecs?:Record<string,boolean>;outputEncoders?:Record<string,boolean>;toneMapping?:boolean;deinterlacing?:boolean;subtitleOverlay?:boolean;dolbyVisionReshaping?:boolean;activeSessions?:number;sessionLimit?:number;limitSource?:string;lastError?:string;remedy?:string};
 export type HardwareStatus={configured:string;effective:string;device:string;probes:HardwareProbe[]};
 export type SessionLimits={concurrent:number;hardware:number;software:number;background:number};
 /** A null count means the server publishes no figure, never "no sessions". */
@@ -88,8 +88,16 @@ export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{
  if(typeof c.enabled!=='boolean'||typeof c.directStreamRemux!=='boolean'||!text(c.x264Preset,40)||!text(c.planningPolicy,40)||
   !integer(c.throttleBufferMs)||!integer(c.playedRetentionMs)||!integer(c.observedAt))invalid();
  const hardware=base(c.hardware);
- if(!text(hardware.configured,40)||!text(hardware.effective,40)||!text(hardware.device,200)||!Array.isArray(hardware.probes)||hardware.probes.length>20)invalid();
- const probes=keepReadable('transcode-capacity','hardware.probes',hardware.probes,probe=>{const p=base(probe);if(!text(p.backend,40)||typeof p.supported!=='boolean'||!text(p.detail,512))invalid();return p as HardwareProbe;});
+ if(!text(hardware.configured,40)||!text(hardware.effective,40)||!text(hardware.device,200)||!Array.isArray(hardware.probes)||hardware.probes.length>128)invalid();
+ const probes=keepReadable('transcode-capacity','hardware.probes',hardware.probes,probe=>{
+  const p=base(probe);if(!text(p.backend,40)||typeof p.supported!=='boolean'||!text(p.detail,512))invalid();
+  for(const key of ['device','name','driver','driverVersion','limitSource','remedy'])if(p[key]!==undefined&&!text(p[key],512))invalid();
+  if(p.lastError!==undefined&&!text(p.lastError,4096))invalid();
+  for(const key of ['toneMapping','deinterlacing','subtitleOverlay','dolbyVisionReshaping'])if(p[key]!==undefined&&typeof p[key]!=='boolean')invalid();
+  for(const key of ['activeSessions','sessionLimit'])if(p[key]!==undefined&&!integer(p[key]))invalid();
+  for(const key of ['decodeCodecs','outputEncoders'])if(p[key]!==undefined){const cells=base(p[key]);if(Object.keys(cells).length>64)invalid();for(const [codec,value] of Object.entries(cells))if(!text(codec,80)||typeof value!=='boolean')invalid();}
+  return p as HardwareProbe;
+ });
  const sessions=base(c.sessions);
  for(const key of ['active','hardware','software','background'])if(sessions[key]!==null&&!integer(sessions[key]))invalid();
  const limits=base(sessions.limits);

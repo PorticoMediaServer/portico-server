@@ -8,12 +8,13 @@ mkdir -p "$WORK"
 WORK="$(cd "$WORK" && pwd)"
 readlock() { python3 -c 'import json,sys;v=json.load(open(sys.argv[1]));print(v[sys.argv[2]][sys.argv[3]])' "$ROOT/third_party/ffmpeg/sources.lock.json" "$1" "$2"; }
 VERSION="$(readlock ffmpeg version)"
+ARCHIVE="$WORK/jellyfin-ffmpeg-source.tar.gz"
 SOURCE="$WORK/ffmpeg-$VERSION.tar.xz"
-curl --fail --location --retry 3 "$(readlock ffmpeg source)" -o "$SOURCE"
-python3 - "$SOURCE" "$(readlock ffmpeg sha256)" <<'PY'
-import hashlib,pathlib,sys
-if hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest()!=sys.argv[2]:raise SystemExit('FFmpeg source checksum mismatch')
-PY
+export SOURCE_DATE_EPOCH="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["sourceDateEpoch"])' "$ROOT/third_party/ffmpeg/sources.lock.json")"
+curl --fail --location --retry 3 "$(readlock ffmpeg source)" -o "$ARCHIVE"
+python3 "$ROOT/scripts/prepare-ffmpeg-source.py" "$WORK/patched-source" --archive "$ARCHIVE"
+python3 "$ROOT/scripts/archive-ffmpeg-source.py" "$WORK/patched-source" "$SOURCE" "$SOURCE_DATE_EPOCH"
+if [[ "${PORTICO_FFMPEG_SOURCE_ONLY:-0}" == 1 ]]; then echo "$SOURCE"; exit 0; fi
 case "$TARGET" in
  macos-arm64|macos-x64)
   [[ "$(uname -s)" == Darwin ]]
@@ -29,8 +30,9 @@ case "$TARGET" in
   python3 -m venv "$WORK/python"
   "$WORK/python/bin/pip" install --disable-pip-version-check 'meson==1.7.0' 'ninja==1.11.1.4' 'setuptools==75.8.0'
   export PATH="$WORK/python/bin:$PATH"
+  python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$WORK/patched-source" "$TARGET"
   # Seed the exact verified source consumed by the pinned recipe.
-  mkdir -p "$WORK/recipe/packages";cp "$SOURCE" "$WORK/recipe/packages/ffmpeg-$VERSION.tar.xz"
+  mkdir -p "$WORK/recipe/packages";python3 "$ROOT/scripts/archive-ffmpeg-source.py" "$WORK/patched-source" "$WORK/recipe/packages/FFmpeg-release-$VERSION.tar.gz" "$SOURCE_DATE_EPOCH"
   (cd "$WORK/recipe" && FFMPEG_VERSION="$VERSION" SKIPINSTALL=yes SKIPRAV1E=yes ./build-ffmpeg --build --enable-gpl)
   INPUT="$WORK/recipe/workspace"
   mkdir -p "$INPUT/LICENSES"
@@ -52,6 +54,7 @@ PYLICENSE
     if git -C "$WORK/recipe" apply --check "$ROOT/third_party/ffmpeg/patches/$patch"; then git -C "$WORK/recipe" apply "$ROOT/third_party/ffmpeg/patches/$patch"; else git -C "$WORK/recipe" apply --reverse --check "$ROOT/third_party/ffmpeg/patches/$patch"; fi
   done
   if ! grep -q 'std::system_error in the Windows Graphics Capture' "$WORK/recipe/build.sh"; then "$ROOT/scripts/patch-btbn-winarm64-system-error.sh" "$WORK/recipe/build.sh"; fi
+  python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$WORK/patched-source" "$TARGET"
   cp "$SOURCE" "$WORK/recipe/portico-ffmpeg-source.tar.xz"
   (cd "$WORK/recipe" && export GIT_BRANCH_OVERRIDE="n$VERSION" && ./makeimage.sh "$native" gpl 8.1 && ./build.sh "$native" gpl 8.1)
   mkdir -p "$WORK/extracted"
@@ -69,8 +72,8 @@ mkdir -p "$WORK/provenance"
 mkdir -p "$WORK/provenance/contract" "$WORK/provenance/scripts"
 cp "$ROOT/third_party/ffmpeg/"*.json "$ROOT/third_party/ffmpeg/NOTICE.md" "$WORK/provenance/contract/"
 cp -R "$ROOT/third_party/ffmpeg/patches" "$WORK/provenance/contract/"
-cp "$ROOT/scripts/build-ffmpeg.sh" "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$ROOT/scripts/patch-btbn-winarm64-system-error.sh" "$WORK/provenance/scripts/"
-cp "$SOURCE" "$WORK/provenance/"
+cp "$ROOT/scripts/build-ffmpeg.sh" "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$ROOT/scripts/patch-btbn-winarm64-system-error.sh" "$ROOT/scripts/prepare-ffmpeg-source.py" "$ROOT/scripts/archive-ffmpeg-source.py" "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/provenance/scripts/"
+cp "$ARCHIVE" "$SOURCE" "$WORK/provenance/"
 # Include dependency sources and exact recipe, excluding only output binaries and git metadata.
 tar -C "$WORK" --exclude=recipe/.git --exclude=recipe/workspace --exclude=recipe/artifacts --exclude=recipe/.cache/images -cJf "$WORK/corresponding-source.tar.xz" recipe provenance
 python3 "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$INPUT" "$TARGET" "$WORK/bundle" "$WORK/corresponding-source.tar.xz"

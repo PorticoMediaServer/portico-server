@@ -58,7 +58,16 @@ func (p playbackProbes) Probe(ctx context.Context, device string) []telemetry.Ha
 		if probe.Encoder != "" {
 			detail = strings.TrimSpace(detail + " (" + probe.Encoder + ")")
 		}
-		out = append(out, telemetry.HardwareProbe{Backend: string(probe.Backend), Supported: probe.Available, Detail: detail})
+		item := telemetry.HardwareProbe{Backend: string(probe.Backend), Supported: probe.Available, Detail: detail, Device: probe.Device, DecodeCodecs: probe.DecodeCodecs, OutputEncoders: probe.OutputEncoders, ToneMapping: probe.ToneMapFilters, Deinterlacing: probe.DeinterlaceFilters, SubtitleOverlay: probe.SubtitleFilters, DolbyVisionReshaping: probe.DolbyVisionFilters, ActiveSessions: probe.ActiveSessions, LastError: probe.LastError, Remedy: probe.Remedy}
+		if probe.DeviceInfo != nil {
+			info := probe.DeviceInfo
+			item.Name = info.Name
+			item.Driver = info.Driver
+			item.DriverVersion = info.DriverVersion
+			item.SessionLimit = info.SessionLimit
+			item.LimitSource = info.LimitSource
+		}
+		out = append(out, item)
 	}
 	return out
 }

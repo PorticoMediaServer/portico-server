@@ -1,12 +1,17 @@
 package decoder
 
+import "sort"
+
 // ConversionOutputs is the target inventory shared by playback and prepared
 // media. Transport names are the capability document's names.
 type ConversionVideoOutput struct {
-	Codec      string   `json:"codec"`
-	BitDepth   int      `json:"bitDepth"`
-	Ranges     []string `json:"ranges"`
-	Transports []string `json:"transports"`
+	Hardware   bool            `json:"hardware"`
+	Backend    HardwareBackend `json:"backend,omitempty"`
+	Device     string          `json:"-"`
+	Codec      string          `json:"codec"`
+	BitDepth   int             `json:"bitDepth"`
+	Ranges     []string        `json:"ranges"`
+	Transports []string        `json:"transports"`
 }
 type ConversionAudioOutput struct {
 	Codec      string      `json:"codec"`
@@ -43,7 +48,7 @@ func AvailableConversionOutputs(f *ToolchainFacts) ConversionOutputs {
 			if depth == 10 {
 				ranges = append(ranges, "hdr10", "hlg")
 			}
-			o.Video = append(o.Video, ConversionVideoOutput{codec, depth, ranges, transports})
+			o.Video = append(o.Video, ConversionVideoOutput{Codec: codec, BitDepth: depth, Ranges: ranges, Transports: transports})
 		}
 	}
 	for _, codec := range []string{"flac", "eac3", "ac3", "opus", "aac"} {
@@ -92,4 +97,21 @@ func (o ConversionOutputs) SupportsConversion(video string, depth int, audio str
 		_, a = output.Bitrates[channels]
 	}
 	return v && a
+}
+
+// AvailableConversionOutputsForHardware ranks genuinely probed hardware outputs
+// ahead of software outputs while retaining a matching software fallback for
+// every codec. Device paths stay private and are never client media URLs.
+func AvailableConversionOutputsForHardware(f *ToolchainFacts, probe HardwareProbe) ConversionOutputs {
+	out := AvailableConversionOutputs(f)
+	for i := range out.Video {
+		v := &out.Video[i]
+		if probe.Available && probe.Backend != BackendSoftware && probe.Backend != "" && probe.OutputEncoders[probeCodecKey(v.Codec, v.BitDepth)] {
+			v.Hardware = true
+			v.Backend = probe.Backend
+			v.Device = probe.Device
+		}
+	}
+	sort.SliceStable(out.Video, func(i, j int) bool { return out.Video[i].Hardware && !out.Video[j].Hardware })
+	return out
 }

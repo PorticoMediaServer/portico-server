@@ -25871,17 +25871,78 @@
                   "probes": {
                     "items": {
                       "properties": {
+                        "activeSessions": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "backend": {
                           "type": "string"
+                        },
+                        "decodeCodecs": {
+                          "additionalProperties": {
+                            "type": "boolean"
+                          },
+                          "type": "object"
+                        },
+                        "deinterlacing": {
+                          "type": "boolean"
                         },
                         "detail": {
                           "type": "string"
                         },
+                        "device": {
+                          "type": "string"
+                        },
+                        "dolbyVisionReshaping": {
+                          "type": "boolean"
+                        },
+                        "driver": {
+                          "type": "string"
+                        },
+                        "driverVersion": {
+                          "type": "string"
+                        },
+                        "lastError": {
+                          "type": "string"
+                        },
+                        "limitSource": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "outputEncoders": {
+                          "additionalProperties": {
+                            "type": "boolean"
+                          },
+                          "type": "object"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        },
+                        "sessionLimit": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "subtitleOverlay": {
+                          "type": "boolean"
+                        },
                         "supported": {
+                          "type": "boolean"
+                        },
+                        "toneMapping": {
                           "type": "boolean"
                         }
                       },
                       "required": [
+                        "toneMapping",
+                        "deinterlacing",
+                        "subtitleOverlay",
+                        "dolbyVisionReshaping",
+                        "activeSessions",
+                        "sessionLimit",
                         "backend",
                         "supported",
                         "detail"
@@ -27751,17 +27812,78 @@
                   "probes": {
                     "items": {
                       "properties": {
+                        "activeSessions": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "backend": {
                           "type": "string"
+                        },
+                        "decodeCodecs": {
+                          "additionalProperties": {
+                            "type": "boolean"
+                          },
+                          "type": "object"
+                        },
+                        "deinterlacing": {
+                          "type": "boolean"
                         },
                         "detail": {
                           "type": "string"
                         },
+                        "device": {
+                          "type": "string"
+                        },
+                        "dolbyVisionReshaping": {
+                          "type": "boolean"
+                        },
+                        "driver": {
+                          "type": "string"
+                        },
+                        "driverVersion": {
+                          "type": "string"
+                        },
+                        "lastError": {
+                          "type": "string"
+                        },
+                        "limitSource": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "outputEncoders": {
+                          "additionalProperties": {
+                            "type": "boolean"
+                          },
+                          "type": "object"
+                        },
+                        "remedy": {
+                          "type": "string"
+                        },
+                        "sessionLimit": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "subtitleOverlay": {
+                          "type": "boolean"
+                        },
                         "supported": {
+                          "type": "boolean"
+                        },
+                        "toneMapping": {
                           "type": "boolean"
                         }
                       },
                       "required": [
+                        "toneMapping",
+                        "deinterlacing",
+                        "subtitleOverlay",
+                        "dolbyVisionReshaping",
+                        "activeSessions",
+                        "sessionLimit",
                         "backend",
                         "supported",
                         "detail"
@@ -27987,6 +28109,15 @@
                   "encoders": {
                     "additionalProperties": {
                       "type": "boolean"
+                    },
+                    "type": "object"
+                  },
+                  "filterOptions": {
+                    "additionalProperties": {
+                      "additionalProperties": {
+                        "type": "boolean"
+                      },
+                      "type": "object"
                     },
                     "type": "object"
                   },
@@ -168729,6 +168860,58 @@
         ],
         "type": "object"
       },
+      "PostAdminTranscodeHardwareReprobeRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "PostAdminTranscodeHardwareReprobeResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "completedAt": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "startedAt": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "startedAt",
+              "completedAt"
+            ],
+            "type": "object"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "data"
+        ],
+        "type": "object"
+      },
       "PostAlbumsIdMetadataMusicbrainzPolicyRequest": {
         "properties": {
           "acoustidEnabled": {
@@ -247737,17 +247920,78 @@
                             "probes": {
                               "items": {
                                 "properties": {
+                                  "activeSessions": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
                                   "backend": {
                                     "type": "string"
+                                  },
+                                  "decodeCodecs": {
+                                    "additionalProperties": {
+                                      "type": "boolean"
+                                    },
+                                    "type": "object"
+                                  },
+                                  "deinterlacing": {
+                                    "type": "boolean"
                                   },
                                   "detail": {
                                     "type": "string"
                                   },
+                                  "device": {
+                                    "type": "string"
+                                  },
+                                  "dolbyVisionReshaping": {
+                                    "type": "boolean"
+                                  },
+                                  "driver": {
+                                    "type": "string"
+                                  },
+                                  "driverVersion": {
+                                    "type": "string"
+                                  },
+                                  "lastError": {
+                                    "type": "string"
+                                  },
+                                  "limitSource": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "outputEncoders": {
+                                    "additionalProperties": {
+                                      "type": "boolean"
+                                    },
+                                    "type": "object"
+                                  },
+                                  "remedy": {
+                                    "type": "string"
+                                  },
+                                  "sessionLimit": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "subtitleOverlay": {
+                                    "type": "boolean"
+                                  },
                                   "supported": {
+                                    "type": "boolean"
+                                  },
+                                  "toneMapping": {
                                     "type": "boolean"
                                   }
                                 },
                                 "required": [
+                                  "toneMapping",
+                                  "deinterlacing",
+                                  "subtitleOverlay",
+                                  "dolbyVisionReshaping",
+                                  "activeSessions",
+                                  "sessionLimit",
                                   "backend",
                                   "supported",
                                   "detail"
@@ -252064,17 +252308,78 @@
                             "probes": {
                               "items": {
                                 "properties": {
+                                  "activeSessions": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
                                   "backend": {
                                     "type": "string"
+                                  },
+                                  "decodeCodecs": {
+                                    "additionalProperties": {
+                                      "type": "boolean"
+                                    },
+                                    "type": "object"
+                                  },
+                                  "deinterlacing": {
+                                    "type": "boolean"
                                   },
                                   "detail": {
                                     "type": "string"
                                   },
+                                  "device": {
+                                    "type": "string"
+                                  },
+                                  "dolbyVisionReshaping": {
+                                    "type": "boolean"
+                                  },
+                                  "driver": {
+                                    "type": "string"
+                                  },
+                                  "driverVersion": {
+                                    "type": "string"
+                                  },
+                                  "lastError": {
+                                    "type": "string"
+                                  },
+                                  "limitSource": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "outputEncoders": {
+                                    "additionalProperties": {
+                                      "type": "boolean"
+                                    },
+                                    "type": "object"
+                                  },
+                                  "remedy": {
+                                    "type": "string"
+                                  },
+                                  "sessionLimit": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "subtitleOverlay": {
+                                    "type": "boolean"
+                                  },
                                   "supported": {
+                                    "type": "boolean"
+                                  },
+                                  "toneMapping": {
                                     "type": "boolean"
                                   }
                                 },
                                 "required": [
+                                  "toneMapping",
+                                  "deinterlacing",
+                                  "subtitleOverlay",
+                                  "dolbyVisionReshaping",
+                                  "activeSessions",
+                                  "sessionLimit",
                                   "backend",
                                   "supported",
                                   "detail"
@@ -252303,6 +252608,15 @@
                               },
                               "type": "object"
                             },
+                            "filterOptions": {
+                              "additionalProperties": {
+                                "additionalProperties": {
+                                  "type": "boolean"
+                                },
+                                "type": "object"
+                              },
+                              "type": "object"
+                            },
                             "filters": {
                               "additionalProperties": {
                                 "type": "boolean"
@@ -252435,6 +252749,110 @@
           }
         },
         "summary": "Read server transcode capacity",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/transcode/hardware/reprobe": {
+      "post": {
+        "operationId": "post_admin_transcode_hardware_reprobe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "completedAt": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startedAt": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "startedAt",
+                        "completedAt"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Reprobe server hardware",
         "x-access": "owner",
         "x-admission": "admin",
         "x-cost": "constant",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"os"
@@ -41,6 +42,21 @@ func (d Dependencies) telemetryRoutes(mux *http.ServeMux) {
 
 	service.register(mux, "GET /v1/admin/transcode/capacity", nil, func(r *http.Request, a operations.Authorize) (any, error) {
 		return service.capacityReport(r.Context(), a)
+	})
+	service.register(mux, "POST /v1/admin/transcode/hardware/reprobe", nil, func(r *http.Request, a operations.Authorize) (any, error) {
+		if e := d.ConsoleCheck(r.Context(), a); e != nil {
+			return nil, e
+		}
+		if r.Body != nil {
+			raw, e := io.ReadAll(io.LimitReader(r.Body, 1))
+			if e != nil || len(raw) != 0 {
+				return nil, operations.ErrInvalid
+			}
+		}
+		if d.Playback == nil {
+			return decoder.HardwareReprobe{Status: "unavailable"}, nil
+		}
+		return d.Playback.ReprobeHardware(r.Context()), nil
 	})
 	service.register(mux, "GET /v1/admin/telemetry", []string{"window"}, func(r *http.Request, a operations.Authorize) (any, error) {
 		window := r.URL.Query().Get("window")

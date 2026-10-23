@@ -23833,17 +23833,78 @@ export const schemas = {
               "probes": {
                 "items": {
                   "properties": {
+                    "activeSessions": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "backend": {
                       "type": "string"
+                    },
+                    "decodeCodecs": {
+                      "additionalProperties": {
+                        "type": "boolean"
+                      },
+                      "type": "object"
+                    },
+                    "deinterlacing": {
+                      "type": "boolean"
                     },
                     "detail": {
                       "type": "string"
                     },
+                    "device": {
+                      "type": "string"
+                    },
+                    "dolbyVisionReshaping": {
+                      "type": "boolean"
+                    },
+                    "driver": {
+                      "type": "string"
+                    },
+                    "driverVersion": {
+                      "type": "string"
+                    },
+                    "lastError": {
+                      "type": "string"
+                    },
+                    "limitSource": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "outputEncoders": {
+                      "additionalProperties": {
+                        "type": "boolean"
+                      },
+                      "type": "object"
+                    },
+                    "remedy": {
+                      "type": "string"
+                    },
+                    "sessionLimit": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "subtitleOverlay": {
+                      "type": "boolean"
+                    },
                     "supported": {
+                      "type": "boolean"
+                    },
+                    "toneMapping": {
                       "type": "boolean"
                     }
                   },
                   "required": [
+                    "toneMapping",
+                    "deinterlacing",
+                    "subtitleOverlay",
+                    "dolbyVisionReshaping",
+                    "activeSessions",
+                    "sessionLimit",
                     "backend",
                     "supported",
                     "detail"
@@ -25581,17 +25642,78 @@ export const schemas = {
               "probes": {
                 "items": {
                   "properties": {
+                    "activeSessions": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "backend": {
                       "type": "string"
+                    },
+                    "decodeCodecs": {
+                      "additionalProperties": {
+                        "type": "boolean"
+                      },
+                      "type": "object"
+                    },
+                    "deinterlacing": {
+                      "type": "boolean"
                     },
                     "detail": {
                       "type": "string"
                     },
+                    "device": {
+                      "type": "string"
+                    },
+                    "dolbyVisionReshaping": {
+                      "type": "boolean"
+                    },
+                    "driver": {
+                      "type": "string"
+                    },
+                    "driverVersion": {
+                      "type": "string"
+                    },
+                    "lastError": {
+                      "type": "string"
+                    },
+                    "limitSource": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "outputEncoders": {
+                      "additionalProperties": {
+                        "type": "boolean"
+                      },
+                      "type": "object"
+                    },
+                    "remedy": {
+                      "type": "string"
+                    },
+                    "sessionLimit": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "subtitleOverlay": {
+                      "type": "boolean"
+                    },
                     "supported": {
+                      "type": "boolean"
+                    },
+                    "toneMapping": {
                       "type": "boolean"
                     }
                   },
                   "required": [
+                    "toneMapping",
+                    "deinterlacing",
+                    "subtitleOverlay",
+                    "dolbyVisionReshaping",
+                    "activeSessions",
+                    "sessionLimit",
                     "backend",
                     "supported",
                     "detail"
@@ -25787,6 +25909,15 @@ export const schemas = {
               "encoders": {
                 "additionalProperties": {
                   "type": "boolean"
+                },
+                "type": "object"
+              },
+              "filterOptions": {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object"
                 },
                 "type": "object"
               },
@@ -150569,6 +150700,58 @@ export const schemas = {
       "protocolVersion",
       "serverId",
       "result"
+    ],
+    "type": "object"
+  },
+  "PostAdminTranscodeHardwareReprobeRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostAdminTranscodeHardwareReprobeResponse": {
+    "properties": {
+      "data": {
+        "properties": {
+          "completedAt": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "startedAt": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "startedAt",
+          "completedAt"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "data"
     ],
     "type": "object"
   },

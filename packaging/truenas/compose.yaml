@@ -15,6 +15,6 @@ services:
       - /mnt/pool/apps/portico:/config
       - /mnt/pool/transcode/portico:/transcode
       - /mnt/pool/media:/media:ro
-    # Optional hardware acceleration; grant UID/GID access on the host.
-    # devices:
-    #   - /dev/dri:/dev/dri
+    devices:
+      - /dev/dri:/dev/dri
+    # Device supplementary groups are detected automatically by the entrypoint.

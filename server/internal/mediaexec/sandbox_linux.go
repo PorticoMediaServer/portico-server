@@ -19,7 +19,7 @@ import (
 // Paths a hardware job may read: the system's driver libraries (VA-API and
 // Quick Sync drivers, libcuda and the NVENC runtime are loaded at run time from
 // here) and the device description sysfs gives them. None of them is private.
-var hardwareReadable = []string{"/usr/lib", "/usr/lib64", "/usr/lib32", "/lib", "/lib64", "/usr/local/lib", "/etc/ld.so.cache", "/etc/ld.so.conf", "/etc/ld.so.conf.d", "/usr/share/vulkan", "/usr/share/glvnd", "/usr/share/libdrm", "/etc/OpenCL", "/sys"}
+var hardwareReadable = []string{"/usr/lib", "/usr/lib64", "/usr/lib32", "/lib", "/lib64", "/usr/local/lib", "/etc/ld.so.cache", "/etc/ld.so.conf", "/etc/ld.so.conf.d", "/usr/share/vulkan", "/etc/vulkan", "/usr/lib/wsl", "/usr/share/glvnd", "/usr/share/libdrm", "/etc/OpenCL", "/sys"}
 
 func bwrapPath() (string, error) {
 	path, err := exec.LookPath("bwrap")
@@ -112,6 +112,9 @@ func LinuxHardwareSandboxArgs(environment [][2]string) []string {
 		args = append(args, "--ro-bind-try", dir, dir)
 	}
 	args = append(args, "--dev-bind-try", "/dev/dri", "/dev/dri")
+	for _, device := range []string{"/dev/dxg", "/dev/mpp_service", "/dev/rga", "/dev/dma_heap"} {
+		args = append(args, "--dev-bind-try", device, device)
+	}
 	devices, _ := filepath.Glob("/dev/nvidia*")
 	sort.Strings(devices)
 	for _, device := range devices {

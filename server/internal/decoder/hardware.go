@@ -6,6 +6,8 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"os/exec"
@@ -88,18 +90,26 @@ const (
 // HardwareProbe is the cached result of one bounded encode. NativeFilters says
 // whether the backend's own tone-map/scale filters ran, not merely its encoder.
 type HardwareProbe struct {
-	Backend        HardwareBackend `json:"backend"`
-	Available      bool            `json:"available"`
-	Reason         string          `json:"reason"`
-	Encoder        string          `json:"encoder,omitempty"`
-	NativeFilters  bool            `json:"nativeFilters"`
-	ScaleFilters   bool            `json:"scaleFilters"`
-	ToneMapFilters bool            `json:"toneMapFilters"`
-	OutputEncoders map[string]bool `json:"outputEncoders,omitempty"`
-	OutputQuality  map[string]bool `json:"outputQuality,omitempty"`
-	Device         string          `json:"device,omitempty"`
-	Identity       string          `json:"identity"`
-	DurationMS     int64           `json:"durationMs"`
+	ActiveSessions     int             `json:"activeSessions"`
+	DeviceInfo         *HardwareDevice `json:"deviceInfo,omitempty"`
+	DecodeCodecs       map[string]bool `json:"decodeCodecs,omitempty"`
+	LastError          string          `json:"lastError,omitempty"`
+	Remedy             string          `json:"remedy,omitempty"`
+	DeinterlaceFilters bool            `json:"deinterlaceFilters"`
+	SubtitleFilters    bool            `json:"subtitleFilters"`
+	DolbyVisionFilters bool            `json:"dolbyVisionFilters"`
+	Backend            HardwareBackend `json:"backend"`
+	Available          bool            `json:"available"`
+	Reason             string          `json:"reason"`
+	Encoder            string          `json:"encoder,omitempty"`
+	NativeFilters      bool            `json:"nativeFilters"`
+	ScaleFilters       bool            `json:"scaleFilters"`
+	ToneMapFilters     bool            `json:"toneMapFilters"`
+	OutputEncoders     map[string]bool `json:"outputEncoders,omitempty"`
+	OutputQuality      map[string]bool `json:"outputQuality,omitempty"`
+	Device             string          `json:"device,omitempty"`
+	Identity           string          `json:"identity"`
+	DurationMS         int64           `json:"durationMs"`
 }
 
 type backendSpec struct {
@@ -147,14 +157,20 @@ func cudaDevice(device string) []string {
 
 var backendSpecs = map[HardwareBackend]backendSpec{
 	BackendVideoToolbox: {
-		encoder:   "h264_videotoolbox",
+		encoder: "h264_videotoolbox",
+		device: func(string) []string {
+			return []string{"-init_hw_device", "videotoolbox=hw", "-filter_hw_device", "hw"}
+		},
+		upload:    "format=nv12,hwupload",
+		scale:     func(h int) string { return nativeScale(BackendVideoToolbox, h) },
+		toneMap:   func(a string) string { return nativeToneFilter(BackendVideoToolbox, a) },
 		platforms: []string{"darwin"},
 	},
 	BackendVAAPI: {
 		encoder:   "h264_vaapi",
 		device:    vaapiDevice,
 		upload:    "format=nv12,hwupload",
-		toneMap:   func(string) string { return "tonemap_vaapi=format=nv12:matrix=bt709:primaries=bt709:transfer=bt709" },
+		toneMap:   func(a string) string { return nativeToneFilter(BackendVAAPI, a) },
 		scale:     func(h int) string { return "scale_vaapi=w=-2:h=" + strconv.Itoa(h) },
 		platforms: []string{"linux"},
 	},
@@ -162,7 +178,7 @@ var backendSpecs = map[HardwareBackend]backendSpec{
 		encoder:   "h264_qsv",
 		device:    qsvDevice,
 		upload:    "format=nv12,hwupload=extra_hw_frames=32",
-		toneMap:   func(string) string { return "vpp_qsv=tonemap=1:format=nv12" },
+		toneMap:   func(a string) string { return nativeToneFilter(BackendQSV, a) },
 		scale:     func(h int) string { return "vpp_qsv=w=-1:h=" + strconv.Itoa(h) },
 		platforms: []string{"linux", "windows"},
 	},
@@ -220,6 +236,10 @@ func SoftwareToneMap(algorithm string) string {
 // verdict. The cache key is the ffmpeg binary identity plus backend and device,
 // so replacing ffmpeg re-probes without a restart.
 type HardwareDetector struct {
+	// Devices overrides discovery in tests or on a platform integration.
+	Devices func(context.Context) []HardwareDevice
+	// LogProbe receives bounded trusted probe stderr; production also logs errors.
+	LogProbe func(string)
 	// Timeout bounds one probe encode. Zero uses the default.
 	Timeout time.Duration
 	// Libraries are the confinement's readable dependency files, as resolved by
@@ -229,9 +249,11 @@ type HardwareDetector struct {
 	// child directly, because a synthetic clip borrows no source custody.
 	Run func(ctx context.Context, cmd *exec.Cmd) error
 
-	mu      sync.Mutex
-	cache   map[string]HardwareProbe
-	warming map[string]bool
+	reprobe    HardwareReprobe
+	discovered []HardwareDevice
+	mu         sync.Mutex
+	cache      map[string]HardwareProbe
+	warming    map[string]bool
 }
 
 const defaultProbeTimeout = 20 * time.Second
@@ -271,11 +293,18 @@ func probeCommand(ctx context.Context, executable string, args []string, librari
 // cast (COMPAT-04). It mirrors BuildConversion's choice of tone mapper; a test
 // holds the two together.
 func ReshapesDolbyVision(r ConversionRequest) bool {
-	if !r.ConvertVideo || !r.ToneMap && (r.Target == nil || !r.Target.ToneMap) {
+	if !r.ConvertVideo || !r.ToneMap && (r.Target == nil || !r.Target.ToneMap && !(r.Target.DolbyVisionProfile == 5 && r.Target.DynamicRange == "hdr10")) {
 		return false
 	}
 	graph, err := BuildConversion(r)
-	return err == nil && strings.Contains(strings.Join(graph.Video, " "), "libplacebo=")
+	if err != nil {
+		return false
+	}
+	filters := strings.Join(graph.Video, " ")
+	if strings.Contains(filters, "libplacebo=") {
+		return true
+	}
+	return r.Probe.DolbyVisionFilters && r.Target != nil && r.Target.DolbyVisionProfile > 0 && (strings.Contains(filters, "tonemap_cuda=") || strings.Contains(filters, "tonemap_opencl=") || strings.Contains(filters, "tonemap_videotoolbox="))
 }
 
 //go:embed probeassets/hdr10.hevc
@@ -322,7 +351,18 @@ func (d *HardwareDetector) runInput(ctx context.Context, executable string, args
 	if d.Run != nil {
 		return d.Run(ctx, cmd)
 	}
-	return cmd.Run()
+	buffer := &toolOutput{}
+	cmd.Stderr = buffer
+	err = cmd.Run()
+	if err != nil {
+		detail := strings.TrimSpace(buffer.String())
+		if d.LogProbe != nil {
+			d.LogProbe(detail)
+		}
+		slog.Warn("hardware probe", "error", err, "output", detail)
+		return fmt.Errorf("%w: %s", err, detail)
+	}
+	return nil
 }
 
 // VA-API requires mastering-display side data, which a lavfi pattern cannot
@@ -368,11 +408,11 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 	if !spec.supported() {
 		return out
 	}
-	if hardwareCircuitOpen(backend) {
+	if deviceCircuitOpen(backend, device) {
 		out.Reason = ProbeCircuitOpen
 		return out
 	}
-	recovery := hardwareNeedsProbe(backend)
+	recovery := deviceNeedsProbe(backend, device)
 	key := identity + "/" + string(backend) + "/" + device
 	d.mu.Lock()
 	if cached, ok := d.cache[key]; ok && !recovery {
@@ -390,6 +430,17 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 	err = d.run(bounded, executable, probeArgs(spec, device, ""))
 	cancel()
 	out.DurationMS = time.Since(started).Milliseconds()
+	if err != nil {
+		out.LastError = err.Error()
+		if len(out.LastError) > 4096 {
+			out.LastError = out.LastError[:4096]
+		}
+	}
+	platform := runtime.GOOS
+	if os.Getenv("PORTICO_CONTAINER") == "1" {
+		platform = "docker"
+	}
+	out.Remedy = HardwareRemedy(platform, backend)
 	switch {
 	case err == nil:
 		out.Available, out.Reason = true, ProbeAvailable
@@ -450,17 +501,41 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 			}
 		}
 	}
+	if out.Available {
+		for _, depth := range []int{8, 10} {
+			av1 := spec
+			av1.encoder = "av1_" + string(backend)
+			bounded, cancel = context.WithTimeout(ctx, timeout)
+			args := probeQualityArgs(av1, device, depth)
+			key := "av1:" + strconv.Itoa(depth)
+			out.OutputEncoders[key] = d.run(bounded, executable, args) == nil
+			out.OutputQuality[key] = out.OutputEncoders[key]
+			cancel()
+		}
+		out.DecodeCodecs = d.probeDecodeCodecs(ctx, executable, backend, device, timeout)
+		out.DeinterlaceFilters = d.probeDeinterlace(ctx, executable, spec, backend, device, timeout)
+		out.SubtitleFilters = d.probeOverlay(ctx, executable, spec, backend, device, timeout)
+		facts := CurrentToolchain()
+		filter := map[HardwareBackend]string{BackendVAAPI: "tonemap_opencl", BackendQSV: "tonemap_opencl", BackendNVENC: "tonemap_cuda", BackendVideoToolbox: "tonemap_videotoolbox"}[backend]
+		out.DolbyVisionFilters = out.NativeFilters && facts != nil && facts.FilterOptions[filter]["apply_dovi"]
+	}
+	if ctx.Err() != nil {
+		out.Available = false
+		out.Reason = ProbeTimedOut
+		return out
+	}
 	d.mu.Lock()
 	if d.cache == nil {
 		d.cache = map[string]HardwareProbe{}
 	}
 	d.cache[key] = out
+	publishHardwareProbe(identity, out)
 	if out.Available {
-		clearHardwareCircuit(backend)
+		clearDeviceCircuit(backend, device)
 	} else if recovery {
 		// Retry after the same cooldown, not on every new playback request.
 		for range 3 {
-			RecordHardwareFailure(backend)
+			RecordHardwareDeviceFailure(backend, device)
 		}
 	}
 	d.mu.Unlock()
@@ -481,30 +556,30 @@ func (d *HardwareDetector) SelectCached(executable, configured, device string) H
 	if err != nil {
 		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeEncodeFailed}
 	}
-	candidates := HardwareBackends
-	if configured != "auto" {
-		if !ValidBackend(configured) {
-			return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}
-		}
-		candidates = []HardwareBackend{HardwareBackend(configured)}
+	if configured != "auto" && !ValidBackend(configured) {
+		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}
 	}
+	candidates := d.cachedCandidates(configured, device)
 	cold := false
 	d.mu.Lock()
-	for _, backend := range candidates {
+	for _, candidate := range candidates {
+		backend, device := candidate.Backend, candidate.Path
 		spec, ok := backendSpecs[backend]
 		if !ok || !spec.supported() {
 			continue
 		}
-		if hardwareCircuitOpen(backend) {
+		if deviceCircuitOpen(backend, device) {
 			continue
 		}
 		cached, ok := d.cache[identity+"/"+string(backend)+"/"+device]
-		if !ok || hardwareNeedsProbe(backend) {
+		if !ok || deviceNeedsProbe(backend, device) {
 			cold = true
 			break
 		}
-		if cached.Available && !hardwareCircuitOpen(backend) {
+		if cached.Available && !deviceCircuitOpen(backend, device) {
 			d.mu.Unlock()
+			info := candidate
+			cached.DeviceInfo = &info
 			return cached
 		}
 	}
@@ -532,7 +607,7 @@ func (d *HardwareDetector) warm(executable, configured, device string) {
 	d.mu.Unlock()
 	supervise.Go("decoder.hardware.warm", func() {
 		defer func() { d.mu.Lock(); delete(d.warming, key); d.mu.Unlock() }()
-		d.Select(context.Background(), executable, configured, device)
+		d.Report(context.Background(), executable, device)
 	})
 }
 
@@ -546,19 +621,15 @@ func (d *HardwareDetector) Select(ctx context.Context, executable, configured, d
 	if configured == string(BackendSoftware) {
 		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}
 	}
-	if configured != "auto" {
-		if !ValidBackend(configured) {
-			return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}
-		}
-		probe := d.Probe(ctx, executable, HardwareBackend(configured), device)
-		if probe.Available && !hardwareCircuitOpen(probe.Backend) {
-			return probe
-		}
-		fallback := HardwareProbe{Backend: BackendSoftware, Available: true, Reason: probe.Reason, Identity: probe.Identity}
-		return fallback
+	if configured != "auto" && !ValidBackend(configured) {
+		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}
 	}
-	for _, backend := range HardwareBackends {
-		if probe := d.Probe(ctx, executable, backend, device); probe.Available {
+	for _, candidate := range d.candidates(ctx, configured, device) {
+		probe := d.Probe(ctx, executable, candidate.Backend, candidate.Path)
+		info := candidate
+		probe.DeviceInfo = &info
+		publishHardwareProbe(probe.Identity, probe)
+		if probe.Available && !deviceCircuitOpen(probe.Backend, probe.Device) {
 			return probe
 		}
 	}
@@ -570,8 +641,13 @@ func (d *HardwareDetector) Select(ctx context.Context, executable, configured, d
 // ordered by backend name so the published report is stable.
 func (d *HardwareDetector) Report(ctx context.Context, executable, device string) []HardwareProbe {
 	out := []HardwareProbe{{Backend: BackendSoftware, Available: true, Reason: ProbeAvailable, Encoder: "libx264"}}
-	for _, backend := range HardwareBackends {
-		out = append(out, d.Probe(ctx, executable, backend, device))
+	for _, candidate := range d.candidates(ctx, "auto", device) {
+		probe := d.Probe(ctx, executable, candidate.Backend, candidate.Path)
+		info := candidate
+		probe.DeviceInfo = &info
+		probe.ActiveSessions = HardwareSessionsInUse(probe.Backend, probe.Device)
+		publishHardwareProbe(probe.Identity, probe)
+		out = append(out, probe)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Backend < out[j].Backend })
 	return out
@@ -580,6 +656,8 @@ func (d *HardwareDetector) Report(ctx context.Context, executable, device string
 // ConversionRequest describes one video output rung. It is deliberately free of
 // session identity: the same request always produces the same argument graph.
 type ConversionRequest struct {
+	SourceVideoCodec      string
+	SourceBitDepth        int
 	DisableHardwareDecode bool
 	Target                *ConversionTarget
 	BurnIn                *BurnIn
@@ -763,15 +841,17 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		out.Stages = append(out.Stages, HardwareStage{StageDecode, ExecutionSoftware}, HardwareStage{StageEncode, ExecutionSoftware})
 	}
 	if r.ConvertVideo {
-		native := r.BurnIn == nil && backend != BackendSoftware && spec.scale != nil && (r.ToneMap && r.Probe.NativeFilters && spec.toneMap != nil || !r.ToneMap && (r.Probe.ScaleFilters || r.Probe.NativeFilters))
+		reshapeP5 := target.DolbyVisionProfile == 5 && target.SourceRange == "dolby_vision" && target.DynamicRange == "hdr10"
+		needsColor := r.ToneMap || reshapeP5
+		native := (r.BurnIn == nil || r.Probe.SubtitleFilters) && backend != BackendSoftware && spec.scale != nil && (needsColor && r.Probe.NativeFilters && spec.toneMap != nil || !needsColor && (r.Probe.ScaleFilters || r.Probe.NativeFilters))
 		if r.DisableHardwareDecode {
 			native = false
 		}
 		if r.ToneMap && target.SourceRange == "hlg" && backend == BackendVAAPI && target.MasterDisplay == "" {
 			native = false
 		}
-		if r.Toolchain != nil && r.ToneMap {
-			filter := map[HardwareBackend]string{BackendNVENC: "tonemap_cuda", BackendVAAPI: "tonemap_vaapi", BackendQSV: "vpp_qsv"}[backend]
+		if r.Toolchain != nil && needsColor {
+			filter := map[HardwareBackend]string{BackendNVENC: "tonemap_cuda", BackendVAAPI: "tonemap_opencl", BackendQSV: "tonemap_opencl", BackendVideoToolbox: "tonemap_videotoolbox"}[backend]
 			native = native && r.Toolchain.Filters[filter]
 		}
 		if r.ToneMap && !native && r.Toolchain != nil && (!r.Toolchain.Filters["zscale"] || !r.Toolchain.Filters["tonemap"]) && ((!r.Toolchain.VulkanAvailable && !r.Toolchain.OpenCLAvailable) || spec.upload != "") {
@@ -780,10 +860,20 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		if target.DolbyVisionProfile > 0 {
 			compatible := DolbyVisionBaseRange(target.DolbyVisionProfile, target.DolbyVisionCompatibility) != ""
 			if !compatible {
-				if !r.ToneMap || r.Toolchain == nil || !r.Toolchain.VulkanAvailable || spec.upload != "" {
+				if !r.Probe.DolbyVisionFilters && r.Toolchain != nil && r.Toolchain.VulkanAvailable {
+					backend, spec = BackendSoftware, backendSpec{}
+					out.Backend = backend
+					encoder, err = softwareVideoEncoder(target.VideoCodec, r.Toolchain)
+					if err != nil {
+						return out, err
+					}
+				}
+				if !needsColor || !r.Probe.DolbyVisionFilters && (r.Toolchain == nil || !r.Toolchain.VulkanAvailable || spec.upload != "") {
 					return out, errors.New("dolby_vision_reshaping_unavailable")
 				}
-				native = false
+				if !r.Probe.DolbyVisionFilters {
+					native = false
+				}
 			}
 		}
 		decode := ExecutionSoftware
@@ -794,13 +884,17 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			out.Input = append(out.Input, "-hwaccel", "videotoolbox")
 			decode = ExecutionHardware
 		}
-		if native && !r.Deinterlace && r.MaxFrameRate == 0 {
+		decodeQualified := r.Probe.DecodeCodecs == nil || r.Probe.DecodeCodecs[probeCodecKey(r.SourceVideoCodec, r.SourceBitDepth)]
+		if native && !r.DisableHardwareDecode && decodeQualified {
 			switch backend {
 			case BackendNVENC:
 				out.Input = append(out.Input, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
 				decode = ExecutionHardware
 			case BackendVAAPI:
 				out.Input = append(out.Input, "-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi", "-hwaccel_device", "hw")
+				decode = ExecutionHardware
+			case BackendVideoToolbox:
+				out.Input = append(out.Input, hardwareDecodeArgs(BackendVideoToolbox)...)
 				decode = ExecutionHardware
 			case BackendQSV:
 				out.Input = append(out.Input, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
@@ -811,6 +905,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		// Deinterlacing and the frame-rate ceiling run on system frames, ahead of
 		// any upload, so they are the same graph on every backend. Only frames the
 		// decoder flags as interlaced are touched: mixed content stays sharp.
+		deinterlaceExecution := ExecutionSoftware
 		if r.Deinterlace {
 			filter := "yadif"
 			if r.Toolchain != nil {
@@ -820,7 +915,22 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 					return out, errors.New("deinterlace_filter_unavailable")
 				}
 			}
-			filters = append(filters, filter+"=mode=send_frame:parity=auto:deint=interlaced")
+			if native && r.Probe.DeinterlaceFilters {
+				if decode != ExecutionHardware {
+					filters = append(filters, spec.upload)
+					decode = ExecutionSoftware
+				}
+				filters = append(filters, nativeDeinterlace(backend))
+				deinterlaceExecution = ExecutionHardware
+			} else {
+				if decode == ExecutionHardware {
+					filters = append(filters, "hwdownload", "format="+surface)
+				}
+				filters = append(filters, filter+"=mode=send_frame:parity=auto:deint=interlaced")
+				if decode == ExecutionHardware {
+					filters = append(filters, spec.upload)
+				}
+			}
 		}
 		if r.MaxFrameRate > 0 {
 			filters = append(filters, "fps=fps='min(source_fps,"+strconv.FormatFloat(r.MaxFrameRate, 'f', -1, 64)+")'")
@@ -828,15 +938,31 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		pre := len(filters)
 		toneExecution, scaleExecution := ExecutionSoftware, ExecutionSoftware
 		if native {
-			if r.ToneMap {
-				filters = append(filters, spec.toneMap(algorithm))
+			if needsColor {
+				toneFilter := spec.toneMap(algorithm)
+				if reshapeP5 {
+					toneFilter = nativeHDRReshape(backend)
+				}
+				filters = append(filters, toneFilter)
 				toneExecution = ExecutionHardware
+			}
+			if r.BurnIn != nil {
+				b := *r.BurnIn
+				b.DynamicRange = target.DynamicRange
+				burn, extra, e := hardwareBurnFilter(b, r.Toolchain, backend)
+				if e != nil {
+					return out, e
+				}
+				filters = append(filters, burn)
+				out.ExtraInput = extra
+				out.VideoMap = "[burn_output]"
+				out.Stages = append(out.Stages, HardwareStage{"subtitle_burn_in", ExecutionHardware})
 			}
 			{
 				filters = append(filters, boundedScaleFilter(backend, r.MaxWidth, r.MaxHeight))
 				scaleExecution = ExecutionHardware
 			}
-			if spec.upload != "" && decode != ExecutionHardware {
+			if spec.upload != "" && decode != ExecutionHardware && deinterlaceExecution != ExecutionHardware {
 				// The upload sits between the system-frame filters and the
 				// backend's own, wherever either list happens to be empty.
 				upload := spec.upload
@@ -854,15 +980,16 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			case BackendQSV:
 				filters = append(filters, "vpp_qsv=format="+surface)
 			}
+
 		} else {
-			if r.ToneMap {
+			if needsColor {
 				if r.Toolchain != nil && r.Toolchain.VulkanAvailable && spec.upload == "" && (target.DolbyVisionProfile > 0 && DolbyVisionBaseRange(target.DolbyVisionProfile, target.DolbyVisionCompatibility) == "" || !r.Toolchain.Filters["zscale"] || !r.Toolchain.Filters["tonemap"]) {
 					out.Input = append(out.Input, "-init_hw_device", "vulkan=tone", "-filter_hw_device", "tone")
-					filters = append(filters, "format=yuv420p10le,hwupload,libplacebo=tonemapping=bt.2390:colorspace=bt709:color_primaries=bt709:color_trc=bt709:format=yuv420p,hwdownload,format=yuv420p")
+					filters = append(filters, "format=yuv420p10le,hwupload,"+vulkanColorFilter(algorithm, target.DynamicRange)+",hwdownload,format="+pixel)
 					toneExecution = ExecutionHardware
 				} else if r.Toolchain != nil && r.Toolchain.OpenCLAvailable && spec.upload == "" && (!r.Toolchain.Filters["zscale"] || !r.Toolchain.Filters["tonemap"]) {
 					out.Input = append(out.Input, "-init_hw_device", "opencl=tone", "-filter_hw_device", "tone")
-					filters = append(filters, "format=p010,hwupload,tonemap_opencl=tonemap=hable:desat=0:format=nv12,hwdownload,format=nv12")
+					filters = append(filters, "format=p010,hwupload,tonemap_opencl=tonemap="+algorithm+":desat=0:format=nv12,hwdownload,format=nv12")
 					toneExecution = ExecutionHardware
 				} else {
 					filters = append(filters, SoftwareToneMap(algorithm))
@@ -968,7 +1095,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		}
 		out.Stages = append(out.Stages, HardwareStage{StageDecode, decode})
 		if r.Deinterlace {
-			out.Stages = append(out.Stages, HardwareStage{StageDeinterlace, ExecutionSoftware})
+			out.Stages = append(out.Stages, HardwareStage{StageDeinterlace, deinterlaceExecution})
 		}
 		if r.ToneMap {
 			out.Stages = append(out.Stages, HardwareStage{StageToneMap, toneExecution})
@@ -1050,6 +1177,8 @@ func boundedScaleFilter(backend HardwareBackend, width, height int) string {
 		filter = "scale_cuda"
 	case BackendVAAPI:
 		filter = "scale_vaapi"
+	case BackendVideoToolbox:
+		filter = "scale_vt"
 	case BackendQSV:
 		filter = "vpp_qsv"
 	}

@@ -4,6 +4,7 @@ import (
 	"portico.local/apikit"
 	access "portico.local/server/internal/access"
 	administration "portico.local/server/internal/administration"
+	"portico.local/server/internal/decoder"
 	diagnostics "portico.local/server/internal/diagnostics"
 	operations "portico.local/server/internal/operations"
 	persistence "portico.local/server/internal/persistence"
@@ -317,6 +318,9 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 	}
 	// internal/httpapi/telemetry_routes.go:42
 	if err := apikit.RegisterHTTP[struct{}, projectedConsoleEnvelope[telemetry.Report]](registry, apikit.Metadata{ID: "get_admin_transcode_capacity", Method: "GET", Path: "/v1/admin/transcode/capacity", Summary: "Read server transcode capacity", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[struct{}, projectedConsoleEnvelope[decoder.HardwareReprobe]](registry, apikit.Metadata{ID: "post_admin_transcode_hardware_reprobe", Method: "POST", Path: "/v1/admin/transcode/hardware/reprobe", Summary: "Reprobe server hardware", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/telemetry_routes.go:42

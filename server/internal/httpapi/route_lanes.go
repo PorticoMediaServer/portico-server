@@ -456,6 +456,7 @@ var routeLanes = map[string]string{
 	"POST /v1/admin/storage/cache/empty":                                         "admin",
 	"POST /v1/admin/titles/merge":                                                "admin-heavy",
 	"POST /v1/admin/titles/separate-artist":                                      "admin",
+	"POST /v1/admin/transcode/hardware/reprobe":                                  "admin",
 	"POST /v1/admin/webhooks":                                                    "admin",
 	"POST /v1/admin/webhooks/{id}/test":                                          "admin",
 	"POST /v1/albums/{id}/metadata/musicbrainz/policy":                           "default",
