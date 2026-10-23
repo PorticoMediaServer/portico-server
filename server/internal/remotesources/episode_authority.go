@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"sync"
 
 	"portico.local/server/internal/catalog"
@@ -170,18 +169,12 @@ func (r EpisodeAuthorityResolver) resolveTx(ctx context.Context, tx *sql.Tx, req
 		}
 	}
 	t := request.Target
-	s := &out.Source
-	var relative string
-	var size int64
-	err := tx.QueryRowContext(ctx, `SELECT s.id,s.library_id,s.kind,s.root,s.generation,s.incarnation,s.root_identity,s.enabled,s.identity_confirmed,o.relative_path,o.size,o.modified_ns FROM library_sources s JOIN inventory_objects o ON o.source_id=s.id JOIN catalog_assets a ON a.token=o.asset_id WHERE s.id=? AND s.library_id=? AND s.enabled=1 AND o.id=? AND o.revision=? AND o.root_incarnation=s.incarnation AND o.retired=0 AND o.state='available' AND a.available=1 AND a.video_codec!='' AND EXISTS(SELECT 1 FROM catalog_asset_links al JOIN catalog_entities e ON e.id=al.entity_id JOIN catalog_libraries l ON l.id=e.library_id JOIN catalog_kinds k ON k.id=e.kind WHERE al.asset_id=a.id AND al.available=1 AND pid(e.public_id)=? AND k.name='episode' AND e.retired=0 AND l.retired=0 AND l.library_id=s.library_id)`, t.LibrarySourceID, t.LibraryID, t.ObjectID, t.SourceRevision, t.EpisodeID).Scan(&s.ID, &s.LibraryID, &s.Kind, &s.ResolvedPath, &s.Generation, &s.Incarnation, &s.RootIdentity, &s.Enabled, &s.IdentityConfirmed, &relative, &size, &out.ModifiedNS)
+	captured, err := readEpisodeTargetTx(ctx, tx, t)
 	if err != nil {
 		return out, err
 	}
-	if !s.IdentityConfirmed || s.Generation < 1 || s.Incarnation == "" || s.RootIdentity == "" || !filepath.IsAbs(s.ResolvedPath) || filepath.Clean(s.ResolvedPath) != s.ResolvedPath || !validObservationObject(filepath.ToSlash(relative)) || size < 0 {
-		return out, ErrEpisodeAuthority
-	}
-	out.File = filepath.Join(s.ResolvedPath, relative)
-	out.Size = size
+	out = captured
+	s := &out.Source
 	if request.Purpose == EpisodeAutomatic {
 		live, e := catalog.InventoryFenceTx(ctx, tx, request.JobID)
 		if e != nil {
@@ -211,55 +204,9 @@ func (r EpisodeAuthorityResolver) resolveTx(ctx context.Context, tx *sql.Tx, req
 	}
 	switch s.Kind {
 	case "remote":
-		b, object, ok := r.Sources.find(out.File)
-		if !ok || b.Removed || !validObservationObject(object) {
-			return out, storage.ErrRemoteChanged
-		}
-		var root, support, code string
-		if err = tx.QueryRowContext(ctx, `SELECT root,range_support,error_code FROM remote_sources WHERE id=? AND removed=0`, b.ID).Scan(&root, &support, &code); err != nil {
+		if err = r.readEpisodeRemoteTx(ctx, tx, t, &out); err != nil {
 			return out, err
 		}
-		if root != b.Root {
-			return out, storage.ErrRemoteChanged
-		}
-		if support == "unsupported" || code == "range_unsupported" {
-			return out, storage.ErrRemoteRange
-		}
-		var itemCode string
-		err = tx.QueryRowContext(ctx, `SELECT code FROM remote_analysis_status WHERE path=?`, out.File).Scan(&itemCode)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return out, err
-		}
-		if itemCode == "range_unsupported" {
-			return out, storage.ErrRemoteRange
-		}
-		out.RemoteGeneration, err = observationGenerationTx(ctx, tx, b.ID)
-		if err != nil {
-			return out, err
-		}
-		out.Profile, err = SourceReadProfileTx(ctx, tx, b.ID)
-		if err != nil {
-			return out, err
-		}
-		observation, e := readScanObservationTx(ctx, tx, b.ID, object)
-		if e != nil {
-			return out, e
-		}
-		if observation.Ref.Generation != out.RemoteGeneration || observation.Observation.Facts.Size != size || observation.Observation.Facts.ValidateForRange() != nil {
-			return out, storage.ErrRemoteChanged
-		}
-		transport, e := observationSnapshot(b, out.RemoteGeneration, observation.Observation.Facts)
-		if e != nil {
-			return out, e
-		}
-		objectRevision, _, e := catalog.ObservationRevision(*s, transport)
-		if e != nil {
-			return out, e
-		}
-		if transport.Revision != observation.Observation.ScanRevision || objectRevision != t.SourceRevision {
-			return out, storage.ErrRemoteChanged
-		}
-		out.Observation = observation.Ref
 	case "local":
 	default:
 		return out, ErrEpisodeAuthority
