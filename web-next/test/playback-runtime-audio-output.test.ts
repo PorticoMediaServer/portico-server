@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {configureDestination, destinationChannels, outputClockLag} from '../src/platform/playback/audio/output.ts';
-import {BrowserEqualizer, flatEqualizer, parseEqualizer, parseAutoEqFixedBand} from '../src/platform/playback/audio/equalizer.ts';
+import {BrowserEqualizer, flatEqualizer, parseEqualizer} from '../src/platform/playback/audio/equalizer.ts';
 import {probeAudioDecode} from '../src/platform/playback/audio/capabilities.ts';
 import {MediaCarrier} from '../src/platform/playback/audio/carrier.ts';
 
@@ -43,12 +43,4 @@ test('EQ rejects malformed state and unsupported nodes never report processing e
     assert.equal(equalizer.settings.enabled,false);
   }
   assert.equal(disconnected,2,'failed intermediate gain nodes are released');equalizer.dispose();
-});
-
-test('local fixed-band AutoEq imports stay off and reject incompatible parametric coefficients', () => {
-  // Authored format fixture, not a headphone measurement or a bundled dataset.
-  const text='Preamp: -4 dB\n'+[31,63,125,250,500,1000,2000,4000,8000,16000].map((frequency,i)=>`Filter ${i+1}: ON PK Fc ${frequency} Hz Gain ${i===5?3:0} dB Q 1.41`).join('\n');
-  const settings=parseAutoEqFixedBand(text);assert.equal(settings.enabled,false);assert.equal(settings.preampDb,-4);assert.equal(settings.bandsDb[5],3);
-  assert.throws(()=>parseAutoEqFixedBand(text.replace('Q 1.41','Q 7.0')),/invalid_equalizer/);
-  assert.throws(()=>parseAutoEqFixedBand(text.replace('Fc 31 Hz','Fc 500 Hz')),/invalid_equalizer/);
 });

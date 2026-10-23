@@ -1,28 +1,13 @@
-/** MC7 engine contract. These octave centres match AutoEq's fixed ten-band export. */
+/** Open-ended device EQ: ten octave bands and preamp, off by default. */
 export const eqFrequencies = Object.freeze([31.25, 62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]);
 export type EqualizerSettings = Readonly<{enabled: boolean; preampDb: number; bandsDb: readonly number[]}>;
 export const flatEqualizer: EqualizerSettings = Object.freeze({enabled: false, preampDb: 0, bandsDb: Object.freeze(eqFrequencies.map(() => 0))});
 
-/** Reject corrupt persisted/input data rather than turning an invalid preset into an audible one. */
+/** Reject corrupt persisted/input data rather than turning invalid settings into audible processing. */
 export function parseEqualizer(value: unknown): EqualizerSettings {
   const v = value as Partial<EqualizerSettings> | null;
   if (!v || typeof v.enabled !== 'boolean' || typeof v.preampDb !== 'number' || !Number.isFinite(v.preampDb) || v.preampDb < -24 || v.preampDb > 24 || !Array.isArray(v.bandsDb) || v.bandsDb.length !== 10 || !v.bandsDb.every(n => typeof n === 'number' && Number.isFinite(n) && n >= -12 && n <= 12)) throw new Error('invalid_equalizer');
   return Object.freeze({enabled: v.enabled, preampDb: v.preampDb, bandsDb: Object.freeze([...v.bandsDb])});
-}
-
-/** Import an AutoEq fixed-band export supplied locally. No measurements are downloaded or
- * redistributed here. Arbitrary parametric exports cannot be silently treated as these bands. */
-export function parseAutoEqFixedBand(text: string): EqualizerSettings {
-  if (text.length > 16384) throw new Error('invalid_equalizer');
-  const lines = text.trim().split(/\r?\n/).filter(line => line.trim() && !line.startsWith('#'));
-  const preamp = /^Preamp:\s*(-?\d+(?:\.\d+)?)\s*dB$/i.exec(lines.shift() ?? '');
-  if (!preamp || lines.length !== 10) throw new Error('invalid_equalizer');
-  const bandsDb = lines.map((line, i) => {
-    const band = /^Filter\s+(\d+):\s*ON\s+PK\s+Fc\s+(\d+(?:\.\d+)?)\s*Hz\s+Gain\s+(-?\d+(?:\.\d+)?)\s*dB\s+Q\s+(\d+(?:\.\d+)?)$/i.exec(line.trim());
-    if (!band || Number(band[1]) !== i + 1 || Math.abs(Number(band[2]) / eqFrequencies[i]! - 1) > 0.02 || Math.abs(Number(band[4]) - Math.SQRT2) > 0.02) throw new Error('invalid_equalizer');
-    return Number(band[3]);
-  });
-  return parseEqualizer({enabled:false,preampDb:Number(preamp[1]),bandsDb});
 }
 
 /** One shared graph across decks: filtering never resets at a gapless boundary. Off is a dry path. */

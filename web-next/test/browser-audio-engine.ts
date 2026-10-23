@@ -62,11 +62,11 @@ export async function runBrowserAudioChecks() {
   let store = new EqualizerStore(indexedDB,database);
   const saved = {enabled:true,preampDb:-4,bandsDb:[1,2,3,4,0,-1,-2,-3,-4,-5]};
   try {
-    await store.save('headphones',saved); await store.close(); store = new EqualizerStore(indexedDB,database);
-    check(JSON.stringify(await store.load('headphones')) === JSON.stringify(saved), 'output state did not survive re-open');
-    check((await store.load('speakers')).enabled === false, 'EQ leaked between outputs');
-    let rejected = false; try { await store.save('speakers',{...saved,bandsDb:[NaN]}); } catch { rejected = true; }
-    check(rejected, 'invalid preset accepted');
+    await store.save('output-a',saved); await store.close(); store = new EqualizerStore(indexedDB,database);
+    check(JSON.stringify(await store.load('output-a')) === JSON.stringify(saved), 'output state did not survive re-open');
+    check((await store.load('output-b')).enabled === false, 'EQ leaked between outputs');
+    let rejected = false; try { await store.save('output-b',{...saved,bandsDb:[NaN]}); } catch { rejected = true; }
+    check(rejected, 'invalid equalizer settings accepted');
     const db = await new Promise<IDBDatabase>((resolve,reject) => { const r=indexedDB.open(database);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error); });
     const tx=db.transaction(['outputs','bands'],'readonly');
     const rows=await new Promise<number>((resolve,reject)=>{const r=tx.objectStore('bands').count();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
