@@ -2,9 +2,14 @@ package postgres_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +42,56 @@ func rulingNotificationFeed(t *testing.T, h http.Handler, token, path string) po
 	return feed
 }
 
+// Only public notification/preference responses are captured. Session creation
+// supplies actual facts but its credential-bearing replies are never written.
+func writeNotificationFixture(t *testing.T, name, path string, out *httptest.ResponseRecorder) {
+	t.Helper()
+	dir := os.Getenv("PORTICO_NOTIFICATION_FIXTURES_DIR")
+	if dir == "" {
+		return
+	}
+	body := out.Body.String()
+	if !json.Valid([]byte(body)) {
+		t.Fatal("notification fixture is not JSON")
+	}
+	for _, field := range []string{"accessToken", "refreshToken", "password", "challengeToken", "proof", "signature", "payload"} {
+		if strings.Contains(body, `"`+field+`":`) {
+			t.Fatalf("credential field %s reached a notification fixture", field)
+		}
+	}
+	record := struct {
+		Path         string            `json:"path"`
+		Status       int               `json:"status"`
+		Headers      map[string]string `json:"headers"`
+		RawBody      string            `json:"rawBody"`
+		BodySHA256   string            `json:"bodySha256"`
+		Sanitization string            `json:"sanitization"`
+	}{path, out.Code, map[string]string{"Content-Type": out.Header().Get("Content-Type")}, body, fmt.Sprintf("%x", sha256.Sum256([]byte(body))), "Only actual notification/preference response fields and Content-Type; no cookies, request credentials or session replies. Body bytes unchanged."}
+	raw, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, name+".json")
+	if err = os.WriteFile(file+".tmp", append(raw, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Rename(file+".tmp", file); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func captureNotificationFeed(t *testing.T, h http.Handler, token, path, name string) {
+	t.Helper()
+	out := rulingNotificationCall(h, token, "GET", path, "")
+	if out.Code != 200 {
+		t.Fatalf("notification fixture status %d", out.Code)
+	}
+	writeNotificationFixture(t, name, path, out)
+}
+
 func TestNotificationPreferencesRequireAnExplicitBoolean(t *testing.T) {
 	for _, body := range []string{`null`, `{}`, `[]`, `false`, `{"serverOffline":null}`, `{"serverOffline":"false"}`, `{"serverOffline":0}`, `{"serverOffline":false,"storageNearlyFull":true}`, `{"serverOffline":false,"invitationAccepted":true}`} {
 		var preferences postgres.NotificationPreferences
@@ -62,12 +117,13 @@ func TestNotificationPreferenceHTTPFalseSaveAndAccountReadback(t *testing.T) {
 	b := verifiedAccount(t, s, "notificationother")
 	h := (&httpapi.Handler{Identity: s.Identity, Security: s}).Routes()
 	const path = "/v1/account/notification-preferences"
-	read := func(token, want string) {
+	read := func(token, want string) *httptest.ResponseRecorder {
 		t.Helper()
 		out := rulingNotificationCall(h, token, "GET", path, "")
 		if out.Code != 200 || out.Body.String() != want+"\n" {
 			t.Fatalf("preference readback %d: %s", out.Code, out.Body.String())
 		}
+		return out
 	}
 	read(a.AccessToken, `{"serverOffline":true}`)
 	for _, body := range []string{`{}`, `null`, `{"serverOffline":null}`, `{"serverOffline":"false"}`, `{"serverOffline":false,"storageNearlyFull":false}`, `{"serverOffline":false,"invitationAccepted":false}`} {
@@ -82,7 +138,11 @@ func TestNotificationPreferenceHTTPFalseSaveAndAccountReadback(t *testing.T) {
 		if out.Code != 200 || out.Body.String() != body+"\n" {
 			t.Fatalf("preference save %d: %s", out.Code, out.Body.String())
 		}
-		read(a.AccessToken, body)
+		got := read(a.AccessToken, body)
+		if body == `{"serverOffline":false}` {
+			writeNotificationFixture(t, "preference-false-save", path, out)
+			writeNotificationFixture(t, "preference-false-readback", path, got)
+		}
 		read(b.AccessToken, `{"serverOffline":true}`)
 	}
 }
@@ -153,6 +213,7 @@ func TestNotificationFeedUsesRegistrationFactsAndExcludesRetiredNotices(t *testi
 		t.Fatalf("actual registration/export facts missing: %#v", feed)
 	}
 	visible := len(feed.Items)
+	captureNotificationFeed(t, h, f.owner.AccessToken, feedPath, "ordinary-registration-facts")
 	// Simulate unsupported historical rows only to verify API exclusion. The
 	// production baseline never accepts either retired kind.
 	if _, err = f.store.DB.Exec(`ALTER TABLE account_notification_events DROP CONSTRAINT account_notification_events_kind_check`); err != nil {
@@ -171,6 +232,7 @@ func TestNotificationFeedUsesRegistrationFactsAndExcludesRetiredNotices(t *testi
 	if len(feed.Items) != visible || feed.Unread != visible {
 		t.Fatalf("retired kinds surfaced or changed unread: %#v", feed)
 	}
+	captureNotificationFeed(t, h, f.owner.AccessToken, feedPath, "retired-notices-excluded")
 	out := rulingNotificationCall(h, f.owner.AccessToken, "PUT", "/v1/account/notification-preferences", `{"serverOffline":false}`)
 	if out.Code != 200 {
 		t.Fatalf("quiet switch save: %d", out.Code)
@@ -203,6 +265,8 @@ func TestNotificationFeedUsesRegistrationFactsAndExcludesRetiredNotices(t *testi
 	if operatorID == "" {
 		t.Fatal("operator key alert was lost")
 	}
+	captureNotificationFeed(t, h, f.member.AccessToken, feedPath, "configured-operator-account")
+	captureNotificationFeed(t, h, f.owner.AccessToken, feedPath, "ordinary-account-excludes-operator")
 	if out = rulingNotificationCall(h, f.owner.AccessToken, "GET", feedPath+"/"+operatorID, ""); out.Code == 200 {
 		t.Fatal("ordinary account read the operator notice")
 	}
@@ -222,6 +286,7 @@ func TestProviderLinkedNoticeRequiresAnActualAddedMethod(t *testing.T) {
 	s := accountSecurityFixture(t)
 	ctx := context.Background()
 	a := verifiedAccount(t, s, "notificationlinker")
+	h := (&httpapi.Handler{Identity: s.Identity, Security: s}).Routes()
 	o := &postgres.OIDCLogin{Store: s.Store, Keys: s.Keys, Security: s, Lifetime: 15 * time.Minute, Providers: map[string]*oidclogin.Provider{"google": {ID: "google", Issuer: "https://accounts.google.com", Audience: "fixture-client", Callback: "https://web.getportico.tv/auth/sso/google/callback"}}}
 	if err := o.Configure(ctx); err != nil {
 		t.Fatal(err)
@@ -273,6 +338,7 @@ func TestProviderLinkedNoticeRequiresAnActualAddedMethod(t *testing.T) {
 	}
 	id, binding, code := link()
 	countAdded(1)
+	captureNotificationFeed(t, h, a.AccessToken, "/v1/account/notifications", "provider-method-added")
 	_, _ = o.CompleteFlow(ctx, id, binding, a.AccessToken, postgres.OIDCCompleteInput{CompletionCode: code}, true)
 	countAdded(1)
 	link() // A fresh operation over the still-active same subject adds nothing.
@@ -290,4 +356,63 @@ func TestProviderLinkedNoticeRequiresAnActualAddedMethod(t *testing.T) {
 		t.Fatal(err)
 	}
 	countAdded(2) // Security events remain shown with quiet-server notices off.
+	captureNotificationFeed(t, h, a.AccessToken, "/v1/account/notifications", "provider-restored-security-always-shown")
+}
+
+func TestNotificationHTTPPaginationUsesActualSignIns(t *testing.T) {
+	s := accountSecurityFixture(t)
+	a := verifiedAccount(t, s, "notificationpages")
+	b := verifiedAccount(t, s, "notificationpageother")
+	h := (&httpapi.Handler{Identity: s.Identity, Security: s}).Routes()
+	const feedPath = "/v1/account/notifications"
+	signIn := func(i int, installation string) {
+		t.Helper()
+		raw, err := json.Marshal(httpapi.SignInRequest{Username: a.Account.Username, Password: "StrongPass9", SessionMode: "native", RequestID: security.RandomID("")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest("POST", "/v1/sessions", strings.NewReader(string(raw)))
+		r.RemoteAddr = fmt.Sprintf("198.51.100.%d:12345", i+1)
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-Portico-Continuation", security.RandomID(""))
+		r.Header.Set("X-Portico-Installation-ID", installation)
+		r.Header.Set("X-Portico-Device-Name", fmt.Sprintf("Notification fixture device %02d", i+1))
+		r.Header.Set("X-Portico-Platform", "test")
+		r.Header.Set("X-Portico-App", "Portico fixture")
+		out := httptest.NewRecorder()
+		h.ServeHTTP(out, r)
+		var session identity.Session
+		if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &session) != nil || session.Account.ID != a.Account.ID {
+			t.Fatalf("actual fixture sign-in %d failed with status %d", i, out.Code)
+		}
+	}
+	installation := ""
+	for i := range 51 {
+		installation = security.RandomID("")
+		signIn(i, installation)
+	}
+	signIn(51, installation) // A known live installation adds no second notice.
+	first := rulingNotificationFeed(t, h, a.AccessToken, feedPath)
+	if len(first.Items) != 50 || first.NextCursor != first.Items[49].ID || first.Unread != 52 {
+		t.Fatalf("first actual page: items=%d unread=%d cursor=%q", len(first.Items), first.Unread, first.NextCursor)
+	}
+	captureNotificationFeed(t, h, a.AccessToken, feedPath, "pagination-first50")
+	nextPath := feedPath + "?cursor=" + url.QueryEscape(first.NextCursor)
+	second := rulingNotificationFeed(t, h, a.AccessToken, nextPath)
+	if len(second.Items) != 2 || second.NextCursor != "" || second.Unread != first.Unread {
+		t.Fatalf("last actual page: items=%d unread=%d cursor=%q", len(second.Items), second.Unread, second.NextCursor)
+	}
+	seen := map[string]bool{}
+	for _, item := range append(first.Items, second.Items...) {
+		if item.Kind != "new_device" || seen[item.ID] {
+			t.Fatal("actual sign-in pages duplicated or invented an event")
+		}
+		seen[item.ID] = true
+	}
+	captureNotificationFeed(t, h, a.AccessToken, nextPath, "pagination-last2")
+	foreign := rulingNotificationFeed(t, h, b.AccessToken, nextPath)
+	if len(foreign.Items) != 0 || foreign.NextCursor != "" || foreign.Unread != 1 {
+		t.Fatal("another account's cursor leaked rows or unread count")
+	}
+	captureNotificationFeed(t, h, b.AccessToken, nextPath, "pagination-foreign-account")
 }
