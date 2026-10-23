@@ -163,7 +163,7 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 			out.Rejected = append(out.Rejected, Rejection{item, reason})
 			continue
 		}
-		quality := resolvedQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), string(r.Quality), found)
+		quality := s.resolveQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), string(r.Quality), found)
 		// A live claim on the same item and quality is the same claim. Returning
 		// it keeps a client that retried a batch from accumulating duplicates.
 		// One that failed is what the viewer is asking to have another go at:
@@ -191,8 +191,8 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 		if !errors.Is(err, sql.ErrNoRows) {
 			return out, err
 		}
-		recipe := chooseRecipe(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), quality, found)
-		if reason := qualityReason(ctx, tx, quality, recipe, found); reason != "" {
+		recipe := chooseRecipe(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), quality, found, s.deliveryConfig())
+		if reason := s.preparationReason(ctx, tx, quality, recipe, found); reason != "" {
 			out.Rejected = append(out.Rejected, Rejection{item, reason})
 			continue
 		}
