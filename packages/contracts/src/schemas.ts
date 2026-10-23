@@ -9854,7 +9854,6 @@ export const schemas = {
         "type": "string"
       },
       "quality": {
-        "default": "original",
         "enum": [
           "original",
           "automatic",
@@ -9864,7 +9863,10 @@ export const schemas = {
           "720p-high",
           "720p-low",
           "480p",
-          "240p"
+          "240p",
+          "cd-quality",
+          "320",
+          "96"
         ],
         "type": "string"
       },
@@ -10154,7 +10156,6 @@ export const schemas = {
         "type": "object"
       },
       "quality": {
-        "default": "original",
         "enum": [
           "original",
           "automatic",
@@ -10164,7 +10165,10 @@ export const schemas = {
           "720p-high",
           "720p-low",
           "480p",
-          "240p"
+          "240p",
+          "cd-quality",
+          "320",
+          "96"
         ],
         "type": "string"
       },
@@ -29569,9 +29573,6 @@ export const schemas = {
               "normalization": {
                 "type": "string"
               },
-              "sampleRateMatching": {
-                "type": "string"
-              },
               "smoothTransitions": {
                 "type": "boolean"
               }
@@ -29579,7 +29580,6 @@ export const schemas = {
             "required": [
               "neverBoost",
               "smoothTransitions",
-              "sampleRateMatching",
               "dsdGainDb",
               "gapless",
               "crossfadeMs",
@@ -34489,6 +34489,9 @@ export const schemas = {
   },
   "GetDownloadOptionsResponse": {
     "properties": {
+      "defaultQuality": {
+        "type": "string"
+      },
       "itemId": {
         "type": "string"
       },
@@ -34662,6 +34665,7 @@ export const schemas = {
       }
     },
     "required": [
+      "defaultQuality",
       "itemId",
       "kind",
       "source",
@@ -69099,8 +69103,23 @@ export const schemas = {
               },
               "facts": {
                 "properties": {
+                  "audioBitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "audioChannels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "audioCodec": {
                     "type": "string"
+                  },
+                  "audioSampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "audioTracks": {
                     "maximum": 9007199254740991,
@@ -69643,8 +69662,23 @@ export const schemas = {
             },
             "facts": {
               "properties": {
+                "audioBitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "audioChannels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "audioCodec": {
                   "type": "string"
+                },
+                "audioSampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "audioTracks": {
                   "maximum": 9007199254740991,
@@ -70619,8 +70653,23 @@ export const schemas = {
             },
             "facts": {
               "properties": {
+                "audioBitDepth": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "audioChannels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "audioCodec": {
                   "type": "string"
+                },
+                "audioSampleRate": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "audioTracks": {
                   "maximum": 9007199254740991,
@@ -116757,9 +116806,6 @@ export const schemas = {
               "normalization": {
                 "type": "string"
               },
-              "sampleRateMatching": {
-                "type": "string"
-              },
               "smoothTransitions": {
                 "type": "boolean"
               }
@@ -116767,7 +116813,6 @@ export const schemas = {
             "required": [
               "neverBoost",
               "smoothTransitions",
-              "sampleRateMatching",
               "dsdGainDb",
               "gapless",
               "crossfadeMs",
@@ -146058,9 +146103,6 @@ export const schemas = {
               "normalization": {
                 "type": "string"
               },
-              "sampleRateMatching": {
-                "type": "string"
-              },
               "smoothTransitions": {
                 "type": "boolean"
               }
@@ -146068,7 +146110,6 @@ export const schemas = {
             "required": [
               "neverBoost",
               "smoothTransitions",
-              "sampleRateMatching",
               "dsdGainDb",
               "gapless",
               "crossfadeMs",
@@ -168697,8 +168738,23 @@ export const schemas = {
       },
       "facts": {
         "properties": {
+          "audioBitDepth": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "audioChannels": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "audioCodec": {
             "type": "string"
+          },
+          "audioSampleRate": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "audioTracks": {
             "maximum": 9007199254740991,

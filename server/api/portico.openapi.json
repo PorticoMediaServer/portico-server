@@ -11448,7 +11448,6 @@
             "type": "string"
           },
           "quality": {
-            "default": "original",
             "enum": [
               "original",
               "automatic",
@@ -11458,7 +11457,10 @@
               "720p-high",
               "720p-low",
               "480p",
-              "240p"
+              "240p",
+              "cd-quality",
+              "320",
+              "96"
             ],
             "type": "string"
           },
@@ -11754,7 +11756,6 @@
             "type": "object"
           },
           "quality": {
-            "default": "original",
             "enum": [
               "original",
               "automatic",
@@ -11764,7 +11765,10 @@
               "720p-high",
               "720p-low",
               "480p",
-              "240p"
+              "240p",
+              "cd-quality",
+              "320",
+              "96"
             ],
             "type": "string"
           },
@@ -31829,9 +31833,6 @@
                   "normalization": {
                     "type": "string"
                   },
-                  "sampleRateMatching": {
-                    "type": "string"
-                  },
                   "smoothTransitions": {
                     "type": "boolean"
                   }
@@ -31839,7 +31840,6 @@
                 "required": [
                   "neverBoost",
                   "smoothTransitions",
-                  "sampleRateMatching",
                   "dsdGainDb",
                   "gapless",
                   "crossfadeMs",
@@ -36801,6 +36801,9 @@
       },
       "GetDownloadOptionsResponse": {
         "properties": {
+          "defaultQuality": {
+            "type": "string"
+          },
           "itemId": {
             "type": "string"
           },
@@ -36980,6 +36983,7 @@
           }
         },
         "required": [
+          "defaultQuality",
           "itemId",
           "kind",
           "source",
@@ -72200,8 +72204,23 @@
                       },
                       "facts": {
                         "properties": {
+                          "audioBitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "audioChannels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "audioCodec": {
                             "type": "string"
+                          },
+                          "audioSampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           },
                           "audioTracks": {
                             "maximum": 9007199254740991,
@@ -72767,8 +72786,23 @@
                 },
                 "facts": {
                   "properties": {
+                    "audioBitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "audioChannels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "audioCodec": {
                       "type": "string"
+                    },
+                    "audioSampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "audioTracks": {
                       "maximum": 9007199254740991,
@@ -73767,8 +73801,23 @@
                 },
                 "facts": {
                   "properties": {
+                    "audioBitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "audioChannels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "audioCodec": {
                       "type": "string"
+                    },
+                    "audioSampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "audioTracks": {
                       "maximum": 9007199254740991,
@@ -121049,9 +121098,6 @@
                   "normalization": {
                     "type": "string"
                   },
-                  "sampleRateMatching": {
-                    "type": "string"
-                  },
                   "smoothTransitions": {
                     "type": "boolean"
                   }
@@ -121059,7 +121105,6 @@
                 "required": [
                   "neverBoost",
                   "smoothTransitions",
-                  "sampleRateMatching",
                   "dsdGainDb",
                   "gapless",
                   "crossfadeMs",
@@ -164180,9 +164225,6 @@
                   "normalization": {
                     "type": "string"
                   },
-                  "sampleRateMatching": {
-                    "type": "string"
-                  },
                   "smoothTransitions": {
                     "type": "boolean"
                   }
@@ -164190,7 +164232,6 @@
                 "required": [
                   "neverBoost",
                   "smoothTransitions",
-                  "sampleRateMatching",
                   "dsdGainDb",
                   "gapless",
                   "crossfadeMs",
@@ -187085,8 +187126,23 @@
           },
           "facts": {
             "properties": {
+              "audioBitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "audioChannels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "audioCodec": {
                 "type": "string"
+              },
+              "audioSampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "audioTracks": {
                 "maximum": 9007199254740991,
@@ -268494,9 +268550,6 @@
                             "normalization": {
                               "type": "string"
                             },
-                            "sampleRateMatching": {
-                              "type": "string"
-                            },
                             "smoothTransitions": {
                               "type": "boolean"
                             }
@@ -268504,7 +268557,6 @@
                           "required": [
                             "neverBoost",
                             "smoothTransitions",
-                            "sampleRateMatching",
                             "dsdGainDb",
                             "gapless",
                             "crossfadeMs",
@@ -285243,7 +285295,6 @@
                     "type": "string"
                   },
                   "quality": {
-                    "default": "original",
                     "enum": [
                       "original",
                       "automatic",
@@ -285253,7 +285304,10 @@
                       "720p-high",
                       "720p-low",
                       "480p",
-                      "240p"
+                      "240p",
+                      "cd-quality",
+                      "320",
+                      "96"
                     ],
                     "type": "string"
                   },
@@ -288200,7 +288254,6 @@
                     "type": "object"
                   },
                   "quality": {
-                    "default": "original",
                     "enum": [
                       "original",
                       "automatic",
@@ -288210,7 +288263,10 @@
                       "720p-high",
                       "720p-low",
                       "480p",
-                      "240p"
+                      "240p",
+                      "cd-quality",
+                      "320",
+                      "96"
                     ],
                     "type": "string"
                   },
@@ -350112,8 +350168,23 @@
                                 },
                                 "facts": {
                                   "properties": {
+                                    "audioBitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "audioChannels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
                                     "audioCodec": {
                                       "type": "string"
+                                    },
+                                    "audioSampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
                                     },
                                     "audioTracks": {
                                       "maximum": 9007199254740991,
@@ -350679,8 +350750,23 @@
                           },
                           "facts": {
                             "properties": {
+                              "audioBitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "audioChannels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
                               "audioCodec": {
                                 "type": "string"
+                              },
+                              "audioSampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
                               },
                               "audioTracks": {
                                 "maximum": 9007199254740991,
@@ -351741,8 +351827,23 @@
                           },
                           "facts": {
                             "properties": {
+                              "audioBitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "audioChannels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
                               "audioCodec": {
                                 "type": "string"
+                              },
+                              "audioSampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
                               },
                               "audioTracks": {
                                 "maximum": 9007199254740991,
@@ -374240,6 +374341,9 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "defaultQuality": {
+                      "type": "string"
+                    },
                     "itemId": {
                       "type": "string"
                     },
@@ -374419,6 +374523,7 @@
                     }
                   },
                   "required": [
+                    "defaultQuality",
                     "itemId",
                     "kind",
                     "source",
@@ -423250,9 +423355,6 @@
                             "normalization": {
                               "type": "string"
                             },
-                            "sampleRateMatching": {
-                              "type": "string"
-                            },
                             "smoothTransitions": {
                               "type": "boolean"
                             }
@@ -423260,7 +423362,6 @@
                           "required": [
                             "neverBoost",
                             "smoothTransitions",
-                            "sampleRateMatching",
                             "dsdGainDb",
                             "gapless",
                             "crossfadeMs",
@@ -423565,9 +423666,6 @@
                             "normalization": {
                               "type": "string"
                             },
-                            "sampleRateMatching": {
-                              "type": "string"
-                            },
                             "smoothTransitions": {
                               "type": "boolean"
                             }
@@ -423575,7 +423673,6 @@
                           "required": [
                             "neverBoost",
                             "smoothTransitions",
-                            "sampleRateMatching",
                             "dsdGainDb",
                             "gapless",
                             "crossfadeMs",
@@ -423873,8 +423970,23 @@
                     },
                     "facts": {
                       "properties": {
+                        "audioBitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "audioChannels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "audioCodec": {
                           "type": "string"
+                        },
+                        "audioSampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
                         "audioTracks": {
                           "maximum": 9007199254740991,
