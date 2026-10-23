@@ -167,3 +167,12 @@ func linkCatalogAsset(t testing.TB, db *sql.DB, entity int64, asset compactcatal
 	c.Drain()
 	return token
 }
+
+// Media-only fixtures still need the actual account stream-limit owner. This
+// does not bypass admission or synthesize an authorization fallback.
+func insertFixtureAccount(t testing.TB, db *sql.DB, account, profile string) {
+	t.Helper()
+	if _, err := db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,X'00',?,1)`, account, account, profile); err != nil {
+		t.Fatal(err)
+	}
+}

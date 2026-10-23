@@ -16,16 +16,16 @@ export function musicAudioEffects(snapshot:PreferenceSnapshot):AudioEffectsSetti
  const gapless=read('music.gapless',defaultAudioEffects.gapless,v=>typeof v==='boolean');
  const crossfadeMs=read('music.crossfadeMs',defaultAudioEffects.crossfadeSeconds*1000,v=>typeof v==='number'&&Number.isFinite(v));
  const normalization=read<AudioEffectsSettings['normalization']>('music.audioNormalization',defaultAudioEffects.normalization,v=>v==='off'||v==='track'||v==='album');
- return Object.freeze({gapless,crossfadeSeconds:Math.min(12,Math.max(0,Math.round(crossfadeMs/1000))),normalization});
+ const neverBoost=read("music.neverBoost",false,v=>typeof v==='boolean');
+ const smoothTransitions=read("music.smoothTransitions",true,v=>typeof v==='boolean');
+ return Object.freeze({neverBoost,smoothTransitions,gapless,crossfadeSeconds:Math.min(12,Math.max(0,Math.round(crossfadeMs/1000))),normalization});
 }
 
-/** Whether this device can render effects for what's playing now: undefined when nothing tells
- * (no music session yet); otherwise the server's version 2 plan, with its reason when it can't
- * (for example when the owner doesn't allow converting audio). A quiet notice, not an error. */
-export function audioEffectsAvailability(session:{audio?:{mode:string;reason?:string}}|undefined):Readonly<{available:boolean;reason?:string}>|undefined {
+/** Whether an audio plan exists for the engine. Diagnostic reasons never enter display state. */
+export function audioEffectsAvailability(session:{audio?:{mode:string;reason?:string}}|undefined):Readonly<{available:boolean}>|undefined {
  const plan=session?.audio;
  if(!plan)return undefined;
- return plan.mode==='unavailable'?{available:false,reason:plan.reason||undefined}:{available:true};
+ return Object.freeze({available:plan.mode!=='unavailable'});
 }
 
 /** The viewer's defaults for a music queue that starts with Play: shuffle and repeat. */

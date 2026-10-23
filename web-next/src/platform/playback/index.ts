@@ -1,4 +1,5 @@
 export {WebShellPlaybackRuntime} from './runtime.ts';
+export type {WebPlaybackScreenTarget, WebPlaybackScreenLifetime} from './types.ts';
 export type {WebPlaybackSource, WebPlaybackAuthority, WebPlaybackSettings, WebPlaybackEnvironment, WebPlaybackStart, WebPlaybackVersionStart, WebPlaybackRuntimeSnapshot, WebPlaybackPresentation, WebPlaybackAction, WebPlaybackElement} from './types.ts';
 export {WebPlayback, PlayerSlot} from './web-playback.ts';
 export {WebMediaPlayer} from './web-media-player.ts';

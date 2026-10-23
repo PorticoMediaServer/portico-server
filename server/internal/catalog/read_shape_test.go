@@ -96,7 +96,8 @@ func TestSelectiveFiltersStayFlatAsTheLibraryGrows(t *testing.T) {
 		lib := c.Library("mu", "Music", "music", "/mu")
 		// The two matching songs belong to their own small artist and album,
 		// so a container page reads the same small container at both sizes.
-		rarity := c.Album(c.Artist(lib, "Rarity"), "Rare Album", 2000)
+		rareArtist := c.Artist(lib, "Rarity")
+		rarity := c.Album(rareArtist, "Rare Album", 2000)
 		someone := c.Artist(lib, "Someone")
 		var album catalogtest.Item
 		for i := 0; i < songs; i++ {
@@ -134,6 +135,23 @@ func TestSelectiveFiltersStayFlatAsTheLibraryGrows(t *testing.T) {
 					want := map[string]int{"artist": 0, "album": 2, "tag": 2, "communityRating": 2}[name]
 					if page.PageInfo.Total != want {
 						t.Fatalf("%s: %d songs, want %d", name, page.PageInfo.Total, want)
+					}
+				} else {
+					want := 1
+					if name == "artist" {
+						want = 0
+					}
+					if page.PageInfo.Total != want || len(page.Entries) != want {
+						t.Fatalf("%s/%s: wrong selective containers %+v", name, pivot, page)
+					}
+					if want == 1 {
+						id := rarity.Public
+						if pivot == "artists" {
+							id = rareArtist.Public
+						}
+						if page.Entries[0].ID != id {
+							t.Fatalf("%s/%s returned another container: %+v", name, pivot, page.Entries)
+						}
 					}
 				}
 				pair := steps[name+"/"+pivot]
@@ -506,5 +524,101 @@ func TestOrderedLibraryListeningStaysFlat(t *testing.T) {
 	t.Logf("ordered library page: %d steps beside no other titles, %d beside 600", steps[0], steps[1])
 	if steps[1] > steps[0]*3/2 {
 		t.Fatalf("ordered library page grew from %d to %d steps with the rest of the catalogue", steps[0], steps[1])
+	}
+}
+
+// A card for a small artist must not count albums through unrelated songs.
+// Exercise the enrichment producer directly as well as the full browse path.
+func TestSelectedArtistFactsStayFlatBesideUnrelatedSongs(t *testing.T) {
+	var steps [2]int64
+	for size, songs := range []int{80, 320} {
+		c := catalogtest.Open(t)
+		lib := c.Library("music", "Music", "music", "/music")
+		artist := c.Artist(lib, "Rare artist")
+		album := c.Album(artist, "Rare album", 2000)
+		for i := 0; i < 2; i++ {
+			c.Song(album, i+1, fmt.Sprintf("/music/rare/%d.flac", i), "Rare song")
+		}
+		other := c.Album(c.Artist(lib, "Other artist"), "Other album", 2000)
+		for i := 0; i < songs; i++ {
+			c.Song(other, i+1, fmt.Sprintf("/music/other/%d.flac", i), "Other song")
+		}
+		c.Drain()
+		c.Exec(`ANALYZE`)
+		viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"music"}}
+		var entry ContentEntry
+		steps[size] = readSteps(t, c, func(s *Service) error {
+			return s.listeningArtistFacts(viewer, artist.Public, &entry)
+		})
+		if entry.AlbumCount == nil || *entry.AlbumCount != 1 {
+			t.Fatalf("small artist's album count: %+v", entry)
+		}
+	}
+	if steps[1] > steps[0]*3/2+500 {
+		t.Fatalf("selected artist enrichment grew from %d to %d steps beside unrelated songs", steps[0], steps[1])
+	}
+}
+
+func TestPlayablePersonalFiltersKeepDirectAndContainerIntent(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("music", "Music", "music", "/music")
+	artist := c.Artist(lib, "Artist")
+	first := c.Album(artist, "First", 2000)
+	second := c.Album(artist, "Second", 2000)
+	favorite := c.Song(first, 1, "/music/favorite.flac", "Favorite")
+	plain := c.Song(first, 2, "/music/plain.flac", "Plain")
+	albumOnly := c.Song(second, 1, "/music/album-only.flac", "Album only")
+	for _, item := range []catalogtest.Item{favorite, plain, albumOnly} {
+		c.Genres(item.ID, "fixture", "Genre")
+	}
+	c.Exec(`INSERT INTO personal_items(profile_id,item_id,favorite,revision) VALUES('p',?,1,1),('p',?,1,1)`, favorite.ID, second.ID)
+	c.Drain()
+	s := New(c.DB)
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"music"}}
+	for _, tc := range []struct {
+		pivot string
+		value bool
+		ids   []string
+	}{
+		{"songs", true, []string{favorite.Public}},
+		{"songs", false, []string{plain.Public, albumOnly.Public}},
+		{"albums", true, []string{first.Public, second.Public}},
+	} {
+		page, err := s.BrowseEntities(viewer, BrowseRequest{Library: "music", Pivot: tc.pivot, Query: &BrowseNode{Field: "favorite", Operator: "equals", Value: tc.value}, Limit: 40})
+		if err != nil || page.PageInfo.Total != len(tc.ids) || len(page.Entries) != len(tc.ids) {
+			t.Fatalf("%s favorite=%v: %+v %v", tc.pivot, tc.value, page, err)
+		}
+		want := map[string]bool{}
+		for _, id := range tc.ids {
+			want[id] = true
+		}
+		for _, entry := range page.Entries {
+			if !want[entry.ID] {
+				t.Fatalf("%s favorite=%v: unexpected %+v", tc.pivot, tc.value, entry)
+			}
+			delete(want, entry.ID)
+		}
+		if len(want) != 0 {
+			t.Fatal("missing personal matches", want)
+		}
+	}
+	page, err := s.BrowseEntities(viewer, BrowseRequest{Library: "music", Pivot: "genres", Query: &BrowseNode{Field: "favorite", Operator: "equals", Value: true}, Limit: 40})
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].Count == nil || *page.Entries[0].Count != 1 {
+		t.Fatalf("grouping counted a container's intent as a song: %+v %v", page, err)
+	}
+	viewer.Profile = "other"
+	page, err = s.BrowseEntities(viewer, BrowseRequest{Library: "music", Pivot: "songs", Query: &BrowseNode{Field: "favorite", Operator: "equals", Value: true}, Limit: 40})
+	if err != nil || page.PageInfo.Total != 0 || len(page.Entries) != 0 {
+		t.Fatalf("personal matches crossed profiles: %+v %v", page, err)
+	}
+	viewer.Profile = "p"
+	c.Attributes(favorite.ID, "label", "Hidden")
+	c.Drain()
+	viewer.Restrictions.BlockedLabels = []string{"hidden"}
+	for _, pivot := range []string{"songs", "genres"} {
+		page, err = s.BrowseEntities(viewer, BrowseRequest{Library: "music", Pivot: pivot, Query: &BrowseNode{Field: "favorite", Operator: "equals", Value: true}, Limit: 40})
+		if err != nil || page.PageInfo.Total != 0 || len(page.Entries) != 0 {
+			t.Fatalf("%s personal filter bypassed the current restriction: %+v %v", pivot, page, err)
+		}
 	}
 }

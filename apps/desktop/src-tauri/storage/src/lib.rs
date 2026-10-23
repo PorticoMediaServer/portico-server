@@ -8,3 +8,9 @@ pub mod download_receipt;
 pub mod download_store;
 #[path = "../../src/download_commands.rs"]
 pub mod download_commands;
+#[path = "../../src/equalizer.rs"]
+pub mod equalizer;
+#[path = "../../src/equalizer_store.rs"]
+pub mod equalizer_store;
+#[path = "../../src/network_cost.rs"]
+pub mod network_cost;

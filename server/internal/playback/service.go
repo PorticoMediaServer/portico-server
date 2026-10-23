@@ -50,12 +50,14 @@ type Session struct {
 }
 type Service struct {
 	// prefetched counts bytes served to private presentations (audio_plan_v2.go).
-	prefetchMu   sync.Mutex
-	prefetched   map[string]int64
-	db           *sql.DB
-	hls          *HLS
-	remote       *Remote
-	StorageGuard func(string) error
+	prefetchMu      sync.Mutex
+	prefetched      map[string]int64
+	prefetchReaders map[string]int
+	prefetchRetired map[string]bool
+	db              *sql.DB
+	hls             *HLS
+	remote          *Remote
+	StorageGuard    func(string) error
 	// AuthorityTx is wired by HTTP composition, never a remote policy lookup.
 	AuthorityTx         ControlAuthorityTx
 	ContinueAuthorityTx ControlAuthorityTx
@@ -442,7 +444,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		delivery.OutputVideoCodec = "h264"
 	}
 	// Enforce policy against the final plan, including finite-timeline conversion.
-	if !ownerTranscoding && (delivery.AudioAction == "convert" || delivery.VideoAction == "convert") {
+	if delivery.AudioAction == "convert" && !cfg.AudioConversionAllowed(ownerTranscoding) || delivery.VideoAction == "convert" && !cfg.VideoConversionAllowed(ownerTranscoding) {
 		return Session{}, ErrTranscodingDisabled
 	}
 	if e = tx.QueryRow(`SELECT a.size,a.modified_ns,COALESCE((SELECT f.revision FROM asset_stream_facts f WHERE f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns),0) FROM catalog_assets a WHERE a.token=?`, aid).Scan(&delivery.SourceSize, &delivery.SourceModifiedNS, &delivery.FactsRevision); e != nil {
@@ -546,7 +548,13 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	}
 	if itemKind == "song" || itemKind == "audiobook_file" {
 		if v1.AudioPlanV2 {
-			if result.AudioPlan, e = s.pinAudioPlan(ctx, tx, result, item, aid, grant, v1, ownerTranscoding); e != nil {
+			// The audio renderer must obey the same narrowed ceiling as the
+			// delivery planner, including when measured render facts know a
+			// bitrate that the catalogue stream facts do not yet carry.
+			audioChoice := *v1
+			audioChoice.MaxAudioBitrateBPS = inputs.input.Target.MaxAudioBitrateBPS
+			audioChoice.Limit = audioChoice.Limit || audioChoice.MaxAudioBitrateBPS > 0
+			if result.AudioPlan, e = s.pinAudioPlan(ctx, tx, p, result, item, aid, grant, &audioChoice, ownerTranscoding); e != nil {
 				return Session{}, e
 			}
 		}
@@ -737,6 +745,7 @@ func (s *Service) Stop(p identity.Principal, id string) error {
 // worker. Internal queue cleanup already proved ownership in its transaction;
 // reauthenticating an old request token after family renewal would leak a worker.
 func (s *Service) stopHLS(id string) {
+	s.ForgetPrefetch(id)
 	if s.hls == nil {
 		return
 	}

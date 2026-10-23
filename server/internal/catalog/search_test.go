@@ -258,10 +258,51 @@ func TestSearchPersistenceLibraryMoveAndScale(t *testing.T) {
 	r.Q, r.Limit = "beacon harbor", 40
 	start = time.Now()
 	out, err = s.Search(context.Background(), r)
-	if err != nil || out.Groups[0].TotalCount != 100 || len(out.Groups[0].Items) != 40 {
-		t.Fatal("scale", out, err)
+	if err != nil || len(out.Groups) != 1 || out.Groups[0].TotalCountExact || out.Groups[0].TotalCount != 40 || len(out.Groups[0].Items) != 40 {
+		t.Fatal("scale token-AND window", out, err)
 	}
-	t.Log("cold process-indexed token AND count+40page", time.Since(start))
+	t.Log("cold process-indexed token AND 40-page", time.Since(start))
+	// Several words have a bounded window count, not a maintained
+	// intersection total. Prove all 100 expected matches by exhausting the
+	// real cursor stream; a first-page integer cannot establish completeness.
+	walk, current := r, out
+	seen := map[string]bool{}
+	pages := 0
+	for {
+		pages++
+		if pages > 3 || len(current.Groups) != 1 {
+			t.Fatal("scale traversal did not exhaust in three pages", pages, current)
+		}
+		group := current.Groups[0]
+		if group.TotalCountExact || group.TotalCount != len(group.Items) || group.HasMore != (group.NextCursor != "") {
+			t.Fatal("incorrect bounded intersection count or continuation", group)
+		}
+		for _, item := range group.Items {
+			if seen[item.ID] || !strings.HasPrefix(item.Title, "Harbor Beacon ") {
+				t.Fatal("duplicate or nonmatching scale item", item)
+			}
+			seen[item.ID] = true
+		}
+		if !group.HasMore {
+			break
+		}
+		walk.Cursor = group.NextCursor
+		current, err = s.Search(context.Background(), walk)
+		if err != nil {
+			t.Fatal("scale traversal", err)
+		}
+	}
+	if len(seen) != 100 || pages != 3 {
+		t.Fatal("scale traversal lost expected matches", len(seen), pages)
+	}
+	// A single indexed word still has the exact maintained total, independently
+	// of its 40-row page and of the multiword continuation above.
+	single := r
+	single.Q = "beacon"
+	exact, err := s.Search(context.Background(), single)
+	if err != nil || len(exact.Groups) != 1 || !exact.Groups[0].TotalCountExact || exact.Groups[0].TotalCount != 100 || len(exact.Groups[0].Items) != 40 {
+		t.Fatal("exact maintained scale count", exact, err)
+	}
 	start = time.Now()
 	_, err = s.Search(context.Background(), r)
 	if err != nil {

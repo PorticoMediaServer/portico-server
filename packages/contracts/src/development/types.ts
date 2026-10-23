@@ -83,3 +83,25 @@ export const canonicalQualityLadder = [
     "videoKbps": 500
   }
 ] as const;
+export const canonicalMusicQualityLadder = [
+  {
+    "id": "original",
+    "audioKbps": 0,
+    "dataMBPerHour": 0
+  },
+  {
+    "id": "cd-quality",
+    "audioKbps": 0,
+    "dataMBPerHour": 0
+  },
+  {
+    "id": "320",
+    "audioKbps": 320,
+    "dataMBPerHour": 144
+  },
+  {
+    "id": "96",
+    "audioKbps": 96,
+    "dataMBPerHour": 43.2
+  }
+] as const;
