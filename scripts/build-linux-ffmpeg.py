@@ -21,6 +21,9 @@ def main():
     parser.add_argument('--work', required=True, type=Path)
     parser.add_argument('--source', required=True, type=Path)
     parser.add_argument('--verify-completed-only', action='store_true')
+    parser.add_argument('--recover-first-round', type=Path,
+                        help='captured exact Docker identity for a compiler whose host wrapper was interrupted')
+    parser.add_argument('--recover-exit-status', type=Path)
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     lock = json.loads((root / 'third_party/ffmpeg/sources.lock.json').read_text())
@@ -55,6 +58,30 @@ def main():
               '--enable-nvenc', '--enable-nvdec', '--enable-amf']
     options['FF_CONFIGURE'] += ' ' + ' '.join(common)
     source_sha = digest(args.source)
+    recovery = None
+    prior_inputs = None
+    recovered_provenance = None
+    completed_record = work / 'linux-output/linux-build-inputs.json'
+    if completed_record.exists():
+        recovered_provenance = json.loads(completed_record.read_text()).get('recoveredFirstRound')
+        if recovered_provenance:
+            prior_inputs = recovered_provenance['originalInputs']
+    if args.recover_first_round:
+        if not args.recover_exit_status or args.recover_exit_status.read_text().strip() != '0':
+            raise ValueError('Recovery requires the actual completed Docker wait exit status 0')
+        recovery = json.loads(args.recover_first_round.read_text())
+        prior_inputs = recovery['originalInputs']
+        if (recovery['image'] != lock['linuxSourceBuild']['compilerImage'] or
+                recovery['command'] != ['bash', '/ffbuild/build.sh'] or
+                recovery['memory'] != 4 * 2**30 or recovery['nanoCPUs'] != 2 * 10**9 or
+                recovery['networkMode'] != 'none'):
+            raise ValueError('Recovered compiler identity or resource/network boundary changed')
+        # A live compiler must never race deletion or a second writer. The
+        # captured full ID can be absent after --rm, but cannot still be active.
+        status = subprocess.run(['docker', 'inspect', '--format', '{{.State.Running}}', recovery['containerId']],
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        if status.returncode == 0 and status.stdout.strip() == 'true':
+            raise ValueError('Recovered compiler is still running')
     # Snapshot the small job inputs before either build. Switching the lane's
     # branch to publish an independent checked component cannot change a
     # running container's helper, compiler capture or source lock.
@@ -82,6 +109,12 @@ def main():
         if Path(name).name != name or digest(fixture_root / name) != fixture['sha256']:
             raise ValueError('Dolby Vision packet fixture checksum/path mismatch: ' + name)
         inputs['fixtures/' + name] = fixture_root / name
+    if prior_inputs:
+        old_key = hashlib.sha256(json.dumps(prior_inputs['files'], sort_keys=True).encode()).hexdigest()
+        original_runner = work / 'linux-build-inputs' / old_key / 'build-linux-ffmpeg.py'
+        if digest(original_runner) != prior_inputs['files']['build-linux-ffmpeg.py']:
+            raise ValueError('Original frozen compiler runner changed')
+        inputs['recovery/original-build-linux-ffmpeg.py'] = original_runner
     hashes = {name: digest(path) for name, path in inputs.items()}
     key = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
     frozen = work / 'linux-build-inputs' / key
@@ -100,6 +133,24 @@ def main():
         'sourceArchiveSHA256': source_sha, 'compilerImage': lock['linuxSourceBuild']['compilerImage'],
         'dependencyPrefixFilesSHA256': digest(deps / 'prefix-files.json'),
         'nativeBuildTools': {'glslc': digest(deps / 'extra/glslc')}}
+    if recovery:
+        unchanged = {k: v for k, v in hashes.items()
+                     if k not in ('build-linux-ffmpeg.py', 'recovery/original-build-linux-ffmpeg.py')}
+        previous = {k: v for k, v in prior_inputs['files'].items() if k != 'build-linux-ffmpeg.py'}
+        if unchanged != previous or any(input_record[k] != prior_inputs[k] for k in
+                ('sourceArchiveSHA256', 'compilerImage', 'dependencyPrefixFilesSHA256', 'nativeBuildTools')):
+            raise ValueError('Interrupted build source, compiler, dependency, recipe or fixture inputs changed')
+        if recovery['env'] != {**options, 'TMPDIR': '/ffbuild/tmp',
+                'PORTICO_DISC_SOURCE_COMMIT': os.environ['PORTICO_DISC_SOURCE_COMMIT'],
+                'SOURCE_DATE_EPOCH': str(lock['sourceDateEpoch'])}:
+            raise ValueError('Recovered compiler environment differs from the exact recipe')
+        recovered_provenance = {'containerId': recovery['containerId'],
+            'originalInputs': prior_inputs, 'shellSHA256': recovery['shellSHA256'],
+            'dockerWaitExitStatus': 0, 'image': recovery['image'], 'command': recovery['command'],
+            'env': recovery['env'], 'mounts': recovery['mounts'],
+            'memory': recovery['memory'], 'nanoCPUs': recovery['nanoCPUs'], 'networkMode': recovery['networkMode']}
+    if recovered_provenance:
+        input_record['recoveredFirstRound'] = recovered_provenance
     completed = work / 'linux-output'
     if (completed / 'repeat-build.json').exists():
         if json.loads((completed / 'linux-build-inputs.json').read_text()) != input_record:
@@ -117,15 +168,16 @@ def main():
     results = []
     for index in (1, 2):
         build = work / 'linux-compile'
-        if build.exists():
-            shutil.rmtree(build)
-        build.mkdir()
-        # Stage the sealed dependency files as host-side hard links. FFmpeg
-        # installs distinct files into this same private prefix, so the packet
-        # gate needs no host pc files or second library prefix.
-        shutil.copytree(prefix, build / 'prefix', copy_function=os.link, symlinks=True)
+        recover_round = recovery is not None and index == 1
+        if not recover_round:
+            if build.exists():
+                shutil.rmtree(build)
+            build.mkdir()
+            # Stage the sealed dependency files as host-side hard links.
+            # FFmpeg installs distinct files into this private prefix.
+            shutil.copytree(prefix, build / 'prefix', copy_function=os.link, symlinks=True)
         command = build / 'build.sh'
-        command.write_text('''#!/bin/bash
+        shell = '''#!/bin/bash
 set -euo pipefail
 export LC_ALL=C.UTF-8 TZ=UTC ZERO_AR_DATE=1
 mkdir -p /ffbuild/source
@@ -153,7 +205,12 @@ export PKG_CONFIG_LIBDIR="$PKG_CONFIG_PATH"
 /ffbuild/dovi-profile-packets /disc/fixtures > /ffbuild/dovi-profile-packets.json
 /opt/ffbuild/bin/ffmpeg -hide_banner -h bsf=dovi_profile > /ffbuild/dovi-profile-help.txt 2>&1
 cat /ffbuild/dovi-profile-packets.json
-''')
+'''
+        if recover_round:
+            if command.read_text() != shell or digest(command) != recovery['shellSHA256']:
+                raise ValueError('Recovered compilation shell differs from the fresh build recipe')
+        else:
+            command.write_text(shell)
         argv = ['docker', 'run', '--rm', '--name', 'portico-hardware-r29-ffmpeg',
                 '--cpus', '2', '--memory', '4g', '--memory-swap', '4g', '--network', 'none',
                 '--label', 'portico.lane=hardware-r29',
@@ -166,13 +223,26 @@ cat /ffbuild/dovi-profile-packets.json
                 '-e', 'SOURCE_DATE_EPOCH=' + str(lock['sourceDateEpoch']),
                 '-e', 'TMPDIR=/ffbuild/tmp',
                 '-e', 'PORTICO_DISC_SOURCE_COMMIT=' + os.environ['PORTICO_DISC_SOURCE_COMMIT']]
-        (build / 'tmp').mkdir()
+        (build / 'tmp').mkdir(exist_ok=recover_round)
         if (deps / 'extra/glslc').exists():
             argv += ['-v', str(deps / 'extra/glslc') + ':/usr/bin/glslc:ro']
         for key, value in options.items():
             argv += ['-e', key + '=' + value]
         argv += [lock['linuxSourceBuild']['compilerImage'], 'bash', '/ffbuild/build.sh']
-        subprocess.run(argv, check=True)
+        if recover_round:
+            mounts = {m['destination']: (m['source'], m['rw']) for m in recovery['mounts']}
+            original_frozen = original_runner.parent
+            expected_mounts = {'/ffbuild': (str(build), True), '/opt/ffbuild': (str(build / 'prefix'), True),
+                '/source.tar.xz': (str(args.source.resolve()), False), '/disc': (str(original_frozen), False),
+                '/build-portico-disc.py': (str(original_frozen / 'build-portico-disc.py'), False),
+                '/capture-compiler.py': (str(original_frozen / 'capture-compiler.py'), False),
+                '/sources.lock.json': (str(original_frozen / 'sources.lock.json'), False),
+                '/usr/bin/glslc': (str(deps / 'extra/glslc'), False)}
+            if mounts != expected_mounts:
+                raise ValueError('Recovered compiler mounts differ from the sealed recipe')
+            print('Adopted completed first compiler round with exact original inputs and Docker exit 0', flush=True)
+        else:
+            subprocess.run(argv, check=True)
         if {str(p.relative_to(prefix)): digest(p) for p in sorted(prefix.rglob('*')) if p.is_file()} != files:
             raise ValueError('FFmpeg installation changed a sealed dependency input')
         binaries = {name: digest(build / 'prefix/bin' / name) for name in ('ffmpeg', 'ffprobe', 'portico-disc')}
@@ -186,7 +256,8 @@ cat /ffbuild/dovi-profile-packets.json
         if not re.search(r'(?m)^\s+-mode\s+<int>.*\(from 2 to 2\).*\(default 2\)', help_text):
             raise ValueError('Canonical FFmpeg dovi_profile mode is not exactly 2')
         results.append({'round': index, 'sourceArchiveSHA256': source_sha, 'binaries': binaries,
-                        'packetTests': packet, 'profileHelp': help_text})
+                        'packetTests': packet, 'profileHelp': help_text,
+                        'buildShellSHA256': digest(command), 'recoveredAfterHostInterruption': recover_round})
         (work / 'repeat-build.json').write_text(json.dumps(results, indent=2) + '\n')
         if index == 1:
             output = work / 'linux-output'
