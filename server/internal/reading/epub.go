@@ -76,6 +76,16 @@ func OpenEPUB(ctx context.Context, r io.ReaderAt, size int64) (*EPUB, error) {
 	if err != nil {
 		return nil, err
 	}
+	return openEPUBArchive(ctx, a)
+}
+func OpenSequentialEPUB(ctx context.Context, source SequentialSource) (*EPUB, error) {
+	a, err := openSequentialArchive(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	return openEPUBArchive(ctx, a)
+}
+func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 	if a.files["META-INF/encryption.xml"] != nil || a.files["META-INF/rights.xml"] != nil {
 		return nil, ErrInvalid
 	}
@@ -97,12 +107,18 @@ func OpenEPUB(ctx context.Context, r io.ReaderAt, size int64) (*EPUB, error) {
 		return nil, err
 	}
 	var p packageXML
-	if err = decodeXML(b, &p); err != nil || len(p.Manifest) == 0 || len(p.Manifest) > MaxEntries || len(p.Spine.Items) == 0 {
+	if err = decodeXML(b, &p); err != nil || len(p.Manifest) == 0 || len(p.Spine.Items) == 0 {
 		return nil, ErrInvalid
 	}
-	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language, Direction: "ltr"}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
-	if p.Spine.Direction == "rtl" {
-		e.Metadata.Direction = "rtl"
+	if len(p.Manifest) > MaxEntries || len(p.Spine.Items) > MaxEntries {
+		return nil, ErrLimit
+	}
+	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
+	if len(e.Metadata.Title) > 4096 || len(e.Metadata.Author) > 4096 || len(e.Metadata.Language) > 64 {
+		return nil, ErrLimit
+	}
+	if p.Spine.Direction == "rtl" || p.Spine.Direction == "ltr" {
+		e.Metadata.Direction = p.Spine.Direction
 	}
 	ids := map[string]string{}
 	for _, item := range p.Manifest {
@@ -159,7 +175,11 @@ func (e *EPUB) Asset(ctx context.Context, name string) ([]byte, string, error) {
 	case "text/css":
 		err = validateCSS(b)
 	case "image/jpeg", "image/png", "image/webp":
-		_, err = inspectImage(b)
+		var info Image
+		info, err = inspectImage(b)
+		if err == nil && info.MIME != mime {
+			err = ErrInvalid
+		}
 	}
 	if err != nil {
 		return nil, "", err
@@ -210,7 +230,7 @@ func validateXHTML(base string, b []byte, assets map[string]string) error {
 			for _, a := range t.Attr {
 				name := strings.ToLower(a.Name.Local)
 				value := strings.TrimSpace(a.Value)
-				if strings.HasPrefix(name, "on") || name == "srcdoc" || name == "srcset" || name == "http-equiv" || name == "ping" || name == "action" || name == "formaction" || name == "background" {
+				if strings.HasPrefix(name, "on") || name == "base" || name == "srcdoc" || name == "srcset" || name == "http-equiv" || name == "ping" || name == "action" || name == "formaction" || name == "background" {
 					return ErrInvalid
 				}
 				if name == "style" {
