@@ -11,7 +11,7 @@ const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
 type QREncoder = typeof import('qrcode');
 let qrEncoder: Promise<QREncoder> | undefined;
 function AuthenticatorQR({value, onError}: {value: string; onError: (error: unknown) => void}) {
-  const [cells, setCells] = useState<{size: number; path: string}>();
+  const [cells, setCells] = useState<{value: string; size: number; path: string}>();
   useEffect(() => {
     let active = true;
     setCells(undefined);
@@ -20,11 +20,11 @@ function AuthenticatorQR({value, onError}: {value: string; onError: (error: unkn
       const code = encoder.create(value, {errorCorrectionLevel: 'M'}), path: string[] = [];
       for (let y = 0; y < code.modules.size; y++) for (let x = 0; x < code.modules.size; x++)
         if (code.modules.get(y, x)) path.push(`M${x} ${y}h1v1h-1z`);
-      if (active) setCells({size: code.modules.size, path: path.join('')});
+      if (active) setCells({value, size: code.modules.size, path: path.join('')});
     }).catch(error => { if (active) onError(error); });
     return () => { active = false; };
   }, [value, onError]);
-  return cells ? <svg className={styles.authenticatorQR} viewBox={`-4 -4 ${cells.size + 8} ${cells.size + 8}`} role="img" aria-label={t('qr.label')} shapeRendering="crispEdges"><path d={cells.path} /></svg> : null;
+  return cells?.value === value ? <svg className={styles.authenticatorQR} viewBox={`-4 -4 ${cells.size + 8} ${cells.size + 8}`} role="img" aria-label={t('qr.label')} shapeRendering="crispEdges"><path d={cells.path} /></svg> : null;
 }
 
 export type ServicesSection = 'devices' | 'security' | 'servers' | 'notifications';

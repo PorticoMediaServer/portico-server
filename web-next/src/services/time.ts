@@ -24,3 +24,14 @@ export function servicesSignInDate(i18n: I18n, value: string, now = Date.now()) 
     ? new Intl.RelativeTimeFormat(i18n.region.formatLocale, {numeric: 'auto'}).format(0, 'day')
     : i18n.date(value);
 }
+
+/** Same calendar-column formatter as the checked MAIN account Notifications page. */
+export function servicesNoticeTime(i18n: I18n, value: string, now = Date.now()) {
+  const at = Date.parse(value), age = now - at;
+  if (!Number.isFinite(at)) return '';
+  if (age >= 0 && age < 3600000) return i18n.relativeTime(at, now);
+  const day = {year: 'numeric', month: '2-digit', day: '2-digit'} as const;
+  if (i18n.formatDate(at, day) === i18n.formatDate(now, day)) return i18n.t('web.account.notif.today');
+  if (age >= 0 && age < 7 * 86400000) return i18n.formatDate(at, {weekday: 'long'});
+  return i18n.date(at, 'dayMonth');
+}

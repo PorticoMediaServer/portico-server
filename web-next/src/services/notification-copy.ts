@@ -7,10 +7,10 @@ export function serviceNoticeCopy(item: AccountNotification, i18n: ReturnType<ty
   const {t} = i18n;
   let icon: IconName = 'i-bell', tone: 'blue' | 'green' | 'amber' = 'blue', title: string, body: string;
   switch (item.kind) {
-    case 'new_device': icon = 'i-tv'; title = t('web.account.notif.newDevice', {name: item.detail.name ?? ''}); body = t('web.account.notif.newDeviceBody'); break;
+    case 'new_device': icon = 'i-tv'; tone = 'amber'; title = t('web.account.notif.newDevice', {name: item.detail.name ?? ''}); body = t('web.account.notif.newDeviceBody'); break;
     case 'account_export_ready': icon = 'i-download'; tone = 'green'; title = t('web.account.notif.exportReady'); body = t('services.feed.exportBody'); break;
     case 'security_event': {
-      icon = 'i-shield'; tone = 'green';
+      icon = 'i-shield'; tone = 'blue';
       const event = item.detail.event;
       title = (ACCOUNT_SECURITY_EVENTS as readonly string[]).includes(event) ? t(`web.account.notif.event.${event}` as MessageId) : t('web.account.notif.security');
       body = t('web.account.notif.securityBody'); break;

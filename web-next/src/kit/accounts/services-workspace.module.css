@@ -57,6 +57,7 @@
 .feedRow p { margin: 4px 0 0; font-size: 14px; line-height: 1.5; color: var(--color-text-secondary); max-width: 560px; }
 .feedRow > time { font-size: 13px; color: var(--color-text-tertiary); font-weight: 600; white-space: nowrap; padding-top: 3px; }
 .feedActions { display: flex; gap: 8px; margin-top: 12px; }
+.feedActions > button { height: 36px; padding: 0 14px; border-radius: 9px; font-size: 14px; line-height: normal; font-weight: 700; letter-spacing: normal; }
 .authenticator { display: flex; gap: 16px; align-items: center; margin-bottom: 14px; }
 .authenticator > div { flex: 1; min-width: 0; }
 .authenticatorQR { width: 148px; height: 148px; padding: 10px; border-radius: 14px; background: #fff; fill: var(--color-ink); flex: none; }

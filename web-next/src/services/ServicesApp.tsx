@@ -90,6 +90,7 @@ function InvalidLink() {
   return <ServicesAuthStage variant="reset"><ServicesHeading>{t('auth.welcomeHome')}</ServicesHeading><ServicesNotice>{t('web.link.invalid')}</ServicesNotice>
     <ServicesActions><Button onClick={() => location.assign('/')}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
 }
+export {InvalidLink as ServicesInvalidLink};
 function ClaimStart() {
   const {t} = servicesI18n();
   return <ServicesAuthStage variant="reset"><ServicesHeading>{t('web.claim.titleGeneric')}</ServicesHeading><ServicesNotice tone="info">{t('web.claim.openFromServer')}</ServicesNotice>
