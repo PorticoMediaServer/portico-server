@@ -698,7 +698,7 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 	private := d.privateSetupPeer(r)
 	key := ""
 	strict := strictPrincipal(dbwork.ClassFrom(r.Context(), dbwork.ClassInteractive))
-	if !strict && !private {
+	if !strict && !private && !castOccurrenceRoute(r.Method, r.URL.Path) {
 		key = identity.Digest(token)
 		if cached, ok := d.principals.lookup(key, time.Now()); ok {
 			// The cache remembers who a token is, not what this request is: a
@@ -717,7 +717,13 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 		if p, e = d.Identity.AuthenticateContext(ctx, token); e != nil {
 			return e
 		}
-		return d.allowedLibrary(ctx, p, "")
+		if e = d.allowedLibrary(ctx, p, ""); e != nil {
+			return e
+		}
+		if item, queue := castOccurrenceResource(r.Method, r.URL.Path); item != "" || queue != "" {
+			return d.castOccurrenceAllowed(ctx, p, item, queue)
+		}
+		return nil
 	}
 	var err error
 	if d.DB == nil {
@@ -1531,6 +1537,10 @@ func (d Dependencies) itemReadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	item, e := d.Catalog.WithContext(r.Context()).Get(identity.PersonalKey(p.Viewer), r.PathValue("id"))
 	if e != nil {
+		failure(w, e)
+		return
+	}
+	if e = d.castOccurrenceAllowed(r.Context(), p, r.PathValue("id"), ""); e != nil {
 		failure(w, e)
 		return
 	}

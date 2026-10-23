@@ -198,9 +198,12 @@ type Service struct {
 	PauseQueueBuilds bool
 	// LibraryCheck and Visibility authorize queue sources and windows (library
 	// access, restrictions and member limits); HTTP composition installs them.
-	QueryKeys    func(context.Context, *sql.Tx, identity.Principal, Selector) (catalog.QueueSelection, error)
-	LibraryCheck LibraryCheck
-	Visibility   Visibility
+	// CastQueueAuthority rechecks the paired screen's actual adopted session
+	// in the queue writer. Nil refuses narrowed Cast queue access.
+	CastQueueAuthority func(context.Context, *sql.Tx, Caller, string) error
+	QueryKeys          func(context.Context, *sql.Tx, identity.Principal, Selector) (catalog.QueueSelection, error)
+	LibraryCheck       LibraryCheck
+	Visibility         Visibility
 	// Unrestricted says the caller's item fence admits every item (every
 	// library, no restrictions): such a caller sees a container as it is, so a
 	// large shuffle can use the container's cached size (queue_counts.go).
