@@ -37,3 +37,19 @@ test('an old tab cannot clear another server or a later replacement family',asyn
  await assert.rejects(f.viewer.write({version:1,serverUrl:'https://wrong.test',session:entry('first',true).connection.session}));
  assert.equal((await f.viewer.read())?.session.viewer.serverId,'first');f.actions.dispose();
 });
+test('Forget removes the exact saved server pin/routes/family without any network or remote revoke',async()=>{
+ const f=setup();await f.actions.switchServer('first');const captured=(await f.store.selected())!.connection.session;
+ f.setOffline();assert.equal(await f.actions.forgetServer(captured),true);
+ assert.equal(f.revoked.length,0,'the changed address must never receive the old token');
+ assert.equal(await f.viewer.read(),null);
+ const state=await f.store.read();assert.deepEqual(state.servers.map(row=>row.connection.pin.serverId),['local','second']);
+ assert.equal(JSON.stringify(state).includes('https://first.test'),false,'the forgotten row owned all paired route memory');
+ assert.equal(await f.actions.forgetServer(captured),false);assert.equal(f.revoked.length,0);
+ await f.actions.switchServer('local');assert.equal((await f.viewer.read())?.session.viewer.serverId,'local');f.actions.dispose();
+});
+test('Forget with a stale family cannot remove a current replacement or switch another selected server',async()=>{
+ const f=setup();const old={...entry('first',true).connection.session,sessionFamilyId:'retired-family'};
+ assert.equal(await f.actions.forgetServer(old),false);
+ assert.equal((await f.store.read()).servers.length,3);
+ assert.equal((await f.viewer.read())?.session.viewer.serverId,'local');assert.equal(f.revoked.length,0);f.actions.dispose();
+});

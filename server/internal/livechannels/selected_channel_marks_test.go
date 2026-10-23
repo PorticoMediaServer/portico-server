@@ -83,3 +83,42 @@ func TestSelectedChannelMarksFailClosedAcrossAuthorityChange(t *testing.T) {
 		t.Fatal("unbounded selection admitted", e)
 	}
 }
+
+func TestGuideMarksUseFullSourceWithinItsReadTransaction(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	in := testInput()
+	in.Playlist = "#EXTM3U\n#EXTINF:-1 tvg-id=\"news\" tvg-chno=\"1\",Northwind News\nhttps://private.invalid/news\n#EXTINF:-1 tvg-id=\"news24\" tvg-chno=\"2\",Northwind News 24\nhttps://private.invalid/news24\n"
+	in.Guide = "<tv/>"
+	saved, err := s.Save(ctx, testAuthority("owner", true, true), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := func(context.Context, *sql.Tx) (DirectoryScope, error) {
+		return DirectoryScope{Fence: "viewer", AllowedLiveSources: []string{saved.ID}}, nil
+	}
+	directory, err := s.ChannelDirectory(ctx, authority, DirectoryQuery{Kind: "all", Sort: "name", Limit: 50})
+	if err != nil || len(directory.Channels) != 2 {
+		t.Fatal(directory, err)
+	}
+	q := testQuery()
+	q.NoProgrammes, q.Search = true, "News 24"
+	called := 0
+	q.MarkChannels = func(ctx context.Context, tx *sql.Tx, channels []Channel) error {
+		called++
+		return s.ChannelMarksTx(ctx, tx, authority, channels)
+	}
+	guide, err := s.Guide(ctx, testAuthority("viewer", true, true), q)
+	if err != nil || len(guide.Channels) != 1 || called != 1 {
+		t.Fatal(guide, called, err)
+	}
+	for _, channel := range directory.Channels {
+		if channel.ID == guide.Channels[0].ID && (!reflect.DeepEqual(channel.Mark, guide.Channels[0].Mark) || channel.Mark == nil || channel.Mark.Text != "N24") {
+			t.Fatalf("filtered guide changed full-source mark: %#v vs %#v", guide.Channels[0].Mark, channel.Mark)
+		}
+	}
+	q.MarkChannels = func(context.Context, *sql.Tx, []Channel) error { return ErrDenied }
+	if _, err = s.Guide(ctx, testAuthority("viewer", true, true), q); !errors.Is(err, ErrDenied) {
+		t.Fatalf("guide ignored mark authority failure: %v", err)
+	}
+}

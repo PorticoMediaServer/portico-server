@@ -169,11 +169,14 @@ type GuideQuery struct {
 	// NoProgrammes answers the channel rows only (the channel list is the same
 	// for every time window).
 	NoProgrammes bool
+	// MarkChannels joins this guide's read snapshot to the complete authorized
+	// source domain. It is supplied by the viewer facade, never by a request.
+	MarkChannels func(context.Context, *sql.Tx, []Channel) error `json:"-"`
 	// ProgrammeAllowed, when set, is the viewer's content-restriction predicate
 	// for a programme's rating (Channels spec §8.1). A programme it refuses
 	// keeps its time slot but shows RestrictedProgrammeTitle and nothing else,
 	// as a restricted Library Channel slot does.
-	ProgrammeAllowed func(rating string) bool
+	ProgrammeAllowed func(rating string) bool `json:"-"`
 }
 type GuideSource struct {
 	RefreshState   string     `json:"refreshState"`

@@ -16,6 +16,7 @@ export type LegacyGuideOptions = Readonly<{
   /** '' for every source of the kind. */
   sourceId: string;
   timezone: string;
+  search?: string;
   group?: string;
   favorites?: boolean;
   /** Owners: include hidden channels (to unhide them). */
@@ -106,13 +107,14 @@ export function legacyProgram(p: GuideProgramme): GuideProgram {
 export function legacyGuideSource(api:ChannelApi,serverId:string,o:LegacyGuideOptions):GuideDataSource {
  let revision:string|undefined,viewerFence:string|undefined;
  const rows=new Map<string,GuideChannel>();
- const route=(kind:'live-source'|'library-channel',start:number,end:number):GuideRoute=>({kind,start:iso(start),end:iso(end),timezone:o.timezone,search:'',sourceId:o.kind==='all'?'':o.sourceId,...(o.group?{group:o.group}:{}),...(o.favorites!==undefined?{favorites:o.favorites}:{}),...(o.includeHidden?{includeHidden:true}:{})});
+ const route=(kind:'live-source'|'library-channel',start:number,end:number):GuideRoute=>({kind,start:iso(start),end:iso(end),timezone:o.timezone,search:o.search??'',sourceId:o.kind==='all'?'':o.sourceId,...(o.group?{group:o.group}:{}),...(o.favorites!==undefined?{favorites:o.favorites}:{}),...(o.includeHidden?{includeHidden:true}:{})});
  return {
   reset(){revision=undefined;viewerFence=undefined;rows.clear();},
  async neighbor(channel,delta,signal){
   const native=legacyChannel(channel);if(!native)return undefined;
   for(let attempt=0;attempt<2;attempt++){
    const q=new URLSearchParams({kind:o.kind,sourceId:o.sourceId,timezone:o.timezone,sort:o.sort??'server',limit:'1',anchorChannelId:native.id,anchorSourceId:native.sourceId,anchorProvenance:native.provenance,direction:delta>0?'next':'previous'});
+   if(o.search)q.set('search',o.search);
    if(o.group)q.set('group',o.group);if(o.favorites!==undefined)q.set('favorites',String(o.favorites));if(o.includeHidden)q.set('includeHidden','true');if(revision)q.set('revision',revision);
    try{
     const page=parseGuideDirectory(await api.request(routePath("get_guide_channels") + "?" + (q),'GET',undefined,signal),serverId,undefined,1);
@@ -132,6 +134,7 @@ export function legacyGuideSource(api:ChannelApi,serverId:string,o:LegacyGuideOp
   async channels(from,limit,signal){
    if(!Number.isSafeInteger(from)||from<0||!Number.isInteger(limit)||limit<1||limit>50)throw new Error('Use a bounded channel directory page.');
    const q=new URLSearchParams({kind:o.kind,sourceId:o.sourceId,timezone:o.timezone,sort:o.sort??'server',offset:String(from),limit:String(limit)});
+   if(o.search)q.set('search',o.search);
    if(o.group)q.set('group',o.group);if(o.favorites!==undefined)q.set('favorites',String(o.favorites));if(o.includeHidden)q.set('includeHidden','true');if(revision)q.set('revision',revision);
    const page=parseGuideDirectory(await api.request(routePath("get_guide_channels") + "?" + (q),'GET',undefined,signal),serverId,from,limit);
     if(signal.aborted)throw signal.reason??new Error('aborted');
