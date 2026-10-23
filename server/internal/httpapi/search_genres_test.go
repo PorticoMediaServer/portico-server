@@ -74,6 +74,9 @@ func TestSearchGenresHandlerUsesCurrentLibraryAuthority(t *testing.T) {
 		t.Fatal("genre authority diverged from browse", page)
 	}
 	apply(2, []string{"private"})
+	if _, err = db.Exec(`UPDATE direct_memberships SET allowed_libraries='["private"]',revision=revision+1 WHERE account_id='member'`); err != nil {
+		t.Fatal(err)
+	}
 	if page := read(); len(page.Genres) != 1 || page.Genres[0].Value != "Secret genre" {
 		t.Fatal("cached genres survived a library revocation", page)
 	}
@@ -81,5 +84,11 @@ func TestSearchGenresHandlerUsesCurrentLibraryAuthority(t *testing.T) {
 		if w := request("/v1/search/genres"+query, session.AccessToken); w.Code != 400 {
 			t.Fatal("unbounded or invalid request accepted", query, w.Code, w.Body.String())
 		}
+	}
+	if _, err = db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='member'`); err != nil {
+		t.Fatal(err)
+	}
+	if w := request(path, session.AccessToken); w.Code != 401 {
+		t.Fatal("disabled member retained genre access", w.Code, w.Body.String())
 	}
 }
