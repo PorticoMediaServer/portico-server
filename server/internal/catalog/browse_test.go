@@ -741,14 +741,18 @@ func TestBrowseHomeMembershipFacetsAndSortedExhaustion(t *testing.T) {
 	hidden := c.Library("hidden", "Private", "movie", "/hidden")
 	want := make([]string, 1203)
 	filtered := []string{}
-	for i := range want {
-		item := c.Movie(lib, fmt.Sprintf("/m/%04d.mkv", i), fmt.Sprintf("Film %04d", i), 2025+i%2)
-		want[i] = item.Public
-		if i%2 == 1 {
-			filtered = append([]string{item.Public}, filtered...)
-		}
-		c.Fields(item.ID, map[string]any{"added_text": "2026-10-20T00:00:00.000Z"})
-		c.Genres(item.ID, "fixture", "Drama")
+	for start := 0; start < len(want); start += 32 {
+		c.Batch(func(batch *catalogtest.Catalog) {
+			for i := start; i < min(start+32, len(want)); i++ {
+				item := batch.Movie(lib, fmt.Sprintf("/m/%04d.mkv", i), fmt.Sprintf("Film %04d", i), 2025+i%2)
+				want[i] = item.Public
+				if i%2 == 1 {
+					filtered = append([]string{item.Public}, filtered...)
+				}
+				batch.Fields(item.ID, map[string]any{"added_text": "2026-10-20T00:00:00.000Z"})
+				batch.Genres(item.ID, "fixture", "Drama")
+			}
+		})
 	}
 	forbidden := c.Movie(lib, "/m/forbidden.mkv", "Restricted title", 2026)
 	c.Attributes(forbidden.ID, "label", "private")

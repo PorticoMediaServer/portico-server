@@ -27,6 +27,20 @@ import (
 type Catalog struct {
 	T  testing.TB
 	DB *sql.DB
+	tx *sql.Tx
+}
+
+type statements interface {
+	QueryRow(string, ...any) *sql.Row
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	Exec(string, ...any) (sql.Result, error)
+}
+
+func (c *Catalog) statements() statements {
+	if c.tx != nil {
+		return c.tx
+	}
+	return c.DB
 }
 
 // Item is a created entity: its integer id, its public id and, for a playable
@@ -55,6 +69,12 @@ func New(t testing.TB, db *sql.DB) *Catalog { return &Catalog{T: t, DB: db} }
 // Write runs fn in one catalogue write transaction.
 func (c *Catalog) Write(fn func(ctx context.Context, tx *sql.Tx) error) {
 	c.T.Helper()
+	if c.tx != nil {
+		if err := fn(context.Background(), c.tx); err != nil {
+			c.T.Fatal(err)
+		}
+		return
+	}
 	if err := dbwork.WithWriteTx(context.Background(), c.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
 		return fn(context.Background(), tx)
 	}); err != nil {
@@ -62,10 +82,24 @@ func (c *Catalog) Write(fn func(ctx context.Context, tx *sql.Tx) error) {
 	}
 }
 
+// Batch builds a fixture quantum in one real catalogue write transaction. All
+// helpers still use compactcatalog's writers and read their own uncommitted
+// rows. Derivation stays outside the batch, after the fixture is published.
+func (c *Catalog) Batch(build func(*Catalog)) {
+	c.T.Helper()
+	if c.tx != nil {
+		c.T.Fatal("nested fixture batch")
+	}
+	c.Write(func(_ context.Context, tx *sql.Tx) error {
+		build(&Catalog{T: c.T, DB: c.DB, tx: tx})
+		return nil
+	})
+}
+
 // Exec runs a statement (for non-catalogue fixture rows).
 func (c *Catalog) Exec(query string, args ...any) {
 	c.T.Helper()
-	if _, err := c.DB.Exec(query, args...); err != nil {
+	if _, err := c.statements().Exec(query, args...); err != nil {
 		c.T.Fatalf("%v: %s", err, query)
 	}
 }
@@ -73,6 +107,9 @@ func (c *Catalog) Exec(query string, args ...any) {
 // Drain runs the derived-data worker until nothing is queued.
 func (c *Catalog) Drain() {
 	c.T.Helper()
+	if c.tx != nil {
+		c.T.Fatal("derive after the fixture batch commits")
+	}
 	w := compactcatalog.NewWorker(c.DB)
 	for i := 0; i < 10000; i++ {
 		n, err := w.Step(context.Background(), 500)
@@ -98,7 +135,7 @@ func (c *Catalog) Library(id, name, kind, root string) int64 {
 func (c *Catalog) Handle(library string) int64 {
 	c.T.Helper()
 	var id int64
-	if err := c.DB.QueryRow(`SELECT id FROM catalog_libraries WHERE library_id=?`, library).Scan(&id); err != nil {
+	if err := c.statements().QueryRow(`SELECT id FROM catalog_libraries WHERE library_id=?`, library).Scan(&id); err != nil {
 		c.T.Fatalf("library %q: %v", library, err)
 	}
 	return id
@@ -107,7 +144,7 @@ func (c *Catalog) Handle(library string) int64 {
 // Public is an entity's public id.
 func (c *Catalog) Public(id int64) string {
 	c.T.Helper()
-	p, err := entityid.Public(context.Background(), c.DB, id)
+	p, err := entityid.Public(context.Background(), c.statements(), id)
 	if err != nil {
 		c.T.Fatal(err)
 	}
@@ -117,7 +154,7 @@ func (c *Catalog) Public(id int64) string {
 // ID is the integer id of a public id.
 func (c *Catalog) ID(public string) int64 {
 	c.T.Helper()
-	id, err := entityid.Resolve(context.Background(), c.DB, public)
+	id, err := entityid.Resolve(context.Background(), c.statements(), public)
 	if err != nil {
 		c.T.Fatalf("entity %q: %v", public, err)
 	}
@@ -127,7 +164,7 @@ func (c *Catalog) ID(public string) int64 {
 func (c *Catalog) root(library int64) string {
 	c.T.Helper()
 	var root string
-	if err := c.DB.QueryRow(`SELECT root FROM catalog_libraries WHERE id=?`, library).Scan(&root); err != nil {
+	if err := c.statements().QueryRow(`SELECT root FROM catalog_libraries WHERE id=?`, library).Scan(&root); err != nil {
 		c.T.Fatal(err)
 	}
 	return root
@@ -192,7 +229,7 @@ func (c *Catalog) Season(show Item, number int) Item {
 	c.T.Helper()
 	var library int64
 	var key string
-	if err := c.DB.QueryRow(`SELECT e.library_id,s.local_key FROM catalog_entities e JOIN catalog_shows s ON s.entity_id=e.id WHERE e.id=?`, show.ID).Scan(&library, &key); err != nil {
+	if err := c.statements().QueryRow(`SELECT e.library_id,s.local_key FROM catalog_entities e JOIN catalog_shows s ON s.entity_id=e.id WHERE e.id=?`, show.ID).Scan(&library, &key); err != nil {
 		c.T.Fatal(err)
 	}
 	title := fmt.Sprintf("Season %d", number)
@@ -206,7 +243,7 @@ func (c *Catalog) Season(show Item, number int) Item {
 func (c *Catalog) Episode(show, season Item, number int, path string) Item {
 	c.T.Helper()
 	var library int64
-	if err := c.DB.QueryRow(`SELECT library_id FROM catalog_entities WHERE id=?`, show.ID).Scan(&library); err != nil {
+	if err := c.statements().QueryRow(`SELECT library_id FROM catalog_entities WHERE id=?`, show.ID).Scan(&library); err != nil {
 		c.T.Fatal(err)
 	}
 	return c.playable(library, compactcatalog.Episode, season.ID, path, fmt.Sprintf("Episode %d", number), 0, map[string]any{"show_id": show.ID, "season_id": season.ID, "numbering": "seasonal", "number": number})
@@ -223,7 +260,7 @@ func (c *Catalog) Artist(library int64, name string) Item {
 func (c *Catalog) Album(artist Item, title string, year int) Item {
 	c.T.Helper()
 	var library int64
-	if err := c.DB.QueryRow(`SELECT library_id FROM catalog_entities WHERE id=?`, artist.ID).Scan(&library); err != nil {
+	if err := c.statements().QueryRow(`SELECT library_id FROM catalog_entities WHERE id=?`, artist.ID).Scan(&library); err != nil {
 		c.T.Fatal(err)
 	}
 	key := strings.ToLower(title) + "|" + fmt.Sprint(artist.ID)
@@ -234,7 +271,7 @@ func (c *Catalog) Album(artist Item, title string, year int) Item {
 func (c *Catalog) Song(album Item, track int, path, title string) Item {
 	c.T.Helper()
 	var library, artist int64
-	if err := c.DB.QueryRow(`SELECT e.library_id,a.artist_id FROM catalog_entities e JOIN catalog_albums a ON a.entity_id=e.id WHERE e.id=?`, album.ID).Scan(&library, &artist); err != nil {
+	if err := c.statements().QueryRow(`SELECT e.library_id,a.artist_id FROM catalog_entities e JOIN catalog_albums a ON a.entity_id=e.id WHERE e.id=?`, album.ID).Scan(&library, &artist); err != nil {
 		c.T.Fatal(err)
 	}
 	it := c.playable(library, compactcatalog.Track, album.ID, path, title, 0, map[string]any{"album_id": album.ID, "track_number": track})
@@ -259,7 +296,7 @@ func (c *Catalog) Book(library int64, title, author string) Item {
 func (c *Catalog) BookFile(book Item, part int, path string) Item {
 	c.T.Helper()
 	var library int64
-	if err := c.DB.QueryRow(`SELECT library_id FROM catalog_entities WHERE id=?`, book.ID).Scan(&library); err != nil {
+	if err := c.statements().QueryRow(`SELECT library_id FROM catalog_entities WHERE id=?`, book.ID).Scan(&library); err != nil {
 		c.T.Fatal(err)
 	}
 	return c.playable(library, compactcatalog.Part, book.ID, path, fmt.Sprintf("Part %d", part), 0, map[string]any{"book_id": book.ID, "part_number": part})

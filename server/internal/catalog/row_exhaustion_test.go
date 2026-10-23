@@ -16,10 +16,14 @@ func TestRowCursorExhaustionStableRevision(t *testing.T) {
 	movies := c.Library("movies", "Movies", "movie", "/movies")
 	hidden := c.Library("hidden", "Hidden", "movie", "/hidden")
 	want := make([]string, 1203)
-	for i := range want {
-		item := c.Movie(movies, fmt.Sprintf("/movies/%04d.mkv", i), fmt.Sprintf("Film %04d", i), 2026)
-		c.Fields(item.ID, map[string]any{"added_text": time.Date(2026, 10, 20, 0, 0, i, 0, time.UTC).Format(time.RFC3339Nano)})
-		want[len(want)-1-i] = item.Public
+	for start := 0; start < len(want); start += 32 {
+		c.Batch(func(batch *catalogtest.Catalog) {
+			for i := start; i < min(start+32, len(want)); i++ {
+				item := batch.Movie(movies, fmt.Sprintf("/movies/%04d.mkv", i), fmt.Sprintf("Film %04d", i), 2026)
+				batch.Fields(item.ID, map[string]any{"added_text": time.Date(2026, 10, 20, 0, 0, i, 0, time.UTC).Format(time.RFC3339Nano)})
+				want[len(want)-1-i] = item.Public
+			}
+		})
 	}
 	for i := 0; i < 3; i++ {
 		denied := c.Movie(movies, fmt.Sprintf("/movies/adult%d.mkv", i), "Restricted title", 2026)

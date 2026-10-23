@@ -30,3 +30,34 @@ func TestFixturesDerive(t *testing.T) {
 		t.Fatalf("memberships: %d %v", members, err)
 	}
 }
+
+func TestFixtureBatchReadsItsOwnWritesAndDerivesAfterCommit(t *testing.T) {
+	c := Open(t)
+	var items []Item
+	c.Batch(func(batch *Catalog) {
+		films := batch.Library("films", "Films", "movie", "/films")
+		film := batch.Movie(films, "/films/Heat.mkv", "Heat", 1995)
+		batch.Genres(film.ID, "fixture", "Crime")
+		batch.Fields(film.ID, map[string]any{"added_text": "2026-10-20T00:00:00Z"})
+		tv := batch.Library("tv", "TV", "tv", "/tv")
+		show := batch.Show(tv, "Show", 2026)
+		episode := batch.Episode(show, batch.Season(show, 1), 1, "/tv/one.mkv")
+		music := batch.Library("music", "Music", "music", "/music")
+		song := batch.Song(batch.Album(batch.Artist(music, "Artist"), "Album", 2026), 1, "/music/one.flac", "One")
+		books := batch.Library("books", "Books", "audiobook", "/books")
+		part := batch.BookFile(batch.Book(books, "Book", "Author"), 1, "/books/one.m4b")
+		items = []Item{film, episode, song, part}
+		for _, item := range items {
+			if batch.ID(item.Public) != item.ID {
+				t.Fatal("fixture read escaped its uncommitted writer")
+			}
+		}
+	})
+	c.Drain()
+	for _, item := range items {
+		var available bool
+		if err := c.DB.QueryRow(`SELECT available FROM catalog_browse_rows WHERE entity_id=?`, item.ID).Scan(&available); err != nil || !available {
+			t.Fatalf("batched fixture did not derive: %+v %v", item, err)
+		}
+	}
+}
