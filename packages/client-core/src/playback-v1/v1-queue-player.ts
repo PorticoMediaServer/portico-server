@@ -59,7 +59,7 @@ const MUSIC_CONTAINERS = ['album', 'artist', 'disc'];
 
 export type V1Viewer = Readonly<{serverId: string; authority: 'local' | 'hosted'; accountId: string; profileId: string}>;
 /** Captured caller lifetime; its predicate must remain current across this start's own output change. */
-export type V1PlayItemContext = Readonly<{signal?: AbortSignal; isCurrent?: () => boolean}>;
+export type V1PlayItemContext = Readonly<{signal?: AbortSignal; isCurrent?: () => boolean; state?: 'playing' | 'paused'}>;
 
 /**
  * How the queue player starts, adopts and ends sessions. The web gives it the session controller's
@@ -338,7 +338,7 @@ export class V1QueuePlayer implements QueueController {
     // Replay, a retry on another route: the title is the queue's current entry, which starts again
     // in place. The rest of the queue is untouched.
     const current = this.currentEntry();
-    if (current && current.itemId === itemId && this.session?.itemId === itemId && !this.nativeOwns()) return this.restartCurrent(startSeconds, chosen, 'playing', false, context);
+    if (current && current.itemId === itemId && this.session?.itemId === itemId && !this.nativeOwns()) return this.restartCurrent(startSeconds, chosen, context?.state ?? 'playing', false, context);
     return this.play(segments([itemId], false), itemId, {startSeconds, ...context}, chosen).then(() => {});
   }
 
@@ -563,7 +563,8 @@ export class V1QueuePlayer implements QueueController {
     return this.play(segments(ids, !!options.shuffle), ids[0]!, options).then(() => {});
   }
 
-  private async play(input: readonly SegmentInput[], first: string, options: {startSeconds?: number; repeat?: 'off' | 'one' | 'all'; signal?: AbortSignal; isCurrent?: () => boolean; propagateError?: boolean}, choices: PlaybackChoices = {}): Promise<QueueHeader | undefined> {
+  private async play(input: readonly SegmentInput[], first: string, options: {startSeconds?: number; repeat?: 'off' | 'one' | 'all'; signal?: AbortSignal; isCurrent?: () => boolean; propagateError?: boolean; state?: 'playing' | 'paused'}, choices: PlaybackChoices = {}): Promise<QueueHeader | undefined> {
+    const state = options.state ?? 'playing';if (state !== 'playing' && state !== 'paused') throw new ContractError('queue start state');
     const generation = ++this.generation;
     ++this.epoch;
     const current = () => !this.disposed && generation === this.generation && !options.signal?.aborted && options.isCurrent?.() !== false;
@@ -574,7 +575,7 @@ export class V1QueuePlayer implements QueueController {
     const asked = this.startChoices(choices);
     this.listening.interact();
     // A new queue is a new playback: the player's own choices go back to the Settings.
-    const intent = this.playback.beginQueueIntent(first || undefined, true);
+    const intent = this.playback.beginQueueIntent(first || undefined, true, state);
     this.publish({phase: 'preparing', error: null, completion: null});
     try {
       const retainQueueIds = this.retainQueueIds ? [...this.retainQueueIds()] : undefined;
@@ -583,7 +584,7 @@ export class V1QueuePlayer implements QueueController {
       // One request when the server may choose the start (resume or the beginning); an explicit
       // position, version or audio track starts the session separately, with those.
       const together = at === undefined && !asked.versionId && !asked.audio;
-      const created: CreateResult = await this.client.create(input, {retainQueueIds, ...(together ? {startPlayback: {state: 'playing' as const, ...(asked.quality ? {quality: asked.quality} : {})}} : {}), ...(options.signal ? {signal: options.signal} : {})});
+      const created: CreateResult = await this.client.create(input, {retainQueueIds, ...(together ? {startPlayback: {state, ...(asked.quality ? {quality: asked.quality} : {})}} : {}), ...(options.signal ? {signal: options.signal} : {})});
       if (!current()) { this.abandon(created.session); return; }
       this.accept(created.queue, created.window);
       let header = created.queue;
@@ -605,7 +606,7 @@ export class V1QueuePlayer implements QueueController {
       }
       if (!current()) { this.abandon(created.session); return; }
       if (created.session && together) await this.adopt(created.session, intent, generation, current, options.signal);
-      else if (header.current) await this.startEntry(header.id, header.current.entryId, intent, at, generation, choices, 'playing', options.signal, current);
+      else if (header.current) await this.startEntry(header.id, header.current.entryId, intent, at, generation, choices, state, options.signal, current);
       if (!current()) return;
       if (options.propagateError && (!this.session || this.session.queue?.queueId !== header.id || this.playback.getSnapshot().phase === 'error')) throw new ContractError('queue playback adoption');
       this.publish({phase: 'ready'});
