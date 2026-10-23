@@ -1,0 +1,41 @@
+package mediaanalysis
+
+import (
+	"testing"
+	"time"
+
+	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/sonic"
+	"portico.local/server/internal/workpolicy"
+)
+
+func TestSonicOwnerViewUsesPolicyAndCodesWithoutFabricatedProgress(t *testing.T) {
+	at := time.Date(2026, 10, 24, 1, 0, 0, 0, time.UTC)
+	next := at.Add(time.Hour)
+	eta := int64(120)
+	status := SonicStatus{Settings: catalog.SonicSettings{Enabled: true, Revision: 3}, PolicyAllows: true, CanAnalyze: true, Total: 10, Analyzed: 4,
+		Runtime: sonic.Availability{State: "ready"}, Work: workpolicy.HeavyWorkFacts{Revision: 7, ObservedAt: at, WindowOpen: true}, EstimatedRemainingSeconds: &eta}
+	view := status.OwnerView("music")
+	if view.State != "analyzing" || view.Done != 4 || view.Total != 10 || view.EstimatedRemainingSeconds == nil || view.ObservedAtMS != at.UnixMilli() {
+		t.Fatal(view)
+	}
+	status.Work.WindowOpen = false
+	status.Work.NextAllowedAt = &next
+	view = status.OwnerView("music")
+	if view.State != "paused" || view.PausedUntilMS == nil || *view.PausedUntilMS != next.UnixMilli() || view.EstimatedRemainingSeconds != nil {
+		t.Fatal(view)
+	}
+	status.Analyzed = 10
+	if view = status.OwnerView("music"); view.State != "complete" || view.PausedUntilMS != nil {
+		t.Fatal(view)
+	}
+	status.CanAnalyze = false
+	status.Runtime.Reason = "private loader diagnostic with /path"
+	if view = status.OwnerView("music"); view.State != "unavailable" || view.ReasonCode != "runtime_or_model_missing" || view.Done != 10 {
+		t.Fatal(view)
+	}
+	status.Settings.Enabled = false
+	if view = status.OwnerView("music"); view.State != "disabled" || view.ReasonCode != "" || view.Done != 10 {
+		t.Fatal(view)
+	}
+}

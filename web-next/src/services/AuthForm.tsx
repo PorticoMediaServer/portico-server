@@ -8,10 +8,10 @@ import type {ServicesAccount} from './session';
 import {servicesI18n} from './i18n';
 import styles from './services.module.css';
 
-type Props = {account: ServicesAccount; onSignedIn: () => void; initialMode?: 'signin' | 'create' | 'forgot'; initialUsername?: string; embedded?: boolean; invitation?: boolean; heading?: ReactNode; lead?: ReactNode; before?: ReactNode; after?: ReactNode};
+type Props = {account: ServicesAccount; onSignedIn: (gesture?: boolean) => void; initialMode?: 'signin' | 'create' | 'forgot'; initialUsername?: string; embedded?: boolean; invitation?: boolean; heading?: ReactNode; lead?: ReactNode; before?: ReactNode; after?: ReactNode};
 export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', initialUsername = '', embedded = false, invitation = false, heading, lead, before, after}: Props) {
   const {t} = useMemo(servicesI18n, []), complete = useRef(onSignedIn); complete.current = onSignedIn;
-  const flow = useMemo(() => new ServicesAuthFlow(account, () => complete.current(), initialMode), [account, initialMode]);
+  const flow = useMemo(() => new ServicesAuthFlow(account, gesture => complete.current(gesture), initialMode), [account, initialMode]);
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
   // Follow family replacement without copying a second session into the form.
   useSyncExternalStore(account.service.subscribe, account.service.getSnapshot);

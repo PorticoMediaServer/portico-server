@@ -12,8 +12,11 @@ import (
 	"portico.local/server/internal/telemetry"
 )
 
-func initializeConsole(db *sql.DB, scan *ingestion.Service, player *playback.Service, hls *playback.HLS, cat *catalog.Service, lyricFetch *lyrics.Bulk, state string) (*operations.Store, *operations.Scheduler, error) {
+func initializeConsole(db *sql.DB, scan *ingestion.Service, player *playback.Service, hls *playback.HLS, cat *catalog.Service, lyricFetch *lyrics.Bulk, state string, existing ...*operations.Store) (*operations.Store, *operations.Scheduler, error) {
 	store := operations.New(db)
+	if len(existing) > 0 && existing[0] != nil {
+		store = existing[0]
+	}
 	scheduler := operations.NewScheduler(store)
 	err := scheduler.Register(operations.Adapter{Kind: "library-scan", Lane: "background-media", Resource: operations.LaneWriteHeavy,
 		ValidateTx: func(ctx context.Context, tx *sql.Tx, resource string) error {

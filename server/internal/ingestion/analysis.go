@@ -57,6 +57,15 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		return err
 	}
 	required := append([]string(nil), policy.Operations...)
+	if !s.DeepAnalysis.SonicCanAttempt() {
+		kept := required[:0]
+		for _, op := range required {
+			if op != catalog.SonicOperation {
+				kept = append(kept, op)
+			}
+		}
+		required = kept
+	}
 	if policy.Allows("probe") {
 		required = append(required, assets.PlaybackAnalysisRevision)
 	}
@@ -94,6 +103,13 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		return err
 	}
 	for _, o := range batch {
+		if !o.needs && policy.Allows(catalog.SonicOperation) && s.DeepAnalysis.SonicCanAttempt() {
+			current, e := s.DeepAnalysis.SonicCurrentTx(ctx, tx, mediaanalysis.Request{JobID: job, ObjectID: o.id, SourceRevision: o.revision, PolicyRevision: policy.Revision})
+			if e != nil {
+				return e
+			}
+			o.needs = !current
+		}
 		if !o.needs {
 			continue
 		}

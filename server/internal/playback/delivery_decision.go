@@ -53,13 +53,15 @@ const (
 	// wanted audio track is not the first, because no other route existed.
 	NoteFirstAudioTrackPlayed = "wanted_audio_track_unreachable_first_track_played"
 	// Notes about the engine and the viewer's overrides behind a plan.
-	NoteEngineAutomatic       = "engine_chosen_automatically"
-	NoteEngineFallback        = "engine_setting_unavailable_other_engine_used"
-	NoteDeviceToneMaps        = "device_tone_maps_hdr"
-	NoteAudioPassthrough      = "audio_passed_through_to_receiver"
-	NoteOverrideStereo        = "viewer_override_force_stereo"
-	NoteOverrideNoPassthrough = "viewer_override_disable_passthrough"
-	NoteOverrideNoHDR         = "viewer_override_disable_hdr"
+	NoteEngineAutomatic                 = "engine_chosen_automatically"
+	NoteEngineFallback                  = "engine_setting_unavailable_other_engine_used"
+	NoteDeviceToneMaps                  = "device_tone_maps_hdr"
+	NoteAudioPassthrough                = "audio_passed_through_to_receiver"
+	NoteOverrideStereo                  = "viewer_override_force_stereo"
+	NoteOverrideNoPassthrough           = "viewer_override_disable_passthrough"
+	NoteOverrideNoHDR                   = "viewer_override_disable_hdr"
+	NoteDolbyVisionEnhancementDiscarded = "dolby_vision_enhancement_layer_discarded"
+	NoteDolbyVisionFELDiscarded         = "dolby_vision_fel_residual_discarded"
 )
 
 type RouteRejection struct {
