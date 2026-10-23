@@ -916,6 +916,7 @@ table identity_move_codes
 table identity_move_link_tickets
 table identity_move_waiting
 table identity_moves
+table identity_owner_completions
 table identity_recovery_codes
 table identity_refresh_credentials
 table identity_refresh_predecessors
