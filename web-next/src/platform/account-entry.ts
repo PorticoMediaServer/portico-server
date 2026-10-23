@@ -1,8 +1,8 @@
 import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {ServerSignInProbe, parseServerSignIn, type ServerSignIn} from '@core/sign-in.ts';
-import {directSignIn, directSignInContinuation, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
+import {directSignIn, directSignInContinuation, shouldRetireAccountSession, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
 import {inspectDirectServer, connectPairedServer, connectPairedPorticoServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
-import {assertFirstContactIdentity, RouteError, type ServerPin} from '@core/route-identity.ts';
+import {assertFirstContactIdentity, RouteError, sameServerPin, type ServerPin} from '@core/route-identity.ts';
 import {knownServerRoutes, type AppSessionStore} from '@core/app-sessions.ts';
 import {acceptPorticoInvitation, type HostedRequestApi} from '@core/portico-servers.ts';
 import type {JoinLink} from '@core/join-link.ts';
@@ -98,11 +98,19 @@ export class BrowserAccountEntry {
     if(op.current())this.publish({...this.state,phase:'joined',joined:{origin:this.state.origin!,signIn:this.state.server.signIn},busy:false,error:undefined});
     this.invitationCode=undefined;return;
    }
+   const previous=await this.ports.store.selected(),pin=api.getRouteConnection()?.pin;
+   if(!op.current())throw new CodedError('cancelled','The server selection changed.');
    api.setAccessToken(result.session.accessToken);
    const env={...this.ports.environment(result.snapshot.serverId),storage:this.ports.store.connectionStorage(result.snapshot.serverId,{signIn:this.state.server.signIn,hostedAccount:hosted,expectedRevision:revision})};
    await this.ports.remember(api,result.session,env,hosted,op.current);
    if(!op.current())return;
+   const installed=await this.ports.store.selected();
+   if(!op.current())return;
+   if(!pin||!installed||!sameServerPin(installed.connection.pin,pin)||installed.connection.session.sessionFamilyId!==result.session.sessionFamilyId||installed.connection.session.viewer.accountId!==result.snapshot.account.id)throw new CodedError('cancelled','The server selection changed.');
    this.session=result.session;
+   // Cleanup is for this exact superseded account grant only. It never runs
+   // before durable admission, and never revokes the current or a peer family.
+   if(previous?.signIn===installed.signIn&&previous.connection.session.viewer.role==='account'&&previous.connection.session.viewer.authority===result.session.viewer.authority&&previous.connection.session.viewer.accountId===result.snapshot.account.id&&sameServerPin(previous.connection.pin,pin)&&shouldRetireAccountSession(previous.connection.session,result.session))void this.retire(api,previous.connection.session).catch(()=>{});
    const continuation=directSignInContinuation(result);
    this.publish({...this.state,snapshot:result.snapshot,busy:false,error:undefined,phase:continuation==='viewer'?'ready':continuation==='profile-selection'?'profiles':continuation});
   }catch(error){await this.retire(api,result.session);if(op.current())api.setAccessToken('');throw error;}

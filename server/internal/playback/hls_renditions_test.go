@@ -329,3 +329,23 @@ func TestAudioRenditionLabelMatchesManifestContract(t *testing.T) {
 		t.Fatal("lost track identities")
 	}
 }
+
+func TestDolbyVisionManifestDoesNotInventMissingSourceLevel(t *testing.T) {
+	detail := hdr10Detail
+	detail.DynamicRange = assets.RangeDolbyVision
+	detail.DolbyVisionProfile = 8
+	detail.DolbyVisionCompatibility = 1
+	detail.CodecTag = "dvh1"
+	source := videoSource("mkv", "hevc", detail, SourceAudio{Codec: "eac3", Channels: 6})
+	p := decide(t, source, appleTVProfile(), func(in *DeliveryInput) { in.FMP4Output = true; in.Server = matrixToolchain() })
+	if p.Trace.Video.DolbyVisionLevel != 0 {
+		t.Fatal("fixture unexpectedly has a DV level")
+	}
+	manifest := string(hlsMasterManifest(&p))
+	if strings.Contains(manifest, "CODECS=") {
+		t.Fatal("unknown DV level became a codec claim", manifest)
+	}
+	if !strings.Contains(manifest, "VIDEO-RANGE=PQ") {
+		t.Fatal("actual compatible base range lost", manifest)
+	}
+}

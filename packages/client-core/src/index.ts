@@ -2144,3 +2144,6 @@ export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppS
 export {ServerSignInProbe, parseServerSignIn, signInLabelKey, serverSignInSettingsURL, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
 export * from './account-move.ts';
 export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} from './tv-consent.ts';
+
+export {videoPictureName, videoAudioFormatName, videoTrackName, videoTrackWords, formatVideoBytes} from './video-track-labels.ts';
+export type {VideoTrackWords, VideoTrackNameParts} from './video-track-labels.ts';
