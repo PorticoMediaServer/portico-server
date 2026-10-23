@@ -289,8 +289,9 @@ func (s *Service) listeningBookFacts(r ContentRequest, out *ContentEntry) error 
 	if year > 0 {
 		out.PublishedYear = &year
 	}
+	// Recognizing an edition never shortens the stored title or manufactures
+	// a display title. Titles retain their editions, subtitles and suffixes.
 	if match := bookEditionSuffix.FindStringSubmatchIndex(out.Title); match != nil {
-		out.DisplayTitle = strings.TrimSpace(out.Title[:match[0]])
 		if out.Edition == "" {
 			out.Edition = strings.ToUpper(out.Title[match[2]:match[2]+1]) + strings.ToLower(out.Title[match[2]+1:match[3]])
 		}
