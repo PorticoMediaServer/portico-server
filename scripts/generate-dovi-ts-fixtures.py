@@ -86,6 +86,8 @@ class Writer:
 
 
 def access_units(probe, path):
+    if path.stat().st_size > 1048576:
+        raise ValueError("input exceeds 1MiB fixture bound")
     p = subprocess.run([str(probe), "-v", "error", "-show_packets", "-show_frames", "-of", "json", str(path)],
                        capture_output=True, check=True, timeout=30)
     rows = json.loads(p.stdout)["packets_and_frames"]
@@ -121,7 +123,8 @@ def main():
                 ("wrong-dependency", "MEL", "dependency"), ("no-descriptor", "FEL", "no-descriptor"),
                 ("corrupt-rpu", "FEL", "crc"), ("wrong-rpu-profile", "MEL", "profile"),
                 ("missing-clock", "FEL", "clock"), ("removed-descriptor", "MEL", "remove"),
-                ("pmt-version-only", "FEL", "version"), ("queue-bound", "MEL", "queue")]
+                ("pmt-version-only", "FEL", "version"), ("queue-bound", "MEL", "queue"),
+                ("m2ts-fel", "FEL", "m2ts")]
     replacement_data = (args.fixtures / "dv-8.1.hevc").read_bytes()
     replacement_starts = list(re.finditer(b"\x00\x00\x00\x01|\x00\x00\x01", replacement_data))
     replacements = [replacement_data[m.end():replacement_starts[i + 1].start() if i + 1 < len(replacement_starts) else len(replacement_data)]
@@ -183,16 +186,24 @@ def main():
                 else:
                     writer.packetize(pid, pes(data, actual_pts, actual_dts), dts if pid == BL else None)
         data = writer.bytes()
+        if mode == "m2ts":
+            # Authored arrival clock, not measured provider or display timing.
+            data = b"".join(((i * 9000) & 0x3fffffff).to_bytes(4, "big") + data[i * 188:(i + 1) * 188]
+                            for i in range(len(data) // 188))
         if len(data) > 1048576:
             raise ValueError("fixture exceeds 1MiB")
-        path = args.output / (name + ".ts")
+        path = args.output / (name + (".m2ts" if mode == "m2ts" else ".ts"))
         path.write_bytes(data)
         results.append({"path": path.name, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
-                        "expected": "joined24" if mode in ("normal", "el-first", "split", "version") else
+                        "expected": "joined24" if mode in ("normal", "el-first", "split", "version", "m2ts") else
                                     "unjoined" if mode == "no-descriptor" else "refused",
                         "layer": layer, "sourcePacketClocks": clocks})
+    version = subprocess.check_output([str(args.ffprobe), "-version"], timeout=10, text=True).splitlines()[0]
     manifest = {"schema": 1, "license": "GPL-3.0-only", "source": "procedural HDR fixtures; authored test TS/PMT/PES clocks, no real licensed media",
                 "scope": "structural dual-PID transport torture inputs; no mastered FEL residual or target claim",
+                "sourceManifestSha256": hashlib.sha256((args.fixtures / "manifest.json").read_bytes()).hexdigest(),
+                "generatorSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                "ffprobe": {"version": version, "sha256": hashlib.sha256(args.ffprobe.read_bytes()).hexdigest()},
                 "basePid": BL, "enhancementPid": EL, "pmtPid": PMT, "fixtures": results}
     (args.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(json.dumps({"generated": len(results), "bytes": sum(r["bytes"] for r in results)}))

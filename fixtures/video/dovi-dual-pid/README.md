@@ -1,0 +1,9 @@
+# Generated dual-PID transport torture set
+
+These 17 fixtures contain procedural HEVC images and generated Dolby Vision RPU. They are GPL-3.0-only, with no supplied licensed sample. `manifest.json` pins every file, the input HDR fixture manifest, generator and actual FFprobe binary. Reproduce into an empty scratch directory with `scripts/generate-dovi-ts-fixtures.py --ffprobe FFPROBE --fixtures fixtures/video/hdr-generated --output OUTPUT`.
+
+The generator uses actual decoded frame-to-packet positions to author source PTS/DTS, including B-frame reordering and a variable interval. It writes real PAT, CRC-checked PMT with an explicit profile 7 EL-to-BL dependency, PES timestamps, continuity counters and PCR. The M2TS case has actual 192-byte packets with a declared arrival clock. None of those clocks is an observed display or provider fact.
+
+The expected outcomes are in the manifest: six 24-frame joins; ten terminal failures; one 48-packet/two-stream result without a descriptor. Positive cases include MEL/FEL, EL-first ordering, PES fragmentation, a PMT version-only update and M2TS. Refusal cases exercise source clock/POC/dependency mismatch, truncated EL, corrupt/wrong-profile RPU, absent clocks, removed descriptor and the queue bound. These are deliberate failures, never playable fallback examples.
+
+The C gate reads each source to its actual EOF or error, verifies the genuine joined profile 7 configuration, seeks and repeats valid clocks, and proves errors remain terminal after seek. The Python gate checks every NAL against the official dovi_tool mux, actual base-frame hashes and CLI join-to-8.1 MP4 conversion. See `third_party/ffmpeg/portico-dovi-join.md` for exact invocation and limits. A successful host gate does not qualify the canonical bundle, full disc engine, remote reading or FEL residual reconstruction.
