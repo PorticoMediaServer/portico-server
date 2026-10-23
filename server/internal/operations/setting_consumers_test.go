@@ -263,8 +263,10 @@ func TestStoredSettingsHaveRuntimeConsumers(t *testing.T) {
 }
 
 var preferenceRuntimeSources = map[string][2]string{
-	"quality.home":                        {"server/internal/playback/delivery_policy.go", "quality."},
-	"quality.remote":                      {"server/internal/playback/delivery_policy.go", "quality."},
+	// The network lane builds the key dynamically. Witness the actual runtime
+	// invocation that feeds QualityMode, not the key prefix in a local assignment.
+	"quality.home":                        {"server/internal/playback/delivery_policy.go", "function:SavedQualityPreference"},
+	"quality.remote":                      {"server/internal/playback/delivery_policy.go", "function:SavedQualityPreference"},
 	"appearance.cardSizePercent":          {"web/src/shell/Shell.tsx", "appearance.cardSizePercent"},
 	"appearance.showBackdrops":            {"web/src/shell/Shell.tsx", "appearance.showBackdrops"},
 	"audiobooks.defaultSpeed":             {"server/internal/catalog/listening_preferences.go", "audiobooks.defaultSpeed"},
@@ -381,8 +383,9 @@ func TestStoredPreferencesHaveRuntimeConsumers(t *testing.T) {
 				t.Error(err)
 				continue
 			}
-			// Count a runtime reader call, never a catalogue, form or comment.
-			pattern := `(?:value|read)(?:<[^;\n]*?>)?\(\s*['"]` + regexp.QuoteMeta(witness[1]) + `['"]`
+			// Local readers take the key first; the canonical projection takes
+			// its parsed snapshot first and the literal key second.
+			pattern := `(?:\b(?:value|read)(?:<[^;\n]*?>)?\(\s*|\bpreferenceValue(?:<[^;\n]*?>)?\(\s*snapshot\s*,\s*)['"]` + regexp.QuoteMeta(witness[1]) + `['"]`
 			found = regexp.MustCompile(pattern).Match(source)
 		}
 		if !found {
