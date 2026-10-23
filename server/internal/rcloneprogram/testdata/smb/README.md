@@ -6,7 +6,7 @@ for rclone. Samba is GPLv3-or-later; the official Debian base is pinned by its
 published image index digest. The fixture build prints the installed Samba
 version. Package resolution belongs to the disposable runner job, not the host.
 
-Build with `docker build --label portico=remote-sources-r40 --iidfile "$TMPDIR/samba-image" internal/rcloneprogram/testdata/smb`.
+Build with `docker build --label portico=remote-sources-r40 --label "portico.job=$PORTICO_SAMBA_TEST_JOB" --iidfile "$TMPDIR/samba-image" internal/rcloneprogram/testdata/smb`.
 Set `PORTICO_SAMBA_TEST_IMAGE` to that exact image ID and
 `PORTICO_SAMBA_TEST_JOB` to a unique safe job label before running
 `TestLockedSMBMixedOperationBudget`. The test binds only loopback, mounts only

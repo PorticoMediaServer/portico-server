@@ -57,6 +57,10 @@ func TestLockedSMBMixedOperationBudget(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(label)) != "remote-sources-r40" {
 		t.Fatal("Samba fixture image is not owned", err)
 	}
+	label, err = command(ctx, "image", "inspect", "--format", `{{ index .Config.Labels "portico.job" }}`, image).Output()
+	if err != nil || strings.TrimSpace(string(label)) != job {
+		t.Fatal("Samba fixture image belongs to another job", err)
+	}
 	port := backendFixturePort(t)
 	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	raw, err := command(ctx, "run", "--detach", "--rm", "--label", "portico=remote-sources-r40", "--label", "portico.job="+job, "--read-only", "--memory=256m", "--cpus=1", "--pids-limit=128", "--tmpfs", "/run", "--tmpfs", "/var/lib/samba", "--tmpfs", "/var/cache/samba", "--tmpfs", "/var/log/samba", "--publish", address+":445", "--mount", "type=bind,source="+root+",target=/media,readonly", image).Output()
