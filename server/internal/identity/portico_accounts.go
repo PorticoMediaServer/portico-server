@@ -340,8 +340,11 @@ func CheckPorticoReturnTx(ctx context.Context, tx *sql.Tx, who PorticoIdentity) 
 	if r == nil || !r.ExpiresAt.After(time.Now()) || r.RegistrationID == "" || r.ClaimGeneration < 1 || r.CredentialGeneration < 1 {
 		return ErrUnauthorized
 	}
+	if r.Purpose == "sign-in" && (r.CurrentOwnerAccountID != "" || r.PreviousOwnerRole != "") {
+		return ErrUnauthorized
+	}
 	var valid bool
-	e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_claim_identity c JOIN networking_claim_intents i ON i.operation_id=c.installed_operation_id AND i.operation_id=c.active_operation_id AND i.server_id=c.server_id AND i.public_key=c.public_key AND i.local_generation=c.reset_generation LEFT JOIN networking_claim_authority a ON a.operation_id=i.operation_id WHERE c.singleton=1 AND i.stage='installed' AND i.installation_acknowledged=1 AND i.operation_id=? AND i.account_id=? AND i.claim_generation=? AND i.credential_generation=? AND i.purpose=? AND i.current_owner_account_id=? AND i.previous_owner_role=? AND COALESCE(a.state,'active')='active' AND EXISTS(SELECT 1 FROM networking_claim_credentials k WHERE k.operation_id=i.operation_id AND k.server_id=i.server_id AND k.local_generation=i.local_generation AND k.claim_generation=i.claim_generation AND k.credential_generation=i.credential_generation))`, r.OperationID, who.AccountID, fmt.Sprint(r.ClaimGeneration), fmt.Sprint(r.CredentialGeneration), r.Purpose, r.CurrentOwnerAccountID, r.PreviousOwnerRole).Scan(&valid)
+	e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_claim_identity c JOIN networking_claim_intents i ON i.operation_id=c.installed_operation_id AND i.operation_id=c.active_operation_id AND i.server_id=c.server_id AND i.public_key=c.public_key AND i.local_generation=c.reset_generation LEFT JOIN networking_claim_authority a ON a.operation_id=i.operation_id WHERE c.singleton=1 AND i.stage='installed' AND i.installation_acknowledged=1 AND i.operation_id=? AND i.claim_generation=? AND i.credential_generation=? AND (?='sign-in' OR (i.account_id=? AND i.purpose=? AND i.current_owner_account_id=? AND i.previous_owner_role=?)) AND COALESCE(a.state,'active')='active' AND EXISTS(SELECT 1 FROM networking_claim_credentials k WHERE k.operation_id=i.operation_id AND k.server_id=i.server_id AND k.local_generation=i.local_generation AND k.claim_generation=i.claim_generation AND k.credential_generation=i.credential_generation))`, r.OperationID, fmt.Sprint(r.ClaimGeneration), fmt.Sprint(r.CredentialGeneration), r.Purpose, who.AccountID, r.Purpose, r.CurrentOwnerAccountID, r.PreviousOwnerRole).Scan(&valid)
 	if e != nil {
 		return e
 	}
@@ -355,7 +358,7 @@ func CheckPorticoReturnTx(ctx context.Context, tx *sql.Tx, who PorticoIdentity) 
 // existing account/profile is merged: a target collision requires a separate
 // reviewed migration, and the previous owner's data keeps its original IDs.
 func (s *Service) CompletePorticoOwnerClaim(ctx context.Context, bearer string, expected int64, who PorticoIdentity) (DirectSignIn, error) {
-	if who.Return == nil || who.Return.Purpose == "setup" || who.Username == "" {
+	if who.Return == nil || (who.Return.Purpose != "switch" && who.Return.Purpose != "change-owner") || who.Username == "" {
 		return DirectSignIn{}, ErrUnauthorized
 	}
 	var out DirectSignIn

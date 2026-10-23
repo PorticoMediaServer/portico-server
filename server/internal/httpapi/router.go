@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"portico.local/apikit"
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/administration"
 	"portico.local/server/internal/backup"
@@ -279,7 +280,12 @@ func failure(w http.ResponseWriter, e error) {
 		status int
 	}{{identity.ErrMoveCollision, "move_collision", 409}, {identity.ErrMoveConfirmation, "move_confirmation", 409}, {identity.ErrMoveCode, "move_code_invalid", 410}, {identity.ErrMoveWaiting, "account_move_waiting", 403}} {
 		if errors.Is(e, moveErr.err) {
-			write(w, moveErr.status, map[string]any{"error": map[string]any{"code": moveErr.code, "message": e.Error(), "retryable": false}})
+			var collision *identity.MoveCollisionError
+			public := &apierror.Error{Code: moveErr.code}
+			if errors.As(e, &collision) {
+				public.Current = MoveCollisionDetails{ExistingUsername: collision.Username, ServerName: collision.ServerName}
+			}
+			policyErrors.Write(w, w.Header().Get("X-Request-Id"), public)
 			return
 		}
 	}

@@ -36,6 +36,7 @@ func callerFrom(ctx context.Context) v1Caller {
 // Messages are US English fallbacks; clients localise by code.
 func v1ErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "access_refused", Status: 403, Message: identity.ErrAccessRefused.Error(), Retry: apierror.Never},
 		{Code: "move_collision", Status: 409, Message: identity.ErrMoveCollision.Error(), Retry: apierror.Never},
 		{Code: "move_confirmation", Status: 409, Message: identity.ErrMoveConfirmation.Error(), Retry: apierror.Never},
 		{Code: "move_code_invalid", Status: 410, Message: identity.ErrMoveCode.Error(), Retry: apierror.Never},

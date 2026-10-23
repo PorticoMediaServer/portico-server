@@ -7,6 +7,12 @@ import (
 	"portico.local/server/internal/identity"
 )
 
+// MoveCollisionDetails is ApiError.current only for move_collision.
+// It is safe identity context for the holder of a valid Waiting proof.
+type MoveCollisionDetails struct {
+	ExistingUsername string `json:"existingUsername"`
+	ServerName       string `json:"serverName"`
+}
 type moveStatus struct {
 	Move *identity.AccountMove `json:"move"`
 }
@@ -24,6 +30,14 @@ type porticoMoveRedemption struct {
 }
 
 func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
+	d.httpHandle(mux, "GET /v1/admin/sign-in", func(w http.ResponseWriter, r *http.Request) {
+		out, e := d.Identity.ReadSignInSettings(r.Context(), directBearer(r))
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
 	d.httpHandle(mux, "GET /v1/admin/sign-in/move", func(w http.ResponseWriter, r *http.Request) {
 		out, e := d.Identity.AccountMove(r.Context(), directBearer(r))
 		if e != nil {
@@ -201,6 +215,9 @@ func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
 func registerAccountMoveContracts(registry *apikit.Registry) error {
 	owner := func(id, method, path string, status int) apikit.Metadata {
 		return apikit.Metadata{ID: id, Method: method, Path: path, Summary: "Manage the server sign-in move", Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 16384, Status: status, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "revision_mismatch", "sign_in_kind_portico", "sign_in_kind_local", "move_collision", "move_confirmation", "move_code_invalid", "internal"}}
+	}
+	if e := apikit.RegisterHTTP[struct{}, identity.SignInSettings](registry, owner("get_sign_in_settings", "GET", "/v1/admin/sign-in", 200)); e != nil {
+		return e
 	}
 	if e := apikit.RegisterHTTP[struct{}, moveStatus](registry, owner("get_sign_in_move", "GET", "/v1/admin/sign-in/move", 200)); e != nil {
 		return e

@@ -7398,6 +7398,32 @@ export const routes = [
     "admission": "security-fence"
   },
   {
+    "id": "get_sign_in_settings",
+    "method": "GET",
+    "path": "/v1/admin/sign-in",
+    "summary": "Manage the server sign-in move",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
     "id": "get_storage_mounts",
     "method": "GET",
     "path": "/v1/storage/mounts",
@@ -10568,6 +10594,12 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "rate_limited",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "access_refused",
+      "account_move_waiting",
+      "move_collision",
+      "move_code_invalid",
       "internal"
     ],
     "status": 200,
@@ -17718,6 +17750,7 @@ export const routePaths = {
   "get_shows_id_seasons": "/v1/shows/{id}/seasons",
   "get_shows_screen_metadata": "/v1/shows/{id}/metadata/screen",
   "get_sign_in_move": "/v1/admin/sign-in/move",
+  "get_sign_in_settings": "/v1/admin/sign-in",
   "get_storage_mounts": "/v1/storage/mounts",
   "get_storage_operations_id": "/v1/storage/operations/{id}",
   "get_storage_rclone_bundled": "/v1/storage/rclone/bundled",

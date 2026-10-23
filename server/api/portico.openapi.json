@@ -140049,6 +140049,139 @@
         ],
         "type": "object"
       },
+      "GetSignInSettingsRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetSignInSettingsResponse": {
+        "properties": {
+          "move": {
+            "anyOf": [
+              {
+                "properties": {
+                  "devices": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "from": {
+                    "enum": [
+                      "portico",
+                      "local"
+                    ],
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "invitations": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "ownAddressRequired": {
+                    "type": "boolean"
+                  },
+                  "people": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "profiles": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "serverName": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "startOver": {
+                    "type": "boolean"
+                  },
+                  "to": {
+                    "enum": [
+                      "portico",
+                      "local"
+                    ],
+                    "type": "string"
+                  },
+                  "waiting": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "to",
+                  "startOver",
+                  "stage",
+                  "revision",
+                  "people",
+                  "invitations",
+                  "profiles",
+                  "waiting",
+                  "serverName",
+                  "ownAddressRequired"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "username",
+              "displayName"
+            ],
+            "type": "object"
+          },
+          "signIn": {
+            "enum": [
+              "portico",
+              "local"
+            ],
+            "type": "string"
+          },
+          "webPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "signIn",
+          "owner",
+          "move",
+          "webPath"
+        ],
+        "type": "object"
+      },
       "GetStorageMountsRequest": {
         "properties": {},
         "required": [],
@@ -158364,6 +158497,21 @@
         ],
         "type": "object"
       },
+      "MoveCollisionDetails": {
+        "properties": {
+          "existingUsername": {
+            "type": "string"
+          },
+          "serverName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "existingUsername",
+          "serverName"
+        ],
+        "type": "object"
+      },
       "MoveQueueEntryRequest": {
         "properties": {
           "after": {
@@ -170092,6 +170240,12 @@
           "installationId": {
             "type": "string"
           },
+          "moveCode": {
+            "type": "string"
+          },
+          "moveTicket": {
+            "type": "string"
+          },
           "purpose": {
             "type": "string"
           },
@@ -170121,8 +170275,7 @@
           "registrationId",
           "serverChallenge",
           "installationId",
-          "purpose",
-          "expectedRevision"
+          "purpose"
         ],
         "type": "object"
       },
@@ -251495,6 +251648,209 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/sign-in": {
+      "get": {
+        "operationId": "get_sign_in_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "move": {
+                      "anyOf": [
+                        {
+                          "properties": {
+                            "devices": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "from": {
+                              "enum": [
+                                "portico",
+                                "local"
+                              ],
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "invitations": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "ownAddressRequired": {
+                              "type": "boolean"
+                            },
+                            "people": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "profiles": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "serverName": {
+                              "type": "string"
+                            },
+                            "stage": {
+                              "type": "string"
+                            },
+                            "startOver": {
+                              "type": "boolean"
+                            },
+                            "to": {
+                              "enum": [
+                                "portico",
+                                "local"
+                              ],
+                              "type": "string"
+                            },
+                            "waiting": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "from",
+                            "to",
+                            "startOver",
+                            "stage",
+                            "revision",
+                            "people",
+                            "invitations",
+                            "profiles",
+                            "waiting",
+                            "serverName",
+                            "ownAddressRequired"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "owner": {
+                      "properties": {
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "username": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "username",
+                        "displayName"
+                      ],
+                      "type": "object"
+                    },
+                    "signIn": {
+                      "enum": [
+                        "portico",
+                        "local"
+                      ],
+                      "type": "string"
+                    },
+                    "webPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "signIn",
+                    "owner",
+                    "move",
+                    "webPath"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Manage the server sign-in move",
+        "x-access": "owner",
+        "x-admission": "security-fence",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "revision_mismatch",
+          "sign_in_kind_portico",
+          "sign_in_kind_local",
+          "move_collision",
+          "move_confirmation",
+          "move_code_invalid",
+          "internal"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 16384,
+        "x-scope": "session"
+      }
+    },
     "/v1/admin/sign-in/move": {
       "get": {
         "operationId": "get_sign_in_move",
@@ -259060,6 +259416,12 @@
                   "installationId": {
                     "type": "string"
                   },
+                  "moveCode": {
+                    "type": "string"
+                  },
+                  "moveTicket": {
+                    "type": "string"
+                  },
                   "purpose": {
                     "type": "string"
                   },
@@ -259089,8 +259451,7 @@
                   "registrationId",
                   "serverChallenge",
                   "installationId",
-                  "purpose",
-                  "expectedRevision"
+                  "purpose"
                 ],
                 "type": "object"
               }
@@ -259406,6 +259767,12 @@
           "unauthorized",
           "not_permitted",
           "rate_limited",
+          "sign_in_kind_portico",
+          "sign_in_kind_local",
+          "access_refused",
+          "account_move_waiting",
+          "move_collision",
+          "move_code_invalid",
           "internal"
         ],
         "x-lane": "security",
