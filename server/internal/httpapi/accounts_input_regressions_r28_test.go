@@ -60,3 +60,27 @@ func TestInvitationWrongKindIsRefusalAndNeverSpendsCode(t *testing.T) {
 		t.Fatalf("wrong-kind account created: %v %v", created, e)
 	}
 }
+
+func TestUnknownMemberDeviceSignoutIsNotFoundWithoutRetiringAnyFamily(t *testing.T) {
+	f := administrationFixtureNew(t)
+	var before, after int
+	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM authorization_session_families WHERE revoked=1`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"-1", "99999999999999999999", "null", "missing-member"} {
+		for _, suffix := range []string{"/devices/sign-out", "/devices/missing-device/sign-out"} {
+			path := "/v1/direct/members/" + id + suffix
+			for _, token := range []string{f.owner, f.admin} {
+				if w := f.call("POST", path, token, `{}`); w.Code != http.StatusNotFound {
+					t.Fatalf("unknown authorized target: %d %s", w.Code, w.Body)
+				}
+			}
+			if w := f.call("POST", path, f.member, `{}`); w.Code != http.StatusForbidden {
+				t.Fatalf("member reached target lookup: %d %s", w.Code, w.Body)
+			}
+		}
+	}
+	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM authorization_session_families WHERE revoked=1`).Scan(&after); err != nil || after != before {
+		t.Fatal("unknown target retired a real family", before, after, err)
+	}
+}
