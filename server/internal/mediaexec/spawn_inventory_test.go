@@ -44,6 +44,8 @@ var processSpawns = map[string]string{
 	"internal/storage/root_registration_windows.go:RegisterRoot":              "storage helper (server binary); transfers a retained root handle",
 	"internal/subtitles/acquisition.go:Import":                                "subtitle sidecar helper (server binary); reads text files, runs no tool",
 	// Not media.
+	"internal/rcloneprogram/command_other.go:versionCommand":     "rclone version only; bounded five-second install/custom-program check, no media arguments or input",
+	"internal/rcloneprogram/command_windows.go:versionCommand":   "rclone version only, including a selected Windows wrapper; bounded five-second check, no media arguments or input",
 	"internal/mounts/service.go:reconcile":                       "rclone mount guardian (server binary)",
 	"internal/mounts/native.go:NativeHelper":                     "rclone, inside the native helper, for a managed network mount",
 	"internal/mounts/native.go:runOwned":                         "rclone native helper (server binary)",

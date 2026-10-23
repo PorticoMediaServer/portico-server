@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 STAGE = ROOT / ".scratch/race-input"
 OUT = ROOT / ".scratch/race-artifacts"
 REPOSITORY = "PorticoMediaServer/portico-server"
-GO_VERSION = "go1.26.9"
+GO_VERSION = "go1.26.10"
 SHARDS = 16
 FLAGS = ["-json", "-race", "-count=1", "-timeout=30m"]
 CODE_FILES = (
@@ -184,7 +184,7 @@ def prepare():
     digest = capture()
     version = go("env", "GOVERSION", cwd=STAGE / "source")
     if version.returncode or version.stdout.strip() != GO_VERSION:
-        raise ValueError("Qualification requires the actual Go 1.26.9 compiler")
+        raise ValueError("Qualification requires the actual Go 1.26.10 compiler")
     helper = go("build", "-mod=readonly", "-o", str(STAGE / "playback-test-helper"),
                 "./cmd/server", cwd=STAGE / "source")
     if helper.returncode:
@@ -256,7 +256,7 @@ def run_shard(shard, plan_path):
         raise ValueError("Shard source snapshot differs from discovery")
     version = go("env", "GOVERSION", cwd=STAGE / "source")
     if version.returncode or version.stdout.strip() != plan["goVersion"]:
-        raise ValueError("Shard compiler differs from the qualified Go 1.26.9 compiler")
+        raise ValueError("Shard compiler differs from the qualified Go 1.26.10 compiler")
     harnesses = install_harnesses(plan)
     environment = test_env()
     # The helper is built from the identical captured module, never downloaded

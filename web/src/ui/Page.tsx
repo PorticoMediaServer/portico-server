@@ -1,5 +1,6 @@
 import React from 'react';
 import {cx} from './cx';
+import {uiI18n} from './i18n';
 import {Icon} from './Icon';
 import s from './Page.module.css';
 
@@ -9,13 +10,13 @@ export function Page({children, className, style}: {children: React.ReactNode; c
 
 /** Page title block. The title is the h1; eyebrow gives context; actions sit trailing and wrap on phones.
  * `provisional` marks a stand-in title shown until the real name is known, so it is not taken for the page's name. */
-export function PageHeader({title, eyebrow, subtitle, actions, onBack, backLabel = 'Back', titleAdornment, className, provisional, pageKey}: {title: React.ReactNode; eyebrow?: React.ReactNode; subtitle?: React.ReactNode; actions?: React.ReactNode; onBack?: () => void; backLabel?: string; titleAdornment?: React.ReactNode; className?: string; provisional?: boolean; /** What the page shows (the loaded item's id), so the page's announcement can tell two of the same name apart. */ pageKey?: string}) {
+export function PageHeader({title, eyebrow, subtitle, actions, onBack, backLabel, titleAdornment, className, provisional, pageKey}: {title: React.ReactNode; eyebrow?: React.ReactNode; subtitle?: React.ReactNode; actions?: React.ReactNode; onBack?: () => void; backLabel?: string; titleAdornment?: React.ReactNode; className?: string; provisional?: boolean; /** What the page shows (the loaded item's id), so the page's announcement can tell two of the same name apart. */ pageKey?: string}) {
   return (
     <header className={cx(s.header, className)}>
       <div className={s.headerCopy}>
         {/* The line above the title is always there (the way back, the eyebrow, or nothing), so titles sit at one height on every page. */}
         <div className={s.lead}>
-          {onBack ? <button type="button" className={s.backLink} onClick={onBack}><Icon name="back" size={14} />{backLabel}</button> : null}
+          {onBack ? <button type="button" className={s.backLink} onClick={onBack}><Icon name="back" size={14} />{backLabel ?? uiI18n().t('action.back')}</button> : null}
           {eyebrow ? <span className={s.eyebrow}>{eyebrow}</span> : null}
         </div>
         <div className={s.titleRow}>

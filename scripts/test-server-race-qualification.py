@@ -19,7 +19,7 @@ ORIGIN = {'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '2', 'GITHUB_SHA': 'a' *
 
 
 def coverage():
-    plan = {'schema': 1, 'shards': 16, 'goVersion': 'go1.26.9', 'flags': q.FLAGS,
+    plan = {'schema': 1, 'shards': 16, 'goVersion': 'go1.26.10', 'flags': q.FLAGS,
             'environment': q.BASE_ENV, 'origin': ORIGIN, 'sourceDigest': 'b' * 64,
             'codeFiles': q.code_hashes(), 'packages': [
                 {'module': 'server', 'package': 'example/suite', 'directory': 'source/suite',

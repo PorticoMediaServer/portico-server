@@ -8,6 +8,8 @@ import {useI18n} from '../../app/i18n';
 /** Profiles for a direct (server-local) account. */
 export function DirectProfiles({onDone}: {onDone?: () => void}) {
   const {t} = useI18n();
+  // Keep the account name emphasized while the catalogue owns the whole sentence.
+  const watchingAs = t('auth.whosWatchingAs', {name: '\uFFFC'}).split('\uFFFC');
   const session = useSession();
   const pending = session.direct.pending;
   const [choice, setChoice] = useState<string>();
@@ -34,7 +36,7 @@ export function DirectProfiles({onDone}: {onDone?: () => void}) {
   }, [pending]);
   return (
     <div className={s.stack}>
-      <p className={s.lede} style={{textAlign: 'center'}}>Who’s watching{pending?.snapshot ? <> as <strong>{pending.snapshot.account.username}</strong></> : null}?</p>
+      <p className={s.lede} style={{textAlign: 'center'}}>{pending?.snapshot ? <>{watchingAs[0]}<strong>{pending.snapshot.account.username}</strong>{watchingAs[1]}</> : t('auth.whosWatching')}</p>
       {pending ? (
         current ? (
           <form className={s.pin} onSubmit={e => { e.preventDefault(); submit(current.id, pin); }}>

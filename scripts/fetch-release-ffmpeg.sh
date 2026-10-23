@@ -12,7 +12,15 @@ if [[ -n "$PREVIOUS_RUN" ]]; then
   gh run download "$PREVIOUS_RUN" --name "validation-ffmpeg-$TARGET" --dir "$WORK"
 else
   TAG="$(python3 -c "import json;print(json.load(open('third_party/ffmpeg/sources.lock.json'))['releaseTag'])")"
-  gh release download "$TAG" --pattern "portico-ffmpeg-${TAG}-${TARGET}.tar.xz" --dir "$WORK"
+  gh release download "$TAG" --pattern "portico-ffmpeg-${TAG}-${TARGET}.tar.xz" --pattern checksums.sha256 --dir "$WORK"
+  python3 - "$WORK" "portico-ffmpeg-${TAG}-${TARGET}.tar.xz" <<'DIGEST'
+import hashlib,pathlib,sys
+folder,name=pathlib.Path(sys.argv[1]),sys.argv[2]
+entries=[line.split() for line in (folder/'checksums.sha256').read_text().splitlines()]
+expected=[row[0] for row in entries if len(row)==2 and pathlib.PurePosixPath(row[1]).name==name]
+if len(expected)!=1 or hashlib.file_digest((folder/name).open('rb'),'sha256').hexdigest()!=expected[0]:
+    raise SystemExit('Qualified toolchain release checksum mismatch')
+DIGEST
 fi
 archives=("$WORK"/*.tar.xz)
 [[ ${#archives[@]} == 1 && -s "${archives[0]}" ]]

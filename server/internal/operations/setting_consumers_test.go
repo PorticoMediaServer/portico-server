@@ -263,8 +263,8 @@ func TestStoredSettingsHaveRuntimeConsumers(t *testing.T) {
 }
 
 var preferenceRuntimeSources = map[string][2]string{
-	"quality.home":                        {"server/internal/playback/delivery_policy.go", "quality."},
-	"quality.remote":                      {"server/internal/playback/delivery_policy.go", "quality."},
+	"quality.home":                        {"server/internal/playback/delivery_policy.go", "function:SavedQualityPreference"},
+	"quality.remote":                      {"server/internal/playback/delivery_policy.go", "function:SavedQualityPreference"},
 	"appearance.cardSizePercent":          {"web/src/shell/Shell.tsx", "appearance.cardSizePercent"},
 	"appearance.reduceMotion":             {"web/src/shell/Shell.tsx", "appearance.reduceMotion"},
 	"appearance.showBackdrops":            {"web/src/shell/Shell.tsx", "appearance.showBackdrops"},

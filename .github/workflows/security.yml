@@ -59,7 +59,7 @@ jobs:
         env: {GOFLAGS: '-p=2', GOTOOLCHAIN: local}
         run: |
           go version
-          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -show verbose ./...
 
   javascript-vulnerabilities:
     runs-on: ubuntu-24.04

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       toolchain_run:
-        description: Prior validation run with completed matching toolchain artifacts (missing targets fail)
+        description: Prior validation run, or empty to reuse the immutable qualified toolchain release
         type: string
         required: false
         default: ''
@@ -69,48 +69,24 @@ jobs:
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - name: Reuse a matching validation toolchain when available
-        if: inputs.toolchain_run != ''
-        env: {GH_TOKEN: '${{ github.token }}', PREVIOUS_RUN: '${{ inputs.toolchain_run }}', VALIDATION_SCOPE: '${{ inputs.scope }}'}
+      - name: Reuse an exact verified archive; never implicitly rebuild sources
+        env: {GH_TOKEN: '${{ github.token }}', PREVIOUS_RUN: '${{ inputs.toolchain_run }}'}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$PREVIOUS_RUN" =~ ^[0-9]+$ ]]
-          work="runtime/ffmpeg-build/${{ matrix.target }}"
+          target='${{ matrix.target }}'
+          work="runtime/ffmpeg-build/$target"
           mkdir -p "$work"
-          if gh run download "$PREVIOUS_RUN" --name 'validation-ffmpeg-${{ matrix.target }}' --dir "$work"; then
-            mkdir -p "$work/reused"
-            tar -xJf "$work/portico-ffmpeg-${{ matrix.target }}.tar.xz" -C "$work/reused"
-            python3 scripts/verify-ffmpeg-manifest.py "$work/reused"
-            cmp third_party/ffmpeg/sources.lock.json "$work/reused/sources.lock.json"
-            cmp third_party/ffmpeg/requirements.v1.json "$work/reused/requirements.v1.json"
-            mkdir -p "$work/recipe-check"
-            tar -xJf "$work/reused/corresponding-source.tar.xz" -C "$work/recipe-check" provenance
-            for script in build-ffmpeg.sh normalize-ffmpeg-bundle.py patch-btbn-winarm64-system-error.sh; do
-              cmp "scripts/$script" "$work/recipe-check/provenance/scripts/$script"
-            done
-            diff -r third_party/ffmpeg/patches "$work/recipe-check/provenance/contract/patches"
-          else
-            echo 'Reuse requires a completed matching artifact; never restart source builds implicitly.' >&2
-            exit 1
-          fi
-      - name: Build the pinned FFmpeg recipe
-        env: {VALIDATION_SCOPE: '${{ inputs.scope }}'}
-        shell: bash
-        run: |
-          if [[ "$VALIDATION_SCOPE" == macos ]]; then
-            test -s 'runtime/ffmpeg-build/${{ matrix.target }}/portico-ffmpeg-${{ matrix.target }}.tar.xz'
-            exit 0
-          fi
-          if [[ ! -s 'runtime/ffmpeg-build/${{ matrix.target }}/portico-ffmpeg-${{ matrix.target }}.tar.xz' ]]; then
-            ./scripts/build-ffmpeg.sh '${{ matrix.target }}'
-          fi
+          scripts/fetch-release-ffmpeg.sh "$target" "$work/reused" "$PREVIOUS_RUN"
+          archive=(.toolchain/"$target"/*.tar.xz)
+          test "${#archive[@]}" = 1
+          cp "${archive[0]}" "$work/portico-ffmpeg-$target.tar.xz"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: validation-ffmpeg-${{ matrix.target }}
           path: runtime/ffmpeg-build/${{ matrix.target }}/portico-ffmpeg-${{ matrix.target }}.tar.xz
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 30
           compression-level: 0
 
   race:

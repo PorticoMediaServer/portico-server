@@ -1,47 +1,68 @@
 name: Qualified FFmpeg toolchain
 on:
   workflow_dispatch:
+    inputs:
+      include_macos_x64:
+        description: Also build the optional Intel Mac toolchain
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
   group: ffmpeg-toolchain
   cancel-in-progress: false
 jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.targets.outputs.build }}
+      verify: ${{ steps.targets.outputs.verify }}
+    steps:
+      - id: targets
+        env: {INCLUDE_INTEL: '${{ inputs.include_macos_x64 }}'}
+        run: |
+          python3 - <<'PLAN'
+          import json, os
+          targets = ['linux-x64', 'linux-arm64', 'windows-x64', 'windows-arm64', 'macos-arm64']
+          if os.environ['INCLUDE_INTEL'] == 'true': targets.append('macos-x64')
+          native = {'linux-x64':'ubuntu-24.04','linux-arm64':'ubuntu-24.04-arm','windows-x64':'windows-2025','windows-arm64':'windows-11-arm','macos-arm64':'macos-15','macos-x64':'macos-15-intel'}
+          build = [{'runner':('macos-15-intel' if t == 'macos-x64' else 'macos-15' if t == 'macos-arm64' else 'ubuntu-24.04'), 'target':t} for t in targets]
+          verify = [{'runner':native[t], 'target':t} for t in targets]
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              for name, value in [('build', build), ('verify', verify)]: out.write(name + '=' + json.dumps(value, separators=(',',':')) + '\n')
+          PLAN
   build:
+    needs: plan
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
-        include:
-          - {runner: ubuntu-24.04, target: linux-x64}
-          - {runner: ubuntu-24.04, target: linux-arm64}
-          - {runner: ubuntu-24.04, target: windows-x64}
-          - {runner: ubuntu-24.04, target: windows-arm64}
-          - {runner: macos-15, target: macos-arm64}
-          - {runner: macos-15-intel, target: macos-x64}
+        include: ${{ fromJSON(needs.plan.outputs.build) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Check builder headroom
+        run: |
+          df -h
+          if command -v free >/dev/null; then free -h; fi
       - run: ./scripts/build-ffmpeg.sh '${{ matrix.target }}'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ffmpeg-${{ matrix.target }}
           path: runtime/ffmpeg-build/${{ matrix.target }}/portico-ffmpeg-${{ matrix.target }}.tar.xz
           if-no-files-found: error
+          retention-days: 30
   verify:
     env:
       PORTICO_REQUIRE_QUALIFIED_FFMPEG: "1"
-    needs: build
+      PORTICO_TEST_TIER: all
+    needs: [plan, build]
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
-        include:
-          - {runner: ubuntu-24.04, target: linux-x64}
-          - {runner: ubuntu-24.04-arm, target: linux-arm64}
-          - {runner: windows-2025, target: windows-x64}
-          - {runner: windows-11-arm, target: windows-arm64}
-          - {runner: macos-15, target: macos-arm64}
-          - {runner: macos-15-intel, target: macos-x64}
+        include: ${{ fromJSON(needs.plan.outputs.verify) }}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -93,6 +114,6 @@ jobs:
             echo "Toolchain release $tag already exists; bump releaseTag for a new build." >&2
             exit 1
           fi
-          gh release create "$tag" .release/* --title "FFmpeg toolchain $tag" --prerelease --latest=false \
+          gh release create "$tag" .release/* --title "FFmpeg toolchain $tag" --target "$GITHUB_SHA" --prerelease --latest=false \
             --notes "Qualified FFmpeg and FFprobe build for Portico Media Server, built from the pinned recipe in third_party/ffmpeg/sources.lock.json with GPL and version-3 licensing and without nonfree components. Each archive includes its corresponding source and license texts."
 
