@@ -3,9 +3,12 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"path/filepath"
+	"portico.local/server/internal/reportwindow"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/telemetry"
@@ -50,10 +53,28 @@ func telemetryData(t *testing.T, mux http.Handler, token, path string, into any)
 	}
 }
 
+// Capture the viewer context once; invalid-query tests keep that valid context
+// so a missing time zone cannot accidentally satisfy a different rejection.
+func telemetryContext(t *testing.T, path string) string {
+	t.Helper()
+	u, err := url.Parse(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	q.Set("timeZone", "America/Halifax")
+	q.Set("until", time.Now().Truncate(reportwindow.Grain).UTC().Format(time.RFC3339))
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 func TestTelemetrySurfacesAreOwnerOnly(t *testing.T) {
 	mux, owner, member := telemetryFixture(t)
 	paths := []string{"/v1/admin/transcode/capacity", "/v1/admin/telemetry", "/v1/admin/telemetry/now", "/v1/admin/attention", "/v1/admin/playback/history", "/v1/admin/playback/history.csv"}
 	for _, path := range paths {
+		if path == "/v1/admin/telemetry" {
+			path = telemetryContext(t, path)
+		}
 		for _, token := range []string{"", member} {
 			if w := supportRequest(mux, token, path); w.Code != refusedStatus(token) {
 				t.Fatalf("%s must refuse a non-owner: %d", path, w.Code)
@@ -89,7 +110,7 @@ func TestCapacityAndAttentionReadTheSettingsRegistry(t *testing.T) {
 func TestTelemetryWindowsAndHistoryQueriesAreValidated(t *testing.T) {
 	mux, owner, _ := telemetryFixture(t)
 	var reading telemetry.Reading
-	telemetryData(t, mux, owner, "/v1/admin/telemetry?window=1h", &reading)
+	telemetryData(t, mux, owner, telemetryContext(t, "/v1/admin/telemetry?window=1h"), &reading)
 	if reading.Window != "1h" || len(reading.Series) != len(telemetry.MetricNames) {
 		t.Fatal("every published metric needs a series", reading)
 	}
@@ -99,8 +120,16 @@ func TestTelemetryWindowsAndHistoryQueriesAreValidated(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{"/v1/admin/telemetry?window=5s", "/v1/admin/playback/history?period=forever", "/v1/admin/playback/history?limit=9999", "/v1/admin/telemetry?unknown=1"} {
+		if strings.HasPrefix(bad, "/v1/admin/telemetry?") {
+			bad = telemetryContext(t, bad)
+		}
 		if w := supportRequest(mux, owner, bad); w.Code != 400 {
 			t.Fatalf("%s must be refused: %d %s", bad, w.Code, w.Body.String())
+		}
+	}
+	for _, query := range []string{"", "?timeZone=America/Halifax", "?until=2026-01-01T00:00:00Z", "?timeZone=Local&until=2026-01-01T00:00:00Z", "?timeZone=America/Halifax&until=2026-01-01T00:00:01Z"} {
+		if w := supportRequest(mux, owner, "/v1/admin/telemetry"+query); w.Code != 400 {
+			t.Fatalf("invalid report context accepted: %q %d", query, w.Code)
 		}
 	}
 	var sample telemetry.Sample
