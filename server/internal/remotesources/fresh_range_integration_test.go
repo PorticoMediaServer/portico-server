@@ -212,7 +212,15 @@ func TestFreshSequentialRealRangeUnsupportedOrigin(t *testing.T) {
 	const size = 2<<20 + 7
 	modified := time.Unix(1700000000, 0).UTC()
 	var gets atomic.Int32
+	var routeMismatch, redirect atomic.Bool
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if host, _, err := net.SplitHostPort(r.RemoteAddr); err != nil || host != "127.0.0.1" {
+			routeMismatch.Store(true)
+		}
+		if redirect.Load() {
+			http.Redirect(w, r, "http://169.254.169.254/latest/", 302)
+			return
+		}
 		if r.URL.Path == "/" {
 			w.Header().Set("Content-Type", "text/html")
 			fmt.Fprint(w, `<a href="film.mkv">film.mkv</a>`)
@@ -258,8 +266,31 @@ func TestFreshSequentialRealRangeUnsupportedOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	approval, err := (remotemedia.Policy{}).Approve(ctx, origin.URL+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy, err := remotemedia.StartPolicyProxy(ctx, remotemedia.Policy{Approvals: []remotemedia.Approval{approval}}, "proxy", "fixture-only", lease.Check)
+	if err != nil {
+		lease.Release()
+		t.Fatal(err)
+	}
+	defer func() {
+		proxy.Close()
+		wait, stop := context.WithTimeout(context.Background(), time.Second)
+		defer stop()
+		if err := proxy.Wait(wait); err != nil {
+			t.Error(err)
+		}
+	}()
 	cacheDirectory := t.TempDir()
-	process, err := rcloneprogram.StartServe(ctx, rcloneprogram.Program{Path: program, Included: true}, rcloneprogram.ServeCommandSpec{SourceID: "remote", SourceGeneration: "1", PrivateDirectory: t.TempDir(), Configuration: []byte("[fixture]\ntype=http\nurl=" + origin.URL + "/\n"), Remote: "fixture:", Port: port(), MetadataPort: port(), Username: "private", Password: "fixture-only", Connections: 1, RequestsPerSecond: 2, SequentialReads: true, CacheDirectory: cacheDirectory, CacheBytes: 32 << 20, CacheFloor: 1 << 20, Enforce: func(*exec.Cmd) error { return nil }}, lease)
+	process, err := rcloneprogram.StartServe(ctx, rcloneprogram.Program{Path: program, Included: true}, rcloneprogram.ServeCommandSpec{SourceID: "remote", SourceGeneration: "1", PrivateDirectory: t.TempDir(), Configuration: []byte("[fixture]\ntype=http\nurl=" + origin.URL + "/\n"), Remote: "fixture:", Port: port(), MetadataPort: port(), Username: "private", Password: "fixture-only", Connections: 1, RequestsPerSecond: 2, SequentialReads: true, CacheDirectory: cacheDirectory, CacheBytes: 32 << 20, CacheFloor: 1 << 20, Enforce: func(cmd *exec.Cmd) error {
+		cmd.Env = append(cmd.Env, "RCLONE_HTTP_PROXY="+proxy.Locator())
+		// The provider sees127.0.0.2 if rclone bypasses the explicit proxy; the
+		// policy proxy's pinned origin dial uses127.0.0.1. No external account.
+		cmd.Args = append(cmd.Args, "--bind=127.0.0.2")
+		return proxy.Check(ctx)
+	}}, lease)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,5 +357,15 @@ func TestFreshSequentialRealRangeUnsupportedOrigin(t *testing.T) {
 	}
 	if entries, err := os.ReadDir(cacheDirectory); err != nil || len(entries) != 0 {
 		t.Fatal("sequential fallback wrote a VFS cache", entries, err)
+	}
+	if routeMismatch.Load() {
+		t.Fatal("rclone bypassed the pinned policy proxy")
+	}
+	redirect.Store(true)
+	if err := session.StopAndRecheck(ctx); err == nil {
+		t.Fatal("metadata redirect escaped policy proxy")
+	}
+	if gets.Load() != 1 {
+		t.Fatal("failed check replayed media body", gets.Load())
 	}
 }
