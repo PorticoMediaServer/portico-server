@@ -9,6 +9,7 @@ import {createEntryDetailsBindings} from '../src/screens/detail/entry-details.ts
 import type {SelectionContext} from '@core/selection-model/index.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import {browseCapabilitiesPath} from '@core/browse.ts';
+import {titleCreditsWindow} from '../src/screens/detail/credits-window.ts';
 import {setImmediate} from 'node:timers/promises';
 
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return {promise, resolve}; }
@@ -255,4 +256,32 @@ test('a late genre vocabulary cannot navigate after an authority handover', asyn
   await assert.rejects(navigation, {name: 'AbortError'});
   assert.equal(destinations, 0);
   binding.dispose();
+});
+
+test('title credit windows read lazily, bound resident pages and revisit evicted cursor addresses', async () => {
+  const reads: number[] = [];
+  const owner = setup(async path => {
+    if (!path.includes('/credits?')) return detailPage('one');
+    const query = new URL('https://unit.invalid' + path).searchParams, page = Number(query.get('cursor') ?? 0);
+    reads.push(page);
+    return {revision: {catalog: 1, viewer: 1}, group: 'cast', total: 1000000, nextCursor: String(page + 1),
+      credits: Array.from({length: 40}, (_, index) => ({id: `credit-${page * 40 + index}`, name: `Person ${page * 40 + index}`, role: 'Character', department: 'Acting', provider: 'local'}))};
+  });
+  const binding = createDetailBindings(owner.context); await binding.select({libraryId: 'library', itemId: 'one'});
+  const collection = titleCreditsWindow(binding, binding.service.getSnapshot().data!, 'cast');
+  assert.equal(reads.length, 0);
+  const settle = async () => { for (let turn = 0; turn < 10; turn++) await setImmediate(); };
+  collection.ensureRange(0, 10); await settle();
+  assert.ok(reads.length <= 2); assert.equal(collection.getSnapshot().totalIsLowerBound, true);
+  for (let step = 0; step < 6; step++) {
+    const last = collection.getSnapshot().total! - 1;
+    collection.ensureRange(last - 10, last); await settle();
+  }
+  assert.ok(collection.resident().pages <= 5); assert.ok(collection.residentItems().length <= 200);
+  assert.equal(collection.itemAt(0), undefined);
+  collection.ensureRange(0, 10); await settle();
+  assert.equal(collection.itemAt(0)?.id, 'credit-0');
+  assert.ok(reads.filter(page => page === 0).length >= 2);
+  assert.notEqual(collection.getSnapshot().status, 'error');
+  collection.dispose(); binding.dispose(); assert.equal(collection.residentItems().length, 0);
 });

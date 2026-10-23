@@ -24,6 +24,25 @@
 
 .copy > .actions { margin: 0; }
 
+.phoneHero { position: relative; margin-bottom: 18px; }
+.phonePicture { position: relative; height: 330px; }
+.phoneHeroArt { position: absolute; inset: 0; }
+.phoneHeroArt::after { inset: 0 0 -140px; background: linear-gradient(180deg,color-mix(in srgb,var(--color-ink) 50%,transparent) 0,transparent 16%,transparent 36%,color-mix(in srgb,var(--color-ink) 80%,transparent) 68%,color-mix(in srgb,var(--color-ink) 55%,transparent) 84%,transparent 100%); }
+.phoneHeroArt > span { -webkit-mask-image: linear-gradient(180deg,var(--color-ink) 48%,transparent 100%); mask-image: linear-gradient(180deg,var(--color-ink) 48%,transparent 100%); }
+.phoneCopy { position: absolute; z-index: 1; left: 20px; right: 20px; bottom: 4px; text-align: center; }
+.phoneCopy h1 { margin: 0 0 10px; }
+.phoneCopy > div { justify-content: center; gap: 6px 12px; margin: 0; }
+.phoneCopy .inlineLink { box-shadow: none; }
+.phoneHero > .actions { position: relative; margin: 0; padding: 18px 20px 0; }
+.actions[data-phone-title] { gap: 10px; flex-wrap: nowrap; }
+.actions[data-phone-title] > button:not([data-icon-only]) { flex: 1; min-width: 0; padding-left: 12px; padding-right: 12px; }
+.phoneHero .phoneSynopsis[data-variant=hero] { position: relative; margin: 16px 20px 0; font-size: var(--type-synopsis-size); line-height: var(--type-synopsis-line); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.phoneResume { position: relative; margin: 16px 20px 0; }
+.phoneProgress { height: 4px; overflow: hidden; background: color-mix(in srgb,var(--color-text) 16%,transparent); }
+.phoneProgress > span { display: block; height: 100%; background: var(--color-accent-strong); transform-origin: left; }
+.phoneRemaining { display: flex; align-items: center; margin-top: 4px; font-size: var(--type-meta-size); font-weight: var(--type-see-all-weight); color: var(--color-text-secondary); }
+.phoneRemaining > button { margin-left: auto; height: 36px; padding: 0; color: var(--color-accent-strong); font-size: var(--type-starring-size); }
+
 .sticky { position: sticky; top: 76px; z-index: var(--layer-hero-navigation); min-height: 64px; padding: 0 64px; display: flex; align-items: center; gap: 26px; background: transparent; border-bottom: 1px solid var(--color-line); }
 
 .sticky > span { display: none; font-size: var(--type-detail-heading-size); font-weight: var(--type-button-weight); }
@@ -50,6 +69,8 @@
 .people { display: flex; gap: 24px; flex-wrap: wrap; }
 .creditGroups > section + section { margin-top: 32px; }
 .peopleHeader { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.allCredits + .allCredits { margin-top: 24px; }
+.creditPlaceholder { display: block; width: 104px; height: 104px; margin: 0 auto; border-radius: 50%; background: var(--color-raised); }
 
 .people button { border: 0; padding: 0; background: transparent; color: inherit; text-align: center; width: 120px; cursor: pointer; }
 

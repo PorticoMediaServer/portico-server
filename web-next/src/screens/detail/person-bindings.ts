@@ -41,7 +41,7 @@ export function createPersonBindings(context: ScreenContext) {
         const value = await readPerson(life.api, context.scope, id, {...(kind ? {kind} : {role}), limit: pageSize, cursor: cursors.get(page), signal: life.signal(signal)});
         life.assert();
         if (request !== generation || state.page !== header || value.viewerFence !== header.viewerFence || value.revision.catalog !== header.revision.catalog || value.revision.viewer !== header.revision.viewer) throw new DOMException('Person credits changed', 'AbortError');
-        if (value.pageInfo.nextCursor && [...cursors.values()].includes(value.pageInfo.nextCursor)) throw new Error('Repeated person cursor');
+        if (value.pageInfo.nextCursor && [...cursors].some(([address, cursor]) => address !== page + 1 && cursor === value.pageInfo.nextCursor)) throw new Error('Repeated person cursor');
         total = value.pageInfo.total; cursors.set(page + 1, value.pageInfo.nextCursor);
         if (value.pageInfo.nextCursor) addressablePage = Math.max(addressablePage, page + 1);
         const exposed = value.pageInfo.nextCursor ? Math.min(total, (addressablePage + 1) * pageSize) : total;

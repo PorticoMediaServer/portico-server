@@ -1,5 +1,5 @@
-import {Fragment, useEffect, useRef, useState} from 'react';
-import type {CreditPage, DetailCredit, DetailProjection} from '@core/detail.ts';
+import {Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import type {DetailCredit, DetailProjection} from '@core/detail.ts';
 import {PersonCircle} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays';
@@ -7,6 +7,8 @@ import type {DetailBindings} from './bindings';
 import {t, locale} from './text';
 import styles from './detail.module.css';
 import {runScreenCommand} from './context';
+import {WindowedGrid} from '../../kit/layout';
+import {titleCreditsWindow} from './credits-window';
 
 function Person({credit, binding, data}: {credit: DetailCredit; binding: DetailBindings; data: DetailProjection}) {
   const art = binding.context.artwork.foreground(credit.portraitUrl, 208, 1);
@@ -29,31 +31,33 @@ export function CreditLine({message, ...props}: {message: 'title.directedBy' | '
   return <span>{before}<CreditNames {...props} />{after}</span>;
 }
 export function TitlePeople({binding, data, episode = false}: {binding: DetailBindings; data: DetailProjection; episode?: boolean}) {
-  const [group, setGroup] = useState<'cast' | 'crew'>(), [page, setPage] = useState<CreditPage>(), [failed, setFailed] = useState(false);
-  const controller = useRef<AbortController | undefined>(undefined), trigger = useRef<HTMLButtonElement>(null);
-  useEffect(() => { setGroup(undefined); setPage(undefined); return () => controller.current?.abort(); }, [data]);
-  const load = (which: 'cast' | 'crew', cursor?: string) => {
-    controller.current?.abort(); const request = new AbortController(); controller.current = request;
-    setGroup(which); setFailed(false);
-    void binding.readCredits(data, which, cursor, request.signal).then(value => {
-      if (request.signal.aborted) return;
-      setPage(before => cursor && before?.group === value.group ? {...value, credits: [...before.credits, ...value.credits]} : value);
-    }, () => { if (!request.signal.aborted) setFailed(true); });
-  };
+  const [open, setOpen] = useState(false), trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => setOpen(false), [data]);
   const cast = data.metadata.credits.filter(castCredit), crew = data.metadata.credits.filter(credit => !castCredit(credit));
+  const totals = data.metadata.creditTotals, total = totals ? totals.cast + totals.crew : undefined;
+  const rendered = Math.min(6, cast.length) + Math.min(6, crew.length);
   return <div className={styles.creditGroups} data-episode={episode || undefined}>
+    {!episode && <header className={styles.peopleHeader}><h2>{t('title.allPeople')}</h2>{total !== undefined && total > rendered && <Button ref={trigger} variant="text" size="small" icon="i-right" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); setOpen(true); })}>{t('shelf.seeAllCount', {count: total})}</Button>}</header>}
     {([['cast', cast], ['crew', crew]] as const).map(([kind, credits]) => {
       if (!credits.length) return null;
-      const total = data.metadata.creditTotals?.[kind];
-      return <section key={kind}><header className={styles.peopleHeader}><h2>{t(kind === 'cast' ? 'title.cast' : 'title.crew')}</h2>
-        {total !== undefined && total > Math.min(6, credits.length) && <Button ref={trigger} variant="text" size="small" onClick={() => load(kind)}>{t('shelf.seeAllCount', {count: total})}</Button>}</header>
+      return <section key={kind}>{episode && <header className={styles.peopleHeader}><h2>{t(kind === 'cast' ? 'title.cast' : 'title.crew')}</h2>
+        {totals && totals[kind] > Math.min(6, credits.length) && <Button ref={trigger} variant="text" size="small" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); setOpen(true); })}>{t('shelf.seeAllCount', {count: totals[kind]})}</Button>}</header>}
         <div className={styles.people}>{credits.slice(0, 6).map(credit => <Person key={credit.id} credit={credit} data={data} binding={binding} />)}</div>
       </section>;
     })}
-    <Dialog open={!!group} onOpenChange={open => { if (!open) { controller.current?.abort(); setGroup(undefined); setPage(undefined); } }} title={t(group === 'crew' ? 'title.allCrew' : 'title.allCast')} returnFocusRef={trigger}>
-      {failed && <Button size="compact" onClick={() => group && load(group, page?.nextCursor)}>{t('next.states.tryAgain')}</Button>}
-      <div className={styles.people}>{page?.credits.map(credit => <Person key={credit.id} credit={credit} data={data} binding={binding} />)}</div>
-      {page?.nextCursor && <Button size="compact" onClick={() => group && load(group, page.nextCursor)}>{t(group === 'crew' ? 'title.allCrew' : 'title.moreCast')}</Button>}
+    <Dialog open={open} onOpenChange={setOpen} title={t('title.allPeople')} description={data.item.title} width={560} returnFocusRef={trigger}>
+      {open && (['cast', 'crew'] as const).filter(group => (totals?.[group] ?? (group === 'cast' ? cast.length : crew.length)) > 0).map(group => <CreditWindow key={group} binding={binding} data={data} group={group} />)}
     </Dialog>
   </div>;
+}
+
+function CreditWindow({binding, data, group}: {binding: DetailBindings; data: DetailProjection; group: 'cast' | 'crew'}) {
+  const collection = useMemo(() => titleCreditsWindow(binding, data, group), [binding, data, group]);
+  const snapshot = useSyncExternalStore(collection.subscribe, collection.getSnapshot, collection.getSnapshot);
+  useEffect(() => () => collection.dispose(), [collection]);
+  const label = t(group === 'cast' ? 'title.cast' : 'title.crew');
+  return <section className={styles.allCredits}><h3>{label}</h3>{snapshot.status === 'error' && <Button size="compact" onClick={() => collection.retry()}>{t('next.states.tryAgain')}</Button>}
+    <WindowedGrid collection={collection} label={label} cardWidth={120} rowHeight={180} height={240} gap={20} rowGap={16}
+      renderPlaceholder={index => <span className={styles.creditPlaceholder} key={index} />} renderItem={credit => <div className={styles.people}><Person credit={credit} binding={binding} data={data} /></div>} />
+  </section>;
 }

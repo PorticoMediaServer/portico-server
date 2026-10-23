@@ -63,12 +63,24 @@ function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; dat
   const directed = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director');
   const starring = metadata.credits.filter(credit => credit.department.toLowerCase() === 'acting' || credit.role.toLowerCase() === 'cast').slice(0, 4);
   const parts = titlePageFacts({year: item.year, durationSeconds: item.duration, genres: metadata.genres.map(genre => genre.name), contentRating: facts?.contentRating}, env);
+  const genres = <GenreNames names={metadata.genres.map(value => value.name)} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} />;
+  if (phone) {
+    const phoneParts = [...parts.filter(part => part.id === 'year' || part.id === 'genres'), ...parts.filter(part => part.id !== 'year' && part.id !== 'genres')];
+    return <header className={styles.phoneHero}>
+      <div className={styles.phonePicture}>
+        {showBackdrops && <AmbientArt className={styles.phoneHeroArt} treatment="phone" source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, 800, 16 / 9)} position="22% 30%" />}
+        <div className={styles.phoneCopy}><Lockup title={item.title} long platform="phone-web" /><TitleFactsLine parts={phoneParts} genres={genres} /></div>
+      </div>
+      <TitleActions binding={binding} data={data} />
+      {item.overview && <TitleProse variant="hero" className={styles.phoneSynopsis}>{item.overview}</TitleProse>}
+    </header>;
+  }
   return <header className={styles.hero}>
     {showBackdrops && <AmbientArt className={styles.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, phone ? 800 : 1920, 16 / 9)} />}
     <div className={styles.copy}>
       {data.collections?.[0] && <button className={styles.collection} type="button" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); })}><Icon name="i-layers" size={18} />{data.collections[0].name}</button>}
       <Lockup title={item.title} platform={phone ? 'phone-web' : 'desktop'} />
-      <TitleFactsLine parts={parts} genres={<GenreNames names={metadata.genres.map(value => value.name)} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} />} />
+      <TitleFactsLine parts={parts} genres={genres} />
       {facts?.tagline && <p className={styles.tagline}>{facts.tagline}</p>}
       {item.overview && <TitleProse variant="hero" className={styles.blurb}>{item.overview}</TitleProse>}
       {(directed.length > 0 || starring.length > 0) && <div className={styles.credits}>{directed.length > 0 && <CreditLine message="title.directedBy" credits={directed} binding={binding} data={data} />}{starring.length > 0 && <CreditLine message="title.starring" credits={starring} binding={binding} data={data} />}</div>}
@@ -78,21 +90,25 @@ function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; dat
 }
 
 export function TitleActions({binding, data, small = false, topResult = false}: {binding: DetailBindings; data: DetailProjection; small?: boolean; topResult?: boolean}) {
+  const phone = useShellWidth() < 1024 && !topResult;
   const model = detailActions(data, {platform: 'web'}), primary = model.primary;
   const primaryAction = data.actions.find(action => action.enabled && action.playback && action.id !== 'start_over');
   const restart = data.actions.find(action => action.id === 'start_over' && action.enabled && action.playback);
   const run = (task: Promise<unknown>) => { void task.catch(binding.context.effects.reportError); };
   const size = small ? 'compact' as const : 'hero' as const;
-  return <div className={styles.actions}>
-    {primary && primaryAction && (primary.id === 'resume' ? <ResumeButton size={size} progress={data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0} remaining={primary.caption} onClick={() => run(binding.play(data, primaryAction.id))}>{t('next.controls.resume')}</ResumeButton>
-      : <Button variant="primary" icon="i-play" size={size} onClick={() => run(binding.play(data, primaryAction.id))}>{t('next.controls.play')}</Button>)}
+  return <><div className={styles.actions} data-phone-title={phone && !small || undefined}>
+    {primary && primaryAction && (primary.id === 'resume' && !phone ? <ResumeButton size={size} progress={data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0} remaining={primary.caption} onClick={() => run(binding.play(data, primaryAction.id))}>{t('next.controls.resume')}</ResumeButton>
+      : <Button variant="primary" icon="i-play" size={size} onClick={() => run(binding.play(data, primaryAction.id))}>{t(primary.id === 'resume' ? 'next.controls.resume' : 'next.controls.play')}</Button>)}
     {!small && <>
-      {!topResult && restart && primary?.id === 'resume' && <Button icon="i-retry" size={size} onClick={() => run(binding.play(data, restart.id))}>{t('next.controls.startOver')}</Button>}
+      {!phone && !topResult && restart && primary?.id === 'resume' && <Button icon="i-retry" size={size} onClick={() => run(binding.play(data, restart.id))}>{t('next.controls.startOver')}</Button>}
       {data.actions.some(action => action.id === 'watchlist' && action.enabled) && <Button icon={data.personal.watchlisted ? 'i-check' : 'i-plus'} size={size} aria-pressed={data.personal.watchlisted} onClick={() => run(binding.mutate(data, {action: 'watchlist', value: !data.personal.watchlisted}))}>{t('next.controls.myList')}</Button>}
-      {!topResult && data.actions.some(action => action.id === 'watched' && action.enabled) && <Button icon="i-check" iconOnly aria-label={t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')} aria-pressed={data.personal.watched} size={size} onClick={() => run(binding.mutate(data, {action: 'watched', value: !data.personal.watched}))} />}
+      {!phone && !topResult && data.actions.some(action => action.id === 'watched' && action.enabled) && <Button icon="i-check" iconOnly aria-label={t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')} aria-pressed={data.personal.watched} size={size} onClick={() => run(binding.mutate(data, {action: 'watched', value: !data.personal.watched}))} />}
       <TitleMore binding={binding} data={data} />
     </>}
-  </div>;
+  </div>{phone && !small && primary?.id === 'resume' && <div className={styles.phoneResume}>
+    <div className={styles.phoneProgress} role="progressbar" aria-label={t('next.layout.progress')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, Math.max(0, data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0)) * 100)}><span style={{transform: `scaleX(${Math.min(1, Math.max(0, data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0))})`}} /></div>
+    <div className={styles.phoneRemaining}>{primary.caption}{restart && <Button variant="text" icon="i-retry" size="small" onClick={() => run(binding.play(data, restart.id))}>{t('next.controls.startOver')}</Button>}</div>
+  </div>}</>;
 }
 
 function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
@@ -111,6 +127,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   const model = useMemo(() => files && fileInfoModel(files.files.map(fileFacts), files.manage ? {audience: 'owner', manageSurface: phone ? 'phone' : 'desktop', ownerFacts: {locations: files.files.map(file => ({id: file.id, path: file.path, canDelete: files.manage?.delete})), canSplit: files.manage.split && files.files.length >= 2, canMerge: phone && files.manage.merge}} : {audience: 'viewer'}, env, phone ? 'phone' : 'desktop'), [files, phone]);
   return <>
     <Menu open={open} onOpenChange={setOpen} title={data.item.title} trigger={<Button ref={trigger} icon="i-more" iconOnly aria-label={t('next.controls.more')} />}>
+      {phone && data.actions.some(action => action.id === 'watched' && action.enabled) && <MenuItem icon="i-check" selected={data.personal.watched} onSelect={() => { void binding.mutate(data, {action: 'watched', value: !data.personal.watched}).catch(binding.context.effects.reportError); }}>{t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')}</MenuItem>}
       {data.actions.some(action => action.id === 'favorite' && action.enabled) && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
       <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
     </Menu>
