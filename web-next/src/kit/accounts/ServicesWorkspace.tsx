@@ -8,6 +8,12 @@ import wordmark from '../../shell/wordmark.svg';
 import styles from './services-workspace.module.css';
 
 const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
+type WorkspaceIconName = IconName | 'i-file';
+function WorkspaceIcon({name, size}: {name: WorkspaceIconName; size: number}) {
+  // Exact account.html69f2d45 #i-file; the shared catalogue has no copy of this symbol.
+  if (name === 'i-file') return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M7 3.5h7l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1zM14 3.5V8h4" /></g></svg>;
+  return <Icon name={name} size={size} />;
+}
 type QREncoder = typeof import('qrcode');
 let qrEncoder: Promise<QREncoder> | undefined;
 function AuthenticatorQR({value, onError}: {value: string; onError: (error: unknown) => void}) {
@@ -86,9 +92,9 @@ export function ServicesWorkspace({header, account, section, onSection, onSignOu
 export function ServicesGroup({title, description, actions, danger = false, children}: {title?: ReactNode; description?: ReactNode; actions?: ReactNode; danger?: boolean; children: ReactNode}) {
   return <section className={styles.group}>{(title || actions) && <div className={styles.groupHeading}>{title && <h3>{title}</h3>}{actions && <div>{actions}</div>}</div>}{description && <p className={styles.groupDescription}>{description}</p>}<div className={styles.groupBox} data-danger={danger || undefined}>{children}</div></section>;
 }
-export function ServicesWorkspaceRow({title, help, helpPhone, children, icon, phoneIcon, phoneTone, badge}: {title: ReactNode; help?: ReactNode; helpPhone?: ReactNode; children?: ReactNode; icon?: IconName; phoneIcon?: IconName; phoneTone?: 'green'; badge?: ReactNode}) {
+export function ServicesWorkspaceRow({title, help, helpPhone, children, icon, phoneIcon, phoneTone, badge}: {title: ReactNode; help?: ReactNode; helpPhone?: ReactNode; children?: ReactNode; icon?: IconName; phoneIcon?: WorkspaceIconName; phoneTone?: 'green'; badge?: ReactNode}) {
   if (!icon && !phoneIcon) return <SettingsRow label={<>{title}{badge}</>} help={help}>{children}</SettingsRow>;
-  return <div className={styles.iconRow} data-phone-icon-only={!icon || undefined}><span className={styles.icon} data-icon={icon ?? phoneIcon} data-phone-tone={phoneTone}><Icon name={(icon ?? phoneIcon)!} size={22} /></span><div><b>{title}{badge}</b>{help && <p>{helpPhone === undefined ? help : <><span className={styles.factDesktop}>{help}</span><span className={styles.factPhone}>{helpPhone}</span></>}</p>}</div><div>{children}</div></div>;
+  return <div className={styles.iconRow} data-phone-icon-only={!icon || undefined}><span className={styles.icon} data-icon={icon ?? phoneIcon} data-phone-tone={phoneTone}><WorkspaceIcon name={(icon ?? phoneIcon)!} size={22} /></span><div><b>{title}{badge}</b>{help && <p>{helpPhone === undefined ? help : <><span className={styles.factDesktop}>{help}</span><span className={styles.factPhone}>{helpPhone}</span></>}</p>}</div><div>{children}</div></div>;
 }
 export function ServicesRowNote({children}: {children: ReactNode}) { return <p className={styles.rowNote}>{children}</p>; }
 export function ServicesInlineFacts({items}: {items: readonly string[]}) { return <span className={styles.inlineFacts}>{items.filter(Boolean).map((item, index) => <span key={index}>{item}</span>)}</span>; }

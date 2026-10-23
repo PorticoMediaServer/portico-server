@@ -1,6 +1,5 @@
 // Disposable, account-free presentation/interaction proof. Real API/mail acceptance is separate.
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import net from 'node:net';
@@ -62,11 +61,7 @@ export default {...base, root:${JSON.stringify(path.join(repository, 'web-next')
   assert(driver, 'Owned system Chrome did not start.');
   const capture = async name => {
     const shot = await driver.send('Page.captureScreenshot', {format: 'jpeg', quality: 92, captureBeyondViewport: false});
-    const bytes = Buffer.from(shot.data, 'base64');
-    writeFileSync(path.join(output, name + '-build.jpg'), bytes);
-    // This optional stdout artifact is only for these four account-free JPEG fixtures. It
-    // neither returns executable binaries nor copies a profile, token or real account state.
-    if (process.env.PORTICO_SERVICES_STDOUT_IMAGES === 'true') console.log(JSON.stringify({artifact: 'services-fixture-jpeg-v1', name, mime: 'image/jpeg', bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), base64: shot.data}));
+    if (process.env.PORTICO_SERVICES_DIAGNOSTIC_ONLY !== 'true') writeFileSync(path.join(output, name + '-build.jpg'), Buffer.from(shot.data, 'base64'));
   };
   await driver.viewport(1440, 874);
   await driver.navigate(`http://127.0.0.1:${port}/test/services-links.html`);
@@ -104,10 +99,11 @@ export default {...base, root:${JSON.stringify(path.join(repository, 'web-next')
   report.result = 'PASS';
 } catch (error) {
   report.result = 'FAIL'; report.error = String(error); process.exitCode = 1;
+  if (driver) report.failurePage = await driver.evaluate('({title:document.title,text:document.body.innerText})').catch(() => undefined);
 } finally {
   clearInterval(timer); report.peakRSSKiB = peakRSSKiB; report.events = driver?.events ?? [];
   driver?.close(); await stop(chrome); await stop(vite);
   rmSync(temporary, {recursive: true, force: true});
-  writeFileSync(path.join(output, 'services-links-browser.json'), JSON.stringify(report, null, 2) + '\n');
-  console.log(JSON.stringify({result: report.result, peakRSSKiB, qualification: report.qualification}));
+  writeFileSync(path.join(output, 'services-links-browser.log'), JSON.stringify(report, null, 2) + '\n');
+  console.log(JSON.stringify({result: report.result, error: report.error, peakRSSKiB, qualification: report.qualification}));
 }
