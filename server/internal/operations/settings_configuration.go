@@ -48,8 +48,6 @@ func ConfigurationBindings() []ConfigurationBinding {
 		{"streaming.downloadQuality", "downloads.max_quality", "downloadMaxQuality", 1, false},
 		{"streaming.uploadSpeed", "streaming.upload_speed", "uploadCapacityKbps", 1000, false},
 		{"streaming.awayExact", "streaming.away_limit_mbps", "remoteBitrateLimitKbps", 1000, false},
-		{"streaming.hardware", "streaming.hardware", "hardwareBackend", 1, false},
-		{"streaming.hardwareDevice", "streaming.hardware_device", "hardwareDevice", 1, false},
 		{"streaming.toneMapping", "streaming.tone_mapping", "hdrToneMapping", 1, false},
 		{"streaming.toneMappingMethod", "streaming.tone_mapping_method", "hdrToneMappingAlgorithm", 1, false},
 		{"streaming.encoderSpeed", "streaming.encoder_speed", "x264Preset", 1, false},
