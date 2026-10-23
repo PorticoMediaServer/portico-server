@@ -7,6 +7,7 @@ import type {WatchBindings} from './types';
 import {WatchBodyOwner, type RetainedWatchBody} from './RetainedBody';
 import {watchBodyTarget, watchBodyKey} from './body-target';
 import {TogetherOwner} from '../together/owner';
+import {WatchVersionPresentationOwner} from './VersionPresentationOwner';
 
 const noSubscribe = () => () => {};
 const noSnapshot = () => undefined;
@@ -32,6 +33,7 @@ function RegisteredWatchPlayback({binding}: {binding: WatchBindings | undefined}
         toggle: () => {const current = held.binding.myList.getSnapshot();if (typeof current.watchlisted !== 'boolean') throw new DOMException('Title state changed', 'AbortError');return held.binding.myList.set(!current.watchlisted);}} : undefined,
     } : undefined} />
     {owner && binding && <TogetherOwner context={owner.context} playback={binding} />}
+    {owner && binding && <WatchVersionPresentationOwner context={owner.context} reportError={binding.reportError} />}
   </>;
 }
 
