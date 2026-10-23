@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {videoPictureName,videoAudioFormatName,videoTrackName,formatVideoBytes,type VideoTrackWords} from '../src/video-track-labels.ts';
 import type {AudioStream,SubtitleStream,VideoStream} from '../src/playback-v1/types.ts';
-const words:VideoTrackWords={fourK:'4K',stereo:'Stereo',mono:'Mono',channels:n=>`${n} channels`,withAtmos:format=>`${format} with Atmos`,withDtsx:value=>`${value} (DTS:X)`,besideFile:format=>`${format}, beside the file`,language:tag=>({en:'English',eng:'English',ja:'Japanese'}[tag]??'')};
+const words:VideoTrackWords={fourK:'4K',stereo:'Stereo',mono:'Mono',channels:n=>`${n} channels`,withAtmos:format=>`${format} with Atmos`,withDtsx:value=>`${value} (DTS:X)`,besideFile:format=>`${format}, beside the file`,language:tag=>(({en:'English',eng:'English',ja:'Japanese'} as Readonly<Record<string,string>>)[tag]??'')};
 const audio=(facts:Partial<AudioStream>={}):AudioStream=>({id:'a1',codec:'truehd',atmos:false,default:true,commentary:false,visualImpaired:false,...facts});
 const video=(facts:Partial<VideoStream>={}):VideoStream=>({id:'v0',codec:'hevc',...facts});
 
