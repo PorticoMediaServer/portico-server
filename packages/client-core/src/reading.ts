@@ -264,8 +264,8 @@ export class ReadingSession {
   };
   readAsset = async (path: string, signal?: AbortSignal): Promise<Uint8Array> => {
     if (this.manifest.format !== 'epub') fail('invalid_format');
-    const entry = this.manifest.resources?.find(resource => resource.path === path);
-    if (!entry || !member(path)) fail('invalid_asset');
+    const entry = this.manifest.resources?.find(resource => resource.path === path) ?? fail('invalid_asset');
+    if (!member(path)) fail('invalid_asset');
     return this.#binary(query(routePath('get_reading_sessions_sessionId_assets', {sessionId: this.manifest.sessionId}), {path}), {method: 'GET'}, signal, async (r, active, check) => {
       if (r.status !== 200) return this.#client.error(r, active, check);
       this.#etag(r);
