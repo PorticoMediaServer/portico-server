@@ -16,7 +16,7 @@ func fixtureBundle(t *testing.T) (string, string) {
 	root := t.TempDir()
 	bundle := filepath.Join(root, "third_party", "ffmpeg", "bundle")
 	m := manifest{SchemaVersion: 1, LicenseMode: "gpl3", Target: map[string]string{"darwin": "macos", "linux": "linux", "windows": "windows"}[runtime.GOOS] + "-" + map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH], Files: map[string]string{}}
-	for _, name := range []string{"bin/" + Name("ffmpeg"), "bin/" + Name("ffprobe"), "corresponding-source.tar.xz", "NOTICE.md", "sources.lock.json", "requirements.v1.json", "LICENSES/GPL"} {
+	for _, name := range []string{"bin/" + Name("ffmpeg"), "bin/" + Name("ffprobe"), "bin/" + Name("portico-disc"), "corresponding-source.tar.xz", "NOTICE.md", "sources.lock.json", "requirements.v1.json", "LICENSES/GPL", "LICENSES/portico-disc.txt"} {
 		path := filepath.Join(bundle, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 			t.Fatal(err)
@@ -28,6 +28,19 @@ func fixtureBundle(t *testing.T) (string, string) {
 		digest := sha256.Sum256(body)
 		m.Files[name] = hex.EncodeToString(digest[:])
 	}
+	libs := map[string]any{}
+	for _, name := range []string{"libbluray", "libudfread", "dvdnav", "dvdread"} {
+		libs[name] = map[string]string{"version": "fixture", "archive": "lib/" + name + ".a", "sha256": strings.Repeat("a", 64)}
+	}
+	record := map[string]any{"schema": 1, "tool": "portico-disc", "target": m.Target,
+		"sourceCommit": strings.Repeat("b", 40), "sourceSha256": strings.Repeat("c", 64),
+		"binarySha256": m.Files["bin/"+Name("portico-disc")], "decryption": false, "staticLibraries": libs}
+	recordRaw, _ := json.Marshal(record)
+	if err := os.WriteFile(filepath.Join(bundle, "portico-disc-build.json"), recordRaw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	recordHash := sha256.Sum256(recordRaw)
+	m.Files["portico-disc-build.json"] = hex.EncodeToString(recordHash[:])
 	raw, _ := json.Marshal(m)
 	if err := os.WriteFile(filepath.Join(bundle, "toolchain-manifest.json"), raw, 0600); err != nil {
 		t.Fatal(err)
@@ -40,7 +53,7 @@ func TestRepositoryToolVerifiesAncestorsAndRejectsTampering(t *testing.T) {
 	if err := os.MkdirAll(nested, 0700); err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range []string{"ffmpeg", "ffprobe"} {
+	for _, tool := range []string{"ffmpeg", "ffprobe", "portico-disc"} {
 		path, err := RepositoryTool(tool, t.TempDir(), nested)
 		if err != nil || path != filepath.Join(bundle, "bin", Name(tool)) {
 			t.Fatalf("%s %s %v", tool, path, err)
@@ -160,5 +173,76 @@ func TestConfiguredOwnerToolsReachLazyConsumers(t *testing.T) {
 	got, probe = ResolvePair()
 	if got != ffmpeg || probe != ffprobe {
 		t.Fatal("invalid candidate replaced qualified pair")
+	}
+	if got := Resolve("portico-disc"); !strings.ContainsRune(got, 0) {
+		t.Fatal("missing selected companion fell through", got)
+	}
+	disc := filepath.Join(root, Name("portico-disc"))
+	if err := os.WriteFile(disc, []byte("owner disc fixture"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if got := Resolve("portico-disc"); got != disc {
+		t.Fatal("did not select the configured toolchain companion", got)
+	}
+}
+
+func TestDiscBundleRequiresCompanionAndBoundStaticInputs(t *testing.T) {
+	for _, kind := range []string{"helper", "record", "license", "binary", "source", "decryption", "missing-decryption", "library", "outside-archive"} {
+		t.Run(kind, func(t *testing.T) {
+			_, bundle := fixtureBundle(t)
+			manifestPath := filepath.Join(bundle, "toolchain-manifest.json")
+			raw, err := os.ReadFile(manifestPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var m manifest
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Fatal(err)
+			}
+			remove := map[string]string{"helper": "bin/" + Name("portico-disc"), "record": "portico-disc-build.json", "license": "LICENSES/portico-disc.txt"}[kind]
+			if remove != "" {
+				if err := os.Remove(filepath.Join(bundle, filepath.FromSlash(remove))); err != nil {
+					t.Fatal(err)
+				}
+				delete(m.Files, remove)
+			} else {
+				recordPath := filepath.Join(bundle, "portico-disc-build.json")
+				raw, err := os.ReadFile(recordPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var record map[string]any
+				if err := json.Unmarshal(raw, &record); err != nil {
+					t.Fatal(err)
+				}
+				switch kind {
+				case "binary":
+					record["binarySha256"] = strings.Repeat("d", 64)
+				case "source":
+					record["sourceCommit"] = "unchecked"
+				case "decryption":
+					record["decryption"] = true
+				case "missing-decryption":
+					delete(record, "decryption")
+				case "library":
+					delete(record["staticLibraries"].(map[string]any), "libudfread")
+				case "outside-archive":
+					record["staticLibraries"].(map[string]any)["dvdread"].(map[string]any)["archive"] = "../libdvdread.a"
+				}
+				raw, _ = json.Marshal(record)
+				if err := os.WriteFile(recordPath, raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+				hash := sha256.Sum256(raw)
+				m.Files["portico-disc-build.json"] = hex.EncodeToString(hash[:])
+			}
+			raw, _ = json.Marshal(m)
+			if err := os.WriteFile(manifestPath, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := VerifyBundle(bundle); err == nil {
+				t.Fatal("accepted invalid disc bundle")
+			}
+		})
 	}
 }
