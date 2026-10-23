@@ -39,11 +39,11 @@ def fixture_path(directory, entry):
     return path.resolve()
 
 
-def probe(tool, path):
+def run_helper(tool, action, path, *arguments):
     env = {'PATH': os.defpath, 'LC_ALL': 'C'}
     if os.name == 'nt':
         env['SystemRoot'] = os.environ['SystemRoot']
-    with subprocess.Popen([str(tool), 'probe', str(path)], stdin=subprocess.DEVNULL,
+    with subprocess.Popen([str(tool), action, str(path), *arguments], stdin=subprocess.DEVNULL,
                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env,
                           start_new_session=os.name != 'nt') as process:
         raw = bytearray()
@@ -130,12 +130,22 @@ def main():
     results = []
     for entry in fixtures:
         path = fixture_path(args.fixtures.parent, entry)
-        result = probe(tool, path)
+        result = run_helper(tool, 'probe', path)
         # Exact parsed JSON comes from the video-owned checked schema/fixture
         # producer. Do not invent field names, title facts or permissive subsets.
         if not isinstance(entry['expected'], dict) or result != entry['expected']:
             raise ValueError('disc structure differs from checked fixture: ' + entry['id'])
-        results.append({'id': entry['id'], 'probe': result})
+        row = {'id': entry['id'], 'probe': result}
+        if entry['id'] in {'bluray-two-clip-bdmv', 'bluray-udf250-iso'}:
+            # These exact fixture bytes and the observed 37s clip boundary are
+            # the MAIN video component's authority, not assumed recipe times.
+            seek = run_helper(tool, 'seek', path, '1', '37500')
+            expected_seek = {'schema': 1, 'playlist': 1, 'requestedMs': 37500,
+                             'byteOffset': 1346304, 'titleTimeMs': 37000}
+            if seek != expected_seek:
+                raise ValueError('target disc helper cross-clip seek differs from checked fixture: ' + entry['id'])
+            row['seek'] = seek
+        results.append(row)
     supplemental_path = args.supplemental_fixtures or args.fixtures.parent / 'dovi/manifest.json'
     if digest(supplemental_path) != source_lock['supplementalFixtureManifestSHA256']:
         raise ValueError('supplemental STN/PMT disc fixture manifest changed')
@@ -145,7 +155,7 @@ def main():
         raise ValueError('both genuine STN-only and explicit-PMT disc cases are required')
     for entry in supplemental['fixtures']:
         path = fixture_path(supplemental_path.parent, entry)
-        result = probe(tool, path)
+        result = run_helper(tool, 'probe', path)
         if result != entry['expected']:
             raise ValueError('disc STN/PMT structure differs from checked source: ' + entry['id'])
         results.append({'id': entry['id'], 'probe': result})
